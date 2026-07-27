@@ -1755,7 +1755,23 @@ export function registerDrawerSnap(elementId, direction, dotnetRef, options) {
     // always a valid calc() operand, whether or not anything actually
     // constrains the box's position.
     const inlineRestValue = restProperty === 'bottom' ? preExistingBottom : preExistingTop;
-    const restBaseRaw = inlineRestValue || getComputedStyle(el)[restProperty];
+    // #381 round 13 (P2) — "Resolve CSS-wide inset values before composing
+    // snap offsets": a consumer inline inset can legally be a CSS-WIDE
+    // keyword — `style="bottom:auto"` (common when the consumer sets ONLY
+    // `top`, leaving `bottom` at its default `auto` rather than omitting it
+    // entirely) resolves `inlineRestValue` to the literal string "auto".
+    // `calc(auto - 10px)` is invalid CSS — the WHOLE assignment is silently
+    // discarded by the browser while the transform was already cleared,
+    // stranding the panel in neither representation. None of these
+    // keywords (auto/initial/inherit/unset/revert/revert-layer) are usable
+    // inside calc() — same as having no inline override at all, fall back
+    // to the CURRENT resolved value from getComputedStyle instead, which is
+    // always a definite px length (see the remarks above).
+    const CSS_WIDE_KEYWORDS = new Set(['auto', 'initial', 'inherit', 'unset', 'revert', 'revert-layer']);
+    const resolvedInlineRestValue = (inlineRestValue && !CSS_WIDE_KEYWORDS.has(inlineRestValue.trim()))
+        ? inlineRestValue
+        : '';
+    const restBaseRaw = resolvedInlineRestValue || getComputedStyle(el)[restProperty];
 
     // translateY(px) -> the rest-property's CSS value: for a Bottom drawer
     // (sign>0), a positive translateY (pushed DOWN, off-screen) is a

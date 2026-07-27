@@ -3611,6 +3611,43 @@ function assert(cond, msg) {
   await page.waitForTimeout(500); // let it settle before teardown
   await page.evaluate(() => window.__C.unregisterDrawerSnap('drawer61'));
 
+  // ---------------------------------------------------------------
+  // TEST 62 — "Resolve CSS-wide inset values before composing snap
+  // offsets" (PR #381 finding). A consumer inline inset can legally be a
+  // CSS-wide keyword — `style="bottom:auto; top:1rem"` (the finding's own
+  // example: explicit bottom:auto alongside an explicit top) resolves
+  // el.style.bottom to the literal string "auto". `calc(auto - 10px)` is
+  // invalid CSS — the browser silently REJECTS the whole assignment
+  // (leaving the property unchanged, i.e. still literally "auto") rather
+  // than applying anything at all, stranding the panel in neither
+  // representation. Verifies the composed value is no longer the literal
+  // keyword (and is non-empty, i.e. the assignment actually took effect) —
+  // not the exact final pixel position, which a SEPARATE, unrelated CSS
+  // quirk (top+height+bottom all explicit is over-constrained, so the
+  // browser disregards the JS-written bottom in favor of the untouched
+  // top) would make an unreliable signal for this specific fixture.
+  // ---------------------------------------------------------------
+  await page.evaluate(() => {
+    document.getElementById('host').innerHTML =
+      `<div id="drawer62" style="position:fixed; left:0; right:0; height:300px; top:1rem; bottom:auto; background:teal;"></div>`;
+  });
+  const beforeRegister62 = await page.evaluate(() => document.getElementById('drawer62').style.bottom);
+  assert(beforeRegister62 === 'auto', `sanity: the fixture's inline bottom reads back as the literal keyword before registering (got '${beforeRegister62}')`);
+  await page.evaluate(() => {
+    window.__C.registerDrawerSnap('drawer62', 'down', window.__fakeDotNet,
+      { snapPoints: [0.4, 1], activeIndex: 0, dismissible: true }); // 40% open — non-zero displacement, exercises calc() composition
+  });
+  await page.waitForTimeout(500);
+  const drawer62State = await page.evaluate(() => document.getElementById('drawer62').style.bottom);
+  assert(drawer62State !== 'auto' && drawer62State !== '',
+    `a CSS-wide keyword ("auto") inline inset is resolved through computed geometry, not interpolated into calc() literally — the composed rest value must be a real, non-empty CSS value (got '${drawer62State}')`);
+  assert(!drawer62State.includes('auto'),
+    `the composed rest value never contains the literal keyword "auto" anywhere, not even inside calc() (got '${drawer62State}')`);
+  await page.evaluate(() => window.__C.unregisterDrawerSnap('drawer62'));
+  const afterTeardown62 = await page.evaluate(() => document.getElementById('drawer62').style.bottom);
+  assert(afterTeardown62 === 'auto',
+    `teardown restores the EXACT original literal inline value ("auto"), not the resolved fallback used only for composing while registered (got '${afterTeardown62}')`);
+
   console.log(`\nALL TESTS PASSED (${passCount} assertions) — engine: ${ENGINE}`);
   await browser.close();
   server.close();

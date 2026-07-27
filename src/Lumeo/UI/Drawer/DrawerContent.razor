@@ -284,6 +284,26 @@ else if (Context.IsOpen || _exiting)
     // the session's own first registration has actually landed.
     private bool _initialGestureSetupComplete;
 
+    // #381 round 13 (P2) — "Defer snap baseline capture until the new side
+    // renders": OnParametersSetAsync's reconciliation used to unregister +
+    // re-register THE INSTANT it detected a mismatch (e.g. a Side flip),
+    // which runs BEFORE Blazor commits the render containing the new
+    // PositionClasses (bottom-0/top-0 etc.) — registerDrawerSnap's own
+    // baseline capture (restBaseRaw) reads the CURRENT DOM via
+    // getComputedStyle when there's no inline override, so it captured the
+    // STILL-STALE side's classes. Reconciliation now only sets this flag +
+    // returns; OnAfterRenderAsync (which runs AFTER a render commits, by
+    // definition) does the actual unregister/register once the DOM the
+    // baseline capture reads from is guaranteed current.
+    private bool _gestureReconcilePending;
+
+    // #381 round 13 — how many times RegisterGestureAndReconcileAsync will
+    // re-check-and-retry before giving up. One correction covers the
+    // realistic case (a single parameter change landing mid-registration);
+    // bounded rather than unbounded so a hypothetical pathological case
+    // (parameters changing on every single await) can't loop forever.
+    private const int MaxGestureReconcileAttempts = 5;
+
     // The swipe direction + snap-point geometry baked into the live JS gesture.
     // A runtime Side/RTL flip (#76) or a same-count SnapPoints fraction change
     // (#77) doesn't trip the mode-flip gate below, so the gesture would keep the
@@ -455,7 +475,11 @@ else if (Context.IsOpen || _exiting)
                 {
                     await Interop.AttachOverlaySlideEnd(_contentId);
                 }
-                await RegisterGestureAsync();
+                // #381 round 13 — RegisterGestureAndReconcileAsync (not a bare
+                // RegisterGestureAsync call) so a parameter change landing
+                // during THIS call's own internal interop await is caught
+                // immediately too — see its own remarks.
+                await RegisterGestureAndReconcileAsync();
                 // #381 round 12 — see the field's own remarks: only flips once
                 // THIS call has actually returned, closing the window where a
                 // concurrent OnParametersSetAsync could otherwise reconcile
@@ -473,6 +497,7 @@ else if (Context.IsOpen || _exiting)
                 await Cleanup();
                 _interopReady = false;
                 _initialGestureSetupComplete = false;
+                _gestureReconcilePending = false;
             }
         }
         else if (!Context.IsOpen && _interopReady)
@@ -484,6 +509,24 @@ else if (Context.IsOpen || _exiting)
             await Cleanup();
             _interopReady = false;
             _initialGestureSetupComplete = false;
+            _gestureReconcilePending = false;
+        }
+        else if (Context.IsOpen && _interopReady && _gestureReconcilePending)
+        {
+            // #381 round 13 (P2) — "Defer snap baseline capture until the new
+            // side renders": runs AFTER the render OnParametersSetAsync's
+            // reconciliation trigger scheduled has actually committed (this
+            // method only ever runs post-render, by definition), so
+            // RegisterGestureAsync's baseline capture reads the CURRENT DOM —
+            // e.g. a Side flip's new top-0/bottom-0 class — not whatever was
+            // there before the parameter change that triggered this.
+            _gestureReconcilePending = false;
+            try
+            {
+                await UnregisterGestureAsync();
+                await RegisterGestureAndReconcileAsync();
+            }
+            catch (JSDisconnectedException) { }
         }
 
         // Radix-Presence parity: hand the unmount to the panel's OWN exit
@@ -582,6 +625,47 @@ else if (Context.IsOpen || _exiting)
         return _registeredSnapPoints.SequenceEqual(current);
     }
 
+    // #381 round 13 — the SHARED "does the live gesture still match what the
+    // CURRENT parameters describe" check, extracted so OnParametersSetAsync's
+    // reconciliation trigger and RegisterGestureAndReconcileAsync's own
+    // post-registration self-check (below) can't drift apart into two
+    // slightly-different definitions of "needs a re-register". True for: a
+    // snap-mode flip; an already-live gesture's own recorded direction or
+    // snap-point geometry going stale (#76/#77); or (non-snap mode only —
+    // snap mode always registers regardless of PreventClose) the live
+    // registration state disagreeing with what PreventClose currently implies
+    // it should be (round 11/12).
+    private bool GestureNeedsReconcile() =>
+        _registeredWithSnap != UsesSnapPoints
+        || (_gestureRegistered
+            && (_registeredDirection != SwipeDirection
+                || !SnapPointsMatchRegistered()))
+        || (!UsesSnapPoints && _gestureRegistered != GestureWillBeRegistered);
+
+    // #381 round 13 (P2) — "Reconcile parameters changed during gesture
+    // registration": RegisterGestureAsync's own branch condition
+    // (UsesSnapPoints / !PreventClose) is read ONCE, before its internal
+    // interop await, and never re-checked after resuming — a parameter
+    // change landing WHILE that specific await is in flight (a real Blazor
+    // Server window, distinct from — and not covered by — the earlier
+    // LockScroll-wait window _initialGestureSetupComplete gates) lands a
+    // registration that was already stale the instant it committed, and no
+    // later reconciliation catches it if nothing else changes afterward.
+    // Re-validate immediately after every RegisterGestureAsync call and
+    // self-correct in a bounded loop (not one extra check pinned to this
+    // ONE window — closes the window in general, so a future added await
+    // inside RegisterGestureAsync doesn't reopen it) rather than widening
+    // the gate by yet another specific await.
+    private async Task RegisterGestureAndReconcileAsync()
+    {
+        await RegisterGestureAsync();
+        for (var i = 0; i < MaxGestureReconcileAttempts && GestureNeedsReconcile(); i++)
+        {
+            await UnregisterGestureAsync();
+            await RegisterGestureAsync();
+        }
+    }
+
     protected override async Task OnParametersSetAsync()
     {
         // Passthrough mode — the host DrawerContent owns the shell, exit animation
@@ -669,14 +753,22 @@ else if (Context.IsOpen || _exiting)
         // after the FIRST render, since mutating a field there doesn't
         // trigger a re-render on its own — a bigger, riskier change for a
         // problem this reconciliation already fully solves).
-        if (_registeredWithSnap != UsesSnapPoints
-            || (_gestureRegistered
-                && (_registeredDirection != SwipeDirection
-                    || !SnapPointsMatchRegistered()))
-            || (!UsesSnapPoints && _gestureRegistered != GestureWillBeRegistered))
+        //
+        // #381 round 13 (P2) — "Defer snap baseline capture until the new
+        // side renders": this used to unregister + re-register RIGHT HERE,
+        // synchronously, which runs BEFORE Blazor commits the render
+        // containing whatever CSS the parameter change implies (e.g. a Side
+        // flip's new top-0/bottom-0 PositionClasses) — registerDrawerSnap's
+        // baseline capture reads the CURRENT DOM via getComputedStyle when
+        // there's no inline override, so it captured the STALE side's
+        // classes, and settleAtRest later wrote that stale value inline
+        // over the new class, visibly misplacing the drawer. Setting the
+        // flag and returning defers the actual work to OnAfterRenderAsync
+        // (see its own remarks) — which, running after a render commits by
+        // definition, always sees the current DOM.
+        if (GestureNeedsReconcile())
         {
-            await UnregisterGestureAsync();
-            await RegisterGestureAsync();
+            _gestureReconcilePending = true;
             return;
         }
 

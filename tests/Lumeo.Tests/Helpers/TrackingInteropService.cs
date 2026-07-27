@@ -288,7 +288,13 @@ public class TrackingInteropService : IComponentInteropService
     private readonly List<string> _drawerSwipeUnregistrations = new();
     public IReadOnlyList<(string ElementId, string? Direction)> DrawerSwipeRegistrations => _drawerSwipeRegistrations;
     public IReadOnlyList<string> DrawerSwipeUnregistrations => _drawerSwipeUnregistrations;
-    public ValueTask RegisterDrawerSwipe(string elementId, string direction, Func<Task> handler)
+    // virtual: registerDrawerSnap's default interface impl (IComponentInteropService)
+    // routes through THIS overload too (via its own 5-arg RegisterDrawerSwipe
+    // default), so a derived class can block/record the snap path's own
+    // registration through the same override point as the plain swipe path —
+    // used by DrawerGestureBaselineTimingTests to reproduce a Server-style
+    // "parameter change lands while this interop call is still in flight" race.
+    public virtual ValueTask RegisterDrawerSwipe(string elementId, string direction, Func<Task> handler)
     {
         _drawerSwipeRegistrations.Add((elementId, direction));
         return ValueTask.CompletedTask;
