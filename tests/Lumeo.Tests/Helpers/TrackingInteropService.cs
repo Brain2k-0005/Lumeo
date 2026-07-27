@@ -861,9 +861,19 @@ public class TrackingInteropService : IComponentInteropService
     // exactly as before (server-Today fallback).
     public string? GanttV3LocalDateToReturn { get; set; }
     public int GanttV3GetLocalDateCallCount { get; private set; }
+
+    /// <summary>
+    /// When set, the browser-date round trip suspends on this gate instead of
+    /// resolving immediately — same shape as
+    /// <see cref="GanttV3ScrollCenterXGate"/>, so a test can hold a component
+    /// inside that await (e.g. to dispose it mid-flight).
+    /// </summary>
+    public TaskCompletionSource<string?>? GanttV3LocalDateGate { get; set; }
+
     public Task<string?> GanttV3GetLocalDateAsync()
     {
         GanttV3GetLocalDateCallCount++;
+        if (GanttV3LocalDateGate is not null) return GanttV3LocalDateGate.Task;
         return Task.FromResult(GanttV3LocalDateToReturn);
     }
 
