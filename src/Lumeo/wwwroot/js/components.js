@@ -1724,6 +1724,43 @@ export function registerDrawerSnap(elementId, direction, dotnetRef, options) {
     // while the drawer sits still at a snap) is what this fixes.
     const restProperty = direction === 'up' ? 'top' : 'bottom';
 
+    // #381 round 7 (P2 Finding 2) — "Preserve snap geometry when the
+    // opposite inset is set". Companion rule to the restBaseRaw contract
+    // just below (restBaseRaw always resolves to a valid, current CSS value
+    // for restProperty): that contract says nothing about the OTHER inset
+    // property (`top` for a Bottom drawer, `bottom` for a Top drawer), so a
+    // consumer who leaves it independently definite — inline
+    // (`style="top:1rem"` on a Bottom drawer) or via a class this
+    // registration doesn't own — leaves top/bottom/height all definite at
+    // once. A fixed-position box with all three definite is over-constrained;
+    // per the CSS positioned-layout algorithm the browser silently discards
+    // whichever of top/bottom loses (empirically: `bottom`, i.e.
+    // restProperty for a Bottom drawer — verified with the same pointer
+    // harness used for Finding 1), no matter what valid value
+    // composeRestValue writes there. This stays invisible during an active
+    // drag — `transform` composites on top of whatever the layout algorithm
+    // resolves, independent of which inset "won" — and only surfaces once
+    // the panel SETTLES and the compensating transform is cleared, matching
+    // the reported symptom exactly: the drawer jumps back to its top-based
+    // position instead of remaining at the selected snap.
+    //
+    // Extending the contract rather than special-casing: this registration
+    // already claims exclusive ownership of restProperty for its whole
+    // lifetime (settleAtRest/enterDragRepresentation only ever write that
+    // one property); the companion rule is that it claims the OPPOSITE inset
+    // too, forcing it to 'auto' up front so it can never coexist as a
+    // competing definite constraint. An inline 'auto' always wins the
+    // cascade over a class rule for the same property, so this neutralizes
+    // the conflict regardless of whether it originated from inline or a
+    // class. No-op in the common case (the opposite property was already
+    // undeclared/auto — the vast majority of drawers only ever set one
+    // side). Restored alongside preExistingTop/preExistingBottom in
+    // unregisterDrawerSnap, which already restores BOTH properties to their
+    // pre-registration values unconditionally, so no teardown change is
+    // needed here.
+    const oppositeInsetProperty = restProperty === 'bottom' ? 'top' : 'bottom';
+    el.style[oppositeInsetProperty] = 'auto';
+
     // #381 round 7 (P2), corrected round 9 (findings #10/#11/#13), corrected
     // round 10 (finding "Preserve class-based insets when settling snap
     // drawers") — the CSS value this registration's rest offset composes
@@ -1974,9 +2011,42 @@ export function registerDrawerSnap(elementId, direction, dotnetRef, options) {
         // itself waits for real signal.
         if (!startedOnHandle) {
             const directionSign = Math.sign(y - startY);
-            if (directionSign !== 0
-                && Math.abs(y - startY) >= OWNERSHIP_THRESHOLD
-                && !isAtScrollBoundaryForDirection(touchStartTarget, el, directionSign)) {
+            if (directionSign !== 0 && !isAtScrollBoundaryForDirection(touchStartTarget, el, directionSign)) {
+                if (Math.abs(y - startY) < OWNERSHIP_THRESHOLD) {
+                    // #381 round 7 (P2 Finding 1) — "Defer snap dragging
+                    // until scroll ownership is resolved", re-raised after a
+                    // round-6 deferral (issue #384). Deferred then as "a
+                    // sub-10px, self-correcting transient at the very start
+                    // of a slow scroll"; empirically re-checked this round
+                    // with a pointer harness (a real touch sequence starting
+                    // MID-CONTENT, away from any scroll boundary) and that
+                    // characterization was WRONG — Codex's framing is the
+                    // accurate one. Before this fix, every frame below
+                    // OWNERSHIP_THRESHOLD fell through to the lazy drag-entry
+                    // block further down, which starts dragging the panel
+                    // unconditionally on its very first move — so ANY normal
+                    // content scroll that starts away from a boundary
+                    // visibly dragged the panel up to
+                    // (OWNERSHIP_THRESHOLD - 1)px before the frame that
+                    // finally crossed the threshold latched contentOwned and
+                    // animated it back. That is not a rare edge case; it is
+                    // the single most common drawer interaction (scrolling
+                    // its content from somewhere other than the very top/
+                    // bottom). Ownership is still genuinely undecided here —
+                    // below OWNERSHIP_THRESHOLD, and not at a scroll boundary
+                    // either — so do nothing this frame: don't drag the
+                    // panel, don't commit to content, just wait for more
+                    // signal. Deliberately asymmetric: this whole block is
+                    // already skipped for a handle-started touch
+                    // (startedOnHandle, unaffected — handle drags still
+                    // follow the finger from pixel 1), and a touch that
+                    // started AT a scroll boundary never reaches this inner
+                    // check at all (the outer `!isAtScrollBoundaryForDirection`
+                    // condition is false, so it falls straight through to
+                    // immediate drag below — there's nothing left for content
+                    // to decide once the boundary itself has spoken).
+                    return;
+                }
                 contentOwned = true;
                 // #381 round 7 (P1) — a touch that started AT the boundary
                 // enters `dragging` on its first move (see the lazy-entry

@@ -3647,6 +3647,173 @@ function assert(cond, msg) {
   const afterTeardown62 = await page.evaluate(() => document.getElementById('drawer62').style.bottom);
   assert(afterTeardown62 === 'auto',
     `teardown restores the EXACT original literal inline value ("auto"), not the resolved fallback used only for composing while registered (got '${afterTeardown62}')`);
+  // #381 round 7 (P2 Finding 2) — the over-constraint that made this
+  // fixture's exact resting position an "unreliable signal" (see above) is
+  // now its own dedicated fix; TEST 65 below reuses this exact fixture
+  // shape and asserts on the resting geometry directly.
+
+  // ---------------------------------------------------------------
+  // TEST 63 — registerDrawerSnap: "Defer snap dragging until scroll
+  // ownership is resolved" (PR #381 round 7 Finding 1, re-raised after a
+  // round-6 deferral filed as issue #384). A touch that starts MID-CONTENT
+  // — away from any scroll boundary, the single most common way a drawer's
+  // scrollable content is actually touched — must not drag the panel at
+  // ALL while ownership is still undecided (every frame below
+  // OWNERSHIP_THRESHOLD), not even transiently. Before this fix, every
+  // sub-threshold frame fell through to the lazy drag-entry code and
+  // visibly dragged the panel in lockstep with the finger for up to
+  // (OWNERSHIP_THRESHOLD - 1)px before the frame that finally crossed the
+  // threshold latched content ownership and animated it back — confirmed
+  // empirically with this exact sequence prior to the fix. Dispatches real
+  // touch events through the actual listeners, same cross-engine
+  // Touch/TouchEvent construction as TEST 59/60.
+  // ---------------------------------------------------------------
+  await page.evaluate(() => {
+    document.getElementById('host').innerHTML = `
+      <div id="drawer63" style="position:fixed; left:0; right:0; bottom:0; height:300px; background:blue;">
+        <div id="scrollable63" style="height:100%; overflow-y:auto;">
+          <div style="height:1000px;">tall scrollable content</div>
+        </div>
+      </div>`;
+  });
+  await page.evaluate(() => {
+    window.__C.registerDrawerSnap('drawer63', 'down', window.__fakeDotNet,
+      { snapPoints: [0.5, 1], activeIndex: 0, dismissible: true, velocity: 0 });
+  });
+  await page.waitForTimeout(500); // let the open sequence settle at rest
+  await page.evaluate(() => { document.getElementById('scrollable63').scrollTop = 300; }); // mid-content — plenty of room either way
+  const test63 = await page.evaluate(() => {
+    function makeTouch(el, x, y) {
+      try { return new Touch({ identifier: 1, target: el, clientX: x, clientY: y, pageX: x, pageY: y }); }
+      catch (e) { return document.createTouch(window, el, 1, x, y, x, y); }
+    }
+    function makeList(touches) {
+      if (typeof document.createTouchList === 'function') return document.createTouchList(...touches);
+      return touches;
+    }
+    function dispatch(el, type, x, y) {
+      const t = makeTouch(el, x, y);
+      const active = makeList(type === 'touchend' ? [] : [t]);
+      const changed = makeList([t]);
+      el.dispatchEvent(new TouchEvent(type, { touches: active, targetTouches: active, changedTouches: changed, bubbles: true, cancelable: true }));
+    }
+    const scrollable = document.getElementById('scrollable63');
+    const drawer = document.getElementById('drawer63');
+    const transforms = [];
+    const startY = 400;
+    dispatch(scrollable, 'touchstart', 50, startY);
+    // Every one of these deltas is below OWNERSHIP_THRESHOLD (10) except the
+    // last two, which cross it — mirrors a normal, gradually-accelerating
+    // scroll gesture starting away from a boundary.
+    for (const d of [2, 5, 8, 9, 12, 15, 20]) {
+      dispatch(scrollable, 'touchmove', 50, startY + d);
+      transforms.push(drawer.style.transform);
+    }
+    dispatch(scrollable, 'touchend', 50, startY + 20);
+    transforms.push(drawer.style.transform);
+    return transforms;
+  });
+  assert(test63.every((t) => t === ''),
+    `a mid-content scroll away from any scroll boundary must never drag the panel — transform must stay empty for the whole gesture, sub-threshold AND past-threshold frames alike (got [${test63.map((t) => `'${t}'`).join(', ')}])`);
+  await page.evaluate(() => window.__C.unregisterDrawerSnap('drawer63'));
+
+  // ---------------------------------------------------------------
+  // TEST 64 — registerDrawerSnap: handle drags must still follow the finger
+  // from pixel 1 (PR #381 round 7 Finding 1's explicit asymmetry
+  // constraint: "handle touches must stay immediate... The threshold
+  // applies to non-handle touches that begin inside scrollable content").
+  // Uses the real [data-drawer-handle] selector startedOnDragHandle checks
+  // for, as a sibling of the scrollable content — the actual DOM shape
+  // DrawerContent.razor produces (see startedOnDragHandle's own remarks).
+  // ---------------------------------------------------------------
+  await page.evaluate(() => {
+    document.getElementById('host').innerHTML = `
+      <div id="drawer64" style="position:fixed; left:0; right:0; bottom:0; height:300px; background:green;">
+        <div data-drawer-handle id="handle64" style="height:20px;"></div>
+        <div id="scrollable64" style="height:280px; overflow-y:auto;">
+          <div style="height:1000px;">tall scrollable content</div>
+        </div>
+      </div>`;
+  });
+  await page.evaluate(() => {
+    window.__C.registerDrawerSnap('drawer64', 'down', window.__fakeDotNet,
+      { snapPoints: [0.5, 1], activeIndex: 0, dismissible: true, velocity: 0 });
+  });
+  await page.waitForTimeout(500);
+  const test64 = await page.evaluate(() => {
+    function makeTouch(el, x, y) {
+      try { return new Touch({ identifier: 1, target: el, clientX: x, clientY: y, pageX: x, pageY: y }); }
+      catch (e) { return document.createTouch(window, el, 1, x, y, x, y); }
+    }
+    function makeList(touches) {
+      if (typeof document.createTouchList === 'function') return document.createTouchList(...touches);
+      return touches;
+    }
+    function dispatch(el, type, x, y) {
+      const t = makeTouch(el, x, y);
+      const active = makeList(type === 'touchend' ? [] : [t]);
+      const changed = makeList([t]);
+      el.dispatchEvent(new TouchEvent(type, { touches: active, targetTouches: active, changedTouches: changed, bubbles: true, cancelable: true }));
+    }
+    const handle = document.getElementById('handle64');
+    const drawer = document.getElementById('drawer64');
+    const startY = 400;
+    dispatch(handle, 'touchstart', 50, startY);
+    // Just 1px — well below OWNERSHIP_THRESHOLD (10). A non-handle touch
+    // this small must not move the panel at all (TEST 63); a handle touch
+    // must move it immediately.
+    dispatch(handle, 'touchmove', 50, startY + 1);
+    const transformAt1px = drawer.style.transform;
+    dispatch(handle, 'touchend', 50, startY + 1);
+    return { transformAt1px };
+  });
+  assert(test64.transformAt1px !== '',
+    `a handle-started touch must move the panel on its very first pixel of movement, unaffected by OWNERSHIP_THRESHOLD (got transform '${test64.transformAt1px}')`);
+  await page.evaluate(() => window.__C.unregisterDrawerSnap('drawer64'));
+
+  // ---------------------------------------------------------------
+  // TEST 65 — registerDrawerSnap: "Preserve snap geometry when the opposite
+  // inset is set" (PR #381 round 7 Finding 2). Reuses TEST 62's exact
+  // fixture (`top:1rem; bottom:auto; height:300px` — a Bottom drawer with
+  // an independently definite `top`), but this time asserts on the actual
+  // resting geometry: before the fix, top/bottom/height were all definite
+  // at once (over-constrained), so the browser silently ignored the
+  // JS-written `bottom` and the box stayed frozen at its top:1rem position
+  // regardless of which snap was active. After the fix, the opposite inset
+  // (`top`) is neutralized to 'auto' up front, so `bottom` genuinely
+  // governs and the resting position tracks the active snap fraction.
+  // Checked two ways: (1) the box moves at all between two different
+  // snaps (it must not be frozen), and (2) the movement is exactly
+  // proportional to the snap fraction difference (0.6 * height = 180px
+  // between the 40% and 100% snaps here) — not just "different", but
+  // correctly composed.
+  // ---------------------------------------------------------------
+  const snapOffsets65 = {};
+  for (const activeIndex of [0, 1]) {
+    await page.evaluate(() => {
+      document.getElementById('host').innerHTML =
+        `<div id="drawer65" style="position:fixed; left:0; right:0; height:300px; top:1rem; bottom:auto; background:teal;"></div>`;
+    });
+    await page.evaluate((activeIndex) => {
+      window.__C.registerDrawerSnap('drawer65', 'down', window.__fakeDotNet,
+        { snapPoints: [0.4, 1], activeIndex, dismissible: true });
+    }, activeIndex);
+    await page.waitForTimeout(500);
+    const geom = await page.evaluate(() => {
+      const el = document.getElementById('drawer65');
+      const rect = el.getBoundingClientRect();
+      return { top: el.style.top, bottomFromViewport: window.innerHeight - rect.bottom };
+    });
+    snapOffsets65[activeIndex] = geom;
+    await page.evaluate(() => window.__C.unregisterDrawerSnap('drawer65'));
+  }
+  assert(snapOffsets65[0].top === 'auto' && snapOffsets65[1].top === 'auto',
+    `the opposite inset (top) is neutralized to 'auto' for the whole registration, at both snaps (got '${snapOffsets65[0].top}' / '${snapOffsets65[1].top}')`);
+  assert(snapOffsets65[0].bottomFromViewport !== snapOffsets65[1].bottomFromViewport,
+    `the panel must actually move between the 40% and fully-open snaps — it must not be frozen at its top:1rem position (both read ${snapOffsets65[0].bottomFromViewport}px from the viewport bottom)`);
+  const delta65 = snapOffsets65[1].bottomFromViewport - snapOffsets65[0].bottomFromViewport;
+  assert(Math.abs(delta65 - 180) < 1,
+    `the movement between the 40% and 100% snaps must be exactly 0.6 * height (180px for a 300px-tall drawer), not an arbitrary difference (got ${delta65}px)`);
 
   console.log(`\nALL TESTS PASSED (${passCount} assertions) — engine: ${ENGINE}`);
   await browser.close();
