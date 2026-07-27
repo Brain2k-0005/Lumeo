@@ -496,8 +496,16 @@
 
     private List<GanttVisibleRow> BuildFallbackRows()
     {
-        var rows = new List<GanttVisibleRow>(Tasks.Count);
-        foreach (var task in Tasks)
+        // Bug fix (Codex round 18 review, P2): route through the SAME duration
+        // filter the shared row model applies (GanttRowModel.BuildVisibleRows),
+        // so a standalone timeline (Rows==null) drops an invalid End<Start,
+        // non-milestone task exactly as the Gantt3-fed path already does.
+        // Previously this copied EVERY task 1:1, so a standalone caller rendered
+        // the 8px-sliver bar (BarGeometry's Math.Max(8,...) clamp) that filter
+        // exists to suppress — the only GanttV3 entry point still bypassing it.
+        var valid = GanttRowModel.FilterValidDurationTasks(Tasks);
+        var rows = new List<GanttVisibleRow>(valid.Count);
+        foreach (var task in valid)
             rows.Add(new GanttVisibleRow(GanttRowKind.Task, task, task.Name, 0, false, null, false));
         return rows;
     }
