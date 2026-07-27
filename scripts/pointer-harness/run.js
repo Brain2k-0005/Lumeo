@@ -3815,6 +3815,65 @@ function assert(cond, msg) {
   assert(Math.abs(delta65 - 180) < 1,
     `the movement between the 40% and 100% snaps must be exactly 0.6 * height (180px for a 300px-tall drawer), not an arbitrary difference (got ${delta65}px)`);
 
+  // ---------------------------------------------------------------
+  // TEST 66 — registerDrawerSnap/unregisterDrawerSnap: "Preserve newly
+  // rendered insets during snap re-registration" (PR #381 round 8 finding).
+  // DrawerContent's reconcile flow (round 13) unregisters and immediately
+  // re-registers in the SAME OnAfterRenderAsync call, AFTER Blazor has
+  // already committed a render — if that render also carried a fresh inline
+  // inset via AdditionalAttributes (a Side/SnapPoints change landing in the
+  // same render as an inset edit), Blazor's own diff writes that value into
+  // the DOM before the JS-level teardown ever runs. Simulates Blazor's
+  // commit directly (writing a new inline `bottom` to the DOM) BEFORE
+  // calling unregisterDrawerSnap, mirroring the real timeline exactly —
+  // the teardown must leave that fresh value standing, not clobber it with
+  // the STALE snapshot captured back when the ORIGINAL registration began.
+  // A second scenario in the same test confirms the fix does not break the
+  // ordinary case: a FINAL teardown, where nothing else has touched the
+  // property since, must still restore the pre-registration snapshot
+  // exactly as every teardown did before round 8.
+  // ---------------------------------------------------------------
+  await page.evaluate(() => {
+    document.getElementById('host').innerHTML =
+      `<div id="drawer66" style="position:fixed; left:0; right:0; height:300px; bottom:1rem; background:teal;"></div>`;
+  });
+  await page.evaluate(() => {
+    window.__C.registerDrawerSnap('drawer66', 'down', window.__fakeDotNet,
+      { snapPoints: [0.5, 1], activeIndex: 0, dismissible: true });
+  });
+  await page.waitForTimeout(500); // let the open sequence settle at rest
+  // Simulate Blazor committing a NEW render for the SAME reconcile cycle
+  // (Side/SnapPoints change + a fresh inline bottom via AdditionalAttributes)
+  // — written directly to the DOM, BEFORE the JS-level unregister call, the
+  // same order OnAfterRenderAsync's reconcile actually runs in.
+  await page.evaluate(() => { document.getElementById('drawer66').style.bottom = '3rem'; });
+  await page.evaluate(() => window.__C.unregisterDrawerSnap('drawer66'));
+  const bottomAfterReconcileTeardown = await page.evaluate(() => document.getElementById('drawer66').style.bottom);
+  assert(bottomAfterReconcileTeardown === '3rem',
+    `a reconcile-then-reregister teardown must not clobber a freshly-rendered inset with the STALE pre-registration snapshot — Blazor's own '3rem' write must survive (got '${bottomAfterReconcileTeardown}')`);
+
+  // Re-register (the SnapPoints half of the same reconcile cycle) — its own
+  // baseline capture must pick up the SURVIVING '3rem', not the original
+  // '1rem' the stale snapshot would have clobbered it back to.
+  await page.evaluate(() => {
+    window.__C.registerDrawerSnap('drawer66', 'down', window.__fakeDotNet,
+      { snapPoints: [0.3, 0.7, 1], activeIndex: 0, dismissible: true });
+  });
+  await page.waitForTimeout(500);
+  const composedAfterReregister = await page.evaluate(() => document.getElementById('drawer66').style.bottom);
+  assert(composedAfterReregister.includes('3rem'),
+    `the re-registration's own baseline must compose onto the SURVIVING '3rem', not the stale '1rem' a clobbered teardown would have left behind (got '${composedAfterReregister}')`);
+  assert(!composedAfterReregister.includes('1rem'),
+    `the stale '1rem' must not appear anywhere in the re-registration's composed value (got '${composedAfterReregister}')`);
+
+  // FINAL teardown — nothing has touched the property since this second
+  // registration's own last settle, so the ordinary restore-the-snapshot
+  // behavior (unchanged since round 6) must still apply.
+  await page.evaluate(() => window.__C.unregisterDrawerSnap('drawer66'));
+  const bottomAfterFinalTeardown = await page.evaluate(() => document.getElementById('drawer66').style.bottom);
+  assert(bottomAfterFinalTeardown === '3rem',
+    `a FINAL teardown, where nothing else has written to the property since this registration's own last write, must still restore the pre-registration snapshot exactly as before round 8 (got '${bottomAfterFinalTeardown}')`);
+
   console.log(`\nALL TESTS PASSED (${passCount} assertions) — engine: ${ENGINE}`);
   await browser.close();
   server.close();

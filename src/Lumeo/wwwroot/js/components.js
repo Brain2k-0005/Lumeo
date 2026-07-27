@@ -1839,6 +1839,15 @@ export function registerDrawerSnap(elementId, direction, dotnetRef, options) {
     // pixel number in the first place.
     let atRest = false;
     let settledOffsetPx = offsetFor(activeIndex);
+    // #381 round 8 (P2 Finding: "Preserve newly rendered insets during snap
+    // re-registration") — the ONLY value this module itself has ever
+    // written to el.style[restProperty], updated at every site that writes
+    // to it (enterDragRepresentation, settleAtRest). null until the first
+    // such write (the open sequence's own settle hasn't landed yet).
+    // unregisterDrawerSnap compares the CURRENT DOM value against this
+    // before deciding whether reverting to the pre-registration snapshot is
+    // still safe — see its own remarks for why.
+    let lastRestPropertyWrite = null;
 
     // Reverses settleAtRest below: if the panel is CURRENTLY resting via the
     // bottom/top offset (no transform), convert it back to the equivalent
@@ -1864,6 +1873,15 @@ export function registerDrawerSnap(elementId, direction, dotnetRef, options) {
         if (!atRest) return;
         atRest = false;
         el.style[restProperty] = restBaseRaw;
+        // Read back through the CSSOM rather than caching the literal
+        // string just assigned: the browser can reserialize a calc()
+        // expression's operand order/formatting on write, so a later
+        // el.style[restProperty] read may legitimately differ from the
+        // exact string handed to the setter even though nothing else ever
+        // touched it. Caching the round-tripped value keeps the round-8
+        // "did something else write here" comparison in unregisterDrawerSnap
+        // apples-to-apples.
+        lastRestPropertyWrite = el.style[restProperty];
         el.style.transform = `translateY(${settledOffsetPx}px)`;
     }
 
@@ -1898,6 +1916,10 @@ export function registerDrawerSnap(elementId, direction, dotnetRef, options) {
                 el.style.transition = 'none';
                 el.style.transform = '';
                 el.style[restProperty] = composeRestValue(targetOffsetPx);
+                // Read back through the CSSOM — see enterDragRepresentation's
+                // own remarks on why this must not cache the literal string
+                // composeRestValue produced.
+                lastRestPropertyWrite = el.style[restProperty];
                 settledOffsetPx = targetOffsetPx;
                 atRest = true;
                 void el.offsetHeight; // force reflow so the swap commits before transitions resume
@@ -2254,7 +2276,18 @@ export function registerDrawerSnap(elementId, direction, dotnetRef, options) {
         // #381 round 6 (P2) — see the capture site's own remarks above;
         // unregisterDrawerSnap restores these instead of clearing to empty.
         preExistingTop,
-        preExistingBottom
+        preExistingBottom,
+        // #381 round 8 (P2 Finding) — which property this registration
+        // owns/composes (restProperty) vs. neutralizes to 'auto' and never
+        // touches again (oppositeInsetProperty, round 12's fix), plus a LIVE
+        // getter for the last value actually written to restProperty (not a
+        // snapshot — lastRestPropertyWrite keeps changing for as long as
+        // this registration stays open). unregisterDrawerSnap needs all
+        // three to decide, per property, whether restoring the
+        // pre-registration snapshot is still safe.
+        restProperty,
+        oppositeInsetProperty,
+        getLastRestPropertyWrite: () => lastRestPropertyWrite
     });
 }
 
@@ -2288,8 +2321,57 @@ export function unregisterDrawerSnap(elementId) {
             // them, instead of clearing to empty unconditionally — clearing
             // would permanently clobber a consumer-supplied inline style
             // (e.g. via AdditionalAttributes) the moment the drawer closes.
-            el.style.top = handlers.preExistingTop;
-            el.style.bottom = handlers.preExistingBottom;
+            //
+            // #381 round 8 (P2 Finding: "Preserve newly rendered insets
+            // during snap re-registration") — but ONLY when nothing else has
+            // written to that property since THIS registration last touched
+            // it. DrawerContent's round-13 reconcile flow unregisters and
+            // immediately re-registers in the SAME OnAfterRenderAsync call,
+            // AFTER Blazor has already committed a render — if that render
+            // also carried a new inline top/bottom via AdditionalAttributes
+            // (a Side/SnapPoints change landing in the same render as an
+            // inset edit), Blazor's own diff writes that fresh value into
+            // the DOM before this teardown ever runs. Restoring the
+            // snapshot captured back when THIS registration started would
+            // clobber that fresh write with stale data — and the very next
+            // registerDrawerSnap call would then capture that now-doubly-
+            // wrong value as ITS OWN baseline, compounding the mistake.
+            //
+            // Comparing the CURRENT DOM value against exactly what this
+            // registration itself last wrote (tracked, not recomputed —
+            // getLastRestPropertyWrite for restProperty; the literal 'auto'
+            // oppositeInsetProperty was forced to once and never touched
+            // again, round 12) tells the two cases apart precisely: if they
+            // still match, nothing else has intervened and the snapshot is
+            // safe to restore (the ordinary case — including a genuine
+            // final close, where nothing else typically rewrites these
+            // properties in the same breath). If they differ, some OTHER
+            // writer — Blazor — has claimed the property since; leave its
+            // current value standing instead of overwriting it. One rule,
+            // no "is this the final teardown" flag needed anywhere: a
+            // reconcile-then-reregister teardown and a final teardown run
+            // through the identical check and land on the correct outcome
+            // for each.
+            const preExistingFor = (property) => property === 'top' ? handlers.preExistingTop : handlers.preExistingBottom;
+
+            // restProperty: null means the open sequence's first settle
+            // never landed (torn down before the panel ever finished
+            // opening) — this registration never wrote to it at all, so
+            // its current value is still whatever it was at registration:
+            // safe to restore unconditionally. Otherwise, restore only if
+            // nothing has written to it since this registration's own last
+            // write.
+            const lastRestWrite = handlers.getLastRestPropertyWrite();
+            if (lastRestWrite === null || el.style[handlers.restProperty] === lastRestWrite) {
+                el.style[handlers.restProperty] = preExistingFor(handlers.restProperty);
+            }
+
+            // oppositeInsetProperty: this registration wrote it exactly
+            // once, to the literal 'auto' (round 12), and never touched it
+            // again — same rule, simpler check.
+            if (el.style[handlers.oppositeInsetProperty] === 'auto') {
+                el.style[handlers.oppositeInsetProperty] = preExistingFor(handlers.oppositeInsetProperty);
+            }
         }
         drawerSnapHandlers.delete(elementId);
     }
