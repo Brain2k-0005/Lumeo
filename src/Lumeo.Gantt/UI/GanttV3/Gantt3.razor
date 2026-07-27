@@ -551,8 +551,26 @@
     // also the eager advance round 17's finding #1 needed — it happens before the
     // reconcile can yield, so an unrelated re-render re-pushing that same
     // in-flight value diffs to a no-op instead of superseding it.
-    private GanttViewModeIntent ClaimViewModeIntent(GanttViewMode mode, GanttViewModeSource source) =>
-        _viewModeIntent = new GanttViewModeIntent(++_viewModeIntentId, mode, source, GanttViewModePhase.Applying, ViewMode);
+    //
+    // Claiming also SUPERSEDES whatever reconcile was in flight, by advancing the
+    // generation here rather than leaving it to the claimer's own ReconcileAsync
+    // (Codex PR-382 review round 6, P1 "Supersede older reconciles for no-op
+    // parameter reversions"). Leaving it there made supersession depend on the
+    // claimer having something to commit: a parent that pushes Day->Month and
+    // then quickly reverts to Day claims a second, authoritative intent whose own
+    // reconcile is a NoOp — Day is still the last committed snapshot — so it
+    // abandoned before ever claiming a generation (round 17's short-circuit), and
+    // the still-suspended Month reconcile resumed, passed its now-unchallenged
+    // generation check, and committed Month over the parent's final Day. A new
+    // intent means the old one is no longer authoritative, which is exactly what
+    // the generation encodes, so the two move together: the claim IS the
+    // supersession, whether or not the claimer itself has work to do.
+    private GanttViewModeIntent ClaimViewModeIntent(GanttViewMode mode, GanttViewModeSource source)
+    {
+        BeginReconcile();
+        return _viewModeIntent = new GanttViewModeIntent(
+            ++_viewModeIntentId, mode, source, GanttViewModePhase.Applying, ViewMode, ViewModeChanged.HasDelegate);
+    }
 
     // The mode a PARAMETER pass reconciles to, plus the id of the intent it
     // claimed (null when it claimed none).
@@ -571,7 +589,18 @@
     // wins, exactly as before.
     private (GanttViewMode Mode, long? ClaimedIntentId) ResolveParameterMode()
     {
-        if (ViewMode == _viewModeIntent.ParamAccountedFor)
+        // Becoming CONTROLLED is itself a new assertion, even with an unchanged
+        // value (Codex PR-382 review round 6). An uncontrolled chart may
+        // legitimately sit on a toolbar mode its parameter never carried — that
+        // is the whole point of the uncontrolled contract (round 19 finding #2) —
+        // but the moment a consumer opts into control, its parameter is
+        // authoritative again and the divergence has to be resolved. The reverse
+        // transition deliberately does NOT claim: dropping the delegate hands
+        // authority back to the component, it does not make the parameter
+        // authoritative.
+        var bindingBecameControlled = ViewModeChanged.HasDelegate && !_viewModeIntent.AccountedWhileControlled;
+
+        if (!bindingBecameControlled && ViewMode == _viewModeIntent.ParamAccountedFor)
         {
             // A re-delivery of the value the current owner already accounted
             // for. Mid-pass this is still a no-op — nothing reconciles here, so
@@ -630,14 +659,26 @@
         if (!owesConsumerEcho)
         {
             // Nothing outstanding: the parent is left holding whatever it
-            // already holds, and that value is now accounted for.
-            _viewModeIntent = intent with { Phase = GanttViewModePhase.Settled, ParamAccountedFor = ViewMode };
+            // already holds, and that value is now accounted for — together with
+            // the authority it currently has (see AccountedWhileControlled).
+            _viewModeIntent = AccountParameter(intent, ViewMode, GanttViewModePhase.Settled);
             return outcome;
         }
 
         _viewModeIntent = intent with { Phase = GanttViewModePhase.Notifying };
         var generationAtCommit = _reconcileGeneration;
         await ViewModeChanged.InvokeAsync(intent.Mode);
+
+        // Bug fix (Codex PR-382 review round 6, P2 "Stop rejection replay after
+        // component disposal"): a consumer callback can outlive the component.
+        // Round 17's disposal guard works by advancing the generation, which
+        // invalidates anything that CHECKS a generation it claimed earlier — but
+        // the rejection replay below claims a FRESH one, so that mechanism cannot
+        // see it, and it would go on to mutate state, emit a scroll intent and
+        // touch the detached scroll pane through interop. This is the one place
+        // that starts genuinely NEW work after an await, so it needs the explicit
+        // token rather than the generation.
+        if (_disposed) return GanttReconcileOutcome.Superseded;
 
         // A newer intent (any source) took ownership while the callback ran —
         // including the CONTROLLED-accept case, where the parent adopted the
@@ -692,9 +733,22 @@
             return GanttReconcileOutcome.Superseded;
         }
 
-        _viewModeIntent = _viewModeIntent with { Phase = GanttViewModePhase.Settled, ParamAccountedFor = intent.Mode };
+        _viewModeIntent = AccountParameter(_viewModeIntent, intent.Mode, GanttViewModePhase.Settled);
         return _reconcileGeneration == generationAtCommit ? outcome : GanttReconcileOutcome.Superseded;
     }
+
+    // The single expression that records "this parameter value, under this
+    // authority, is now folded into the owning intent". Kept in one place so the
+    // value and the controlled-ness can never be advanced apart — the same
+    // reason ParamAccountedFor lives on the intent rather than in a field of its
+    // own (see GanttViewModeIntent's remarks).
+    private GanttViewModeIntent AccountParameter(GanttViewModeIntent intent, GanttViewMode paramValue, GanttViewModePhase phase) =>
+        intent with
+        {
+            Phase = phase,
+            ParamAccountedFor = paramValue,
+            AccountedWhileControlled = ViewModeChanged.HasDelegate,
+        };
 
     // Browser-local "today" (Codex round 2, P2 #9) — resolved once via JS on
     // Gantt3's first post-render; DateTime.Today (the SERVER's local date) is
@@ -717,7 +771,8 @@
         // synchronously and there is no consumer to notify about a value the
         // consumer itself supplied.
         _viewModeIntent = new GanttViewModeIntent(
-            _viewModeIntentId, ViewMode, GanttViewModeSource.Mount, GanttViewModePhase.Settled, ViewMode);
+            _viewModeIntentId, ViewMode, GanttViewModeSource.Mount, GanttViewModePhase.Settled,
+            ViewMode, ViewModeChanged.HasDelegate);
         _state.SetViewMode(ViewMode);
         _state.SetTasks(MaterializeTasks());
         _tasksVersion = 1;
@@ -793,8 +848,16 @@
         });
     }
 
+    // Codex PR-382 review round 6, P2 — see SettleViewModeIntentAsync's own
+    // remarks. Deliberately NOT a general replacement for round 17's
+    // generation-based disposal guard (which still covers every suspended
+    // reconcile): this token exists for the one path that starts NEW,
+    // generation-claiming work after an await a consumer controls.
+    private bool _disposed;
+
     public void Dispose()
     {
+        _disposed = true;
         Theme.OnThemeChanged -= OnThemeChanged;
 
         // Bug fix (Codex round 17 review, P2): a reconcile currently suspended

@@ -385,6 +385,150 @@ public class GanttV3ViewModeOwnershipTests : IAsyncLifetime
         AssertMonthMode(cut, "a silent parent must not be read as a rejection");
     }
 
+    // ── A claim supersedes in-flight work, even when it has nothing to commit ─
+
+    [Fact]
+    public async Task A_Quick_Parameter_Reversion_Supersedes_The_Reconcile_Whose_Intent_It_Replaced()
+    {
+        // Codex PR-382 review round 6, P1. The reverting pass claims the
+        // authoritative intent but its OWN reconcile is a NoOp — the reverted-to
+        // mode is still the last committed snapshot — so before the fix it
+        // abandoned before advancing the generation and the superseded Month
+        // reconcile resumed and committed over the parent's final Day.
+        var tasks = OneTask();
+        var calls = new List<L.GanttViewMode>();
+        var callback = EventCallback.Factory.Create<L.GanttViewMode>(this, m => calls.Add(m));
+        var cut = _ctx.Render<L.Gantt3>(p => p
+            .Add(c => c.Tasks, tasks)
+            .Add(c => c.ViewMode, L.GanttViewMode.Day) // CONTROLLED
+            .Add(c => c.ViewModeChanged, callback)
+            .Add(c => c.ShowTreePane, false));
+
+        // Issues one parameter pass and hands back ITS task, so the caller can
+        // observe a pass that is still suspended rather than awaiting it.
+        async Task<Task> PushAsync(L.GanttViewMode mode)
+        {
+            Task pass = Task.CompletedTask;
+            await cut.InvokeAsync(() =>
+            {
+                pass = cut.Instance.SetParametersAsync(ParameterView.FromDictionary(new Dictionary<string, object?>
+                {
+                    [nameof(L.Gantt3.Tasks)] = tasks,
+                    [nameof(L.Gantt3.ViewMode)] = mode,
+                    [nameof(L.Gantt3.ViewModeChanged)] = callback,
+                    [nameof(L.Gantt3.ShowTreePane)] = false,
+                }));
+            });
+            return pass;
+        }
+
+        // Day -> Month, suspended in its live-center capture.
+        var gate = new TaskCompletionSource<double?>();
+        _interop.GanttV3ScrollCenterXGate = gate;
+        var monthPass = await PushAsync(L.GanttViewMode.Month);
+        Assert.False(monthPass.IsCompleted, "the Month reconcile should still be awaiting its capture");
+
+        // Reverted to Day before that capture resolves.
+        _interop.GanttV3ScrollCenterXGate = null;
+        _interop.GanttV3ScrollCenterXToReturn = 0;
+        await await PushAsync(L.GanttViewMode.Day);
+
+        gate.SetResult(0);
+        await monthPass; // must abandon: a newer intent replaced the one it carried
+        await ForceRepaintAsync(cut);
+
+        Assert.Equal(L.GanttViewMode.Day, State(cut).ViewMode);
+        Assert.Equal(L.GanttViewMode.Day, Intent(cut).Mode);
+        Assert.Contains("–", Label(cut), StringComparison.Ordinal);
+
+        // ...and the parameter is still honoured afterwards rather than being
+        // swallowed as "already accounted for" against a mode that should never
+        // have committed.
+        await await PushAsync(L.GanttViewMode.Week);
+        await ForceRepaintAsync(cut);
+        Assert.Equal(L.GanttViewMode.Week, State(cut).ViewMode);
+    }
+
+    // ── A consumer callback that outlives the component starts no new work ───
+
+    [Fact]
+    public async Task Disposing_During_A_Controlled_Callback_Stops_The_Rejection_Replay()
+    {
+        // Codex PR-382 review round 6, P2. Round 17's disposal guard works by
+        // advancing the generation, which cannot stop the rejection replay —
+        // that path claims a FRESH generation of its own.
+        var tasks = OneTask();
+        var callbackGate = new TaskCompletionSource();
+        var calls = new List<L.GanttViewMode>();
+        var cut = RenderControlled(tasks, callbackGate, calls);
+
+        _interop.GanttV3ScrollCenterXToReturn = 0;
+        Task toolbarPick = Task.CompletedTask;
+        await cut.InvokeAsync(() =>
+        {
+            toolbarPick = (Task)Method("HandleViewModeChangedAsync").Invoke(cut.Instance, new object[] { L.GanttViewMode.Month })!;
+        });
+        Assert.False(toolbarPick.IsCompleted);
+
+        // The parent re-renders mid-callback re-pushing Day — a rejection, which
+        // WOULD replay once the callback returns.
+        await PushParentRenderAsync(cut, tasks, L.GanttViewMode.Day, callbackGate, calls);
+
+        var capturesBeforeDispose = _interop.GanttV3GetScrollCenterXDirections.Count;
+        cut.Instance.Dispose();
+
+        callbackGate.SetResult();
+        await toolbarPick;
+
+        // Nothing new after disposal: no commit, and no interop against the
+        // detached scroll pane.
+        Assert.Equal(L.GanttViewMode.Month, State(cut).ViewMode);
+        Assert.Equal(capturesBeforeDispose, _interop.GanttV3GetScrollCenterXDirections.Count);
+    }
+
+    // ── Becoming controlled is itself a new assertion ────────────────────────
+
+    [Fact]
+    public async Task Adding_A_ViewModeChanged_Delegate_Later_Reconciles_To_The_Controlling_Parameter()
+    {
+        // Codex PR-382 review round 6, P2. An UNCONTROLLED toolbar pick may
+        // legitimately diverge from the parameter; opting into control makes the
+        // parameter authoritative again, so the divergence must be resolved even
+        // though the value never changed.
+        var tasks = OneTask();
+        var cut = _ctx.Render<L.Gantt3>(p => p
+            .Add(c => c.Tasks, tasks)
+            .Add(c => c.ViewMode, L.GanttViewMode.Day) // UNCONTROLLED at mount
+            .Add(c => c.ShowTreePane, false));
+
+        _interop.GanttV3ScrollCenterXToReturn = 0;
+        await cut.InvokeAsync(async () =>
+            await (Task)Method("HandleViewModeChangedAsync").Invoke(cut.Instance, new object[] { L.GanttViewMode.Month })!);
+
+        // The uncontrolled contract (round 19 finding #2): the pick stands, and
+        // the untouched parameter is recorded as accounted for.
+        Assert.Equal(L.GanttViewMode.Month, State(cut).ViewMode);
+        Assert.Equal(L.GanttViewMode.Day, Intent(cut).ParamAccountedFor);
+        Assert.False(Intent(cut).AccountedWhileControlled);
+
+        // The parent now ADDS the binding without changing the value.
+        var calls = new List<L.GanttViewMode>();
+        await cut.InvokeAsync(() => cut.Instance.SetParametersAsync(ParameterView.FromDictionary(new Dictionary<string, object?>
+        {
+            [nameof(L.Gantt3.Tasks)] = tasks,
+            [nameof(L.Gantt3.ViewMode)] = L.GanttViewMode.Day,
+            [nameof(L.Gantt3.ViewModeChanged)] = EventCallback.Factory.Create<L.GanttViewMode>(this, m => calls.Add(m)),
+            [nameof(L.Gantt3.ShowTreePane)] = false,
+        })));
+        await ForceRepaintAsync(cut);
+
+        Assert.Equal(L.GanttViewMode.Day, State(cut).ViewMode);
+        Assert.Equal(GanttViewModeSource.Parameter, Intent(cut).Source);
+        Assert.True(Intent(cut).AccountedWhileControlled);
+        Assert.Contains("–", Label(cut), StringComparison.Ordinal);
+        Assert.Empty(calls); // a parameter-sourced claim never echoes back
+    }
+
     // ── Supersession by a newer intent of each source ───────────────────────
 
     [Fact]

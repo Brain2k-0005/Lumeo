@@ -168,6 +168,14 @@ internal enum GanttViewModePhase
 /// <param name="Source">Which trigger authored it.</param>
 /// <param name="Phase">How far it has progressed.</param>
 /// <param name="ParamAccountedFor">The <c>ViewMode</c> parameter value already folded into this intent.</param>
+/// <param name="AccountedWhileControlled">Whether <c>ViewModeChanged</c> had a
+/// delegate when <see cref="ParamAccountedFor"/> was recorded. Part of the same
+/// accounting, because the parameter's AUTHORITY — not just its value — is what
+/// is being accounted for: an uncontrolled chart may legitimately hold a toolbar
+/// mode its parameter never carried, but the moment a consumer opts INTO control
+/// its parameter becomes authoritative again, so that transition is itself a new
+/// assertion even when the value is unchanged (Codex PR-382 review round 6,
+/// "Reconcile when the binding becomes controlled").</param>
 /// <param name="ParamRedeliveredWhileNotifying">Whether the parent delivered a
 /// parameter pass while this intent was <see cref="GanttViewModePhase.Notifying"/>
 /// WITHOUT that pass authoring an intent of its own — i.e. the consumer re-pushed
@@ -182,6 +190,7 @@ internal readonly record struct GanttViewModeIntent(
     GanttViewModeSource Source,
     GanttViewModePhase Phase,
     GanttViewMode ParamAccountedFor,
+    bool AccountedWhileControlled,
     bool ParamRedeliveredWhileNotifying = false)
 {
     /// <summary>
