@@ -129,6 +129,23 @@ public class DrawerContentScrollableBodyTests : IAsyncLifetime
         Assert.Equal("true", handle.GetAttribute("data-drawer-handle"));
     }
 
+    // #381 round 6 (P2) / Codex finding "Keep the drag handle outside the
+    // scrolling element": the handle is a sibling of ChildContent inside the
+    // SAME overflow-y-auto flex column the JS gesture reads scrollTop from
+    // (moving it to a separate inner scroller would break that contract), so
+    // it stays reachable via "sticky top-0" instead — pinned to the scroll
+    // container's own top edge rather than scrolling away with tall content.
+    [Fact]
+    public void Drag_Handle_Is_Sticky_So_It_Survives_Scrolling_Past_It()
+    {
+        var cut = RenderDrawer(b => b.AddContent(0, "Content"));
+
+        var handle = cut.Find("[data-drawer-handle]");
+        var classes = handle.GetAttribute("class") ?? "";
+        Assert.Contains("sticky", classes);
+        Assert.Contains("top-0", classes);
+    }
+
     [Fact]
     public void No_Drag_Handle_Hook_For_A_Left_Or_Right_Drawer()
     {

@@ -1339,11 +1339,13 @@ function startedOnDragHandle(target, panelEl) {
 //      would otherwise undo the stranded mid-drag position (round 7,
 //      finding #1).
 //   12. The rest-offset property composes ONTO any pre-existing consumer
-//      inline top/bottom (captured once at registration, restBase below) —
-//      our own offset is ADDED on top of it, never a replacement, so a
-//      consumer-supplied inset (e.g. a safe-area padding via
-//      AdditionalAttributes) survives every settle, not just the final
-//      teardown restore from rule #5 (round 7, finding #3).
+//      inline top/bottom (captured once at registration, restBaseRaw below)
+//      via `calc()` — our own offset is ADDED on top of it as an opaque CSS
+//      expression, never parsed/replaced, so a consumer-supplied inset (e.g.
+//      a safe-area padding via AdditionalAttributes, in ANY unit — px, %,
+//      rem, env(), calc()) survives every settle, not just the final
+//      teardown restore from rule #5 (round 7, finding #3; corrected in
+//      round 9, findings #10/#11/#13 — see restBaseRaw's own remarks).
 //   13. The programmatic setActive path (two-way ActiveSnapPoint) goes
 //      through the EXACT SAME rest -> dragging conversion as a real touch
 //      drag — disable transition, convert, force reflow, re-arm — rather
@@ -1352,6 +1354,16 @@ function startedOnDragHandle(target, panelEl) {
 //      untouched per this table) would animate the conversion itself
 //      instead of applying it instantly, and the panel would appear to
 //      animate from the wrong origin (round 8, finding #1).
+//   14. Which representation (rest vs. dragging) is currently live, and what
+//      offset the rest representation currently encodes, are tracked as
+//      explicit state (atRest/settledOffsetPx below) updated only when a
+//      settle actually commits — never re-derived by parsing the DOM. Round
+//      7's version inferred both by reading back and parseFloat-ing whatever
+//      was in the rest property, which (a) silently mangled non-pixel
+//      consumer values and (b) assumed clearing that property reverts the
+//      box to the consumer's original value, when it actually reverts to
+//      the stylesheet's own baseline — visibly wrong the moment a consumer
+//      offset was non-zero (round 9, findings #10/#11/#13).
 
 export function registerDrawerSwipe(elementId, direction, dotnetRef, options) {
     const el = document.getElementById(elementId);
@@ -1665,44 +1677,74 @@ export function registerDrawerSnap(elementId, direction, dotnetRef, options) {
     // while the drawer sits still at a snap) is what this fixes.
     const restProperty = direction === 'up' ? 'top' : 'bottom';
 
-    // #381 round 7 (P2) — the numeric baseline this registration's rest
-    // offset composes ONTO, instead of clobbering: whatever inline
-    // top/bottom pixel value the consumer already had (captured as
+    // #381 round 7 (P2), corrected round 9 (findings #10/#11/#13) — the raw
+    // inline top/bottom CSS the consumer already had (captured as
     // preExistingTop/preExistingBottom above, e.g. a safe-area inset applied
-    // via AdditionalAttributes), parsed once. 0 if there wasn't one (the
-    // common case) or it wasn't a plain pixel value. See the state-model
-    // contract above registerDrawerSwipe for the documented semantic: our
-    // rest offset is ADDED on top of the consumer's own inset, never a
-    // replacement for it.
-    const restBase = parseFloat(restProperty === 'bottom' ? preExistingBottom : preExistingTop) || 0;
+    // via AdditionalAttributes) is what every rest offset below composes
+    // ONTO, never replaces. Kept as the opaque STRING it is — never parsed —
+    // so any unit (px, %, rem, env(), calc(), ...) survives unchanged; only
+    // `calc()` (below) knows how to add a pixel delta onto an arbitrary CSS
+    // expression without caring what's inside it. Round 7's version instead
+    // did `parseFloat(...) || 0`, which silently mangled or dropped anything
+    // that wasn't a plain pixel value the very first time a settle ran
+    // (finding #13).
+    const restBaseRaw = restProperty === 'bottom' ? preExistingBottom : preExistingTop;
 
-    // translateY(px) <-> bottom/top offset(px): for a Bottom drawer (sign>0),
-    // a positive translateY (pushed DOWN, off-screen) is a NEGATIVE bottom
-    // value (the box's bottom edge sits that far below the viewport's bottom
-    // edge); for a Top drawer (sign<0) the top offset matches translateY's
-    // own sign directly (a negative translateY, pushed UP, is an equally
-    // negative top value). Both compose with restBase — toTransformOffset is
-    // the exact algebraic inverse of toRestOffset, restBase included, so a
-    // round trip (rest -> transform -> rest) always lands back on the same
-    // pixel value.
-    const toRestOffset = (translateYPx) => restBase + (restProperty === 'bottom' ? -translateYPx : translateYPx);
-    const toTransformOffset = (restPx) => (restProperty === 'bottom' ? (restBase - restPx) : (restPx - restBase));
+    // translateY(px) -> the rest-property's CSS value: for a Bottom drawer
+    // (sign>0), a positive translateY (pushed DOWN, off-screen) is a
+    // NEGATIVE bottom delta (the box's bottom edge sits that far below the
+    // viewport's bottom edge); for a Top drawer (sign<0) the top delta
+    // matches translateY's own sign directly. The delta is composed onto
+    // restBaseRaw with `calc()` rather than added numerically — this is the
+    // ONLY thing that changed the visual result versus round 7's plain
+    // pixel arithmetic once restBaseRaw is non-empty, and it's why finding
+    // #13 (non-pixel values) and #10/#11 (composition) are the same fix.
+    const composeRestValue = (translateYPx) => {
+        const deltaPx = restProperty === 'bottom' ? -translateYPx : translateYPx;
+        if (!restBaseRaw) return `${deltaPx}px`;
+        if (deltaPx === 0) return restBaseRaw;
+        return `calc(${restBaseRaw} ${deltaPx > 0 ? '+' : '-'} ${Math.abs(deltaPx)}px)`;
+    };
 
     let settleGeneration = 0; // bumped by every new drag/settle; invalidates stale "wait for transition" callbacks
+
+    // #381 round 9 — which representation is currently live, tracked
+    // explicitly instead of inferred by reading `el.style[restProperty]`
+    // back and parsing it (round 7's approach): atRest is true only right
+    // after a settle has actually committed (see settleAtRest);
+    // settledOffsetPx mirrors the translateY-space offset that commit used.
+    // Reading state instead of the DOM is what lets enterDragRepresentation
+    // below restore restBaseRaw EXACTLY rather than reconstruct an
+    // approximation of it from a value that may never have been a plain
+    // pixel number in the first place.
+    let atRest = false;
+    let settledOffsetPx = offsetFor(activeIndex);
 
     // Reverses settleAtRest below: if the panel is CURRENTLY resting via the
     // bottom/top offset (no transform), convert it back to the equivalent
     // translateY first, with no visible jump, so the drag math below (which
-    // measures offsets relative to the bottom:0/top:0 CSS baseline) always
+    // measures offsets relative to the restBaseRaw CSS baseline) always
     // operates against a consistent representation. No-op in the common case
     // (a drag starting right after another drag/settle never actually
     // finished converting, or already in transform form).
+    //
+    // #381 round 9 (findings #10/#11) — restores restProperty to EXACTLY
+    // restBaseRaw, never to '' (round 7's version): clearing the property
+    // outright falls back to whatever the STYLESHEET says (e.g. a `bottom-0`
+    // utility class), not to the consumer's own inline value that used to be
+    // there — a mismatch that was invisible only when restBaseRaw happened
+    // to be empty/zero, and otherwise made the panel visibly jump by exactly
+    // the consumer's offset the moment a drag or setActive call converted
+    // out of rest. Because settledOffsetPx is tracked state rather than
+    // parsed from the DOM, the compensating transform needs no restBaseRaw
+    // arithmetic at all — the box's baseline is provably the same value in
+    // both representations, so the same translateY that was last settled to
+    // reproduces the identical visual position.
     function enterDragRepresentation() {
-        const current = el.style[restProperty];
-        if (!current) return;
-        const restPx = parseFloat(current) || 0;
-        el.style[restProperty] = '';
-        el.style.transform = `translateY(${toTransformOffset(restPx)}px)`;
+        if (!atRest) return;
+        atRest = false;
+        el.style[restProperty] = restBaseRaw;
+        el.style.transform = `translateY(${settledOffsetPx}px)`;
     }
 
     // Call AFTER setting a new `transition: EASING` + `transform` target.
@@ -1735,7 +1777,9 @@ export function registerDrawerSnap(elementId, direction, dotnetRef, options) {
                 const prevTransition = el.style.transition;
                 el.style.transition = 'none';
                 el.style.transform = '';
-                el.style[restProperty] = toRestOffset(targetOffsetPx) + 'px';
+                el.style[restProperty] = composeRestValue(targetOffsetPx);
+                settledOffsetPx = targetOffsetPx;
+                atRest = true;
                 void el.offsetHeight; // force reflow so the swap commits before transitions resume
                 el.style.transition = prevTransition;
             });

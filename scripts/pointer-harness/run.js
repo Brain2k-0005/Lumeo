@@ -3222,6 +3222,146 @@ function assert(cond, msg) {
   assert(nudge54.bArmed === false, 'a neither-capable column never reaches the 0.8 armed-drag opacity');
   assert(!commit54, 'a neither-capable column dragged past the threshold never commits anything — it only gets the nudge feedback');
 
+  // ---------------------------------------------------------------
+  // TEST 55 — Drawer snap: a consumer-supplied inline offset in a NON-pixel
+  // unit survives every snap settle, composes correctly with the snap's own
+  // displacement, and round-trips through the rest<->transform
+  // representation swap with zero geometric drift (PR #381 findings
+  // #10/#11/#13 — restBaseRaw/composeRestValue replacing the old
+  // parseFloat-based restBase). setDrawerSnap drives setActive ->
+  // enterDragRepresentation() -> ... -> settleAtRest(), the EXACT
+  // representation-swap machinery a real touch drag also uses (see
+  // components.js's own state-model contract comment above
+  // registerDrawerSwipe) — no synthetic touch events needed to exercise it.
+  // ---------------------------------------------------------------
+  await page.evaluate(() => {
+    document.getElementById('host').innerHTML =
+      `<div id="drawer55" style="position:fixed; left:0; right:0; height:300px; bottom:1rem; background:blue;"></div>`;
+  });
+  await page.evaluate(() => {
+    window.__dotnetCalls.length = 0;
+    window.__C.registerDrawerSnap('drawer55', 'down', window.__fakeDotNet,
+      { snapPoints: [0.4, 0.75, 1], activeIndex: 0, dismissible: true });
+  });
+  // Let the open sequence's own rAF chain + first settle (320ms EASING
+  // transition) finish.
+  await page.waitForTimeout(500);
+  const afterOpenSettle = await page.evaluate(() => {
+    const el = document.getElementById('drawer55');
+    return { bottomStyle: el.style.bottom, rect: el.getBoundingClientRect().toJSON() };
+  });
+  assert(afterOpenSettle.bottomStyle.includes('1rem'),
+    `settling at a PARTIAL (non-fully-open) snap composes the displacement onto the consumer's ORIGINAL '1rem' expression via calc(), never a parsed/lossy pixel value (got '${afterOpenSettle.bottomStyle}')`);
+  assert(!afterOpenSettle.bottomStyle.match(/^-?[\d.]+px$/),
+    `the composed rest value is NOT a plain pixel number — the unit-bearing consumer expression must still be visible in it (got '${afterOpenSettle.bottomStyle}')`);
+
+  // Move to the fully-open snap (index 2, fraction 1.0 => ZERO snap
+  // displacement) — the composed value should reduce to EXACTLY the
+  // consumer's original '1rem', unchanged.
+  await page.evaluate(() => window.__C.setDrawerSnap('drawer55', 2));
+  await page.waitForTimeout(500);
+  const afterMoveToFull = await page.evaluate(() => {
+    const el = document.getElementById('drawer55');
+    return { bottomStyle: el.style.bottom, rect: el.getBoundingClientRect().toJSON() };
+  });
+  assert(afterMoveToFull.bottomStyle === '1rem',
+    `fully-open snap has zero displacement, so bottom returns to EXACTLY the consumer's original '1rem' (got '${afterMoveToFull.bottomStyle}')`);
+  const viewportHeight = await page.evaluate(() => window.innerHeight);
+  assert(Math.abs((viewportHeight - afterMoveToFull.rect.bottom) - 16) < 1,
+    `fully-open panel's bottom edge sits exactly 1rem (16px) above the viewport bottom (got ${(viewportHeight - afterMoveToFull.rect.bottom).toFixed(2)}px)`);
+
+  // Move back to the ORIGINAL 40% snap — this round-trips through
+  // enterDragRepresentation() (rest -> transform, called by setActive
+  // before the new target is applied) and settleAtRest() (transform ->
+  // rest) a second time. The old parseFloat-based restBase's bug (clearing
+  // restProperty to '' assumed the box falls back to restBase once cleared,
+  // when it actually falls back to the stylesheet's own baseline) would
+  // make this round trip land measurably off from the original position;
+  // composeRestValue/restBaseRaw never clears the property to anything
+  // other than the literal original value, so it must land pixel-identical.
+  await page.evaluate(() => window.__C.setDrawerSnap('drawer55', 0));
+  await page.waitForTimeout(500);
+  const afterRoundTrip = await page.evaluate(() => {
+    const el = document.getElementById('drawer55');
+    return { bottomStyle: el.style.bottom, rect: el.getBoundingClientRect().toJSON() };
+  });
+  assert(afterRoundTrip.bottomStyle.includes('1rem'),
+    `round-tripping back to the 40% snap still composes onto '1rem' (got '${afterRoundTrip.bottomStyle}')`);
+  assert(Math.abs(afterRoundTrip.rect.top - afterOpenSettle.rect.top) < 1,
+    `round-tripping snaps (40% -> fully-open -> 40%) through two representation swaps lands the panel back at the EXACT original position (drift: ${Math.abs(afterRoundTrip.rect.top - afterOpenSettle.rect.top).toFixed(2)}px)`);
+
+  // Teardown restores the consumer's ORIGINAL inline value exactly (already
+  // covered by finding #5 / round 6 — re-asserted here since this test
+  // touches the same restBaseRaw capture).
+  await page.evaluate(() => window.__C.unregisterDrawerSnap('drawer55'));
+  const afterTeardown = await page.evaluate(() => document.getElementById('drawer55').style.bottom);
+  assert(afterTeardown === '1rem', `unregister restores the EXACT original consumer inline value, not a leftover composed one (got '${afterTeardown}')`);
+
+  // ---------------------------------------------------------------
+  // TEST 56 — Drawer snap with NO consumer-supplied offset (the common
+  // case, restBaseRaw === '') composes to a plain pixel value exactly as
+  // before this fix — a regression guard that the calc()-based rewrite
+  // didn't change behavior for the overwhelmingly common no-offset case.
+  // ---------------------------------------------------------------
+  await page.evaluate(() => {
+    document.getElementById('host').innerHTML =
+      `<div id="drawer56" style="position:fixed; left:0; right:0; height:200px; background:red;"></div>`;
+  });
+  await page.evaluate(() => {
+    window.__C.registerDrawerSnap('drawer56', 'down', window.__fakeDotNet,
+      { snapPoints: [0.5, 1], activeIndex: 0, dismissible: true });
+  });
+  await page.waitForTimeout(500);
+  const drawer56State = await page.evaluate(() => {
+    const el = document.getElementById('drawer56');
+    return { bottomStyle: el.style.bottom, transform: el.style.transform };
+  });
+  assert(drawer56State.bottomStyle === '-100px',
+    `no consumer offset -> plain pixel rest value, unaffected by the calc()-composition rewrite (got '${drawer56State.bottomStyle}')`);
+  assert(drawer56State.transform === '', `transform is cleared once settled at rest (got '${drawer56State.transform}')`);
+  await page.evaluate(() => window.__C.unregisterDrawerSnap('drawer56'));
+
+  // ---------------------------------------------------------------
+  // TEST 57 — A position:fixed popover nested inside a snap drawer's
+  // overflow-y-auto panel escapes the panel's clip once settled at rest
+  // (PR #381 Codex finding "Keep fixed popovers outside the snap panel's
+  // clipping region" — investigated and found ALREADY FIXED by the round-3
+  // containing-block fix: `overflow` only clips a `position:fixed`
+  // descendant when the overflow ancestor IS (or sits between it and) its
+  // containing block; clearing `transform` at rest, which round 3 already
+  // does, means the panel is no longer that containing block, so the
+  // popover's real containing block — and clip ancestor — reverts to the
+  // viewport). A SHORT panel (80px) at a 30% snap with a popover
+  // deliberately positioned well outside those 80px proves this: if the
+  // panel's overflow-y-auto still clipped it, elementFromPoint at the
+  // popover's own center would miss it entirely.
+  // ---------------------------------------------------------------
+  await page.evaluate(() => {
+    document.getElementById('host').innerHTML = `
+      <div id="drawer57" style="position:fixed; left:20px; right:20px; height:80px; overflow-y:auto; background:rgba(0,128,0,0.3);">
+        <div style="height:20px;">panel content</div>
+        <div id="popover57" style="position:fixed; left:40px; bottom:250px; width:150px; height:60px; background:red; z-index:999;">POPOVER</div>
+      </div>`;
+  });
+  await page.evaluate(() => {
+    window.__C.registerDrawerSnap('drawer57', 'down', window.__fakeDotNet,
+      { snapPoints: [0.3, 1], activeIndex: 0, dismissible: true });
+  });
+  await page.waitForTimeout(500); // open sequence + settle at rest (320ms EASING)
+  const popoverHit = await page.evaluate(() => {
+    const pop = document.getElementById('popover57');
+    const panel = document.getElementById('drawer57');
+    const rect = pop.getBoundingClientRect();
+    const cx = rect.left + rect.width / 2;
+    const cy = rect.top + rect.height / 2;
+    const hit = document.elementFromPoint(cx, cy);
+    return { panelTransform: panel.style.transform, hitIsPopover: hit === pop, hitTag: hit && (hit.id || hit.tagName) };
+  });
+  assert(popoverHit.panelTransform === '', `panel has no transform once settled at rest — not a containing block (got '${popoverHit.panelTransform}')`);
+  assert(popoverHit.hitIsPopover === true,
+    `a position:fixed popover positioned beyond a short (80px) settled panel's bounds is NOT clipped by the panel's overflow-y-auto (elementFromPoint hit '${popoverHit.hitTag}' instead)`);
+  await page.evaluate(() => window.__C.unregisterDrawerSnap('drawer57'));
+
   console.log(`\nALL TESTS PASSED (${passCount} assertions) — engine: ${ENGINE}`);
   await browser.close();
   server.close();
