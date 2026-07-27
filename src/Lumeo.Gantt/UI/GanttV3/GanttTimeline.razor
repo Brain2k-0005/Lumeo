@@ -141,7 +141,11 @@
                 {
                     @foreach (var track in RowTrackItems)
                     {
-                        <div class="absolute" data-gantt-row-track="true" data-row-key="@track.Key" style="@RowTrackStyle(track.RowIndex)"></div>
+                        @* touch-pan-y — see GanttBar.WrapperClass's own remarks on the
+                           identical fix ("Opt touch drag targets out of native
+                           horizontal panning"); unconditional here since this whole
+                           block is already gated on AllowCreate && !Readonly. *@
+                        <div class="absolute touch-pan-y" data-gantt-row-track="true" data-row-key="@track.Key" style="@RowTrackStyle(track.RowIndex)"></div>
                     }
                 }
                 <Virtualize Items="@RowItems" Context="row" ItemSize="@((float)GanttScale.RowHeight)">
@@ -201,7 +205,7 @@
                             <GanttBar Task="row.Task" X="row.X" Width="row.Width" RowIndex="row.RowIndex"
                                       BarHeight="EffectiveBarHeight" Color="@row.Color" BarTemplate="BarTemplate"
                                       Readonly="@Readonly" OnTaskClick="OnTaskClick"
-                                      SuppressPointerClick="@(!Readonly)" />
+                                      SuppressPointerClick="@_dragConfirmed" />
                         }
                         else
                         {
@@ -246,7 +250,13 @@
                                so this stripe is the row's ONLY element
                                carrying the pair — not a sibling duplicating
                                it. *@
-                            <div class="lumeo-gantt-v3-group-header absolute inset-x-0 flex items-center bg-accent/[0.18] px-2 text-[11px] font-bold uppercase tracking-wide text-muted-foreground"
+                            @* touch-pan-y (Codex P2 finding "Opt touch drag targets out of
+                               native horizontal panning" — see GanttBar.WrapperClass's own
+                               remarks): gated on the SAME AllowCreate && !Readonly condition
+                               as the data-gantt-row-track/data-row-key pair above — this
+                               stripe is only ever an actual drag TARGET when both are true;
+                               otherwise it's just a label, with no gesture to protect. *@
+                            <div class="@GroupHeaderClass"
                                  style="@GroupHeaderStyle(row.RowIndex)"
                                  data-gantt-row-track="@(AllowCreate && !Readonly ? "true" : null)"
                                  data-row-key="@(AllowCreate && !Readonly ? row.GroupRowKey : null)">@row.Label</div>
@@ -516,6 +526,16 @@
     private bool _dragRegistered;
     private int _lastDragOptionsHash;
 
+    // Bug fix (Codex P2 finding "Keep pointer clicks when drag interop is
+    // unavailable") — see SyncDragRegistrationAsync's own remarks and
+    // GanttBar.SuppressPointerClick's. Deliberately a SEPARATE flag from
+    // _dragRegistered: that one flips true SYNCHRONOUSLY, before the register
+    // interop call even starts (needed for the disposal-race fix — see its
+    // own remarks), so it means "registration was ATTEMPTED," never
+    // "confirmed." This one flips true only once the register call has
+    // actually RETURNED without throwing.
+    private bool _dragConfirmed;
+
     // Codex round 2, P1 #3: this root no longer establishes any scroll
     // container itself at all — the header (sticky) and the row-canvas
     // (overflow-x-auto) are now separate children with their own concerns;
@@ -740,6 +760,14 @@
     // date-bounded bar.
     private string GroupHeaderStyle(int rowIndex) =>
         FormattableString.Invariant($"top:{rowIndex * GanttScale.RowHeight}px;height:{GanttScale.RowHeight}px;");
+
+    // touch-pan-y only when this stripe is actually a drag target (Codex P2
+    // finding "Opt touch drag targets out of native horizontal panning") —
+    // see the markup's own remarks for why this mirrors the
+    // data-gantt-row-track/data-row-key pair's identical gate.
+    private string GroupHeaderClass => Cx.Merge(
+        "lumeo-gantt-v3-group-header absolute inset-x-0 flex items-center bg-accent/[0.18] px-2 text-[11px] font-bold uppercase tracking-wide text-muted-foreground",
+        AllowCreate && !Readonly ? "touch-pan-y" : null);
 
     private string RowsContainerStyle =>
         FormattableString.Invariant($"height:{Math.Max(1, EffectiveRows.Count) * GanttScale.RowHeight}px;width:{TotalWidth}px;");
@@ -1244,6 +1272,7 @@
             if (_dragRegistered)
             {
                 _dragRegistered = false;
+                _dragConfirmed = false;
                 await Interop.GanttV3UnregisterDragAsync(_scrollHostRef);
             }
             return;
@@ -1269,7 +1298,52 @@
         _selfRef ??= DotNetObjectReference.Create(this);
         _dragRegistered = true;
         _lastDragOptionsHash = optionsHash;
-        await Interop.GanttV3RegisterDragAsync(_scrollHostRef, _selfRef, BuildDragOptions());
+
+        // Bug fix (Codex P2 finding, "Keep pointer clicks when drag interop
+        // is unavailable"): every existing IComponentInteropService consumer
+        // gets a DEFAULT no-op-safe implementation of the Gantt-specific
+        // interop methods for backward compatibility — a custom
+        // implementation that never overrides GanttV3RegisterDragAsync, or a
+        // register call that genuinely throws, must not leave every bar's
+        // native onclick suppressed forever with no delegated listener ever
+        // actually attached (GanttBar's own SuppressPointerClick reads
+        // _dragConfirmed below, not merely "not Readonly"). A thrown
+        // exception here is swallowed (not re-thrown) — the chart degrades
+        // to native-click-only rather than taking the whole render down —
+        // and _dragRegistered reverts too, so a LATER render (an options
+        // change, or simply the next sync) retries instead of the early
+        // "already registered" return above treating this as done.
+        //
+        // Residual gap, accepted deliberately: this cannot distinguish "the
+        // register call ran and genuinely attached a listener" from "a
+        // custom interop service's inherited DEFAULT implementation silently
+        // no-op'd without throwing" — IComponentInteropService's contract has
+        // no confirmation return value for either case, and adding one is a
+        // breaking interface change out of scope here. The exception path
+        // (a register call that genuinely fails) is the concrete case this
+        // fix closes.
+        try
+        {
+            await Interop.GanttV3RegisterDragAsync(_scrollHostRef, _selfRef, BuildDragOptions());
+            if (!_dragConfirmed)
+            {
+                _dragConfirmed = true;
+                // OnAfterRenderAsync's own await here doesn't itself trigger
+                // another render — every already-rendered GanttBar's
+                // SuppressPointerClick binding needs this to actually reach
+                // the DOM (see RecomputeVisibleRowRange's identical pattern
+                // below for the same "async completion needs its own
+                // StateHasChanged" reasoning).
+                StateHasChanged();
+            }
+        }
+        catch (Exception)
+        {
+            // JSDisconnectedException (circuit torn down mid-call) included
+            // deliberately, not special-cased — there is nothing left to
+            // revert TO in that case either; the component is going away.
+            _dragRegistered = false;
+        }
 
         // Bug fix (Codex P2 finding, "Tear down drag registration after an
         // in-flight dispose"): _dragRegistered was set TRUE synchronously
@@ -1333,6 +1407,20 @@
         // date. "JS never re-derives" (Global constraints) — Origin is computed
         // here from GanttScale.BuildDateUnits, never recalculated in JS.
         ["originIso"] = Origin.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+        // Bug fix (Codex P2 finding "Map drag-create pixels through the
+        // active calendar scale"): drag-create used pixelsPerDay's own
+        // columnWidth/30-or-/365 APPROXIMATION (see PixelsPerDay's remarks —
+        // deliberately v2-parity for move/resize, where it's a RELATIVE
+        // shift and any drift is what v2 itself already has) to compute an
+        // ABSOLUTE day-offset from Origin via addDays — for Month/Year, real
+        // calendar units are NOT fixed-length, so that offset drifts (Codex's
+        // own example: Jan 1 origin, the next Month COLUMN maps to day 30,
+        // i.e. Jan 31, not Feb 1). Create has no v2 equivalent to stay
+        // parity-faithful to, so it can and should be exact: this tells JS
+        // which of GanttScale.PixelToDate's own per-unit formulas to mirror
+        // (Month -> AddMonths, Year -> add to the calendar year, else ->
+        // addDays as before — see gantt-v3.js's resolveCreateDate).
+        ["scaleUnit"] = GanttScale.GetConfig(ViewMode).Unit.ToString(),
     };
 
     /// <summary>

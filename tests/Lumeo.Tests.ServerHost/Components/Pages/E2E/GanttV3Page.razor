@@ -110,6 +110,14 @@
     [SupplyParameterFromQuery] public string? Readonly { get; set; }
     [SupplyParameterFromQuery] public string? AllowCreate { get; set; }
     [SupplyParameterFromQuery(Name = "candrop")] public string? CanDropQuery { get; set; }
+    // Codex P1 finding "Fail closed when CanDrop invocation rejects" —
+    // ?candropthrow=1 (combined with ?candrop=1) makes the wired predicate
+    // THROW unconditionally, simulating a consumer's CanDrop implementation
+    // failing, so an E2E spec can drive a REAL drag against it and assert
+    // gantt-v3.js's ValidateDrop rejection resolves to false (no commit),
+    // not true (the pre-fix fail-open behavior) — this can only be proven
+    // against the real interop round-trip; bUnit never executes gantt-v3.js.
+    [SupplyParameterFromQuery(Name = "candropthrow")] public string? CanDropThrowQuery { get; set; }
     [SupplyParameterFromQuery] public string? Rtl { get; set; }
     [SupplyParameterFromQuery] public string? Tree { get; set; }
 
@@ -118,6 +126,7 @@
     private bool _readonly;
     private bool _allowCreate;
     private bool _useCanDrop;
+    private bool _throwInCanDrop;
     private int _validateDropCallCount;
     private bool? _showTreePaneOverride;
     private string _lastClickedTaskId = "";
@@ -156,6 +165,7 @@
         _readonly = Readonly == "1";
         _allowCreate = AllowCreate == "1";
         _useCanDrop = CanDropQuery == "1";
+        _throwInCanDrop = CanDropThrowQuery == "1";
         if (Tree == "0") _showTreePaneOverride = false;
         if (Rtl == "1") _direction = LayoutDirection.Rtl;
     }
@@ -217,8 +227,15 @@
         // never actually update in the DOM even though the field's value did —
         // invisible to a real browser/Playwright assertion.
         _validateDropCallCount++;
-        var valid = context.ProposedStart >= GanttParityFixtures.CanDropBlackoutBefore;
         StateHasChanged();
+        // Codex P1 finding "Fail closed when CanDrop invocation rejects" —
+        // simulates the predicate itself failing (see CanDropThrowQuery's
+        // own remarks). Thrown AFTER the count/StateHasChanged above so the
+        // call-count sink still proves the invocation actually happened —
+        // a real failing predicate would ordinarily run its own logic
+        // (including any counting side effects) before failing.
+        if (_throwInCanDrop) throw new InvalidOperationException("simulated CanDrop predicate failure (E2E fixture)");
+        var valid = context.ProposedStart >= GanttParityFixtures.CanDropBlackoutBefore;
         return valid;
     }
 }

@@ -609,6 +609,46 @@ public class GanttDragParityTests : GanttParityTestBase
     }
 
     [Fact]
+    public async Task CanDrop_A_Throwing_Validator_Fails_Closed_Not_Open()
+    {
+        // [P1] "Fail closed when CanDrop invocation rejects" — a REJECTED
+        // ValidateDrop invocation (here: the wired predicate itself throws,
+        // via ?candropthrow=1 — see GanttV3Page.CanDropHandler's own
+        // remarks) must resolve to invalid, never to valid. Only testable
+        // end-to-end: the fail-open/fail-closed decision lives entirely in
+        // gantt-v3.js's own .catch() handlers on the ValidateDrop promise,
+        // which bUnit never executes.
+        //
+        // Dragged by exactly the SAME -1 day delta
+        // CanDrop_validates_exactly_once_per_distinct_snapped_position_
+        // under_a_jittery_drag proves is ACCEPTED under the real (non-
+        // throwing) blackout rule — deliberately NOT an "obviously invalid"
+        // position, so this isolates the failure-handling behavior from
+        // "the position was genuinely rejected."
+        await GotoHost("/e2e/gantt-v3?candrop=1&candropthrow=1");
+        await WaitV3ReadyAsync();
+        var bar = Page.Locator($"{V3Root} [data-task-id='fe3']");
+        var start = await CenterAsync(bar);
+        var ghost = Page.Locator(".lumeo-gantt-v3-drag-ghost");
+
+        await Page.Mouse.MoveAsync(start.X, start.Y);
+        await Page.Mouse.DownAsync();
+        await Page.Mouse.MoveAsync(start.X - DayPxDay * 1, start.Y); // -1 day: valid under the real rule
+        // The failed (thrown) validation must paint the ghost invalid too —
+        // the SAME cached promise checkCanDrop's own .then() and onPointerUp's
+        // commit-time await both read (see the JS fix's own remarks).
+        await Assertions.Expect(ghost).ToHaveAttributeAsync("data-invalid", "true", new() { Timeout = 5000 });
+        await Page.Mouse.UpAsync();
+
+        await Assertions.Expect(ghost).ToHaveCountAsync(0, new() { Timeout = 5000 }); // cleanup still runs on revert
+        Assert.True(string.IsNullOrEmpty(await ReadSinkRawAsync("event-sink-taskupdate")));
+        Assert.True(string.IsNullOrEmpty(await ReadSinkRawAsync("event-sink-datechange")));
+        // The predicate really was invoked (proves this isn't passing merely
+        // because CanDrop was never called at all).
+        Assert.NotEqual("0", await ReadSinkRawAsync("candrop-call-count"));
+    }
+
+    [Fact]
     public async Task CanDrop_never_validates_when_unset()
     {
         // Default v3 route: CanDrop is never wired (Gantt3.CanDrop == null), so
@@ -719,6 +759,44 @@ public class GanttDragParityTests : GanttParityTestBase
         var changedJson = await WaitForSinkChangeAsync("event-sink-taskschanged", null);
         Assert.Contains("\"Count\":13", changedJson);
         Assert.Contains(update.Task.Id, changedJson);
+    }
+
+    [Fact]
+    public async Task Drag_create_in_month_view_maps_pixels_through_the_real_calendar_scale()
+    {
+        // [P2] "Map drag-create pixels through the active calendar scale" —
+        // Month view's fromDay/toDay used to approximate columnWidth/30
+        // pixels-per-day, then addDays() that day-offset from Origin — exact
+        // only for a hypothetical 30-day month, wrong for a real one
+        // (Codex's own example: a Jan 1 origin's next Month column mapped to
+        // day 30 = Jan 31, not Feb 1). SharedTasks' own mount-time Origin
+        // here is Feb 1, 2025 (Month padding aligns to day-1, PadBefore=12
+        // months before fe1's earliest Feb 2026 start) — February 2025 is a
+        // 28-day month (not a leap year), so the pre-fix 30-day
+        // approximation is GUARANTEED wrong here, not coincidentally right
+        // for this particular month.
+        await GotoHost("/e2e/gantt-v3?allowCreate=1&viewMode=Month");
+        await WaitV3ReadyAsync();
+        await ResetScrollLeftAsync();
+        var track = Page.Locator($"{V3Root} [data-gantt-row-track][data-row-key='task:fe3']");
+        var box = await track.BoundingBoxAsync();
+        Assert.NotNull(box);
+
+        // Drag from the track's own left edge (Origin's own Month column,
+        // Feb 2025) across exactly ONE Month column width (GanttScale's own
+        // Month ColumnWidth, 120px) into the immediately NEXT column (March
+        // 2025).
+        const int monthColumnWidth = 120;
+        var from = ((float)(box!.X + 2), (float)(box.Y + box.Height / 2));
+        var to = (from.Item1 + monthColumnWidth, from.Item2);
+
+        await DragAsync(from, to);
+        var json = await WaitForSinkChangeAsync("event-sink-taskcreate", null);
+        var update = ParseUpdate(json);
+
+        Assert.Equal("Create", update.Source);
+        Assert.Equal(new DateTime(2025, 2, 1), update.Task.Start);
+        Assert.Equal(new DateTime(2025, 3, 1), update.Task.End);
     }
 
     [Fact]

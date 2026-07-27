@@ -351,4 +351,35 @@ public class GanttV3ProgressClickCanDropTests : IAsyncLifetime
         var timeline = cut.FindComponent<L.GanttTimeline>();
         Assert.False(timeline.Instance.ValidateDrop("t1", "move", "2026-01-05", "2026-01-09"));
     }
+
+    // ── Codex PR-383 finding: "Center the progress handle correctly in RTL" ──
+
+    [Fact]
+    public async Task ProgressHandle_Centering_Transform_Flips_Sign_Under_Rtl()
+    {
+        // The handle is anchored via inset-inline-start (LOGICAL: physical
+        // left under LTR, physical RIGHT under RTL). Centering that edge
+        // onto the progress mark means shifting the box towards its own
+        // interior by half its width — a PHYSICAL leftward shift under LTR
+        // (-translate-x-1/2), but a PHYSICAL RIGHTWARD shift under RTL
+        // (translate-x-1/2) — see GanttBar.ProgressHandleClass's own remarks
+        // for the full worked geometry. A LEFTWARD shift under RTL (the
+        // pre-fix, unconditional -translate-x-1/2) instead moves the center
+        // a full handle-width PAST the fill boundary.
+        var task = Task1(progress: 40);
+        var cut = _ctx.Render<L.GanttBar>(p => p
+            .Add(c => c.Task, task).Add(c => c.X, 0d).Add(c => c.Width, 200d).Add(c => c.RowIndex, 0));
+
+        var handleLtr = cut.Find("[data-gantt-progress-handle]");
+        Assert.Contains("-translate-x-1/2", handleLtr.ClassList);
+        Assert.DoesNotContain("translate-x-1/2", handleLtr.ClassList);
+
+        var themeService = _ctx.Services.GetRequiredService<Lumeo.Services.IThemeService>();
+        await cut.InvokeAsync(() => themeService.SetDirectionAsync(LayoutDirection.Rtl));
+        cut.Render();
+
+        var handleRtl = cut.Find("[data-gantt-progress-handle]");
+        Assert.Contains("translate-x-1/2", handleRtl.ClassList);
+        Assert.DoesNotContain("-translate-x-1/2", handleRtl.ClassList);
+    }
 }

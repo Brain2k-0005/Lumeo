@@ -912,8 +912,18 @@
         // seeds the phase-2 T1 hash baseline (see OnParametersSetAsync's own
         // remarks) so the very first drag edit has something to compare
         // against.
-        _state.SetTasks(MaterializeTasks());
-        _lastParentTasksHash = _lastPushedTasksHash = ComputeTasksHash(_state.Tasks);
+        //
+        // Bug fix (Codex P1 "Preserve uncontrolled edits when GroupBy
+        // changes"): the seed hash is taken from the RAW parameter, not the
+        // Sorted (GroupBy-applied) one — see MaterializeTasks' and
+        // OnParametersSetAsync's own remarks. Seeding it from the grouped
+        // shape would mismatch every SUBSEQUENT pass's now-raw-based hash by
+        // construction whenever GroupBy is set at all, making the very
+        // SECOND parameter pass look like a parent change regardless of
+        // whether anything actually moved.
+        var (rawTasks, materializedTasks) = MaterializeTasks();
+        _state.SetTasks(materializedTasks);
+        _lastParentTasksHash = _lastPushedTasksHash = ComputeTasksHash(rawTasks);
         _tasksVersion = 1;
         _state.SetVisibleRange(ComputeInitialRange(_state.ViewMode, _state.Tasks, EffectiveToday));
         // Seed the reconcile baseline from the just-committed mount state; the
@@ -1177,13 +1187,34 @@
         // one legitimate enumeration of the Tasks parameter this pass (its own
         // contract below is unchanged — a replay never re-enumerates), it just
         // no longer flows straight into nextTasks unconditionally.
-        var materializedTasks = MaterializeTasks();
-        var incomingHash = ComputeTasksHash(materializedTasks);
+        //
+        // Bug fix (Codex P1 "Preserve uncontrolled edits when GroupBy
+        // changes"): parentMoved is meant to answer "did the Tasks PARAMETER
+        // itself change" — but hashing the Sorted (GroupBy-applied) list
+        // answered a DIFFERENT question: "did the parameter's content OR the
+        // current grouping change." SortedTasks reorders by whatever GroupBy
+        // is current, so a consumer that changes GroupBy alone (Tasks itself
+        // untouched) produced a different hash purely from the reordering —
+        // indistinguishable from a genuine parent-initiated Tasks change —
+        // which discarded an uncontrolled drag edit that had reconciled to
+        // _state.Tasks, exactly the revert this whole mechanism exists to
+        // prevent. Hashing the RAW (as-delivered) list instead makes the
+        // comparison GroupBy-independent, as it should be: grouping is a
+        // display concern, not a signal that the parent's own data moved.
+        var (rawTasks, materializedTasks) = MaterializeTasks();
+        var incomingHash = ComputeTasksHash(rawTasks);
         var parentMoved = TasksChanged.HasDelegate
             ? incomingHash != _lastPushedTasksHash
             : incomingHash != _lastParentTasksHash;
         _lastParentTasksHash = incomingHash;
-        var nextTasks = parentMoved ? materializedTasks : _state.Tasks;
+        // Whichever task set wins, it must reflect the CURRENT GroupBy — a
+        // GroupBy change must still re-sort a preserved uncontrolled edit,
+        // just not DISCARD it. materializedTasks (from MaterializeTasks
+        // above) is already grouped by construction; SortedTasks on the
+        // preserved branch is a no-op re-sort of already-sorted data when
+        // GroupBy hasn't actually changed (idempotent, matching structural
+        // equality downstream), so this costs nothing extra in the common case.
+        var nextTasks = parentMoved ? materializedTasks : SortedTasks(_state.Tasks.ToList());
 
         // Keep the replay snapshot (_materializedTasks — see its own remarks)
         // in step with what THIS pass actually targets. When the parameter
@@ -1287,8 +1318,19 @@
     // The ONE place the Tasks parameter is enumerated. Called only from the two
     // genuine parameter moments (OnInitialized's mount seed and each
     // OnParametersSetAsync pass); every replay reads _materializedTasks instead.
-    private List<GanttTask> MaterializeTasks() =>
-        _materializedTasks = SortedTasks(Tasks?.ToList() ?? new List<GanttTask>());
+    //
+    // Returns BOTH the raw (as-delivered, un-grouped) list and the sorted
+    // (GroupBy-applied) one — see the P1 fix in OnParametersSetAsync's own
+    // remarks ("Preserve uncontrolled edits when GroupBy changes") for why a
+    // caller needs the raw shape too: hashing the SORTED list for
+    // parameter-change detection made a GroupBy change alone look like a
+    // genuine Tasks change, since SortedTasks reorders by whatever GroupBy
+    // is CURRENT, independent of whether the parameter's own content moved.
+    private (List<GanttTask> Raw, List<GanttTask> Sorted) MaterializeTasks()
+    {
+        var raw = Tasks?.ToList() ?? new List<GanttTask>();
+        return (raw, _materializedTasks = SortedTasks(raw));
+    }
 
     private List<GanttTask> SortedTasks(List<GanttTask> raw)
     {
@@ -1717,9 +1759,13 @@
         // group's existing run the same way a genuine parameter delivery
         // would; it is a no-op when GroupBy is null, so the ungrouped path is
         // unaffected.
-        var newTasks = update.Source == GanttTaskUpdateSource.Create
-            ? SortedTasks(_state.Tasks.Append(update.Task).ToList())
-            : _state.Tasks.Select(t => t.Id == update.Task.Id ? update.Task : t).ToList();
+        // Local so it can be REBASED below, against whatever _state.Tasks
+        // holds at the moment it's actually applied, not just applied once
+        // against the value _state.Tasks held when this method started.
+        List<GanttTask> ApplyEdit(IReadOnlyList<GanttTask> current) =>
+            update.Source == GanttTaskUpdateSource.Create
+                ? SortedTasks(current.Append(update.Task).ToList())
+                : current.Select(t => t.Id == update.Task.Id ? update.Task : t).ToList();
 
         // Bug fix (Codex PR-383 review, P1 "Expand the visible range after
         // date edits"): a move/resize that places a task outside the current
@@ -1744,10 +1790,20 @@
         // replacement) and re-anchors the live scroll position on whichever
         // calendar date was centered before the edit whenever a boundary
         // actually had to move.
-        var taskDerivedRange = ComputeInitialRange(_state.ViewMode, newTasks, EffectiveToday);
-        var expandedStart = taskDerivedRange.Start < _state.VisibleRange.Start ? taskDerivedRange.Start : _state.VisibleRange.Start;
-        var expandedEnd = taskDerivedRange.End > _state.VisibleRange.End ? taskDerivedRange.End : _state.VisibleRange.End;
-        var rangeExpanded = expandedStart != _state.VisibleRange.Start || expandedEnd != _state.VisibleRange.End;
+        //
+        // Local (not inline) for the SAME rebase reason as ApplyEdit above —
+        // it re-derives against whatever _state.VisibleRange/_state.Tasks
+        // hold at call time, not a value captured before an await.
+        (bool Expanded, DateTime Start, DateTime End) ComputeExpansion(IReadOnlyList<GanttTask> tasks)
+        {
+            var taskDerivedRange = ComputeInitialRange(_state.ViewMode, tasks, EffectiveToday);
+            var start = taskDerivedRange.Start < _state.VisibleRange.Start ? taskDerivedRange.Start : _state.VisibleRange.Start;
+            var end = taskDerivedRange.End > _state.VisibleRange.End ? taskDerivedRange.End : _state.VisibleRange.End;
+            return (start != _state.VisibleRange.Start || end != _state.VisibleRange.End, start, end);
+        }
+
+        var newTasks = ApplyEdit(_state.Tasks);
+        var (rangeExpanded, expandedStart, expandedEnd) = ComputeExpansion(newTasks);
 
         // Captured BEFORE any commit below, under the geometry the user is
         // still actually looking at — the same capture-before-commit ordering
@@ -1761,16 +1817,77 @@
         DateTime? capturedCenter = null;
         if (rangeExpanded)
         {
+            // Bug fix (Codex PR-383 review, P1 "Serialize task commits
+            // across the center capture"): the JS engine explicitly permits
+            // concurrent drags on different bars (activeBarDrags only
+            // rejects a SECOND pointer on the SAME bar), so another commit —
+            // a sibling HandleTaskUpdateAsync call, or a genuine
+            // ReconcileAsync-driven mode/geometry change — can land while
+            // the capture below is in flight. newTasks/rangeExpanded/
+            // expandedStart/expandedEnd were derived from _state.Tasks/
+            // _state.VisibleRange as they stood BEFORE that await; committing
+            // them unconditionally afterward would overwrite whatever landed
+            // in the meantime with a snapshot that predates it — silently
+            // reverting the other commit. Snapshotted here (LOCAL variables,
+            // not fields — this method is re-entrant across concurrent
+            // drags, so per-call state must never live on the instance) and
+            // compared once the capture resumes.
+            var tasksBeforeCapture = _state.Tasks;
+            var rangeBeforeCapture = _state.VisibleRange;
+            var modeBeforeCapture = _state.ViewMode;
+
             capturedCenter = await ResolveCurrentCenterDateAsync(
                 ScrollHostLeadingOffset, EffectiveColumnWidthFor(_state.ViewMode), EffectiveDirection);
             if (_disposed) return;
+
+            if (!ReferenceEquals(_state.Tasks, tasksBeforeCapture)
+                || _state.VisibleRange != rangeBeforeCapture
+                || _state.ViewMode != modeBeforeCapture)
+            {
+                // Something else committed while the capture above was in
+                // flight. REBASE this edit onto whatever _state.Tasks/
+                // _state.VisibleRange hold now (never dropping it — the
+                // exact hazard this fix closes), rather than proceeding with
+                // the now-stale pre-capture snapshot.
+                //
+                // Deliberately NOT built on BeginReconcile()/IsCurrentReconcile
+                // (master's #382 generation/supersession machinery), even
+                // though it already answers the identical "resumed-after-an-
+                // await, is my captured state still current" question
+                // elsewhere in this file. Two reasons it doesn't fit cleanly
+                // here: (1) claiming a generation here would ALSO supersede
+                // an UNRELATED in-flight mode-switch reconcile suspended in
+                // ITS OWN capture, and this method has no safe way to replay
+                // that intent afterward — ReapplyCurrentParametersAsync
+                // reconciles against _materializedTasks (the last-seen Tasks
+                // PARAMETER), which this method never updates, so replaying
+                // through it here would immediately revert the very edit
+                // this fix protects; (2) the hazard actually described (two
+                // direct _state commits racing) doesn't need the global
+                // reconcile-ownership machinery at all — this local
+                // snapshot-and-rebase closes it without touching anything
+                // ReconcileAsync/the view-mode intent system owns.
+                newTasks = ApplyEdit(_state.Tasks);
+                (rangeExpanded, expandedStart, expandedEnd) = ComputeExpansion(newTasks);
+                // capturedCenter was decoded under the geometry live at the
+                // START of the await — still valid if only a SIBLING task
+                // commit landed (that never touches ViewMode/ColumnWidth/
+                // Direction), but not if a genuine mode/geometry reconcile
+                // also landed. Not worth distinguishing the two here: skip
+                // the recenter for this pass either way rather than risk
+                // decoding a captured position under superseded geometry —
+                // the exact hazard ReconcileAsync's own generation guard
+                // exists to prevent (see its own remarks). Nothing about
+                // committing this edit NEEDS a recenter to be visible.
+                capturedCenter = null;
+            }
         }
 
         _state.SetTasks(newTasks);
         if (rangeExpanded) _state.SetVisibleRange(expandedStart, expandedEnd);
         _tasksVersion++;
         _lastSnapshot = BuildSnapshot(_tasksVersion, _state.Tasks, _state.ViewMode);
-        if (rangeExpanded) EmitScrollIntent(capturedCenter);
+        if (rangeExpanded && capturedCenter is not null) EmitScrollIntent(capturedCenter);
 
         // Phase 2, T2/T3 — v2 parity: v2's Gantt.razor fires JsOnDateChange OR
         // JsOnProgressChange depending on WHICH gesture committed (gantt-v2.js's

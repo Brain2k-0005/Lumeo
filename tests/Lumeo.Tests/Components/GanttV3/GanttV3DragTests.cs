@@ -545,4 +545,107 @@ public class GanttV3DragTests : IAsyncLifetime
         Assert.True(_interop.GanttV3UnregisterDragCallCount > unregisterCountAfterFlip,
             "the register call's own resumed continuation must observe the now-live Readonly flip and fire one more unregister");
     }
+
+    // ── Codex full-review findings (post PR #382/#383 gates) ─────────────────
+
+    [Fact]
+    public async Task Gantt3_Concurrent_Drag_Commits_On_Different_Bars_Both_Survive_A_Range_Expansion_Capture()
+    {
+        // [P1] "Serialize task commits across the center capture" —
+        // HandleTaskUpdateAsync derives newTasks from _state.Tasks BEFORE
+        // awaiting the live-center capture (needed only when the edit
+        // expands VisibleRange). The JS engine explicitly permits concurrent
+        // drags on DIFFERENT bars (activeBarDrags only rejects a second
+        // pointer on the SAME bar), so a second commit can land during that
+        // await; the first must not then overwrite it with a stale,
+        // pre-await snapshot.
+        var taskA = new L.GanttTask("a", "A", D(2026, 1, 2), D(2026, 1, 6));
+        var taskB = new L.GanttTask("b", "B", D(2026, 1, 10), D(2026, 1, 14));
+        var cut = _ctx.Render<L.Gantt3>(p => p.Add(c => c.Tasks, new List<L.GanttTask> { taskA, taskB }));
+        var timeline = cut.FindComponent<L.GanttTimeline>();
+
+        // Drag A moves far past the mount-padded VisibleRange — forces the
+        // range-expansion branch (and its live-center capture) to run and
+        // suspend. Drag B, on a DIFFERENT bar, is started from the SAME
+        // dispatched callback, immediately after A — mirrors how a real
+        // circuit processes two back-to-back JSInvokable calls on its one
+        // synchronization context: B starts running (and, needing no
+        // expansion, completes) WHILE A's own continuation is still parked
+        // on the gate. Two SEPARATE cut.InvokeAsync dispatches would instead
+        // deadlock bUnit's own dispatcher while A's is still pending — this
+        // single-dispatch shape is what actually reproduces the race.
+        var gate = new TaskCompletionSource<double?>();
+        _interop.GanttV3ScrollCenterXGate = gate;
+        System.Threading.Tasks.Task dragA = System.Threading.Tasks.Task.CompletedTask;
+        System.Threading.Tasks.Task dragB = System.Threading.Tasks.Task.CompletedTask;
+        await cut.InvokeAsync(() =>
+        {
+            dragA = timeline.Instance.CommitDrag("a", "move", "2026-08-01", "2026-08-05");
+            dragB = timeline.Instance.CommitDrag("b", "move", "2026-01-06", "2026-01-10");
+        });
+        Assert.False(dragA.IsCompleted, "drag A should still be awaiting its range-expansion capture");
+        Assert.True(dragB.IsCompleted, "drag B needs no expansion and should have committed synchronously");
+        Assert.Equal("2026-01-06", cut.Find("[data-task-id='b']").GetAttribute("data-task-start"));
+
+        // Resume A.
+        _interop.GanttV3ScrollCenterXGate = null;
+        _interop.GanttV3ScrollCenterXToReturn = 0;
+        gate.SetResult(0);
+        await dragA;
+
+        // Both edits must have survived — A's own (range-expanding) commit
+        // must not have overwritten B's with a pre-await snapshot that
+        // predates it.
+        Assert.Equal("2026-08-01", cut.Find("[data-task-id='a']").GetAttribute("data-task-start"));
+        Assert.Equal("2026-01-06", cut.Find("[data-task-id='b']").GetAttribute("data-task-start"));
+    }
+
+    [Fact]
+    public void GanttBar_Wrapper_Carries_Touch_Pan_Y_Only_When_Not_Readonly()
+    {
+        // [P2] "Opt touch drag targets out of native horizontal panning" —
+        // touch-action must be scoped to elements a drag gesture is actually
+        // registered for (Readonly means no listener is ever attached at
+        // all — see SyncDragRegistrationAsync's own contract), not applied
+        // unconditionally (PR #381's own dead-scroll-zone regression came
+        // from exactly that: touch-action:none applied broadly, always).
+        var cutInteractive = _ctx.Render<L.GanttBar>(p => p
+            .Add(c => c.Task, Task1).Add(c => c.X, 0d).Add(c => c.Width, 100d).Add(c => c.RowIndex, 0)
+            .Add(c => c.Readonly, false));
+        Assert.Contains("touch-pan-y", cutInteractive.Find("[data-task-id='t1']").ClassList);
+
+        var cutReadonly = _ctx.Render<L.GanttBar>(p => p
+            .Add(c => c.Task, Task1).Add(c => c.X, 0d).Add(c => c.Width, 100d).Add(c => c.RowIndex, 0)
+            .Add(c => c.Readonly, true));
+        Assert.DoesNotContain("touch-pan-y", cutReadonly.Find("[data-task-id='t1']").ClassList);
+    }
+
+    [Fact]
+    public async Task Gantt3_Bar_Click_Stays_Native_When_Drag_Registration_Throws()
+    {
+        // [P2] "Keep pointer clicks when drag interop is unavailable" — a
+        // register call that genuinely throws (e.g. a custom
+        // IComponentInteropService override that fails) must not leave
+        // every bar's native onclick permanently suppressed with no
+        // delegated JS listener ever actually attached — pointer clicks
+        // would otherwise be dead forever even though keyboard activation
+        // (Enter/Space) keeps working.
+        _interop.GanttV3RegisterDragException = new InvalidOperationException("simulated custom interop failure");
+
+        L.GanttTask? clicked = null;
+        var cut = _ctx.Render<L.Gantt3>(p => p
+            .Add(c => c.Tasks, new List<L.GanttTask> { Task1 })
+            .Add(c => c.OnTaskClick, (L.GanttTask t) => { clicked = t; }));
+
+        Assert.True(_interop.GanttV3RegisterDragCallCount > 0, "registration must still have been attempted");
+
+        // Native onclick must remain wired — SuppressPointerClick stays
+        // false when registration never confirmed. onclick lives on the
+        // INNER content div (InnerAttributes), not the [data-task-id]
+        // wrapper itself — same selector GanttBar's own click/keydown tests
+        // use (see e.g. GanttV3CodexRound4Tests' identical pattern).
+        cut.Find("[data-task-id='t1'] > div").Click();
+        Assert.NotNull(clicked);
+        Assert.Equal("t1", clicked!.Id);
+    }
 }

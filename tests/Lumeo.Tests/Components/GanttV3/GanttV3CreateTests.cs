@@ -535,4 +535,79 @@ public class GanttV3CreateTests : IAsyncLifetime
         Assert.True(timeline.Instance.AllowCreate);
         Assert.Single(cut.FindAll("[data-gantt-row-track]"));
     }
+
+    // ── Codex full-review findings (post PR #382/#383 gates) ─────────────────
+
+    [Fact]
+    public async Task Gantt3_Uncontrolled_Drag_Edit_Survives_A_GroupBy_Change_With_The_Same_Stale_Tasks_Parameter()
+    {
+        // [P1] "Preserve uncontrolled edits when GroupBy changes" — parentMoved
+        // is meant to detect whether the Tasks PARAMETER itself changed, but
+        // hashing the SortedTasks (GroupBy-applied) list made a GroupBy
+        // change alone — Tasks itself untouched — look like a genuine
+        // parameter change (SortedTasks reorders by whatever GroupBy is
+        // CURRENT), discarding the uncontrolled drag edit that had already
+        // reconciled to _state.Tasks.
+        var tasks = new List<L.GanttTask>
+        {
+            new("t1", "T1", D(2026, 1, 2), D(2026, 1, 6)) { GroupLabel = "A" },
+            new("t2", "T2", D(2026, 2, 2), D(2026, 2, 6)) { GroupLabel = "B" },
+        };
+        Func<L.GanttTask, string> groupByAsc = t => t.GroupLabel ?? "";
+        var cut = _ctx.Render<L.Gantt3>(p => p
+            .Add(c => c.Tasks, tasks)
+            .Add(c => c.GroupBy, groupByAsc));
+
+        var timeline = cut.FindComponent<L.GanttTimeline>();
+        await cut.InvokeAsync(() => timeline.Instance.CommitDrag("t1", "move", "2026-01-05", "2026-01-09"));
+        Assert.Equal("2026-01-05", cut.Find("[data-task-id='t1']").GetAttribute("data-task-start"));
+
+        // Re-render with the SAME (stale, pre-drag) Tasks list, but a
+        // DIFFERENT GroupBy delegate that flips the two groups' relative
+        // sort order (t1's key "Z" now sorts AFTER t2's key "A") — the exact
+        // reordering that made SortedTasks-based hashing see a "change".
+        Func<L.GanttTask, string> groupByDesc = t => t.GroupLabel == "A" ? "Z" : "A";
+        cut.Render(p => p.Add(c => c.Tasks, tasks).Add(c => c.GroupBy, groupByDesc));
+
+        Assert.Equal("2026-01-05", cut.Find("[data-task-id='t1']").GetAttribute("data-task-start"));
+    }
+
+    [Fact]
+    public void BuildDragOptions_Includes_ScaleUnit_Matching_The_Active_View_Mode()
+    {
+        // [P2] "Map drag-create pixels through the active calendar scale" —
+        // gantt-v3.js needs the active GanttScaleUnit to pick the correct
+        // Month/Year-aware (vs linear day-based) column-to-date formula for
+        // drag-create's commit dates; the exact JS math itself is covered by
+        // the E2E suite (bUnit never executes gantt-v3.js), but the C# side
+        // of the wire contract — this options bag actually carrying the
+        // right value per mode — is directly testable here.
+        var cut = _ctx.Render<L.GanttTimeline>(p => p
+            .Add(c => c.Tasks, new List<L.GanttTask> { Task1 })
+            .Add(c => c.ViewMode, L.GanttViewMode.Month)
+            .Add(c => c.RangeStart, D(2026, 1, 1))
+            .Add(c => c.RangeEnd, D(2026, 6, 1))
+            .Add(c => c.AllowCreate, true));
+
+        var options = Assert.IsType<Dictionary<string, object?>>(_interop.LastGanttV3DragOptions);
+        Assert.Equal("Month", options["scaleUnit"]);
+    }
+
+    [Fact]
+    public void Row_Track_Div_Carries_Touch_Pan_Y_When_AllowCreate_True()
+    {
+        // [P2] "Opt touch drag targets out of native horizontal panning" —
+        // see GanttBar.WrapperClass's own remarks on the identical bar-drag
+        // fix. Unconditional here since this whole block is already gated on
+        // AllowCreate && !Readonly.
+        var cut = _ctx.Render<L.GanttTimeline>(p => p
+            .Add(c => c.Tasks, new List<L.GanttTask> { Task1 })
+            .Add(c => c.ViewMode, L.GanttViewMode.Day)
+            .Add(c => c.RangeStart, D(2026, 1, 1))
+            .Add(c => c.RangeEnd, D(2026, 1, 10))
+            .Add(c => c.AllowCreate, true));
+
+        var track = cut.Find("[data-gantt-row-track]");
+        Assert.Contains("touch-pan-y", track.ClassList);
+    }
 }

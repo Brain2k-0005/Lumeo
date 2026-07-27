@@ -514,6 +514,14 @@ const dragRegistrations = new Map(); // scrollHostEl -> { dotNetRef, options, on
 // their own pointer type).
 const activeBarDrags = new WeakSet(); // barEl -> currently being dragged by some pointer
 
+// Bug fix (Codex P2 finding "Filter drag-create events to their initiating
+// pointer") — the create-drag analog of activeBarDrags above, keyed by
+// trackEl instead of barEl: a second contact landing on a track already
+// being create-dragged must not start a second, independent handler set on
+// top of the first. See startCreateDrag's own remarks for the pointerId
+// filter this pairs with.
+const activeCreateDrags = new WeakSet(); // trackEl -> currently being create-dragged by some pointer
+
 // gantt-v2.js:53-63 (parseDate) — v3 only ever receives its own "yyyy-MM-dd"
 // data-task-start/-end attributes (see GanttBar.razor), never a free-form
 // string or Date, so this is the regex branch only, trimmed accordingly.
@@ -658,20 +666,49 @@ function registerDrag(el, dotNetRef, options) {
         return;
     }
 
-    const reg = { dotNetRef, options, onPointerDown: null };
+    // Bug fix (Codex P2 finding "Cancel active drags when unregistering"):
+    // every currently-running drag SESSION's own cleanup() — bar-drag AND
+    // create-drag alike — is tracked here so unregisterDrag can tear all of
+    // them down externally (see its own remarks). Keyed on the registration
+    // itself (per scroll-host), not per-element, since a host can have
+    // multiple concurrent sessions (different bars/tracks, or different
+    // pointers — see activeBarDrags/activeCreateDrags below).
+    const reg = { dotNetRef, options, onPointerDown: null, activeCleanups: new Set() };
 
     reg.onPointerDown = (e) => {
         if (e.button !== 0) return; // left mouse / primary touch-pen contact only
+
+        // Bug fix (Codex P2 finding "Snapshot drag options at pointerdown"):
+        // reg.options/reg.dotNetRef are mutated IN PLACE by a later
+        // registerDrag call (the idempotent re-registration branch above) —
+        // a ViewMode/ColumnWidth/etc. change mid-drag would otherwise change
+        // what THIS already-running gesture reads (stale bar geometry,
+        // fresh pixelsPerDay), corrupting movedDays math partway through a
+        // single drag. Captured ONCE here, at the moment the gesture
+        // actually begins, and used everywhere below instead of reading
+        // reg.* live — the snapshot is deliberately owned by THIS pointerdown
+        // closure, not reg itself, so a later registerDrag swap can never
+        // reach it.
+        const dragOptions = reg.options;
+        const dragDotNet = reg.dotNetRef;
+
         const barEl = e.target.closest('[data-task-id]');
         if (!barEl || !el.contains(barEl)) {
             // Phase 2, T3 — no bar was hit. Only look for a create-track hit
-            // when the caller opted in (reg.options.allowCreate — see
+            // when the caller opted in (dragOptions.allowCreate — see
             // GanttTimeline.BuildDragOptions' own remarks: the row-track
             // elements themselves also only exist in the DOM when this is
             // true, so this check is defense-in-depth, not the only gate).
-            if (reg.options && reg.options.allowCreate) {
+            if (dragOptions && dragOptions.allowCreate) {
                 const trackEl = e.target.closest('[data-gantt-row-track]');
-                if (trackEl && el.contains(trackEl)) startCreateDrag(reg, trackEl, e);
+                // Bug fix (Codex P2 finding "Filter drag-create events to
+                // their initiating pointer"): mirrors activeBarDrags below —
+                // a second contact (multi-touch/pen+touch) landing on a
+                // track already being create-dragged must not install a
+                // second handler set on top of the first.
+                if (trackEl && el.contains(trackEl) && !activeCreateDrags.has(trackEl)) {
+                    startCreateDrag(dragOptions, dragDotNet, reg, trackEl, e);
+                }
             }
             return;
         }
@@ -732,7 +769,7 @@ function registerDrag(el, dotNetRef, options) {
         let lastValidatedKey = null;
 
         function checkCanDrop(dx) {
-            const dayPx = reg.options && reg.options.pixelsPerDay > 0 ? reg.options.pixelsPerDay : 1;
+            const dayPx = dragOptions && dragOptions.pixelsPerDay > 0 ? dragOptions.pixelsPerDay : 1;
             const movedDays = Math.round(dx / dayPx);
             const { newStart: candStart, newEnd: candEnd } = computeSnappedDates(mode, movedDays, origStart, origEnd);
             const key = `${mode}|${toLocalDateString(candStart)}|${toLocalDateString(candEnd)}`;
@@ -741,10 +778,23 @@ function registerDrag(el, dotNetRef, options) {
 
             let promise = validationCache.get(key);
             if (!promise) {
-                const dotNet = reg.dotNetRef;
-                promise = dotNet
-                    ? dotNet.invokeMethodAsync('ValidateDrop', taskId, mode, toLocalDateString(candStart), toLocalDateString(candEnd)).catch(() => true)
-                    : Promise.resolve(true);
+                // Bug fix (Codex P1 finding "Fail closed when CanDrop
+                // invocation rejects"): a REJECTED invocation (the
+                // consumer's own CanDrop predicate throwing, a transient
+                // interop failure) used to resolve to `true` — a permission
+                // check that fails OPEN. This promise is CACHED and reused
+                // verbatim by onPointerUp's own commit-time await below when
+                // the position was already checked during the move, so this
+                // catch handler is not merely cosmetic (repainting the
+                // ghost) — it can be the ACTUAL verdict CommitDrag gates on.
+                // `false` here is deliberately NOT the same code path as "no
+                // validator configured" — that case never reaches this
+                // function at all (see checkCanDrop's/onPointerUp's own
+                // `dragOptions.hasCanDrop` gate), so a chart with no CanDrop
+                // still commits unconditionally, exactly as before.
+                promise = dragDotNet
+                    ? dragDotNet.invokeMethodAsync('ValidateDrop', taskId, mode, toLocalDateString(candStart), toLocalDateString(candEnd)).catch(() => false)
+                    : Promise.resolve(false);
                 validationCache.set(key, promise);
             }
             promise.then((valid) => {
@@ -797,7 +847,7 @@ function registerDrag(el, dotNetRef, options) {
                 if (fill) fill.style.width = newProgress + '%';
             }
 
-            if (mode !== 'progress' && reg.options && reg.options.hasCanDrop) {
+            if (mode !== 'progress' && dragOptions && dragOptions.hasCanDrop) {
                 checkCanDrop(dx);
             }
         };
@@ -817,14 +867,12 @@ function registerDrag(el, dotNetRef, options) {
                 // free — see NotifyTaskClick's own remarks for the readonly-parity
                 // deviation from v2's separate, unconditional milestone click listener.
                 if (mode === 'move') {
-                    const dotNet = reg.dotNetRef;
-                    if (dotNet) dotNet.invokeMethodAsync('NotifyTaskClick', taskId).catch(() => {});
+                    if (dragDotNet) dragDotNet.invokeMethodAsync('NotifyTaskClick', taskId).catch(() => {});
                 }
                 return;
             }
 
             const dx = up.clientX - startClientX;
-            const dotNet = reg.dotNetRef;
 
             if (mode === 'progress') {
                 // gantt-v2.js:758 `Math.round(origProgress + (dx / barW) * 100)`,
@@ -835,14 +883,14 @@ function registerDrag(el, dotNetRef, options) {
                 // the pointer-up commit must agree with what the ghost last showed.
                 const newProgress = Math.round(clampProgress(origProgress + ((isRtl ? -dx : dx) / geo.width) * 100));
                 if (newProgress === origProgress) return; // gantt-v2.js:759 no-op, no commit
-                if (dotNet) dotNet.invokeMethodAsync('CommitProgress', taskId, newProgress).catch(() => {});
+                if (dragDotNet) dragDotNet.invokeMethodAsync('CommitProgress', taskId, newProgress).catch(() => {});
                 return;
             }
 
             // gantt-v2.js:743 `const dayPx = pixelsPerDay(inst.viewMode);` — here
-            // pixelsPerDay comes from .NET (reg.options.pixelsPerDay), never
+            // pixelsPerDay comes from .NET (dragOptions.pixelsPerDay), never
             // re-derived: GanttScale.ViewModes is the single source of truth.
-            const dayPx = reg.options && reg.options.pixelsPerDay > 0 ? reg.options.pixelsPerDay : 1;
+            const dayPx = dragOptions && dragOptions.pixelsPerDay > 0 ? dragOptions.pixelsPerDay : 1;
             // gantt-v2.js:746/752 `Math.round(dx / dayPx)` — Math.round, not a
             // custom tie-break: unlike GanttScale.PixelToDate (which mirrors
             // Math.round's negative-tie behavior in C# via RoundToInt), this
@@ -852,23 +900,25 @@ function registerDrag(el, dotNetRef, options) {
 
             const { newStart, newEnd } = computeSnappedDates(mode, movedDays, origStart, origEnd);
 
-            if (reg.options && reg.options.hasCanDrop) {
+            if (dragOptions && dragOptions.hasCanDrop) {
                 const key = `${mode}|${toLocalDateString(newStart)}|${toLocalDateString(newEnd)}`;
                 let promise = validationCache.get(key);
                 if (!promise) {
                     // Not already checked during the move (e.g. threshold crossed and
-                    // released in the same snap step) — one fresh call, cached like any other.
-                    promise = dotNet
-                        ? dotNet.invokeMethodAsync('ValidateDrop', taskId, mode, toLocalDateString(newStart), toLocalDateString(newEnd)).catch(() => true)
-                        : Promise.resolve(true);
+                    // released in the same snap step) — one fresh call, cached like any
+                    // other. Bug fix (Codex P1 "Fail closed when CanDrop invocation
+                    // rejects") — see checkCanDrop's own remarks; identical reasoning.
+                    promise = dragDotNet
+                        ? dragDotNet.invokeMethodAsync('ValidateDrop', taskId, mode, toLocalDateString(newStart), toLocalDateString(newEnd)).catch(() => false)
+                        : Promise.resolve(false);
                     validationCache.set(key, promise);
                 }
                 const valid = await promise;
-                if (!valid) return; // invalid drop position — revert silently, no commit, no events
+                if (!valid) return; // invalid (or unconfirmable) drop position — revert silently, no commit, no events
             }
 
-            if (dotNet) {
-                dotNet.invokeMethodAsync('CommitDrag', taskId, mode, toLocalDateString(newStart), toLocalDateString(newEnd))
+            if (dragDotNet) {
+                dragDotNet.invokeMethodAsync('CommitDrag', taskId, mode, toLocalDateString(newStart), toLocalDateString(newEnd))
                     .catch(() => {});
             }
         };
@@ -888,7 +938,20 @@ function registerDrag(el, dotNetRef, options) {
             try { barEl.releasePointerCapture(pointerId); } catch (_) { /* already released */ }
             if (ghost && ghost.parentNode) ghost.parentNode.removeChild(ghost);
             activeBarDrags.delete(barEl);
+            // Bug fix (Codex P2 finding "Cancel active drags when
+            // unregistering") — see unregisterDrag's own remarks: this
+            // session no longer needs external cancellation once it has
+            // torn itself down via its own pointerup/pointercancel.
+            reg.activeCleanups.delete(cleanup);
         }
+
+        // Bug fix (Codex P2 finding "Cancel active drags when
+        // unregistering"): tracked from the moment listeners actually
+        // attach, unconditionally — a below-threshold (not yet
+        // dragInitiated) pointer is still a live session with real
+        // listeners/pointer-capture that a Readonly flip must be able to
+        // tear down, not only a session that has already produced a ghost.
+        reg.activeCleanups.add(cleanup);
 
         barEl.addEventListener('pointermove', onPointerMove);
         barEl.addEventListener('pointerup', onPointerUp);
@@ -916,12 +979,28 @@ function registerDrag(el, dotNetRef, options) {
 // which starts at row-canvas x=0) is converted to an absolute day-COLUMN index
 // via Math.floor (which grid column contains this pixel), not the delta-based
 // Math.round the move/resize paths use for a RELATIVE shift.
-function startCreateDrag(reg, trackEl, e) {
+function startCreateDrag(dragOptions, dragDotNet, reg, trackEl, e) {
     const rowKey = trackEl.getAttribute('data-row-key');
     if (!rowKey) return;
 
     e.preventDefault();
-    trackEl.setPointerCapture(e.pointerId);
+    // Bug fix (Codex P2 finding "Filter drag-create events to their
+    // initiating pointer"): captured once, compared in every move/up/cancel
+    // handler below — mirrors activeBarDrags/the bar-drag closure's own
+    // identical pointerId gate (see its own remarks). Without this, a
+    // second contact (multi-touch, or pen+touch) landing on the SAME track
+    // while this drag is in flight would run BOTH this closure's handlers
+    // AND the second contact's own, since both listen on the same trackEl —
+    // a release from either could commit a task built from the WRONG
+    // contact's geometry. activeCreateDrags (the onPointerDown-side half of
+    // this fix) rejects a second pointerdown on the same track outright, so
+    // this pointerId check only ever has to defend against the SAME track's
+    // own already-rejected second contact reaching move/up/cancel some
+    // other way (e.g. a pointer that started BEFORE AllowCreate/handler
+    // registration changed).
+    const pointerId = e.pointerId;
+    trackEl.setPointerCapture(pointerId);
+    activeCreateDrags.add(trackEl);
 
     const rect = trackEl.getBoundingClientRect();
     const startLocalX = e.clientX - rect.left;
@@ -932,14 +1011,47 @@ function startCreateDrag(reg, trackEl, e) {
     let ghost = null;
 
     function dayColumnRange(clientX) {
-        const dayPx = reg.options && reg.options.pixelsPerDay > 0 ? reg.options.pixelsPerDay : 1;
+        const dayPx = dragOptions && dragOptions.pixelsPerDay > 0 ? dragOptions.pixelsPerDay : 1;
         const localX = startLocalX + (clientX - startClientX);
         const dayA = Math.floor(startLocalX / dayPx);
         const dayB = Math.floor(localX / dayPx);
         return { fromDay: Math.min(dayA, dayB), toDay: Math.max(dayA, dayB), dayPx };
     }
 
+    // Bug fix (Codex P2 finding "Map drag-create pixels through the active
+    // calendar scale") — see GanttTimeline.BuildDragOptions' own remarks for
+    // scaleUnit. Day/Hour/Week (all GanttScaleUnit.Day internally — Week is
+    // just Step=7) keep the dayPx-based linear math above: a "day" is a
+    // fixed-duration unit, so addDays(origin, floor(pixel/dayPx)) is EXACT
+    // there, not approximate. Month/Year are REAL calendar units of
+    // VARIABLE length — GanttScale.PixelToDate's own Month/Year branches
+    // never divide by an approximate 30/365-day constant; they resolve a
+    // COLUMN INDEX (pixel / columnWidth — uniform regardless of how many
+    // real days that particular month/year happens to have) and step the
+    // calendar unit itself by that index. Mirrored here (not round-tripped
+    // to .NET per pixel — T3's create-drag is a ghost-only, JS-local
+    // preview by design) for the ONE place precision actually matters: the
+    // final commit date, not the ghost's own cosmetic width/position (which
+    // still uses dayColumnRange's approximation above — purely visual, no
+    // calendar meaning).
+    function resolveColumnDate(localX) {
+        const unit = dragOptions && dragOptions.scaleUnit;
+        if (unit === 'Month' || unit === 'Year') {
+            const colW = dragOptions && dragOptions.columnWidth > 0 ? dragOptions.columnWidth : 1;
+            const idx = Math.floor(localX / colW);
+            return unit === 'Month'
+                ? new Date(origin.getFullYear(), origin.getMonth() + idx, 1)
+                : new Date(origin.getFullYear() + idx, 0, 1);
+        }
+        const dayPx = dragOptions && dragOptions.pixelsPerDay > 0 ? dragOptions.pixelsPerDay : 1;
+        return addDays(origin, Math.floor(localX / dayPx));
+    }
+
+    const originIso = dragOptions && dragOptions.originIso;
+    const origin = originIso ? parseIsoDate(originIso) : null;
+
     const onPointerMove = (mv) => {
+        if (mv.pointerId !== pointerId) return;
         const dx = mv.clientX - startClientX;
         if (!dragInitiated) {
             // gantt-v2.js:610-style threshold (DRAG_THRESHOLD_PX) — the actual
@@ -966,31 +1078,41 @@ function startCreateDrag(reg, trackEl, e) {
     };
 
     const onPointerUp = (up) => {
+        if (up.pointerId !== pointerId) return;
         cleanup();
         if (!dragInitiated) return; // below threshold — no ghost residue, no call (plan requirement)
-
-        const { fromDay, toDay } = dayColumnRange(up.clientX);
-        const originIso = reg.options && reg.options.originIso;
-        const origin = originIso ? parseIsoDate(originIso) : null;
         if (!origin) return; // no anchor date — nothing sane to commit
 
-        const startIso = toLocalDateString(addDays(origin, fromDay));
-        const endIso = toLocalDateString(addDays(origin, toDay));
+        const endLocalX = startLocalX + (up.clientX - startClientX);
+        const dateA = resolveColumnDate(startLocalX);
+        const dateB = resolveColumnDate(endLocalX);
+        const [start, end] = dateA <= dateB ? [dateA, dateB] : [dateB, dateA];
 
-        const dotNet = reg.dotNetRef;
-        if (dotNet) dotNet.invokeMethodAsync('CommitCreate', rowKey, startIso, endIso).catch(() => {});
+        const startIso = toLocalDateString(start);
+        const endIso = toLocalDateString(end);
+
+        if (dragDotNet) dragDotNet.invokeMethodAsync('CommitCreate', rowKey, startIso, endIso).catch(() => {});
     };
 
-    const onPointerCancel = () => { cleanup(); };
+    const onPointerCancel = (cn) => {
+        if (cn.pointerId !== pointerId) return;
+        cleanup();
+    };
 
     function cleanup() {
         trackEl.removeEventListener('pointermove', onPointerMove);
         trackEl.removeEventListener('pointerup', onPointerUp);
         trackEl.removeEventListener('pointercancel', onPointerCancel);
-        try { trackEl.releasePointerCapture(e.pointerId); } catch (_) { /* already released */ }
+        try { trackEl.releasePointerCapture(pointerId); } catch (_) { /* already released */ }
         if (ghost && ghost.parentNode) ghost.parentNode.removeChild(ghost);
+        activeCreateDrags.delete(trackEl);
+        // Bug fix (Codex P2 finding "Cancel active drags when
+        // unregistering") — see unregisterDrag's own remarks; identical
+        // reasoning to the bar-drag closure's own reg.activeCleanups use.
+        reg.activeCleanups.delete(cleanup);
     }
 
+    reg.activeCleanups.add(cleanup);
     trackEl.addEventListener('pointermove', onPointerMove);
     trackEl.addEventListener('pointerup', onPointerUp);
     trackEl.addEventListener('pointercancel', onPointerCancel);
@@ -1002,6 +1124,26 @@ function unregisterDrag(el) {
     if (!reg) return;
     el.removeEventListener('pointerdown', reg.onPointerDown);
     dragRegistrations.delete(el);
+
+    // Bug fix (Codex P2 finding "Cancel active drags when unregistering"):
+    // removing the delegated pointerdown listener above stops any NEW
+    // gesture from starting, but a drag ALREADY in flight (its own
+    // pointermove/pointerup/pointercancel listeners, pointer capture, and
+    // ghost — bar-drag or create-drag alike) is entirely independent of
+    // that listener and survives it untouched. If the caller's own Readonly
+    // guard flips back to false before that pointer releases, the
+    // surviving closure would still reach CommitDrag/CommitCreate — a
+    // gesture that should have been cancelled the instant Readonly went
+    // true still mutating the task. Running every active session's own
+    // cleanup() (registered in reg.activeCleanups the moment each one's
+    // listeners attached — see registerDrag/startCreateDrag's own remarks)
+    // tears each down through the EXACT same path its own pointerup/
+    // pointercancel already uses, deliberately WITHOUT ever reaching the
+    // commit code that only runs AFTER a cleanup() call inside those
+    // handlers — so this cancels, it never commits. Array.from snapshots
+    // the set first since each cleanup() call mutates it (deletes itself)
+    // while this loop is still iterating.
+    for (const cleanup of Array.from(reg.activeCleanups)) cleanup();
 }
 
 export default ganttV3;

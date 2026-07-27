@@ -2,9 +2,11 @@
 @using System.ComponentModel
 @using System.Globalization
 @using Lumeo.GanttV3
+@using Lumeo.Services
 @implements IAsyncDisposable
 @inject Lumeo.Services.Localization.ILumeoLocalizer L
 @inject Lumeo.Services.IComponentInteropService Interop
+@inject Lumeo.Services.IThemeService Theme
 @attribute [EditorBrowsable(EditorBrowsableState.Never)]
 
 @* GanttBar — v3's single task-bar renderer (design spec Phase 2, T2 "read-only
@@ -73,7 +75,7 @@
                all gantt-v3.js's `e.target.closest('[data-task-id]')` needs. *@
             @if (!Task.IsMilestone && !Readonly)
             {
-                <div class="lumeo-gantt-v3-progress-handle absolute bottom-0 h-2 w-2 -translate-x-1/2 translate-y-1/2 cursor-ns-resize rounded-full border-2 border-background opacity-0 transition-opacity group-hover:opacity-100"
+                <div class="@ProgressHandleClass"
                      style="@ProgressHandleStyle" data-gantt-progress-handle="true"></div>
             }
         </ChildContentSlot>
@@ -151,12 +153,21 @@
     /// click from a drag and invokes <c>NotifyTaskClick</c> exactly once per
     /// pointer click — independently of this component's own native
     /// <c>onclick</c>, which would otherwise ALSO fire for the identical physical
-    /// click. GanttTimeline sets this to <c>true</c> for every bar it renders
-    /// whenever its own engine is registered (i.e. whenever <c>!Readonly</c> —
-    /// registration never depends on <c>AllowCreate</c>/<c>CanDrop</c>, only on
-    /// <c>Readonly</c>), and to <c>false</c> when readonly (no engine is ever
-    /// registered there, so this component's own native <c>onclick</c> remains the
-    /// ONLY pointer-click path). Default <c>false</c> so a caller rendering
+    /// click. GanttTimeline sets this to <c>true</c> for every bar it renders once
+    /// its own engine's registration has actually been CONFIRMED (its interop
+    /// register call returned without throwing — see
+    /// <c>GanttTimeline.SyncDragRegistrationAsync</c>'s own remarks), not merely
+    /// whenever <c>!Readonly</c> (registration never depends on
+    /// <c>AllowCreate</c>/<c>CanDrop</c>, only on <c>Readonly</c>). Bug fix (Codex P2
+    /// finding "Keep pointer clicks when drag interop is unavailable"): a custom
+    /// <c>IComponentInteropService</c> that never overrides
+    /// <c>GanttV3RegisterDragAsync</c> (inheriting its default no-op), or a register
+    /// call that genuinely throws, previously left this permanently <c>true</c> with
+    /// no delegated listener ever attached — pointer clicks were dead forever even
+    /// though keyboard activation kept working. <c>false</c> when readonly (no
+    /// engine is ever registered there, so this component's own native
+    /// <c>onclick</c> remains the ONLY pointer-click path) OR while registration is
+    /// still pending or has failed. Default <c>false</c> so a caller rendering
     /// <see cref="GanttBar"/> directly (standalone, no <see cref="GanttTimeline"/>
     /// — including every existing bUnit test that clicks a bar in isolation, with
     /// no real gantt-v3.js engine to fall back on) keeps its exact prior
@@ -191,7 +202,25 @@
     // there is no existing v2 PLACEMENT to mirror here; merged onto the outer
     // bar wrapper (this component's own "bar-wrapper" equivalent) as the most
     // semantically natural placement for a whole-bar class override.
-    private string WrapperClass => Cx.Merge("group absolute rounded", Task.CustomClass, Class);
+    // Bug fix (Codex P2 finding "Opt touch drag targets out of native
+    // horizontal panning"): a touch pointerdown's own e.preventDefault()
+    // (gantt-v3.js's onPointerDown) does NOT replace the CSS touch-action
+    // negotiation, which the browser resolves BEFORE pointer events even
+    // dispatch — without this, a horizontal or diagonal touch-drag starting
+    // on a bar can be claimed by native scrolling instead, producing a
+    // pointercancel that silently drops the gesture (move/resize/progress
+    // all become unreliable on touch). `touch-pan-y` (not `none`) still
+    // allows native VERTICAL panning through a bar — the drag engine never
+    // reads clientY at all (see gantt-v3.js's own coordinate-space remarks),
+    // so vertical touch scroll keeps working; only horizontal, which the
+    // engine DOES claim once a drag starts, is opted out of native handling.
+    // Deliberately scoped to non-readonly ONLY (matches SyncDragRegistration
+    // Async's own "no listener at all when Readonly" contract exactly) —
+    // PR #381's own dead-scroll-zone regression came from touch-action:none
+    // applied BROADLY (a whole container, always), not from a small,
+    // conditionally-applied touch-action on the exact elements a gesture is
+    // actually registered for.
+    private string WrapperClass => Cx.Merge("group absolute rounded", !Readonly ? "touch-pan-y" : null, Task.CustomClass, Class);
 
     // Bug fix (Codex round 4, P2 #5; moved Codex round 5, P1 #1 / P2 #2/#3):
     // the focus-visible ring classes used to live on WrapperClass (the outer
@@ -256,9 +285,9 @@
     // "Small circle at the right edge of progress overlay" (gantt-v2.js:564-574) —
     // v2 positions its circle's CENTER at the progress boundary (cx = x1 + progressW);
     // this port's equivalent is centering the handle div's own horizontal midpoint
-    // (the -translate-x-1/2 in its class list) at that same {progress}% mark along
-    // the bar's own width via a logical inset-inline-start percentage (RTL-safe,
-    // unlike a raw physical "left").
+    // at that same {progress}% mark along the bar's own width via a logical
+    // inset-inline-start percentage (RTL-safe, unlike a raw physical "left") —
+    // see ProgressHandleClass's own remarks for the OTHER half of that centering.
     private string ProgressHandleStyle
     {
         get
@@ -267,6 +296,34 @@
             return FormattableString.Invariant($"inset-inline-start:{progress}%;background-color:{ResolvedColor};");
         }
     }
+
+    // Same cascading-then-Theme-fallback resolution as Gantt3.EffectiveDirection
+    // (this component has no other route to its own ambient direction — see its
+    // own remarks for why ScopedDirection is a non-virtual, once-per-render
+    // CascadingParameter rather than something recomputed elsewhere).
+    [CascadingParameter(Name = "LumeoDirection")] private LayoutDirection? ScopedDirection { get; set; }
+    private LayoutDirection EffectiveDirection => ScopedDirection ?? Theme.CurrentDirection;
+
+    // Bug fix (Codex P2 finding "Center the progress handle correctly in
+    // RTL"): inset-inline-start anchors the handle's LOGICAL-start edge at
+    // the progress mark — physically the LEFT edge under LTR, but the RIGHT
+    // edge under RTL (see ProgressHandleStyle's own remarks). Centering that
+    // edge onto the mark means shifting the box towards its OWN interior by
+    // half its width, which is a PHYSICAL leftward shift under LTR
+    // (-translate-x-1/2, unchanged) but a PHYSICAL RIGHTWARD shift under RTL
+    // (translate-x-1/2, positive) — re-derived from the actual rendered
+    // geometry, not a blind sign flip of the OTHER RTL fix in gantt-v3.js
+    // (that one flips the FILL WIDTH's growth-direction delta; this one
+    // flips a fixed centering offset — same bar, different math): under RTL
+    // with the OLD (always-negative) transform, the handle's center lands a
+    // full handle-width PAST the boundary, entirely off the fill edge at
+    // high progress (Codex's own "100% progress can end up entirely outside
+    // the bar" example) — verified against the concrete boundary math in
+    // this component's own PR-383 test coverage (RTL boundary positions
+    // computed independently, not by trusting the sign flip alone).
+    private string ProgressHandleClass => Cx.Merge(
+        "lumeo-gantt-v3-progress-handle absolute bottom-0 h-2 w-2 translate-y-1/2 cursor-ns-resize rounded-full border-2 border-background opacity-0 transition-opacity group-hover:opacity-100",
+        EffectiveDirection == LayoutDirection.Rtl ? "translate-x-1/2" : "-translate-x-1/2");
 
     // The wrapper carries BOTH the raw --lumeo-gantt-bar-* custom properties (so a
     // consumer stylesheet can read/override them) and the physical left/top/width/

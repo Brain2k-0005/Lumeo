@@ -846,10 +846,17 @@ public class TrackingInteropService : IComponentInteropService
     /// idiom already used for GanttV3RegisterVerticalScrollTrackingGate).
     /// Complete it to resume.</summary>
     public TaskCompletionSource? GanttV3RegisterDragGate { get; set; }
+    /// <summary>When set, <see cref="GanttV3RegisterDragAsync{T}"/> throws this
+    /// instead of registering — simulates a genuinely failed registration
+    /// (Codex P2 finding "Keep pointer clicks when drag interop is
+    /// unavailable"), e.g. a custom IComponentInteropService implementation
+    /// whose override throws.</summary>
+    public Exception? GanttV3RegisterDragException { get; set; }
     public Task GanttV3RegisterDragAsync<T>(ElementReference el, DotNetObjectReference<T> dotNetRef, object options) where T : class
     {
         _ganttV3RegisterDragCallCount++;
         LastGanttV3DragOptions = options;
+        if (GanttV3RegisterDragException is not null) throw GanttV3RegisterDragException;
         if (GanttV3RegisterDragGate is not null) return GanttV3RegisterDragGate.Task;
         return Task.CompletedTask;
     }
