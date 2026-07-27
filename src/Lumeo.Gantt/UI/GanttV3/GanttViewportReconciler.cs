@@ -224,7 +224,19 @@ internal enum GanttScrollTarget
 internal readonly record struct GanttViewportDecision(
     bool NeedsLiveCenterCapture,
     GanttRangeSource Range,
-    GanttScrollTarget Target);
+    GanttScrollTarget Target)
+{
+    /// <summary>
+    /// True when nothing in the diff changed at all, so the pass has no viewport
+    /// work to do. Provably equivalent to "prev and next are field-for-field
+    /// identical": <see cref="GanttViewportReconciler.Decide"/> forces
+    /// <see cref="GanttRangeSource.TaskDerived"/> for any task change and
+    /// <see cref="GanttRangeSource.SelfCenteredOnCapture"/> for any mode change,
+    /// and any geometry change forces a <see cref="GanttScrollTarget"/> other
+    /// than <see cref="GanttScrollTarget.None"/>.
+    /// </summary>
+    public bool IsNoOp => Range == GanttRangeSource.Keep && Target == GanttScrollTarget.None;
+}
 
 /// <summary>Shared geometry helpers for the GanttV3 viewport reconcile.</summary>
 internal static class GanttViewportGeometry

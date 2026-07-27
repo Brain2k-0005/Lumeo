@@ -281,6 +281,20 @@
     // method can extend the same guard to their own side effects.
     private async Task<GanttReconcileOutcome> ReconcileAsync(IReadOnlyList<GanttTask> nextTasks, GanttViewMode nextMode)
     {
+        // Bug fix (Codex PR-382 review round 7, P2 "Stop Today replay after
+        // component disposal"): the ONE central refusal to start new work on a
+        // disposed component. Round 17's disposal guard advances the generation,
+        // which invalidates any reconcile that later re-checks a generation it
+        // claimed EARLIER — but every path that starts fresh work after an await
+        // claims a NEW generation, so that mechanism is structurally blind to it.
+        // Round 6 patched one such site (the rejection replay); this is the whole
+        // class instead: every commit, every scroll intent and every interop call
+        // in this component funnels through this method, so refusing here covers
+        // the navigation replays, the theme replay, the rejection replay and any
+        // future caller, and the per-site check round 6 added is now redundant
+        // (removed). Callers already treat Superseded as "do not run your tail".
+        if (_disposed) return GanttReconcileOutcome.Superseded;
+
         var prev = _lastSnapshot;
         var tasksChanged = _state.WouldChangeTasks(nextTasks);
         var nextTasksVersion = tasksChanged ? _tasksVersion + 1 : _tasksVersion;
@@ -325,7 +339,7 @@
         // ALL false) — which also means `next` is field-for-field identical
         // to `prev` already, so there is nothing left to do; abandon before
         // ever claiming a generation.
-        if (decision.Range == GanttRangeSource.Keep && decision.Target == GanttScrollTarget.None)
+        if (decision.IsNoOp)
             return GanttReconcileOutcome.NoOp;
 
         // CAPTURE PHASE — read the pane's live center under the OLD geometry,
@@ -565,9 +579,23 @@
     // intent means the old one is no longer authoritative, which is exactly what
     // the generation encodes, so the two move together: the claim IS the
     // supersession, whether or not the claimer itself has work to do.
+    //
+    // Bug fix (Codex PR-382 review round 7, P1 "Let accepted mode echoes finish
+    // the navigation"): only a CONTESTING claim supersedes. Round 6 made every
+    // claim advance the generation, which is right for a claim that replaces what
+    // the current owner wanted, but wrong for one that merely RATIFIES it — a
+    // controlled parent echoing back the very mode we just told it about arrives
+    // as a parameter claim too, and counting that as a competitor made the
+    // navigation replaying that intent report itself Superseded and skip its own
+    // tail (GoToTodayAsync's recenter, ShiftAsync's re-shift). A claim carrying
+    // the SAME mode the current intent already wants changes nothing about what
+    // is authoritative, so it invalidates nothing; a claim carrying a different
+    // one does. Anything the ratifying pass itself genuinely needs to do (a task
+    // or geometry change riding along in the same render) still claims its own
+    // generation inside ReconcileAsync, so no real work goes unguarded.
     private GanttViewModeIntent ClaimViewModeIntent(GanttViewMode mode, GanttViewModeSource source)
     {
-        BeginReconcile();
+        if (mode != _viewModeIntent.Mode) BeginReconcile();
         return _viewModeIntent = new GanttViewModeIntent(
             ++_viewModeIntentId, mode, source, GanttViewModePhase.Applying, ViewMode, ViewModeChanged.HasDelegate);
     }
@@ -609,7 +637,16 @@
             // answer pending, so record it: Notifying's exit condition consults
             // it to tell an accepted pick from a rejected one (Codex PR-382
             // review round 5). See SettleViewModeIntentAsync.
-            if (_viewModeIntent.Phase == GanttViewModePhase.Notifying)
+            //
+            // Only while the binding is actually CONTROLLED, though (Codex
+            // PR-382 review round 7, P2 "Respect removal of the controlled
+            // binding while notifying"): a parent that has dropped its
+            // ViewModeChanged delegate has no vote on the mode at all, so its
+            // stale ViewMode is not a verdict — it is the ordinary uncontrolled
+            // re-push that must never revert a toolbar pick (round 19 finding
+            // #2). Recording it anyway let a removed binding retroactively
+            // reject a pick it no longer had any authority over.
+            if (_viewModeIntent.Phase == GanttViewModePhase.Notifying && ViewModeChanged.HasDelegate)
                 _viewModeIntent = _viewModeIntent with { ParamRedeliveredWhileNotifying = true };
             return (_state.ViewMode, null);
         }
@@ -678,8 +715,6 @@
         // touch the detached scroll pane through interop. This is the one place
         // that starts genuinely NEW work after an await, so it needs the explicit
         // token rather than the generation.
-        if (_disposed) return GanttReconcileOutcome.Superseded;
-
         // A newer intent (any source) took ownership while the callback ran —
         // including the CONTROLLED-accept case, where the parent adopted the
         // pick and re-rendered, and that pass claimed an intent of its own.
@@ -722,7 +757,12 @@
         // adopted value arrives right after and simply claims. A brief revert in
         // that race is strictly better than a chart permanently out of sync with
         // its own parameter.
-        if (_viewModeIntent.ParamRedeliveredWhileNotifying && ViewMode != intent.Mode)
+        // ...and only while the parameter still HAS a vote. A binding removed
+        // during the callback leaves the component uncontrolled, so its last
+        // ViewMode is not a verdict to act on (round 7, ":613"); authority is
+        // therefore checked when the verdict is READ, not only when it was
+        // recorded.
+        if (_viewModeIntent.ParamRedeliveredWhileNotifying && ViewModeChanged.HasDelegate && ViewMode != intent.Mode)
         {
             var rejected = ClaimViewModeIntent(ViewMode, GanttViewModeSource.Parameter);
             var rejectOutcome = await ReconcileAsync(_materializedTasks, rejected.Mode);
@@ -733,7 +773,17 @@
             return GanttReconcileOutcome.Superseded;
         }
 
-        _viewModeIntent = AccountParameter(_viewModeIntent, intent.Mode, GanttViewModePhase.Settled);
+        // The pick stands. What the parent should now be holding depends on
+        // whether it is still listening: a consumer we echoed to is expected to
+        // hold the picked mode, but if the binding was dropped during the
+        // callback there is nobody to have adopted it, and the accounting must
+        // fall back to the parameter's live value — otherwise the now-UNCONTROLLED
+        // component would read the parent's unchanged ViewMode as a change on the
+        // next pass and revert the pick it is entitled to keep (round 7, ":613").
+        _viewModeIntent = AccountParameter(
+            _viewModeIntent,
+            ViewModeChanged.HasDelegate ? intent.Mode : ViewMode,
+            GanttViewModePhase.Settled);
         return _reconcileGeneration == generationAtCommit ? outcome : GanttReconcileOutcome.Superseded;
     }
 
@@ -964,6 +1014,10 @@
     private async Task RefreshBrowserTodayAsync()
     {
         var iso = await Interop.GanttV3GetLocalDateAsync();
+        // Disposed while that round-trip was in flight — the only other place in
+        // this component that mutates state after an await without going through
+        // ReconcileAsync's own central guard (round 7, ":1416").
+        if (_disposed) return;
         if (iso is null) return; // interop unavailable (prerendering; a torn-down circuit) — keep whatever fallback EffectiveToday currently resolves to
         if (!DateTime.TryParseExact(iso, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var browserToday)) return;
 
@@ -1024,36 +1078,63 @@
         // "retire the stale toolbar request" step to forget.
         var (incomingMode, claimedIntentId) = ResolveParameterMode();
 
-        var outcome = await ReconcileAsync(nextTasks, incomingMode);
-
-        if (claimedIntentId is { } intentId)
+        // A NON-CLAIMING pass asserts nothing about the mode, so it reconciles to
+        // the COMMITTED one — which is what keeps a pass with genuinely nothing
+        // to do a total no-op that never claims a generation (round 17 finding
+        // #1). But a tasks-only or geometry-only update DOES have work: it claims
+        // a generation and commits, superseding whatever reconcile still carries
+        // a pending intent, which would then abandon and strand that intent in
+        // Applying forever with its mode never applied (round 4's finding).
+        //
+        // Such a pass therefore CARRIES the pending mode — through its OWN single
+        // reconcile, not a replay chained after it (Codex PR-382 review round 7,
+        // P1 "Replay against the viewport that is actually rendered"). Round 4
+        // chained a second ReconcileAsync here, which committed the first pass's
+        // range/snapshot and then immediately captured the live scroll centre for
+        // the second — before Blazor had rendered any of it, so the capture read
+        // pixels from the OLD DOM and decoded them against the NEW range. One
+        // reconcile has no such window: its capture happens before anything
+        // commits, exactly as it does for every other trigger, and tasks, mode
+        // and geometry then land in one coherent frame (which is also what
+        // GanttViewportReconciler already treats as canonical for a simultaneous
+        // task+mode change — round 12/14's case 4).
+        //
+        // Gated on the pass actually having work, asked via the SAME pure
+        // decision the reconcile itself uses (PassHasViewportWork): carrying
+        // unconditionally would turn round 17's no-op re-render into a
+        // generation-claiming pass that aborts the very reconcile about to
+        // succeed on its own.
+        long? carriedIntentId = null;
+        if (claimedIntentId is null
+            && _viewModeIntent.IsPending
+            && _viewModeIntent.Mode != incomingMode
+            && PassHasViewportWork(nextTasks, incomingMode))
         {
-            // Superseded: this pass never resolved whether its intent landed, so
-            // it stays PENDING for whatever superseded it to replay (round 18-f2).
-            if (outcome == GanttReconcileOutcome.Superseded) return;
-            await SettleViewModeIntentAsync(intentId, outcome);
-            return;
+            incomingMode = _viewModeIntent.Mode;
+            carriedIntentId = _viewModeIntent.Id;
         }
 
-        // NON-CLAIMING pass (Codex PR-382 review round 4, P1 "Replay a pending
-        // mode during parameter passes"). It asserted nothing about the mode, so
-        // it reconciled to the COMMITTED one — which is what keeps a pass with
-        // genuinely nothing to do a total no-op that never claims a generation
-        // (round 17 finding #1). But a tasks-only or geometry-only update DOES
-        // have something to do: it claims a generation and commits, and in doing
-        // so it supersedes whatever reconcile was still carrying a pending
-        // intent — which would then abandon, leaving that intent stranded in
-        // Applying forever and its mode never applied.
-        //
-        // The REPLAY rule covers exactly this, so apply it here rather than
-        // guarding the branch locally: having superseded something, this pass now
-        // owes it a replay, the same way a navigation does. Deliberately keyed on
-        // the OUTCOME rather than on "does the pending mode differ" — a NoOp
-        // claimed no generation and so superseded nothing (the in-flight
-        // reconcile is still live and will commit on its own), and a Superseded
-        // pass is somebody else's problem to replay.
-        if (outcome == GanttReconcileOutcome.Committed && _viewModeIntent.IsPending)
-            await ReapplyCurrentParametersAsync();
+        var outcome = await ReconcileAsync(nextTasks, incomingMode);
+
+        // Superseded: this pass never resolved whether the intent it claimed or
+        // carried landed, so that intent stays PENDING for whatever superseded it
+        // to replay (round 18-f2). Neither claimed nor carried: this pass authored
+        // nothing and must not settle somebody else's in-flight intent.
+        var settleIntentId = claimedIntentId ?? carriedIntentId;
+        if (outcome == GanttReconcileOutcome.Superseded || settleIntentId is not { } intentId) return;
+        await SettleViewModeIntentAsync(intentId, outcome);
+    }
+
+    // Whether a reconcile of these inputs would have anything to do at all —
+    // asked through the SAME pure decision ReconcileAsync makes, so the two can
+    // never disagree about what "nothing changed" means.
+    private bool PassHasViewportWork(IReadOnlyList<GanttTask> nextTasks, GanttViewMode mode)
+    {
+        var tasksChanged = _state.WouldChangeTasks(nextTasks);
+        var next = BuildSnapshot(tasksChanged ? _tasksVersion + 1 : _tasksVersion, nextTasks, mode);
+        // taskRangeDisjoint only ever ADDS a scroll target, and only when tasks
+        // changed — which already forces work — so it cannot affect this answer.
+        return !GanttViewportReconciler.Decide(_lastSnapshot, next, taskRangeDisjoint: false).IsNoOp;
     }
 
     // The last materialized+sorted snapshot of the Tasks PARAMETER (Codex PR-382

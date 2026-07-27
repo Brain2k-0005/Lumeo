@@ -221,6 +221,65 @@ public class GanttV3ReplayContractTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task A_Carried_Pending_Mode_Is_Measured_Against_The_Viewport_That_Is_Rendered()
+    {
+        // Codex PR-382 review round 7, P1. Round 4 landed the carry as a SECOND
+        // reconcile chained after the pass's own: the first committed the new
+        // range and snapshot, then the second immediately captured the live
+        // scroll centre — before Blazor had rendered any of it, so it read the
+        // OLD DOM and decoded it against the NEW range. Carrying the mode
+        // through the pass's single reconcile removes the window entirely: the
+        // capture happens before anything commits, exactly as for every other
+        // trigger.
+        var taskA = new L.GanttTask("a", "A", D(2026, 1, 10), D(2026, 1, 20));
+        var taskB = new L.GanttTask("b", "B", D(2026, 3, 1), D(2026, 3, 10));
+        var cut = _ctx.Render<L.Gantt3>(p => p
+            .Add(c => c.Tasks, new List<L.GanttTask> { taskA })
+            .Add(c => c.ViewMode, L.GanttViewMode.Day)
+            .Add(c => c.ShowTreePane, false));
+
+        // A toolbar Day -> Month pick, suspended in its capture.
+        var gate = new TaskCompletionSource<double?>();
+        _interop.GanttV3ScrollCenterXGate = gate;
+        Task toolbarReconcile = Task.CompletedTask;
+        await cut.InvokeAsync(() =>
+        {
+            toolbarReconcile = (Task)Method("HandleViewModeChangedAsync").Invoke(cut.Instance, new object[] { L.GanttViewMode.Month })!;
+        });
+        Assert.False(toolbarReconcile.IsCompleted);
+
+        // A TASKS-ONLY parameter pass interrupts it (ViewMode unchanged), so it
+        // carries the pending Month.
+        _interop.GanttV3ScrollCenterXGate = null;
+        _interop.GanttV3ScrollCenterXToReturn = 0;
+        await cut.InvokeAsync(() => cut.Instance.SetParametersAsync(ParameterView.FromDictionary(new Dictionary<string, object?>
+        {
+            [nameof(L.Gantt3.Tasks)] = new List<L.GanttTask> { taskB },
+            [nameof(L.Gantt3.ViewMode)] = L.GanttViewMode.Day,
+            [nameof(L.Gantt3.ShowTreePane)] = false,
+        })));
+
+        gate.SetResult(0);
+        await toolbarReconcile;
+        await ForceRepaintAsync(cut);
+
+        // Ground truth: ONE reconcile carrying Month alongside the new tasks is
+        // GanttViewportReconciler's canonical tasks+mode decision — the range
+        // comes from the NEW tasks under Month padding (PadBefore/PadAfter = 12
+        // months around taskB's own Mar 2026), and the captured centre is only
+        // the scroll target:  [2025-03-01, 2027-03-01].
+        //
+        // Chained instead, the first reconcile would commit taskB's DAY-derived
+        // range [2026-01-01, 2026-05-09] and the second would then self-centre
+        // on a centre decoded against that un-rendered range, landing on
+        // [2025-01-01, 2027-01-01] — a whole different viewport.
+        Assert.Equal(D(2025, 3, 1), State(cut).VisibleRange.Start);
+        Assert.Equal(D(2027, 3, 1), State(cut).VisibleRange.End);
+        Assert.Equal(L.GanttViewMode.Month, State(cut).ViewMode);
+        Assert.Single(cut.FindAll("[data-task-id='b']"));
+    }
+
+    [Fact]
     public async Task A_Parameter_Pass_With_Nothing_To_Do_Still_Leaves_A_Suspended_Mode_Reconcile_Alone()
     {
         // The counterweight to the fix above (round 17 finding #1's contract): a

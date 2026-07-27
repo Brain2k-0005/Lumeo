@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Linq;
 using System.Reflection;
 using Bunit;
@@ -527,6 +528,163 @@ public class GanttV3ViewModeOwnershipTests : IAsyncLifetime
         Assert.True(Intent(cut).AccountedWhileControlled);
         Assert.Contains("–", Label(cut), StringComparison.Ordinal);
         Assert.Empty(calls); // a parameter-sourced claim never echoes back
+    }
+
+    // ── What a claim MEANS when it lands on a pending intent ────────────────
+    //
+    // Codex PR-382 review round 7. A parameter pass arriving while an intent is
+    // pending is only a competitor when it actually CONTESTS that intent: a
+    // claim carrying the same mode merely ratifies it, and a re-delivery from a
+    // parent that no longer holds the binding is not a verdict at all.
+
+    private static int ScrollRequestId(IRenderedComponent<L.Gantt3> cut) =>
+        (int)typeof(L.Gantt3)
+            .GetField("_scrollToTodayRequestId", BindingFlags.NonPublic | BindingFlags.Instance)!
+            .GetValue(cut.Instance)!;
+
+    private static DateTime? ScrollTargetDate(IRenderedComponent<L.Gantt3> cut) =>
+        (DateTime?)typeof(L.Gantt3)
+            .GetField("_scrollTargetDate", BindingFlags.NonPublic | BindingFlags.Instance)!
+            .GetValue(cut.Instance);
+
+    [Fact]
+    public async Task An_Accepted_Mode_Echo_During_A_Navigations_Callback_Does_Not_Abort_Its_Tail()
+    {
+        var tasks = OneTask();
+        var callbackGate = new TaskCompletionSource();
+        var calls = new List<L.GanttViewMode>();
+        var cut = RenderControlled(tasks, callbackGate, calls);
+
+        // Toolbar picks Month; suspend its capture so the navigation must replay it.
+        var toolbarGate = new TaskCompletionSource<double?>();
+        _interop.GanttV3ScrollCenterXGate = toolbarGate;
+        Task toolbarReconcile = Task.CompletedTask;
+        await cut.InvokeAsync(() =>
+        {
+            toolbarReconcile = (Task)Method("HandleViewModeChangedAsync").Invoke(cut.Instance, new object[] { L.GanttViewMode.Month })!;
+        });
+        Assert.False(toolbarReconcile.IsCompleted);
+
+        // Today replays the pick, commits it, then yields on the consumer echo.
+        _interop.GanttV3ScrollCenterXGate = null;
+        _interop.GanttV3ScrollCenterXToReturn = 0;
+        Task todayTask = Task.CompletedTask;
+        await cut.InvokeAsync(() => { todayTask = (Task)Method("GoToTodayAsync").Invoke(cut.Instance, null)!; });
+        Assert.Single(calls);
+        Assert.False(todayTask.IsCompleted, "Today should still be awaiting the consumer's mode callback");
+
+        var requestIdBeforeEcho = ScrollRequestId(cut);
+
+        // The parent ACCEPTS: it delivers back the very mode we just told it
+        // about. That is a ratification of the intent being replayed, not a
+        // competing action.
+        await PushParentRenderAsync(cut, tasks, L.GanttViewMode.Month, callbackGate, calls);
+
+        callbackGate.SetResult();
+        await todayTask;
+        toolbarGate.SetResult(0);
+        await toolbarReconcile;
+
+        // Today's own tail still ran: it re-targeted Today and issued its
+        // one-shot scroll. Under the bug the acceptance counted as a competitor,
+        // so GoToTodayAsync returned at its supersession guard and never
+        // recentered at all.
+        Assert.True(ScrollRequestId(cut) > requestIdBeforeEcho,
+            "the navigation's own recenter must still run after an accepted mode echo");
+        Assert.Null(ScrollTargetDate(cut)); // null == Today, which is what the tail asks for
+        Assert.Equal(L.GanttViewMode.Month, State(cut).ViewMode);
+    }
+
+    [Fact]
+    public async Task Disposing_While_Today_Awaits_The_Browser_Date_Starts_No_Replay()
+    {
+        var tasks = OneTask();
+        var cut = _ctx.Render<L.Gantt3>(p => p
+            .Add(c => c.Tasks, tasks)
+            .Add(c => c.ViewMode, L.GanttViewMode.Day)
+            .Add(c => c.ShowTreePane, false));
+
+        // A pending toolbar mode that a Today click would otherwise replay.
+        var toolbarGate = new TaskCompletionSource<double?>();
+        _interop.GanttV3ScrollCenterXGate = toolbarGate;
+        Task toolbarReconcile = Task.CompletedTask;
+        await cut.InvokeAsync(() =>
+        {
+            toolbarReconcile = (Task)Method("HandleViewModeChangedAsync").Invoke(cut.Instance, new object[] { L.GanttViewMode.Month })!;
+        });
+        Assert.False(toolbarReconcile.IsCompleted);
+
+        // Today suspends on its browser-date round trip.
+        var dateGate = new TaskCompletionSource<string?>();
+        _interop.GanttV3LocalDateGate = dateGate;
+        Task todayTask = Task.CompletedTask;
+        await cut.InvokeAsync(() => { todayTask = (Task)Method("GoToTodayAsync").Invoke(cut.Instance, null)!; });
+        Assert.False(todayTask.IsCompleted);
+
+        var capturesBeforeDispose = _interop.GanttV3GetScrollCenterXDirections.Count;
+        cut.Instance.Dispose();
+
+        // Let the date resolve to the day already in effect, so the refresh
+        // itself has nothing to correct and only the replay is under test.
+        _interop.GanttV3ScrollCenterXGate = null;
+        _interop.GanttV3ScrollCenterXToReturn = 0;
+        dateGate.SetResult(DateTime.Today.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture));
+        await todayTask;
+
+        // No new work after disposal: no capture against the detached pane, and
+        // no commit of the pending mode.
+        Assert.Equal(capturesBeforeDispose, _interop.GanttV3GetScrollCenterXDirections.Count);
+        Assert.Equal(L.GanttViewMode.Day, State(cut).ViewMode);
+
+        toolbarGate.SetResult(0);
+        await toolbarReconcile;
+    }
+
+    [Fact]
+    public async Task Removing_The_Controlled_Binding_While_Notifying_Does_Not_Revert_The_Pick()
+    {
+        var tasks = OneTask();
+        var callbackGate = new TaskCompletionSource();
+        var calls = new List<L.GanttViewMode>();
+        var cut = RenderControlled(tasks, callbackGate, calls);
+
+        _interop.GanttV3ScrollCenterXToReturn = 0;
+        Task toolbarPick = Task.CompletedTask;
+        await cut.InvokeAsync(() =>
+        {
+            toolbarPick = (Task)Method("HandleViewModeChangedAsync").Invoke(cut.Instance, new object[] { L.GanttViewMode.Month })!;
+        });
+        Assert.False(toolbarPick.IsCompleted);
+
+        // The parent DROPS the binding mid-callback (and re-pushes its stale
+        // Day). Removing the delegate makes the component uncontrolled, so that
+        // stale value carries no authority and is not a verdict on the pick.
+        await cut.InvokeAsync(() => cut.Instance.SetParametersAsync(ParameterView.FromDictionary(new Dictionary<string, object?>
+        {
+            [nameof(L.Gantt3.Tasks)] = tasks,
+            [nameof(L.Gantt3.ViewMode)] = L.GanttViewMode.Day,
+            [nameof(L.Gantt3.ViewModeChanged)] = default(EventCallback<L.GanttViewMode>),
+            [nameof(L.Gantt3.ShowTreePane)] = false,
+        })));
+
+        callbackGate.SetResult();
+        await toolbarPick;
+        await ForceRepaintAsync(cut);
+
+        Assert.Equal(L.GanttViewMode.Month, State(cut).ViewMode);
+        AssertMonthMode(cut, "a removed binding retroactively rejected a pick it no longer had authority over");
+
+        // And the uncontrolled contract holds from here on: re-pushing the
+        // parent's unchanged Day must not revert the pick either.
+        await cut.InvokeAsync(() => cut.Instance.SetParametersAsync(ParameterView.FromDictionary(new Dictionary<string, object?>
+        {
+            [nameof(L.Gantt3.Tasks)] = tasks,
+            [nameof(L.Gantt3.ViewMode)] = L.GanttViewMode.Day,
+            [nameof(L.Gantt3.ViewModeChanged)] = default(EventCallback<L.GanttViewMode>),
+            [nameof(L.Gantt3.ShowTreePane)] = false,
+        })));
+        await ForceRepaintAsync(cut);
+        Assert.Equal(L.GanttViewMode.Month, State(cut).ViewMode);
     }
 
     // ── Supersession by a newer intent of each source ───────────────────────
