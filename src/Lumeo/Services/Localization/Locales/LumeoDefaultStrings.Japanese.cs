@@ -324,6 +324,7 @@ internal static partial class LumeoDefaultStrings
         ["Gantt.NextPeriod"] = "次の期間",
         ["Gantt.ExpandRow"] = "{0} を展開",
         ["Gantt.CollapseRow"] = "{0} を折りたたむ",
+        ["Gantt.NewTask"] = "新しいタスク",
         ["Gantt.NoTasksToDisplay"] = "表示するタスクがありません",
         ["Gantt.TaskAriaLabel"] = "{0}、{1}から{2}まで",
         ["Gantt.PercentComplete"] = "{0}% 完了",

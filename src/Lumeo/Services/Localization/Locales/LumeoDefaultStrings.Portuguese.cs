@@ -324,6 +324,7 @@ internal static partial class LumeoDefaultStrings
         ["Gantt.NextPeriod"] = "Próximo período",
         ["Gantt.ExpandRow"] = "Expandir {0}",
         ["Gantt.CollapseRow"] = "Reduzir {0}",
+        ["Gantt.NewTask"] = "Nova tarefa",
         ["Gantt.NoTasksToDisplay"] = "Nenhuma tarefa para exibir",
         ["Gantt.TaskAriaLabel"] = "{0}, de {1} a {2}",
         ["Gantt.PercentComplete"] = "{0}% concluído",

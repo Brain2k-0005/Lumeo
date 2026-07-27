@@ -833,10 +833,18 @@ public class TrackingInteropService : IComponentInteropService
     public int GanttV3RegisterDragCallCount => _ganttV3RegisterDragCallCount;
     public int GanttV3UnregisterDragCallCount => _ganttV3UnregisterDragCallCount;
     public object? LastGanttV3DragOptions { get; private set; }
+    /// <summary>When set, <see cref="GanttV3RegisterDragAsync{T}"/> returns
+    /// this gate's Task instead of a completed one — letting a test SUSPEND
+    /// the register call mid-flight (Codex review, "Tear down drag
+    /// registration after an in-flight dispose", mirroring the same gate
+    /// idiom already used for GanttV3RegisterVerticalScrollTrackingGate).
+    /// Complete it to resume.</summary>
+    public TaskCompletionSource? GanttV3RegisterDragGate { get; set; }
     public Task GanttV3RegisterDragAsync<T>(ElementReference el, DotNetObjectReference<T> dotNetRef, object options) where T : class
     {
         _ganttV3RegisterDragCallCount++;
         LastGanttV3DragOptions = options;
+        if (GanttV3RegisterDragGate is not null) return GanttV3RegisterDragGate.Task;
         return Task.CompletedTask;
     }
     public Task GanttV3UnregisterDragAsync(ElementReference el)

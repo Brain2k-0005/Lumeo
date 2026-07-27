@@ -122,6 +122,116 @@ public class GanttV3CreateTests : IAsyncLifetime
         Assert.Equal(0, _interop.GanttV3RegisterDragCallCount);
     }
 
+    // ── Codex P2 finding ("Make group-header tracks hittable") ──────────────
+    //
+    // The group-header stripe (.lumeo-gantt-v3-group-header) paints ON TOP OF
+    // and is a DOM SIBLING of (not a descendant of) its own row's underlying
+    // [data-gantt-row-track] div — gantt-v3.js's onPointerDown hit-tests via
+    // e.target.closest('[data-gantt-row-track]'), which a pointer on the
+    // stripe could never satisfy, so AllowCreate's drag-create path was
+    // unreachable for any grouped row. The stripe itself must now carry the
+    // SAME data-gantt-row-track/data-row-key pair, gated identically.
+
+    [Fact]
+    public void Group_Header_Stripe_Carries_Row_Track_Markup_When_AllowCreate_True()
+    {
+        var tasks = new List<L.GanttTask>
+        {
+            new("t1", "Design", D(2026, 1, 2), D(2026, 1, 6)) { GroupLabel = "Phase 1" },
+        };
+        var rows = GanttRowModel.BuildVisibleRows(tasks, new HashSet<string>());
+        var headerKey = rows.Single(r => r.Kind == GanttRowKind.GroupHeader).ToggleKey!;
+
+        var cut = _ctx.Render<L.GanttTimeline>(p => p
+            .Add(c => c.Tasks, tasks)
+            .Add(c => c.Rows, rows)
+            .Add(c => c.ViewMode, L.GanttViewMode.Day)
+            .Add(c => c.RangeStart, D(2026, 1, 1))
+            .Add(c => c.RangeEnd, D(2026, 1, 20))
+            .Add(c => c.AllowCreate, true));
+
+        var stripe = cut.Find(".lumeo-gantt-v3-group-header");
+        Assert.Equal("true", stripe.GetAttribute("data-gantt-row-track"));
+        Assert.Equal(headerKey, stripe.GetAttribute("data-row-key"));
+    }
+
+    [Fact]
+    public void Group_Header_Stripe_Carries_No_Row_Track_Markup_When_AllowCreate_False()
+    {
+        // Predicted wrong value if the fix's gating condition were dropped
+        // (always attaching the attributes): "true"/the header key, even
+        // though this chart never opted into AllowCreate at all — mirrors
+        // No_Row_Track_Markup_When_AllowCreate_False's own guarantee that the
+        // feature costs nothing when off.
+        var tasks = new List<L.GanttTask>
+        {
+            new("t1", "Design", D(2026, 1, 2), D(2026, 1, 6)) { GroupLabel = "Phase 1" },
+        };
+        var rows = GanttRowModel.BuildVisibleRows(tasks, new HashSet<string>());
+
+        var cut = _ctx.Render<L.GanttTimeline>(p => p
+            .Add(c => c.Tasks, tasks)
+            .Add(c => c.Rows, rows)
+            .Add(c => c.ViewMode, L.GanttViewMode.Day)
+            .Add(c => c.RangeStart, D(2026, 1, 1))
+            .Add(c => c.RangeEnd, D(2026, 1, 20)));
+
+        var stripe = cut.Find(".lumeo-gantt-v3-group-header");
+        Assert.Null(stripe.GetAttribute("data-gantt-row-track"));
+        Assert.Null(stripe.GetAttribute("data-row-key"));
+    }
+
+    [Fact]
+    public void Group_Header_Stripe_Carries_No_Row_Track_Markup_When_Readonly_Even_If_AllowCreate_True()
+    {
+        var tasks = new List<L.GanttTask>
+        {
+            new("t1", "Design", D(2026, 1, 2), D(2026, 1, 6)) { GroupLabel = "Phase 1" },
+        };
+        var rows = GanttRowModel.BuildVisibleRows(tasks, new HashSet<string>());
+
+        var cut = _ctx.Render<L.GanttTimeline>(p => p
+            .Add(c => c.Tasks, tasks)
+            .Add(c => c.Rows, rows)
+            .Add(c => c.ViewMode, L.GanttViewMode.Day)
+            .Add(c => c.RangeStart, D(2026, 1, 1))
+            .Add(c => c.RangeEnd, D(2026, 1, 20))
+            .Add(c => c.AllowCreate, true)
+            .Add(c => c.Readonly, true));
+
+        var stripe = cut.Find(".lumeo-gantt-v3-group-header");
+        Assert.Null(stripe.GetAttribute("data-gantt-row-track"));
+        Assert.Null(stripe.GetAttribute("data-row-key"));
+    }
+
+    [Fact]
+    public void Group_Header_Stripe_Adds_A_Second_Row_Track_Match_Alongside_The_Underlying_Track_Div()
+    {
+        // Both the underlying [data-gantt-row-track] div (always rendered,
+        // pre-existing) AND the group-header stripe (this fix) now match the
+        // selector for a grouped row's index — the stripe is additive, not a
+        // replacement, so a chart with NO group headers (Row_Track_Markup_
+        // Rendered_When_AllowCreate_True's own single-task scenario) still
+        // sees exactly one match per row.
+        var tasks = new List<L.GanttTask>
+        {
+            new("t1", "Design", D(2026, 1, 2), D(2026, 1, 6)) { GroupLabel = "Phase 1" },
+        };
+        var rows = GanttRowModel.BuildVisibleRows(tasks, new HashSet<string>());
+
+        var cut = _ctx.Render<L.GanttTimeline>(p => p
+            .Add(c => c.Tasks, tasks)
+            .Add(c => c.Rows, rows)
+            .Add(c => c.ViewMode, L.GanttViewMode.Day)
+            .Add(c => c.RangeStart, D(2026, 1, 1))
+            .Add(c => c.RangeEnd, D(2026, 1, 20))
+            .Add(c => c.AllowCreate, true));
+
+        // 2 rows (group header + task) x 1 underlying track div each, PLUS 1
+        // extra match for the header row's own stripe = 3.
+        Assert.Equal(3, cut.FindAll("[data-gantt-row-track]").Count);
+    }
+
     // ── GanttTimeline.CommitCreate (JSInvokable) ─────────────────────────────
 
     [Fact]

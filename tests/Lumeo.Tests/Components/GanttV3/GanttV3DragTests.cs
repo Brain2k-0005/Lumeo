@@ -389,4 +389,100 @@ public class GanttV3DragTests : IAsyncLifetime
 
         Assert.Equal(1, _interop.GanttV3RegisterDragCallCount);
     }
+
+    // ── Codex P2 finding ("Tear down drag registration after an in-flight
+    // dispose") — mirrors GanttV3CodexRound17Tests' identical
+    // Finding3_Disposing_While_Vertical_Scroll_Tracking_Registration_...
+    // pattern one-for-one, for SyncDragRegistrationAsync's own analogous race. ──
+
+    [Fact]
+    public async Task Disposing_While_Drag_Registration_Is_In_Flight_Still_Unregisters_After_Resuming()
+    {
+        var gate = new TaskCompletionSource();
+        _interop.GanttV3RegisterDragGate = gate;
+
+        var cut = _ctx.Render<L.GanttTimeline>(p => p
+            .Add(c => c.Tasks, new List<L.GanttTask> { Task1 })
+            .Add(c => c.ViewMode, L.GanttViewMode.Day)
+            .Add(c => c.RangeStart, D(2026, 1, 1))
+            .Add(c => c.RangeEnd, D(2026, 1, 10))
+            .Add(c => c.Readonly, false));
+
+        // The register call landed (and _dragRegistered was set true
+        // synchronously, before its own await) even though it's still
+        // suspended on the gate.
+        Assert.Equal(1, _interop.GanttV3RegisterDragCallCount);
+        var unregisterCountBeforeDispose = _interop.GanttV3UnregisterDragCallCount;
+
+        await cut.Instance.DisposeAsync();
+
+        // DisposeAsync's own PRE-EXISTING, unconditional check already sees
+        // _dragRegistered == true and fires its own unregister — this alone
+        // is pre-existing behavior, not proof of the fix.
+        var unregisterCountAfterDispose = _interop.GanttV3UnregisterDragCallCount;
+        Assert.True(unregisterCountAfterDispose > unregisterCountBeforeDispose,
+            "DisposeAsync's own existing check should have already attempted an unregister");
+
+        // Resume the register call. Predicted WITHOUT the fix: nothing
+        // further ever fires — if DisposeAsync's own unregister above raced
+        // ahead of the JS side's still-in-flight register call and lost
+        // (arriving first, no-op'ing against nothing registered yet), the
+        // listener stays registered forever with nothing left in C# to ever
+        // tear it down again, so GanttV3UnregisterDragCallCount would stay
+        // frozen at unregisterCountAfterDispose (1) even after this loop.
+        // WITH the fix: the resumed continuation re-checks _disposed
+        // immediately after its own await and fires one more unregister,
+        // taking the count to unregisterCountAfterDispose + 1 (2) regardless
+        // of how the two calls raced.
+        gate.SetResult();
+        for (var i = 0; i < 100 && _interop.GanttV3UnregisterDragCallCount <= unregisterCountAfterDispose; i++)
+            await Task.Delay(10);
+
+        Assert.True(_interop.GanttV3UnregisterDragCallCount > unregisterCountAfterDispose,
+            "the register call's own resumed continuation must fire one more unregister after observing disposed state");
+    }
+
+    [Fact]
+    public async Task Readonly_Flip_While_Drag_Registration_Is_In_Flight_Still_Unregisters_After_Resuming()
+    {
+        // Same race, different trigger: a Readonly flip (not disposal) lands
+        // on a LATER render while an EARLIER render's own register call is
+        // still in flight. That later render's own Readonly branch already
+        // fires its own unregister (since _dragRegistered was already true),
+        // but the earlier call's resumed continuation must ALSO re-check
+        // (now-live) Readonly and fire one more, for the identical
+        // ordering-race reason as the disposal case above.
+        var gate = new TaskCompletionSource();
+        _interop.GanttV3RegisterDragGate = gate;
+
+        var cut = _ctx.Render<L.GanttTimeline>(p => p
+            .Add(c => c.Tasks, new List<L.GanttTask> { Task1 })
+            .Add(c => c.ViewMode, L.GanttViewMode.Day)
+            .Add(c => c.RangeStart, D(2026, 1, 1))
+            .Add(c => c.RangeEnd, D(2026, 1, 10))
+            .Add(c => c.Readonly, false));
+
+        Assert.Equal(1, _interop.GanttV3RegisterDragCallCount);
+        var unregisterCountBeforeFlip = _interop.GanttV3UnregisterDragCallCount;
+
+        // Flip Readonly true on a later render while the first render's own
+        // register call is still suspended on the gate.
+        cut.Render(p => p
+            .Add(c => c.Tasks, new List<L.GanttTask> { Task1 })
+            .Add(c => c.ViewMode, L.GanttViewMode.Day)
+            .Add(c => c.RangeStart, D(2026, 1, 1))
+            .Add(c => c.RangeEnd, D(2026, 1, 10))
+            .Add(c => c.Readonly, true));
+
+        var unregisterCountAfterFlip = _interop.GanttV3UnregisterDragCallCount;
+        Assert.True(unregisterCountAfterFlip > unregisterCountBeforeFlip,
+            "the Readonly-branch's own existing check should have already attempted an unregister");
+
+        gate.SetResult();
+        for (var i = 0; i < 100 && _interop.GanttV3UnregisterDragCallCount <= unregisterCountAfterFlip; i++)
+            await Task.Delay(10);
+
+        Assert.True(_interop.GanttV3UnregisterDragCallCount > unregisterCountAfterFlip,
+            "the register call's own resumed continuation must observe the now-live Readonly flip and fire one more unregister");
+    }
 }

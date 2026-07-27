@@ -420,25 +420,33 @@ function fromNativeScrollLeft(el, nativeValue, directionOverride) {
 // the row-canvas-space numbers, unaffected by the scroll-host's scrollLeft (both
 // the bar and its row-canvas ancestor move together under scroll).
 //
-// RTL note (phase-2/phase-1 reconciliation): NONE of the drag math below needs
-// the RTL scrollLeft-convention machinery above. CSS `left`/`width` (what
-// readBarGeometry reads) are PHYSICAL properties — always physical-left-
-// relative regardless of `dir` — and a pointer event's `clientX` is likewise
-// always a physical page coordinate. Both therefore already live in the same
-// "logical" axis the RTL comment block above describes (0 = physical-left =
-// earliest date, never mirrored for RTL), so a drag's pixel delta (dx) is
-// correct under RTL with NO conversion: dragging physically right always
-// means "later dates," exactly as under LTR. `toNativeScrollLeft`/
-// `fromNativeScrollLeft` exist ONLY to translate a LOGICAL position into/out
-// of the RTL-convention-dependent NATIVE `scrollLeft` property — an entirely
-// different quantity that the drag engine never reads or writes (drag-create's
-// `startCreateDrag` likewise anchors off a track element's own
-// getBoundingClientRect + inline `top`/`left:0` style, both physical, both
-// already row-canvas-space-aligned — see its own remarks). Verified by
-// inspection rather than a dedicated RTL-drag Playwright spec; flagged to the
-// team lead as a candidate follow-up if an actual RTL+drag regression is ever
-// observed, rather than adding untested conversion logic to a codepath that
-// doesn't need it.
+// RTL note (phase-2/phase-1 reconciliation, corrected post-Codex-review — see
+// reg.onPointerDown's own `isRtl` remarks for the one exception): move/resize
+// drag math below needs NONE of the RTL scrollLeft-convention machinery
+// above. CSS `left`/`width` (what readBarGeometry reads) are PHYSICAL
+// properties — always physical-left-relative regardless of `dir` — and a
+// pointer event's `clientX` is likewise always a physical page coordinate.
+// Both therefore already live in the same "logical" axis the RTL comment
+// block above describes (0 = physical-left = earliest date, never mirrored
+// for RTL), so a MOVE/RESIZE drag's pixel delta (dx) is correct under RTL
+// with NO conversion: dragging physically right always means "later dates,"
+// exactly as under LTR. `toNativeScrollLeft`/`fromNativeScrollLeft` exist
+// ONLY to translate a LOGICAL position into/out of the RTL-convention-
+// dependent NATIVE `scrollLeft` property — an entirely different quantity
+// the drag engine never reads or writes (drag-create's `startCreateDrag`
+// likewise anchors off a track element's own getBoundingClientRect + inline
+// `top`/`left:0` style, both physical, both already row-canvas-space-aligned
+// — see its own remarks).
+//
+// PROGRESS is the one exception this "verified by inspection" note originally
+// missed (Codex review — "Reverse progress deltas in RTL"): the fill/handle
+// (GanttBar.razor's `.lumeo-gantt-v3-bar-progress`, `start-0`) anchors at the
+// LOGICAL inline start, which is the PHYSICAL RIGHT edge under RTL, so its
+// width grows AWAY from that edge (leftward) instead of rightward — the one
+// place a physical dx needs an RTL-aware sign flip. Fixed at the two call
+// sites (`onPointerMove`'s progress branch and `onPointerUp`'s progress
+// commit) via the `isRtl` flag computed in reg.onPointerDown, rather than
+// here in shared module-level math, since only that one mode is affected.
 //
 // Every rule below is a deliberate port of gantt-v2.js's pointer/drag handling
 // (lines 590-763) — ported faithfully with the ORIGINAL line numbers cited
@@ -490,6 +498,21 @@ const DRAG_THRESHOLD_PX = 3;
 const GHOST_MIN_WIDTH_PX = 8;
 
 const dragRegistrations = new Map(); // scrollHostEl -> { dotNetRef, options, onPointerDown }
+
+// Codex P2 finding ("Isolate each drag to its initiating pointer"): a bar's
+// pointermove/pointerup/pointercancel listeners are attached PER-DRAG (inside
+// reg.onPointerDown, below) rather than once at registerDrag time, so a
+// SECOND pointerdown landing on the same barEl while a drag is already in
+// flight — a second touch/pen contact on multi-pointer hardware — would
+// otherwise install a second, independent set of handlers on top of the
+// first. Tracked here (keyed by barEl, not globally) so two DIFFERENT bars
+// can still each run their own legitimate concurrent drag; only a second
+// contact on the SAME bar is rejected. See reg.onPointerDown's own remarks
+// for the pointerId filter this pairs with (defense-in-depth against the
+// same class of cross-pointer contamination for any drag that DOES get
+// past this gate, e.g. a pen+touch combo where both count as "primary" for
+// their own pointer type).
+const activeBarDrags = new WeakSet(); // barEl -> currently being dragged by some pointer
 
 // gantt-v2.js:53-63 (parseDate) — v3 only ever receives its own "yyyy-MM-dd"
 // data-task-start/-end attributes (see GanttBar.razor), never a free-form
@@ -653,6 +676,12 @@ function registerDrag(el, dotNetRef, options) {
             return;
         }
 
+        // Codex P2 finding ("Isolate each drag to its initiating pointer"):
+        // reject a second pointerdown on a bar that already has a drag in
+        // flight (see activeBarDrags' own remarks) rather than layering a
+        // second handler set on top of the first one.
+        if (activeBarDrags.has(barEl)) return;
+
         const taskId = barEl.getAttribute('data-task-id');
         const isMilestone = barEl.getAttribute('data-milestone') === 'true';
         const origStartIso = barEl.getAttribute('data-task-start');
@@ -676,6 +705,22 @@ function registerDrag(el, dotNetRef, options) {
             : resolveHitMode(barEl, e.clientX, isMilestone);
         const geo = readBarGeometry(barEl);
         const startClientX = e.clientX;
+        // Codex P2 finding ("Reverse progress deltas in RTL"): the progress
+        // fill/handle (GanttBar.razor's `.lumeo-gantt-v3-bar-progress`) is
+        // positioned with `start-0` — a LOGICAL inset that resolves to the
+        // PHYSICAL RIGHT edge once the bar's own computed `direction` is
+        // `rtl` (Lumeo's DirectionProvider). Growing that box's `width` then
+        // extends it AWAY from its anchored (right) edge, i.e. LEFTWARD, so
+        // the fill's leading (handle) edge moves opposite a plain physical
+        // clientX delta: a rightward drag would shrink the anchored-right
+        // box instead of growing it. Unlike move/resize (see the "RTL note"
+        // above readBarGeometry's own remarks — pure physical left/width,
+        // genuinely direction-agnostic), progress is the one drag mode whose
+        // visual growth direction flips with the bar's own direction, so
+        // ONLY its delta needs an RTL-aware sign flip. Gated on mode ===
+        // 'progress' so a plain move/resize drag never pays for the
+        // getComputedStyle() call (a potential forced style recalc) at all.
+        const isRtl = mode === 'progress' && getComputedStyle(barEl).direction === 'rtl';
         let dragInitiated = false;
         let ghost = null;
 
@@ -710,9 +755,17 @@ function registerDrag(el, dotNetRef, options) {
             });
         }
 
-        barEl.setPointerCapture(e.pointerId);
+        const pointerId = e.pointerId;
+        barEl.setPointerCapture(pointerId);
+        activeBarDrags.add(barEl);
 
         const onPointerMove = (mv) => {
+            // Codex P2 finding ("Isolate each drag to its initiating
+            // pointer"): a second pointer's move events must never drive
+            // THIS closure's ghost — see activeBarDrags' own remarks for the
+            // companion gate that stops a second closure from ever being
+            // created on the same bar in the first place.
+            if (mv.pointerId !== pointerId) return;
             const dx = mv.clientX - startClientX;
             if (!dragInitiated) {
                 if (Math.abs(dx) < DRAG_THRESHOLD_PX) return;
@@ -736,7 +789,10 @@ function registerDrag(el, dotNetRef, options) {
                 ghost.style.width = (geo.left + geo.width - newLeft) + 'px';
             } else if (mode === 'progress') {
                 // gantt-v2.js:716 `Math.max(0, Math.min(100, origProgress + (dx / barW) * 100))`.
-                const newProgress = clampProgress(origProgress + (dx / geo.width) * 100);
+                // RTL note: `isRtl` negates dx so the fill's leading edge
+                // (anchored at the LOGICAL start — see isRtl's own remarks)
+                // keeps tracking the pointer instead of moving opposite it.
+                const newProgress = clampProgress(origProgress + ((isRtl ? -dx : dx) / geo.width) * 100);
                 const fill = ghost.querySelector('.lumeo-gantt-v3-bar-progress');
                 if (fill) fill.style.width = newProgress + '%';
             }
@@ -747,6 +803,10 @@ function registerDrag(el, dotNetRef, options) {
         };
 
         const onPointerUp = async (up) => {
+            // Codex P2 finding ("Isolate each drag to its initiating
+            // pointer"): a second pointer's release must never resolve/
+            // commit THIS closure's drag (or fire its click fallback).
+            if (up.pointerId !== pointerId) return;
             cleanup();
             if (!dragInitiated) {
                 // gantt-v2.js:617-622 — below the drag threshold, a 'move'-mode
@@ -771,7 +831,9 @@ function registerDrag(el, dotNetRef, options) {
                 // clamped exactly like normalizeTasks' own progress clamp
                 // (gantt-v2.js:81). No CanDrop validation for progress (plan:
                 // "Progress drag is NOT validated — CanDrop is about scheduling").
-                const newProgress = Math.round(clampProgress(origProgress + (dx / geo.width) * 100));
+                // RTL note: same sign flip as the move-preview branch above —
+                // the pointer-up commit must agree with what the ghost last showed.
+                const newProgress = Math.round(clampProgress(origProgress + ((isRtl ? -dx : dx) / geo.width) * 100));
                 if (newProgress === origProgress) return; // gantt-v2.js:759 no-op, no commit
                 if (dotNet) dotNet.invokeMethodAsync('CommitProgress', taskId, newProgress).catch(() => {});
                 return;
@@ -811,14 +873,21 @@ function registerDrag(el, dotNetRef, options) {
             }
         };
 
-        const onPointerCancel = () => { cleanup(); };
+        const onPointerCancel = (cn) => {
+            // Codex P2 finding ("Isolate each drag to its initiating
+            // pointer"): same pointerId gate as onPointerMove/onPointerUp —
+            // a different pointer's cancel must not tear THIS drag down.
+            if (cn.pointerId !== pointerId) return;
+            cleanup();
+        };
 
         function cleanup() {
             barEl.removeEventListener('pointermove', onPointerMove);
             barEl.removeEventListener('pointerup', onPointerUp);
             barEl.removeEventListener('pointercancel', onPointerCancel);
-            try { barEl.releasePointerCapture(e.pointerId); } catch (_) { /* already released */ }
+            try { barEl.releasePointerCapture(pointerId); } catch (_) { /* already released */ }
             if (ghost && ghost.parentNode) ghost.parentNode.removeChild(ghost);
+            activeBarDrags.delete(barEl);
         }
 
         barEl.addEventListener('pointermove', onPointerMove);

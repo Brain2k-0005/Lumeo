@@ -277,6 +277,7 @@ internal static partial class LumeoDefaultStrings
         ["Gantt.NextPeriod"] = "الفترة التالية",
         ["Gantt.ExpandRow"] = "توسيع {0}",
         ["Gantt.CollapseRow"] = "طي {0}",
+        ["Gantt.NewTask"] = "مهمة جديدة",
         ["Gantt.NoTasksToDisplay"] = "لا توجد مهام لعرضها",
         ["Gantt.TaskAriaLabel"] = "{0}, من {1} إلى {2}",
         ["Gantt.PercentComplete"] = "اكتمل {0}%",

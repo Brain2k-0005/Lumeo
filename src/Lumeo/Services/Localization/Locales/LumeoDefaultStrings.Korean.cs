@@ -272,6 +272,7 @@ internal static partial class LumeoDefaultStrings
         ["Gantt.NextPeriod"] = "다음 기간",
         ["Gantt.ExpandRow"] = "{0} 펼치기",
         ["Gantt.CollapseRow"] = "{0} 접기",
+        ["Gantt.NewTask"] = "새 작업",
         ["Gantt.NoTasksToDisplay"] = "표시할 작업이 없습니다",
         ["Gantt.TaskAriaLabel"] = "{0}, {1}부터 {2}까지",
         ["Gantt.PercentComplete"] = "{0}% 완료",

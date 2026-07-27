@@ -220,8 +220,28 @@
                                letter-spacing:0.04em — a deliberate, tiny typographic delta
                                (matching Lumeo's own type-scale token rather than hand-picking
                                an arbitrary value for a 1px-at-typical-sizes difference), not
-                               a CSS-bundle-churning arbitrary tracking value. *@
-                            <div class="lumeo-gantt-v3-group-header absolute inset-x-0 flex items-center bg-accent/[0.18] px-2 text-[11px] font-bold uppercase tracking-wide text-muted-foreground" style="@GroupHeaderStyle(row.RowIndex)">@row.Label</div>
+                               a CSS-bundle-churning arbitrary tracking value.
+
+                               Bug fix (Codex P2 finding, "Make group-header
+                               tracks hittable"): this stripe paints ON TOP of
+                               (and is a DOM sibling of, not a descendant of)
+                               its row's own [data-gantt-row-track] div above
+                               — gantt-v3.js's onPointerDown hit-tests via
+                               e.target.closest('[data-gantt-row-track]'),
+                               which a click on this stripe could never
+                               satisfy, so AllowCreate's drag-create path was
+                               unreachable for any grouped row. Carrying the
+                               SAME data-* pair directly on the stripe (gated
+                               on the identical AllowCreate/Readonly condition
+                               the underlying track div's own @if uses, so a
+                               chart with the feature off still emits neither
+                               attribute) routes the hit straight to this
+                               element instead — see GanttTimelineRow.GroupRowKey's
+                               own remarks for where the key comes from. *@
+                            <div class="lumeo-gantt-v3-group-header absolute inset-x-0 flex items-center bg-accent/[0.18] px-2 text-[11px] font-bold uppercase tracking-wide text-muted-foreground"
+                                 style="@GroupHeaderStyle(row.RowIndex)"
+                                 data-gantt-row-track="@(AllowCreate && !Readonly ? "true" : null)"
+                                 data-row-key="@(AllowCreate && !Readonly ? row.GroupRowKey : null)">@row.Label</div>
                         }
                     </div>
                 </Virtualize>
@@ -716,7 +736,18 @@
     // RowIndex stays list-position-aligned for every OTHER row, which its
     // internal viewport math depends on), but no <GanttBar> renders for it
     // (see the @if (row.Task is not null) guard in the markup above).
-    internal sealed record GanttTimelineRow(GanttTask? Task, double X, double Width, int RowIndex, string? Color, string? Label);
+    //
+    // GroupRowKey (Codex P2 finding, "Make group-header tracks hittable"):
+    // only ever set for a GroupHeader slot (Task is null) — the SAME RowKey
+    // an AllowCreate chart's RowTrackItems already computes for this row
+    // index, duplicated here so the markup's group-header stripe (rendered
+    // ON TOP of, and as a SIBLING of, the underlying [data-gantt-row-track]
+    // div for this row — see the markup's own remarks) can carry the
+    // data-gantt-row-track/data-row-key pair itself. Without this, a pointer
+    // on that stripe hit-tests the stripe (not a descendant of the track
+    // div), e.target.closest('[data-gantt-row-track]') finds nothing, and
+    // gantt-v3.js's drag-create path can never start for a grouped row.
+    internal sealed record GanttTimelineRow(GanttTask? Task, double X, double Width, int RowIndex, string? Color, string? Label, string? GroupRowKey = null);
 
     // Virtualize<TItem>.Items requires ICollection<TItem> (IReadOnlyList doesn't
     // implement it) — List<T> both satisfies that and matches the pattern
@@ -736,7 +767,9 @@
                     // rowSlot, which advances for header rows too) — Label carries
                     // the group's own name (Codex round 2, P2 #7) so the markup's
                     // else-branch above can render v2's section-header stripe here.
-                    rows.Add(new GanttTimelineRow(null, 0, 0, i, null, visibleRows[i].Label));
+                    // GroupRowKey mirrors RowTrackItems' own RowKey(visibleRows[i])
+                    // call for this SAME row — see GanttTimelineRow's own remarks.
+                    rows.Add(new GanttTimelineRow(null, 0, 0, i, null, visibleRows[i].Label, RowKey(visibleRows[i])));
                     continue;
                 }
                 var color = BarColor?.Invoke(task);
@@ -1201,6 +1234,29 @@
         _dragRegistered = true;
         _lastDragOptionsHash = optionsHash;
         await Interop.GanttV3RegisterDragAsync(_scrollHostRef, _selfRef, BuildDragOptions());
+
+        // Bug fix (Codex P2 finding, "Tear down drag registration after an
+        // in-flight dispose"): _dragRegistered was set TRUE synchronously
+        // above, before this await even started, so DisposeAsync (or a
+        // Readonly flip on a LATER render) landing while the interop call
+        // above is still in flight already sees this as "registered" and
+        // fires its own unregister immediately — which can race this
+        // register call's own (still in-flight) JS-side effects and lose,
+        // arriving before ganttV3.registerDrag's `dragRegistrations.set`
+        // ever runs. That leaves dragRegistrations holding the removed
+        // element and a disposed DotNetObjectReference, reachable by later
+        // pointer activity. Mirrors RegisterVerticalScrollTrackingAsync's own
+        // identical race fix: explicitly await the register call (done
+        // above), then re-check BOTH states this method itself branches on
+        // — _disposed (DisposeAsync) and Readonly (a runtime flip) — and
+        // issue one more unregister if either now disagrees, deterministically
+        // closing the ordering gap DisposeAsync's/the Readonly branch's own
+        // best-effort attempt can't guarantee alone.
+        if (_disposed || Readonly)
+        {
+            try { await Interop.GanttV3UnregisterDragAsync(_scrollHostRef); }
+            catch (JSDisconnectedException) { }
+        }
     }
 
     // gantt-v2.js's pixelsPerDay(viewMode) (lines 727-734) ported to C# as

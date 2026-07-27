@@ -272,6 +272,7 @@ internal static partial class LumeoDefaultStrings
         ["Gantt.NextPeriod"] = "下一时段",
         ["Gantt.ExpandRow"] = "展开 {0}",
         ["Gantt.CollapseRow"] = "折叠 {0}",
+        ["Gantt.NewTask"] = "新任务",
         ["Gantt.NoTasksToDisplay"] = "没有可显示的任务",
         ["Gantt.TaskAriaLabel"] = "{0}，{1}至{2}",
         ["Gantt.PercentComplete"] = "已完成 {0}%",
