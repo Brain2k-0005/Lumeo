@@ -32,6 +32,7 @@ public class RadiusTokenGuardTests
         // Pick-point / drag affordances — platform-recognized circles.
         "src/Lumeo/UI/ColorPicker/ColorPicker.razor",
         "src/Lumeo/UI/Drawer/DrawerContent.razor",
+        "src/Lumeo.Gantt/UI/GanttV3/GanttBar.razor",
 
         // Circular-avatar contract (Shape=Circle stays literal; Themed opts into the
         // token) and its embedded-avatar followers.

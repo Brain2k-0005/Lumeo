@@ -272,6 +272,7 @@ internal static partial class LumeoDefaultStrings
         ["Gantt.NextPeriod"] = "Sonraki dönem",
         ["Gantt.ExpandRow"] = "{0} öğesini genişlet",
         ["Gantt.CollapseRow"] = "{0} öğesini daralt",
+        ["Gantt.NewTask"] = "Yeni görev",
         ["Gantt.NoTasksToDisplay"] = "Gösterilecek görev yok",
         ["Gantt.TaskAriaLabel"] = "{0}, {1} - {2}",
         ["Gantt.PercentComplete"] = "%{0} tamamlandı",

@@ -830,6 +830,42 @@ public class TrackingInteropService : IComponentInteropService
         return Task.CompletedTask;
     }
 
+    // GanttV3 drag-engine registration tracking (design spec Phase 2, T1) —
+    // records each register/unregister call (and the last options bag) so a
+    // test can assert Readonly gates registration entirely (no calls at all,
+    // not merely a no-op call) and that a runtime Readonly flip un-registers.
+    private int _ganttV3RegisterDragCallCount;
+    private int _ganttV3UnregisterDragCallCount;
+    public int GanttV3RegisterDragCallCount => _ganttV3RegisterDragCallCount;
+    public int GanttV3UnregisterDragCallCount => _ganttV3UnregisterDragCallCount;
+    public object? LastGanttV3DragOptions { get; private set; }
+    /// <summary>When set, <see cref="GanttV3RegisterDragAsync{T}"/> returns
+    /// this gate's Task instead of a completed one — letting a test SUSPEND
+    /// the register call mid-flight (Codex review, "Tear down drag
+    /// registration after an in-flight dispose", mirroring the same gate
+    /// idiom already used for GanttV3RegisterVerticalScrollTrackingGate).
+    /// Complete it to resume.</summary>
+    public TaskCompletionSource? GanttV3RegisterDragGate { get; set; }
+    /// <summary>When set, <see cref="GanttV3RegisterDragAsync{T}"/> throws this
+    /// instead of registering — simulates a genuinely failed registration
+    /// (Codex P2 finding "Keep pointer clicks when drag interop is
+    /// unavailable"), e.g. a custom IComponentInteropService implementation
+    /// whose override throws.</summary>
+    public Exception? GanttV3RegisterDragException { get; set; }
+    public Task GanttV3RegisterDragAsync<T>(ElementReference el, DotNetObjectReference<T> dotNetRef, object options) where T : class
+    {
+        _ganttV3RegisterDragCallCount++;
+        LastGanttV3DragOptions = options;
+        if (GanttV3RegisterDragException is not null) throw GanttV3RegisterDragException;
+        if (GanttV3RegisterDragGate is not null) return GanttV3RegisterDragGate.Task;
+        return Task.CompletedTask;
+    }
+    public Task GanttV3UnregisterDragAsync(ElementReference el)
+    {
+        _ganttV3UnregisterDragCallCount++;
+        return Task.CompletedTask;
+    }
+
     // GanttV3 browser-local-"today" tracking (Codex round 2, P2 #9) — settable
     // so a test can simulate the browser reporting a date that differs from
     // whatever DateTime.Today happens to be on the machine running the suite.

@@ -118,15 +118,39 @@ public class GanttV3ArrowVirtualizationTests : GanttParityTestBase
         await scrollPane.WaitForAsync(new() { Timeout = 15000 });
         await Assertions.Expect(scrollPane).ToHaveAttributeAsync("data-gantt-v3-initial-scroll", "done", new() { Timeout = 15000 });
 
-        // The tracker's OWN registration always fires one report immediately
-        // (see registerVerticalScrollTracking's remarks) — wait for that
-        // baseline "1" to actually land before measuring, so this doesn't
-        // race it.
-        await Assertions.Expect(scrollPane).ToHaveAttributeAsync("data-gantt-v3-vertical-report-count", "1", new() { Timeout = 15000 });
+        // The tracker fires one report immediately on registration, but a
+        // legitimate mount-time clientHeight settle (the pane finalizing its
+        // own height as the horizontal scrollbar/layout land, AFTER the
+        // initial-scroll latch) can fire ONE more correct report a frame or two
+        // later — so the count is NOT reliably "1" the instant initial-scroll
+        // lands (it may already be "2"). Hardcoding "1" here therefore raced the
+        // mount settle. What this spec actually guards is that a HORIZONTAL-only
+        // scroll adds NO report — so wait for the count to STABILIZE (whatever
+        // it settles to), then assert the horizontal scroll leaves it unchanged.
+        var baseline = await WaitForStableReportCountAsync(scrollPane);
 
-        await scrollPane.EvaluateAsync("el => el.scrollLeft = 500"); // horizontal-only — scrollTop unchanged
+        await scrollPane.EvaluateAsync("el => el.scrollLeft = 500"); // horizontal-only — scrollTop AND clientHeight unchanged
         await Page.WaitForTimeoutAsync(300); // comfortably outlasts a single rAF frame
 
-        await Assertions.Expect(scrollPane).ToHaveAttributeAsync("data-gantt-v3-vertical-report-count", "1");
+        // The horizontal pan must not have added a vertical report (the JS
+        // dedups on both scrollTop AND clientHeight, neither of which a sideways
+        // scroll moves) — the stabilized count is unchanged.
+        await Assertions.Expect(scrollPane).ToHaveAttributeAsync("data-gantt-v3-vertical-report-count", baseline);
+    }
+
+    // Polls the vertical-report count until it stops changing across two
+    // consecutive samples — absorbing the one-time mount-layout settle report
+    // into a stable baseline so a following assertion doesn't race it.
+    private async Task<string> WaitForStableReportCountAsync(ILocator pane)
+    {
+        var prev = await pane.GetAttributeAsync("data-gantt-v3-vertical-report-count") ?? "0";
+        for (var i = 0; i < 40; i++)
+        {
+            await Page.WaitForTimeoutAsync(100);
+            var cur = await pane.GetAttributeAsync("data-gantt-v3-vertical-report-count") ?? "0";
+            if (cur == prev) return cur;
+            prev = cur;
+        }
+        return prev;
     }
 }

@@ -8,6 +8,15 @@
    (tree pane rows/indent/collapse hides bars + arrows). ShowTreePane defaults
    to true here anyway (any task sets ParentId), set explicitly for clarity.
 
+   Phase 2, T4 (drag parity suite): ?allowCreate=1 turns on drag-create so the
+   row-track y-alignment assertion (pin item J: "row-track divs align with
+   virtualized bar rows for leaf/summary/group-header contexts") has a LEAF row
+   (grandchild1/root2), a SUMMARY row (root1/child1 — both have children), and
+   this fixture's own hierarchy depths to check against — GanttV3Page's
+   SharedTasks fixture covers the GROUP-HEADER context instead (flat GroupBy,
+   no hierarchy), so together the two AllowCreate-enabled routes cover all
+   three row kinds the pin item asks for.
+
    ?fixture=tall (Codex round 6, P1 #2): swaps in GanttParityFixtures.
    TallHierarchyFixture() — tall enough to need real virtualization/arrow-
    culling, unlike the default TreeTasks (5 rows, always fully visible). *@
@@ -20,16 +29,20 @@
             ViewMode="GanttViewMode.Day"
             Height="900px"
             ShowTreePane="true"
+            AllowCreate="@_allowCreate"
             data-testid="gantt-v3-tree-root" />
 </div>
 
 @code {
+    [SupplyParameterFromQuery] public string? AllowCreate { get; set; }
     [SupplyParameterFromQuery] public string? Fixture { get; set; }
 
     private List<GanttTask> _tasks = new();
+    private bool _allowCreate;
 
     protected override void OnInitialized()
     {
         _tasks = Fixture == "tall" ? GanttParityFixtures.TallHierarchyFixture() : GanttParityFixtures.TreeTasks();
+        _allowCreate = AllowCreate == "1";
     }
 }

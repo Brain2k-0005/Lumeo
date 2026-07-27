@@ -141,6 +141,18 @@ internal static class GanttParityFixtures
     }
 
     /// <summary>
+    /// Phase 2, T4 (drag parity suite) — the boundary date <c>GanttV3Page</c>'s
+    /// <c>CanDrop</c> test wiring rejects a proposed drag/resize position against
+    /// (<c>ProposedStart &lt; CanDropBlackoutBefore</c> is invalid). Chosen against
+    /// <see cref="SharedTasks"/>'s "fe3" task (Integration, 2026-03-08 .. 2026-03-15,
+    /// no dependencies — a clean candidate with nothing else to disturb): moving fe3
+    /// left by 4 days lands its Start on 2026-03-04 (invalid), by 3 days on
+    /// 2026-03-05 (valid) — an exact, deterministic boundary for the invalid-then-
+    /// valid bidirectional ghost-repaint assertion (Phase 2, T4 pin item I).
+    /// </summary>
+    internal static readonly DateTime CanDropBlackoutBefore = new(2026, 3, 5);
+
+    /// <summary>
     /// v-only fixture anchored on <see cref="DateTime.Today"/> like <see cref="TodayMarkerTasks"/>,
     /// but shifted entirely into the future (Codex round 5, P2 #9) so the
     /// rendered Day-mode window (task min/max &#177; the mode's own 60-day

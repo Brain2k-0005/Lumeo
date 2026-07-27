@@ -3,6 +3,7 @@ using Bunit;
 using Lumeo.GanttV3;
 using Lumeo.Services;
 using Lumeo.Tests.Helpers;
+using Microsoft.AspNetCore.Components.Web;
 using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 using L = Lumeo;
@@ -206,7 +207,7 @@ public class GanttV3CodexRound9Tests : IAsyncLifetime
     // ── GanttBar: tooltip progress must use the same clamp as the fill (P2 #6) ─
 
     [Fact]
-    public void GanttBar_Tooltip_Clamps_An_Out_Of_Range_Progress_Value_To_100()
+    public async Task GanttBar_Tooltip_Clamps_An_Out_Of_Range_Progress_Value_To_100()
     {
         var task = new L.GanttTask("t1", "Task", D(2026, 1, 2), D(2026, 1, 9), Progress: 150);
         var cut = _ctx.Render<L.GanttBar>(p => p
@@ -214,8 +215,28 @@ public class GanttV3CodexRound9Tests : IAsyncLifetime
             .Add(c => c.X, 0d)
             .Add(c => c.Width, 114d));
 
-        var tooltipText = cut.Markup;
+        // TooltipContent only actually mounts (role="tooltip") once genuinely
+        // open — pin it via the SAME touch tap-to-pin sequence
+        // GanttBar_Touch_Tap_Still_Pins_The_Tooltip_Open already uses
+        // (synchronous, no ShowDelay timer to race), rather than the
+        // previous version of this test, which never opened the tooltip at
+        // all and so never actually rendered the text it claimed to check.
+        var wrapper = cut.Find("[data-task-id='t1']");
+        await wrapper.TriggerEventAsync("onpointerdown", new PointerEventArgs { PointerType = "touch" });
+        await wrapper.TriggerEventAsync("onclick", new MouseEventArgs());
+
+        // Deflake (net8.0-only intermittent failure): scoped to the tooltip's
+        // own rendered TEXT content, not the whole component markup — the
+        // latter also contains attribute values (e.g. this bar's own
+        // `id="gantt-bar-{Guid}"`/tooltip-wrapper id), and an unlucky
+        // Guid.NewGuid() draw could occasionally contain the literal
+        // substring "150" too, an assertion collision unrelated to the
+        // progress-clamp behavior this test actually verifies. TextContent
+        // never includes attribute values, only visible text, so it can't
+        // collide with an id's own digits.
+        var tooltipText = cut.Find("[role='tooltip']").TextContent;
         Assert.DoesNotContain("150", tooltipText);
+        Assert.Contains("100", tooltipText);
     }
 
     // ── Gantt3: direction changes via the global IThemeService (P2 #7) ─────
