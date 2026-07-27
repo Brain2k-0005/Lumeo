@@ -208,7 +208,24 @@ else if (Context.IsOpen || _exiting)
     // every service-opened Drawer (no description child) hits.
     private string? DescribedBy => Context.DescriptionRegistry.HasDescription ? Context.DescriptionId : null;
 
-    private bool ShowDragHandle => Side is Lumeo.Side.Top or Lumeo.Side.Bottom;
+    // #381 round 10 (P2) — "Avoid disabling touch scrolling when dragging is
+    // disabled": the handle renders touch-none (touch-action: none) so a
+    // touch starting on it always goes to the gesture code instead of also
+    // being interpreted as a native scroll/pan — but for a Top/Bottom
+    // drawer with PreventClose AND no SnapPoints, RegisterGestureAsync (see
+    // its own remarks) deliberately registers NO gesture at all (a
+    // non-snap, non-dismissible drawer has nothing to drag). Showing the
+    // handle there anyway left a dead touch region — touch-none blocked
+    // native scrolling, but no listener existed to do anything else with
+    // the touch either — at the top of what OnAfterRenderAsync's own
+    // overflow-y-auto fix made scrollable. GestureWillBeRegistered mirrors
+    // RegisterGestureAsync's own condition for "does ANY gesture actually
+    // get wired up" exactly, so the handle (whose sole documented purpose
+    // is being that gesture's stable DOM hook, not decoration) only renders
+    // when there is a live gesture underneath it to hand the touch to.
+    private bool GestureWillBeRegistered => UsesSnapPoints || !PreventClose;
+
+    private bool ShowDragHandle => Side is Lumeo.Side.Top or Lumeo.Side.Bottom && GestureWillBeRegistered;
 
     // Snap points only apply to vertical drawers (vaul is vertical-only).
     private bool UsesSnapPoints => SnapPoints is { Count: > 0 } && Side is Lumeo.Side.Top or Lumeo.Side.Bottom;

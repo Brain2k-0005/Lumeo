@@ -3298,14 +3298,22 @@ function assert(cond, msg) {
   assert(afterTeardown === '1rem', `unregister restores the EXACT original consumer inline value, not a leftover composed one (got '${afterTeardown}')`);
 
   // ---------------------------------------------------------------
-  // TEST 56 — Drawer snap with NO consumer-supplied offset (the common
-  // case, restBaseRaw === '') composes to a plain pixel value exactly as
-  // before this fix — a regression guard that the calc()-based rewrite
-  // didn't change behavior for the overwhelmingly common no-offset case.
+  // TEST 56 — Drawer snap with a plain `bottom: 0` CLASS baseline (no
+  // INLINE consumer offset — the realistic common case: DrawerContent's own
+  // PositionClasses always supplies `bottom-0`/`top-0` as a class, never an
+  // inline style, even with no consumer Class override at all) composes to
+  // a plain pixel value exactly as before the round-9/round-10 fixes — a
+  // regression guard that neither rewrite changed behavior for the
+  // overwhelmingly common no-consumer-offset case. (Round 10: this fixture
+  // used to have NO bottom source at all, inline or class, which is not
+  // what a real Drawer looks like — getComputedStyle's fallback then picked
+  // up the element's arbitrary static-position value instead of a stable
+  // 0, an unrealistic fixture round 10's own fix exposed.)
   // ---------------------------------------------------------------
   await page.evaluate(() => {
-    document.getElementById('host').innerHTML =
-      `<div id="drawer56" style="position:fixed; left:0; right:0; height:200px; background:red;"></div>`;
+    document.getElementById('host').innerHTML = `
+      <style>.bottom-0-test { bottom: 0; }</style>
+      <div id="drawer56" class="bottom-0-test" style="position:fixed; left:0; right:0; height:200px; background:red;"></div>`;
   });
   await page.evaluate(() => {
     window.__C.registerDrawerSnap('drawer56', 'down', window.__fakeDotNet,
@@ -3314,10 +3322,11 @@ function assert(cond, msg) {
   await page.waitForTimeout(500);
   const drawer56State = await page.evaluate(() => {
     const el = document.getElementById('drawer56');
-    return { bottomStyle: el.style.bottom, transform: el.style.transform };
+    return { bottomStyle: el.style.bottom, transform: el.style.transform, rect: el.getBoundingClientRect().toJSON() };
   });
-  assert(drawer56State.bottomStyle === '-100px',
-    `no consumer offset -> plain pixel rest value, unaffected by the calc()-composition rewrite (got '${drawer56State.bottomStyle}')`);
+  const viewportHeight56 = await page.evaluate(() => window.innerHeight);
+  assert(Math.abs((drawer56State.rect.bottom - viewportHeight56) - 100) < 1,
+    `a 0-baseline (bottom: 0 class, no inline) drawer at its 50% snap sits 100px past the viewport bottom, same as before either fix (got ${(drawer56State.rect.bottom - viewportHeight56).toFixed(2)}px)`);
   assert(drawer56State.transform === '', `transform is cleared once settled at rest (got '${drawer56State.transform}')`);
   await page.evaluate(() => window.__C.unregisterDrawerSnap('drawer56'));
 
@@ -3361,6 +3370,68 @@ function assert(cond, msg) {
   assert(popoverHit.hitIsPopover === true,
     `a position:fixed popover positioned beyond a short (80px) settled panel's bounds is NOT clipped by the panel's overflow-y-auto (elementFromPoint hit '${popoverHit.hitTag}' instead)`);
   await page.evaluate(() => window.__C.unregisterDrawerSnap('drawer57'));
+
+  // ---------------------------------------------------------------
+  // TEST 58 — Drawer snap positioned via a CSS CLASS (not inline) — e.g.
+  // the supported `Class` parameter (`Class="bottom-4"`), or this library's
+  // own default bottom-0/top-0 PositionClasses — keeps that inset through
+  // settling (PR #381 finding "Preserve class-based insets when settling
+  // snap drawers"). `el.style.bottom` only reflects an INLINE declaration,
+  // so a class-based `bottom: 1rem` used to be invisible to restBaseRaw
+  // (read as empty), and the drawer jumped to a plain pixel offset that
+  // dropped the class's inset entirely the moment it settled.
+  // registerDrawerSnap now falls back to getComputedStyle when there's no
+  // inline override, capturing the class's CURRENT resolved value — proven
+  // geometrically (not by string-matching the composed value, since
+  // same-unit calc() folding is a browser/engine serialization detail —
+  // Chromium folds `calc(16px - 180px)` to `calc(-164px)`, for instance).
+  // ---------------------------------------------------------------
+  await page.evaluate(() => {
+    document.getElementById('host').innerHTML = `
+      <style>.bottom-4-test { bottom: 1rem; }</style>
+      <div id="drawer58" class="bottom-4-test" style="position:fixed; left:0; right:0; height:300px; background:purple;"></div>`;
+  });
+  await page.evaluate(() => {
+    window.__C.registerDrawerSnap('drawer58', 'down', window.__fakeDotNet,
+      { snapPoints: [0.4, 1], activeIndex: 1, dismissible: true }); // start fully open
+  });
+  await page.waitForTimeout(500);
+  const viewportHeight58 = await page.evaluate(() => window.innerHeight);
+  const drawer58Open = await page.evaluate(() => {
+    const el = document.getElementById('drawer58');
+    return { inlineBottom: el.style.bottom, rect: el.getBoundingClientRect().toJSON() };
+  });
+  assert(Math.abs((viewportHeight58 - drawer58Open.rect.bottom) - 16) < 1,
+    `fully-open, class-positioned (bottom: 1rem via a CSS class, not inline) drawer's bottom edge sits 16px above the viewport bottom — the class inset survived settling (got ${(viewportHeight58 - drawer58Open.rect.bottom).toFixed(2)}px)`);
+
+  // Move to the 40% snap — a NON-zero displacement composed onto the
+  // class's 16px baseline.
+  await page.evaluate(() => window.__C.setDrawerSnap('drawer58', 0));
+  await page.waitForTimeout(500);
+  const drawer58Partial = await page.evaluate(() => {
+    const el = document.getElementById('drawer58');
+    return { inlineBottom: el.style.bottom, rect: el.getBoundingClientRect().toJSON() };
+  });
+  // At 40% open with a 300px-tall panel, 180px of it is pushed off-screen
+  // below the viewport — so its bottom edge should sit 180px BELOW the
+  // class's 16px-above-viewport-bottom baseline, i.e. 164px below the
+  // viewport's own bottom edge.
+  assert(Math.abs((drawer58Partial.rect.bottom - viewportHeight58) - 164) < 1,
+    `settling at the 40% snap composes the 180px displacement onto the class's 16px inset, not a plain 180px-from-viewport-edge value (bottom edge is ${(drawer58Partial.rect.bottom - viewportHeight58).toFixed(2)}px past the viewport, expected 164px)`);
+  assert(drawer58Partial.inlineBottom !== '',
+    'settling at a partial snap writes an inline bottom (composed onto the class baseline via calc())');
+
+  // Teardown restores NO inline value at all (there never was one — the
+  // class always governed) so the class keeps positioning the box exactly
+  // as if this registration never existed.
+  await page.evaluate(() => window.__C.unregisterDrawerSnap('drawer58'));
+  const drawer58Teardown = await page.evaluate(() => {
+    const el = document.getElementById('drawer58');
+    return { inlineBottom: el.style.bottom, rect: el.getBoundingClientRect().toJSON() };
+  });
+  assert(drawer58Teardown.inlineBottom === '', `teardown restores NO inline bottom — the class alone governs again, exactly as before registration (got '${drawer58Teardown.inlineBottom}')`);
+  assert(Math.abs((viewportHeight58 - drawer58Teardown.rect.bottom) - 16) < 1,
+    `after teardown the class's own bottom: 1rem is back in sole effect (got ${(viewportHeight58 - drawer58Teardown.rect.bottom).toFixed(2)}px)`);
 
   console.log(`\nALL TESTS PASSED (${passCount} assertions) — engine: ${ENGINE}`);
   await browser.close();

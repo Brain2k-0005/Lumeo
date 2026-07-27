@@ -13,10 +13,25 @@
    own remarks); AsListItem is the explicit override for any OTHER nesting
    shape (e.g. a consumer's own wrapper inside a SidebarMenu) the cascade
    can't auto-detect, in either direction. *@
+@* #381 round 10 (P2) — "Keep consumer layout classes on the menu flex item":
+   SidebarMenu's <ul> is a flex container ("flex flex-col gap-0.5"), so the
+   FLEX ITEM is whichever element is a direct child of it — this <li>
+   wrapper when EffectiveInsideMenu, not the inner <div>. Class/
+   AdditionalAttributes used to land on the inner div regardless, which
+   left the wrapped shape's own actual flex item (the <li>) with no way to
+   receive them: order-*/self-* utilities had nothing to attach to, and
+   hidden/style="display:none" only hid the div's CONTENT — the <li> box
+   itself stayed a normal, empty flex item still contributing gaps on both
+   sides. Now the <li> carries Class/AdditionalAttributes (it's the thing
+   actually participating in the menu's layout) and the inner div keeps
+   only its own presentational BaseClass — unwrapped (the canonical,
+   RECOMMENDED placement outside SidebarMenu) is untouched: there the div
+   itself is the only element and the root/flex-item distinction doesn't
+   exist. *@
 @if (EffectiveInsideMenu)
 {
-    <li role="presentation">
-        <div class="@CssClass" @attributes="AdditionalAttributes">
+    <li role="presentation" class="@Cx.Merge(Class)" @attributes="AdditionalAttributes">
+        <div class="@BaseClass">
             @ChildContent
         </div>
     </li>
@@ -75,8 +90,16 @@ else
     // seamlessly) while it fades, tracking the container's 200ms-linear width clip.
     // Previously this was an untransitioned sr-only swap — an instant pop while
     // everything around it animated.
-    private string CssClass => Cx.Merge(
+    //
+    // #381 round 10 — split from the old single CssClass so the wrapped shape
+    // can put Class on the <li> (the actual flex item) instead of here; this
+    // is just the label's own presentational styling, with no consumer Class
+    // merged in.
+    private string BaseClass => Cx.Merge(
         "flex h-8 shrink-0 items-center px-3 text-xs font-medium text-muted-foreground transition-[margin,opacity] duration-200 ease-linear",
-        Cx.When(IsCollapsed, "-mt-8 opacity-0"),
-        Class);
+        Cx.When(IsCollapsed, "-mt-8 opacity-0"));
+
+    // Unwrapped (canonical) placement only — there the div IS the root, so
+    // Class merges in directly same as ever.
+    private string CssClass => Cx.Merge(BaseClass, Class);
 }

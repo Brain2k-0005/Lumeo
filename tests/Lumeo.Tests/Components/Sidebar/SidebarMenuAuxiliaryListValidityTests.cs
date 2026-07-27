@@ -235,4 +235,116 @@ public class SidebarMenuAuxiliaryListValidityTests : IAsyncLifetime
         Assert.Equal("presentation", li.GetAttribute("role"));
         Assert.Contains("Forced", li.TextContent);
     }
+
+    // ── #381 round 10 (P2): "Keep consumer layout classes on the menu flex
+    // item" — SidebarMenu's <ul> is a flex container, so the <li> (not the
+    // inner div) is the actual flex item once wrapped; Class/
+    // AdditionalAttributes must land there for order-*/self-*/hidden etc. to
+    // have any effect on the menu's own layout. ────────────────────────────
+
+    [Fact]
+    public void Separator_Inside_Menu_Class_Lands_On_The_Li_Flex_Item()
+    {
+        var cut = _ctx.Render(builder =>
+        {
+            builder.OpenComponent<L.SidebarMenu>(0);
+            builder.AddAttribute(1, "ChildContent", (RenderFragment)(b =>
+            {
+                b.OpenComponent<L.SidebarSeparator>(0);
+                b.AddAttribute(1, "Class", "order-2");
+                b.CloseComponent();
+            }));
+            builder.CloseComponent();
+        });
+
+        var li = cut.Find("li");
+        Assert.Contains("order-2", li.GetAttribute("class") ?? "");
+        // The inner div keeps its own presentational styling but never the
+        // consumer's flex-item utility — it isn't the flex item.
+        var innerDiv = li.QuerySelector("div[role='none']");
+        Assert.NotNull(innerDiv);
+        Assert.DoesNotContain("order-2", innerDiv!.GetAttribute("class") ?? "");
+    }
+
+    [Fact]
+    public void Separator_Inside_Menu_AdditionalAttributes_Land_On_The_Li_Flex_Item()
+    {
+        var cut = _ctx.Render(builder =>
+        {
+            builder.OpenComponent<L.SidebarMenu>(0);
+            builder.AddAttribute(1, "ChildContent", (RenderFragment)(b =>
+            {
+                b.OpenComponent<L.SidebarSeparator>(0);
+                b.AddAttribute(1, "data-testid", "sep-1");
+                b.CloseComponent();
+            }));
+            builder.CloseComponent();
+        });
+
+        var li = cut.Find("li");
+        Assert.Equal("sep-1", li.GetAttribute("data-testid"));
+    }
+
+    [Fact]
+    public void GroupLabel_Inside_Menu_Class_Lands_On_The_Li_Flex_Item()
+    {
+        var cut = _ctx.Render(builder =>
+        {
+            builder.OpenComponent<L.SidebarMenu>(0);
+            builder.AddAttribute(1, "ChildContent", (RenderFragment)(b =>
+            {
+                b.OpenComponent<L.SidebarGroupLabel>(0);
+                b.AddAttribute(1, "Class", "self-end");
+                b.AddAttribute(2, "ChildContent", (RenderFragment)(inner => inner.AddContent(0, "Section")));
+                b.CloseComponent();
+            }));
+            builder.CloseComponent();
+        });
+
+        var li = cut.Find("li");
+        Assert.Contains("self-end", li.GetAttribute("class") ?? "");
+        // The inner div still renders the content and its own presentational
+        // classes, but never the consumer's flex-item utility.
+        var innerDiv = li.QuerySelector("div");
+        Assert.NotNull(innerDiv);
+        Assert.Contains("Section", innerDiv!.TextContent);
+        Assert.DoesNotContain("self-end", innerDiv!.GetAttribute("class") ?? "");
+    }
+
+    [Fact]
+    public void GroupLabel_Inside_Menu_Hidden_Attribute_Removes_The_Li_From_Flex_Layout()
+    {
+        // Before the fix, `hidden` landed on the inner div (hiding only its
+        // content) while the <li> stayed a normal, empty flex item — still
+        // contributing gaps on both sides. On the <li> itself, `hidden`
+        // removes the box from flex layout entirely.
+        var cut = _ctx.Render(builder =>
+        {
+            builder.OpenComponent<L.SidebarMenu>(0);
+            builder.AddAttribute(1, "ChildContent", (RenderFragment)(b =>
+            {
+                b.OpenComponent<L.SidebarGroupLabel>(0);
+                b.AddAttribute(1, "hidden", true);
+                b.AddAttribute(2, "ChildContent", (RenderFragment)(inner => inner.AddContent(0, "Section")));
+                b.CloseComponent();
+            }));
+            builder.CloseComponent();
+        });
+
+        var li = cut.Find("li");
+        Assert.True(li.HasAttribute("hidden"));
+    }
+
+    [Fact]
+    public void GroupLabel_Outside_Menu_Class_Still_Lands_On_The_Div_Root()
+    {
+        // Control: the canonical/recommended (unwrapped) placement is
+        // untouched — there the div itself is the only element and root.
+        var cut = _ctx.Render<L.SidebarGroupLabel>(p => p
+            .Add(c => c.Class, "self-end")
+            .AddChildContent("Platform"));
+
+        Assert.Empty(cut.FindAll("li"));
+        Assert.Contains("self-end", cut.Find("div").GetAttribute("class") ?? "");
+    }
 }

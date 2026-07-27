@@ -165,4 +165,64 @@ public class DrawerContentScrollableBodyTests : IAsyncLifetime
 
         Assert.Empty(cut.FindAll("[data-drawer-handle]"));
     }
+
+    // #381 round 10 (P2) — "Avoid disabling touch scrolling when dragging is
+    // disabled": for PreventClose + no SnapPoints, RegisterGestureAsync
+    // registers NO gesture at all, so the handle's touch-none strip used to
+    // be a dead touch region (native scroll blocked, no listener to hand the
+    // touch to instead). The handle must not render in this configuration.
+    [Fact]
+    public void No_Drag_Handle_When_PreventClose_And_No_SnapPoints()
+    {
+        var cut = _ctx.Render(builder =>
+        {
+            builder.OpenComponent<L.Drawer>(0);
+            builder.AddAttribute(1, "IsOpen", true);
+            builder.AddAttribute(2, "ChildContent", (RenderFragment)(b =>
+            {
+                b.OpenComponent<L.DrawerContent>(0);
+                b.AddAttribute(1, "PreventClose", true);
+                b.AddAttribute(2, "ChildContent", (RenderFragment)(inner => inner.AddContent(0, "Content")));
+                b.CloseComponent();
+            }));
+            builder.CloseComponent();
+        });
+
+        Assert.Empty(cut.FindAll("[data-drawer-handle]"));
+    }
+
+    // Control: a plain (PreventClose=false) drawer still gets the handle —
+    // RegisterGestureAsync registers the plain swipe-to-dismiss gesture.
+    [Fact]
+    public void Drag_Handle_Present_When_PreventClose_Is_False()
+    {
+        var cut = RenderDrawer(b => b.AddContent(0, "Content"));
+
+        Assert.NotEmpty(cut.FindAll("[data-drawer-handle]"));
+    }
+
+    // Control: PreventClose + SnapPoints still gets the handle —
+    // RegisterGestureAsync always registers the snap gesture regardless of
+    // PreventClose (a protected drawer still snaps between points, per #345;
+    // it just never dismisses), so there IS a live gesture under the handle.
+    [Fact]
+    public void Drag_Handle_Present_When_PreventClose_With_SnapPoints()
+    {
+        var cut = _ctx.Render(builder =>
+        {
+            builder.OpenComponent<L.Drawer>(0);
+            builder.AddAttribute(1, "IsOpen", true);
+            builder.AddAttribute(2, "ChildContent", (RenderFragment)(b =>
+            {
+                b.OpenComponent<L.DrawerContent>(0);
+                b.AddAttribute(1, "PreventClose", true);
+                b.AddAttribute(2, "SnapPoints", new double[] { 0.4, 1.0 });
+                b.AddAttribute(3, "ChildContent", (RenderFragment)(inner => inner.AddContent(0, "Content")));
+                b.CloseComponent();
+            }));
+            builder.CloseComponent();
+        });
+
+        Assert.NotEmpty(cut.FindAll("[data-drawer-handle]"));
+    }
 }

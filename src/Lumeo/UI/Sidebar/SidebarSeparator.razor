@@ -8,10 +8,19 @@
    own remarks); AsListItem is the explicit override for any OTHER nesting
    shape (e.g. a consumer's own wrapper inside a SidebarMenu) the cascade
    can't auto-detect, in either direction. *@
+@* #381 round 10 (P2) — "Keep consumer layout classes on the menu flex item"
+   (see SidebarGroupLabel's own remarks, same wrapper pattern): SidebarMenu's
+   <ul> is a flex container, so the <li> — not the inner <div> — is the
+   actual flex item when EffectiveInsideMenu. Class/AdditionalAttributes go
+   on the <li> so order-*/self-*/hidden etc. actually affect the menu's
+   layout instead of only the div's own content; unwrapped (canonical)
+   placement is untouched. role="none" is this component's own fixed
+   semantic marker, not consumer-configurable, so it stays on the div in
+   both shapes. *@
 @if (EffectiveInsideMenu)
 {
-    <li role="presentation">
-        <div class="@CssClass" role="none" @attributes="AdditionalAttributes"></div>
+    <li role="presentation" class="@Cx.Merge(Class)" @attributes="AdditionalAttributes">
+        <div class="@BaseClass" role="none"></div>
     </li>
 }
 else
@@ -48,5 +57,11 @@ else
     /// <summary>Unmatched attributes are splatted onto the root <c>div</c> element.</summary>
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
-    private string CssClass => Cx.Merge("mx-3 my-2 h-px bg-border", Class);
+    // #381 round 10 — split so the wrapped shape can put Class on the <li>
+    // (the actual flex item) instead of here; this is just the separator's
+    // own presentational styling, no consumer Class merged in.
+    private string BaseClass => "mx-3 my-2 h-px bg-border";
+
+    // Unwrapped (canonical) placement only — there the div IS the root.
+    private string CssClass => Cx.Merge(BaseClass, Class);
 }

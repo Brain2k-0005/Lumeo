@@ -1338,14 +1338,16 @@ function startedOnDragHandle(target, panelEl) {
 //      content-owned touchend is a no-op (rule #6), so nothing downstream
 //      would otherwise undo the stranded mid-drag position (round 7,
 //      finding #1).
-//   12. The rest-offset property composes ONTO any pre-existing consumer
-//      inline top/bottom (captured once at registration, restBaseRaw below)
-//      via `calc()` — our own offset is ADDED on top of it as an opaque CSS
-//      expression, never parsed/replaced, so a consumer-supplied inset (e.g.
-//      a safe-area padding via AdditionalAttributes, in ANY unit — px, %,
-//      rem, env(), calc()) survives every settle, not just the final
-//      teardown restore from rule #5 (round 7, finding #3; corrected in
-//      round 9, findings #10/#11/#13 — see restBaseRaw's own remarks).
+//   12. The rest-offset property composes ONTO whatever the consumer's own
+//      positioning already resolves to — inline top/bottom in ANY unit (px,
+//      %, rem, env(), calc()), OR a class-based inset (including this
+//      library's own default `bottom-0`/`top-0`) when there's no inline
+//      override — captured once at registration as restBaseRaw below, and
+//      composed via `calc()`, our own offset ADDED on top, never replacing
+//      it, so it survives every settle, not just the final teardown restore
+//      from rule #5 (round 7, finding #3; corrected in round 9, findings
+//      #10/#11/#13; corrected again in round 10 for the class-based case —
+//      see restBaseRaw's own remarks).
 //   13. The programmatic setActive path (two-way ActiveSnapPoint) goes
 //      through the EXACT SAME rest -> dragging conversion as a real touch
 //      drag — disable transition, convert, force reflow, re-arm — rather
@@ -1677,18 +1679,38 @@ export function registerDrawerSnap(elementId, direction, dotnetRef, options) {
     // while the drawer sits still at a snap) is what this fixes.
     const restProperty = direction === 'up' ? 'top' : 'bottom';
 
-    // #381 round 7 (P2), corrected round 9 (findings #10/#11/#13) — the raw
-    // inline top/bottom CSS the consumer already had (captured as
-    // preExistingTop/preExistingBottom above, e.g. a safe-area inset applied
-    // via AdditionalAttributes) is what every rest offset below composes
-    // ONTO, never replaces. Kept as the opaque STRING it is — never parsed —
-    // so any unit (px, %, rem, env(), calc(), ...) survives unchanged; only
-    // `calc()` (below) knows how to add a pixel delta onto an arbitrary CSS
-    // expression without caring what's inside it. Round 7's version instead
-    // did `parseFloat(...) || 0`, which silently mangled or dropped anything
-    // that wasn't a plain pixel value the very first time a settle ran
-    // (finding #13).
-    const restBaseRaw = restProperty === 'bottom' ? preExistingBottom : preExistingTop;
+    // #381 round 7 (P2), corrected round 9 (findings #10/#11/#13), corrected
+    // round 10 (finding "Preserve class-based insets when settling snap
+    // drawers") — the CSS value this registration's rest offset composes
+    // ONTO, never replaces or drops. `el.style.top`/`el.style.bottom`
+    // (preExistingTop/preExistingBottom, captured above) only reflects an
+    // INLINE declaration: a consumer positioning the drawer through the
+    // supported `Class` parameter (a Tailwind utility, e.g. `bottom-4`) — or
+    // even this library's OWN default `bottom-0`/`top-0` (DrawerContent's
+    // PositionClasses) when the consumer supplies no Class override at all —
+    // leaves it empty even though the box visibly rests somewhere other than
+    // the viewport edge.
+    //
+    // Prefer the INLINE text when present (round 9's fix: exact, unit-
+    // preserving — px, %, rem, env(), calc() all survive unchanged, and it
+    // keeps reacting live to e.g. an env()/media-query change while the
+    // drawer sits snapped, since it's still a real CSS expression, not a
+    // frozen number) — inline ALWAYS wins the cascade over any class, so if
+    // it's present it's the only thing actually governing the position
+    // anyway. Only when there's NO inline override at all — meaning a class
+    // or the UA default is what's governing it — fall back to the CURRENT
+    // resolved value from getComputedStyle. That resolution is necessarily a
+    // plain px number (losing live-reactivity to a hypothetical mid-snap
+    // class/media-query change, the same class of accepted transient-window
+    // trade-off already documented above for the containing-block fix), but
+    // it's the only way to read a class's contribution at all, and 'top'/
+    // 'bottom' are two of the CSSOM properties whose "resolved value" is
+    // defined as the USED value for a positioned element — always a
+    // definite px length, never the literal string "auto" — so this is
+    // always a valid calc() operand, whether or not anything actually
+    // constrains the box's position.
+    const inlineRestValue = restProperty === 'bottom' ? preExistingBottom : preExistingTop;
+    const restBaseRaw = inlineRestValue || getComputedStyle(el)[restProperty];
 
     // translateY(px) -> the rest-property's CSS value: for a Bottom drawer
     // (sign>0), a positive translateY (pushed DOWN, off-screen) is a
