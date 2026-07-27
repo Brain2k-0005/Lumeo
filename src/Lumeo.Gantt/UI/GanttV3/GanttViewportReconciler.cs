@@ -168,12 +168,21 @@ internal enum GanttViewModePhase
 /// <param name="Source">Which trigger authored it.</param>
 /// <param name="Phase">How far it has progressed.</param>
 /// <param name="ParamAccountedFor">The <c>ViewMode</c> parameter value already folded into this intent.</param>
+/// <param name="ParamRedeliveredWhileNotifying">Whether the parent delivered a
+/// parameter pass while this intent was <see cref="GanttViewModePhase.Notifying"/>
+/// WITHOUT that pass authoring an intent of its own — i.e. the consumer re-pushed
+/// the <c>ViewMode</c> this intent had already accounted for. That re-delivery is
+/// the parent's answer to the pick, and it is what
+/// <see cref="GanttViewModePhase.Notifying"/>'s exit condition consults: see
+/// <c>Gantt3.SettleViewModeIntentAsync</c> (Codex PR-382 review round 5,
+/// "Preserve controlled-mode rejections during callback renders").</param>
 internal readonly record struct GanttViewModeIntent(
     long Id,
     GanttViewMode Mode,
     GanttViewModeSource Source,
     GanttViewModePhase Phase,
-    GanttViewMode ParamAccountedFor)
+    GanttViewMode ParamAccountedFor,
+    bool ParamRedeliveredWhileNotifying = false)
 {
     /// <summary>
     /// True while this intent still owns the view mode outright — i.e. anything

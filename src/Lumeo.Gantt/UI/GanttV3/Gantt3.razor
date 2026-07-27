@@ -534,8 +534,12 @@
     //  3. SETTLE — an intent stops owning the view mode in exactly one place
     //     (SettleViewModeIntentAsync), only once its consumer callback (if it
     //     owes one) has actually come back, and only if it is still the intent
-    //     that pass claimed. Advancing "the parameter has been accounted for" is
-    //     that transition's by-product, not a separate field to remember.
+    //     that pass claimed. That exit is also where a CONTROLLED consumer's
+    //     verdict is read: if the parent re-delivered its ViewMode while we were
+    //     notifying and that value is not the pick, the pick was rejected and
+    //     the parameter wins (Codex PR-382 review round 5). Advancing "the
+    //     parameter has been accounted for" is that transition's by-product, not
+    //     a separate field to remember.
     private GanttViewModeIntent _viewModeIntent;
     private long _viewModeIntentId;
 
@@ -567,7 +571,20 @@
     // wins, exactly as before.
     private (GanttViewMode Mode, long? ClaimedIntentId) ResolveParameterMode()
     {
-        if (ViewMode == _viewModeIntent.ParamAccountedFor) return (_state.ViewMode, null);
+        if (ViewMode == _viewModeIntent.ParamAccountedFor)
+        {
+            // A re-delivery of the value the current owner already accounted
+            // for. Mid-pass this is still a no-op — nothing reconciles here, so
+            // a pending pick keeps running (round-3 finding 7). But if the owner
+            // is NOTIFYING, this pass is the parent SPEAKING while we hold its
+            // answer pending, so record it: Notifying's exit condition consults
+            // it to tell an accepted pick from a rejected one (Codex PR-382
+            // review round 5). See SettleViewModeIntentAsync.
+            if (_viewModeIntent.Phase == GanttViewModePhase.Notifying)
+                _viewModeIntent = _viewModeIntent with { ParamRedeliveredWhileNotifying = true };
+            return (_state.ViewMode, null);
+        }
+
         var claimed = ClaimViewModeIntent(ViewMode, GanttViewModeSource.Parameter);
         return (claimed.Mode, claimed.Id);
     }
@@ -621,8 +638,61 @@
         _viewModeIntent = intent with { Phase = GanttViewModePhase.Notifying };
         var generationAtCommit = _reconcileGeneration;
         await ViewModeChanged.InvokeAsync(intent.Mode);
-        if (_viewModeIntent.Id == intentId && _viewModeIntent.Phase == GanttViewModePhase.Notifying)
-            _viewModeIntent = _viewModeIntent with { Phase = GanttViewModePhase.Settled, ParamAccountedFor = intent.Mode };
+
+        // A newer intent (any source) took ownership while the callback ran —
+        // including the CONTROLLED-accept case, where the parent adopted the
+        // pick and re-rendered, and that pass claimed an intent of its own.
+        if (_viewModeIntent.Id != intentId || _viewModeIntent.Phase != GanttViewModePhase.Notifying)
+            return _reconcileGeneration == generationAtCommit ? outcome : GanttReconcileOutcome.Superseded;
+
+        // ── Notifying's exit condition (Codex PR-382 review round 5, P1
+        //    "Preserve controlled-mode rejections during callback renders") ──
+        //
+        // The window is over, so the parent's opinion becomes actionable. Two
+        // passes look IDENTICAL from inside the component at the moment they
+        // arrive — a callback echo from a parent that has not decided yet, and a
+        // re-push from a parent that has decided to REJECT — because both carry
+        // the pre-pick ViewMode and neither exposes anything else to key off.
+        // The consumer's own callback task is no discriminator either: Blazor's
+        // ComponentBase.HandleEventAsync calls StateHasChanged BEFORE that task
+        // completes, so the render carrying a rejection arrives while the task
+        // we are awaiting is still incomplete.
+        //
+        // They ARE distinguishable in TIME, though, which is why this is decided
+        // at settle rather than on arrival: by the moment the callback returns,
+        // the parent has had its chance. So the rule is —
+        //
+        //     if the parent SPOKE while we were notifying and its most recent
+        //     word is not the pick, the pick was rejected; if the parent said
+        //     NOTHING, the pick stands and we expect the parameter to become it.
+        //
+        // Deciding on arrival instead would revert mid-window and break round-3
+        // finding 7 (a legitimately-late parent must keep its pick alive across
+        // an arbitrarily long handler); deciding never — the round-3/4 behavior
+        // this fixes — leaves the chart showing a mode the authoritative
+        // parameter never accepted, with nothing scheduled to correct it, since
+        // ParamAccountedFor would swallow the very re-push that carried the
+        // rejection.
+        //
+        // Residual, accepted deliberately: a parent that re-renders BEFORE its
+        // own async handler assigns, and never renders again, reads as a
+        // rejection. Blazor itself rules that out for a component receiver —
+        // HandleEventAsync calls StateHasChanged again on completion — so the
+        // adopted value arrives right after and simply claims. A brief revert in
+        // that race is strictly better than a chart permanently out of sync with
+        // its own parameter.
+        if (_viewModeIntent.ParamRedeliveredWhileNotifying && ViewMode != intent.Mode)
+        {
+            var rejected = ClaimViewModeIntent(ViewMode, GanttViewModeSource.Parameter);
+            var rejectOutcome = await ReconcileAsync(_materializedTasks, rejected.Mode);
+            if (rejectOutcome != GanttReconcileOutcome.Superseded)
+                await SettleViewModeIntentAsync(rejected.Id, rejectOutcome);
+            // This pass's own post-actions must not run on top of the reverted
+            // state — the parent overruled it, exactly like a supersession.
+            return GanttReconcileOutcome.Superseded;
+        }
+
+        _viewModeIntent = _viewModeIntent with { Phase = GanttViewModePhase.Settled, ParamAccountedFor = intent.Mode };
         return _reconcileGeneration == generationAtCommit ? outcome : GanttReconcileOutcome.Superseded;
     }
 

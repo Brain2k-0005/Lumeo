@@ -223,27 +223,17 @@ public class GanttV3ViewModeOwnershipTests : IAsyncLifetime
         });
         Assert.False(toolbarPick.IsCompleted);
 
-        // Everything that can happen while a slow parent handler is outstanding:
-        // repeated navigations, an unrelated parent re-render that re-pushes the
-        // NOT-yet-updated ViewMode, and a no-op theme notification.
+        // Everything that can happen while a slow parent handler is outstanding
+        // WITHOUT the parent itself speaking: repeated navigations and a no-op
+        // theme notification. A parameter pass is deliberately NOT in this list —
+        // that IS the parent speaking, and its verdict is decided at settle by
+        // Notifying's own exit condition (Codex PR-382 review round 5); the
+        // accept and reject sides each have their own spec below.
         for (var i = 0; i < 3; i++)
         {
             await cut.InvokeAsync(async () => await (Task)Method("ShiftToNextAsync").Invoke(cut.Instance, null)!);
             await cut.InvokeAsync(async () => await (Task)Method("ShiftToPreviousAsync").Invoke(cut.Instance, null)!);
         }
-
-        await cut.InvokeAsync(() => cut.Instance.SetParametersAsync(ParameterView.FromDictionary(new Dictionary<string, object?>
-        {
-            [nameof(L.Gantt3.Tasks)] = tasks,
-            [nameof(L.Gantt3.ViewMode)] = L.GanttViewMode.Day, // the parent's handler has NOT assigned yet
-            [nameof(L.Gantt3.ViewModeChanged)] = EventCallback.Factory.Create<L.GanttViewMode>(this, async mode =>
-            {
-                calls.Add(mode);
-                await callbackGate.Task;
-            }),
-            [nameof(L.Gantt3.ShowTreePane)] = false,
-            [nameof(L.Gantt3.Class)] = "an-unrelated-class-change",
-        })));
 
         var themeService = _ctx.Services.GetRequiredService<IThemeService>();
         await cut.InvokeAsync(async () => await themeService.SetModeAsync(ThemeMode.Dark)); // direction untouched
@@ -260,6 +250,139 @@ public class GanttV3ViewModeOwnershipTests : IAsyncLifetime
         Assert.Equal(GanttViewModePhase.Settled, Intent(cut).Phase);
         Assert.Equal(L.GanttViewMode.Month, Intent(cut).Mode);
         Assert.Equal(L.GanttViewMode.Month, State(cut).ViewMode);
+    }
+
+    // ── Notifying's exit condition: the controlled parent's verdict ─────────
+    //
+    // Codex PR-382 review round 5, P1 "Preserve controlled-mode rejections
+    // during callback renders". A controlled parent re-rendering DURING the
+    // callback and a parent REJECTING the pick are indistinguishable at the
+    // moment the pass arrives, so the model decides at settle instead: if the
+    // parent spoke while we were notifying, its most recent word is its verdict.
+
+    // Re-pushes the parent's parameters while the consumer callback is still
+    // outstanding — exactly what ComponentBase.HandleEventAsync does on the
+    // consumer's behalf (it calls StateHasChanged before the handler's task
+    // completes), with `parentViewMode` standing for what the parent decided.
+    private Task PushParentRenderAsync(
+        IRenderedComponent<L.Gantt3> cut, List<L.GanttTask> tasks, L.GanttViewMode parentViewMode,
+        TaskCompletionSource gate, List<L.GanttViewMode> calls) =>
+        cut.InvokeAsync(() => cut.Instance.SetParametersAsync(ParameterView.FromDictionary(new Dictionary<string, object?>
+        {
+            [nameof(L.Gantt3.Tasks)] = tasks,
+            [nameof(L.Gantt3.ViewMode)] = parentViewMode,
+            [nameof(L.Gantt3.ViewModeChanged)] = EventCallback.Factory.Create<L.GanttViewMode>(this, async mode =>
+            {
+                calls.Add(mode);
+                await gate.Task;
+            }),
+            [nameof(L.Gantt3.ShowTreePane)] = false,
+        })));
+
+    [Fact]
+    public async Task A_Controlled_Parent_That_Rejects_The_Pick_During_The_Callback_Wins_When_It_Settles()
+    {
+        var tasks = OneTask();
+        var callbackGate = new TaskCompletionSource();
+        var calls = new List<L.GanttViewMode>();
+        var cut = RenderControlled(tasks, callbackGate, calls);
+
+        _interop.GanttV3ScrollCenterXToReturn = 0;
+        Task toolbarPick = Task.CompletedTask;
+        await cut.InvokeAsync(() =>
+        {
+            toolbarPick = (Task)Method("HandleViewModeChangedAsync").Invoke(cut.Instance, new object[] { L.GanttViewMode.Month })!;
+        });
+        Assert.False(toolbarPick.IsCompleted, "the pick should still be awaiting the consumer's callback");
+
+        // The parent re-renders mid-callback and re-pushes its OWN Day — it has
+        // NOT adopted Month.
+        await PushParentRenderAsync(cut, tasks, L.GanttViewMode.Day, callbackGate, calls);
+
+        // Mid-window the optimistic pick still stands (round-3 finding 7): the
+        // parent may still be about to adopt it, so nothing reverts yet.
+        await ForceRepaintAsync(cut);
+        AssertMonthMode(cut, "the pick must survive the callback window even when the parent re-renders");
+
+        // The callback returns — the window is over and the parent's word wins.
+        callbackGate.SetResult();
+        await toolbarPick;
+        await ForceRepaintAsync(cut);
+
+        Assert.Equal(L.GanttViewMode.Day, State(cut).ViewMode);
+        Assert.Equal(L.GanttViewMode.Day, Intent(cut).Mode);
+        Assert.Equal(GanttViewModeSource.Parameter, Intent(cut).Source);
+        Assert.Equal(GanttViewModePhase.Settled, Intent(cut).Phase);
+
+        var label = Label(cut);
+        Assert.Contains("–", label, StringComparison.Ordinal);
+
+        // A later navigation must not resurrect the rejected pick either.
+        await cut.InvokeAsync(async () => await (Task)Method("ShiftToNextAsync").Invoke(cut.Instance, null)!);
+        Assert.Equal(L.GanttViewMode.Day, State(cut).ViewMode);
+    }
+
+    [Fact]
+    public async Task A_Controlled_Parent_That_Adopts_The_Pick_During_The_Callback_Keeps_It()
+    {
+        var tasks = OneTask();
+        var callbackGate = new TaskCompletionSource();
+        var calls = new List<L.GanttViewMode>();
+        var cut = RenderControlled(tasks, callbackGate, calls);
+
+        _interop.GanttV3ScrollCenterXToReturn = 0;
+        Task toolbarPick = Task.CompletedTask;
+        await cut.InvokeAsync(() =>
+        {
+            toolbarPick = (Task)Method("HandleViewModeChangedAsync").Invoke(cut.Instance, new object[] { L.GanttViewMode.Month })!;
+        });
+        Assert.False(toolbarPick.IsCompleted);
+
+        // The parent adopts Month and re-renders — a genuine parameter change,
+        // so that pass claims an intent of its own and the pick's own settle
+        // finds itself no longer the owner.
+        await PushParentRenderAsync(cut, tasks, L.GanttViewMode.Month, callbackGate, calls);
+
+        callbackGate.SetResult();
+        await toolbarPick;
+        await ForceRepaintAsync(cut);
+
+        Assert.Equal(L.GanttViewMode.Month, State(cut).ViewMode);
+        Assert.Equal(L.GanttViewMode.Month, Intent(cut).Mode);
+        Assert.Equal(L.GanttViewMode.Month, Intent(cut).ParamAccountedFor);
+        Assert.Equal(GanttViewModePhase.Settled, Intent(cut).Phase);
+        AssertMonthMode(cut, "the parent adopted the pick, so it must stand");
+        Assert.Single(calls); // the adopting pass must not re-notify
+    }
+
+    [Fact]
+    public async Task A_Controlled_Parent_That_Stays_Silent_During_The_Callback_Keeps_The_Pick()
+    {
+        // The other half of the exit condition: no parameter pass arrived while
+        // notifying, so the parent has said nothing and the pick stands — this
+        // is what stops a merely-slow parent from being read as a rejection.
+        var tasks = OneTask();
+        var callbackGate = new TaskCompletionSource();
+        var calls = new List<L.GanttViewMode>();
+        var cut = RenderControlled(tasks, callbackGate, calls);
+
+        _interop.GanttV3ScrollCenterXToReturn = 0;
+        Task toolbarPick = Task.CompletedTask;
+        await cut.InvokeAsync(() =>
+        {
+            toolbarPick = (Task)Method("HandleViewModeChangedAsync").Invoke(cut.Instance, new object[] { L.GanttViewMode.Month })!;
+        });
+
+        callbackGate.SetResult();
+        await toolbarPick;
+        await ForceRepaintAsync(cut);
+
+        Assert.Equal(L.GanttViewMode.Month, State(cut).ViewMode);
+        Assert.Equal(GanttViewModePhase.Settled, Intent(cut).Phase);
+        // The parameter we now EXPECT the parent to hold, so its echo is a no-op
+        // while a later re-push of the old value still reads as a change.
+        Assert.Equal(L.GanttViewMode.Month, Intent(cut).ParamAccountedFor);
+        AssertMonthMode(cut, "a silent parent must not be read as a rejection");
     }
 
     // ── Supersession by a newer intent of each source ───────────────────────
