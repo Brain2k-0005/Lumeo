@@ -1,7 +1,20 @@
 @namespace Lumeo
 
+@* #381 Codex P2 — SidebarMenu's cascaded "LumeoSidebarInsideMenu" marker
+   describes component ANCESTRY, not DOM parentage: without this, a
+   GroupLabel/Separator nested inside THIS item's own ChildContent (already
+   inside an <li>, one level deeper than a direct SidebarMenu child) would
+   still see the ancestor cascade as true and wrap itself in a SECOND,
+   invalid nested <li>. Re-cascading false here scopes the wrap to the one
+   shape it's actually meant for — a direct SidebarMenu child — since this is
+   the only container Lumeo itself defines that lives inside a SidebarMenu.
+   A consumer's OWN custom wrapper nested inside a SidebarMenu (not one of
+   ours) can't be auto-detected this way; SidebarSeparator/SidebarGroupLabel's
+   own AsListItem parameter is the explicit escape hatch for that case. *@
 <li class="@CssClass" @attributes="AdditionalAttributes">
-    @ChildContent
+    <CascadingValue Value="false" Name="LumeoSidebarInsideMenu" IsFixed="true">
+        @ChildContent
+    </CascadingValue>
 </li>
 
 @code {

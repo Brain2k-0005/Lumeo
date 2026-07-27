@@ -1,13 +1,73 @@
 @namespace Lumeo
 
-<div class="@CssClass" role="none" @attributes="AdditionalAttributes"></div>
+@* Bug fix (feedback wave): a <div> root is invalid directly inside a <ul>
+   (SidebarMenu) — see SidebarMenu's own remarks on the cascaded
+   LumeoSidebarInsideMenu marker this reads to auto-detect that placement.
+   #381 Codex P2: the cascade only reflects the DIRECT-child shape correctly
+   (SidebarMenuItem re-cascades false for its own deeper content — see its
+   own remarks); AsListItem is the explicit override for any OTHER nesting
+   shape (e.g. a consumer's own wrapper inside a SidebarMenu) the cascade
+   can't auto-detect, in either direction. *@
+@* #381 round 10 (P2) — "Keep consumer layout classes on the menu flex item",
+   corrected round 11 (P2 regression — "Preserve visual classes on the
+   wrapped content"; see SidebarGroupLabel's own remarks, same wrapper
+   pattern and same fix): moving Class/AdditionalAttributes onto the <li>
+   let order-*/self-*/hidden affect the menu's layout, but broke visual
+   utilities (bg-*, h-*, mx-*) since those only affect the SAME element
+   they're set on, and the actual divider styling (mx-3 my-2 h-px
+   bg-border) lives on the div. Making the <li> wrapper `display: contents`
+   (Tailwind's `contents` utility) removes its own box from the layout
+   entirely, promoting this div to be the ACTUAL flex item the <ul> lays
+   out — verified empirically (gap/order/align-self all promote correctly
+   across Chromium/Firefox/WebKit) — so Class/AdditionalAttributes go back
+   on the div exclusively (as before round 10) and satisfy both directions
+   at once. role="none" is this component's own fixed semantic marker, not
+   consumer-configurable, so it stays on the div in both shapes;
+   role="presentation" on the <li> is defense in depth (display:contents
+   already strips it from the a11y tree in every major engine). *@
+@if (EffectiveInsideMenu)
+{
+    <li role="presentation" class="contents">
+        <div class="@CssClass" role="none" @attributes="AdditionalAttributes"></div>
+    </li>
+}
+else
+{
+    <div class="@CssClass" role="none" @attributes="AdditionalAttributes"></div>
+}
 
 @code {
+    /// <summary>
+    /// Cascaded by <see cref="Lumeo.SidebarMenu"/> when this separator is used to break
+    /// up a single menu's items into visual sub-sections. Absent (false) everywhere
+    /// else — e.g. between two <see cref="Lumeo.SidebarGroup"/>s, the pattern this
+    /// library's own docs demonstrate. Only correct for a DIRECT SidebarMenu child or
+    /// a plain <see cref="Lumeo.SidebarMenuItem"/> descendant (which re-cascades false) —
+    /// see <see cref="AsListItem"/> for any other nesting shape.
+    /// </summary>
+    [CascadingParameter(Name = "LumeoSidebarInsideMenu")] private bool InsideMenu { get; set; }
+
+    /// <summary>
+    /// Explicit override for whether this separator renders its <c>&lt;li role="presentation"&gt;</c>
+    /// wrapper. Null (the default) defers to the cascaded <see cref="InsideMenu"/> marker, which is
+    /// correct for the two shapes Lumeo itself recognizes (a direct <see cref="Lumeo.SidebarMenu"/>
+    /// child, or one nested inside a <see cref="Lumeo.SidebarMenuItem"/>). Set explicitly when neither
+    /// applies — e.g. a custom wrapper component of your own nested inside a SidebarMenu that should
+    /// still get the &lt;li&gt; wrapper, or the reverse.
+    /// </summary>
+    [Parameter] public bool? AsListItem { get; set; }
+
+    private bool EffectiveInsideMenu => AsListItem ?? InsideMenu;
+
     /// <summary>Additional CSS classes merged onto the root <c>div</c> element.</summary>
     [Parameter] public string? Class { get; set; }
 
     /// <summary>Unmatched attributes are splatted onto the root <c>div</c> element.</summary>
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
+    // #381 round 10 briefly split this into BaseClass + CssClass so Class
+    // could move onto the <li>; round 11's display:contents fix (see the
+    // markup's own remarks) makes the div the flex item either way, so
+    // Class belongs back here unconditionally, same as before round 10.
     private string CssClass => Cx.Merge("mx-3 my-2 h-px bg-border", Class);
 }

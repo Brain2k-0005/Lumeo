@@ -37,7 +37,43 @@ else if (Context.IsOpen || _exiting)
         <div id="@_contentId" class="@CssClass" style="z-index:@ContentZ" role="dialog" aria-modal="@(Context.IsOpen ? "true" : "false")" aria-labelledby="@Context.TitleId" aria-describedby="@DescribedBy" @onkeydown="HandleKeyDown" @onkeydown:stopPropagation tabindex="-1" inert="@ExitInert" @attributes="AdditionalAttributes">
             @if (ShowDragHandle)
             {
-                <div class="mx-auto mt-4 h-2 w-[100px] rounded-full bg-muted"></div>
+                @* #381 Codex P2 (round 2) — data-drawer-handle is the stable hook
+                   components.js's gesture handlers use to identify a touch that
+                   started on the visual drag handle: those touches always arm
+                   dismiss regardless of the panel's scroll position (the handle
+                   itself is never part of the scrollable content).
+
+                   #381 round 6 (P2) — this element is a sibling of the child
+                   content inside the SAME overflow-y-auto flex column as
+                   _contentId (the scroll container the JS gesture also reads
+                   scrollTop/scrollHeight from for boundary gating — it must
+                   stay that element, so the fix is CSS-only, not a restructure
+                   onto a separate inner scroller). Without "sticky", the
+                   handle was an ordinary in-flow flex item: scrolling the
+                   content scrolled the handle away with it, so a drawer with
+                   content taller than the panel lost its grab handle the
+                   moment the user scrolled down. "sticky top-0" pins it to the
+                   scroll container's own top edge; "shrink-0" matches
+                   DrawerHeader/DrawerFooter's own defensive flex-shrink guard
+                   for the same overflow-y-auto flex column.
+
+                   #381 round 7 (P2, two findings) — "touch-action: none" (via
+                   the touch-none utility, the same idiom Splitter/DataGrid's
+                   own drag handles already use) hands a touch starting here
+                   straight to the gesture code instead of letting the browser
+                   also try to interpret it as a vertical page/content scroll.
+                   The background is set inline as "inherit" rather than the
+                   bg-background utility: a consumer overriding the panel's
+                   own background via Class (a custom color, not the default
+                   token) previously left the sticky strip showing the
+                   DEFAULT bg-background regardless — a visible seam against
+                   the panel's real background. Inheriting the computed
+                   background-color from the panel (its direct parent) keeps
+                   the strip matching whatever background the panel actually
+                   has, default or overridden. *@
+                <div class="sticky top-0 z-10 shrink-0 touch-none pb-2" style="background-color: inherit;" data-drawer-handle="true">
+                    <div class="mx-auto mt-4 h-2 w-[100px] rounded-full bg-muted"></div>
+                </div>
             }
             @ChildContent
         </div>
@@ -62,6 +98,20 @@ else if (Context.IsOpen || _exiting)
 
     /// <summary>Disables Escape, backdrop-click and swipe dismissal; the drawer can then only be closed programmatically (or, in snap mode, settles at the lowest snap instead of closing). Default <c>false</c>.</summary>
     [Parameter] public bool PreventClose { get; set; }
+
+    /// <summary>
+    /// When <c>true</c> (default), the panel is a vertically-scrollable container
+    /// so content taller than its height cap (<c>max-h-[96vh]</c>/<c>max-h-screen</c>)
+    /// stays reachable. Set to <c>false</c> to keep the panel <c>overflow-visible</c>
+    /// instead, if you host an absolutely-positioned overlay inside (e.g. a
+    /// <c>MegaMenuPanel</c> or <c>NavigationMenuViewport</c>) that needs to extend
+    /// past the panel's own bounds — <c>overflow</c> other than <c>visible</c> clips
+    /// any <c>position: absolute</c> descendant regardless of its containing block,
+    /// a hard CSS constraint no positioning trick inside the panel can work around.
+    /// With this <c>false</c>, your own content becomes responsible for fitting the
+    /// height cap or scrolling itself, since the panel no longer will.
+    /// </summary>
+    [Parameter] public bool ScrollableBody { get; set; } = true;
 
     /// <summary>
     /// vaul-style snap points: fractional resting heights in ascending order,
@@ -172,7 +222,24 @@ else if (Context.IsOpen || _exiting)
     // every service-opened Drawer (no description child) hits.
     private string? DescribedBy => Context.DescriptionRegistry.HasDescription ? Context.DescriptionId : null;
 
-    private bool ShowDragHandle => Side is Lumeo.Side.Top or Lumeo.Side.Bottom;
+    // #381 round 10 (P2) — "Avoid disabling touch scrolling when dragging is
+    // disabled": the handle renders touch-none (touch-action: none) so a
+    // touch starting on it always goes to the gesture code instead of also
+    // being interpreted as a native scroll/pan — but for a Top/Bottom
+    // drawer with PreventClose AND no SnapPoints, RegisterGestureAsync (see
+    // its own remarks) deliberately registers NO gesture at all (a
+    // non-snap, non-dismissible drawer has nothing to drag). Showing the
+    // handle there anyway left a dead touch region — touch-none blocked
+    // native scrolling, but no listener existed to do anything else with
+    // the touch either — at the top of what OnAfterRenderAsync's own
+    // overflow-y-auto fix made scrollable. GestureWillBeRegistered mirrors
+    // RegisterGestureAsync's own condition for "does ANY gesture actually
+    // get wired up" exactly, so the handle (whose sole documented purpose
+    // is being that gesture's stable DOM hook, not decoration) only renders
+    // when there is a live gesture underneath it to hand the touch to.
+    private bool GestureWillBeRegistered => UsesSnapPoints || !PreventClose;
+
+    private bool ShowDragHandle => Side is Lumeo.Side.Top or Lumeo.Side.Bottom && GestureWillBeRegistered;
 
     // Snap points only apply to vertical drawers (vaul is vertical-only).
     private bool UsesSnapPoints => SnapPoints is { Count: > 0 } && Side is Lumeo.Side.Top or Lumeo.Side.Bottom;
@@ -196,6 +263,46 @@ else if (Context.IsOpen || _exiting)
     // while the drawer stays open (PR #345 review).
     private bool _gestureRegistered;
     private bool _registeredWithSnap;
+
+    // #381 round 12 (P1) — true once OnAfterRenderAsync's OWN initial
+    // RegisterGestureAsync call has returned for the CURRENT open session.
+    // _interopReady flips true SYNCHRONOUSLY, before LockScroll/
+    // SetupFocusTrap/AttachOverlaySlideEnd/RegisterGestureAsync ever run —
+    // a realistic window on Blazor Server for a parameter update to land
+    // (triggering OnParametersSetAsync) while that chain is still
+    // suspended. Gesture reconciliation below reads _interopReady as its
+    // own "is it safe to touch the gesture yet" gate, but with only that
+    // gate a reconciliation could fire (and legitimately decide "yes,
+    // register") BEFORE the original chain's own RegisterGestureAsync call
+    // has ever run — both call it, `registerDrawerSwipe` has no de-dupe
+    // guard (unlike registerDrawerSnap, which already tears down a stale
+    // registration first — see its own round-5 remarks), so the second
+    // call's addEventListener calls stack a SECOND set of listeners
+    // instead of replacing the first, and unregister only ever removes
+    // whichever set is currently in the map. Gating reconciliation on this
+    // flag too closes the window: nothing here touches the gesture until
+    // the session's own first registration has actually landed.
+    private bool _initialGestureSetupComplete;
+
+    // #381 round 13 (P2) — "Defer snap baseline capture until the new side
+    // renders": OnParametersSetAsync's reconciliation used to unregister +
+    // re-register THE INSTANT it detected a mismatch (e.g. a Side flip),
+    // which runs BEFORE Blazor commits the render containing the new
+    // PositionClasses (bottom-0/top-0 etc.) — registerDrawerSnap's own
+    // baseline capture (restBaseRaw) reads the CURRENT DOM via
+    // getComputedStyle when there's no inline override, so it captured the
+    // STILL-STALE side's classes. Reconciliation now only sets this flag +
+    // returns; OnAfterRenderAsync (which runs AFTER a render commits, by
+    // definition) does the actual unregister/register once the DOM the
+    // baseline capture reads from is guaranteed current.
+    private bool _gestureReconcilePending;
+
+    // #381 round 13 — how many times RegisterGestureAndReconcileAsync will
+    // re-check-and-retry before giving up. One correction covers the
+    // realistic case (a single parameter change landing mid-registration);
+    // bounded rather than unbounded so a hypothetical pathological case
+    // (parameters changing on every single await) can't loop forever.
+    private const int MaxGestureReconcileAttempts = 5;
 
     // The swipe direction + snap-point geometry baked into the live JS gesture.
     // A runtime Side/RTL flip (#76) or a same-count SnapPoints fraction change
@@ -249,8 +356,75 @@ else if (Context.IsOpen || _exiting)
         _ => ""
     };
 
+    // Bug fix (feedback wave): the panel caps its OWN height (PositionClasses:
+    // max-h-[96vh] for Top/Bottom, max-h-screen for Left/Right) but never gave
+    // itself a scroll fallback. Verified with a real headless Chromium render
+    // (not just reasoning about the flexbox spec): once content — an EditForm
+    // with enough fields, or any sufficiently tall block content — exceeds that
+    // cap, the excess simply overflows past the panel's bottom edge (the
+    // browser's default overflow:visible) with NO way to scroll to it. The
+    // header (first child) stays visible; everything below a certain point,
+    // INCLUDING THE FOOTER/SUBMIT BUTTON, renders completely off-screen and is
+    // permanently unreachable — from a user's perspective the form is simply
+    // gone, which is what got reported as "the drawer collapses my form."
+    // overflow-y-auto turns that same overflow into an internally-scrollable
+    // panel instead, so the full form (and the footer beneath it) is always
+    // reachable regardless of how tall the content grows.
+    //
+    // #381 Codex P2: setting ONLY overflow-y is a well-known CSS quirk (the
+    // same class of quirk documented on GanttTimeline's own RootClass, just
+    // the other axis here) — a browser computes the OTHER axis's overflow to
+    // "auto" too the moment either axis is non-visible (verified: overflow-x
+    // resolves to "auto" here even though this class list never sets it
+    // explicitly), so ANY content that visually extends past the panel's
+    // horizontal edges — including a focus ring drawn via box-shadow with a
+    // ring-offset, which extends a few px past its own element's border box —
+    // gets hard-clipped where it wasn't before. Confirmed with a real headless
+    // Chromium render: a flush-edge button's ring-offset-2 ring clips on both
+    // sides with no padding, fully visible with p-1.5. This is genuinely
+    // Lumeo's own responsibility to guard against (this panel decides its own
+    // overflow), unlike bug #4's fix (a consumer's own content). p-1.5 is a
+    // baseline inset just for this — content still gets its OWN padding from
+    // DrawerHeader/DrawerFooter (p-4) or whatever the consumer wraps it in;
+    // this only protects RAW content placed directly, and costs a barely
+    // perceptible few px more inset even where a p-4 wrapper already exists.
+    // A consumer drawing their OWN focus rings can also reach for ring-inset
+    // (already this library's established idiom for a ring inside a
+    // scrolling/clipping context — see Image/PasswordInput/PivotGrid/
+    // SwipeActions/ToolCallCard) to avoid needing any reserved inset at all.
+    //
+    // #381 round 12 (P2) — "Keep descendant overlays outside the scroll
+    // clip": overflow-y-auto (any overflow value but visible) ALSO clips
+    // position:absolute descendants whose containing block sits inside this
+    // panel — e.g. MegaMenuPanel / NavigationMenuViewport, both `absolute
+    // top-full` off their own trigger. This is a HARD CSS constraint, not a
+    // bug in either component: unlike position:fixed (which escapes an
+    // ancestor's overflow clip once that ancestor isn't its containing
+    // block — the mechanism the earlier Codex round-3 popover-clipping fix
+    // relies on), a position:absolute element is clipped by EVERY ancestor
+    // between it and the viewport that has overflow != visible, full stop,
+    // regardless of which ancestor is its actual containing block.
+    // Verified empirically (Chromium/Firefox/WebKit, identical result): a
+    // MegaMenuPanel-shaped absolute overlay taller than its drawer is
+    // invisible past the drawer's own bounds with ScrollableBody true, and
+    // renders in full with it false.
+    //
+    // There is consequently no single default that gives both "tall content
+    // scrolls automatically" AND "an absolutely-positioned overlay anywhere
+    // inside can always escape" — those are mutually exclusive under plain
+    // CSS (the alternatives are DOM portaling or switching those components
+    // to JS-positioned position:fixed, both changes to MegaMenuPanel/
+    // NavigationMenuViewport themselves, well outside a Drawer fix). Instead
+    // of guessing which a given consumer needs, ScrollableBody makes the
+    // trade-off explicit: true (default, unchanged behavior) keeps content
+    // taller than the height cap reachable via scrolling; false restores
+    // overflow-visible so a hosted overlay can extend past the panel — at
+    // the cost of the consumer's own content needing to fit the height cap,
+    // or scroll itself, since the panel no longer will.
     private string CssClass =>
-        Cx.Merge("fixed mt-24 flex h-auto flex-col bg-background shadow-lg", PositionClasses, AnimationClass, PointerClass, Class);
+        Cx.Merge("fixed mt-24 flex h-auto flex-col p-1.5 bg-background shadow-lg",
+            ScrollableBody ? "overflow-y-auto" : "overflow-visible",
+            PositionClasses, AnimationClass, PointerClass, Class);
 
     // A scoped <DirectionProvider> wins over the global ThemeService, so a subtree
     // can be RTL even if the app is LTR. Null when no provider wraps this drawer.
@@ -301,7 +475,16 @@ else if (Context.IsOpen || _exiting)
                 {
                     await Interop.AttachOverlaySlideEnd(_contentId);
                 }
-                await RegisterGestureAsync();
+                // #381 round 13 — RegisterGestureAndReconcileAsync (not a bare
+                // RegisterGestureAsync call) so a parameter change landing
+                // during THIS call's own internal interop await is caught
+                // immediately too — see its own remarks.
+                await RegisterGestureAndReconcileAsync();
+                // #381 round 12 — see the field's own remarks: only flips once
+                // THIS call has actually returned, closing the window where a
+                // concurrent OnParametersSetAsync could otherwise reconcile
+                // against a gesture that hasn't been registered even once yet.
+                _initialGestureSetupComplete = true;
             }
             catch (JSDisconnectedException) { }
 
@@ -313,6 +496,8 @@ else if (Context.IsOpen || _exiting)
             {
                 await Cleanup();
                 _interopReady = false;
+                _initialGestureSetupComplete = false;
+                _gestureReconcilePending = false;
             }
         }
         else if (!Context.IsOpen && _interopReady)
@@ -323,6 +508,25 @@ else if (Context.IsOpen || _exiting)
             // only.
             await Cleanup();
             _interopReady = false;
+            _initialGestureSetupComplete = false;
+            _gestureReconcilePending = false;
+        }
+        else if (Context.IsOpen && _interopReady && _gestureReconcilePending)
+        {
+            // #381 round 13 (P2) — "Defer snap baseline capture until the new
+            // side renders": runs AFTER the render OnParametersSetAsync's
+            // reconciliation trigger scheduled has actually committed (this
+            // method only ever runs post-render, by definition), so
+            // RegisterGestureAsync's baseline capture reads the CURRENT DOM —
+            // e.g. a Side flip's new top-0/bottom-0 class — not whatever was
+            // there before the parameter change that triggered this.
+            _gestureReconcilePending = false;
+            try
+            {
+                await UnregisterGestureAsync();
+                await RegisterGestureAndReconcileAsync();
+            }
+            catch (JSDisconnectedException) { }
         }
 
         // Radix-Presence parity: hand the unmount to the panel's OWN exit
@@ -421,6 +625,47 @@ else if (Context.IsOpen || _exiting)
         return _registeredSnapPoints.SequenceEqual(current);
     }
 
+    // #381 round 13 — the SHARED "does the live gesture still match what the
+    // CURRENT parameters describe" check, extracted so OnParametersSetAsync's
+    // reconciliation trigger and RegisterGestureAndReconcileAsync's own
+    // post-registration self-check (below) can't drift apart into two
+    // slightly-different definitions of "needs a re-register". True for: a
+    // snap-mode flip; an already-live gesture's own recorded direction or
+    // snap-point geometry going stale (#76/#77); or (non-snap mode only —
+    // snap mode always registers regardless of PreventClose) the live
+    // registration state disagreeing with what PreventClose currently implies
+    // it should be (round 11/12).
+    private bool GestureNeedsReconcile() =>
+        _registeredWithSnap != UsesSnapPoints
+        || (_gestureRegistered
+            && (_registeredDirection != SwipeDirection
+                || !SnapPointsMatchRegistered()))
+        || (!UsesSnapPoints && _gestureRegistered != GestureWillBeRegistered);
+
+    // #381 round 13 (P2) — "Reconcile parameters changed during gesture
+    // registration": RegisterGestureAsync's own branch condition
+    // (UsesSnapPoints / !PreventClose) is read ONCE, before its internal
+    // interop await, and never re-checked after resuming — a parameter
+    // change landing WHILE that specific await is in flight (a real Blazor
+    // Server window, distinct from — and not covered by — the earlier
+    // LockScroll-wait window _initialGestureSetupComplete gates) lands a
+    // registration that was already stale the instant it committed, and no
+    // later reconciliation catches it if nothing else changes afterward.
+    // Re-validate immediately after every RegisterGestureAsync call and
+    // self-correct in a bounded loop (not one extra check pinned to this
+    // ONE window — closes the window in general, so a future added await
+    // inside RegisterGestureAsync doesn't reopen it) rather than widening
+    // the gate by yet another specific await.
+    private async Task RegisterGestureAndReconcileAsync()
+    {
+        await RegisterGestureAsync();
+        for (var i = 0; i < MaxGestureReconcileAttempts && GestureNeedsReconcile(); i++)
+        {
+            await UnregisterGestureAsync();
+            await RegisterGestureAsync();
+        }
+    }
+
     protected override async Task OnParametersSetAsync()
     {
         // Passthrough mode — the host DrawerContent owns the shell, exit animation
@@ -460,7 +705,14 @@ else if (Context.IsOpen || _exiting)
         // actually open; skip it during the exit phase (Context.IsOpen == false,
         // panel only kept mounted for the animation — Cleanup already unwired the
         // gesture in the close branch of OnAfterRenderAsync).
-        if (!_interopReady || !Context.IsOpen) return;
+        //
+        // #381 round 12 (P1) — also skip until _initialGestureSetupComplete:
+        // _interopReady alone flips true synchronously, before
+        // OnAfterRenderAsync's own RegisterGestureAsync call has actually run.
+        // A parameter update landing in that window used to let reconciliation
+        // register a gesture ahead of — and then a second time duplicated by —
+        // the original chain resuming; see the field's own remarks.
+        if (!_interopReady || !Context.IsOpen || !_initialGestureSetupComplete) return;
 
         // SnapPoints/Side changed while open → the gesture mode flipped (e.g.
         // empty→populated SnapPoints); re-register so the right JS is attached.
@@ -473,13 +725,50 @@ else if (Context.IsOpen || _exiting)
         // would keep the stale resting geometry. Re-register whenever the live
         // gesture's recorded direction or snap-point array diverges from what the
         // current parameters describe.
-        if (_registeredWithSnap != UsesSnapPoints
-            || (_gestureRegistered
-                && (_registeredDirection != SwipeDirection
-                    || !SnapPointsMatchRegistered())))
+        // #381 round 11 (P2) — "Reconcile the gesture before displaying its
+        // handle": the two checks above only re-register when
+        // _registeredWithSnap disagrees with UsesSnapPoints (a mode flip),
+        // or when an ALREADY-live gesture's own recorded geometry is stale.
+        // Neither ever fires for a non-snap drawer whose PreventClose flips
+        // while open — UsesSnapPoints stays false on both sides, so there's
+        // no mode flip, and RegisterGestureAsync's plain-swipe gate
+        // (`!PreventClose`) is invisible to both checks. That left
+        // GestureWillBeRegistered's PREDICTION (which ShowDragHandle relies
+        // on for the handle's visibility, to avoid a flash on the interop-
+        // pending first render) able to diverge from the ACTUAL
+        // _gestureRegistered state: PreventClose true->false rendered the
+        // handle with no listener underneath it (a touch-none dead zone —
+        // this finding); PreventClose false->true left a stale swipe
+        // listener that could still dismiss a now-protected drawer (the
+        // mirror case). Comparing _gestureRegistered against
+        // GestureWillBeRegistered's own condition directly (only meaningful
+        // in non-snap mode — UsesSnapPoints always registers regardless of
+        // PreventClose) keeps the prediction a maintained INVARIANT instead
+        // of a guess that can silently go stale: whenever they'd disagree,
+        // this makes them agree again the same way every other
+        // reconciliation case here does, rather than switching the handle
+        // to poll _gestureRegistered directly (which would need a
+        // StateHasChanged() call threaded through OnAfterRenderAsync's own
+        // registration path to avoid the handle silently never appearing
+        // after the FIRST render, since mutating a field there doesn't
+        // trigger a re-render on its own — a bigger, riskier change for a
+        // problem this reconciliation already fully solves).
+        //
+        // #381 round 13 (P2) — "Defer snap baseline capture until the new
+        // side renders": this used to unregister + re-register RIGHT HERE,
+        // synchronously, which runs BEFORE Blazor commits the render
+        // containing whatever CSS the parameter change implies (e.g. a Side
+        // flip's new top-0/bottom-0 PositionClasses) — registerDrawerSnap's
+        // baseline capture reads the CURRENT DOM via getComputedStyle when
+        // there's no inline override, so it captured the STALE side's
+        // classes, and settleAtRest later wrote that stale value inline
+        // over the new class, visibly misplacing the drawer. Setting the
+        // flag and returning defers the actual work to OnAfterRenderAsync
+        // (see its own remarks) — which, running after a render commits by
+        // definition, always sees the current DOM.
+        if (GestureNeedsReconcile())
         {
-            await UnregisterGestureAsync();
-            await RegisterGestureAsync();
+            _gestureReconcilePending = true;
             return;
         }
 

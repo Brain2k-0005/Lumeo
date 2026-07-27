@@ -52,11 +52,27 @@ public class DrawerGestureReconcileTests : IAsyncLifetime
         b.CloseComponent();
     };
 
+    private static RenderFragment DrawerContentFragment(L.Side side, bool preventClose) => b =>
+    {
+        b.OpenComponent<L.DrawerContent>(0);
+        b.AddAttribute(1, "Side", side);
+        b.AddAttribute(2, "PreventClose", preventClose);
+        b.AddAttribute(3, "ChildContent", (RenderFragment)(inner => inner.AddContent(0, "Body")));
+        b.CloseComponent();
+    };
+
     private IRenderedComponent<L.Drawer> RenderDrawer(bool open, L.Side side, double[]? snapPoints = null)
     {
         return _ctx.Render<L.Drawer>(p => p
             .Add(d => d.Open, open)
             .Add(d => d.ChildContent, DrawerContentFragment(side, snapPoints)));
+    }
+
+    private IRenderedComponent<L.Drawer> RenderDrawer(bool open, L.Side side, bool preventClose)
+    {
+        return _ctx.Render<L.Drawer>(p => p
+            .Add(d => d.Open, open)
+            .Add(d => d.ChildContent, DrawerContentFragment(side, preventClose)));
     }
 
     // ---- #76: a Side change while open re-wires the swipe to the new edge ----
@@ -136,6 +152,91 @@ public class DrawerGestureReconcileTests : IAsyncLifetime
             .Add(d => d.ChildContent, DrawerContentFragment(L.Side.Bottom, snapPoints: new[] { 0.4, 1.0 })));
 
         Assert.Single(_interop.DrawerSwipeRegistrations);
+        Assert.Empty(_interop.DrawerSwipeUnregistrations);
+    }
+
+    // ---- #381 round 11 (P2): "Reconcile the gesture before displaying its
+    // handle" — PreventClose flipping WHILE a non-snap drawer stays open must
+    // register/unregister the swipe gesture accordingly. Neither the mode-flip
+    // check (_registeredWithSnap != UsesSnapPoints — both false throughout,
+    // since SnapPoints never enters the picture here) nor the geometry check
+    // (guarded on _gestureRegistered already being true) ever fired for this
+    // case before the fix, so the swipe listener silently failed to appear
+    // (dead touch zone under a now-visible handle) or disappear (a
+    // now-protected drawer still dismissible by an old, un-torn-down swipe
+    // listener) to match PreventClose's new value. ----
+
+    [Fact]
+    public void PreventClose_True_To_False_While_Open_Registers_Swipe()
+    {
+        // Opens PROTECTED (no gesture at all — RegisterGestureAsync's plain-
+        // swipe branch is gated on !PreventClose).
+        var cut = RenderDrawer(open: true, side: L.Side.Bottom, preventClose: true);
+        Assert.Empty(_interop.DrawerSwipeRegistrations);
+        Assert.Empty(_interop.DrawerSwipeUnregistrations);
+
+        // PreventClose flips to false WHILE the drawer stays open — the drawer
+        // is now dismissible and its handle strip now predicts a live gesture
+        // (GestureWillBeRegistered), so one must actually get registered.
+        cut.Render(p => p
+            .Add(d => d.Open, true)
+            .Add(d => d.ChildContent, DrawerContentFragment(L.Side.Bottom, preventClose: false)));
+
+        var reg = Assert.Single(_interop.DrawerSwipeRegistrations);
+        Assert.Equal("down", reg.Direction); // Side.Bottom's swipe direction
+    }
+
+    [Fact]
+    public void PreventClose_False_To_True_While_Open_Unregisters_Swipe()
+    {
+        // Opens dismissible — the plain swipe gesture registers immediately.
+        var cut = RenderDrawer(open: true, side: L.Side.Bottom, preventClose: false);
+        Assert.Single(_interop.DrawerSwipeRegistrations);
+        Assert.Empty(_interop.DrawerSwipeUnregistrations);
+
+        // PreventClose flips to true WHILE open — the mirror case: a swipe
+        // must no longer be able to dismiss this now-protected drawer, so the
+        // stale listener has to be torn down (and nothing re-registered).
+        cut.Render(p => p
+            .Add(d => d.Open, true)
+            .Add(d => d.ChildContent, DrawerContentFragment(L.Side.Bottom, preventClose: true)));
+
+        Assert.NotEmpty(_interop.DrawerSwipeUnregistrations);
+        // No fresh registration follows — PreventClose:true keeps the
+        // non-snap path gesture-less.
+        Assert.Single(_interop.DrawerSwipeRegistrations);
+    }
+
+    [Fact]
+    public void PreventClose_Unchanged_While_Open_Does_Not_Churn_Swipe()
+    {
+        // Control: an unrelated re-render with the SAME PreventClose value
+        // must not register/unregister anything extra.
+        var cut = RenderDrawer(open: true, side: L.Side.Bottom, preventClose: false);
+        Assert.Single(_interop.DrawerSwipeRegistrations);
+        Assert.Empty(_interop.DrawerSwipeUnregistrations);
+
+        cut.Render(p => p
+            .Add(d => d.Open, true)
+            .Add(d => d.ChildContent, DrawerContentFragment(L.Side.Bottom, preventClose: false)));
+
+        Assert.Single(_interop.DrawerSwipeRegistrations);
+        Assert.Empty(_interop.DrawerSwipeUnregistrations);
+    }
+
+    [Fact]
+    public void PreventClose_Stays_True_While_Open_Never_Registers_Swipe()
+    {
+        // Control: PreventClose stays true across a re-render — still no
+        // gesture, still no churn.
+        var cut = RenderDrawer(open: true, side: L.Side.Bottom, preventClose: true);
+        Assert.Empty(_interop.DrawerSwipeRegistrations);
+
+        cut.Render(p => p
+            .Add(d => d.Open, true)
+            .Add(d => d.ChildContent, DrawerContentFragment(L.Side.Bottom, preventClose: true)));
+
+        Assert.Empty(_interop.DrawerSwipeRegistrations);
         Assert.Empty(_interop.DrawerSwipeUnregistrations);
     }
 }
