@@ -64,6 +64,143 @@ internal enum GanttRangeSource
     SelfCenteredOnCapture,
 }
 
+/// <summary>
+/// The result of one <c>Gantt3.ReconcileAsync</c> call (Codex round 18-f2). A
+/// caller must distinguish these three, not just "did it commit": a
+/// <see cref="Superseded"/> pass never applied its pending parameter inputs, so
+/// the SUPERSEDING action (a navigation, a theme flip) must re-apply them; a
+/// <see cref="NoOp"/> pass had nothing to apply (nothing changed since the last
+/// commit) and needs no follow-up.
+/// </summary>
+internal enum GanttReconcileOutcome
+{
+    /// <summary>The pass captured (if needed), committed tasks/mode/range, and emitted its scroll intent.</summary>
+    Committed,
+
+    /// <summary>Nothing in the snapshot diff changed — the pass abandoned before claiming a generation, committing nothing.</summary>
+    NoOp,
+
+    /// <summary>A newer generation was claimed while this pass's capture was in flight — it abandoned its entire commit, so its pending inputs are still un-applied.</summary>
+    Superseded,
+}
+
+/// <summary>
+/// Which trigger authored the view-mode intent that currently owns
+/// <c>GanttState.ViewMode</c> (Codex PR-382 review round 3 consolidation — see
+/// <see cref="GanttViewModeIntent"/>).
+/// </summary>
+/// <remarks>
+/// Deliberately has no <c>Navigation</c> member: a Previous/Next/Today click (or
+/// a <c>ThemeService</c> direction flip) never DECIDES a view mode. It supersedes
+/// whichever reconcile is carrying the current intent and REPLAYS that same
+/// intent — it is a re-executor, never an author. Making that fact structural is
+/// half the point of this type: the replay path has no branch that could invent a
+/// mode of its own, or fall back to reading a parameter that a controlled binding
+/// has not echoed yet.
+/// </remarks>
+internal enum GanttViewModeSource
+{
+    /// <summary>The initial <c>ViewMode</c> parameter value, adopted by <c>OnInitialized</c>.</summary>
+    Mount,
+
+    /// <summary>A genuine <c>ViewMode</c> parameter change pushed by the parent on a parameter pass.</summary>
+    Parameter,
+
+    /// <summary>A zoom pick from <c>GanttNav</c>'s toolbar.</summary>
+    Toolbar,
+}
+
+/// <summary>
+/// How far the owning view-mode intent has progressed. An intent owns the view
+/// mode from the moment it is claimed until it reaches <see cref="Settled"/> —
+/// that window, not "did some reconcile commit", is what a replay must respect.
+/// </summary>
+internal enum GanttViewModePhase
+{
+    /// <summary>Claimed but not yet committed to <c>GanttState</c> — a reconcile for it is in flight, or the pass carrying it was superseded and is waiting to be replayed.</summary>
+    Applying,
+
+    /// <summary>Committed to <c>GanttState</c>, but the two-way <c>ViewModeChanged</c> echo for it has not come back yet, so the parent's <c>ViewMode</c> parameter may still hold the pre-pick value.</summary>
+    Notifying,
+
+    /// <summary>Committed and acknowledged. Nothing about this intent is outstanding, and <c>GanttState.ViewMode</c> equals its <see cref="GanttViewModeIntent.Mode"/>.</summary>
+    Settled,
+}
+
+/// <summary>
+/// The single representation of "which intent currently owns the GanttV3 view
+/// mode, on whose authority, and for how long" (Codex PR-382 review round 3).
+/// </summary>
+/// <remarks>
+/// Replaces the four independently-maintained discriminators rounds 17-20
+/// accreted in <c>Gantt3</c> — <c>_pendingToolbarMode</c>,
+/// <c>_committedViewModeParam</c>, <c>_lastSeenViewModeParam</c> and the
+/// <c>MarkViewModeParamAccountedFor</c> helper that tried to keep the last two in
+/// step. Each of those carried ONE fragment of the ownership question and had its
+/// OWN hand-maintained lifetime, written at a different call site; every review
+/// round corrected one of those lifetimes and exposed the next.
+///
+/// The whole question is answered here instead, by four facts that are only ever
+/// written together:
+/// <list type="bullet">
+/// <item><see cref="Mode"/> — what the owner wants.</item>
+/// <item><see cref="Source"/> — who wants it (which also decides whether a
+/// commit owes the consumer a <c>ViewModeChanged</c> echo: only a
+/// <see cref="GanttViewModeSource.Toolbar"/> pick does).</item>
+/// <item><see cref="Phase"/> — how far it has got, i.e. whether it is still
+/// pending. A replay uses <see cref="Mode"/> exactly while
+/// <see cref="IsPending"/> is true, so an intent survives an arbitrarily long
+/// consumer callback.</item>
+/// <item><see cref="ParamAccountedFor"/> — the <c>ViewMode</c> PARAMETER value
+/// this intent has already folded in. "Has the parameter been accounted for" is
+/// therefore a property OF the owner, not a separate field someone has to
+/// remember to advance: claiming an intent records it, and settling one advances
+/// it to whatever the parent should now be holding.</item>
+/// </list>
+/// <see cref="Id"/> is the intent's stable identity — bumped only when a NEW
+/// intent is claimed, never by a replay. A pass that started an intent's consumer
+/// callback compares it on resume, so a callback that outlives its intent (because
+/// a newer pick of ANY source took over meanwhile) can never settle, clear or
+/// clobber the newer one.
+/// </remarks>
+/// <param name="Id">Stable identity — see the remarks.</param>
+/// <param name="Mode">The view mode this intent resolves to.</param>
+/// <param name="Source">Which trigger authored it.</param>
+/// <param name="Phase">How far it has progressed.</param>
+/// <param name="ParamAccountedFor">The <c>ViewMode</c> parameter value already folded into this intent.</param>
+/// <param name="AccountedWhileControlled">Whether <c>ViewModeChanged</c> had a
+/// delegate when <see cref="ParamAccountedFor"/> was recorded. Part of the same
+/// accounting, because the parameter's AUTHORITY — not just its value — is what
+/// is being accounted for: an uncontrolled chart may legitimately hold a toolbar
+/// mode its parameter never carried, but the moment a consumer opts INTO control
+/// its parameter becomes authoritative again, so that transition is itself a new
+/// assertion even when the value is unchanged (Codex PR-382 review round 6,
+/// "Reconcile when the binding becomes controlled").</param>
+/// <param name="ParamRedeliveredWhileNotifying">Whether the parent delivered a
+/// parameter pass while this intent was <see cref="GanttViewModePhase.Notifying"/>
+/// WITHOUT that pass authoring an intent of its own — i.e. the consumer re-pushed
+/// the <c>ViewMode</c> this intent had already accounted for. That re-delivery is
+/// the parent's answer to the pick, and it is what
+/// <see cref="GanttViewModePhase.Notifying"/>'s exit condition consults: see
+/// <c>Gantt3.SettleViewModeIntentAsync</c> (Codex PR-382 review round 5,
+/// "Preserve controlled-mode rejections during callback renders").</param>
+internal readonly record struct GanttViewModeIntent(
+    long Id,
+    GanttViewMode Mode,
+    GanttViewModeSource Source,
+    GanttViewModePhase Phase,
+    GanttViewMode ParamAccountedFor,
+    bool AccountedWhileControlled,
+    bool ParamRedeliveredWhileNotifying = false)
+{
+    /// <summary>
+    /// True while this intent still owns the view mode outright — i.e. anything
+    /// that supersedes the pass carrying it must replay <see cref="Mode"/>
+    /// rather than re-deriving a mode from the parameter.
+    /// </summary>
+    public bool IsPending => Phase != GanttViewModePhase.Settled;
+}
+
 /// <summary>What date the one-shot scroll intent targets for a pass.</summary>
 internal enum GanttScrollTarget
 {
@@ -87,7 +224,19 @@ internal enum GanttScrollTarget
 internal readonly record struct GanttViewportDecision(
     bool NeedsLiveCenterCapture,
     GanttRangeSource Range,
-    GanttScrollTarget Target);
+    GanttScrollTarget Target)
+{
+    /// <summary>
+    /// True when nothing in the diff changed at all, so the pass has no viewport
+    /// work to do. Provably equivalent to "prev and next are field-for-field
+    /// identical": <see cref="GanttViewportReconciler.Decide"/> forces
+    /// <see cref="GanttRangeSource.TaskDerived"/> for any task change and
+    /// <see cref="GanttRangeSource.SelfCenteredOnCapture"/> for any mode change,
+    /// and any geometry change forces a <see cref="GanttScrollTarget"/> other
+    /// than <see cref="GanttScrollTarget.None"/>.
+    /// </summary>
+    public bool IsNoOp => Range == GanttRangeSource.Keep && Target == GanttScrollTarget.None;
+}
 
 /// <summary>Shared geometry helpers for the GanttV3 viewport reconcile.</summary>
 internal static class GanttViewportGeometry
