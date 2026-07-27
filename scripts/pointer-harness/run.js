@@ -51,7 +51,11 @@ function assert(cond, msg) {
   console.log(`=== pointer-harness — engine: ${ENGINE} (port ${PORT}) ===`);
   const server = await serve();
   const browser = await playwright[ENGINE].launch();
-  const page = await browser.newPage({ viewport: { width: 1200, height: 800 } });
+  // hasTouch: true — additive capability flag (enables Touch/TouchEvent/
+  // document.createTouch support without disabling mouse emulation), needed
+  // by TEST 59/60's real touch-gesture dispatch. Every other test in this
+  // suite drives DataGrid/Drawer purely via page.mouse, unaffected by it.
+  const page = await browser.newPage({ viewport: { width: 1200, height: 800 }, hasTouch: true });
   page.on('pageerror', (e) => console.error('PAGEERROR', e));
   page.on('console', (m) => { if (m.type() === 'error') console.error('CONSOLE ERROR', m.text()); });
   await page.goto(`http://localhost:${PORT}/harness.html`);
@@ -3221,6 +3225,654 @@ function assert(cond, msg) {
   assert(nudge54.bOpacity === '', `a neither-capable column never arms a real drag lift (B's inline opacity got '${nudge54.bOpacity}')`);
   assert(nudge54.bArmed === false, 'a neither-capable column never reaches the 0.8 armed-drag opacity');
   assert(!commit54, 'a neither-capable column dragged past the threshold never commits anything — it only gets the nudge feedback');
+
+  // ---------------------------------------------------------------
+  // TEST 55 — Drawer snap: a consumer-supplied inline offset in a NON-pixel
+  // unit survives every snap settle, composes correctly with the snap's own
+  // displacement, and round-trips through the rest<->transform
+  // representation swap with zero geometric drift (PR #381 findings
+  // #10/#11/#13 — restBaseRaw/composeRestValue replacing the old
+  // parseFloat-based restBase). setDrawerSnap drives setActive ->
+  // enterDragRepresentation() -> ... -> settleAtRest(), the EXACT
+  // representation-swap machinery a real touch drag also uses (see
+  // components.js's own state-model contract comment above
+  // registerDrawerSwipe) — no synthetic touch events needed to exercise it.
+  // ---------------------------------------------------------------
+  await page.evaluate(() => {
+    document.getElementById('host').innerHTML =
+      `<div id="drawer55" style="position:fixed; left:0; right:0; height:300px; bottom:1rem; background:blue;"></div>`;
+  });
+  await page.evaluate(() => {
+    window.__dotnetCalls.length = 0;
+    window.__C.registerDrawerSnap('drawer55', 'down', window.__fakeDotNet,
+      { snapPoints: [0.4, 0.75, 1], activeIndex: 0, dismissible: true });
+  });
+  // Let the open sequence's own rAF chain + first settle (320ms EASING
+  // transition) finish.
+  await page.waitForTimeout(500);
+  const afterOpenSettle = await page.evaluate(() => {
+    const el = document.getElementById('drawer55');
+    return { bottomStyle: el.style.bottom, rect: el.getBoundingClientRect().toJSON() };
+  });
+  assert(afterOpenSettle.bottomStyle.includes('1rem'),
+    `settling at a PARTIAL (non-fully-open) snap composes the displacement onto the consumer's ORIGINAL '1rem' expression via calc(), never a parsed/lossy pixel value (got '${afterOpenSettle.bottomStyle}')`);
+  assert(!afterOpenSettle.bottomStyle.match(/^-?[\d.]+px$/),
+    `the composed rest value is NOT a plain pixel number — the unit-bearing consumer expression must still be visible in it (got '${afterOpenSettle.bottomStyle}')`);
+
+  // Move to the fully-open snap (index 2, fraction 1.0 => ZERO snap
+  // displacement) — the composed value should reduce to EXACTLY the
+  // consumer's original '1rem', unchanged.
+  await page.evaluate(() => window.__C.setDrawerSnap('drawer55', 2));
+  await page.waitForTimeout(500);
+  const afterMoveToFull = await page.evaluate(() => {
+    const el = document.getElementById('drawer55');
+    return { bottomStyle: el.style.bottom, rect: el.getBoundingClientRect().toJSON() };
+  });
+  assert(afterMoveToFull.bottomStyle === '1rem',
+    `fully-open snap has zero displacement, so bottom returns to EXACTLY the consumer's original '1rem' (got '${afterMoveToFull.bottomStyle}')`);
+  const viewportHeight = await page.evaluate(() => window.innerHeight);
+  assert(Math.abs((viewportHeight - afterMoveToFull.rect.bottom) - 16) < 1,
+    `fully-open panel's bottom edge sits exactly 1rem (16px) above the viewport bottom (got ${(viewportHeight - afterMoveToFull.rect.bottom).toFixed(2)}px)`);
+
+  // Move back to the ORIGINAL 40% snap — this round-trips through
+  // enterDragRepresentation() (rest -> transform, called by setActive
+  // before the new target is applied) and settleAtRest() (transform ->
+  // rest) a second time. The old parseFloat-based restBase's bug (clearing
+  // restProperty to '' assumed the box falls back to restBase once cleared,
+  // when it actually falls back to the stylesheet's own baseline) would
+  // make this round trip land measurably off from the original position;
+  // composeRestValue/restBaseRaw never clears the property to anything
+  // other than the literal original value, so it must land pixel-identical.
+  await page.evaluate(() => window.__C.setDrawerSnap('drawer55', 0));
+  await page.waitForTimeout(500);
+  const afterRoundTrip = await page.evaluate(() => {
+    const el = document.getElementById('drawer55');
+    return { bottomStyle: el.style.bottom, rect: el.getBoundingClientRect().toJSON() };
+  });
+  assert(afterRoundTrip.bottomStyle.includes('1rem'),
+    `round-tripping back to the 40% snap still composes onto '1rem' (got '${afterRoundTrip.bottomStyle}')`);
+  assert(Math.abs(afterRoundTrip.rect.top - afterOpenSettle.rect.top) < 1,
+    `round-tripping snaps (40% -> fully-open -> 40%) through two representation swaps lands the panel back at the EXACT original position (drift: ${Math.abs(afterRoundTrip.rect.top - afterOpenSettle.rect.top).toFixed(2)}px)`);
+
+  // Teardown restores the consumer's ORIGINAL inline value exactly (already
+  // covered by finding #5 / round 6 — re-asserted here since this test
+  // touches the same restBaseRaw capture).
+  await page.evaluate(() => window.__C.unregisterDrawerSnap('drawer55'));
+  const afterTeardown = await page.evaluate(() => document.getElementById('drawer55').style.bottom);
+  assert(afterTeardown === '1rem', `unregister restores the EXACT original consumer inline value, not a leftover composed one (got '${afterTeardown}')`);
+
+  // ---------------------------------------------------------------
+  // TEST 56 — Drawer snap with a plain `bottom: 0` CLASS baseline (no
+  // INLINE consumer offset — the realistic common case: DrawerContent's own
+  // PositionClasses always supplies `bottom-0`/`top-0` as a class, never an
+  // inline style, even with no consumer Class override at all) composes to
+  // a plain pixel value exactly as before the round-9/round-10 fixes — a
+  // regression guard that neither rewrite changed behavior for the
+  // overwhelmingly common no-consumer-offset case. (Round 10: this fixture
+  // used to have NO bottom source at all, inline or class, which is not
+  // what a real Drawer looks like — getComputedStyle's fallback then picked
+  // up the element's arbitrary static-position value instead of a stable
+  // 0, an unrealistic fixture round 10's own fix exposed.)
+  // ---------------------------------------------------------------
+  await page.evaluate(() => {
+    document.getElementById('host').innerHTML = `
+      <style>.bottom-0-test { bottom: 0; }</style>
+      <div id="drawer56" class="bottom-0-test" style="position:fixed; left:0; right:0; height:200px; background:red;"></div>`;
+  });
+  await page.evaluate(() => {
+    window.__C.registerDrawerSnap('drawer56', 'down', window.__fakeDotNet,
+      { snapPoints: [0.5, 1], activeIndex: 0, dismissible: true });
+  });
+  await page.waitForTimeout(500);
+  const drawer56State = await page.evaluate(() => {
+    const el = document.getElementById('drawer56');
+    return { bottomStyle: el.style.bottom, transform: el.style.transform, rect: el.getBoundingClientRect().toJSON() };
+  });
+  const viewportHeight56 = await page.evaluate(() => window.innerHeight);
+  assert(Math.abs((drawer56State.rect.bottom - viewportHeight56) - 100) < 1,
+    `a 0-baseline (bottom: 0 class, no inline) drawer at its 50% snap sits 100px past the viewport bottom, same as before either fix (got ${(drawer56State.rect.bottom - viewportHeight56).toFixed(2)}px)`);
+  assert(drawer56State.transform === '', `transform is cleared once settled at rest (got '${drawer56State.transform}')`);
+  await page.evaluate(() => window.__C.unregisterDrawerSnap('drawer56'));
+
+  // ---------------------------------------------------------------
+  // TEST 57 — A position:fixed popover nested inside a snap drawer's
+  // overflow-y-auto panel escapes the panel's clip once settled at rest
+  // (PR #381 Codex finding "Keep fixed popovers outside the snap panel's
+  // clipping region" — investigated and found ALREADY FIXED by the round-3
+  // containing-block fix: `overflow` only clips a `position:fixed`
+  // descendant when the overflow ancestor IS (or sits between it and) its
+  // containing block; clearing `transform` at rest, which round 3 already
+  // does, means the panel is no longer that containing block, so the
+  // popover's real containing block — and clip ancestor — reverts to the
+  // viewport). A SHORT panel (80px) at a 30% snap with a popover
+  // deliberately positioned well outside those 80px proves this: if the
+  // panel's overflow-y-auto still clipped it, elementFromPoint at the
+  // popover's own center would miss it entirely.
+  // ---------------------------------------------------------------
+  await page.evaluate(() => {
+    document.getElementById('host').innerHTML = `
+      <div id="drawer57" style="position:fixed; left:20px; right:20px; height:80px; overflow-y:auto; background:rgba(0,128,0,0.3);">
+        <div style="height:20px;">panel content</div>
+        <div id="popover57" style="position:fixed; left:40px; bottom:250px; width:150px; height:60px; background:red; z-index:999;">POPOVER</div>
+      </div>`;
+  });
+  await page.evaluate(() => {
+    window.__C.registerDrawerSnap('drawer57', 'down', window.__fakeDotNet,
+      { snapPoints: [0.3, 1], activeIndex: 0, dismissible: true });
+  });
+  await page.waitForTimeout(500); // open sequence + settle at rest (320ms EASING)
+  const popoverHit = await page.evaluate(() => {
+    const pop = document.getElementById('popover57');
+    const panel = document.getElementById('drawer57');
+    const rect = pop.getBoundingClientRect();
+    const cx = rect.left + rect.width / 2;
+    const cy = rect.top + rect.height / 2;
+    const hit = document.elementFromPoint(cx, cy);
+    return { panelTransform: panel.style.transform, hitIsPopover: hit === pop, hitTag: hit && (hit.id || hit.tagName) };
+  });
+  assert(popoverHit.panelTransform === '', `panel has no transform once settled at rest — not a containing block (got '${popoverHit.panelTransform}')`);
+  assert(popoverHit.hitIsPopover === true,
+    `a position:fixed popover positioned beyond a short (80px) settled panel's bounds is NOT clipped by the panel's overflow-y-auto (elementFromPoint hit '${popoverHit.hitTag}' instead)`);
+  await page.evaluate(() => window.__C.unregisterDrawerSnap('drawer57'));
+
+  // ---------------------------------------------------------------
+  // TEST 58 — Drawer snap positioned via a CSS CLASS (not inline) — e.g.
+  // the supported `Class` parameter (`Class="bottom-4"`), or this library's
+  // own default bottom-0/top-0 PositionClasses — keeps that inset through
+  // settling (PR #381 finding "Preserve class-based insets when settling
+  // snap drawers"). `el.style.bottom` only reflects an INLINE declaration,
+  // so a class-based `bottom: 1rem` used to be invisible to restBaseRaw
+  // (read as empty), and the drawer jumped to a plain pixel offset that
+  // dropped the class's inset entirely the moment it settled.
+  // registerDrawerSnap now falls back to getComputedStyle when there's no
+  // inline override, capturing the class's CURRENT resolved value — proven
+  // geometrically (not by string-matching the composed value, since
+  // same-unit calc() folding is a browser/engine serialization detail —
+  // Chromium folds `calc(16px - 180px)` to `calc(-164px)`, for instance).
+  // ---------------------------------------------------------------
+  await page.evaluate(() => {
+    document.getElementById('host').innerHTML = `
+      <style>.bottom-4-test { bottom: 1rem; }</style>
+      <div id="drawer58" class="bottom-4-test" style="position:fixed; left:0; right:0; height:300px; background:purple;"></div>`;
+  });
+  await page.evaluate(() => {
+    window.__C.registerDrawerSnap('drawer58', 'down', window.__fakeDotNet,
+      { snapPoints: [0.4, 1], activeIndex: 1, dismissible: true }); // start fully open
+  });
+  await page.waitForTimeout(500);
+  const viewportHeight58 = await page.evaluate(() => window.innerHeight);
+  const drawer58Open = await page.evaluate(() => {
+    const el = document.getElementById('drawer58');
+    return { inlineBottom: el.style.bottom, rect: el.getBoundingClientRect().toJSON() };
+  });
+  assert(Math.abs((viewportHeight58 - drawer58Open.rect.bottom) - 16) < 1,
+    `fully-open, class-positioned (bottom: 1rem via a CSS class, not inline) drawer's bottom edge sits 16px above the viewport bottom — the class inset survived settling (got ${(viewportHeight58 - drawer58Open.rect.bottom).toFixed(2)}px)`);
+
+  // Move to the 40% snap — a NON-zero displacement composed onto the
+  // class's 16px baseline.
+  await page.evaluate(() => window.__C.setDrawerSnap('drawer58', 0));
+  await page.waitForTimeout(500);
+  const drawer58Partial = await page.evaluate(() => {
+    const el = document.getElementById('drawer58');
+    return { inlineBottom: el.style.bottom, rect: el.getBoundingClientRect().toJSON() };
+  });
+  // At 40% open with a 300px-tall panel, 180px of it is pushed off-screen
+  // below the viewport — so its bottom edge should sit 180px BELOW the
+  // class's 16px-above-viewport-bottom baseline, i.e. 164px below the
+  // viewport's own bottom edge.
+  assert(Math.abs((drawer58Partial.rect.bottom - viewportHeight58) - 164) < 1,
+    `settling at the 40% snap composes the 180px displacement onto the class's 16px inset, not a plain 180px-from-viewport-edge value (bottom edge is ${(drawer58Partial.rect.bottom - viewportHeight58).toFixed(2)}px past the viewport, expected 164px)`);
+  assert(drawer58Partial.inlineBottom !== '',
+    'settling at a partial snap writes an inline bottom (composed onto the class baseline via calc())');
+
+  // Teardown restores NO inline value at all (there never was one — the
+  // class always governed) so the class keeps positioning the box exactly
+  // as if this registration never existed.
+  await page.evaluate(() => window.__C.unregisterDrawerSnap('drawer58'));
+  const drawer58Teardown = await page.evaluate(() => {
+    const el = document.getElementById('drawer58');
+    return { inlineBottom: el.style.bottom, rect: el.getBoundingClientRect().toJSON() };
+  });
+  assert(drawer58Teardown.inlineBottom === '', `teardown restores NO inline bottom — the class alone governs again, exactly as before registration (got '${drawer58Teardown.inlineBottom}')`);
+  assert(Math.abs((viewportHeight58 - drawer58Teardown.rect.bottom) - 16) < 1,
+    `after teardown the class's own bottom: 1rem is back in sole effect (got ${(viewportHeight58 - drawer58Teardown.rect.bottom).toFixed(2)}px)`);
+
+  // ---------------------------------------------------------------
+  // TEST 59 — registerDrawerSwipe: "Delay scroll ownership until the
+  // direction is established" (PR #381 finding). At a scroll boundary
+  // (scrollTop 0), a 1px upward jitter must NOT permanently hand ownership
+  // to the content — a deliberate downward drag immediately afterward (in
+  // the OPPOSITE, correct direction, well past both the activation and
+  // dismiss thresholds) must still dismiss. Dispatches REAL touch events
+  // through the actual listeners (no public JS API bypasses the
+  // ownership-latch code path) — cross-engine Touch/TouchEvent
+  // construction differs (Chromium/Firefox accept `new Touch(...)` +
+  // plain arrays; WebKit requires the legacy document.createTouch/
+  // createTouchList APIs and rejects both the modern constructor and
+  // plain-array touch lists), so a small per-engine helper picks whichever
+  // the current engine supports.
+  // ---------------------------------------------------------------
+  await page.evaluate(() => {
+    document.getElementById('host').innerHTML = `
+      <div id="drawer59" style="position:fixed; left:0; right:0; bottom:0; height:200px; overflow:hidden; background:blue;">
+        <div id="scrollable59" style="height:100%; overflow-y:auto;">
+          <div style="height:600px;">tall scrollable content</div>
+        </div>
+      </div>`;
+  });
+  await page.evaluate(() => {
+    window.__dotnetCalls.length = 0;
+    window.__C.registerDrawerSwipe('drawer59', 'down', window.__fakeDotNet, {});
+  });
+  const test59 = await page.evaluate(() => {
+    function makeTouch(el, x, y) {
+      // Prefer the standard constructor (Chromium + Firefox both support it,
+      // and it takes clientX/clientY explicitly). WebKit throws "Illegal
+      // constructor" here, so fall back to the legacy document.createTouch —
+      // whose params are (view, target, id, pageX, pageY, screenX, screenY),
+      // NOT clientX/clientY; with this page unscrolled, clientX/Y derive
+      // from pageX/Y identically, which is why the standard constructor is
+      // preferred wherever it works rather than relying on that derivation.
+      try {
+        return new Touch({ identifier: 1, target: el, clientX: x, clientY: y, pageX: x, pageY: y });
+      } catch (e) {
+        return document.createTouch(window, el, 1, x, y, x, y);
+      }
+    }
+    function makeList(touches) {
+      if (typeof document.createTouchList === 'function') return document.createTouchList(...touches);
+      return touches;
+    }
+    function dispatch(el, type, x, y) {
+      const t = makeTouch(el, x, y);
+      const active = makeList(type === 'touchend' ? [] : [t]);
+      const changed = makeList([t]);
+      el.dispatchEvent(new TouchEvent(type, { touches: active, targetTouches: active, changedTouches: changed, bubbles: true, cancelable: true }));
+    }
+    const scrollable = document.getElementById('scrollable59');
+    scrollable.scrollTop = 0; // at the TOP scroll boundary
+    dispatch(scrollable, 'touchstart', 50, 100);
+    dispatch(scrollable, 'touchmove', 50, 99);  // 1px UP jitter — sub-threshold
+    dispatch(scrollable, 'touchmove', 50, 250); // deliberate 150px DOWN drag — past activation (10px) and dismiss (100px) thresholds
+    dispatch(scrollable, 'touchend', 50, 250);
+    return { dismissCalls: window.__dotnetCalls.filter(c => c.method === 'OnSwipeDismiss').length, scrollTopStayedZero: scrollable.scrollTop === 0 };
+  });
+  assert(test59.dismissCalls === 1,
+    `a deliberate downward dismiss drag fires OnSwipeDismiss even after a 1px upward jitter at the scroll boundary (got ${test59.dismissCalls} calls)`);
+  await page.evaluate(() => window.__C.unregisterDrawerSwipe('drawer59'));
+
+  // ---------------------------------------------------------------
+  // TEST 60 — registerDrawerSnap: the SAME ownership-latch fix, snap path
+  // ("the snap path repeats the same ordering" per the finding). A 1px
+  // upward jitter at scrollTop 0 must not strand a deliberate downward
+  // dismiss drag content-owned for the rest of the touch.
+  // ---------------------------------------------------------------
+  await page.evaluate(() => {
+    document.getElementById('host').innerHTML = `
+      <div id="drawer60" style="position:fixed; left:0; right:0; bottom:0; height:200px; background:green;">
+        <div id="scrollable60" style="height:100%; overflow-y:auto;">
+          <div style="height:600px;">tall scrollable content</div>
+        </div>
+      </div>`;
+  });
+  await page.evaluate(() => {
+    window.__dotnetCalls.length = 0;
+    window.__C.registerDrawerSnap('drawer60', 'down', window.__fakeDotNet,
+      { snapPoints: [0.5, 1], activeIndex: 0, dismissible: true, velocity: 0 });
+  });
+  await page.waitForTimeout(500); // let the open sequence settle at rest
+  const test60 = await page.evaluate(() => {
+    function makeTouch(el, x, y) {
+      // Prefer the standard constructor (Chromium + Firefox both support it,
+      // and it takes clientX/clientY explicitly). WebKit throws "Illegal
+      // constructor" here, so fall back to the legacy document.createTouch —
+      // whose params are (view, target, id, pageX, pageY, screenX, screenY),
+      // NOT clientX/clientY; with this page unscrolled, clientX/Y derive
+      // from pageX/Y identically, which is why the standard constructor is
+      // preferred wherever it works rather than relying on that derivation.
+      try {
+        return new Touch({ identifier: 1, target: el, clientX: x, clientY: y, pageX: x, pageY: y });
+      } catch (e) {
+        return document.createTouch(window, el, 1, x, y, x, y);
+      }
+    }
+    function makeList(touches) {
+      if (typeof document.createTouchList === 'function') return document.createTouchList(...touches);
+      return touches;
+    }
+    function dispatch(el, type, x, y) {
+      const t = makeTouch(el, x, y);
+      const active = makeList(type === 'touchend' ? [] : [t]);
+      const changed = makeList([t]);
+      el.dispatchEvent(new TouchEvent(type, { touches: active, targetTouches: active, changedTouches: changed, bubbles: true, cancelable: true }));
+    }
+    const scrollable = document.getElementById('scrollable60');
+    scrollable.scrollTop = 0;
+    dispatch(scrollable, 'touchstart', 50, 100);
+    dispatch(scrollable, 'touchmove', 50, 99);  // 1px UP jitter
+    dispatch(scrollable, 'touchmove', 50, 400); // deliberate large DOWN drag well past the lowest snap, toward dismiss
+    dispatch(scrollable, 'touchend', 50, 400);
+    return {
+      transformAfterDrag: document.getElementById('drawer60').style.transform,
+    };
+  });
+  await page.waitForTimeout(400); // let OnDrawerSnapDismiss's promise + any settle resolve
+  const test60Calls = await page.evaluate(() => window.__dotnetCalls.filter(c => c.method === 'OnDrawerSnapDismiss').length);
+  assert(test60Calls === 1,
+    `a deliberate downward dismiss drag fires OnDrawerSnapDismiss on the snap path too, even after a 1px upward jitter at the scroll boundary (got ${test60Calls} calls)`);
+  await page.evaluate(() => window.__C.unregisterDrawerSnap('drawer60'));
+
+  // ---------------------------------------------------------------
+  // TEST 61 — setDrawerSnap: "Preserve the in-flight position before
+  // disabling transitions" (PR #381 finding). Interrupting a snap
+  // transition that hasn't settled yet (atRest still false) with ANOTHER
+  // setDrawerSnap call must not snap the panel to the FIRST call's own
+  // target before redirecting toward the second — it must continue
+  // smoothly from wherever it currently is.
+  //
+  // Isolates the bug from real-clock interpolation timing (which would
+  // make a precise mid-transition position assertion flaky across
+  // engines/hardware) by interrupting essentially IMMEDIATELY — one
+  // animation frame after the first setDrawerSnap call, i.e. while the
+  // panel is still very close to its ORIGINAL position (0, fully open),
+  // nowhere near the first call's own target (210px, the 30% snap). The
+  // bug's signature is a large, easily distinguished jump: the very next
+  // painted frame after the interrupting call would show the panel
+  // suddenly at (or near) 210 — a value it should not have reached yet by
+  // any legitimate interpolation this early — before continuing on toward
+  // the second call's real target. The fix keeps it near its true
+  // near-the-start position instead.
+  // ---------------------------------------------------------------
+  await page.evaluate(() => {
+    document.getElementById('host').innerHTML = `
+      <style>.bottom-0-t61 { bottom: 0; }</style>
+      <div id="drawer61" class="bottom-0-t61" style="position:fixed; left:0; right:0; height:300px; background:orange;"></div>`;
+  });
+  await page.evaluate(() => {
+    window.__C.registerDrawerSnap('drawer61', 'down', window.__fakeDotNet,
+      { snapPoints: [0.3, 0.6, 1], activeIndex: 2, dismissible: true }); // starts fully open
+  });
+  await page.waitForTimeout(500); // let the open sequence fully settle (atRest -> true)
+  await page.evaluate(() => window.__C.setDrawerSnap('drawer61', 0)); // start moving toward the 30% snap (offset 210px)
+  const test61 = await page.evaluate(() => new Promise((resolve) => {
+    requestAnimationFrame(() => {
+      // Interrupt essentially immediately — the panel is still near its
+      // starting offset (0), nowhere near the first call's own target
+      // (210px) by any legitimate interpolation this early.
+      window.__C.setDrawerSnap('drawer61', 1); // redirect toward the 60% snap (offset 120px)
+      requestAnimationFrame(() => {
+        const rect = document.getElementById('drawer61').getBoundingClientRect();
+        resolve({ offsetPx: rect.bottom - window.innerHeight });
+      });
+    });
+  }));
+  assert(test61.offsetPx < 100,
+    `interrupting an in-flight snap transition with a new target does not jump to the FIRST call's own target (210px) first — the panel should still be near its true near-the-start position (got offset ${test61.offsetPx.toFixed(2)}px)`);
+  await page.waitForTimeout(500); // let it settle before teardown
+  await page.evaluate(() => window.__C.unregisterDrawerSnap('drawer61'));
+
+  // ---------------------------------------------------------------
+  // TEST 62 — "Resolve CSS-wide inset values before composing snap
+  // offsets" (PR #381 finding). A consumer inline inset can legally be a
+  // CSS-wide keyword — `style="bottom:auto; top:1rem"` (the finding's own
+  // example: explicit bottom:auto alongside an explicit top) resolves
+  // el.style.bottom to the literal string "auto". `calc(auto - 10px)` is
+  // invalid CSS — the browser silently REJECTS the whole assignment
+  // (leaving the property unchanged, i.e. still literally "auto") rather
+  // than applying anything at all, stranding the panel in neither
+  // representation. Verifies the composed value is no longer the literal
+  // keyword (and is non-empty, i.e. the assignment actually took effect) —
+  // not the exact final pixel position, which a SEPARATE, unrelated CSS
+  // quirk (top+height+bottom all explicit is over-constrained, so the
+  // browser disregards the JS-written bottom in favor of the untouched
+  // top) would make an unreliable signal for this specific fixture.
+  // ---------------------------------------------------------------
+  await page.evaluate(() => {
+    document.getElementById('host').innerHTML =
+      `<div id="drawer62" style="position:fixed; left:0; right:0; height:300px; top:1rem; bottom:auto; background:teal;"></div>`;
+  });
+  const beforeRegister62 = await page.evaluate(() => document.getElementById('drawer62').style.bottom);
+  assert(beforeRegister62 === 'auto', `sanity: the fixture's inline bottom reads back as the literal keyword before registering (got '${beforeRegister62}')`);
+  await page.evaluate(() => {
+    window.__C.registerDrawerSnap('drawer62', 'down', window.__fakeDotNet,
+      { snapPoints: [0.4, 1], activeIndex: 0, dismissible: true }); // 40% open — non-zero displacement, exercises calc() composition
+  });
+  await page.waitForTimeout(500);
+  const drawer62State = await page.evaluate(() => document.getElementById('drawer62').style.bottom);
+  assert(drawer62State !== 'auto' && drawer62State !== '',
+    `a CSS-wide keyword ("auto") inline inset is resolved through computed geometry, not interpolated into calc() literally — the composed rest value must be a real, non-empty CSS value (got '${drawer62State}')`);
+  assert(!drawer62State.includes('auto'),
+    `the composed rest value never contains the literal keyword "auto" anywhere, not even inside calc() (got '${drawer62State}')`);
+  await page.evaluate(() => window.__C.unregisterDrawerSnap('drawer62'));
+  const afterTeardown62 = await page.evaluate(() => document.getElementById('drawer62').style.bottom);
+  assert(afterTeardown62 === 'auto',
+    `teardown restores the EXACT original literal inline value ("auto"), not the resolved fallback used only for composing while registered (got '${afterTeardown62}')`);
+  // #381 round 7 (P2 Finding 2) — the over-constraint that made this
+  // fixture's exact resting position an "unreliable signal" (see above) is
+  // now its own dedicated fix; TEST 65 below reuses this exact fixture
+  // shape and asserts on the resting geometry directly.
+
+  // ---------------------------------------------------------------
+  // TEST 63 — registerDrawerSnap: "Defer snap dragging until scroll
+  // ownership is resolved" (PR #381 round 7 Finding 1, re-raised after a
+  // round-6 deferral filed as issue #384). A touch that starts MID-CONTENT
+  // — away from any scroll boundary, the single most common way a drawer's
+  // scrollable content is actually touched — must not drag the panel at
+  // ALL while ownership is still undecided (every frame below
+  // OWNERSHIP_THRESHOLD), not even transiently. Before this fix, every
+  // sub-threshold frame fell through to the lazy drag-entry code and
+  // visibly dragged the panel in lockstep with the finger for up to
+  // (OWNERSHIP_THRESHOLD - 1)px before the frame that finally crossed the
+  // threshold latched content ownership and animated it back — confirmed
+  // empirically with this exact sequence prior to the fix. Dispatches real
+  // touch events through the actual listeners, same cross-engine
+  // Touch/TouchEvent construction as TEST 59/60.
+  // ---------------------------------------------------------------
+  await page.evaluate(() => {
+    document.getElementById('host').innerHTML = `
+      <div id="drawer63" style="position:fixed; left:0; right:0; bottom:0; height:300px; background:blue;">
+        <div id="scrollable63" style="height:100%; overflow-y:auto;">
+          <div style="height:1000px;">tall scrollable content</div>
+        </div>
+      </div>`;
+  });
+  await page.evaluate(() => {
+    window.__C.registerDrawerSnap('drawer63', 'down', window.__fakeDotNet,
+      { snapPoints: [0.5, 1], activeIndex: 0, dismissible: true, velocity: 0 });
+  });
+  await page.waitForTimeout(500); // let the open sequence settle at rest
+  await page.evaluate(() => { document.getElementById('scrollable63').scrollTop = 300; }); // mid-content — plenty of room either way
+  const test63 = await page.evaluate(() => {
+    function makeTouch(el, x, y) {
+      try { return new Touch({ identifier: 1, target: el, clientX: x, clientY: y, pageX: x, pageY: y }); }
+      catch (e) { return document.createTouch(window, el, 1, x, y, x, y); }
+    }
+    function makeList(touches) {
+      if (typeof document.createTouchList === 'function') return document.createTouchList(...touches);
+      return touches;
+    }
+    function dispatch(el, type, x, y) {
+      const t = makeTouch(el, x, y);
+      const active = makeList(type === 'touchend' ? [] : [t]);
+      const changed = makeList([t]);
+      el.dispatchEvent(new TouchEvent(type, { touches: active, targetTouches: active, changedTouches: changed, bubbles: true, cancelable: true }));
+    }
+    const scrollable = document.getElementById('scrollable63');
+    const drawer = document.getElementById('drawer63');
+    const transforms = [];
+    const startY = 400;
+    dispatch(scrollable, 'touchstart', 50, startY);
+    // Every one of these deltas is below OWNERSHIP_THRESHOLD (10) except the
+    // last two, which cross it — mirrors a normal, gradually-accelerating
+    // scroll gesture starting away from a boundary.
+    for (const d of [2, 5, 8, 9, 12, 15, 20]) {
+      dispatch(scrollable, 'touchmove', 50, startY + d);
+      transforms.push(drawer.style.transform);
+    }
+    dispatch(scrollable, 'touchend', 50, startY + 20);
+    transforms.push(drawer.style.transform);
+    return transforms;
+  });
+  assert(test63.every((t) => t === ''),
+    `a mid-content scroll away from any scroll boundary must never drag the panel — transform must stay empty for the whole gesture, sub-threshold AND past-threshold frames alike (got [${test63.map((t) => `'${t}'`).join(', ')}])`);
+  await page.evaluate(() => window.__C.unregisterDrawerSnap('drawer63'));
+
+  // ---------------------------------------------------------------
+  // TEST 64 — registerDrawerSnap: handle drags must still follow the finger
+  // from pixel 1 (PR #381 round 7 Finding 1's explicit asymmetry
+  // constraint: "handle touches must stay immediate... The threshold
+  // applies to non-handle touches that begin inside scrollable content").
+  // Uses the real [data-drawer-handle] selector startedOnDragHandle checks
+  // for, as a sibling of the scrollable content — the actual DOM shape
+  // DrawerContent.razor produces (see startedOnDragHandle's own remarks).
+  // ---------------------------------------------------------------
+  await page.evaluate(() => {
+    document.getElementById('host').innerHTML = `
+      <div id="drawer64" style="position:fixed; left:0; right:0; bottom:0; height:300px; background:green;">
+        <div data-drawer-handle id="handle64" style="height:20px;"></div>
+        <div id="scrollable64" style="height:280px; overflow-y:auto;">
+          <div style="height:1000px;">tall scrollable content</div>
+        </div>
+      </div>`;
+  });
+  await page.evaluate(() => {
+    window.__C.registerDrawerSnap('drawer64', 'down', window.__fakeDotNet,
+      { snapPoints: [0.5, 1], activeIndex: 0, dismissible: true, velocity: 0 });
+  });
+  await page.waitForTimeout(500);
+  const test64 = await page.evaluate(() => {
+    function makeTouch(el, x, y) {
+      try { return new Touch({ identifier: 1, target: el, clientX: x, clientY: y, pageX: x, pageY: y }); }
+      catch (e) { return document.createTouch(window, el, 1, x, y, x, y); }
+    }
+    function makeList(touches) {
+      if (typeof document.createTouchList === 'function') return document.createTouchList(...touches);
+      return touches;
+    }
+    function dispatch(el, type, x, y) {
+      const t = makeTouch(el, x, y);
+      const active = makeList(type === 'touchend' ? [] : [t]);
+      const changed = makeList([t]);
+      el.dispatchEvent(new TouchEvent(type, { touches: active, targetTouches: active, changedTouches: changed, bubbles: true, cancelable: true }));
+    }
+    const handle = document.getElementById('handle64');
+    const drawer = document.getElementById('drawer64');
+    const startY = 400;
+    dispatch(handle, 'touchstart', 50, startY);
+    // Just 1px — well below OWNERSHIP_THRESHOLD (10). A non-handle touch
+    // this small must not move the panel at all (TEST 63); a handle touch
+    // must move it immediately.
+    dispatch(handle, 'touchmove', 50, startY + 1);
+    const transformAt1px = drawer.style.transform;
+    dispatch(handle, 'touchend', 50, startY + 1);
+    return { transformAt1px };
+  });
+  assert(test64.transformAt1px !== '',
+    `a handle-started touch must move the panel on its very first pixel of movement, unaffected by OWNERSHIP_THRESHOLD (got transform '${test64.transformAt1px}')`);
+  await page.evaluate(() => window.__C.unregisterDrawerSnap('drawer64'));
+
+  // ---------------------------------------------------------------
+  // TEST 65 — registerDrawerSnap: "Preserve snap geometry when the opposite
+  // inset is set" (PR #381 round 7 Finding 2). Reuses TEST 62's exact
+  // fixture (`top:1rem; bottom:auto; height:300px` — a Bottom drawer with
+  // an independently definite `top`), but this time asserts on the actual
+  // resting geometry: before the fix, top/bottom/height were all definite
+  // at once (over-constrained), so the browser silently ignored the
+  // JS-written `bottom` and the box stayed frozen at its top:1rem position
+  // regardless of which snap was active. After the fix, the opposite inset
+  // (`top`) is neutralized to 'auto' up front, so `bottom` genuinely
+  // governs and the resting position tracks the active snap fraction.
+  // Checked two ways: (1) the box moves at all between two different
+  // snaps (it must not be frozen), and (2) the movement is exactly
+  // proportional to the snap fraction difference (0.6 * height = 180px
+  // between the 40% and 100% snaps here) — not just "different", but
+  // correctly composed.
+  // ---------------------------------------------------------------
+  const snapOffsets65 = {};
+  for (const activeIndex of [0, 1]) {
+    await page.evaluate(() => {
+      document.getElementById('host').innerHTML =
+        `<div id="drawer65" style="position:fixed; left:0; right:0; height:300px; top:1rem; bottom:auto; background:teal;"></div>`;
+    });
+    await page.evaluate((activeIndex) => {
+      window.__C.registerDrawerSnap('drawer65', 'down', window.__fakeDotNet,
+        { snapPoints: [0.4, 1], activeIndex, dismissible: true });
+    }, activeIndex);
+    await page.waitForTimeout(500);
+    const geom = await page.evaluate(() => {
+      const el = document.getElementById('drawer65');
+      const rect = el.getBoundingClientRect();
+      return { top: el.style.top, bottomFromViewport: window.innerHeight - rect.bottom };
+    });
+    snapOffsets65[activeIndex] = geom;
+    await page.evaluate(() => window.__C.unregisterDrawerSnap('drawer65'));
+  }
+  assert(snapOffsets65[0].top === 'auto' && snapOffsets65[1].top === 'auto',
+    `the opposite inset (top) is neutralized to 'auto' for the whole registration, at both snaps (got '${snapOffsets65[0].top}' / '${snapOffsets65[1].top}')`);
+  assert(snapOffsets65[0].bottomFromViewport !== snapOffsets65[1].bottomFromViewport,
+    `the panel must actually move between the 40% and fully-open snaps — it must not be frozen at its top:1rem position (both read ${snapOffsets65[0].bottomFromViewport}px from the viewport bottom)`);
+  const delta65 = snapOffsets65[1].bottomFromViewport - snapOffsets65[0].bottomFromViewport;
+  assert(Math.abs(delta65 - 180) < 1,
+    `the movement between the 40% and 100% snaps must be exactly 0.6 * height (180px for a 300px-tall drawer), not an arbitrary difference (got ${delta65}px)`);
+
+  // ---------------------------------------------------------------
+  // TEST 66 — registerDrawerSnap/unregisterDrawerSnap: "Preserve newly
+  // rendered insets during snap re-registration" (PR #381 round 8 finding).
+  // DrawerContent's reconcile flow (round 13) unregisters and immediately
+  // re-registers in the SAME OnAfterRenderAsync call, AFTER Blazor has
+  // already committed a render — if that render also carried a fresh inline
+  // inset via AdditionalAttributes (a Side/SnapPoints change landing in the
+  // same render as an inset edit), Blazor's own diff writes that value into
+  // the DOM before the JS-level teardown ever runs. Simulates Blazor's
+  // commit directly (writing a new inline `bottom` to the DOM) BEFORE
+  // calling unregisterDrawerSnap, mirroring the real timeline exactly —
+  // the teardown must leave that fresh value standing, not clobber it with
+  // the STALE snapshot captured back when the ORIGINAL registration began.
+  // A second scenario in the same test confirms the fix does not break the
+  // ordinary case: a FINAL teardown, where nothing else has touched the
+  // property since, must still restore the pre-registration snapshot
+  // exactly as every teardown did before round 8.
+  // ---------------------------------------------------------------
+  await page.evaluate(() => {
+    document.getElementById('host').innerHTML =
+      `<div id="drawer66" style="position:fixed; left:0; right:0; height:300px; bottom:1rem; background:teal;"></div>`;
+  });
+  await page.evaluate(() => {
+    window.__C.registerDrawerSnap('drawer66', 'down', window.__fakeDotNet,
+      { snapPoints: [0.5, 1], activeIndex: 0, dismissible: true });
+  });
+  await page.waitForTimeout(500); // let the open sequence settle at rest
+  // Simulate Blazor committing a NEW render for the SAME reconcile cycle
+  // (Side/SnapPoints change + a fresh inline bottom via AdditionalAttributes)
+  // — written directly to the DOM, BEFORE the JS-level unregister call, the
+  // same order OnAfterRenderAsync's reconcile actually runs in.
+  await page.evaluate(() => { document.getElementById('drawer66').style.bottom = '3rem'; });
+  await page.evaluate(() => window.__C.unregisterDrawerSnap('drawer66'));
+  const bottomAfterReconcileTeardown = await page.evaluate(() => document.getElementById('drawer66').style.bottom);
+  assert(bottomAfterReconcileTeardown === '3rem',
+    `a reconcile-then-reregister teardown must not clobber a freshly-rendered inset with the STALE pre-registration snapshot — Blazor's own '3rem' write must survive (got '${bottomAfterReconcileTeardown}')`);
+
+  // Re-register (the SnapPoints half of the same reconcile cycle) — its own
+  // baseline capture must pick up the SURVIVING '3rem', not the original
+  // '1rem' the stale snapshot would have clobbered it back to.
+  await page.evaluate(() => {
+    window.__C.registerDrawerSnap('drawer66', 'down', window.__fakeDotNet,
+      { snapPoints: [0.3, 0.7, 1], activeIndex: 0, dismissible: true });
+  });
+  await page.waitForTimeout(500);
+  const composedAfterReregister = await page.evaluate(() => document.getElementById('drawer66').style.bottom);
+  assert(composedAfterReregister.includes('3rem'),
+    `the re-registration's own baseline must compose onto the SURVIVING '3rem', not the stale '1rem' a clobbered teardown would have left behind (got '${composedAfterReregister}')`);
+  assert(!composedAfterReregister.includes('1rem'),
+    `the stale '1rem' must not appear anywhere in the re-registration's composed value (got '${composedAfterReregister}')`);
+
+  // FINAL teardown — nothing has touched the property since this second
+  // registration's own last settle, so the ordinary restore-the-snapshot
+  // behavior (unchanged since round 6) must still apply.
+  await page.evaluate(() => window.__C.unregisterDrawerSnap('drawer66'));
+  const bottomAfterFinalTeardown = await page.evaluate(() => document.getElementById('drawer66').style.bottom);
+  assert(bottomAfterFinalTeardown === '3rem',
+    `a FINAL teardown, where nothing else has written to the property since this registration's own last write, must still restore the pre-registration snapshot exactly as before round 8 (got '${bottomAfterFinalTeardown}')`);
 
   console.log(`\nALL TESTS PASSED (${passCount} assertions) — engine: ${ENGINE}`);
   await browser.close();
