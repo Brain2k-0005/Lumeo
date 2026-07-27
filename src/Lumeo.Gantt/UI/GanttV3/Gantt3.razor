@@ -490,15 +490,17 @@
     // are answered by the intent's own ParamAccountedFor/Phase instead — see
     // GanttViewModeIntent's remarks.
     //
-    // Tasks stay parameter-derived: they are a separate dimension with no
-    // competing in-component author, and ReconcileAsync diffs them structurally,
-    // so re-reading them is exactly right (a re-push of the same list is a no-op,
-    // a pending replacement still lands — round 18-f2 finding #2).
+    // Tasks stay parameter-derived, but from the MATERIALIZED snapshot rather
+    // than the live Tasks enumerable — a replay is not a parameter pass, so it
+    // must not enumerate a possibly single-pass sequence a second time (see
+    // _materializedTasks). ReconcileAsync still diffs that snapshot structurally,
+    // so a replay with nothing pending is a no-op and a pending replacement the
+    // superseded pass materialized but never committed still lands (round 18-f2
+    // finding #2).
     private async Task<GanttReconcileOutcome> ReapplyCurrentParametersAsync()
     {
-        var nextTasks = SortedTasks(Tasks?.ToList() ?? new List<GanttTask>());
         var intent = _viewModeIntent;
-        var outcome = await ReconcileAsync(nextTasks, intent.IsPending ? intent.Mode : _state.ViewMode);
+        var outcome = await ReconcileAsync(_materializedTasks, intent.IsPending ? intent.Mode : _state.ViewMode);
         if (outcome == GanttReconcileOutcome.Superseded) return outcome;
         return await SettleViewModeIntentAsync(intent.Id, outcome);
     }
@@ -519,9 +521,16 @@
     //     something genuinely new (ResolveParameterMode). Claiming REPLACES the
     //     previous intent outright, which is what makes supersession a single
     //     decision rather than something re-derived per call site.
-    //  2. REPLAY — a navigation/theme supersession re-executes the current
-    //     intent while it IsPending (ReapplyCurrentParametersAsync). It never
-    //     authors one, and never reads the parameter for a mode.
+    //  2. REPLAY — ANYTHING that supersedes an in-flight reconcile must re-execute
+    //     the intent it superseded, while that intent IsPending
+    //     (ReapplyCurrentParametersAsync). That is a navigation, a theme flip,
+    //     and — since Codex PR-382 review round 4, finding "Replay a pending mode
+    //     during parameter passes" — a parameter pass that COMMITS without
+    //     authoring a mode of its own (a tasks-only or geometry-only update
+    //     arriving while a mode reconcile is suspended in its capture). Stated as
+    //     a rule: a NON-CLAIMING pass must CARRY a pending intent, never resolve
+    //     it away. A replay never authors an intent, and never reads the
+    //     parameter for a mode.
     //  3. SETTLE — an intent stops owning the view mode in exactly one place
     //     (SettleViewModeIntentAsync), only once its consumer callback (if it
     //     owes one) has actually come back, and only if it is still the intent
@@ -640,7 +649,7 @@
         _viewModeIntent = new GanttViewModeIntent(
             _viewModeIntentId, ViewMode, GanttViewModeSource.Mount, GanttViewModePhase.Settled, ViewMode);
         _state.SetViewMode(ViewMode);
-        _state.SetTasks(SortedTasks(Tasks?.ToList() ?? new List<GanttTask>()));
+        _state.SetTasks(MaterializeTasks());
         _tasksVersion = 1;
         _state.SetVisibleRange(ComputeInitialRange(_state.ViewMode, _state.Tasks, EffectiveToday));
         // Seed the reconcile baseline from the just-committed mount state; the
@@ -873,7 +882,7 @@
             return;
         }
 
-        var nextTasks = SortedTasks(Tasks?.ToList() ?? new List<GanttTask>());
+        var nextTasks = MaterializeTasks();
 
         // The one place the ViewMode PARAMETER may author an intent — see
         // ResolveParameterMode. A claim here REPLACES whatever owned the view
@@ -883,14 +892,65 @@
         var (incomingMode, claimedIntentId) = ResolveParameterMode();
 
         var outcome = await ReconcileAsync(nextTasks, incomingMode);
-        // Superseded: this pass never resolved whether its intent landed, so it
-        // stays PENDING for whatever superseded it to replay (round 18-f2).
-        // No claim: this pass authored nothing, so it settles nothing — in
-        // particular it must not settle somebody else's in-flight intent (round
-        // 17 finding #1's unrelated re-render).
-        if (outcome == GanttReconcileOutcome.Superseded || claimedIntentId is not { } intentId) return;
-        await SettleViewModeIntentAsync(intentId, outcome);
+
+        if (claimedIntentId is { } intentId)
+        {
+            // Superseded: this pass never resolved whether its intent landed, so
+            // it stays PENDING for whatever superseded it to replay (round 18-f2).
+            if (outcome == GanttReconcileOutcome.Superseded) return;
+            await SettleViewModeIntentAsync(intentId, outcome);
+            return;
+        }
+
+        // NON-CLAIMING pass (Codex PR-382 review round 4, P1 "Replay a pending
+        // mode during parameter passes"). It asserted nothing about the mode, so
+        // it reconciled to the COMMITTED one — which is what keeps a pass with
+        // genuinely nothing to do a total no-op that never claims a generation
+        // (round 17 finding #1). But a tasks-only or geometry-only update DOES
+        // have something to do: it claims a generation and commits, and in doing
+        // so it supersedes whatever reconcile was still carrying a pending
+        // intent — which would then abandon, leaving that intent stranded in
+        // Applying forever and its mode never applied.
+        //
+        // The REPLAY rule covers exactly this, so apply it here rather than
+        // guarding the branch locally: having superseded something, this pass now
+        // owes it a replay, the same way a navigation does. Deliberately keyed on
+        // the OUTCOME rather than on "does the pending mode differ" — a NoOp
+        // claimed no generation and so superseded nothing (the in-flight
+        // reconcile is still live and will commit on its own), and a Superseded
+        // pass is somebody else's problem to replay.
+        if (outcome == GanttReconcileOutcome.Committed && _viewModeIntent.IsPending)
+            await ReapplyCurrentParametersAsync();
     }
+
+    // The last materialized+sorted snapshot of the Tasks PARAMETER (Codex PR-382
+    // review round 4, P2 "Reuse the materialized tasks for navigation replays").
+    //
+    // Tasks is publicly typed as IEnumerable<GanttTask>, so a consumer may hand
+    // over a LINQ query, an iterator, or any other single-pass sequence.
+    // Enumerating it is only ever legitimate on a PARAMETER pass — the one moment
+    // the consumer has actually just handed us the sequence. Internal actions
+    // (Previous/Next/Today, a ThemeService direction flip) are not parameter
+    // passes: nothing about Tasks can have changed since the last one, so
+    // re-enumerating there is both pointless and, for a one-shot sequence,
+    // destructive — the second pass yields nothing (or throws) and the reconcile
+    // "sees" an empty task set and clears the chart.
+    //
+    // NOTE: this is NOT a regression from the round-3 ownership consolidation —
+    // ReapplyCurrentParametersAsync has re-enumerated Tasks on every navigation
+    // since round 18-f2 first introduced it, and ShiftAsync/GoToTodayAsync have
+    // routed through it ever since. The consolidation neither added an
+    // enumeration site nor changed how often any of them runs; it just made the
+    // pre-existing hazard easier to see by putting the replay path under one
+    // rule. Fixed here rather than deferred because a single-pass sequence is a
+    // perfectly ordinary thing to bind to an IEnumerable parameter.
+    private List<GanttTask> _materializedTasks = new();
+
+    // The ONE place the Tasks parameter is enumerated. Called only from the two
+    // genuine parameter moments (OnInitialized's mount seed and each
+    // OnParametersSetAsync pass); every replay reads _materializedTasks instead.
+    private List<GanttTask> MaterializeTasks() =>
+        _materializedTasks = SortedTasks(Tasks?.ToList() ?? new List<GanttTask>());
 
     private List<GanttTask> SortedTasks(List<GanttTask> raw)
     {
@@ -1122,17 +1182,25 @@
     // the SAME math a second time against a freshly task-derived range — a
     // second, independently-written copy is exactly the kind of divergence
     // risk this codebase avoids elsewhere (see e.g. ApplyPadding's own remarks).
-    private static (DateTime Start, DateTime End) ComputeShiftedRange(GanttViewMode mode, GanttDateRange range, int direction)
+    private static (DateTime Start, DateTime End) ComputeShiftedRange(GanttViewMode mode, GanttDateRange range, int direction) =>
+        (ShiftDate(mode, range.Start, direction), ShiftDate(mode, range.End, direction));
+
+    // One page step applied to a single date, in the mode's own unit. Extracted
+    // (Codex PR-382 review round 4, P2, line ~1165) so ShiftAsync can move a
+    // pending SCROLL TARGET by exactly the same amount it moves the range — a
+    // second, independently-written copy of this switch is the divergence risk
+    // this codebase avoids elsewhere (see ApplyPadding's own remarks).
+    private static DateTime ShiftDate(GanttViewMode mode, DateTime date, int direction)
     {
         var cfg = GanttScale.GetConfig(mode);
         var amount = direction * cfg.Step;
         return cfg.Unit switch
         {
-            GanttScaleUnit.Day => (range.Start.AddDays(amount), range.End.AddDays(amount)),
-            GanttScaleUnit.Month => (range.Start.AddMonths(amount), range.End.AddMonths(amount)),
-            GanttScaleUnit.Year => (range.Start.AddYears(amount), range.End.AddYears(amount)),
-            GanttScaleUnit.Hour => (range.Start.AddHours(amount), range.End.AddHours(amount)),
-            _ => (range.Start, range.End),
+            GanttScaleUnit.Day => date.AddDays(amount),
+            GanttScaleUnit.Month => date.AddMonths(amount),
+            GanttScaleUnit.Year => date.AddYears(amount),
+            GanttScaleUnit.Hour => date.AddHours(amount),
+            _ => date,
         };
     }
 
@@ -1145,6 +1213,7 @@
         // resume and commit a stale range on top of this shift — then re-apply
         // that reconcile's own pending parameter delta, if any (round 18-f2).
         var tasksVersionBeforeReapply = _tasksVersion;
+        var scrollRequestBeforeReapply = _scrollToTodayRequestId;
         var outcome = await SupersedeReconcileForNavigationAsync();
 
         // Bug fix (Codex PR-382 review, P1, line ~1028): a suspended pass
@@ -1163,6 +1232,28 @@
         {
             var (reshiftedStart, reshiftedEnd) = ComputeShiftedRange(_state.ViewMode, _state.VisibleRange, direction);
             _state.SetVisibleRange(reshiftedStart, reshiftedEnd);
+
+            // Bug fix (Codex PR-382 review round 4, P2, line ~1165): the replay's
+            // own scroll intent was decided against the range it committed —
+            // i.e. the range BEFORE the re-shift immediately above. Leaving that
+            // target in place means GanttTimeline centers on a date that is one
+            // page step behind the range the user actually ends up on, visually
+            // cancelling the Previous/Next they just pressed. The range and the
+            // target describe the same viewport, so they move together: shift
+            // the emitted target by the SAME step, via the same helper.
+            //
+            // Only when the replay actually emitted something (a bumped request
+            // id) — a decision of GanttScrollTarget.None emits nothing and
+            // deliberately leaves the DOM where it is, which the shift must not
+            // turn into a scroll. A null target means "Today", resolved to a
+            // concrete date here so it can be shifted at all; that is the same
+            // shape GanttScrollTarget.CapturedCenter already emits.
+            //
+            // This is the half of round 19 finding #3 that fix missed: it moved
+            // the replayed RANGE onto the navigated position but left the scroll
+            // intent describing the un-navigated one.
+            if (_scrollToTodayRequestId != scrollRequestBeforeReapply)
+                EmitScrollIntent(ShiftDate(_state.ViewMode, _scrollTargetDate ?? EffectiveToday, direction));
         }
     }
 
