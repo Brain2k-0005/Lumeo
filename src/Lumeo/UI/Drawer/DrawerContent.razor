@@ -562,10 +562,39 @@ else if (Context.IsOpen || _exiting)
         // would keep the stale resting geometry. Re-register whenever the live
         // gesture's recorded direction or snap-point array diverges from what the
         // current parameters describe.
+        // #381 round 11 (P2) — "Reconcile the gesture before displaying its
+        // handle": the two checks above only re-register when
+        // _registeredWithSnap disagrees with UsesSnapPoints (a mode flip),
+        // or when an ALREADY-live gesture's own recorded geometry is stale.
+        // Neither ever fires for a non-snap drawer whose PreventClose flips
+        // while open — UsesSnapPoints stays false on both sides, so there's
+        // no mode flip, and RegisterGestureAsync's plain-swipe gate
+        // (`!PreventClose`) is invisible to both checks. That left
+        // GestureWillBeRegistered's PREDICTION (which ShowDragHandle relies
+        // on for the handle's visibility, to avoid a flash on the interop-
+        // pending first render) able to diverge from the ACTUAL
+        // _gestureRegistered state: PreventClose true->false rendered the
+        // handle with no listener underneath it (a touch-none dead zone —
+        // this finding); PreventClose false->true left a stale swipe
+        // listener that could still dismiss a now-protected drawer (the
+        // mirror case). Comparing _gestureRegistered against
+        // GestureWillBeRegistered's own condition directly (only meaningful
+        // in non-snap mode — UsesSnapPoints always registers regardless of
+        // PreventClose) keeps the prediction a maintained INVARIANT instead
+        // of a guess that can silently go stale: whenever they'd disagree,
+        // this makes them agree again the same way every other
+        // reconciliation case here does, rather than switching the handle
+        // to poll _gestureRegistered directly (which would need a
+        // StateHasChanged() call threaded through OnAfterRenderAsync's own
+        // registration path to avoid the handle silently never appearing
+        // after the FIRST render, since mutating a field there doesn't
+        // trigger a re-render on its own — a bigger, riskier change for a
+        // problem this reconciliation already fully solves).
         if (_registeredWithSnap != UsesSnapPoints
             || (_gestureRegistered
                 && (_registeredDirection != SwipeDirection
-                    || !SnapPointsMatchRegistered())))
+                    || !SnapPointsMatchRegistered()))
+            || (!UsesSnapPoints && _gestureRegistered != GestureWillBeRegistered))
         {
             await UnregisterGestureAsync();
             await RegisterGestureAsync();

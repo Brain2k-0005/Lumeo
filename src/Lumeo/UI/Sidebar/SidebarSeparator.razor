@@ -8,19 +8,27 @@
    own remarks); AsListItem is the explicit override for any OTHER nesting
    shape (e.g. a consumer's own wrapper inside a SidebarMenu) the cascade
    can't auto-detect, in either direction. *@
-@* #381 round 10 (P2) — "Keep consumer layout classes on the menu flex item"
-   (see SidebarGroupLabel's own remarks, same wrapper pattern): SidebarMenu's
-   <ul> is a flex container, so the <li> — not the inner <div> — is the
-   actual flex item when EffectiveInsideMenu. Class/AdditionalAttributes go
-   on the <li> so order-*/self-*/hidden etc. actually affect the menu's
-   layout instead of only the div's own content; unwrapped (canonical)
-   placement is untouched. role="none" is this component's own fixed
-   semantic marker, not consumer-configurable, so it stays on the div in
-   both shapes. *@
+@* #381 round 10 (P2) — "Keep consumer layout classes on the menu flex item",
+   corrected round 11 (P2 regression — "Preserve visual classes on the
+   wrapped content"; see SidebarGroupLabel's own remarks, same wrapper
+   pattern and same fix): moving Class/AdditionalAttributes onto the <li>
+   let order-*/self-*/hidden affect the menu's layout, but broke visual
+   utilities (bg-*, h-*, mx-*) since those only affect the SAME element
+   they're set on, and the actual divider styling (mx-3 my-2 h-px
+   bg-border) lives on the div. Making the <li> wrapper `display: contents`
+   (Tailwind's `contents` utility) removes its own box from the layout
+   entirely, promoting this div to be the ACTUAL flex item the <ul> lays
+   out — verified empirically (gap/order/align-self all promote correctly
+   across Chromium/Firefox/WebKit) — so Class/AdditionalAttributes go back
+   on the div exclusively (as before round 10) and satisfy both directions
+   at once. role="none" is this component's own fixed semantic marker, not
+   consumer-configurable, so it stays on the div in both shapes;
+   role="presentation" on the <li> is defense in depth (display:contents
+   already strips it from the a11y tree in every major engine). *@
 @if (EffectiveInsideMenu)
 {
-    <li role="presentation" class="@Cx.Merge(Class)" @attributes="AdditionalAttributes">
-        <div class="@BaseClass" role="none"></div>
+    <li role="presentation" class="contents">
+        <div class="@CssClass" role="none" @attributes="AdditionalAttributes"></div>
     </li>
 }
 else
@@ -57,11 +65,9 @@ else
     /// <summary>Unmatched attributes are splatted onto the root <c>div</c> element.</summary>
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
-    // #381 round 10 — split so the wrapped shape can put Class on the <li>
-    // (the actual flex item) instead of here; this is just the separator's
-    // own presentational styling, no consumer Class merged in.
-    private string BaseClass => "mx-3 my-2 h-px bg-border";
-
-    // Unwrapped (canonical) placement only — there the div IS the root.
-    private string CssClass => Cx.Merge(BaseClass, Class);
+    // #381 round 10 briefly split this into BaseClass + CssClass so Class
+    // could move onto the <li>; round 11's display:contents fix (see the
+    // markup's own remarks) makes the div the flex item either way, so
+    // Class belongs back here unconditionally, same as before round 10.
+    private string CssClass => Cx.Merge("mx-3 my-2 h-px bg-border", Class);
 }

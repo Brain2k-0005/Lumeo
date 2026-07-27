@@ -13,25 +13,35 @@
    own remarks); AsListItem is the explicit override for any OTHER nesting
    shape (e.g. a consumer's own wrapper inside a SidebarMenu) the cascade
    can't auto-detect, in either direction. *@
-@* #381 round 10 (P2) — "Keep consumer layout classes on the menu flex item":
-   SidebarMenu's <ul> is a flex container ("flex flex-col gap-0.5"), so the
-   FLEX ITEM is whichever element is a direct child of it — this <li>
-   wrapper when EffectiveInsideMenu, not the inner <div>. Class/
-   AdditionalAttributes used to land on the inner div regardless, which
-   left the wrapped shape's own actual flex item (the <li>) with no way to
-   receive them: order-*/self-* utilities had nothing to attach to, and
-   hidden/style="display:none" only hid the div's CONTENT — the <li> box
-   itself stayed a normal, empty flex item still contributing gaps on both
-   sides. Now the <li> carries Class/AdditionalAttributes (it's the thing
-   actually participating in the menu's layout) and the inner div keeps
-   only its own presentational BaseClass — unwrapped (the canonical,
-   RECOMMENDED placement outside SidebarMenu) is untouched: there the div
-   itself is the only element and the root/flex-item distinction doesn't
-   exist. *@
+@* #381 round 10 (P2) — "Keep consumer layout classes on the menu flex item",
+   corrected round 11 (P2 regression — "Preserve visual classes on the
+   wrapped content") — SidebarMenu's <ul> is a flex container ("flex
+   flex-col gap-0.5"), so whichever element is a direct child of it is the
+   flex item. Round 10 moved Class/AdditionalAttributes onto the <li> so
+   order-*/self-*/hidden would affect the menu's own layout — but Class/
+   AdditionalAttributes/hidden also carry VISUAL utilities (bg-*, h-*, mx-*,
+   text-color) that only do anything on the SAME element as this label's own
+   base styling (margin/height/background/color are non-inherited, so a
+   class on an ANCESTOR the <li> has zero effect on the div's box), which
+   moving them off the div broke. Both concerns turn out to have ONE
+   correct fix: make the <li> wrapper `display: contents` (Tailwind's
+   `contents` utility) so it never generates its own box at all — its
+   child (this div) is promoted to be the ACTUAL flex item the <ul> lays
+   out, gap included, with no wrapper box left in between. Class/
+   AdditionalAttributes go back on the div exclusively (same as the
+   unwrapped branch, and as it always was before round 10) and now satisfy
+   BOTH directions at once: visual utilities merge with the div's own
+   classes as ever, and layout utilities (order-*, self-*, hidden) work
+   because the div itself is what the flex container sees — verified
+   empirically across Chromium/Firefox/WebKit (gap, order, and align-self
+   all promote through display:contents identically on all three; no
+   flex-layout quirks). role="presentation" still marks the <li> itself as
+   accessibility-inert defense in depth, though display:contents already
+   removes it from the a11y tree in every major engine. *@
 @if (EffectiveInsideMenu)
 {
-    <li role="presentation" class="@Cx.Merge(Class)" @attributes="AdditionalAttributes">
-        <div class="@BaseClass">
+    <li role="presentation" class="contents">
+        <div class="@CssClass" @attributes="AdditionalAttributes">
             @ChildContent
         </div>
     </li>
@@ -91,15 +101,12 @@ else
     // Previously this was an untransitioned sr-only swap — an instant pop while
     // everything around it animated.
     //
-    // #381 round 10 — split from the old single CssClass so the wrapped shape
-    // can put Class on the <li> (the actual flex item) instead of here; this
-    // is just the label's own presentational styling, with no consumer Class
-    // merged in.
-    private string BaseClass => Cx.Merge(
+    // #381 round 10 briefly split this into BaseClass + CssClass so Class
+    // could move onto the <li>; round 11's display:contents fix (see the
+    // markup's own remarks) makes the div the flex item either way, so
+    // Class belongs back here unconditionally, same as before round 10.
+    private string CssClass => Cx.Merge(
         "flex h-8 shrink-0 items-center px-3 text-xs font-medium text-muted-foreground transition-[margin,opacity] duration-200 ease-linear",
-        Cx.When(IsCollapsed, "-mt-8 opacity-0"));
-
-    // Unwrapped (canonical) placement only — there the div IS the root, so
-    // Class merges in directly same as ever.
-    private string CssClass => Cx.Merge(BaseClass, Class);
+        Cx.When(IsCollapsed, "-mt-8 opacity-0"),
+        Class);
 }

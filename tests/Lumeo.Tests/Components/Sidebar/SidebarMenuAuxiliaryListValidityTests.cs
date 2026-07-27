@@ -237,37 +237,85 @@ public class SidebarMenuAuxiliaryListValidityTests : IAsyncLifetime
     }
 
     // ── #381 round 10 (P2): "Keep consumer layout classes on the menu flex
-    // item" — SidebarMenu's <ul> is a flex container, so the <li> (not the
-    // inner div) is the actual flex item once wrapped; Class/
-    // AdditionalAttributes must land there for order-*/self-*/hidden etc. to
-    // have any effect on the menu's own layout. ────────────────────────────
+    // item", corrected round 11 (P2 regression — "Preserve visual classes on
+    // the wrapped content"). Round 10 moved Class/AdditionalAttributes onto
+    // the <li> so order-*/self-*/hidden would affect the menu's own layout —
+    // but that broke visual utilities (bg-*, h-*, mx-*, text color), which
+    // only do anything on the SAME element as the label/separator's own base
+    // styling. Round 11's fix: the <li> is `display: contents` (never
+    // generates its own box), promoting the inner div to be the ACTUAL flex
+    // item — verified empirically (gap/order/align-self all correctly
+    // promote through display:contents on Chromium/Firefox/WebKit; see the
+    // razor files' own remarks). Class/AdditionalAttributes/hidden go back
+    // on the div exclusively, satisfying BOTH directions with the SAME
+    // placement — these tests cover both together so a future change can't
+    // silently regress either one without breaking a test here. ───────────
 
     [Fact]
-    public void Separator_Inside_Menu_Class_Lands_On_The_Li_Flex_Item()
+    public void Separator_Inside_Menu_Li_Wrapper_Is_Display_Contents()
     {
+        // The structural half of the fix bUnit CAN verify (it has no real
+        // flex layout engine to check gap/order/align-self against — that's
+        // the empirically-verified browser behavior the razor comments cite).
         var cut = _ctx.Render(builder =>
         {
             builder.OpenComponent<L.SidebarMenu>(0);
             builder.AddAttribute(1, "ChildContent", (RenderFragment)(b =>
             {
                 b.OpenComponent<L.SidebarSeparator>(0);
-                b.AddAttribute(1, "Class", "order-2");
                 b.CloseComponent();
             }));
             builder.CloseComponent();
         });
 
         var li = cut.Find("li");
-        Assert.Contains("order-2", li.GetAttribute("class") ?? "");
-        // The inner div keeps its own presentational styling but never the
-        // consumer's flex-item utility — it isn't the flex item.
-        var innerDiv = li.QuerySelector("div[role='none']");
-        Assert.NotNull(innerDiv);
-        Assert.DoesNotContain("order-2", innerDiv!.GetAttribute("class") ?? "");
+        Assert.Contains("contents", li.GetAttribute("class") ?? "");
+        Assert.Equal("presentation", li.GetAttribute("role"));
     }
 
     [Fact]
-    public void Separator_Inside_Menu_AdditionalAttributes_Land_On_The_Li_Flex_Item()
+    public void Separator_Inside_Menu_Mixed_Class_Lands_Entirely_On_The_Inner_Div()
+    {
+        // A single Class value mixing a LAYOUT utility (order-2) with VISUAL
+        // utilities (mx-0, h-0.5, bg-primary) — the exact real-world shape
+        // ("Class=\"mx-0 h-0.5 bg-primary\"") the round-11 regression report
+        // named. Both kinds must land together on the div: it's the actual
+        // flex item (display:contents promotion) AND the element carrying
+        // the separator's own base mx-3/my-2/h-px/bg-border classes that
+        // mx-0/h-0.5/bg-primary need to override via Cx.Merge.
+        var cut = _ctx.Render(builder =>
+        {
+            builder.OpenComponent<L.SidebarMenu>(0);
+            builder.AddAttribute(1, "ChildContent", (RenderFragment)(b =>
+            {
+                b.OpenComponent<L.SidebarSeparator>(0);
+                b.AddAttribute(1, "Class", "order-2 mx-0 h-0.5 bg-primary");
+                b.CloseComponent();
+            }));
+            builder.CloseComponent();
+        });
+
+        var li = cut.Find("li");
+        var liClass = li.GetAttribute("class") ?? "";
+        Assert.DoesNotContain("order-2", liClass);
+        Assert.DoesNotContain("bg-primary", liClass);
+
+        var innerDiv = li.QuerySelector("div[role='none']");
+        Assert.NotNull(innerDiv);
+        var divClass = innerDiv!.GetAttribute("class") ?? "";
+        Assert.Contains("order-2", divClass);
+        Assert.Contains("mx-0", divClass);
+        Assert.Contains("h-0.5", divClass);
+        Assert.Contains("bg-primary", divClass);
+        // Cx.Merge (tailwind-merge) drops the conflicting defaults these
+        // override, rather than shipping both — the base mx-3/h-px must be
+        // gone, not just outranked.
+        Assert.DoesNotContain("mx-3", divClass);
+        Assert.DoesNotContain("h-px", divClass);
+    }
+
+    [Fact]
+    public void Separator_Inside_Menu_AdditionalAttributes_Land_On_The_Inner_Div()
     {
         var cut = _ctx.Render(builder =>
         {
@@ -282,11 +330,13 @@ public class SidebarMenuAuxiliaryListValidityTests : IAsyncLifetime
         });
 
         var li = cut.Find("li");
-        Assert.Equal("sep-1", li.GetAttribute("data-testid"));
+        Assert.False(li.HasAttribute("data-testid"));
+        var innerDiv = li.QuerySelector("div[role='none']");
+        Assert.Equal("sep-1", innerDiv!.GetAttribute("data-testid"));
     }
 
     [Fact]
-    public void GroupLabel_Inside_Menu_Class_Lands_On_The_Li_Flex_Item()
+    public void GroupLabel_Inside_Menu_Mixed_Class_Lands_Entirely_On_The_Inner_Div()
     {
         var cut = _ctx.Render(builder =>
         {
@@ -294,7 +344,7 @@ public class SidebarMenuAuxiliaryListValidityTests : IAsyncLifetime
             builder.AddAttribute(1, "ChildContent", (RenderFragment)(b =>
             {
                 b.OpenComponent<L.SidebarGroupLabel>(0);
-                b.AddAttribute(1, "Class", "self-end");
+                b.AddAttribute(1, "Class", "self-end text-red-500");
                 b.AddAttribute(2, "ChildContent", (RenderFragment)(inner => inner.AddContent(0, "Section")));
                 b.CloseComponent();
             }));
@@ -302,22 +352,31 @@ public class SidebarMenuAuxiliaryListValidityTests : IAsyncLifetime
         });
 
         var li = cut.Find("li");
-        Assert.Contains("self-end", li.GetAttribute("class") ?? "");
-        // The inner div still renders the content and its own presentational
-        // classes, but never the consumer's flex-item utility.
+        var liClass = li.GetAttribute("class") ?? "";
+        Assert.DoesNotContain("self-end", liClass);
+        Assert.DoesNotContain("text-red-500", liClass);
+        Assert.Contains("contents", liClass);
+
         var innerDiv = li.QuerySelector("div");
         Assert.NotNull(innerDiv);
         Assert.Contains("Section", innerDiv!.TextContent);
-        Assert.DoesNotContain("self-end", innerDiv!.GetAttribute("class") ?? "");
+        var divClass = innerDiv.GetAttribute("class") ?? "";
+        Assert.Contains("self-end", divClass);
+        Assert.Contains("text-red-500", divClass);
+        // The base text-muted-foreground must not linger alongside an
+        // explicit override (Cx.Merge dedup, same check as the separator).
+        Assert.DoesNotContain("text-muted-foreground", divClass);
     }
 
     [Fact]
-    public void GroupLabel_Inside_Menu_Hidden_Attribute_Removes_The_Li_From_Flex_Layout()
+    public void GroupLabel_Inside_Menu_Hidden_Attribute_Lands_On_The_Inner_Div()
     {
-        // Before the fix, `hidden` landed on the inner div (hiding only its
-        // content) while the <li> stayed a normal, empty flex item — still
-        // contributing gaps on both sides. On the <li> itself, `hidden`
-        // removes the box from flex layout entirely.
+        // Round 10 put `hidden` on the <li> so the (then-real) flex item
+        // would be removed from layout entirely. Round 11 makes the DIV the
+        // real flex item instead (display:contents on the li), so `hidden`
+        // needs to be there now for the same removal-from-layout effect —
+        // and it's also just where AdditionalAttributes belong per the
+        // AdditionalAttributes tests above.
         var cut = _ctx.Render(builder =>
         {
             builder.OpenComponent<L.SidebarMenu>(0);
@@ -332,7 +391,9 @@ public class SidebarMenuAuxiliaryListValidityTests : IAsyncLifetime
         });
 
         var li = cut.Find("li");
-        Assert.True(li.HasAttribute("hidden"));
+        Assert.False(li.HasAttribute("hidden"));
+        var innerDiv = li.QuerySelector("div");
+        Assert.True(innerDiv!.HasAttribute("hidden"));
     }
 
     [Fact]
