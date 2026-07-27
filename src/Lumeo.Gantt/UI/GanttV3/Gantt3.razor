@@ -475,138 +475,146 @@
         return await ReapplyCurrentParametersAsync();
     }
 
-    // Re-runs the reconcile against the CURRENT parameters after a supersession
-    // (a navigation or a theme flip) — re-applying a pending parameter delta the
-    // superseded pass never committed (Codex round 18-f2). The uncontrolled mode
-    // discriminator here compares against _committedViewModeParam (the last
-    // param value an actual COMMIT applied), NOT the eager _lastSeenViewModeParam
-    // OnParametersSetAsync uses: a supersession means the last pass's eager
-    // advance never became real, so only the committed reference correctly
-    // reports "the parent's ViewMode is still un-applied". Advances both
-    // references (and only) on an actual commit.
-    // Bug fix (Codex PR-382 review, P1, line ~487): a toolbar mode selection
-    // still awaiting ITS OWN live-center capture takes priority over the
-    // parameter-derived mode below — see _pendingToolbarMode's own remarks.
-    // Without this, a supersession landing here while HandleViewModeChangedAsync's
-    // own reconcile is stuck would see neither ViewMode (a controlled parameter
-    // only echoes the toolbar's pick back AFTER a commit) nor
-    // _committedViewModeParam (an uncontrolled discriminator, likewise blind to a
-    // not-yet-committed toolbar pick) — silently losing the user's zoom selection.
+    // Re-runs the reconcile after a supersession (a navigation or a theme flip),
+    // so the superseded pass's pending inputs still land (Codex round 18-f2).
+    //
+    // Codex PR-382 review round 3 consolidation: this is the REPLAY path, and it
+    // deliberately does not look at the ViewMode PARAMETER at all. A navigation
+    // never decides a view mode — it destroys the reconcile that was carrying the
+    // current intent, so its whole job here is to re-execute THAT intent. Reading
+    // the parameter instead is what produced findings #1, #5, #6 and #7 in
+    // sequence: for a CONTROLLED binding the parameter still holds the pre-pick
+    // value until the consumer's own (possibly async) ViewModeChanged handler has
+    // returned AND the parent has re-rendered, and for an UNCONTROLLED one it
+    // holds a value a competing trigger may have deliberately overridden. Both
+    // are answered by the intent's own ParamAccountedFor/Phase instead — see
+    // GanttViewModeIntent's remarks.
+    //
+    // Tasks stay parameter-derived: they are a separate dimension with no
+    // competing in-component author, and ReconcileAsync diffs them structurally,
+    // so re-reading them is exactly right (a re-push of the same list is a no-op,
+    // a pending replacement still lands — round 18-f2 finding #2).
     private async Task<GanttReconcileOutcome> ReapplyCurrentParametersAsync()
     {
         var nextTasks = SortedTasks(Tasks?.ToList() ?? new List<GanttTask>());
-        var pendingToolbarMode = _pendingToolbarMode;
-        var incomingMode = pendingToolbarMode ?? (ViewModeChanged.HasDelegate
-            ? ViewMode
-            : (ViewMode != _committedViewModeParam ? ViewMode : _state.ViewMode));
-        var outcome = await ReconcileAsync(nextTasks, incomingMode);
-        // Bug fix (Codex PR-382 review round 1, P2, line ~786; consolidated into
-        // MarkViewModeParamAccountedFor round 2): advance on NoOp too, not just
-        // Committed — a NoOp here is only possible when incomingMode already
-        // equals the committed _state.ViewMode, so the parameter is genuinely
-        // accounted for either way. Superseded alone is excluded: that pass
-        // never resolved whether incomingMode landed, so the reference must stay
-        // reporting "still pending" for a later re-apply to pick up.
+        var intent = _viewModeIntent;
+        var outcome = await ReconcileAsync(nextTasks, intent.IsPending ? intent.Mode : _state.ViewMode);
         if (outcome == GanttReconcileOutcome.Superseded) return outcome;
-
-        MarkViewModeParamAccountedFor();
-        if (pendingToolbarMode is null) return outcome;
-
-        // The pending toolbar pick has now been resolved (applied, or found to
-        // already match) — clear it so a later re-apply doesn't keep
-        // re-carrying a satisfied/stale request forward.
-        _pendingToolbarMode = null;
-        if (outcome != GanttReconcileOutcome.Committed || !ViewModeChanged.HasDelegate) return outcome;
-
-        // Echo the toolbar's pick up (controlled binding) — mirrors
-        // HandleViewModeChangedAsync's own callback-after-commit contract, and
-        // keeps the two-way binding in sync with _state even though this landed
-        // via a re-apply rather than that method's own (superseded) call.
-        //
-        // Bug fix (Codex PR-382 review round 2, P1, line ~526, "Recheck
-        // supersession after awaiting the mode callback"): invoking a
-        // CONTROLLED consumer's callback can yield for an arbitrary amount of
-        // time — the parent's own handler may itself be async — during which a
-        // LATER navigation/toolbar/parameter reconcile can claim a newer
-        // generation and commit fresher state on top of what THIS call just
-        // committed. Without re-checking afterward, this method would still
-        // return the (now stale) Committed outcome computed BEFORE the
-        // callback ran, and a caller with its own post-reconcile tail
-        // (GoToTodayAsync's recenter, ShiftAsync's re-shift) would run it on
-        // top of that newer commit — exactly the "stale post-action" hazard
-        // every other ReconcileAsync caller already guards against via this
-        // SAME generation token. _reconcileGeneration is captured immediately
-        // after this call's own commit (nothing else can run before THIS
-        // synchronous continuation reaches the capture — no await has
-        // happened yet) and compared again the instant the callback await
-        // resolves.
-        var generationAtCommit = _reconcileGeneration;
-        await ViewModeChanged.InvokeAsync(pendingToolbarMode.Value);
-        return _reconcileGeneration == generationAtCommit ? outcome : GanttReconcileOutcome.Superseded;
+        return await SettleViewModeIntentAsync(intent.Id, outcome);
     }
 
-    // The ViewMode PARAMETER value seen on the last parameter pass — the
-    // uncontrolled-mode discriminator OnParametersSetAsync uses. Advances EAGERLY
-    // (every pass, before the reconcile even runs) so that while a mode-switch
-    // reconcile is in flight, an unrelated parent re-render re-pushing that SAME
-    // in-flight target diffs to a no-op instead of superseding it (Codex round
-    // 17, P1). A controlled binding keeps the parameter authoritative; an
-    // uncontrolled one must let _state.ViewMode (possibly set by the toolbar)
-    // survive an unrelated re-render re-pushing the original value.
-    private GanttViewMode _lastSeenViewModeParam;
-
-    // The ViewMode PARAMETER value the last actual COMMIT applied (or the mount
-    // value) — the discriminator the post-supersession RE-APPLY uses (Codex
-    // round 18-f2). Distinct from the eager _lastSeenViewModeParam above: when a
-    // reconcile is SUPERSEDED, its eager advance never became a commit, so only
-    // this committed reference still reports the parent's ViewMode as pending and
-    // un-applied — which is exactly what lets the superseding navigation/theme
-    // re-apply that dropped change. See ReapplyCurrentParametersAsync. Only ever
-    // written via MarkViewModeParamAccountedFor() below — see its own remarks for
-    // why every settling reconcile, regardless of which trigger produced it,
-    // advances this together with _lastSeenViewModeParam.
-    private GanttViewMode _committedViewModeParam;
-
-    // Bug fix (Codex PR-382 review round 1, P1, line ~487): the toolbar's own
-    // selected mode, recorded by HandleViewModeChangedAsync BEFORE its reconcile
-    // enters the live-center capture await — carried forward by
-    // ReapplyCurrentParametersAsync so a superseding navigation/theme flip's
-    // re-apply doesn't lose it. Neither ViewMode nor _committedViewModeParam
-    // reflect the toolbar's target while its own reconcile's capture is still
-    // outstanding (ViewModeChanged is only invoked AFTER that reconcile
-    // commits), so without this field the pending zoom selection is silently
-    // dropped whenever something else supersedes it mid-capture. Cleared once
-    // consumed (by a re-apply, Committed or NoOp) or by
-    // HandleViewModeChangedAsync's own successful, non-superseded commit.
-    private GanttViewMode? _pendingToolbarMode;
-
-    // Codex PR-382 review round 2 consolidation ("Discard parameters superseded
-    // by a toolbar commit", P1): the SINGLE place both the parameter-side
-    // discriminators (_committedViewModeParam/_lastSeenViewModeParam) move
-    // together. Call this whenever ANY reconcile trigger — the toolbar
-    // (HandleViewModeChangedAsync), a parameter pass (OnParametersSetAsync), or
-    // a nav/theme re-apply of either (ReapplyCurrentParametersAsync) — reaches a
-    // non-superseded outcome (Committed or NoOp), REGARDLESS of whether that
-    // pass's own resolved mode came from the parameter, from a toolbar pick, or
-    // already matched: a settled pass means the CURRENT ViewMode parameter value
-    // has been dealt with (applied, deliberately overridden by a competing
-    // trigger that won instead, or already satisfied) — never left "still
-    // pending" for a later, unrelated action to misread and resurrect.
+    // ── View-mode ownership: ONE value, ONE claim point, ONE settle point ──
     //
-    // This existed as three separately-maintained inline mutations before round
-    // 2 (one per call site) — precisely how round 1's own Finding #2 ("advance
-    // _committedViewModeParam on NoOp too") and round 2's Finding B ("a toolbar
-    // commit must retire the PARAMETER's stale pending value too") slipped
-    // through as two independent patches for what is structurally the SAME
-    // invariant. HandleViewModeChangedAsync did not call this before round 2 —
-    // that gap was exactly Finding B: a toolbar commit left the parameter side
-    // untouched, so an uncontrolled component's stale ViewMode-vs-
-    // _committedViewModeParam diff resurrected an already-superseded parameter
-    // value on the next navigation.
-    private void MarkViewModeParamAccountedFor()
+    // Codex PR-382 review round 3 consolidation. Rounds 17-20 spread this across
+    // _pendingToolbarMode / _committedViewModeParam / _lastSeenViewModeParam plus
+    // a MarkViewModeParamAccountedFor helper trying to keep two of them in step;
+    // every one of findings #1-#7 was a different hand-maintained LIFETIME among
+    // those fields going wrong at a different call site, and each fix exposed the
+    // next. _viewModeIntent answers the whole question in one place — see
+    // GanttViewModeIntent's own remarks for the four facts it carries. Three
+    // rules, each stated exactly once in this file:
+    //
+    //  1. CLAIM — a new intent is created in exactly two places: the toolbar
+    //     (HandleViewModeChangedAsync) and a parameter pass whose ViewMode says
+    //     something genuinely new (ResolveParameterMode). Claiming REPLACES the
+    //     previous intent outright, which is what makes supersession a single
+    //     decision rather than something re-derived per call site.
+    //  2. REPLAY — a navigation/theme supersession re-executes the current
+    //     intent while it IsPending (ReapplyCurrentParametersAsync). It never
+    //     authors one, and never reads the parameter for a mode.
+    //  3. SETTLE — an intent stops owning the view mode in exactly one place
+    //     (SettleViewModeIntentAsync), only once its consumer callback (if it
+    //     owes one) has actually come back, and only if it is still the intent
+    //     that pass claimed. Advancing "the parameter has been accounted for" is
+    //     that transition's by-product, not a separate field to remember.
+    private GanttViewModeIntent _viewModeIntent;
+    private long _viewModeIntentId;
+
+    // Claims a NEW intent, superseding whatever owned the view mode before. The
+    // ViewMode parameter value visible right now is recorded as accounted for by
+    // construction: for a Parameter source it IS the value being applied, and for
+    // a Toolbar source the pick deliberately overrides it, which is precisely
+    // what "accounted for" means (round 20 finding B, now structural). This is
+    // also the eager advance round 17's finding #1 needed — it happens before the
+    // reconcile can yield, so an unrelated re-render re-pushing that same
+    // in-flight value diffs to a no-op instead of superseding it.
+    private GanttViewModeIntent ClaimViewModeIntent(GanttViewMode mode, GanttViewModeSource source) =>
+        _viewModeIntent = new GanttViewModeIntent(++_viewModeIntentId, mode, source, GanttViewModePhase.Applying, ViewMode);
+
+    // The mode a PARAMETER pass reconciles to, plus the id of the intent it
+    // claimed (null when it claimed none).
+    //
+    // The parameter may author an intent only when it says something the current
+    // owner has not already folded in. Otherwise this pass has nothing to say
+    // about the mode at all and reconciles to the COMMITTED one — a no-op in the
+    // mode dimension that leaves an in-flight intent completely untouched. That
+    // single rule replaces both of the old controlled/uncontrolled branches: the
+    // old CONTROLLED branch treated ViewMode as unconditionally authoritative,
+    // which is only true of a value the parent has actually just pushed — the
+    // very assumption finding #7 broke, since a controlled parent's ViewMode
+    // still reads as the OLD mode for as long as its own ViewModeChanged handler
+    // is awaiting. A parent that genuinely wants the old mode back (declining a
+    // toolbar pick) pushes it as a change against ParamAccountedFor and still
+    // wins, exactly as before.
+    private (GanttViewMode Mode, long? ClaimedIntentId) ResolveParameterMode()
     {
-        _committedViewModeParam = ViewMode;
-        _lastSeenViewModeParam = ViewMode;
+        if (ViewMode == _viewModeIntent.ParamAccountedFor) return (_state.ViewMode, null);
+        var claimed = ClaimViewModeIntent(ViewMode, GanttViewModeSource.Parameter);
+        return (claimed.Mode, claimed.Id);
+    }
+
+    // The ONE place an intent stops owning the view mode.
+    //
+    // Called by every trigger that reaches a non-superseded outcome, with the id
+    // of the intent THAT pass is responsible for. Everything the old three fields
+    // needed hand-maintained sequencing for falls out of the three guards below:
+    //
+    //  * id mismatch — a NEWER intent (any source) already took ownership; this
+    //    pass must not settle, clear or echo anything (findings #1/#6, and the
+    //    "don't clobber a newer toolbar request" half of #7).
+    //  * already Settled — nothing outstanding; a replay that found nothing
+    //    pending must not re-advance anything (finding #2's NoOp case is simply
+    //    a settle like any other, not a special branch).
+    //  * already Notifying — its own echo owns the settle; a replay landing in
+    //    that window re-commits the mode but must not fire the consumer callback
+    //    a second time.
+    //
+    // The Notifying phase itself is finding #7: a CONTROLLED toolbar pick is not
+    // settled by committing it, because the consumer's handler may yield for an
+    // arbitrarily long time and the parent's ViewMode parameter still holds the
+    // old value throughout. The intent stays PENDING across that await, so any
+    // navigation landing in the window replays this mode instead of resurrecting
+    // the stale parameter — and only once the callback actually returns does
+    // ParamAccountedFor advance to the mode we told the parent to hold.
+    //
+    // The generation re-check after the callback is round 20 finding A, unchanged
+    // in substance: a caller with its own post-reconcile tail (GoToTodayAsync's
+    // recenter, ShiftAsync's re-shift) must not run it on top of whatever a newer
+    // action committed while this callback was yielding.
+    private async Task<GanttReconcileOutcome> SettleViewModeIntentAsync(long intentId, GanttReconcileOutcome outcome)
+    {
+        var intent = _viewModeIntent;
+        if (intent.Id != intentId) return outcome;
+        if (intent.Phase != GanttViewModePhase.Applying) return outcome;
+
+        var owesConsumerEcho = intent.Source == GanttViewModeSource.Toolbar
+            && ViewModeChanged.HasDelegate
+            && outcome == GanttReconcileOutcome.Committed;
+
+        if (!owesConsumerEcho)
+        {
+            // Nothing outstanding: the parent is left holding whatever it
+            // already holds, and that value is now accounted for.
+            _viewModeIntent = intent with { Phase = GanttViewModePhase.Settled, ParamAccountedFor = ViewMode };
+            return outcome;
+        }
+
+        _viewModeIntent = intent with { Phase = GanttViewModePhase.Notifying };
+        var generationAtCommit = _reconcileGeneration;
+        await ViewModeChanged.InvokeAsync(intent.Mode);
+        if (_viewModeIntent.Id == intentId && _viewModeIntent.Phase == GanttViewModePhase.Notifying)
+            _viewModeIntent = _viewModeIntent with { Phase = GanttViewModePhase.Settled, ParamAccountedFor = intent.Mode };
+        return _reconcileGeneration == generationAtCommit ? outcome : GanttReconcileOutcome.Superseded;
     }
 
     // Browser-local "today" (Codex round 2, P2 #9) — resolved once via JS on
@@ -626,8 +634,11 @@
 
     protected override void OnInitialized()
     {
-        _lastSeenViewModeParam = ViewMode;
-        _committedViewModeParam = ViewMode;
+        // The mount intent: born Settled, since OnInitialized commits it below
+        // synchronously and there is no consumer to notify about a value the
+        // consumer itself supplied.
+        _viewModeIntent = new GanttViewModeIntent(
+            _viewModeIntentId, ViewMode, GanttViewModeSource.Mount, GanttViewModePhase.Settled, ViewMode);
         _state.SetViewMode(ViewMode);
         _state.SetTasks(SortedTasks(Tasks?.ToList() ?? new List<GanttTask>()));
         _tasksVersion = 1;
@@ -851,65 +862,34 @@
 
     protected override async Task OnParametersSetAsync()
     {
-        var nextTasks = SortedTasks(Tasks?.ToList() ?? new List<GanttTask>());
-
-        // The mode to reconcile TO. CONTROLLED (ViewModeChanged bound): the
-        // parameter is authoritative — a toolbar push already committed the new
-        // mode into _state, so the echoed parameter simply matches and the diff
-        // reports no change. UNCONTROLLED: honor a GENUINE parameter change
-        // (parent set it directly), but when the parameter is unchanged since
-        // last pass, keep the committed _state.ViewMode — so an unrelated parent
-        // re-render re-pushing the original value never reverts a toolbar zoom.
-        var incomingMode = ViewModeChanged.HasDelegate
-            ? ViewMode
-            : (ViewMode != _lastSeenViewModeParam ? ViewMode : _state.ViewMode);
-        _lastSeenViewModeParam = ViewMode; // eager — see the field's remarks (round 17 / cx17)
-
         if (!_initialized)
         {
             // The very first parameter pass lands on the mount state OnInitialized
             // already seeded (and GanttTimeline's own firstRender does the initial
-            // center) — just adopt it as the reconcile baseline and skip.
+            // center) — just adopt it as the reconcile baseline and skip. The
+            // mount intent already records this ViewMode as accounted for, so
+            // this pass has nothing to claim.
             _initialized = true;
             return;
         }
 
-        // Advance the COMMITTED discriminator only when the reconcile actually
-        // commits (Codex round 18-f2): a superseded pass never applied ViewMode,
-        // so leaving _committedViewModeParam behind is exactly what lets the
-        // superseding navigation/theme re-apply the dropped change.
-        //
-        // Bug fix (Codex PR-382 review, P2, line ~786): advance on a NoOp
-        // outcome too, not just Committed. NoOp only ever results from
-        // ReconcileAsync's own round-17 short-circuit (Range==Keep &&
-        // Target==None), which requires next to be field-for-field identical to
-        // prev — i.e. incomingMode ALREADY equals the committed _state.ViewMode.
-        // Leaving _committedViewModeParam behind in that case (e.g. an
-        // uncontrolled parent pushing a value the toolbar had already
-        // independently applied) meant a LATER toolbar selection's own
-        // supersession would misread this stale reference as "the parent's old
-        // value is still pending" and revert the newer mode. Superseded is still
-        // excluded — that pass genuinely never resolved whether incomingMode
-        // landed, so the parameter must stay reported as pending for the
-        // eventual re-apply to pick it up.
+        var nextTasks = SortedTasks(Tasks?.ToList() ?? new List<GanttTask>());
+
+        // The one place the ViewMode PARAMETER may author an intent — see
+        // ResolveParameterMode. A claim here REPLACES whatever owned the view
+        // mode before, including an in-flight toolbar pick (round 16 finding #2's
+        // "a competing parameter push wins outright"), so there is no separate
+        // "retire the stale toolbar request" step to forget.
+        var (incomingMode, claimedIntentId) = ResolveParameterMode();
+
         var outcome = await ReconcileAsync(nextTasks, incomingMode);
-        if (outcome != GanttReconcileOutcome.Superseded)
-        {
-            MarkViewModeParamAccountedFor();
-            // A genuine, authoritative parameter-driven commit just landed —
-            // it supersedes any stale toolbar pick still parked in
-            // _pendingToolbarMode (see GanttV3CodexRound16Tests' own
-            // Finding2_A_Superseded_Toolbar_Reconcile_Fires_No_ViewModeChanged_Callback:
-            // a competing parameter push already wins outright over an
-            // in-flight toolbar reconcile). Without clearing it here, a LATER
-            // nav/theme re-apply would incorrectly resurrect that abandoned
-            // toolbar request instead of preserving what this pass (or
-            // whatever ran after it) actually committed. Committed-only (not
-            // NoOp): a NoOp abandons before ever claiming a generation (round
-            // 17), so it could not have superseded an in-flight toolbar
-            // reconcile at all — nothing to retire.
-            if (outcome == GanttReconcileOutcome.Committed) _pendingToolbarMode = null;
-        }
+        // Superseded: this pass never resolved whether its intent landed, so it
+        // stays PENDING for whatever superseded it to replay (round 18-f2).
+        // No claim: this pass authored nothing, so it settles nothing — in
+        // particular it must not settle somebody else's in-flight intent (round
+        // 17 finding #1's unrelated re-render).
+        if (outcome == GanttReconcileOutcome.Superseded || claimedIntentId is not { } intentId) return;
+        await SettleViewModeIntentAsync(intentId, outcome);
     }
 
     private List<GanttTask> SortedTasks(List<GanttTask> raw)
@@ -1019,47 +999,25 @@
     private async Task HandleViewModeChangedAsync(GanttViewMode mode)
     {
         if (mode == _state.ViewMode) return;
-        // Bug fix (Codex PR-382 review, P1, line ~487): recorded BEFORE this
-        // reconcile's own live-center capture await, so a navigation/theme flip
-        // superseding THIS call can still carry the toolbar's own selected mode
-        // forward via ReapplyCurrentParametersAsync instead of silently losing
-        // it — see _pendingToolbarMode's own remarks.
-        _pendingToolbarMode = mode;
+
+        // Claim the intent BEFORE the reconcile can yield into its live-center
+        // capture, so anything that supersedes that reconcile replays THIS mode
+        // rather than losing it (round 19 finding #1) — and so the current
+        // ViewMode parameter value is recorded as accounted-for by the same
+        // write, since this pick deliberately overrides it (round 20 finding B).
+        var intent = ClaimViewModeIntent(mode, GanttViewModeSource.Toolbar);
+
         var outcome = await ReconcileAsync(_state.Tasks, mode);
-        // Bug fix (Codex round 16 review, P1 finding #2): a reconcile superseded
-        // by a NEWER one (round 15's generation guard) already skips its own
-        // commit — but this callback sits OUTSIDE ReconcileAsync, so without this
-        // check it would still fire ViewModeChanged with a mode that was never
-        // actually applied to _state.ViewMode (the superseding reconcile decided
-        // something else entirely). Suppress every side effect below, not just
-        // the commit, when superseded or a no-op. _pendingToolbarMode is
-        // deliberately left untouched here when superseded — whatever superseded
-        // this call is responsible for carrying it forward (or, for a competing
-        // direct commit, explicitly abandoning it — see OnParametersSetAsync).
+        // Superseded/no-op: suppress every side effect, not just the commit
+        // (round 16 finding #2) — including the consumer echo, which would
+        // otherwise report a mode that was never applied. The intent is
+        // deliberately left alone: whatever superseded this call either replays
+        // it or has already replaced it with its own.
         if (outcome != GanttReconcileOutcome.Committed) return;
-        _pendingToolbarMode = null;
-        // Bug fix (Codex PR-382 review round 2, P1, line ~501, "Discard
-        // parameters superseded by a toolbar commit"): a toolbar commit is
-        // authoritative over whatever the ViewMode PARAMETER currently says
-        // too — if a parameter-driven reconcile was suspended (or simply
-        // hadn't run) when this landed, THIS commit just superseded it, so the
-        // CURRENT parameter value must be marked accounted for here.
-        // Previously this method never touched _committedViewModeParam at
-        // all, reasoning that field was purely about the parameter's own
-        // pending-ness — but for an UNCONTROLLED component, an abandoned
-        // parameter push still leaves ViewMode sitting at its new value
-        // (Blazor assigns properties before the async body runs, regardless
-        // of whether the reconcile that was SUPPOSED to process it ever
-        // committed). Without this, the next navigation's stale
-        // ViewMode-vs-_committedViewModeParam diff would "resurrect" that
-        // already-superseded parameter value right back on top of this pick.
-        MarkViewModeParamAccountedFor();
-        // Controlled: echo the new mode up; the resulting parameter pass finds
-        // _state.ViewMode already committed, so it diffs to a no-op. Uncontrolled:
-        // nothing to push — _state.ViewMode is the committed truth the next
-        // OnParametersSetAsync compares against (a re-pushed original parameter
-        // value never reverts it, see OnParametersSetAsync's incomingMode).
-        if (ViewModeChanged.HasDelegate) await ViewModeChanged.InvokeAsync(mode);
+
+        // Settling this intent is what performs the controlled echo (and only
+        // then advances the parameter accounting) — see SettleViewModeIntentAsync.
+        await SettleViewModeIntentAsync(intent.Id, outcome);
     }
 
     // Bug fix (Codex round 5, P2 #5): reads the shared scroll pane's ACTUAL

@@ -84,6 +84,105 @@ internal enum GanttReconcileOutcome
     Superseded,
 }
 
+/// <summary>
+/// Which trigger authored the view-mode intent that currently owns
+/// <c>GanttState.ViewMode</c> (Codex PR-382 review round 3 consolidation — see
+/// <see cref="GanttViewModeIntent"/>).
+/// </summary>
+/// <remarks>
+/// Deliberately has no <c>Navigation</c> member: a Previous/Next/Today click (or
+/// a <c>ThemeService</c> direction flip) never DECIDES a view mode. It supersedes
+/// whichever reconcile is carrying the current intent and REPLAYS that same
+/// intent — it is a re-executor, never an author. Making that fact structural is
+/// half the point of this type: the replay path has no branch that could invent a
+/// mode of its own, or fall back to reading a parameter that a controlled binding
+/// has not echoed yet.
+/// </remarks>
+internal enum GanttViewModeSource
+{
+    /// <summary>The initial <c>ViewMode</c> parameter value, adopted by <c>OnInitialized</c>.</summary>
+    Mount,
+
+    /// <summary>A genuine <c>ViewMode</c> parameter change pushed by the parent on a parameter pass.</summary>
+    Parameter,
+
+    /// <summary>A zoom pick from <c>GanttNav</c>'s toolbar.</summary>
+    Toolbar,
+}
+
+/// <summary>
+/// How far the owning view-mode intent has progressed. An intent owns the view
+/// mode from the moment it is claimed until it reaches <see cref="Settled"/> —
+/// that window, not "did some reconcile commit", is what a replay must respect.
+/// </summary>
+internal enum GanttViewModePhase
+{
+    /// <summary>Claimed but not yet committed to <c>GanttState</c> — a reconcile for it is in flight, or the pass carrying it was superseded and is waiting to be replayed.</summary>
+    Applying,
+
+    /// <summary>Committed to <c>GanttState</c>, but the two-way <c>ViewModeChanged</c> echo for it has not come back yet, so the parent's <c>ViewMode</c> parameter may still hold the pre-pick value.</summary>
+    Notifying,
+
+    /// <summary>Committed and acknowledged. Nothing about this intent is outstanding, and <c>GanttState.ViewMode</c> equals its <see cref="GanttViewModeIntent.Mode"/>.</summary>
+    Settled,
+}
+
+/// <summary>
+/// The single representation of "which intent currently owns the GanttV3 view
+/// mode, on whose authority, and for how long" (Codex PR-382 review round 3).
+/// </summary>
+/// <remarks>
+/// Replaces the four independently-maintained discriminators rounds 17-20
+/// accreted in <c>Gantt3</c> — <c>_pendingToolbarMode</c>,
+/// <c>_committedViewModeParam</c>, <c>_lastSeenViewModeParam</c> and the
+/// <c>MarkViewModeParamAccountedFor</c> helper that tried to keep the last two in
+/// step. Each of those carried ONE fragment of the ownership question and had its
+/// OWN hand-maintained lifetime, written at a different call site; every review
+/// round corrected one of those lifetimes and exposed the next.
+///
+/// The whole question is answered here instead, by four facts that are only ever
+/// written together:
+/// <list type="bullet">
+/// <item><see cref="Mode"/> — what the owner wants.</item>
+/// <item><see cref="Source"/> — who wants it (which also decides whether a
+/// commit owes the consumer a <c>ViewModeChanged</c> echo: only a
+/// <see cref="GanttViewModeSource.Toolbar"/> pick does).</item>
+/// <item><see cref="Phase"/> — how far it has got, i.e. whether it is still
+/// pending. A replay uses <see cref="Mode"/> exactly while
+/// <see cref="IsPending"/> is true, so an intent survives an arbitrarily long
+/// consumer callback.</item>
+/// <item><see cref="ParamAccountedFor"/> — the <c>ViewMode</c> PARAMETER value
+/// this intent has already folded in. "Has the parameter been accounted for" is
+/// therefore a property OF the owner, not a separate field someone has to
+/// remember to advance: claiming an intent records it, and settling one advances
+/// it to whatever the parent should now be holding.</item>
+/// </list>
+/// <see cref="Id"/> is the intent's stable identity — bumped only when a NEW
+/// intent is claimed, never by a replay. A pass that started an intent's consumer
+/// callback compares it on resume, so a callback that outlives its intent (because
+/// a newer pick of ANY source took over meanwhile) can never settle, clear or
+/// clobber the newer one.
+/// </remarks>
+/// <param name="Id">Stable identity — see the remarks.</param>
+/// <param name="Mode">The view mode this intent resolves to.</param>
+/// <param name="Source">Which trigger authored it.</param>
+/// <param name="Phase">How far it has progressed.</param>
+/// <param name="ParamAccountedFor">The <c>ViewMode</c> parameter value already folded into this intent.</param>
+internal readonly record struct GanttViewModeIntent(
+    long Id,
+    GanttViewMode Mode,
+    GanttViewModeSource Source,
+    GanttViewModePhase Phase,
+    GanttViewMode ParamAccountedFor)
+{
+    /// <summary>
+    /// True while this intent still owns the view mode outright — i.e. anything
+    /// that supersedes the pass carrying it must replay <see cref="Mode"/>
+    /// rather than re-deriving a mode from the parameter.
+    /// </summary>
+    public bool IsPending => Phase != GanttViewModePhase.Settled;
+}
+
 /// <summary>What date the one-shot scroll intent targets for a pass.</summary>
 internal enum GanttScrollTarget
 {
