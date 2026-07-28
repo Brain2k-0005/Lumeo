@@ -669,6 +669,43 @@
     [Parameter] public DateTime? ScrollTargetDate { get; set; }
 
     /// <summary>
+    /// Design spec Phase 3, T9 — a PIXEL-precise override for
+    /// <see cref="ResolveScrollTargetX"/>, timeline-origin-relative (the SAME
+    /// space that method's own <c>GanttScale.DateToPixel</c> return value
+    /// already lives in). When set (and while the SAME intent this render's
+    /// <see cref="ScrollTargetDate"/> pairs with is still pending), takes
+    /// priority over deriving the target from <see cref="ScrollTargetDate"/>.
+    ///
+    /// Exists for exactly one caller today: <c>Gantt3.HandleRangeExtensionRequestAsync</c>'s
+    /// leading-edge recenter. Every OTHER scroll intent in this codebase
+    /// (view-mode switches, Today, Previous/Next, an off-screen-chip click,
+    /// <c>GanttState.ScrollToDateAsync</c>) is perfectly well served by a
+    /// captured DATE re-projected through <c>GanttScale.DateToPixel</c> under
+    /// the new geometry — accurate to within a fraction of a column, which is
+    /// why those paths' own E2E coverage uses a several-pixel tolerance. A
+    /// leading-edge extension is different: this task's own explicit ±1px
+    /// proof requirement cannot be met that way, because <c>DateToPixel</c>'s
+    /// Day/Month/Year branches all read <c>DateTime.Date</c> — a date
+    /// captured via <c>PixelToDateContinuous</c> (which DOES preserve a
+    /// sub-unit fraction, e.g. a fractional day) LOSES that fraction the
+    /// moment it is re-projected back through <c>DateToPixel</c>, up to
+    /// nearly one whole column's worth of pixels (confirmed empirically via
+    /// this task's own local E2E gate: an 11px drift on a 38px Day-mode
+    /// column). Bypassing the DateTime round trip entirely — read the LIVE
+    /// logical scroll center as a raw pixel value, add the ANALYTICALLY
+    /// exact origin-shift delta (<c>GanttScale.DateToPixel</c>'s own
+    /// provable origin-linearity — see that method's remarks), done — has no
+    /// such loss, because no DateTime intermediary is ever involved. Still
+    /// exactly zero new interop surface and zero new <c>GanttScale</c> math:
+    /// both the read (<c>GanttV3GetScrollCenterXAsync</c>) and the
+    /// eventual write (<c>GanttV3ScrollToXAsync</c>, via this component's own
+    /// existing <see cref="ScrollToCenterAsync"/>) are the SAME calls every
+    /// other recenter already uses; this parameter only changes which VALUE
+    /// gets handed to the write.
+    /// </summary>
+    [Parameter] public double? ScrollTargetXOverride { get; set; }
+
+    /// <summary>
     /// Pixels of the <see cref="ScrollHost"/>'s own content that precede this
     /// timeline's origin (x=0) — namely a sibling tree pane's width, when
     /// <c>Gantt3</c> renders one (Codex round 4, P2 #2). Defaults to 0
@@ -918,6 +955,57 @@
     /// swallowed entirely, never opens a menu).
     /// </summary>
     [Parameter] public RenderFragment<GanttTask>? BarContextMenu { get; set; }
+
+    /// <summary>
+    /// Nearing either horizontal edge of the currently-rendered range extends
+    /// it by another page instead of dead-ending (design spec Phase 3, T9 —
+    /// "horizontal infinite scroll ... replaces v2's fixed pad-before/after").
+    /// Default <c>true</c> (see the Phase-3 ledger entry, decision 1, for the
+    /// full "what does an existing Phase-1 consumer actually notice" reasoning
+    /// — the short version: nothing, until they scroll far enough to reach the
+    /// ORIGINAL padded edge, at which point the timeline now keeps going
+    /// instead of dead-ending). <c>false</c> restores exactly v2's own fixed
+    /// pad-before/after — <see cref="Lumeo.Gantt3"/>'s own
+    /// <c>ComputeInitialRange</c>/<c>ApplyPadding</c> are COMPLETELY unchanged
+    /// by this parameter; it only gates whether <see cref="OnGanttV3VerticalScroll"/>
+    /// ever asks for MORE range once the user scrolls near what those already
+    /// computed.
+    /// </summary>
+    [Parameter] public bool InfiniteScroll { get; set; } = true;
+
+    /// <summary>
+    /// Bubbles a "the user scrolled near an edge, please extend VisibleRange"
+    /// request up to <see cref="Lumeo.Gantt3"/> (design spec Phase 3, T9) — this
+    /// component never owns <c>VisibleRange</c> itself (it only ever RECEIVES
+    /// <see cref="RangeStart"/>/<see cref="RangeEnd"/> as plain parameters, the
+    /// same "Gantt3 is the only place that touches GanttState" discipline every
+    /// other bubbled edit in this file already follows — see
+    /// <see cref="OnTaskUpdate"/>'s own remarks), so it can only ask, never
+    /// commit. <c>true</c> = the LEADING (earlier-dates) edge — the coordinate
+    /// origin shifts, so the caller must recenter; <c>false</c> = TRAILING
+    /// (later-dates) — a pure append, origin unchanged, no recenter needed. Not
+    /// part of any consumer-facing contract (this component is only public
+    /// because the Razor compiler forces it — see this file's own class
+    /// remarks); wired internally by <c>Gantt3</c> only.
+    /// </summary>
+    [Parameter] public EventCallback<bool> OnRangeExtensionRequested { get; set; }
+
+    // Design spec Phase 3, T9 — re-entrancy guard: a second near-edge report
+    // arriving while a PREVIOUS extension request is still awaiting Gantt3's
+    // own async pipeline (live-center capture, drag-gesture re-check) is
+    // dropped rather than queued or overlapped — the request is LEVEL-
+    // triggered, not edge-triggered (VisibleTimelineWindow is re-evaluated
+    // fresh on every report), so as long as the user is STILL near the edge
+    // once this one resolves, the very next report re-requests it.
+    private bool _rangeExtensionInFlight;
+
+    // Design spec Phase 3, T9 — see ScrollToCenterAsync's own remarks. Armed
+    // by EVERY programmatic recenter, consumed by the very next
+    // OnGanttV3VerticalScroll report regardless of what that report's own
+    // scrollLeft/clientWidth actually are — a recenter's own resulting
+    // native 'scroll' event must never itself be misread as "the user wants
+    // more range."
+    private bool _suppressNextExtensionReport;
 
     private ElementReference _scrollHostRef;
     private ElementReference _headerInnerRef;
@@ -1223,8 +1311,16 @@
     // letting a consumed preserved-center intent expire instead of re-applying
     // it forever. A standalone timeline leaves ScrollTargetDate null, so this is
     // always Today there, unchanged.
+    // Design spec Phase 3, T9 — ScrollTargetXOverride's own priority: only
+    // while intentPending (the SAME "is this intent still live" gate
+    // ScrollTargetDate already respects, immediately above), and ONLY takes
+    // over the resolution entirely — never blended with the date-derived
+    // value — see ScrollTargetXOverride's own remarks for why a leading-edge
+    // extension needs pixel-exact precision the date path cannot provide.
     private double ResolveScrollTargetX(bool intentPending) =>
-        GanttScale.DateToPixel(ViewMode, Origin, (intentPending ? ScrollTargetDate : null) ?? Today, EffectiveColumnWidth);
+        intentPending && ScrollTargetXOverride is { } pixelOverride
+            ? pixelOverride
+            : GanttScale.DateToPixel(ViewMode, Origin, (intentPending ? ScrollTargetDate : null) ?? Today, EffectiveColumnWidth);
 
     // v2 parity (Codex round 2, P2 #8): v2's scroll-to-today gate is
     // `todayPx > 0` (gantt-v2.js:684) — deliberately LOOSER than the
@@ -1937,6 +2033,90 @@
         // (conditional) call above — Blazor coalesces multiple StateHasChanged
         // calls within one synchronous handler into a single render.
         if (horizontalChanged) StateHasChanged();
+
+        // Design spec Phase 3, T9 — infinite scroll's own edge-detection half.
+        // Threshold math lives HERE (C#), not in gantt-v3.js's report(),
+        // deliberately: VisibleTimelineWindow/TotalWidth below are ALREADY
+        // leading-offset- AND RTL-normalized (see VisibleTimelineWindow's own
+        // remarks) — a sibling tree pane's width (LTR-only) is folded OUT of
+        // the reported scrollLeft before either value is ever compared, which
+        // gantt-v3.js's report() has no way to do on its own (ScrollHostLeadingOffset
+        // is a Gantt3/GanttTimeline-only concept, never pushed to JS). Reusing
+        // these ALREADY-hardened, already-RTL-correct C# values for the
+        // threshold check is "reuse GanttScale origin math, no second
+        // implementation" applied to the EDGE-DETECTION half of T9, not only
+        // the recenter half (see HandleRangeExtensionRequestAsync's own
+        // remarks in Gantt3.razor for that half) — a deliberate departure from
+        // the plan's own literal "JS detects threshold" wording once research
+        // showed JS lacks the one input (leading offset) that math needs to be
+        // correct under a visible tree pane (same "research can replace the
+        // plan's literal wording when it doesn't hold up against the actual
+        // code" precedent T7's own decision 5 already established).
+        // Design spec Phase 3, T9 — consumes ScrollToCenterAsync's own
+        // suppression flag (see its remarks) UNCONDITIONALLY, before the
+        // InfiniteScroll/VisibleTimelineWindow gate below — a programmatic
+        // recenter that happens to fire while InfiniteScroll is false, or
+        // before the pane has been measured yet, must still clear the flag
+        // rather than leave it armed to wrongly suppress a LATER, genuine
+        // near-edge report once those conditions change.
+        var suppressThisReport = _suppressNextExtensionReport;
+        _suppressNextExtensionReport = false;
+
+        if (!suppressThisReport && InfiniteScroll && VisibleTimelineWindow is { } window)
+        {
+            // "Nearing an edge" = within one viewport-width of it — the SAME
+            // "a page" language the plan uses for how much MORE range an
+            // extension adds (see Gantt3.PadBoundaryBefore/After's own
+            // remarks), reused here as the TRIGGER distance too: fewer than
+            // one more full screenful of already-rendered range remains.
+            var thresholdPx = clientWidth;
+            var nearLeading = window.Start < thresholdPx;
+            var nearTrailing = (TotalWidth - window.End) < thresholdPx;
+            // Leading checked first, not both independently — extending
+            // EITHER edge moves the threshold for the other one too; a range
+            // narrower than 2 viewport-widths (both near at once) still gets
+            // the OTHER edge's own request on the very next report instead of
+            // firing two overlapping requests from this single one.
+            if (nearLeading) _ = TryRequestRangeExtensionAsync(leading: true);
+            else if (nearTrailing) _ = TryRequestRangeExtensionAsync(leading: false);
+        }
+    }
+
+    /// <summary>
+    /// The JS-report-to-Gantt3 request pipeline's OWN half (design spec Phase
+    /// 3, T9) — see <see cref="OnRangeExtensionRequested"/>'s own remarks for
+    /// why this component only ever ASKS, never commits <c>VisibleRange</c>
+    /// itself. Fire-and-forget from <see cref="OnGanttV3VerticalScroll"/>'s own
+    /// synchronous body (<c>_ = TryRequestRangeExtensionAsync(...)</c>): this
+    /// method is genuinely async (one interop round-trip here, then
+    /// <c>Gantt3</c>'s own longer async pipeline behind the EventCallback),
+    /// which a <c>[JSInvokable] void</c> method cannot itself await without
+    /// changing its signature — see that method's own remarks on why its
+    /// signature stays untouched (a heavily-referenced existing channel, not
+    /// worth widening for this one new caller).
+    /// </summary>
+    private async Task TryRequestRangeExtensionAsync(bool leading)
+    {
+        if (_rangeExtensionInFlight) return; // see its own remarks
+        // Design spec Phase 3, T9, decision 3 — the CHEAP half of the
+        // gesture-suppression gate: avoids even asking Gantt3 (which would
+        // itself do a live-scroll-center interop round trip for the leading
+        // case) while a drag is visibly active at this exact moment. See
+        // GanttV3HasActiveDragAsync's own remarks for why Gantt3 ALSO
+        // re-checks this, right before it actually commits — this call alone
+        // does not close the whole race, only the common case cheaply.
+        if (await Interop.GanttV3HasActiveDragAsync()) return;
+        if (_disposed) return;
+        _rangeExtensionInFlight = true;
+        try
+        {
+            if (OnRangeExtensionRequested.HasDelegate)
+                await OnRangeExtensionRequested.InvokeAsync(leading);
+        }
+        finally
+        {
+            _rangeExtensionInFlight = false;
+        }
     }
 
     // Design spec Phase 3, T7 — the current horizontal scroll viewport, in
@@ -2028,7 +2208,32 @@
     // caller-supplied override) — the offset defaults to 0, so this reduces to
     // exactly the previous "Interop.GanttV3ScrollToXAsync(EffectiveScrollHost,
     // TodayX)" call for a standalone timeline.
-    private Task ScrollToCenterAsync(double targetX) => Interop.GanttV3ScrollToXAsync(EffectiveScrollHost, ScrollHostLeadingOffset + targetX);
+    //
+    // Design spec Phase 3, T9 — the ONE shared choke point EVERY programmatic
+    // recenter already funnels through (Today/Prev/Next, a view-mode switch,
+    // GanttState.ScrollToDateAsync/ScrollToTaskAsync, an off-screen-chip
+    // click) is exactly where infinite scroll's own gesture-suppression-
+    // adjacent problem needs its fix: a DELIBERATE recenter can legitimately
+    // land the viewport within one page of VisibleRange's own edge whenever
+    // the rendered range isn't drastically wider than the viewport (e.g. a
+    // freshly Today-recentered Month-mode window, ~2x a typical viewport
+    // wide) — that is NOT the user "running out of room while exploring," it
+    // is the SYSTEM placing them there on purpose, and immediately
+    // auto-extending underneath them would silently re-shift the very view
+    // they just asked for (a real bug this task's own local E2E gate caught:
+    // GanttV3NavTests' Today/Next-Previous specs shifted VisibleRange.Start
+    // by an EXTRA Month-mode PadBefore, 12 months, immediately after the
+    // recenter they were asserting on). Setting this flag here — BEFORE the
+    // interop call, so it is armed even if the awaited call itself is what
+    // triggers the resulting native 'scroll' event synchronously — and
+    // consuming it on the very NEXT OnGanttV3VerticalScroll report (see its
+    // own remarks) treats exactly one post-recenter report as "this is the
+    // scroll settling," not "the user wants more."
+    private Task ScrollToCenterAsync(double targetX)
+    {
+        _suppressNextExtensionReport = true;
+        return Interop.GanttV3ScrollToXAsync(EffectiveScrollHost, ScrollHostLeadingOffset + targetX);
+    }
 
     // Phase 2, T1 — (un)registers gantt-v3.js's pointer drag engine against
     // _scrollHostRef (the row-canvas element — where bars/tracks actually

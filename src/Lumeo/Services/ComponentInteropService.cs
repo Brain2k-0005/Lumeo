@@ -1708,6 +1708,16 @@ public sealed class ComponentInteropService : IComponentInteropService
         catch (JSDisconnectedException) { return null; }
     }
 
+    public async Task<bool> GanttV3HasActiveDragAsync()
+    {
+        try
+        {
+            var module = await GetGanttV3ModuleAsync();
+            return await module.InvokeAsync<bool>("ganttV3.hasActiveDrag");
+        }
+        catch (JSDisconnectedException) { return false; }
+    }
+
     public async Task GanttV3RegisterDragAsync<[System.Diagnostics.CodeAnalysis.DynamicallyAccessedMembers(System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicMethods)] T>(Microsoft.AspNetCore.Components.ElementReference el, DotNetObjectReference<T> dotNetRef, object options) where T : class
     {
         try

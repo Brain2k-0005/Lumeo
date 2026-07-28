@@ -348,6 +348,7 @@ internal static partial class LumeoDefaultStrings
         ["Gantt.SettingsShowSummaryBars"] = "Barras de resumen",
         ["Gantt.SettingsShowZoomControl"] = "Control de zoom",
         ["Gantt.SettingsShowOffscreenIndicators"] = "Indicadores fuera de pantalla",
+        ["Gantt.SettingsInfiniteScroll"] = "Desplazamiento infinito",
         ["Gantt.SettingsNowIndicator"] = "Indicador de ahora",
         ["Gantt.SettingsMarkOffDays"] = "Marcar días libres",
         ["Gantt.SettingsReadonly"] = "Solo lectura",

@@ -351,6 +351,7 @@ internal static partial class LumeoDefaultStrings
         ["Gantt.SettingsShowSummaryBars"] = "Paski podsumowania",
         ["Gantt.SettingsShowZoomControl"] = "Regulacja powiększenia",
         ["Gantt.SettingsShowOffscreenIndicators"] = "Wskaźniki poza ekranem",
+        ["Gantt.SettingsInfiniteScroll"] = "Nieskończone przewijanie",
         ["Gantt.SettingsNowIndicator"] = "Wskaźnik bieżącej godziny",
         ["Gantt.SettingsMarkOffDays"] = "Oznacz dni wolne",
         ["Gantt.SettingsReadonly"] = "Tylko do odczytu",

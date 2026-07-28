@@ -301,6 +301,7 @@ internal static partial class LumeoDefaultStrings
         ["Gantt.SettingsShowSummaryBars"] = "أشرطة الملخص",
         ["Gantt.SettingsShowZoomControl"] = "التحكم بالتكبير",
         ["Gantt.SettingsShowOffscreenIndicators"] = "مؤشرات خارج الشاشة",
+        ["Gantt.SettingsInfiniteScroll"] = "التمرير اللانهائي",
         ["Gantt.SettingsNowIndicator"] = "مؤشر الوقت الحالي",
         ["Gantt.SettingsMarkOffDays"] = "تمييز أيام العطلة",
         ["Gantt.SettingsReadonly"] = "للقراءة فقط",

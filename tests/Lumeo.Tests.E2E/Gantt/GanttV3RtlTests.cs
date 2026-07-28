@@ -24,7 +24,7 @@ public class GanttV3RtlTests : GanttParityTestBase
     [Fact]
     public async Task Initial_centering_lands_the_today_marker_in_viewport_under_rtl()
     {
-        await GotoHost("/e2e/gantt-v3?fixture=today&rtl=1");
+        await GotoHost("/e2e/gantt-v3?fixture=today&rtl=1&infiniteScroll=0");
 
         var scrollPane = Page.Locator("[data-testid='gantt-v3-root'] div[style*='overflow']").First;
         await scrollPane.WaitForAsync(new() { Timeout = 15000 });
@@ -67,7 +67,7 @@ public class GanttV3RtlTests : GanttParityTestBase
         // logical start" scroll value to assert against directly here; two
         // ADJACENT labels' relative physical order is scroll-position-
         // independent and is exactly what the bug actually broke.
-        await GotoHost("/e2e/gantt-v3?fixture=tall&viewMode=Day&rtl=1");
+        await GotoHost("/e2e/gantt-v3?fixture=tall&viewMode=Day&rtl=1&infiniteScroll=0");
 
         var scrollPane = Page.Locator("[data-testid='gantt-v3-root'] div[style*='overflow']").First;
         await scrollPane.WaitForAsync(new() { Timeout = 15000 });
@@ -99,7 +99,7 @@ public class GanttV3RtlTests : GanttParityTestBase
         // the marker a whole tree-width off-center; a correct fix keeps it
         // within a few pixels of the pane's own horizontal center, same
         // tolerance as the LTR counterpart in GanttV3ScrollCenteringTests.
-        await GotoHost("/e2e/gantt-v3?fixture=today&rtl=1");
+        await GotoHost("/e2e/gantt-v3?fixture=today&rtl=1&infiniteScroll=0");
 
         var scrollPane = Page.Locator("[data-testid='gantt-v3-root'] div[style*='overflow']").First;
         await scrollPane.WaitForAsync(new() { Timeout = 15000 });
@@ -134,7 +134,7 @@ public class GanttV3RtlTests : GanttParityTestBase
         // FutureOnlyFixture's tasks sit 90+ days beyond today, well past Day
         // mode's 60-day padding, guaranteeing today's ScrollTargetX is
         // negative — exactly the branch this fix targets.
-        await GotoHost("/e2e/gantt-v3?fixture=future&rtl=1");
+        await GotoHost("/e2e/gantt-v3?fixture=future&rtl=1&infiniteScroll=0");
 
         var scrollPane = Page.Locator("[data-testid='gantt-v3-root'] div[style*='overflow']").First;
         await scrollPane.WaitForAsync(new() { Timeout = 15000 });
@@ -174,7 +174,7 @@ public class GanttV3RtlTests : GanttParityTestBase
         // re-requested it on a LIVE flip. GanttV3Page's toggle-direction
         // button drives a real DirectionProvider re-render, the same path a
         // real app's own direction toggle would take.
-        await GotoHost("/e2e/gantt-v3?fixture=today");
+        await GotoHost("/e2e/gantt-v3?fixture=today&infiniteScroll=0");
 
         var scrollPane = Page.Locator("[data-testid='gantt-v3-root'] div[style*='overflow']").First;
         await scrollPane.WaitForAsync(new() { Timeout = 15000 });
@@ -216,7 +216,7 @@ public class GanttV3RtlTests : GanttParityTestBase
         // per the round-5 spec above) viewport, so bringing future-1 into
         // view here is a REAL, otherwise-untriggered pan, not an accident of
         // the initial centering.
-        await GotoHost("/e2e/gantt-v3?fixture=future");
+        await GotoHost("/e2e/gantt-v3?fixture=future&infiniteScroll=0");
 
         var scrollPane = Page.Locator("[data-testid='gantt-v3-root'] div[style*='overflow']").First;
         await scrollPane.WaitForAsync(new() { Timeout = 15000 });

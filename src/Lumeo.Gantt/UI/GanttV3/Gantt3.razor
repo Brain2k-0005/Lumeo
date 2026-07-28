@@ -110,6 +110,7 @@
                            ScrollToTodayRequestId="@_scrollToTodayRequestId"
                            Today="@EffectiveToday"
                            ScrollTargetDate="@_scrollTargetDate"
+                           ScrollTargetXOverride="@_scrollTargetXOverride"
                            ScrollHostLeadingOffset="@ScrollHostLeadingOffset"
                            LeadingPaneWidth="@(EffectiveShowTreePane ? EffectiveTreePaneTotalWidth : 0)"
                            ScrollHost="@_scrollPaneRef"
@@ -127,6 +128,8 @@
                            ZoomLevels="@ZoomLevels"
                            DragGhostTemplate="@DragGhostTemplate"
                            BarContextMenu="@BarContextMenu"
+                           InfiniteScroll="@InfiniteScroll"
+                           OnRangeExtensionRequested="HandleRangeExtensionRequestAsync"
                            Class="grow shrink-0" />
         </div>
     </div>
@@ -493,6 +496,38 @@
     /// contract, including why this is deliberately independent of <see cref="Readonly"/>.
     /// </summary>
     [Parameter] public RenderFragment<GanttTask>? BarContextMenu { get; set; }
+
+    /// <summary>
+    /// Nearing either horizontal edge of the currently-rendered range extends
+    /// it by another page, preserving scroll position, instead of dead-ending
+    /// (design spec Phase 3, T9 — "horizontal infinite scroll ... replaces
+    /// v2's fixed pad-before/after"). Passed straight through to
+    /// <see cref="GanttTimeline.InfiniteScroll"/> — see its own remarks.
+    ///
+    /// Default <c>true</c> (per the design spec's own literal wording) —
+    /// DELIBERATE, decided the same way <see cref="ShowOffscreenIndicators"/>'s
+    /// own default-true was: what does an EXISTING (pre-T9) v3 consumer
+    /// actually notice? Nothing, for any chart that never scrolls far enough
+    /// to reach the range <c>ComputeInitialRange</c>/<c>ApplyPadding</c> already
+    /// computed — those two methods are COMPLETELY unchanged by this
+    /// parameter, so the chart's INITIAL render, and every render before a
+    /// user scrolls near either padded edge, is byte-identical regardless of
+    /// this default. The only observable delta is what happens ONCE that edge
+    /// is reached: pre-T9 (and <c>false</c>), the timeline simply stops —
+    /// native <c>scrollWidth</c> caps there, exactly v2's own fixed-padding
+    /// behavior; default-<c>true</c>, it keeps going. That is a strictly
+    /// ADDITIVE capability (you can now scroll further than before), never a
+    /// visual "look changed on upgrade with no code change" surprise the way
+    /// e.g. <see cref="NowIndicator"/>/<see cref="MarkOffDays"/>' own opt-in
+    /// defaults exist to avoid (both of those touch EVERY row/column of an
+    /// already-fully-visible chart unconditionally the moment they're on;
+    /// infinite scroll only ever engages in direct response to the viewer's
+    /// own continued scrolling, past a boundary nothing before T9 let them
+    /// reach anyway). <c>false</c> restores v2 parity exactly (byte-matching
+    /// fixed padding — see the Phase-3 ledger entry for the parity spec that
+    /// proves it against both routes).
+    /// </summary>
+    [Parameter] public bool InfiniteScroll { get; set; } = true;
 
     /// <summary>Additional CSS classes merged onto the root element.</summary>
     [Parameter] public string? Class { get; set; }
@@ -867,9 +902,18 @@
     // and treats it as consumed thereafter — a later ambient re-scroll (a
     // browser-"today" change at midnight, a host swap) targets Today, never a
     // stale preserved center (Codex round 14, finding #3).
-    private void EmitScrollIntent(DateTime? target)
+    //
+    // Design spec Phase 3, T9 — pixelOverride (null for every EXISTING
+    // caller, unchanged behavior): see GanttTimeline.ScrollTargetXOverride's
+    // own remarks for why ONE caller (HandleRangeExtensionRequestAsync's
+    // leading-edge recenter) needs a pixel-exact target the DateTime-based
+    // `target` parameter cannot express. Always overwritten (never merged
+    // with a stale previous value) so a LATER plain-date intent correctly
+    // clears any earlier pixel override.
+    private void EmitScrollIntent(DateTime? target, double? pixelOverride = null)
     {
         _scrollTargetDate = target;
+        _scrollTargetXOverride = pixelOverride;
         _scrollToTodayRequestId++;
     }
 
@@ -1990,6 +2034,199 @@
         };
     }
 
+    // Design spec Phase 3, T9 — infinite scroll's own "one page" extension
+    // amount. Deliberately reuses the SAME cfg.PadBefore/PadAfter magnitude
+    // ApplyPadding's own per-unit branches above already apply to a
+    // task-derived minDate/maxDate at MOUNT time — "a page" of infinite-scroll
+    // growth is therefore exactly as much range as the chart's own initial
+    // window already carries as padding, not a new, independently-chosen
+    // magnitude. A DELIBERATE near-duplicate of ApplyPadding's own switch
+    // rather than a refactor OF it: ApplyPadding's Month/Year/Quarter branches
+    // additionally SNAP minDate/maxDate to their own unit boundary first
+    // (`new DateTime(minDate.Year, minDate.Month, 1, ...)` etc.) because its
+    // own callers pass RAW task dates that are not yet aligned — these two
+    // methods are called ONLY with `_state.VisibleRange.Start`/`.End`, which
+    // is ALREADY unit-aligned by this codebase's own aligned-origin invariant
+    // (every OTHER range-construction path already maintains it), so
+    // re-snapping here would be redundant, not just differently-shaped;
+    // sharing one method between "snap-then-pad" (ApplyPadding, still used by
+    // ComputeInitialRange/the view-mode-switch recenter) and "pad-an-already-
+    // aligned-boundary" (these two) would need a bool/branch parameter on a
+    // method eight-plus Codex rounds already hardened, for a net decrease in
+    // clarity — a considered trade-off, not an oversight (flagged for the
+    // reviewer).
+    private static DateTime PadBoundaryBefore(GanttViewMode mode, DateTime date)
+    {
+        var cfg = GanttScale.GetConfig(mode);
+        return cfg.Unit switch
+        {
+            GanttScaleUnit.Day => date.AddDays(-cfg.PadBefore * cfg.Step),
+            GanttScaleUnit.Month => date.AddMonths(-cfg.PadBefore),
+            GanttScaleUnit.Year => date.AddYears(-cfg.PadBefore),
+            GanttScaleUnit.Hour => date.AddDays(-Math.Ceiling(cfg.PadBefore * cfg.Step / 24.0)),
+            GanttScaleUnit.Quarter => date.AddMonths(-cfg.PadBefore * 3),
+            _ => date,
+        };
+    }
+
+    // See PadBoundaryBefore's own remarks — the mirror-image TRAILING (later)
+    // extension, using cfg.PadAfter instead of cfg.PadBefore.
+    private static DateTime PadBoundaryAfter(GanttViewMode mode, DateTime date)
+    {
+        var cfg = GanttScale.GetConfig(mode);
+        return cfg.Unit switch
+        {
+            GanttScaleUnit.Day => date.AddDays(cfg.PadAfter * cfg.Step),
+            GanttScaleUnit.Month => date.AddMonths(cfg.PadAfter),
+            GanttScaleUnit.Year => date.AddYears(cfg.PadAfter),
+            GanttScaleUnit.Hour => date.AddDays(Math.Ceiling(cfg.PadAfter * cfg.Step / 24.0)),
+            GanttScaleUnit.Quarter => date.AddMonths(cfg.PadAfter * 3),
+            _ => date,
+        };
+    }
+
+    /// <summary>
+    /// Handles <see cref="GanttTimeline.OnRangeExtensionRequested"/> (design
+    /// spec Phase 3, T9) — <c>GanttTimeline</c> only ever ASKS (see its own
+    /// remarks); this is the ONE place that actually extends
+    /// <c>_state.VisibleRange</c>, deliberately OUTSIDE <see cref="ReconcileAsync"/>'s
+    /// own pipeline (same reasoning as <see cref="HandleTaskUpdateAsync"/>'s
+    /// own direct-commit range-expansion path immediately below in this file:
+    /// routing a purely local, DOM-scroll-driven range growth through the
+    /// tasks/mode/geometry reconciler would be the wrong tool — nothing about
+    /// tasks, view mode, or layout geometry changed here).
+    ///
+    /// <c>leading</c> (earlier dates, <c>VisibleRange.Start</c> moves earlier):
+    /// the coordinate ORIGIN shifts (see <c>GanttScale.BuildDateUnits</c>' own
+    /// "origin = units[0] = the first date unit" contract) — every bar/arrow/
+    /// header X value everywhere in the chart rebases by the SAME pixel delta
+    /// the instant this commits, so the live scroll position must be corrected
+    /// in the SAME coherent frame or the user sees a jump. Reuses the
+    /// EXISTING <see cref="ResolveCurrentCenterDateAsync"/>/<see cref="EmitScrollIntent"/>
+    /// pipeline UNCHANGED — the identical "capture the live center as a DATE
+    /// under the OLD geometry, recompute its pixel under the NEW geometry,
+    /// recenter" dance <c>ReconcileAsync</c>'s own <c>SelfCenteredOnCapture</c>
+    /// branch already performs for a view-mode switch (a DIFFERENT kind of
+    /// origin shift, same underlying hazard) — NOT a second, bespoke
+    /// "translate scrollLeft by a computed pixel delta" implementation: this
+    /// codebase's constraint is "no second scroll channel, no second origin
+    /// implementation," and centering on the SAME captured date under the NEW
+    /// origin is PROVABLY pixel-exact here (not merely approximate), because
+    /// <c>GanttScale.DateToPixel</c> is linear/additive in its own
+    /// <c>origin</c> parameter for EVERY unit branch, GIVEN both origins are
+    /// unit-aligned (this codebase's own standing invariant — see
+    /// <c>GanttScale.AlignToUnitStart</c>'s remarks): the Month branch's own
+    /// day-fraction term depends only on the TARGET date's day-of-month, never
+    /// on the origin's (always day-1), so a changed origin shifts every
+    /// pixel by EXACTLY the same constant, with no re-derivation error beyond
+    /// ordinary double-precision arithmetic — recentering on the identical
+    /// date reproduces the identical viewport, to within CSS/layout rounding
+    /// (the E2E ±1px tolerance measures THAT rounding, not an algorithmic
+    /// approximation).
+    ///
+    /// <c>trailing</c> (later dates, <c>VisibleRange.End</c> grows): the
+    /// origin is UNCHANGED (<c>VisibleRange.Start</c> doesn't move) — every
+    /// EXISTING bar/arrow/header X value is therefore unaffected by
+    /// construction, so this branch skips the capture/recenter dance
+    /// entirely (cheaper, and correctly a no-op on scroll position).
+    ///
+    /// Gesture-suppression (decision 3): <see cref="GanttTimeline"/>'s own
+    /// gate (<c>TryRequestRangeExtensionAsync</c>) already checked
+    /// <c>GanttV3HasActiveDragAsync</c> once before ever calling here — this
+    /// method re-checks it AGAIN, immediately before committing, but ONLY on
+    /// the <c>leading</c> path: that is the ONLY path with an await
+    /// (<see cref="ResolveCurrentCenterDateAsync"/>'s own live-scroll-center
+    /// read) between GanttTimeline's own check and the actual commit, i.e.
+    /// the only path where a gesture could start DURING this method's own
+    /// window. The <c>trailing</c> path has no such await — nothing can
+    /// interleave between GanttTimeline's already-fresh check and this
+    /// synchronous commit, so a second check here would test nothing new.
+    /// Abandoning (not rebasing, unlike <see cref="HandleTaskUpdateAsync"/>'s
+    /// own concurrent-edit handling) is deliberate: this is a level-triggered,
+    /// retryable request (the very next qualifying scroll report re-asks), not
+    /// a user EDIT that must never be silently dropped.
+    /// </summary>
+    private async Task HandleRangeExtensionRequestAsync(bool leading)
+    {
+        if (_disposed || !InfiniteScroll) return;
+
+        if (leading)
+        {
+            var modeBeforeCapture = _state.ViewMode;
+            var rangeBeforeCapture = _state.VisibleRange;
+            // Reads the LIVE logical scroll center as a raw PIXEL (the same
+            // underlying interop call ResolveCurrentCenterDateAsync itself
+            // wraps — see ScrollTargetXOverride's own remarks in
+            // GanttTimeline.razor for why this leading-edge recenter reads it
+            // directly instead, bypassing that method's own DateTime
+            // conversion entirely to keep sub-column precision that a
+            // captured DATE would lose on its way back through
+            // GanttScale.DateToPixel).
+            var leadingOffset = ScrollHostLeadingOffset;
+            var directionArg = EffectiveDirection == LayoutDirection.Rtl ? "rtl" : "ltr";
+            var logicalCenterX = await Interop.GanttV3GetScrollCenterXAsync(_scrollPaneRef, directionArg);
+            if (_disposed) return;
+
+            // Something else (a mode switch, a geometry reconcile) committed
+            // while the capture above was in flight — the captured center was
+            // decoded under geometry that is no longer current. Abandon
+            // rather than risk applying a stale decode; the next qualifying
+            // scroll report re-requests if the user is still near the edge.
+            if (_state.ViewMode != modeBeforeCapture || _state.VisibleRange != rangeBeforeCapture) return;
+
+            // Decision 3's own re-check — see this method's own remarks for
+            // why only THIS path needs it.
+            if (await Interop.GanttV3HasActiveDragAsync()) return;
+            if (_disposed || _state.ViewMode != modeBeforeCapture || _state.VisibleRange != rangeBeforeCapture) return;
+
+            var newStart = PadBoundaryBefore(_state.ViewMode, _state.VisibleRange.Start);
+            if (newStart >= _state.VisibleRange.Start) return; // defensive no-op guard — should be unreachable (every mode's Pad constant is >= 0)
+
+            // The EXACT pixel distance the origin just moved by — pure
+            // GanttScale.DateToPixel origin-linearity (see
+            // ScrollTargetXOverride's own remarks), no DateTime round trip.
+            var columnWidth = EffectiveColumnWidthFor(_state.ViewMode);
+            var addedPixels = GanttScale.DateToPixel(_state.ViewMode, newStart, _state.VisibleRange.Start, columnWidth);
+            // Captured BEFORE SetVisibleRange below — VisibleCenterDate is a
+            // LIVE computed property reading _state.VisibleRange directly, so
+            // reading it AFTER the mutation would silently return the NEW
+            // (post-extension) range's own midpoint instead of the fallback
+            // this branch actually needs: the OLD range's center, the exact
+            // same value ResolveCurrentCenterDateAsync's own null fallback
+            // would have used.
+            var fallbackCenter = VisibleCenterDate;
+
+            _state.SetVisibleRange(newStart, _state.VisibleRange.End);
+
+            if (logicalCenterX is { } x)
+            {
+                // Pure pixel translation: the SAME logical center, shifted by
+                // EXACTLY the origin's own move — see
+                // GanttTimeline.ScrollTargetXOverride's own remarks for the
+                // full derivation (this is provably a same-frame, ±0px
+                // correction modulo ordinary CSS/layout rounding, not merely
+                // "close").
+                EmitScrollIntent(null, pixelOverride: (x - leadingOffset) + addedPixels);
+            }
+            else
+            {
+                // Pane not measurable (JS interop unavailable, or not yet
+                // laid out) — the SAME range-midpoint fallback
+                // ResolveCurrentCenterDateAsync itself would have used.
+                EmitScrollIntent(fallbackCenter);
+            }
+        }
+        else
+        {
+            var newEnd = PadBoundaryAfter(_state.ViewMode, _state.VisibleRange.End);
+            if (newEnd <= _state.VisibleRange.End) return; // defensive no-op guard — see the leading branch's own remarks
+            _state.SetVisibleRange(_state.VisibleRange.Start, newEnd);
+            // No scroll intent — see this method's own class remarks: a
+            // trailing extension never shifts the origin, so the DOM's
+            // current scroll position remains exactly correct.
+        }
+    }
+
     // Codex round 10 review, P2 #4 — see GoToTodayAsync's own remarks. The
     // number of Month-unit columns GanttScale.BuildDateUnits would generate
     // between two ALREADY unit-aligned dates (both are day-1 of their own
@@ -2331,13 +2568,24 @@
         // left _scrollTargetDate pointing at some other centerDate — the
         // Today button must always target Today specifically, not whatever
         // was last centered before it.
-        _scrollTargetDate = null;
-        // P1 fix (Codex review wave): bump the change-token GanttTimeline
-        // watches so it re-centers its DOM scrollLeft on today too — recomputing
-        // VisibleRange alone repositions where today falls in the timeline's
-        // OWN pixel space, but never touches the browser's actual horizontal
-        // scroll position (see GanttTimeline.OnAfterRenderAsync's remarks).
-        _scrollToTodayRequestId++;
+        //
+        // Bug fix (Design spec Phase 3, T9): this USED to assign
+        // _scrollTargetDate/_scrollToTodayRequestId directly instead of going
+        // through EmitScrollIntent — harmless before ScrollTargetXOverride
+        // existed, but once a leading-edge extension can legitimately race in
+        // and commit BETWEEN two Today clicks (confirmed live via server
+        // trace: a leading extension's own EmitScrollIntent(null,
+        // pixelOverride: ...) call landed, then this method's own direct
+        // assignment ran WITHOUT clearing that pixel override), the raw
+        // assignment left a STALE non-null _scrollTargetXOverride in place.
+        // GanttTimeline.ResolveScrollTargetX prefers a non-null override
+        // unconditionally over ScrollTargetDate, so the next render would
+        // have scrolled to that stale extension's pixel instead of today's
+        // freshly computed one. Routing through the SAME single choke point
+        // every OTHER scroll-intent caller uses closes the whole class of
+        // "forgot to clear the paired field" bugs, not just this one
+        // instance of it.
+        EmitScrollIntent(null);
     }
 
     private int _scrollToTodayRequestId;
@@ -2346,6 +2594,11 @@
     // Null (the default) keeps GanttTimeline targeting Today, unchanged from
     // every prior behavior.
     private DateTime? _scrollTargetDate;
+
+    // Design spec Phase 3, T9 — see GanttTimeline.ScrollTargetXOverride's own
+    // remarks. Null (the default) for every scroll intent except a leading-
+    // edge extension's own recenter.
+    private double? _scrollTargetXOverride;
 
     // Phase 2, T1 — bubbled from GanttTimeline.OnTaskUpdate (its own JS-driven
     // CommitDrag) exactly like GanttTree.OnToggleCollapse: Gantt3 is the only

@@ -299,6 +299,7 @@ internal static partial class LumeoDefaultStrings
         ["Gantt.SettingsShowSummaryBars"] = "Сводные полосы",
         ["Gantt.SettingsShowZoomControl"] = "Регулятор масштаба",
         ["Gantt.SettingsShowOffscreenIndicators"] = "Индикаторы за пределами экрана",
+        ["Gantt.SettingsInfiniteScroll"] = "Бесконечная прокрутка",
         ["Gantt.SettingsNowIndicator"] = "Индикатор текущего времени",
         ["Gantt.SettingsMarkOffDays"] = "Отмечать выходные дни",
         ["Gantt.SettingsReadonly"] = "Только чтение",

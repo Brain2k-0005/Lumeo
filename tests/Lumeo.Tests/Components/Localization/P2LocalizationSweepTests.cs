@@ -222,6 +222,11 @@ public class P2LocalizationSweepTests : IAsyncLifetime
         "Gantt.SettingsReadonly", "Gantt.SettingsAllowCreate", "Gantt.SettingsAllowRowReorder",
         "Gantt.SettingsFirstDayOfWeek", "Gantt.SettingsOffDays",
         "Gantt.SettingsColorByGroup", "Gantt.SettingsReset",
+        // Design spec Phase 3, T9 — the GanttSettingsMenu Display-group
+        // toggle for InfiniteScroll, extended here per this test's own
+        // "extend, don't duplicate" precedent (same as every other Gantt.*
+        // key above).
+        "Gantt.SettingsInfiniteScroll",
     };
 
     [Theory]

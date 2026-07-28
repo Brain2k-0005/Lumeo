@@ -59,7 +59,7 @@ public class GanttV3CanvasChromeTests : GanttParityTestBase
         // on ".First": scrolling one bar into view only guarantees THAT bar's
         // OWN chip disappears, not every other task's (each has its own,
         // independent scroll target).
-        await GotoHost("/e2e/gantt-v3?tree=0");
+        await GotoHost("/e2e/gantt-v3?tree=0&infiniteScroll=0");
         await Assertions.Expect(ScrollPane).ToHaveAttributeAsync("data-gantt-v3-initial-scroll", "done", new() { Timeout = 15000 });
         await ForceScrollLeftZeroAndWaitStableAsync();
 
@@ -99,7 +99,7 @@ public class GanttV3CanvasChromeTests : GanttParityTestBase
     [Fact]
     public async Task ShowOffscreenIndicators_False_Renders_No_Chip_Even_When_Scrolled_Away()
     {
-        await GotoHost("/e2e/gantt-v3?tree=0&showOffscreenIndicators=0");
+        await GotoHost("/e2e/gantt-v3?tree=0&showOffscreenIndicators=0&infiniteScroll=0");
         await Assertions.Expect(ScrollPane).ToHaveAttributeAsync("data-gantt-v3-initial-scroll", "done", new() { Timeout = 15000 });
 
         await ScrollPane.EvaluateAsync("el => { el.scrollLeft = 0; el.dispatchEvent(new Event('scroll')); }");
@@ -158,7 +158,7 @@ public class GanttV3CanvasChromeTests : GanttParityTestBase
         // renders the tree pane unless a route explicitly opts out (see
         // GanttV3Page.razor's own ?tree=0 remarks) — this spec needs the
         // pane actually competing for the same edge.
-        await GotoHost("/e2e/gantt-v3");
+        await GotoHost("/e2e/gantt-v3?infiniteScroll=0");
         await Assertions.Expect(ScrollPane).ToHaveAttributeAsync("data-gantt-v3-initial-scroll", "done", new() { Timeout = 15000 });
 
         var treePane = Page.Locator("[data-testid='gantt-v3-tree-pane']");
@@ -196,7 +196,7 @@ public class GanttV3CanvasChromeTests : GanttParityTestBase
         // mechanism). Pins the fix: the control's bounding box must land
         // near the scroll pane's OWN bottom-right corner, not its top-left.
         await Page.SetViewportSizeAsync(1400, 760);
-        await GotoHost("/e2e/gantt-v3?viewMode=Month&showZoomControl=1&tree=0");
+        await GotoHost("/e2e/gantt-v3?viewMode=Month&showZoomControl=1&tree=0&infiniteScroll=0");
         await ZoomControl.WaitForAsync(new() { Timeout = 15000 });
 
         var box = await ZoomControl.BoundingBoxAsync();
@@ -215,7 +215,7 @@ public class GanttV3CanvasChromeTests : GanttParityTestBase
     [Fact]
     public async Task Clicking_Zoom_In_On_The_Floating_Control_Switches_The_Whole_Chart_To_A_Finer_Mode()
     {
-        await GotoHost("/e2e/gantt-v3?viewMode=Month&showZoomControl=1&tree=0");
+        await GotoHost("/e2e/gantt-v3?viewMode=Month&showZoomControl=1&tree=0&infiniteScroll=0");
         await PeriodLabelLocator.WaitForAsync(new() { Timeout = 15000 });
         var monthLabel = (await PeriodLabelLocator.TextContentAsync())!;
         Assert.DoesNotContain(" – ", monthLabel); // Month's own "MMMM yyyy" format has no en-dash range
@@ -236,7 +236,7 @@ public class GanttV3CanvasChromeTests : GanttParityTestBase
     [Fact]
     public async Task Zoom_Out_Button_Is_Disabled_At_The_Coarsest_Level()
     {
-        await GotoHost("/e2e/gantt-v3?viewMode=Year&showZoomControl=1&tree=0");
+        await GotoHost("/e2e/gantt-v3?viewMode=Year&showZoomControl=1&tree=0&infiniteScroll=0");
         await ZoomControl.WaitForAsync(new() { Timeout = 15000 });
 
         var zoomOut = ZoomControl.Locator("button").First;
@@ -246,7 +246,7 @@ public class GanttV3CanvasChromeTests : GanttParityTestBase
     [Fact]
     public async Task ShowZoomControl_Defaults_To_Hidden()
     {
-        await GotoHost("/e2e/gantt-v3?tree=0");
+        await GotoHost("/e2e/gantt-v3?tree=0&infiniteScroll=0");
         await Page.Locator("[data-testid='gantt-v3-root'] [data-task-id]").First.WaitForAsync(new() { Timeout = 15000 });
 
         await Assertions.Expect(ZoomControl).ToHaveCountAsync(0);
@@ -261,7 +261,7 @@ public class GanttV3CanvasChromeTests : GanttParityTestBase
         // BT.601 luminance ~0.656 — light) and spans 7 days (266px @ 38px/col
         // in Day mode), comfortably over MinInBarLabelWidth so the label
         // renders INSIDE the bar (not the narrow fallback).
-        await GotoHost("/e2e/gantt-v3?tree=0");
+        await GotoHost("/e2e/gantt-v3?tree=0&infiniteScroll=0");
         var label = Page.Locator("[data-testid='gantt-v3-root'] [data-task-id='fe3'] .lumeo-gantt-v3-bar-label");
         await label.WaitForAsync(new() { Timeout = 15000 });
 
@@ -274,7 +274,7 @@ public class GanttV3CanvasChromeTests : GanttParityTestBase
     {
         // "be1" carries "#22c55e" (green, luminance ~0.535 — dark) and spans
         // 9 days (342px), also comfortably over the narrow-bar threshold.
-        await GotoHost("/e2e/gantt-v3?tree=0");
+        await GotoHost("/e2e/gantt-v3?tree=0&infiniteScroll=0");
         var label = Page.Locator("[data-testid='gantt-v3-root'] [data-task-id='be1'] .lumeo-gantt-v3-bar-label");
         await label.WaitForAsync(new() { Timeout = 15000 });
 
@@ -299,7 +299,7 @@ public class GanttV3CanvasChromeTests : GanttParityTestBase
         // uses keys ("Design"/"p2") independently confirmed NOT to collide.
         // This spec only proves the guaranteed property: SAME group -> SAME
         // colour, for real.
-        await GotoHost("/e2e/gantt-v3?colorByGroup=1&tree=0");
+        await GotoHost("/e2e/gantt-v3?colorByGroup=1&tree=0&infiniteScroll=0");
         var fe2Bg = Page.Locator("[data-testid='gantt-v3-root'] [data-task-id='fe2'] .lumeo-gantt-v3-bar-bg");
         var fe4Bg = Page.Locator("[data-testid='gantt-v3-root'] [data-task-id='fe4'] .lumeo-gantt-v3-bar-bg");
         await fe2Bg.WaitForAsync(new() { Timeout = 15000 });

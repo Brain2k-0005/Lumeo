@@ -969,6 +969,30 @@ public class TrackingInteropService : IComponentInteropService
         return true;
     }
 
+    // GanttV3 gesture-suppression tracking (design spec Phase 3, T9) —
+    // settable so a test can simulate "a drag is currently in flight" without
+    // a real browser/gantt-v3.js. Defaults to false (no drag active),
+    // matching the interface's own default DIM, so an infinite-scroll
+    // extension test that never touches this exercises the normal
+    // (not-suppressed) path.
+    public bool GanttV3HasActiveDragToReturn { get; set; }
+    public int GanttV3HasActiveDragCallCount { get; private set; }
+    /// <summary>When set, <see cref="GanttV3HasActiveDragAsync"/> returns this
+    /// gate's Task instead of a completed one — letting a test SUSPEND
+    /// <c>GanttTimeline.TryRequestRangeExtensionAsync</c>'s own check mid-flight,
+    /// to prove its re-entrancy guard (<c>_rangeExtensionInFlight</c>) drops a
+    /// SECOND overlapping report rather than starting a second, concurrent
+    /// check (same idiom as <see cref="GanttV3RegisterVerticalScrollTrackingGate"/>/
+    /// <see cref="GanttV3ScrollCenterXGate"/>). Complete it with the desired
+    /// bool to resume.</summary>
+    public TaskCompletionSource<bool>? GanttV3HasActiveDragGate { get; set; }
+    public Task<bool> GanttV3HasActiveDragAsync()
+    {
+        GanttV3HasActiveDragCallCount++;
+        if (GanttV3HasActiveDragGate is not null) return GanttV3HasActiveDragGate.Task;
+        return Task.FromResult(GanttV3HasActiveDragToReturn);
+    }
+
     // GanttV3 browser-local-"today" tracking (Codex round 2, P2 #9) — settable
     // so a test can simulate the browser reporting a date that differs from
     // whatever DateTime.Today happens to be on the machine running the suite.

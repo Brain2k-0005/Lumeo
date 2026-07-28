@@ -702,6 +702,34 @@ public interface IComponentInteropService : IAsyncDisposable, IDisposable
     Task<double?> GanttV3GetScrollCenterXAsync(Microsoft.AspNetCore.Components.ElementReference el, string? direction = null) => Task.FromResult<double?>(null);
 
     /// <summary>
+    /// True while ANY GanttV3 pointer gesture (bar move/resize/progress drag OR
+    /// drag-create on an empty track — gantt-v3.js's <c>activeBarDrags</c>/
+    /// <c>activeCreateDrags</c> WeakSets) is currently in flight, on ANY GanttV3
+    /// chart on the page (design spec Phase 3, T9 — infinite scroll's own
+    /// gesture-suppression gate, decision 3: "suppress extension while a drag is
+    /// in flight"). A plain module-level pull, deliberately NOT scoped to one
+    /// scroll-host element the way <see cref="GanttV3RegisterDragAsync{T}"/>'s own
+    /// registrations are: gantt-v3.js's <c>activeBarDrags</c>/<c>activeCreateDrags</c>
+    /// are ALREADY module-level/page-global (concurrent drags on different bars
+    /// are explicitly permitted — see that file's own remarks), so this mirrors
+    /// their existing scope rather than introducing a NARROWER one just for this
+    /// one signal; the only cost of that choice is a purely conservative one (an
+    /// unrelated chart's drag can defer another chart's extension by a frame),
+    /// never an incorrect commit.
+    ///
+    /// Queried at two points: <c>GanttTimeline</c>'s own gate before ever asking
+    /// <c>Gantt3</c> to extend <c>VisibleRange</c>, and <c>Gantt3</c>'s own
+    /// re-check immediately before it actually commits a leading-edge extension
+    /// — closing the narrow race where a gesture starts DURING the one await
+    /// (<c>GanttV3GetScrollCenterXAsync</c>'s own live-scroll-center read) that
+    /// sits between those two points. Default no-op DIM (returns <c>false</c> —
+    /// "no drag in flight", the same fail-toward-proceeding choice
+    /// <c>GanttV3GetScrollCenterXAsync</c>'s own null-fallback makes) so existing
+    /// implementers/test doubles keep compiling.
+    /// </summary>
+    Task<bool> GanttV3HasActiveDragAsync() => Task.FromResult(false);
+
+    /// <summary>
     /// Registers GanttV3's pointer drag engine (design spec Phase 2, T1 — gantt-v3.js's
     /// <c>ganttV3.registerDrag</c>) on <paramref name="el"/> — the SAME scroll-host
     /// element <see cref="GanttV3ScrollToXAsync"/> targets. A single delegated

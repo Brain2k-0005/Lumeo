@@ -521,6 +521,10 @@ internal static partial class LumeoDefaultStrings
         ["Gantt.SettingsShowSummaryBars"] = "Summary bars",
         ["Gantt.SettingsShowZoomControl"] = "Zoom control",
         ["Gantt.SettingsShowOffscreenIndicators"] = "Off-screen indicators",
+        // Design spec Phase 3, T9 — the GanttSettingsMenu Display-group toggle
+        // for InfiniteScroll, added straight to the T8 group above per this
+        // codebase's own "extend, don't duplicate" localization precedent.
+        ["Gantt.SettingsInfiniteScroll"] = "Infinite scroll",
         ["Gantt.SettingsNowIndicator"] = "Now indicator",
         ["Gantt.SettingsMarkOffDays"] = "Mark off days",
         ["Gantt.SettingsReadonly"] = "Read-only",
@@ -1084,6 +1088,7 @@ internal static partial class LumeoDefaultStrings
         ["Gantt.SettingsShowSummaryBars"] = "Zusammenfassungsbalken",
         ["Gantt.SettingsShowZoomControl"] = "Zoom-Regler",
         ["Gantt.SettingsShowOffscreenIndicators"] = "Off-Screen-Indikatoren",
+        ["Gantt.SettingsInfiniteScroll"] = "Endloses Scrollen",
         ["Gantt.SettingsNowIndicator"] = "Jetzt-Anzeige",
         ["Gantt.SettingsMarkOffDays"] = "Freie Tage markieren",
         ["Gantt.SettingsReadonly"] = "Schreibgeschützt",

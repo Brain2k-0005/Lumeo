@@ -296,6 +296,7 @@ internal static partial class LumeoDefaultStrings
         ["Gantt.SettingsShowSummaryBars"] = "汇总条",
         ["Gantt.SettingsShowZoomControl"] = "缩放控件",
         ["Gantt.SettingsShowOffscreenIndicators"] = "屏幕外指示器",
+        ["Gantt.SettingsInfiniteScroll"] = "无限滚动",
         ["Gantt.SettingsNowIndicator"] = "当前时间指示器",
         ["Gantt.SettingsMarkOffDays"] = "标记休息日",
         ["Gantt.SettingsReadonly"] = "只读",

@@ -361,9 +361,17 @@ public class GanttV3Phase3T7Tests : IAsyncLifetime
     [Fact]
     public async Task A_Bar_Entirely_Past_The_Reported_Viewport_Gets_An_After_Chip()
     {
+        // Design spec Phase 3, T9 — InfiniteScroll defaults to true, and this
+        // test's own scrollLeft:0 report below is legitimately "near the
+        // leading edge" under that default (see GanttTimeline.OnGanttV3VerticalScroll's
+        // own remarks) — pinned false here so this T7-only spec asserts
+        // exactly the off-screen-indicator behavior it names, isolated from
+        // T9's unrelated (and, for THIS fixture's narrow VisibleRange,
+        // otherwise-triggering) range-extension side effect.
         var cut = _ctx.Render<L.Gantt3>(p => p
             .Add(c => c.Tasks, OffscreenFixture())
-            .Add(c => c.ViewMode, L.GanttViewMode.Day));
+            .Add(c => c.ViewMode, L.GanttViewMode.Day)
+            .Add(c => c.InfiniteScroll, false));
 
         var (nearX, nearW) = BarGeometryOf(cut, "near");
         var (farX, _) = BarGeometryOf(cut, "far");
@@ -392,10 +400,13 @@ public class GanttV3Phase3T7Tests : IAsyncLifetime
     [Fact]
     public async Task ShowOffscreenIndicators_False_Renders_No_Chip_Even_Though_A_Bar_Is_Offscreen()
     {
+        // Design spec Phase 3, T9 — see A_Bar_Entirely_Past_The_Reported_Viewport_Gets_An_After_Chip's
+        // own remarks for why InfiniteScroll is pinned false here.
         var cut = _ctx.Render<L.Gantt3>(p => p
             .Add(c => c.Tasks, OffscreenFixture())
             .Add(c => c.ShowOffscreenIndicators, false)
-            .Add(c => c.ViewMode, L.GanttViewMode.Day));
+            .Add(c => c.ViewMode, L.GanttViewMode.Day)
+            .Add(c => c.InfiniteScroll, false));
 
         var (nearX, nearW) = BarGeometryOf(cut, "near");
         await cut.InvokeAsync(() => _interop.RaiseGanttV3VerticalScroll(scrollTop: 0, clientHeight: 200, scrollLeft: 0, clientWidth: nearX + nearW + 50));
@@ -406,9 +417,15 @@ public class GanttV3Phase3T7Tests : IAsyncLifetime
     [Fact]
     public async Task Clicking_The_Chip_Scrolls_The_Bar_Into_View_Via_The_Existing_Scroll_Interop()
     {
+        // Design spec Phase 3, T9 — see A_Bar_Entirely_Past_The_Reported_Viewport_Gets_An_After_Chip's
+        // own remarks for why InfiniteScroll is pinned false here (this test
+        // asserts an EXACT GanttV3ScrollToXAsync target — a T9 range
+        // extension racing in unpinned would shift bar geometry mid-test and
+        // corrupt that exact value).
         var cut = _ctx.Render<L.Gantt3>(p => p
             .Add(c => c.Tasks, OffscreenFixture())
-            .Add(c => c.ViewMode, L.GanttViewMode.Day));
+            .Add(c => c.ViewMode, L.GanttViewMode.Day)
+            .Add(c => c.InfiniteScroll, false));
 
         var (nearX, nearW) = BarGeometryOf(cut, "near");
         var (farX, farW) = BarGeometryOf(cut, "far");
@@ -441,9 +458,12 @@ public class GanttV3Phase3T7Tests : IAsyncLifetime
     [Fact]
     public async Task A_Second_Report_With_An_Unchanged_Vertical_Range_Still_Updates_Which_Bars_Are_Offscreen()
     {
+        // Design spec Phase 3, T9 — see A_Bar_Entirely_Past_The_Reported_Viewport_Gets_An_After_Chip's
+        // own remarks for why InfiniteScroll is pinned false here.
         var cut = _ctx.Render<L.Gantt3>(p => p
             .Add(c => c.Tasks, OffscreenFixture())
-            .Add(c => c.ViewMode, L.GanttViewMode.Day));
+            .Add(c => c.ViewMode, L.GanttViewMode.Day)
+            .Add(c => c.InfiniteScroll, false));
 
         var (nearX, nearW) = BarGeometryOf(cut, "near");
         var (farX, farW) = BarGeometryOf(cut, "far");
