@@ -495,6 +495,9 @@ internal static partial class LumeoDefaultStrings
         // label (a bare number, not the full "N% complete" sentence
         // Gantt.PercentComplete's tooltip context calls for).
         ["Gantt.SummaryProgress"] = "{0}%",
+        // Design spec Phase 3, T5 — the tree/timeline splitter handle's
+        // aria-label (WAI-ARIA separator pattern).
+        ["Gantt.ResizeTreePane"] = "Resize tree pane",
 
         // ── Theme ───────────────────────────────────────────────────
         ["Theme.Light"] = "Light",
@@ -1031,6 +1034,7 @@ internal static partial class LumeoDefaultStrings
         ["Gantt.TaskAriaLabel"] = "{0}, {1} bis {2}",
         ["Gantt.PercentComplete"] = "{0}% abgeschlossen",
         ["Gantt.SummaryProgress"] = "{0}%",
+        ["Gantt.ResizeTreePane"] = "Baumbereich anpassen",
 
         // ── Theme ───────────────────────────────────────────────────
         ["Theme.Light"] = "Hell",

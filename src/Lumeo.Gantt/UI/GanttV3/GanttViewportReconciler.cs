@@ -34,13 +34,23 @@ namespace Lumeo.GanttV3;
 /// <param name="Direction">The resolved ambient <see cref="LayoutDirection"/> — a flip
 /// re-interprets the physical scroll position (RTL normalization), so it triggers a
 /// center-preserving recenter even when the leading offset itself is unchanged.</param>
+/// <param name="TreePaneWidth">
+/// The combined physical width (pixels) of the tree pane's pinned name column PLUS
+/// any <c>GanttTreeColumn</c>s (design spec Phase 3, T5 — <c>Gantt3.EffectiveTreePaneTotalWidth</c>).
+/// Feeds <see cref="LeadingOffset"/> the SAME way <see cref="ShowTreePane"/>/
+/// <see cref="Direction"/> already do — a splitter drag changes how many pixels of
+/// tree pane precede the timeline's own origin inside the shared scroll container,
+/// so a LATER reconcile's live-scroll-center capture must decode against the width
+/// that was actually on screen when THIS snapshot was committed, not a stale one.
+/// </param>
 internal readonly record struct GanttViewportSnapshot(
     int TasksVersion,
     bool RenderableEmpty,
     GanttViewMode ViewMode,
     int ColumnWidth,
     bool ShowTreePane,
-    LayoutDirection Direction)
+    LayoutDirection Direction,
+    double TreePaneWidth)
 {
     /// <summary>
     /// Pixels of the shared scroll pane preceding the timeline's origin under THIS
@@ -48,7 +58,7 @@ internal readonly record struct GanttViewportSnapshot(
     /// value a live-scroll-center reading captured under this snapshot must be
     /// decoded against (see <c>Gantt3.ResolveCurrentCenterDateAsync</c>).
     /// </summary>
-    public double LeadingOffset => GanttViewportGeometry.LeadingOffset(ShowTreePane, Direction);
+    public double LeadingOffset => GanttViewportGeometry.LeadingOffset(ShowTreePane, Direction, TreePaneWidth);
 }
 
 /// <summary>Where the reconciled <c>VisibleRange</c> comes from for a pass.</summary>
@@ -258,13 +268,18 @@ internal readonly record struct GanttViewportDecision(
 internal static class GanttViewportGeometry
 {
     /// <summary>
-    /// The timeline's leading offset for a given (tree-pane, direction) pair. Only
-    /// LTR-with-tree adds the tree's width before the timeline's origin — under RTL
-    /// the outer flex row reverses, so the timeline already sits at the content's
-    /// physical-left origin (see <c>Gantt3.ScrollHostLeadingOffset</c>'s remarks).
+    /// The timeline's leading offset for a given (tree-pane, direction, tree-pane-width)
+    /// triple. Only LTR-with-tree adds the tree's width before the timeline's origin —
+    /// under RTL the outer flex row reverses, so the timeline already sits at the
+    /// content's physical-left origin (see <c>Gantt3.ScrollHostLeadingOffset</c>'s
+    /// remarks). <paramref name="treePaneWidth"/> is the LIVE combined width (design
+    /// spec Phase 3, T5 — name column + any <c>GanttTreeColumn</c>s), not the old fixed
+    /// <c>GanttScale.DefaultTreePaneWidth</c> constant — see <see cref="GanttViewportSnapshot.TreePaneWidth"/>'s
+    /// own remarks for why a splitter resize must feed this the same way ColumnWidth/
+    /// ShowTreePane already do.
     /// </summary>
-    public static double LeadingOffset(bool showTreePane, LayoutDirection direction) =>
-        showTreePane && direction == LayoutDirection.Ltr ? GanttScale.TreePaneWidth : 0;
+    public static double LeadingOffset(bool showTreePane, LayoutDirection direction, double treePaneWidth) =>
+        showTreePane && direction == LayoutDirection.Ltr ? treePaneWidth : 0;
 }
 
 /// <summary>
@@ -333,7 +348,15 @@ internal static class GanttViewportReconciler
         var geometryChanged =
             next.ColumnWidth != prev.ColumnWidth ||
             next.ShowTreePane != prev.ShowTreePane ||
-            next.Direction != prev.Direction;
+            next.Direction != prev.Direction ||
+            // Design spec Phase 3, T5 — a splitter resize changes how many
+            // pixels of tree pane precede the timeline's own origin (see
+            // GanttViewportSnapshot.TreePaneWidth's own remarks). Gantt3's
+            // splitter-commit path keeps this snapshot field in sync directly
+            // (no scroll intent — see Gantt3.HandleTreePaneResizeAsync), so this
+            // branch is belt-and-braces: it only actually fires if some OTHER
+            // pass reaches Decide with a stale TreePaneWidth still on `prev`.
+            next.TreePaneWidth != prev.TreePaneWidth;
         var emptinessTransition = next.RenderableEmpty != prev.RenderableEmpty;
 
         GanttRangeSource range;

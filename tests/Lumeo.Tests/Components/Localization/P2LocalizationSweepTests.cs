@@ -193,6 +193,10 @@ public class P2LocalizationSweepTests : IAsyncLifetime
         // L["Gantt.NewTask"], but it shipped in only en/de — extended here
         // per this test's own "extend it instead of duplicating" intent.
         "Gantt.NewTask",
+        // Design spec Phase 3, T5 — the tree/timeline splitter handle's
+        // aria-label, extended here per this test's own "extend, don't
+        // duplicate" precedent (same as every other Gantt.* key above).
+        "Gantt.ResizeTreePane",
     };
 
     [Theory]

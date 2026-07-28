@@ -728,6 +728,30 @@ public interface IComponentInteropService : IAsyncDisposable, IDisposable
     /// <summary>Tears down the drag engine registered by <see cref="GanttV3RegisterDragAsync{T}"/> — removes the delegated listener and releases any drag in flight. Default no-op.</summary>
     Task GanttV3UnregisterDragAsync(Microsoft.AspNetCore.Components.ElementReference el) => Task.CompletedTask;
 
+    /// <summary>
+    /// Registers GanttV3's tree/timeline splitter drag (design spec Phase 3, T5 —
+    /// gantt-v3.js's <c>ganttV3.registerSplitterDrag</c>) — a SEPARATE registration
+    /// channel from <see cref="GanttV3RegisterDragAsync{T}"/> (a dedicated handle
+    /// element, not a delegated listener over recycled bars), reusing the SAME
+    /// conventions (pointer capture, a per-gesture options snapshot, pointer-id
+    /// isolation, cancel-in-flight-on-unregister). <paramref name="handleEl"/> is
+    /// the divider the user drags; <paramref name="paneEl"/> is the tree pane
+    /// element whose width/--lumeo-gantt-tree-name-width custom property the live
+    /// drag mutates directly (no Blazor round-trip mid-gesture). Calling this
+    /// again for an already-registered <paramref name="handleEl"/> updates the
+    /// stored <paramref name="dotNetRef"/>/<paramref name="options"/>/<paramref
+    /// name="paneEl"/> in place (idempotent), mirroring
+    /// <see cref="GanttV3RegisterDragAsync{T}"/>'s own re-registration contract.
+    /// Default no-op DIM so existing implementers/test doubles keep compiling;
+    /// <see cref="Lumeo.Services.ComponentInteropService"/> overrides both with
+    /// the real registration.
+    /// </summary>
+    Task GanttV3RegisterSplitterDragAsync<[System.Diagnostics.CodeAnalysis.DynamicallyAccessedMembers(System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicMethods)] T>(Microsoft.AspNetCore.Components.ElementReference handleEl, Microsoft.AspNetCore.Components.ElementReference paneEl, DotNetObjectReference<T> dotNetRef, object options) where T : class
+        => Task.CompletedTask;
+
+    /// <summary>Tears down the splitter drag registered by <see cref="GanttV3RegisterSplitterDragAsync{T}"/> — removes the pointerdown listener and cancels (never commits) any drag in flight. Default no-op.</summary>
+    Task GanttV3UnregisterSplitterDragAsync(Microsoft.AspNetCore.Components.ElementReference handleEl) => Task.CompletedTask;
+
     // Toolbar overflow observer — registers a ResizeObserver on the toolbar
     // element and invokes the handler with (fittingCount, totalCount) whenever
     // the number of items that fit before the "..." overflow trigger changes.

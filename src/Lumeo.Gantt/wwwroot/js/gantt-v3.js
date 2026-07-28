@@ -118,6 +118,9 @@ export const ganttV3 = {
 
     registerDrag,
     unregisterDrag,
+
+    registerSplitterDrag,
+    unregisterSplitterDrag,
 };
 
 // Sticky-header horizontal scroll sync (Codex round 2, P1 #3 — "sticky header
@@ -1160,6 +1163,136 @@ function unregisterDrag(el) {
     // handlers — so this cancels, it never commits. Array.from snapshots
     // the set first since each cleanup() call mutates it (deletes itself)
     // while this loop is still iterating.
+    for (const cleanup of Array.from(reg.activeCleanups)) cleanup();
+}
+
+// ── Splitter drag (design spec Phase 3, T5) ─────────────────────────────────
+//
+// The tree/timeline splitter — a SEPARATE registration channel from
+// registerDrag above (different element shape: ONE dedicated handle rather
+// than a delegated listener over many recycled bars), but the SAME conventions
+// throughout, per the T5 dispatch's explicit "introduce no second drag idiom":
+// pointer capture on the handle at pointerdown, a per-gesture options snapshot
+// taken at that same moment (dragOptions/dragPaneEl below — reg.options/
+// reg.paneEl are mutated in place by a later idempotent re-registration, same
+// hazard registerDrag's own "Snapshot drag options at pointerdown" fix
+// documents), pointer-id isolation on every subsequent event, and every
+// gesture's cleanup() tracked in reg.activeCleanups so unregisterSplitterDrag
+// can cancel an in-flight drag exactly like unregisterDrag already does for a
+// bar drag.
+//
+// Live visual: DIRECT DOM mutation of dragPaneEl's own `width` inline style
+// plus the --lumeo-gantt-tree-name-width custom property (inherited by every
+// name-cell — see GanttTree.razor's own remarks), never a per-pointermove
+// Blazor round-trip. The ONE JSInvokable call (CommitSplitterWidth) fires
+// exactly once, at pointerup, mirroring registerDrag's own bar-drag commit
+// discipline (ghost/live-visual during the gesture, one commit at the end) —
+// there is no ghost element here because, unlike a bar move/resize, a
+// splitter resize has no rejectable/invalid position to visually preview
+// separately from the real element.
+const splitterRegistrations = new Map(); // handleEl -> { dotNetRef, options, paneEl, onPointerDown, activeCleanups }
+
+function registerSplitterDrag(handleEl, paneEl, dotNetRef, options) {
+    if (!handleEl || !paneEl) return;
+    const existing = splitterRegistrations.get(handleEl);
+    if (existing) {
+        // Idempotent re-registration (a controlled TreePaneWidth push, or this
+        // component's own prior commit landing back through Gantt3) — swap the
+        // stored dotNetRef/options/paneEl in place, same as registerDrag's own
+        // idempotent branch.
+        existing.dotNetRef = dotNetRef;
+        existing.options = options;
+        existing.paneEl = paneEl;
+        return;
+    }
+
+    const reg = { dotNetRef, options, paneEl, onPointerDown: null, activeCleanups: new Set() };
+
+    reg.onPointerDown = (e) => {
+        if (e.button !== 0) return; // left mouse / primary touch-pen contact only
+
+        // Snapshot at pointerdown (registerDrag's own "Snapshot drag options at
+        // pointerdown" fix, applied here identically) — a later idempotent
+        // re-registration mutates reg.* in place and must not reach an
+        // already-running gesture.
+        const dragOptions = reg.options;
+        const dragDotNet = reg.dotNetRef;
+        const dragPaneEl = reg.paneEl;
+
+        e.preventDefault();
+        const pointerId = e.pointerId;
+        handleEl.setPointerCapture(pointerId);
+
+        const startClientX = e.clientX;
+        const startNameWidth = dragOptions && typeof dragOptions.width === 'number' ? dragOptions.width : 0;
+        const startTotalWidth = dragPaneEl.getBoundingClientRect().width;
+        const minWidth = dragOptions && dragOptions.minWidth > 0 ? dragOptions.minWidth : 0;
+        const maxWidth = dragOptions && dragOptions.maxWidth > 0 ? dragOptions.maxWidth : Infinity;
+        // Same RTL sign-flip convention as the progress-handle's own `isRtl`
+        // (see registerDrag's own remarks) — under RTL this pane's free
+        // (resizable) edge is physically LEFT, so growing it means moving the
+        // pointer LEFT, not right.
+        const isRtl = getComputedStyle(dragPaneEl).direction === 'rtl';
+        let nameWidth = startNameWidth;
+
+        const onPointerMove = (mv) => {
+            if (mv.pointerId !== pointerId) return;
+            const rawDx = mv.clientX - startClientX;
+            const dx = isRtl ? -rawDx : rawDx;
+            nameWidth = Math.min(maxWidth, Math.max(minWidth, startNameWidth + dx));
+            // The extra (fixed-width) TreeColumns move 1:1 with the CLAMPED
+            // name-width delta — once nameWidth hits a bound, the applied
+            // delta (and so the total width) stops growing too.
+            const totalWidth = startTotalWidth + (nameWidth - startNameWidth);
+            dragPaneEl.style.width = totalWidth + 'px';
+            dragPaneEl.style.setProperty('--lumeo-gantt-tree-name-width', nameWidth + 'px');
+        };
+
+        const onPointerUp = (up) => {
+            if (up.pointerId !== pointerId) return;
+            cleanup();
+            if (Math.abs(nameWidth - startNameWidth) < 0.5) return; // no-op, no commit — mirrors registerDrag's own 0-delta no-op
+            if (dragDotNet) dragDotNet.invokeMethodAsync('CommitSplitterWidth', nameWidth).catch(() => {});
+        };
+
+        const onPointerCancel = (cn) => {
+            if (cn.pointerId !== pointerId) return;
+            cleanup();
+            // No commit happened — the DOM must not be left showing a width
+            // .NET never adopted (there is no ghost to simply discard here;
+            // the real element was mutated directly, so reverting it IS the
+            // "discard the aborted gesture" step).
+            dragPaneEl.style.width = startTotalWidth + 'px';
+            dragPaneEl.style.setProperty('--lumeo-gantt-tree-name-width', startNameWidth + 'px');
+        };
+
+        function cleanup() {
+            handleEl.removeEventListener('pointermove', onPointerMove);
+            handleEl.removeEventListener('pointerup', onPointerUp);
+            handleEl.removeEventListener('pointercancel', onPointerCancel);
+            try { handleEl.releasePointerCapture(pointerId); } catch (_) { /* already released */ }
+            reg.activeCleanups.delete(cleanup);
+        }
+
+        reg.activeCleanups.add(cleanup);
+        handleEl.addEventListener('pointermove', onPointerMove);
+        handleEl.addEventListener('pointerup', onPointerUp);
+        handleEl.addEventListener('pointercancel', onPointerCancel);
+    };
+
+    handleEl.addEventListener('pointerdown', reg.onPointerDown);
+    splitterRegistrations.set(handleEl, reg);
+}
+
+function unregisterSplitterDrag(handleEl) {
+    if (!handleEl) return;
+    const reg = splitterRegistrations.get(handleEl);
+    if (!reg) return;
+    handleEl.removeEventListener('pointerdown', reg.onPointerDown);
+    splitterRegistrations.delete(handleEl);
+    // Cancel (never commit) any drag still in flight — same reasoning as
+    // unregisterDrag's own identical loop (a Dispose/re-render racing a live
+    // gesture must not let it reach CommitSplitterWidth afterward).
     for (const cleanup of Array.from(reg.activeCleanups)) cleanup();
 }
 

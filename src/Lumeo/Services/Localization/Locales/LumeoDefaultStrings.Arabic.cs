@@ -283,6 +283,7 @@ internal static partial class LumeoDefaultStrings
         ["Gantt.TaskAriaLabel"] = "{0}, من {1} إلى {2}",
         ["Gantt.PercentComplete"] = "اكتمل {0}%",
         ["Gantt.SummaryProgress"] = "{0}%",
+        ["Gantt.ResizeTreePane"] = "تغيير حجم لوحة الشجرة",
 
         // Editor
         ["Editor.Paragraph"] = "فقرة",

@@ -212,3 +212,46 @@ internal readonly record struct GanttInteropOptions(
 /// </param>
 [EditorBrowsable(EditorBrowsableState.Never)]
 public readonly record struct GanttRollup(DateTime Start, DateTime End, double WeightedProgress);
+
+/// <summary>
+/// One extra tree-pane column rendered after the pinned name column (design
+/// spec Phase 3, T5 — REUI "Multi-column task tree"). The name column itself
+/// (indent + expander chrome + label/<c>RowTemplate</c>) is never one of
+/// these — it is not resizable-per-column, always first, and always pinned;
+/// see <c>Lumeo.GanttTree</c>'s own remarks for why the two are kept
+/// structurally separate rather than modeling the name column as "just
+/// another <see cref="GanttTreeColumn"/>".
+///
+/// <c>public</c> — crosses <c>Lumeo.Gantt3</c>/<c>Lumeo.GanttTree</c>'s public
+/// <c>IReadOnlyList&lt;GanttTreeColumn&gt;? TreeColumns</c> parameters (same
+/// CS0053 public-parameter-can't-expose-a-less-accessible-type constraint as
+/// <see cref="GanttTaskUpdateSource"/>'s remarks explain). Recorded in
+/// PublicAPI.Unshipped.txt; <see cref="EditorBrowsableAttribute"/>(Never)
+/// keeps it out of consumer IntelliSense until the Phase-4 rename —
+/// DO-NOT-PROMOTE, same as every other GanttV3-namespaced type added this
+/// campaign.
+/// </summary>
+/// <param name="Title">Header-row label for this column (rendered as plain text — no v2/REUI localization contract for a CONSUMER-supplied column title, same as <c>GanttTask.Name</c> itself).</param>
+/// <param name="Width">Fixed pixel width. Unlike the pinned name column (resized by the splitter — see <c>TreePaneWidth</c>), extra columns are NOT individually resizable in T5's scope; a consumer wanting a wider column sets a bigger <see cref="Width"/> directly.</param>
+/// <param name="CellTemplate">
+/// Per-row cell content for a TASK row (<c>GanttVisibleRow.Task</c> non-null).
+/// Never invoked for a <c>GanttRowKind.GroupHeader</c> row (no
+/// <see cref="GanttTask"/> to feed it) — that row's cell for this column
+/// renders empty, preserving column alignment without a synthetic/null task.
+/// </param>
+[EditorBrowsable(EditorBrowsableState.Never)]
+public sealed record GanttTreeColumn(string Title, int Width, Microsoft.AspNetCore.Components.RenderFragment<GanttTask> CellTemplate);
+
+/// <summary>
+/// The splitter-relevant fields <see cref="Lumeo.GanttTree"/> pushes to the JS
+/// splitter-drag engine (design spec Phase 3, T5) — the SAME "record instead
+/// of a growing options bag" idiom <see cref="GanttInteropOptions"/> already
+/// established for the move/resize/progress drag engine (see its own
+/// remarks): a record's structural equality lets <c>GanttTree</c> skip the
+/// <c>GanttV3RegisterSplitterDragAsync</c> interop round-trip whenever nothing
+/// drag-relevant actually changed, with no second drag idiom introduced.
+/// </summary>
+/// <param name="Width">The pinned name column's CURRENT effective width in pixels — the live-drag start point the JS side snapshots at pointerdown (mirrors <c>GanttInteropOptions</c>'s own "JS never re-derives, C# is the source of truth" discipline).</param>
+/// <param name="MinWidth"><see cref="Lumeo.GanttV3.GanttScale.MinTreePaneWidth"/> — the live JS-side floor during drag.</param>
+/// <param name="MaxWidth"><see cref="Lumeo.GanttV3.GanttScale.MaxTreePaneWidth"/> — the live JS-side ceiling during drag.</param>
+internal readonly record struct GanttSplitterOptions(double Width, double MinWidth, double MaxWidth);

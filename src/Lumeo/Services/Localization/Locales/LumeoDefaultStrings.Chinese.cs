@@ -278,6 +278,7 @@ internal static partial class LumeoDefaultStrings
         ["Gantt.TaskAriaLabel"] = "{0}，{1}至{2}",
         ["Gantt.PercentComplete"] = "已完成 {0}%",
         ["Gantt.SummaryProgress"] = "{0}%",
+        ["Gantt.ResizeTreePane"] = "调整树形面板大小",
 
         // Editor
         ["Editor.Paragraph"] = "段落",

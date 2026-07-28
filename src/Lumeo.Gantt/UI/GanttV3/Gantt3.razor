@@ -73,7 +73,13 @@
         <div class="flex" style="width:max-content;">
             @if (EffectiveShowTreePane)
             {
-                <GanttTree Rows="@rows" OnToggleCollapse="HandleToggleCollapseAsync" />
+                <GanttTree Rows="@rows"
+                           OnToggleCollapse="HandleToggleCollapseAsync"
+                           TreeColumns="@TreeColumns"
+                           TreeHeaderMenu="@TreeHeaderMenu"
+                           RowTemplate="@RowTemplate"
+                           TreePaneWidth="@EffectiveTreePaneWidth"
+                           OnResize="HandleTreePaneResizeAsync" />
             }
             <GanttTimeline Tasks="@_state.Tasks"
                            Rows="@rows"
@@ -277,6 +283,75 @@
     /// </summary>
     [Parameter] public RenderFragment<GanttRollup>? SummaryTemplate { get; set; }
 
+    /// <summary>
+    /// Extra tree-pane columns rendered after the pinned name column (design spec
+    /// Phase 3, T5 — REUI "Multi-column task tree"). Null/empty (the default)
+    /// renders exactly the single name column T2/T3 already did — byte-identical
+    /// unless a caller opts in. See <see cref="GanttV3.GanttTreeColumn"/> for the
+    /// per-column contract.
+    /// </summary>
+    [Parameter] public IReadOnlyList<GanttTreeColumn>? TreeColumns { get; set; }
+
+    /// <summary>
+    /// Slot rendered in the tree pane's header row, after the column titles
+    /// (design spec Phase 3, T5 — REUI "Columns menu in header slot"). Null (the
+    /// default) renders nothing extra there.
+    /// </summary>
+    [Parameter] public RenderFragment? TreeHeaderMenu { get; set; }
+
+    /// <summary>
+    /// Replaces a row's default label-cell content when set (design spec Phase 3,
+    /// T5). The indent spacer and expander/toggle button are ALWAYS rendered by
+    /// <c>GanttTree</c> regardless — see its own remarks for why that chrome must
+    /// survive a custom template or the tree becomes unusable. Only applies to
+    /// TASK rows (<c>GanttVisibleRow.Task</c> non-null); a flat-grouping
+    /// <c>GanttRowKind.GroupHeader</c> row has no task to feed it and always falls
+    /// back to its own label.
+    /// </summary>
+    [Parameter] public RenderFragment<GanttTask>? RowTemplate { get; set; }
+
+    /// <summary>
+    /// Controlled width (pixels) of the tree pane's pinned name column (design
+    /// spec Phase 3, T5 — the resizable tree/timeline splitter). Null (the
+    /// default) is UNCONTROLLED: the chart tracks its own width internally,
+    /// starting at <see cref="GanttV3.GanttScale.DefaultTreePaneWidth"/> and
+    /// persisting whatever the user last dragged it to for the rest of the
+    /// component's lifetime (session-persistent, not just per-render). Every
+    /// value — controlled or internally tracked — is clamped to
+    /// [<see cref="GanttV3.GanttScale.MinTreePaneWidth"/>, <see
+    /// cref="GanttV3.GanttScale.MaxTreePaneWidth"/>].
+    ///
+    /// Controlled-ness is decided by THIS parameter's own nullability — NOT by
+    /// whether <see cref="TreePaneWidthChanged"/> has a delegate (a bug found
+    /// during T5's own disable-check pass: a caller may wire the callback
+    /// purely to OBSERVE resizes while leaving this null, which must still
+    /// behave as fully uncontrolled/session-persistent, not silently freeze).
+    /// See <see cref="TreePaneWidthChanged"/>'s own remarks for the
+    /// controlled-veto contract (same "the drag must not fight the parameter"
+    /// discipline as every other controlled/uncontrolled pair in this
+    /// component).
+    /// </summary>
+    [Parameter] public double? TreePaneWidth { get; set; }
+
+    /// <summary>
+    /// Raised exactly once per completed splitter gesture (a pointer-drag release,
+    /// or a keyboard nudge — never continuously while dragging; see
+    /// <c>GanttTree</c>'s own remarks for why the LIVE drag visual is JS-only and
+    /// never round-trips through Blazor mid-gesture) with the new width, already
+    /// clamped. Fires whenever a delegate is present, whether or not
+    /// <see cref="TreePaneWidth"/> itself is set — notification and control are
+    /// separate concerns (mirrors <c>OnProgressChange</c>/<c>OnDateChange</c>
+    /// firing independent of <c>TasksChanged</c>). Control specifically is
+    /// decided by <see cref="TreePaneWidth"/>'s own nullability: when it is
+    /// non-null (CONTROLLED) and the consumer does not update its own bound
+    /// value in response to this callback, that is a veto — the NEXT render
+    /// reverts the pane to whatever <see cref="TreePaneWidth"/> still holds,
+    /// the same veto contract <c>TasksChanged</c>/<c>ViewModeChanged</c>
+    /// already have. The drag never "fights" the parameter, because nothing
+    /// round-trips through Blazor until the gesture is already over.
+    /// </summary>
+    [Parameter] public EventCallback<double> TreePaneWidthChanged { get; set; }
+
     /// <summary>Additional CSS classes merged onto the root element.</summary>
     [Parameter] public string? Class { get; set; }
 
@@ -347,15 +422,96 @@
     /// under RTL, GanttTimeline's own box is laid out FIRST physically (at
     /// the scrollable content's own physical-left origin), with GanttTree
     /// occupying the TRAILING (physically rightmost) chunk instead. The
-    /// round-4 fix added <see cref="GanttScale.TreePaneWidth"/> unconditionally
-    /// whenever a tree pane is shown, which is only correct for LTR (where
-    /// Tree genuinely precedes Timeline physically) — under RTL, Timeline's
-    /// own origin already sits at the content's physical 0, so adding the
-    /// tree's width overshot the target by exactly that amount, landing the
-    /// centered viewport a whole tree-width off from where the marker
-    /// actually needed to be.
+    /// round-4 fix added the tree's width (then <see cref="GanttScale.DefaultTreePaneWidth"/>,
+    /// a fixed constant — design spec Phase 3, T5 made it resizable, see
+    /// <see cref="EffectiveTreePaneTotalWidth"/>) unconditionally whenever a
+    /// tree pane is shown, which is only correct for LTR (where Tree genuinely
+    /// precedes Timeline physically) — under RTL, Timeline's own origin
+    /// already sits at the content's physical 0, so adding the tree's width
+    /// overshot the target by exactly that amount, landing the centered
+    /// viewport a whole tree-width off from where the marker actually needed
+    /// to be.
     /// </remarks>
-    private double ScrollHostLeadingOffset => GanttViewportGeometry.LeadingOffset(EffectiveShowTreePane, EffectiveDirection);
+    private double ScrollHostLeadingOffset => GanttViewportGeometry.LeadingOffset(EffectiveShowTreePane, EffectiveDirection, EffectiveTreePaneTotalWidth);
+
+    // ── Tree pane splitter (design spec Phase 3, T5) ────────────────────────
+    //
+    // Uncontrolled backing store — session-persistent (design spec: "persists
+    // during session"). Only ever read/written when TreePaneWidth (the
+    // PARAMETER) is null; a controlled caller's own field is the persistence
+    // store in that case, matching every other controlled/uncontrolled pair in
+    // this component (Tasks/TasksChanged, ViewMode/ViewModeChanged).
+    private double _internalTreePaneWidth = GanttScale.DefaultTreePaneWidth;
+
+    // The name column's own resolved width, clamped regardless of source
+    // (controlled parameter OR internally-tracked default) — a controlled
+    // caller supplying an out-of-range value directly is defended against the
+    // same way a hostile/careless JS wire value is (see HandleTreePaneResizeAsync).
+    private double EffectiveTreePaneWidth =>
+        Math.Clamp(TreePaneWidth ?? _internalTreePaneWidth, GanttScale.MinTreePaneWidth, GanttScale.MaxTreePaneWidth);
+
+    // Extra GanttTreeColumns are fixed-width and NOT individually resizable in
+    // T5's scope (see GanttTreeColumn's own remarks) — this is a plain sum, not
+    // a clamped/controlled value.
+    private double TreeColumnsWidth => TreeColumns is { Count: > 0 } ? TreeColumns.Sum(c => c.Width) : 0;
+
+    // The FULL physical width of the combined tree pane (name column + any
+    // extra columns) — what actually precedes the timeline's own origin inside
+    // the shared scroll container. Feeds ScrollHostLeadingOffset/BuildSnapshot;
+    // gated on EffectiveShowTreePane is unnecessary here since LeadingOffset's
+    // OWN showTreePane parameter already zeroes the offset when the pane is
+    // hidden — this stays a pure "what would the pane's width be if shown".
+    private double EffectiveTreePaneTotalWidth => EffectiveTreePaneWidth + TreeColumnsWidth;
+
+    // The ONE place a completed splitter gesture (pointer-drag release or
+    // keyboard nudge — see GanttTree.OnResize's own remarks) lands. Deliberately
+    // NOT routed through ReconcileAsync: a resize never moves any DATE (no
+    // range/scroll-target decision to make — see GanttViewportReconciler.Decide's
+    // own "geometryChanged only moves the scroll TARGET, never the range" rule),
+    // it only changes how many pixels of tree pane precede the timeline's
+    // origin. Keeping _lastSnapshot's own TreePaneWidth in sync here (rather
+    // than waiting for the next unrelated reconcile to notice the drift via
+    // GanttViewportReconciler.Decide's geometryChanged belt-and-braces branch)
+    // is what keeps a LATER live-scroll-center capture (e.g. a view-mode switch
+    // moments after a resize) decoding against the geometry actually on screen
+    // — see GanttViewportSnapshot.TreePaneWidth's own remarks.
+    private Task HandleTreePaneResizeAsync(double width)
+    {
+        // Defense in depth (design spec Phase 3, T5 "min/max clamps"): the JS
+        // side already clamps continuously during the live drag (see
+        // gantt-v3.js's registerSplitterDrag), so a value reaching here is
+        // ordinarily already in range — but this is the JSInvokable boundary's
+        // own trust edge (a hostile/buggy caller could invoke
+        // GanttTree.CommitSplitterWidth directly), so it is re-clamped here
+        // too rather than trusted blindly.
+        var clamped = Math.Clamp(width, GanttScale.MinTreePaneWidth, GanttScale.MaxTreePaneWidth);
+        if (Math.Abs(clamped - EffectiveTreePaneWidth) < 0.5) return Task.CompletedTask; // no-op guard, same idempotence discipline as GanttState's mutators
+
+        // Bug found during T5's own disable-check pass: this MUST gate on the
+        // exact same signal EffectiveTreePaneWidth's own `??` fallback reads
+        // (TreePaneWidth's nullability), not on TreePaneWidthChanged.HasDelegate
+        // — those two are NOT the same question. A caller can wire
+        // TreePaneWidthChanged purely to OBSERVE resizes without ever supplying
+        // TreePaneWidth itself (staying null, i.e. genuinely uncontrolled) — an
+        // earlier version gated this write on HasDelegate alone, which for that
+        // caller silently froze the pane at whatever width it mounted with
+        // FOREVER (the write was skipped because a delegate existed, yet nothing
+        // else advances _internalTreePaneWidth either, since EffectiveTreePaneWidth
+        // still falls through to it whenever TreePaneWidth is null). Gating on
+        // TreePaneWidth's own nullability instead keeps write and read
+        // perfectly symmetric: this only skips the internal write when a REAL
+        // controlling value is present to defer to.
+        if (TreePaneWidth is null) _internalTreePaneWidth = clamped;
+
+        var newTotal = clamped + TreeColumnsWidth;
+        _lastSnapshot = _lastSnapshot with { TreePaneWidth = newTotal };
+
+        StateHasChanged();
+        // Notifying is a SEPARATE concern from ownership — any listener (bound
+        // or not) is told the resolved, clamped value every time, mirroring how
+        // OnProgressChange/OnDateChange fire regardless of TasksChanged.
+        return TreePaneWidthChanged.HasDelegate ? TreePaneWidthChanged.InvokeAsync(clamped) : Task.CompletedTask;
+    }
 
     // The effective pixel-per-column width for a given mode — a caller's
     // ColumnWidth override when set, else the mode's own default. Parameterized
@@ -393,7 +549,8 @@
             mode,
             EffectiveColumnWidthFor(mode),
             ResolveShowTreePane(tasks),
-            EffectiveDirection);
+            EffectiveDirection,
+            EffectiveTreePaneTotalWidth);
 
     // The single viewport reconcile (Codex round 14): capture the live scroll
     // center (when the decision needs it) under the OLD geometry BEFORE

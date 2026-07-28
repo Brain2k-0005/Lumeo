@@ -161,18 +161,43 @@ internal static class GanttScale
     internal const int SummaryBarHeight = 8;
 
     /// <summary>
-    /// GanttTree's fixed pane width in pixels (Codex round 4, P2 #2) — the
-    /// SINGLE source of truth for both GanttTree's own rendered width (a
-    /// Tailwind utility class can't be parameterized from C#, so GanttTree
-    /// uses an inline style built from this constant instead of a fixed
-    /// `w-56` class) and Gantt3's <c>GanttTimeline.ScrollHostLeadingOffset</c>
-    /// calculation — before this constant existed, the tree's width (224px,
-    /// Tailwind's `w-56`) was a magic number baked into GanttTree's markup
-    /// with nothing else in the codebase able to reference it, which is
-    /// exactly how the P2 #2 bug (scroll centering ignoring the tree's width)
-    /// went unnoticed: there was no shared value to even offset by.
+    /// GanttTree's DEFAULT pane width in pixels (Codex round 4, P2 #2) — the
+    /// starting value for the pinned name column before design spec Phase 3,
+    /// T5 made it resizable via <c>Gantt3.TreePaneWidth</c>/the tree/timeline
+    /// splitter (see <see cref="MinTreePaneWidth"/>/<see cref="MaxTreePaneWidth"/>
+    /// for the drag clamps). Renamed from the former fixed `TreePaneWidth`
+    /// constant name now that the width genuinely varies at runtime — every
+    /// call site that used to read the constant directly now reads the LIVE
+    /// effective width instead (see <c>Gantt3.EffectiveTreePaneWidth</c>),
+    /// falling back to this default only when uncontrolled and never resized.
     /// </summary>
-    internal const int TreePaneWidth = 224;
+    internal const int DefaultTreePaneWidth = 224;
+
+    /// <summary>
+    /// Floor for the tree pane's pinned name column (design spec Phase 3, T5
+    /// — "min/max clamps... justify"). 160px is the smallest width that still
+    /// comfortably fits the deepest indent this codebase renders in practice
+    /// (a few hierarchy levels * 16px/level — see <c>GanttTree.IndentStyle</c>)
+    /// plus the 16px expander/toggle glyph plus a genuinely readable (not
+    /// single-character) truncated task name — chosen empirically against
+    /// <c>GanttParityFixtures.TreeTasks</c>'s own 3-level hierarchy (depth-2
+    /// rows: 32px indent + 16px toggle + name), not an arbitrary round number.
+    /// </summary>
+    internal const int MinTreePaneWidth = 160;
+
+    /// <summary>
+    /// Ceiling for the tree pane's pinned name column (design spec Phase 3,
+    /// T5). 640px (roughly 3x the 224px default) is generous enough for a
+    /// long task name plus a couple of extra <see cref="Lumeo.GanttV3.GanttTreeColumn"/>
+    /// cells' worth of visual breathing room, while still guaranteeing the
+    /// timeline pane is never squeezed out of a typical viewport: the shared
+    /// scroll pane itself has no hard width ceiling (it scrolls horizontally
+    /// without bound), so this cap exists purely to stop a user from dragging
+    /// the name column wide enough to push the ENTIRE visible timeline
+    /// off-screen on an ordinary (&gt;640px-wide) viewport — a resizable-panel
+    /// UX guard, not a layout-correctness requirement.
+    /// </summary>
+    internal const int MaxTreePaneWidth = 640;
 
     /// <summary>
     /// Faithful port of gantt-v2.js's <c>VIEW_MODES</c> table (lines 29-36). Every

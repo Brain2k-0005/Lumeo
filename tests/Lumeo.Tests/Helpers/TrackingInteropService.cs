@@ -866,6 +866,39 @@ public class TrackingInteropService : IComponentInteropService
         return Task.CompletedTask;
     }
 
+    // GanttV3 splitter-drag registration tracking (design spec Phase 3, T5) —
+    // mirrors the move/resize drag tracking immediately above: call counts +
+    // last options bag, plus a captured DotNetObjectReference so a test can
+    // simulate a JS-side commit (mirroring RaiseGanttV3VerticalScroll's own
+    // reflection-based simulate pattern) without a real browser pointer.
+    private int _ganttV3RegisterSplitterDragCallCount;
+    private int _ganttV3UnregisterSplitterDragCallCount;
+    public int GanttV3RegisterSplitterDragCallCount => _ganttV3RegisterSplitterDragCallCount;
+    public int GanttV3UnregisterSplitterDragCallCount => _ganttV3UnregisterSplitterDragCallCount;
+    public object? LastGanttV3SplitterDragOptions { get; private set; }
+    private object? _ganttV3SplitterDotNetRef;
+    public Task GanttV3RegisterSplitterDragAsync<T>(ElementReference handleEl, ElementReference paneEl, DotNetObjectReference<T> dotNetRef, object options) where T : class
+    {
+        _ganttV3RegisterSplitterDragCallCount++;
+        LastGanttV3SplitterDragOptions = options;
+        _ganttV3SplitterDotNetRef = dotNetRef.Value;
+        return Task.CompletedTask;
+    }
+    public Task GanttV3UnregisterSplitterDragAsync(ElementReference handleEl)
+    {
+        _ganttV3UnregisterSplitterDragCallCount++;
+        return Task.CompletedTask;
+    }
+    /// <summary>Simulates a JS-side splitter commit (pointerup/keyboard) by invoking the captured component's own <c>CommitSplitterWidth</c> method directly.</summary>
+    public async Task<bool> SimulateGanttV3SplitterCommit(double width)
+    {
+        var method = _ganttV3SplitterDotNetRef?.GetType().GetMethod("CommitSplitterWidth");
+        if (method is null) return false;
+        var result = method.Invoke(_ganttV3SplitterDotNetRef, new object[] { width });
+        if (result is Task task) await task;
+        return true;
+    }
+
     // GanttV3 browser-local-"today" tracking (Codex round 2, P2 #9) — settable
     // so a test can simulate the browser reporting a date that differs from
     // whatever DateTime.Today happens to be on the machine running the suite.

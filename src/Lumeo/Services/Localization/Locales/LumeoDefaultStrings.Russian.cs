@@ -281,6 +281,7 @@ internal static partial class LumeoDefaultStrings
         ["Gantt.TaskAriaLabel"] = "{0}, с {1} по {2}",
         ["Gantt.PercentComplete"] = "Выполнено {0}%",
         ["Gantt.SummaryProgress"] = "{0}%",
+        ["Gantt.ResizeTreePane"] = "Изменить размер панели дерева",
 
         // Editor
         ["Editor.Paragraph"] = "Абзац",

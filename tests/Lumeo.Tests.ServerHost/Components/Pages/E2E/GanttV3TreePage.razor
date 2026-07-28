@@ -1,4 +1,5 @@
 @page "/e2e/gantt-v3-tree"
+@using Lumeo.GanttV3
 @using Lumeo.Tests.ServerHost.E2E
 
 @* Gantt v2/v3 parity harness (feat/gantt-v3, T4) — v3-ONLY. v2 has no
@@ -27,7 +28,16 @@
    (GanttV3SummaryRollupTests). Summary bars default OFF (T3's own
    Phase-3-ledger-pinned v2/REUI look-delta — see GanttTimeline.ShowSummaryBars),
    so every OTHER route/fixture on this page renders with no strips at all,
-   unaffected by this opt-in. *@
+   unaffected by this opt-in.
+
+   ?fixture=columns (design spec Phase 3, T5): turns on TreeColumns (a
+   "Duration" column, days-derived — deterministic against TreeTasks' own
+   known dates) + TreeHeaderMenu (a plain trigger button) + RowTemplate (a
+   bullet-prefixed name span) so GanttV3TreeColumnsSplitterTests can assert
+   real column alignment/header-menu/RowTemplate-vs-chrome behavior against a
+   live browser. The splitter itself (GanttTree's own divider) needs no
+   fixture flag — it renders whenever the tree pane does, on every route on
+   this page. *@
 
 <PageTitle>E2E - Gantt v3 tree</PageTitle>
 
@@ -39,6 +49,9 @@
             ShowTreePane="true"
             AllowCreate="@_allowCreate"
             ShowSummaryBars="@_showSummaryBars"
+            TreeColumns="@_treeColumns"
+            TreeHeaderMenu="@(_showColumns ? TreeHeaderMenuContent : null)"
+            RowTemplate="@(_showColumns ? RowTemplateContent : null)"
             data-testid="gantt-v3-tree-root" />
 </div>
 
@@ -49,6 +62,8 @@
     private List<GanttTask> _tasks = new();
     private bool _allowCreate;
     private bool _showSummaryBars;
+    private bool _showColumns;
+    private List<GanttTreeColumn>? _treeColumns;
 
     protected override void OnInitialized()
     {
@@ -60,5 +75,37 @@
         };
         _allowCreate = AllowCreate == "1";
         _showSummaryBars = Fixture == "rollup";
+        _showColumns = Fixture == "columns";
+        _treeColumns = _showColumns
+            ? new List<GanttTreeColumn>
+            {
+                new("Duration", 80, DurationCellContent),
+            }
+            : null;
     }
+
+    private static RenderFragment<GanttTask> DurationCellContent => task => builder =>
+    {
+        builder.OpenElement(0, "span");
+        builder.AddAttribute(1, "class", "gantt-e2e-duration-cell");
+        builder.AddContent(2, $"{(task.End.Date - task.Start.Date).Days}d");
+        builder.CloseElement();
+    };
+
+    private static RenderFragment<GanttTask> RowTemplateContent => task => builder =>
+    {
+        builder.OpenElement(0, "span");
+        builder.AddAttribute(1, "class", "gantt-e2e-row-template truncate text-sm");
+        builder.AddContent(2, $"• {task.Name}");
+        builder.CloseElement();
+    };
+
+    private static RenderFragment TreeHeaderMenuContent => builder =>
+    {
+        builder.OpenElement(0, "button");
+        builder.AddAttribute(1, "type", "button");
+        builder.AddAttribute(2, "class", "gantt-e2e-tree-header-menu");
+        builder.AddContent(3, "...");
+        builder.CloseElement();
+    };
 }
