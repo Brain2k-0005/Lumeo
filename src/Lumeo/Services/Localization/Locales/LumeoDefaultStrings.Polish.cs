@@ -334,5 +334,9 @@ internal static partial class LumeoDefaultStrings
         ["Gantt.PercentComplete"] = "{0}% ukończone",
         ["Gantt.SummaryProgress"] = "{0}%",
         ["Gantt.ResizeTreePane"] = "Zmień rozmiar panelu drzewa",
+        ["Gantt.SelectRow"] = "Zaznacz {0}",
+        ["Gantt.SelectRowGroup"] = "Zaznacz wszystko w {0}",
+        ["Gantt.DragToReorderRow"] = "Przeciągnij, aby zmienić kolejność {0}",
+        ["Gantt.RowReorderUnavailable"] = "Zmiana kolejności wierszy jest niedostępna w trybie tylko do odczytu",
     };
 }

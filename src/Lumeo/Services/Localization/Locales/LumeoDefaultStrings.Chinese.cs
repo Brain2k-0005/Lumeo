@@ -279,6 +279,10 @@ internal static partial class LumeoDefaultStrings
         ["Gantt.PercentComplete"] = "已完成 {0}%",
         ["Gantt.SummaryProgress"] = "{0}%",
         ["Gantt.ResizeTreePane"] = "调整树形面板大小",
+        ["Gantt.SelectRow"] = "选择{0}",
+        ["Gantt.SelectRowGroup"] = "全选{0}中的项",
+        ["Gantt.DragToReorderRow"] = "拖动以重新排列{0}",
+        ["Gantt.RowReorderUnavailable"] = "只读模式下无法重新排列行",
 
         // Editor
         ["Editor.Paragraph"] = "段落",

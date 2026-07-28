@@ -752,6 +752,31 @@ public interface IComponentInteropService : IAsyncDisposable, IDisposable
     /// <summary>Tears down the splitter drag registered by <see cref="GanttV3RegisterSplitterDragAsync{T}"/> — removes the pointerdown listener and cancels (never commits) any drag in flight. Default no-op.</summary>
     Task GanttV3UnregisterSplitterDragAsync(Microsoft.AspNetCore.Components.ElementReference handleEl) => Task.CompletedTask;
 
+    /// <summary>
+    /// Registers GanttV3's tree-row reorder drag (design spec Phase 3, T6 —
+    /// gantt-v3.js's <c>ganttV3.registerRowReorderDrag</c>) — a THIRD registration
+    /// channel alongside <see cref="GanttV3RegisterDragAsync{T}"/>/<see
+    /// cref="GanttV3RegisterSplitterDragAsync{T}"/>, reusing the SAME conventions
+    /// (delegated <c>pointerdown</c> on <paramref name="paneEl"/>, filtered to
+    /// <c>[data-row-reorder-grip]</c>; pointer capture; a per-gesture snapshot;
+    /// pointer-id isolation; cancel-in-flight-on-unregister). Unlike the other two
+    /// channels, there is no options bag to push: bucket/index identity for every
+    /// candidate drop row is read directly off that row's own
+    /// <c>data-reorder-bucket</c>/<c>data-reorder-index</c> DOM attributes (always
+    /// fresh — <c>GanttTree</c> re-renders them every pass), so re-registering
+    /// after a Virtualize recycle or a data change is never needed; calling this
+    /// again for an already-registered <paramref name="paneEl"/> simply updates
+    /// the stored <paramref name="dotNetRef"/> in place (idempotent). Default
+    /// no-op DIM so existing implementers/test doubles keep compiling; <see
+    /// cref="Lumeo.Services.ComponentInteropService"/> overrides both with the
+    /// real registration.
+    /// </summary>
+    Task GanttV3RegisterRowReorderDragAsync<[System.Diagnostics.CodeAnalysis.DynamicallyAccessedMembers(System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicMethods)] T>(Microsoft.AspNetCore.Components.ElementReference paneEl, DotNetObjectReference<T> dotNetRef) where T : class
+        => Task.CompletedTask;
+
+    /// <summary>Tears down the row-reorder drag registered by <see cref="GanttV3RegisterRowReorderDragAsync{T}"/> — removes the delegated pointerdown listener and cancels (never commits) any drag in flight. Default no-op.</summary>
+    Task GanttV3UnregisterRowReorderDragAsync(Microsoft.AspNetCore.Components.ElementReference paneEl) => Task.CompletedTask;
+
     // Toolbar overflow observer — registers a ResizeObserver on the toolbar
     // element and invokes the handler with (fittingCount, totalCount) whenever
     // the number of items that fit before the "..." overflow trigger changes.

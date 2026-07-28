@@ -79,7 +79,15 @@
                            TreeHeaderMenu="@TreeHeaderMenu"
                            RowTemplate="@RowTemplate"
                            TreePaneWidth="@EffectiveTreePaneWidth"
-                           OnResize="HandleTreePaneResizeAsync" />
+                           OnResize="HandleTreePaneResizeAsync"
+                           Tasks="@_state.Tasks"
+                           SelectedIds="@_state.SelectedIds"
+                           ShowRowCheckboxes="@ShowRowCheckboxes"
+                           OnRowSelectionChange="HandleRowSelectionChangeAsync"
+                           AllowRowReorder="@AllowRowReorder"
+                           CanDropRow="CanDropRow"
+                           OnRowReorder="HandleRowReorderAsync"
+                           Readonly="@Readonly" />
             }
             <GanttTimeline Tasks="@_state.Tasks"
                            Rows="@rows"
@@ -351,6 +359,69 @@
     /// round-trips through Blazor until the gesture is already over.
     /// </summary>
     [Parameter] public EventCallback<double> TreePaneWidthChanged { get; set; }
+
+    /// <summary>Renders a checkbox column in the tree pane (design spec Phase 3, T6 — REUI "Leaf row selection (checkboxes)"). Default false. Passed straight through to <see cref="GanttTree.ShowRowCheckboxes"/>.</summary>
+    [Parameter] public bool ShowRowCheckboxes { get; set; }
+
+    /// <summary>
+    /// Controlled set of selected LEAF task ids (design spec Phase 3, T6 —
+    /// two-way <c>SelectedIds</c>). <c>null</c> (the default) is UNCONTROLLED:
+    /// the chart tracks its own selection internally via <see
+    /// cref="GanttState.SelectedIds"/>, starting empty. Same controlled-ness
+    /// discipline as <see cref="TreePaneWidth"/> (decided by THIS parameter's
+    /// own nullability, not by whether <see cref="SelectedIdsChanged"/> has a
+    /// delegate — a caller may wire the callback purely to OBSERVE selection
+    /// while leaving this null). Only LEAF task ids are ever members — see
+    /// <see cref="GanttV3.GanttSelectionModel"/>'s own remarks for exactly
+    /// which rows qualify and why a hierarchy-parent's own id never appears
+    /// here even when every one of its descendants is selected.
+    /// </summary>
+    [Parameter] public ISet<string>? SelectedIds { get; set; }
+
+    /// <summary>
+    /// Raised whenever the selection changes (a checkbox click — leaf toggle
+    /// or parent/group select/deselect-descendants), with the FULL resulting
+    /// set. Fires whenever a delegate is present, whether or not <see
+    /// cref="SelectedIds"/> itself is set — notification and control are
+    /// separate concerns (mirrors <see cref="TreePaneWidthChanged"/>'s own
+    /// remarks). Control specifically is decided by <see cref="SelectedIds"/>'s
+    /// own nullability: when non-null (CONTROLLED) and the consumer does not
+    /// update its own bound value in response, that is a veto — the NEXT
+    /// render reverts to whatever <see cref="SelectedIds"/> still holds.
+    /// </summary>
+    [Parameter] public EventCallback<ISet<string>> SelectedIdsChanged { get; set; }
+
+    /// <summary>
+    /// Enables drag-to-reorder tree rows (design spec Phase 3, T6 — REUI "Row
+    /// reorder (drag tree rows)"). Default false. Passed straight through to
+    /// <see cref="GanttTree.AllowRowReorder"/> — see its own remarks for the
+    /// within-bucket-only scope (cross-parent/cross-group moves are <see
+    /// cref="GanttTask.ParentId"/> edits, out of scope, never offered by the
+    /// drag UI). <see cref="Readonly"/> blocks it unconditionally.
+    /// </summary>
+    [Parameter] public bool AllowRowReorder { get; set; }
+
+    /// <summary>
+    /// Live validation predicate for a candidate row-reorder drop position
+    /// (design spec Phase 3, T6 — the REUI <c>canDropEvent</c> analog applied
+    /// to row reorder; see <see cref="GanttV3.GanttScheduleDropContext"/>'s own
+    /// remarks for why SCHEDULING drag validation — <see cref="CanDrop"/> —
+    /// is a separate, differently-shaped parameter/type from this one).
+    /// Passed straight through to <see cref="GanttTree.CanDropRow"/>,
+    /// unchanged. Null (default) permits every within-bucket position.
+    /// </summary>
+    [Parameter] public Func<GanttTask, GanttDropContext, bool>? CanDropRow { get; set; }
+
+    /// <summary>
+    /// Raised once, after a completed row-reorder drop, with the resolved
+    /// <see cref="GanttRowReorder"/> payload (design spec Phase 3, T6). This
+    /// component ALSO applies the equivalent list reorder to its own task set
+    /// and pushes it through the SAME <see cref="TasksChanged"/>/controlled-
+    /// veto pipeline every other edit (move/resize/progress/create) already
+    /// uses — see <see cref="HandleRowReorderAsync"/>'s own remarks for why
+    /// the component mutates rather than merely reporting.
+    /// </summary>
+    [Parameter] public EventCallback<GanttRowReorder> OnRowReorder { get; set; }
 
     /// <summary>Additional CSS classes merged onto the root element.</summary>
     [Parameter] public string? Class { get; set; }
@@ -735,6 +806,39 @@
     {
         _state.ToggleCollapsed(key);
         return Task.CompletedTask;
+    }
+
+    // Design spec Phase 3, T6 — bubbled from GanttTree.OnRowSelectionChange
+    // exactly like HandleToggleCollapseAsync above: Gantt3 is the only place
+    // that touches GanttState, so it resolves the tri-state
+    // "select/deselect descendants" semantics here via
+    // GanttSelectionModel.ResolveLeafIds rather than GanttTree computing it
+    // itself (GanttTree stays purely presentational — see its own class
+    // remarks).
+    //
+    // Unconditionally writes to _state (mirrors HandleTaskUpdateAsync's own
+    // "commits DIRECTLY to _state" discipline) — a CONTROLLED SelectedIds
+    // consumer that doesn't accept the change simply re-supplies its OWN
+    // current value on the next render, which OnParametersSetAsync's own
+    // SelectedIds push (see its own remarks) reasserts, reverting the local
+    // change — the same veto contract every other controlled/uncontrolled
+    // pair in this component already has.
+    private async Task HandleRowSelectionChangeAsync((string Key, bool Selected) change)
+    {
+        if (Readonly) return; // defensive server-side guard (design spec Phase 3, T6 "Readonly blocks both") — GanttTree's own Checkbox.Disabled=Readonly already prevents the click client-side; this is the untrusted-boundary backstop every JSInvokable in this campaign already applies to ITS OWN surface, extended here to a plain EventCallback for the same reason
+
+        var targets = GanttSelectionModel.ResolveLeafIds(GanttRowModel.FilterValidDurationTasks(_state.Tasks), change.Key);
+        if (targets.Count == 0) return;
+
+        var anyChanged = false;
+        foreach (var id in targets)
+        {
+            if (_state.IsSelected(id) != change.Selected) anyChanged = true;
+            _state.SetSelected(id, change.Selected);
+        }
+        if (!anyChanged) return; // genuine no-op (every target already matched) — no spurious notification, same idempotence discipline as every GanttState mutator
+
+        if (SelectedIdsChanged.HasDelegate) await SelectedIdsChanged.InvokeAsync(new HashSet<string>(_state.SelectedIds, StringComparer.Ordinal));
     }
 
     // The whole viewport-tracking state (Codex round 14): ONE snapshot of the
@@ -1196,6 +1300,14 @@
         // whether anything actually moved.
         var (rawTasks, materializedTasks) = MaterializeTasks();
         _state.SetTasks(materializedTasks);
+        // Design spec Phase 3, T6 — seed _state.SelectedIds from a CONTROLLED
+        // initial value, same "push into _state, single source of truth"
+        // discipline Tasks/ViewMode already use, but WITHOUT their hash-diff/
+        // drag-ordering complexity: a selection edit has no viewport/scroll
+        // implication, so a plain "push whenever controlled" push (here, and
+        // again every OnParametersSetAsync pass below) is the whole contract —
+        // see HandleRowSelectionChangeAsync's own remarks for the write side.
+        if (SelectedIds is not null) _state.SetSelectedIds(SelectedIds);
         _lastParentTasksHash = _lastPushedTasksHash = ComputeTasksHash(rawTasks);
         _tasksVersion = 1;
         _state.SetVisibleRange(ComputeInitialRange(_state.ViewMode, _state.Tasks, EffectiveToday));
@@ -1547,6 +1659,17 @@
             _initialized = true;
             return;
         }
+
+        // Design spec Phase 3, T6 — push a CONTROLLED SelectedIds parameter
+        // into _state on every subsequent pass too (see OnInitialized's own
+        // remarks for why this needs none of Tasks/ViewMode's hash-diff
+        // machinery: GanttState.SetSelectedIds is already a silent no-op when
+        // value-equal, so a controlled caller that merely re-supplies its own
+        // current selection every render — the common Blazor pattern —
+        // doesn't spuriously touch anything). An UNCONTROLLED chart
+        // (SelectedIds null) leaves _state.SelectedIds exactly as
+        // HandleRowSelectionChangeAsync's own direct writes last left it.
+        if (SelectedIds is not null) _state.SetSelectedIds(SelectedIds);
 
         // Phase 2, T1 fix — see HandleTaskUpdateAsync's own remarks: a
         // drag/resize commit mutates _state DIRECTLY, bypassing the Tasks
@@ -2362,6 +2485,48 @@
             // Tasks value) rolls back exactly like any other vetoed edit — the
             // next OnParametersSetAsync sees the parameter hasn't moved to match
             // what was just pushed and reverts _state, discarding the new task.
+            _lastPushedTasksHash = ComputeTasksHash(_state.Tasks);
+            await TasksChanged.InvokeAsync(_state.Tasks.ToList());
+        }
+    }
+
+    // Design spec Phase 3, T6 — bubbled from GanttTree.OnRowReorder (its own
+    // JS-driven CommitRowReorder), mirroring HandleTaskUpdateAsync's own
+    // "Gantt3 is the only place that touches GanttState, so it applies the
+    // edit here" discipline. Deliberately a MUCH smaller version of the same
+    // commit-then-notify shape: unlike a move/resize/progress/create edit, a
+    // reorder never changes any task's Start/End, so there is no range-
+    // expansion/scroll-preservation concern at all (BuildSnapshot's own
+    // derived fields — IsEmpty/ShowTreePane/ColumnWidth/Direction/TreePaneWidth
+    // — are provably unaffected by a pure reorder), and every step below is
+    // SYNCHRONOUS (no await between reading and committing _state.Tasks), so
+    // there is no "something else committed while I was awaiting" window to
+    // rebase against either — the hazard HandleTaskUpdateAsync's own capture
+    // await specifically guards against simply cannot arise here.
+    private async Task HandleRowReorderAsync(GanttRowReorder reorder)
+    {
+        if (Readonly) return; // defensive server-side guard (design spec Phase 3, T6 "Readonly blocks both") — GanttTree's own JSInvokable guard already no-ops before ever bubbling this far (Phase-2 lesson: a gesture already in flight at a mid-drag Readonly flip); belt-and-suspenders against a future/buggy direct caller
+
+        var reordered = GanttReorderModel.Move(_state.Tasks, reorder.TaskId, reorder.NewIndex);
+        if (ReferenceEquals(reordered, _state.Tasks)) return; // GanttReorderModel.Move's own no-op contract (unresolvable id, filtered-out task, or already at that index) — nothing to commit
+
+        _state.SetTasks(reordered);
+        // Keeps the task-set version counter (and its snapshot) consistent
+        // with reality (_state.Tasks genuinely changed — a different element
+        // order, even though the SET of tasks is identical) — same
+        // bookkeeping HandleTaskUpdateAsync's own ending performs, even
+        // though (see this method's own remarks) nothing about a reorder
+        // actually needs ReconcileAsync to reconsider the viewport.
+        _tasksVersion++;
+        _lastSnapshot = BuildSnapshot(_tasksVersion, _state.Tasks, _state.ViewMode);
+
+        // Gesture-specific notification before the general TasksChanged echo
+        // — same ordering fix HandleTaskUpdateAsync's own remarks document
+        // (Codex PR-383 review, P2 "Notify edit callbacks before TasksChanged").
+        if (OnRowReorder.HasDelegate) await OnRowReorder.InvokeAsync(reorder);
+
+        if (TasksChanged.HasDelegate)
+        {
             _lastPushedTasksHash = ComputeTasksHash(_state.Tasks);
             await TasksChanged.InvokeAsync(_state.Tasks.ToList());
         }

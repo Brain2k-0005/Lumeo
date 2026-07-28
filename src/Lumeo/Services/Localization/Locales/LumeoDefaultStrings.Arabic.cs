@@ -284,6 +284,10 @@ internal static partial class LumeoDefaultStrings
         ["Gantt.PercentComplete"] = "اكتمل {0}%",
         ["Gantt.SummaryProgress"] = "{0}%",
         ["Gantt.ResizeTreePane"] = "تغيير حجم لوحة الشجرة",
+        ["Gantt.SelectRow"] = "تحديد {0}",
+        ["Gantt.SelectRowGroup"] = "تحديد الكل في {0}",
+        ["Gantt.DragToReorderRow"] = "اسحب لإعادة ترتيب {0}",
+        ["Gantt.RowReorderUnavailable"] = "إعادة ترتيب الصفوف غير متاحة في وضع القراءة فقط",
 
         // Editor
         ["Editor.Paragraph"] = "فقرة",

@@ -331,5 +331,9 @@ internal static partial class LumeoDefaultStrings
         ["Gantt.PercentComplete"] = "{0}% completado",
         ["Gantt.SummaryProgress"] = "{0}%",
         ["Gantt.ResizeTreePane"] = "Redimensionar el panel de árbol",
+        ["Gantt.SelectRow"] = "Seleccionar {0}",
+        ["Gantt.SelectRowGroup"] = "Seleccionar todo en {0}",
+        ["Gantt.DragToReorderRow"] = "Arrastrar para reordenar {0}",
+        ["Gantt.RowReorderUnavailable"] = "No se puede reordenar filas en modo de solo lectura",
     };
 }

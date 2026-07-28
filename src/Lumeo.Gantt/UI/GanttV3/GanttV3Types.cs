@@ -54,21 +54,39 @@ public sealed record GanttTaskUpdate(GanttTask Task, GanttTaskUpdateSource Sourc
 /// <summary>
 /// Payload for a completed tree-pane row reorder (design spec "Public API" &gt;
 /// Additive &gt; <c>AllowRowReorder</c> + <c>EventCallback&lt;GanttRowReorder&gt;</c>).
-/// Raised once, after drop, with the task's old and new position — and, since a
-/// row can be dragged under a different parent now that <see cref="GanttTask.ParentId"/>
-/// exists, its old and new parent as well. A reorder that only changes index
-/// (same parent) leaves <see cref="PreviousParentId"/>/<see cref="NewParentId"/> equal.
+/// Raised once, after drop, with the task's old and new position.
 ///
-/// <c>internal</c> for now (see <see cref="GanttState"/> for why): promoted to public
-/// API alongside <c>AllowRowReorder</c>/<c>OnRowReorder</c> when the tree pane actually
-/// wires up drag-drop (Phase 3).
+/// <c>public</c> (design spec Phase 3, T6): promoted the moment <c>Gantt3</c>/
+/// <c>GanttTree</c> actually wire up drag-drop reorder. <see
+/// cref="EditorBrowsableAttribute"/>(Never) keeps it out of consumer IntelliSense
+/// until the Phase-4 rename, per this task's explicit instruction — DO-NOT-PROMOTE,
+/// same as every other GanttV3-namespaced type added this campaign.
+///
+/// <b>Within-parent/within-bucket only</b> (T6 decision #3 — REUI semantics; a
+/// cross-parent move is a <see cref="GanttTask.ParentId"/> EDIT, out of this
+/// feature's scope by design, never offered through the drag UI at all):
+/// <see cref="PreviousParentId"/> and <see cref="NewParentId"/> are therefore
+/// ALWAYS equal for any reorder this library itself ever raises — both fields
+/// are kept (rather than a single <c>ParentId</c>) only so a future cross-parent
+/// feature could reuse this exact record without a breaking shape change.
+///
+/// <b>Flat <see cref="GanttTask.GroupLabel"/> grouping</b> (no <see
+/// cref="GanttTask.ParentId"/> in play — <see cref="GanttRowModel.UsesHierarchy"/>
+/// false for the task set): <see cref="PreviousParentId"/>/<see cref="NewParentId"/>
+/// are <c>null</c> throughout (a flat task's <c>ParentId</c> genuinely never
+/// changes), and <see cref="PreviousIndex"/>/<see cref="NewIndex"/> are the
+/// task's index among its OWN <see cref="GanttTask.GroupLabel"/>-sharing siblings
+/// (the "bucket" — see <see cref="Lumeo.GanttV3.GanttReorderModel"/>'s own
+/// remarks), NOT a global root-level index — reordering across two DIFFERENT
+/// groups is exactly as out-of-scope as a cross-parent move in hierarchy mode.
 /// </summary>
 /// <param name="TaskId">Id of the task/row that was moved.</param>
-/// <param name="PreviousParentId">The task's <see cref="GanttTask.ParentId"/> before the move (null = root).</param>
-/// <param name="NewParentId">The task's <see cref="GanttTask.ParentId"/> after the move (null = root).</param>
-/// <param name="PreviousIndex">Sibling index (within <see cref="PreviousParentId"/>'s children) before the move.</param>
-/// <param name="NewIndex">Sibling index (within <see cref="NewParentId"/>'s children) after the move.</param>
-internal sealed record GanttRowReorder(
+/// <param name="PreviousParentId">The task's <see cref="GanttTask.ParentId"/> before the move (null = root, or always null in flat-group mode — see the class remarks).</param>
+/// <param name="NewParentId">The task's <see cref="GanttTask.ParentId"/> after the move — always equal to <see cref="PreviousParentId"/> (within-bucket only — see the class remarks).</param>
+/// <param name="PreviousIndex">Index within the task's reorder bucket (see the class remarks) before the move.</param>
+/// <param name="NewIndex">Index within the task's reorder bucket (see the class remarks) after the move.</param>
+[EditorBrowsable(EditorBrowsableState.Never)]
+public sealed record GanttRowReorder(
     string TaskId,
     string? PreviousParentId,
     string? NewParentId,
@@ -76,20 +94,37 @@ internal sealed record GanttRowReorder(
     int NewIndex);
 
 /// <summary>
-/// Live drag-drop validation context (design spec "Public API" &gt; Additive &gt;
-/// <c>Func&lt;GanttTask, GanttDropContext, bool&gt;? CanDrop</c> — the REUI
-/// <c>canDropEvent</c> analog). Passed alongside the dragged <see cref="GanttTask"/>
-/// to a consumer-supplied predicate evaluated continuously while a row drag is in
-/// flight, so the drop target can be rejected (e.g. "no dropping a parent onto its
-/// own descendant") before the user releases the pointer.
+/// Live drag-drop validation context for TREE-ROW reorder (design spec "Public
+/// API" &gt; Additive &gt; <c>AllowRowReorder</c> — the REUI <c>canDropEvent</c>
+/// analog applied to row reorder rather than schedule dragging; see <see
+/// cref="GanttScheduleDropContext"/>'s own remarks for why THAT is a separate,
+/// differently-shaped type). Passed alongside the dragged <see cref="GanttTask"/>
+/// to a consumer-supplied <c>CanDropRow</c> predicate evaluated continuously
+/// while a row drag is in flight (<c>GanttTree.ValidateRowDrop</c>), so the drop
+/// target can be rejected (e.g. "no dropping a parent onto its own descendant")
+/// before the user releases the pointer, then re-checked once more at commit
+/// time (<c>GanttTree.CommitRowReorder</c>) — same two-phase discipline
+/// <c>GanttTimeline.ValidateDrop</c>/<c>CommitDrag</c> already established for
+/// schedule dragging.
 ///
-/// <c>internal</c> for now (see <see cref="GanttState"/> for why): promoted to public
-/// API alongside <c>CanDrop</c> when the tree pane actually wires up drag-drop (Phase 3).
+/// <c>public</c> (design spec Phase 3, T6): promoted the moment <c>Gantt3</c>/
+/// <c>GanttTree</c> expose a <c>CanDropRow</c> parameter wired to it. <see
+/// cref="EditorBrowsableAttribute"/>(Never) — DO-NOT-PROMOTE, same as every
+/// other GanttV3-namespaced type added this campaign.
+///
+/// <b>Flat-group mode</b>: <see cref="TargetParentId"/> is always <c>null</c>
+/// (a flat task's <see cref="GanttTask.ParentId"/> never changes — see <see
+/// cref="GanttRowReorder"/>'s own remarks) even though the candidate drop
+/// position is really scoped to one <see cref="GanttTask.GroupLabel"/> bucket;
+/// a consumer that needs the group can resolve it from <see cref="TargetTaskId"/>
+/// (or from the dragged task's own <c>GroupLabel</c>, unchanged by a
+/// within-bucket move).
 /// </summary>
-/// <param name="TargetParentId">The candidate parent id at the current drop position (null = root).</param>
-/// <param name="TargetIndex">The candidate sibling index at the current drop position.</param>
-/// <param name="TargetTaskId">Id of the row currently under the pointer, if any (null when hovering empty space below the last row).</param>
-internal sealed record GanttDropContext(
+/// <param name="TargetParentId">The dragged task's <see cref="GanttTask.ParentId"/> (null = root, or always null in flat-group mode — see the class remarks). Never a DIFFERENT parent than the dragged task's own — reorder is within-bucket only.</param>
+/// <param name="TargetIndex">The candidate index within the dragged task's own reorder bucket at the current drop position.</param>
+/// <param name="TargetTaskId">Id of the sibling row currently nearest the pointer, if any (null when hovering past the last sibling).</param>
+[EditorBrowsable(EditorBrowsableState.Never)]
+public sealed record GanttDropContext(
     string? TargetParentId,
     int TargetIndex,
     string? TargetTaskId);

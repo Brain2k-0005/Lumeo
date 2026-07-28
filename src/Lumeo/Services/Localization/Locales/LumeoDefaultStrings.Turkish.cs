@@ -279,6 +279,10 @@ internal static partial class LumeoDefaultStrings
         ["Gantt.PercentComplete"] = "%{0} tamamlandı",
         ["Gantt.SummaryProgress"] = "%{0}",
         ["Gantt.ResizeTreePane"] = "Ağaç bölmesini yeniden boyutlandır",
+        ["Gantt.SelectRow"] = "{0} öğesini seç",
+        ["Gantt.SelectRowGroup"] = "{0} içindeki tümünü seç",
+        ["Gantt.DragToReorderRow"] = "{0} öğesini yeniden sıralamak için sürükle",
+        ["Gantt.RowReorderUnavailable"] = "Salt okunur modda satır sıralaması değiştirilemez",
 
         // Editor
         ["Editor.Paragraph"] = "Paragraf",

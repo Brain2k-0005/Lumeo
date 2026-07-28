@@ -899,6 +899,45 @@ public class TrackingInteropService : IComponentInteropService
         return true;
     }
 
+    // GanttV3 row-reorder-drag registration tracking (design spec Phase 3,
+    // T6) — mirrors the splitter tracking immediately above: call counts plus
+    // a captured DotNetObjectReference so a test can simulate a JS-side
+    // commit/validate without a real browser pointer. No options bag to
+    // capture here (see GanttV3RegisterRowReorderDragAsync's own remarks on
+    // this interop channel).
+    private int _ganttV3RegisterRowReorderDragCallCount;
+    private int _ganttV3UnregisterRowReorderDragCallCount;
+    public int GanttV3RegisterRowReorderDragCallCount => _ganttV3RegisterRowReorderDragCallCount;
+    public int GanttV3UnregisterRowReorderDragCallCount => _ganttV3UnregisterRowReorderDragCallCount;
+    private object? _ganttV3RowReorderDotNetRef;
+    public Task GanttV3RegisterRowReorderDragAsync<T>(ElementReference paneEl, DotNetObjectReference<T> dotNetRef) where T : class
+    {
+        _ganttV3RegisterRowReorderDragCallCount++;
+        _ganttV3RowReorderDotNetRef = dotNetRef.Value;
+        return Task.CompletedTask;
+    }
+    public Task GanttV3UnregisterRowReorderDragAsync(ElementReference paneEl)
+    {
+        _ganttV3UnregisterRowReorderDragCallCount++;
+        return Task.CompletedTask;
+    }
+    /// <summary>Simulates a JS-side row-reorder drop by invoking the captured component's own <c>CommitRowReorder</c> method directly.</summary>
+    public async Task<bool> SimulateGanttV3RowReorderCommit(string taskId, int targetIndex)
+    {
+        var method = _ganttV3RowReorderDotNetRef?.GetType().GetMethod("CommitRowReorder");
+        if (method is null) return false;
+        var result = method.Invoke(_ganttV3RowReorderDotNetRef, new object[] { taskId, targetIndex });
+        if (result is Task task) await task;
+        return true;
+    }
+    /// <summary>Simulates a JS-side live row-reorder validation call by invoking the captured component's own <c>ValidateRowDrop</c> method directly.</summary>
+    public bool? SimulateGanttV3RowReorderValidate(string taskId, int targetIndex)
+    {
+        var method = _ganttV3RowReorderDotNetRef?.GetType().GetMethod("ValidateRowDrop");
+        if (method is null) return null;
+        return (bool?)method.Invoke(_ganttV3RowReorderDotNetRef, new object[] { taskId, targetIndex });
+    }
+
     // GanttV3 browser-local-"today" tracking (Codex round 2, P2 #9) — settable
     // so a test can simulate the browser reporting a date that differs from
     // whatever DateTime.Today happens to be on the machine running the suite.

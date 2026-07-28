@@ -279,6 +279,10 @@ internal static partial class LumeoDefaultStrings
         ["Gantt.PercentComplete"] = "{0}% 완료",
         ["Gantt.SummaryProgress"] = "{0}%",
         ["Gantt.ResizeTreePane"] = "트리 패널 크기 조정",
+        ["Gantt.SelectRow"] = "{0} 선택",
+        ["Gantt.SelectRowGroup"] = "{0}의 전체 선택",
+        ["Gantt.DragToReorderRow"] = "드래그하여 {0} 순서 변경",
+        ["Gantt.RowReorderUnavailable"] = "읽기 전용 모드에서는 행 순서를 변경할 수 없습니다",
 
         // Editor
         ["Editor.Paragraph"] = "단락",

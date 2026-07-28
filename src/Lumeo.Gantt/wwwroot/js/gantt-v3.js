@@ -121,6 +121,9 @@ export const ganttV3 = {
 
     registerSplitterDrag,
     unregisterSplitterDrag,
+
+    registerRowReorderDrag,
+    unregisterRowReorderDrag,
 };
 
 // Sticky-header horizontal scroll sync (Codex round 2, P1 #3 — "sticky header
@@ -1293,6 +1296,262 @@ function unregisterSplitterDrag(handleEl) {
     // Cancel (never commit) any drag still in flight — same reasoning as
     // unregisterDrag's own identical loop (a Dispose/re-render racing a live
     // gesture must not let it reach CommitSplitterWidth afterward).
+    for (const cleanup of Array.from(reg.activeCleanups)) cleanup();
+}
+
+// ── Row-reorder drag (design spec Phase 3, T6) ──────────────────────────────
+//
+// A THIRD registration channel, reusing the SAME conventions registerDrag/
+// registerSplitterDrag already established (pointer capture at pointerdown,
+// a per-gesture snapshot of reg.dotNetRef taken at that same moment, pointer-
+// id isolation, every gesture's cleanup() tracked in reg.activeCleanups so
+// unregisterRowReorderDrag can cancel an in-flight drag exactly like the
+// other two channels' own unregister functions do). Shape-wise it sits
+// between the two: a DELEGATED pointerdown listener (like registerDrag — GanttTree's
+// rows are Virtualize-recycled, so a listener per row would need constant
+// re-attachment), but filtered to a dedicated grip element per row (like
+// registerSplitterDrag's dedicated handle, NOT registerDrag's whole-bar hit
+// area — a tree row's whole surface is a click target for its OWN
+// toggle/checkbox/RowTemplate content, so the grip is the only unambiguous
+// drag initiator, same reasoning Lumeo.DataGrid's own row-reorder grip
+// documents).
+//
+// No options bag: unlike registerDrag/registerSplitterDrag (which need .NET
+// to push live config — columnWidth/pixelsPerDay, min/max), a candidate row's
+// bucket/index identity is read directly off its OWN `data-reorder-bucket`/
+// `data-reorder-index` DOM attributes — GanttTree re-renders those fresh
+// every pass, so there is nothing to snapshot or go stale.
+//
+// Ghost + drop-index line (design spec Phase 3, T6 — "drag-engine JS family:
+// ghost row, drop-index line"): the ghost is a translucent clone of the
+// dragged row (mirrors makeGhost's bar-ghost idiom, vertically-only —
+// "drag tree rows vertically"); the drop-index line is a thin horizontal
+// indicator positioned at the boundary between two candidate sibling rows,
+// re-validated continuously against ValidateRowDrop exactly like
+// registerDrag's own checkCanDrop (cached per candidate index, repainted
+// invalid via the SAME CSS-var-only convention setGhostInvalid already
+// established — see setDropLineInvalid).
+const rowReorderRegistrations = new Map(); // paneEl -> { dotNetRef, onPointerDown, activeCleanups }
+const activeRowReorderDrags = new WeakSet(); // gripEl -> currently being dragged by some pointer
+
+function makeRowReorderGhost(rowEl, paneEl) {
+    const rect = rowEl.getBoundingClientRect();
+    const ghost = rowEl.cloneNode(true);
+    ghost.classList.add('lumeo-gantt-v3-drag-ghost', 'lumeo-gantt-v3-row-reorder-ghost');
+    ghost.removeAttribute('data-task-id'); // never itself a hit-test target for a second, nested pointerdown
+    ghost.removeAttribute('data-reorder-bucket');
+    ghost.removeAttribute('data-reorder-index');
+    ghost.style.position = 'absolute';
+    ghost.style.left = '0px';
+    ghost.style.width = rect.width + 'px';
+    ghost.style.opacity = '0.85';
+    ghost.style.pointerEvents = 'none';
+    ghost.style.zIndex = '60';
+    ghost.style.boxShadow = '0 2px 8px rgba(0, 0, 0, 0.15)';
+    paneEl.appendChild(ghost);
+    return ghost;
+}
+
+function makeRowReorderDropLine(paneEl) {
+    const line = document.createElement('div');
+    line.className = 'lumeo-gantt-v3-row-reorder-drop-line';
+    line.setAttribute('data-row-reorder-drop-line', 'true');
+    line.style.position = 'absolute';
+    line.style.left = '0px';
+    line.style.right = '0px';
+    line.style.height = '2px';
+    line.style.backgroundColor = 'var(--color-primary)';
+    line.style.pointerEvents = 'none';
+    line.style.zIndex = '55';
+    line.style.display = 'none';
+    paneEl.appendChild(line);
+    return line;
+}
+
+// CSS-vars-only invalid-drop paint (house rules) — same idiom as
+// setGhostInvalid, applied to the drop-index line rather than a bar ghost:
+// the line itself is the affordance that reads as "you can drop HERE", so a
+// rejected candidate position repaints the LINE, not the ghost (the ghost
+// represents the dragged content, unaffected by whether ITS CURRENT target
+// is valid).
+function setRowReorderDropLineInvalid(line, invalid) {
+    if (!line) return;
+    line.style.backgroundColor = invalid ? 'var(--color-destructive)' : 'var(--color-primary)';
+}
+
+function registerRowReorderDrag(paneEl, dotNetRef) {
+    if (!paneEl) return;
+    const existing = rowReorderRegistrations.get(paneEl);
+    if (existing) {
+        // Idempotent re-registration — swap the stored dotNetRef in place,
+        // same as registerDrag/registerSplitterDrag's own idempotent branch.
+        existing.dotNetRef = dotNetRef;
+        return;
+    }
+
+    const reg = { dotNetRef, onPointerDown: null, activeCleanups: new Set() };
+
+    reg.onPointerDown = (e) => {
+        if (e.button !== 0) return; // left mouse / primary touch-pen contact only
+
+        const gripEl = e.target.closest('[data-row-reorder-grip]');
+        if (!gripEl || !paneEl.contains(gripEl)) return;
+        if (activeRowReorderDrags.has(gripEl)) return; // isolate to the initiating pointer, mirrors activeBarDrags
+
+        const rowEl = gripEl.closest('[data-task-id]');
+        if (!rowEl || !paneEl.contains(rowEl)) return;
+        const taskId = rowEl.getAttribute('data-task-id');
+        const bucket = rowEl.getAttribute('data-reorder-bucket');
+        const originalIndex = parseInt(rowEl.getAttribute('data-reorder-index'), 10);
+        if (!taskId || bucket === null || Number.isNaN(originalIndex)) return;
+
+        // Snapshot at pointerdown (registerDrag's own "Snapshot drag options
+        // at pointerdown" fix, applied identically here) — a later idempotent
+        // re-registration mutates reg.dotNetRef in place and must not reach
+        // an already-running gesture.
+        const dragDotNet = reg.dotNetRef;
+
+        e.preventDefault();
+        const pointerId = e.pointerId;
+        gripEl.setPointerCapture(pointerId);
+        activeRowReorderDrags.add(gripEl);
+
+        const startClientY = e.clientY;
+        let dragInitiated = false;
+        let ghost = null;
+        let dropLine = null;
+        let lastTargetIndex = originalIndex;
+        let lastValid = true;
+        const validationCache = new Map(); // targetIndex -> Promise<bool>
+
+        // Every OTHER currently-rendered row sharing this drag's own bucket
+        // (equality on the raw attribute string — never a CSS selector built
+        // from it, so an arbitrary consumer-supplied task id/GroupLabel can
+        // never need escaping). Recomputed live each move — Virtualize can
+        // recycle rows mid-scroll-drag, so a cached element list would go stale.
+        function siblingRows() {
+            const all = paneEl.querySelectorAll('[data-reorder-bucket]');
+            const result = [];
+            for (const el of all) {
+                if (el !== rowEl && el.getAttribute('data-reorder-bucket') === bucket) result.push(el);
+            }
+            return result;
+        }
+
+        // Nearest-candidate hit test: the sibling whose vertical CENTER is
+        // closest to the pointer wins; above its center = insert BEFORE it
+        // (target index = its own current index), below = insert AFTER
+        // (index + 1). edgeY is where the drop-line paints (that candidate's
+        // own top or bottom edge, whichever half of it was measured closest).
+        function resolveTarget(clientY) {
+            const candidates = siblingRows();
+            if (candidates.length === 0) {
+                const rect = rowEl.getBoundingClientRect();
+                return { index: 0, edgeY: rect.top + rect.height / 2 };
+            }
+            let best = null;
+            let bestDist = Infinity;
+            for (const el of candidates) {
+                const rect = el.getBoundingClientRect();
+                const centerY = rect.top + rect.height / 2;
+                const dist = Math.abs(clientY - centerY);
+                if (dist < bestDist) {
+                    bestDist = dist;
+                    const idx = parseInt(el.getAttribute('data-reorder-index'), 10);
+                    const after = clientY > centerY;
+                    best = { index: after ? idx + 1 : idx, edgeY: after ? rect.bottom : rect.top };
+                }
+            }
+            return best;
+        }
+
+        function checkValid(targetIndex) {
+            let promise = validationCache.get(targetIndex);
+            if (!promise) {
+                // Fail closed on a rejected invocation — same reasoning as
+                // registerDrag's own checkCanDrop ("Fail closed when CanDrop
+                // invocation rejects"): a thrown consumer predicate or a
+                // transient interop failure must not silently permit the drop.
+                promise = dragDotNet
+                    ? dragDotNet.invokeMethodAsync('ValidateRowDrop', taskId, targetIndex).catch(() => false)
+                    : Promise.resolve(true);
+                validationCache.set(targetIndex, promise);
+            }
+            promise.then((valid) => {
+                if (lastTargetIndex !== targetIndex) return; // superseded by a later hovered position already
+                lastValid = valid;
+                setRowReorderDropLineInvalid(dropLine, !valid);
+            });
+        }
+
+        const onPointerMove = (mv) => {
+            if (mv.pointerId !== pointerId) return;
+            const dy = mv.clientY - startClientY;
+            if (!dragInitiated) {
+                if (Math.abs(dy) < DRAG_THRESHOLD_PX) return;
+                dragInitiated = true;
+                ghost = makeRowReorderGhost(rowEl, paneEl);
+                dropLine = makeRowReorderDropLine(paneEl);
+                rowEl.style.opacity = '0.3'; // dim the real row while its ghost follows the pointer — same "one visible representation" intent as the bar-drag ghost
+            }
+
+            const paneRect = paneEl.getBoundingClientRect();
+            const rowRect = rowEl.getBoundingClientRect();
+            ghost.style.top = (rowRect.top - paneRect.top + dy) + 'px';
+
+            const target = resolveTarget(mv.clientY);
+            lastTargetIndex = target.index;
+            dropLine.style.top = (target.edgeY - paneRect.top) + 'px';
+            dropLine.style.display = 'block';
+            checkValid(target.index);
+        };
+
+        const onPointerUp = (up) => {
+            if (up.pointerId !== pointerId) return;
+            cleanup();
+            if (!dragInitiated) return; // below threshold — no ghost residue, no call
+            if (lastTargetIndex === originalIndex) return; // no-op position, no commit — mirrors registerDrag's own 0-delta no-op
+            if (!lastValid) return; // last-validated position was rejected — revert silently, no commit
+            if (dragDotNet) dragDotNet.invokeMethodAsync('CommitRowReorder', taskId, lastTargetIndex).catch(() => {});
+        };
+
+        const onPointerCancel = (cn) => {
+            if (cn.pointerId !== pointerId) return;
+            cleanup();
+        };
+
+        function cleanup() {
+            gripEl.removeEventListener('pointermove', onPointerMove);
+            gripEl.removeEventListener('pointerup', onPointerUp);
+            gripEl.removeEventListener('pointercancel', onPointerCancel);
+            try { gripEl.releasePointerCapture(pointerId); } catch (_) { /* already released */ }
+            if (ghost && ghost.parentNode) ghost.parentNode.removeChild(ghost);
+            if (dropLine && dropLine.parentNode) dropLine.parentNode.removeChild(dropLine);
+            rowEl.style.opacity = '';
+            activeRowReorderDrags.delete(gripEl);
+            reg.activeCleanups.delete(cleanup);
+        }
+
+        reg.activeCleanups.add(cleanup);
+        gripEl.addEventListener('pointermove', onPointerMove);
+        gripEl.addEventListener('pointerup', onPointerUp);
+        gripEl.addEventListener('pointercancel', onPointerCancel);
+    };
+
+    paneEl.addEventListener('pointerdown', reg.onPointerDown);
+    rowReorderRegistrations.set(paneEl, reg);
+}
+
+function unregisterRowReorderDrag(paneEl) {
+    if (!paneEl) return;
+    const reg = rowReorderRegistrations.get(paneEl);
+    if (!reg) return;
+    paneEl.removeEventListener('pointerdown', reg.onPointerDown);
+    rowReorderRegistrations.delete(paneEl);
+    // Cancel (never commit) any drag still in flight — same reasoning as
+    // unregisterDrag/unregisterSplitterDrag's own identical loops (a
+    // Dispose/re-render racing a live gesture must not let it reach
+    // CommitRowReorder afterward).
     for (const cleanup of Array.from(reg.activeCleanups)) cleanup();
 }
 

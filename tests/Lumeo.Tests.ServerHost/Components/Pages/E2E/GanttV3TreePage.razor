@@ -37,7 +37,19 @@
    real column alignment/header-menu/RowTemplate-vs-chrome behavior against a
    live browser. The splitter itself (GanttTree's own divider) needs no
    fixture flag — it renders whenever the tree pane does, on every route on
-   this page. *@
+   this page.
+
+   ?checkboxes=1 / ?reorder=1 / ?readonly=1 / ?veto=1 (design spec Phase 3,
+   T6): independent opt-in flags against the DEFAULT TreeTasks() fixture
+   (root1[child1[grandchild1], child2], root2 — child1/child2 share root1 as
+   ParentId, a real 2-member sibling bucket for a real reorder drag) —
+   UNCONTROLLED (no SelectedIds/OnRowReorder bound at all): Gantt3 owns
+   _state internally, so a real checkbox click / real row drag is directly
+   observable in the rendered DOM with no extra page-level wiring, exactly
+   like every other uncontrolled fixture on this page. ?veto=1 wires a
+   CanDropRow that rejects every candidate position (GanttV3RowSelectionReorderTests'
+   own veto-path spec) — deterministic and fixture-independent, unlike
+   pinning the rejection to one specific task id. *@
 
 <PageTitle>E2E - Gantt v3 tree</PageTitle>
 
@@ -52,18 +64,30 @@
             TreeColumns="@_treeColumns"
             TreeHeaderMenu="@(_showColumns ? TreeHeaderMenuContent : null)"
             RowTemplate="@(_showColumns ? RowTemplateContent : null)"
+            Readonly="@_readonly"
+            ShowRowCheckboxes="@_showRowCheckboxes"
+            AllowRowReorder="@_allowRowReorder"
+            CanDropRow="@(_vetoAll ? RejectEveryDrop : null)"
             data-testid="gantt-v3-tree-root" />
 </div>
 
 @code {
     [SupplyParameterFromQuery] public string? AllowCreate { get; set; }
     [SupplyParameterFromQuery] public string? Fixture { get; set; }
+    [SupplyParameterFromQuery] public string? Checkboxes { get; set; }
+    [SupplyParameterFromQuery] public string? Reorder { get; set; }
+    [SupplyParameterFromQuery] public string? Readonly { get; set; }
+    [SupplyParameterFromQuery] public string? Veto { get; set; }
 
     private List<GanttTask> _tasks = new();
     private bool _allowCreate;
     private bool _showSummaryBars;
     private bool _showColumns;
     private List<GanttTreeColumn>? _treeColumns;
+    private bool _showRowCheckboxes;
+    private bool _allowRowReorder;
+    private bool _readonly;
+    private bool _vetoAll;
 
     protected override void OnInitialized()
     {
@@ -82,7 +106,18 @@
                 new("Duration", 80, DurationCellContent),
             }
             : null;
+        _showRowCheckboxes = Checkboxes == "1";
+        _allowRowReorder = Reorder == "1";
+        _readonly = Readonly == "1";
+        _vetoAll = Veto == "1";
     }
+
+    // Design spec Phase 3, T6 — deterministic veto-path fixture (?veto=1):
+    // rejects every candidate row-reorder position regardless of context, so
+    // GanttV3RowSelectionReorderTests can assert a real drag never commits
+    // (the drop-index line paints invalid, the task order is unchanged after
+    // release) without pinning the rejection to one specific task/position.
+    private static bool RejectEveryDrop(GanttTask task, GanttDropContext context) => false;
 
     private static RenderFragment<GanttTask> DurationCellContent => task => builder =>
     {

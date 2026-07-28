@@ -47,6 +47,29 @@
       drag needs exactly one style write per pointermove regardless of how
       many rows are currently virtualized/rendered.
 
+   Design spec Phase 3, T6 — two more additions, kept structurally separate:
+    - ShowRowCheckboxes: a checkbox rendered before the indent spacer on
+      every row. A leaf task row's checkbox is a direct SelectedIds
+      membership toggle; a parent/group row's is a TRI-STATE
+      select-descendants view (GanttSelectionModel), following the SAME
+      Checked/IsIndeterminate idiom DataGridHeader's own "select all"
+      checkbox already established — no second selection idiom invented for
+      GanttV3. SelectedIds only ever contains LEAF ids (see
+      GanttSelectionModel's own remarks on why).
+    - AllowRowReorder: a drag grip rendered before the checkbox on every TASK
+      row (never a GroupHeader row — see GanttReorderModel's own remarks),
+      wired through a THIRD gantt-v3.js registration channel
+      (registerRowReorderDrag) that reuses the SAME conventions as the
+      splitter/move-resize drag engines (pointer capture, a per-gesture
+      snapshot, pointer-id isolation, activeCleanups) — ghost row + drop-index
+      line, reorder confined to the dragged row's own "bucket" (same
+      ParentId, or same GroupLabel in flat mode — cross-bucket moves are
+      out of scope, never offered by the drag UI at all). Readonly disables
+      BOTH additions server-side (checkbox Disabled + the JSInvokables
+      themselves no-op fresh on every call — Phase-2 lesson: a gesture
+      already in flight at the moment of a runtime Readonly flip must still
+      no-op on commit, not just fail to register a NEW one).
+
    NOTE (accessibility): see GanttBar.razor's NOTE — the Razor compiler always
    generates a component's class as `public`, so despite the task spec asking
    for `internal`, this stays `public` and its new members are recorded in
@@ -87,8 +110,58 @@
        but meant a very long/deep tree paid the tree pane's full DOM cost on
        every render regardless of what was actually scrolled into view. *@
     <Virtualize Items="@RowItems" Context="row" ItemSize="@((float)GanttScale.RowHeight)">
-        <div class="@RowClass(row)" style="@RowStyle" data-row-kind="@(row.Kind == GanttRowKind.GroupHeader ? "group" : "task")">
+        @* data-task-id/-reorder-bucket/-reorder-index are gated on
+           ReorderPointerActive (not unconditional) DELIBERATELY — Gantt3's
+           root wraps BOTH this pane and GanttTimeline, whose OWN bars
+           already carry data-task-id (existing E2E specs, e.g.
+           GanttV3TreeColumnsSplitterTests, locate a bar via an UNSCOPED-past-
+           the-shared-root `[data-task-id='...']` selector that assumes
+           exactly one match); an ALWAYS-rendered data-task-id on a tree row
+           too would make every such selector ambiguous the moment a tree
+           pane is visible. Gating on the one feature that actually consumes
+           it (registerRowReorderDrag's own `closest('[data-task-id]')` hit
+           test) keeps every existing route byte-identical unless a caller
+           opts into AllowRowReorder. *@
+        <div class="@RowClass(row)" style="@RowStyle" data-row-kind="@(row.Kind == GanttRowKind.GroupHeader ? "group" : "task")"
+             data-task-id="@(ReorderPointerActive && row.Kind == GanttRowKind.Task ? row.Task!.Id : null)"
+             data-reorder-bucket="@(ReorderPointerActive && row.Kind == GanttRowKind.Task ? ReorderBucketOf(row.Task!) : null)"
+             data-reorder-index="@(ReorderPointerActive && row.Kind == GanttRowKind.Task ? ReorderIndexOf(row.Task!) : null)">
             <span class="lumeo-gantt-v3-tree-name-cell flex shrink-0 items-center gap-1 px-2" style="@NameCellStyle">
+                @* Design spec Phase 3, T6 — reorder grip, leftmost so its column
+                   aligns vertically regardless of a row's own indent depth
+                   (same reasoning DataGridRow's own leading grip/selection
+                   cells document). Never for a GroupHeader row (no GanttTask
+                   to reorder — see GanttReorderModel's own remarks). *@
+                @if (row.Kind == GanttRowKind.Task && ReorderPointerActive)
+                {
+                    <span data-row-reorder-grip
+                          class="lumeo-gantt-v3-tree-reorder-grip inline-flex h-4 w-4 shrink-0 cursor-grab touch-none items-center justify-center text-muted-foreground/60 opacity-60 hover:opacity-100 active:cursor-grabbing"
+                          aria-label="@L["Gantt.DragToReorderRow", row.Label]"
+                          title="@L["Gantt.DragToReorderRow", row.Label]">
+                        <SvgGlyph Svg="@(LumeoIcons.GripVertical)" class="h-3.5 w-3.5" />
+                    </span>
+                }
+                else if (row.Kind == GanttRowKind.Task && AllowRowReorder && Readonly)
+                {
+                    @* Inert-but-visible grip while Readonly — mirrors
+                       Lumeo.DataGrid's own RowReorderPointerActive-false
+                       treatment (dimmed, no data-row-reorder-grip marker so
+                       the delegated JS listener never even hit-tests it)
+                       rather than disappearing outright. *@
+                    <span class="lumeo-gantt-v3-tree-reorder-grip inline-flex h-4 w-4 shrink-0 cursor-not-allowed items-center justify-center text-muted-foreground/30"
+                          aria-hidden="true"
+                          title="@L["Gantt.RowReorderUnavailable"]">
+                        <SvgGlyph Svg="@(LumeoIcons.GripVertical)" class="h-3.5 w-3.5" />
+                    </span>
+                }
+                @if (ShowRowCheckboxes)
+                {
+                    var (isChecked, isIndeterminate) = CheckboxState(row);
+                    <Checkbox Checked="@isChecked" IsIndeterminate="@isIndeterminate" Disabled="@Readonly"
+                              CheckedChanged="@(v => HandleCheckChangedAsync(row, v))"
+                              AriaLabel="@(row.HasChildren ? L["Gantt.SelectRowGroup", row.Label] : L["Gantt.SelectRow", row.Label])"
+                              Class="lumeo-gantt-v3-tree-checkbox shrink-0" />
+                }
                 <span class="lumeo-gantt-v3-tree-indent shrink-0" style="@IndentStyle(row)"></span>
                 @if (row.ToggleKey is not null)
                 {
@@ -194,6 +267,86 @@
     /// </summary>
     [Parameter] public EventCallback<double> OnResize { get; set; }
 
+    /// <summary>
+    /// The full task list <see cref="Rows"/> was built from (design spec Phase
+    /// 3, T6) — used to compute per-row checkbox tri-state (<see
+    /// cref="GanttSelectionModel"/>) and reorder bucket/index (<see
+    /// cref="GanttReorderModel"/>), BOTH of which must see descendants/siblings
+    /// hidden behind a collapsed ancestor, unlike the already collapse-filtered
+    /// <see cref="Rows"/> — mirrors <see cref="Lumeo.GanttTimeline"/>'s own
+    /// separate <c>Tasks</c> parameter for the identical reason (its own
+    /// <c>Rollups</c>).
+    /// </summary>
+    [Parameter] public IReadOnlyList<GanttTask> Tasks { get; set; } = Array.Empty<GanttTask>();
+
+    /// <summary>
+    /// Ids of currently-selected LEAF rows (design spec Phase 3, T6 — see <see
+    /// cref="GanttSelectionModel"/>'s own remarks for exactly which rows can be
+    /// members). <c>Gantt3</c> owns <c>SelectedIds</c>' controlled/uncontrolled
+    /// resolution and always hands this component the resolved, non-null set
+    /// (never null here, even when nothing is selected — mirrors <see
+    /// cref="TreePaneWidth"/>'s own resolved-not-raw contract).
+    /// </summary>
+    [Parameter] public IReadOnlySet<string> SelectedIds { get; set; } = EmptySelectedIds;
+
+    /// <summary>Renders a checkbox column when true (design spec Phase 3, T6 — REUI "Leaf row selection (checkboxes)"). Default false.</summary>
+    [Parameter] public bool ShowRowCheckboxes { get; set; }
+
+    /// <summary>
+    /// Raised when a row's checkbox is toggled. <c>Key</c> is the leaf task's
+    /// own id for a leaf row, or the row's <see cref="GanttVisibleRow.ToggleKey"/>
+    /// (a hierarchy-parent task id, or a <see cref="GanttRowModel.GroupToggleKey"/>-prefixed
+    /// group key) for a tri-state parent/group row; <c>Selected</c> is the
+    /// checkbox's NEW value (true = select all, false = deselect all, for a
+    /// parent/group row). <c>Gantt3</c> resolves <c>Key</c> into the actual
+    /// leaf id(s) to flip via <see cref="GanttSelectionModel.ResolveLeafIds"/>.
+    /// </summary>
+    [Parameter] public EventCallback<(string Key, bool Selected)> OnRowSelectionChange { get; set; }
+
+    /// <summary>
+    /// Enables drag-to-reorder tree rows (design spec Phase 3, T6 — REUI "Row
+    /// reorder (drag tree rows)"). Default false. Reorder is confined to the
+    /// dragged row's own "bucket" (same <see cref="GanttTask.ParentId"/>, or
+    /// same <see cref="GanttTask.GroupLabel"/> in flat mode — see <see
+    /// cref="GanttReorderModel"/>'s own remarks); a cross-bucket move is never
+    /// offered by the drag UI at all. <see cref="Readonly"/> blocks it
+    /// unconditionally.
+    /// </summary>
+    [Parameter] public bool AllowRowReorder { get; set; }
+
+    /// <summary>
+    /// Live validation predicate for a candidate row-reorder drop position
+    /// (design spec Phase 3, T6 — the REUI <c>canDropEvent</c> analog applied
+    /// to row reorder). Evaluated continuously while a reorder drag is in
+    /// flight (<see cref="ValidateRowDrop"/>) and once more at drop
+    /// (<see cref="CommitRowReorder"/> trusts the last live verdict — same
+    /// two-phase discipline <see cref="Lumeo.GanttTimeline.CanDrop"/>/
+    /// <c>ValidateDrop</c>/<c>CommitDrag</c> already established). Null
+    /// (default) permits every within-bucket position.
+    /// </summary>
+    [Parameter] public Func<GanttTask, GanttDropContext, bool>? CanDropRow { get; set; }
+
+    /// <summary>
+    /// Raised once, after a completed row-reorder drop, with the resolved
+    /// <see cref="GanttRowReorder"/> payload. <c>Gantt3</c> applies the
+    /// equivalent list reorder (<see cref="GanttReorderModel.Move"/>) AND
+    /// re-raises the same payload through its own public <c>OnRowReorder</c>.
+    /// </summary>
+    [Parameter] public EventCallback<GanttRowReorder> OnRowReorder { get; set; }
+
+    /// <summary>
+    /// Disables checkbox interaction and row-reorder dragging (design spec
+    /// Phase 3, T6 — "Readonly blocks both"). Mirrors <see
+    /// cref="Lumeo.GanttTimeline.Readonly"/>'s own contract exactly: checked
+    /// FRESH on every JSInvokable call (<see cref="ValidateRowDrop"/>/<see
+    /// cref="CommitRowReorder"/>), not just at registration time — the
+    /// Phase-2 lesson (a gesture already in flight at the moment of a runtime
+    /// flip has its own move/up handlers living in gantt-v3.js's per-drag
+    /// closure, which survives <c>unregisterRowReorderDrag</c> unaffected and
+    /// still calls these on release/hover).
+    /// </summary>
+    [Parameter] public bool Readonly { get; set; }
+
     /// <summary>Additional CSS classes merged onto the root pane element.</summary>
     [Parameter] public string? Class { get; set; }
 
@@ -293,6 +446,153 @@
     private Task HandleToggleAsync(string? key) =>
         key is not null && OnToggleCollapse.HasDelegate ? OnToggleCollapse.InvokeAsync(key) : Task.CompletedTask;
 
+    // ── Checkbox selection (design spec Phase 3, T6) ────────────────────────
+
+    private static readonly IReadOnlySet<string> EmptySelectedIds = new HashSet<string>();
+    private static readonly IReadOnlyDictionary<string, GanttRowSelectionState> EmptySelectionStates = new Dictionary<string, GanttRowSelectionState>();
+
+    // Gated on ShowRowCheckboxes so a caller that never sets it pays nothing
+    // beyond the one FilterValidDurationTasks pass every OTHER already-gated
+    // computed property here does (Rollups' own ShowSummaryBars gate is the
+    // direct precedent).
+    private IReadOnlyDictionary<string, GanttRowSelectionState> SelectionStates => ShowRowCheckboxes
+        ? GanttSelectionModel.ComputeStates(GanttRowModel.FilterValidDurationTasks(Tasks), SelectedIds)
+        : EmptySelectionStates;
+
+    // A leaf row's own state is a direct O(1) SelectedIds membership check —
+    // no dictionary lookup needed (SelectionStates only ever has entries for
+    // HasChildren rows — see GanttSelectionModel.ComputeStates' own remarks).
+    private (bool Checked, bool Indeterminate) CheckboxState(GanttVisibleRow row)
+    {
+        if (!row.HasChildren) return (row.Task is not null && SelectedIds.Contains(row.Task.Id), false);
+        if (row.ToggleKey is null || !SelectionStates.TryGetValue(row.ToggleKey, out var state)) return (false, false);
+        return (state != GanttRowSelectionState.Unselected, state == GanttRowSelectionState.PartiallySelected);
+    }
+
+    // row.HasChildren -> the row's own ToggleKey (a parent task id, or a
+    // GanttRowModel.GroupToggleKey-prefixed group key) so Gantt3 can resolve
+    // every descendant/member LEAF via GanttSelectionModel.ResolveLeafIds;
+    // a leaf row -> its own task id directly (ResolveLeafIds' own "a plain
+    // task id with no children returns just that one id" branch handles this
+    // identically either way, but resolving it here avoids a wasted round
+    // trip through that branch for the overwhelmingly common leaf-click case).
+    private Task HandleCheckChangedAsync(GanttVisibleRow row, bool selected)
+    {
+        if (Readonly) return Task.CompletedTask; // defensive server-side guard (design spec Phase 3, T6 — "Readonly blocks both") — the Checkbox's own Disabled=Readonly already prevents the click client-side; this is the untrusted-boundary backstop every JSInvokable in this campaign already applies to ITS OWN surface
+        var key = row.HasChildren ? row.ToggleKey : row.Task?.Id;
+        return key is not null && OnRowSelectionChange.HasDelegate
+            ? OnRowSelectionChange.InvokeAsync((key, selected))
+            : Task.CompletedTask;
+    }
+
+    // ── Row reorder (design spec Phase 3, T6) ───────────────────────────────
+
+    private static readonly IReadOnlyDictionary<string, (string BucketKey, int Index)> EmptyReorderPositions =
+        new Dictionary<string, (string, int)>();
+
+    private bool ReorderPointerActive => AllowRowReorder && !Readonly;
+
+    // Gated on AllowRowReorder (not ReorderPointerActive) so a Readonly flip
+    // doesn't need to recompute anything — the MARKUP'S OWN ReorderPointerActive
+    // check is what actually withholds the data-reorder-* attributes/grip
+    // when Readonly, matching how the grip itself stays an INERT (not
+    // recomputed-away) visual under Readonly.
+    private IReadOnlyDictionary<string, (string BucketKey, int Index)> ReorderPositions => AllowRowReorder
+        ? GanttReorderModel.ComputeBucketPositions(GanttRowModel.FilterValidDurationTasks(Tasks))
+        : EmptyReorderPositions;
+
+    private string? ReorderBucketOf(GanttTask task) =>
+        ReorderPositions.TryGetValue(task.Id, out var pos) ? pos.BucketKey : null;
+
+    private string? ReorderIndexOf(GanttTask task) =>
+        ReorderPositions.TryGetValue(task.Id, out var pos) ? pos.Index.ToString(System.Globalization.CultureInfo.InvariantCulture) : null;
+
+    // Phase 3, T1's own O(1) FindTask idiom (GanttTimeline), ported here for
+    // the SAME reason: ValidateRowDrop/CommitRowReorder can arrive at any
+    // time between renders (a live drag), and must resolve against whatever
+    // Tasks a render just committed rather than an O(rows) scan repeated on
+    // every one of these JSInvokable calls.
+    private Dictionary<string, GanttTask> _taskIndex = new();
+    private GanttTask? FindTask(string taskId) => _taskIndex.TryGetValue(taskId, out var t) ? t : null;
+
+    /// <summary>
+    /// JS -&gt; .NET live row-reorder drop validation (design spec Phase 3, T6
+    /// — the REUI <c>canDropEvent</c> analog for tree-row reorder). Mirrors
+    /// <see cref="Lumeo.GanttTimeline.ValidateDrop"/>'s exact contract:
+    /// permits (<c>true</c>) when <see cref="Readonly"/>, when <see
+    /// cref="CanDropRow"/> is unset, or when <paramref name="taskId"/>
+    /// doesn't resolve; otherwise resolves the candidate <see
+    /// cref="GanttDropContext"/> from THIS component's own <see
+    /// cref="Tasks"/> (never trusts JS to compute bucket semantics — see
+    /// <see cref="GanttReorderModel"/>'s own remarks) and defers to <see
+    /// cref="CanDropRow"/>. <c>[JSInvokable]</c> requires it public — not
+    /// meant for direct C# callers outside a test double simulating the JS
+    /// side.
+    /// </summary>
+    [JSInvokable]
+    public bool ValidateRowDrop(string taskId, int targetIndex)
+    {
+        if (Readonly) return true;
+        if (CanDropRow is null) return true;
+
+        var task = FindTask(taskId);
+        if (task is null) return true;
+
+        var visible = GanttRowModel.FilterValidDurationTasks(Tasks);
+        var siblings = GanttReorderModel.SiblingsOf(visible, task);
+        if (siblings.Count == 0) return true;
+        var clamped = Math.Clamp(targetIndex, 0, siblings.Count - 1);
+        var targetSibling = siblings[clamped];
+        var targetTaskId = targetSibling.Id == taskId ? null : targetSibling.Id;
+
+        return CanDropRow(task, new GanttDropContext(task.ParentId, clamped, targetTaskId));
+    }
+
+    /// <summary>
+    /// JS -&gt; .NET row-reorder commit (design spec Phase 3, T6): fired
+    /// exactly ONCE, on drop, by gantt-v3.js's <c>registerRowReorderDrag</c>
+    /// (which already awaited <see cref="ValidateRowDrop"/> for this SAME
+    /// position before ever calling here — mirrors <see
+    /// cref="Lumeo.GanttTimeline.CommitDrag"/>'s own "JS validates, commit
+    /// trusts it" two-phase split, no redundant re-check here). Resolves the
+    /// FULL <see cref="GanttRowReorder"/> payload from THIS component's own
+    /// <see cref="Tasks"/> and bubbles it via <see cref="OnRowReorder"/>;
+    /// <c>Gantt3.HandleRowReorderAsync</c> applies the equivalent list
+    /// reorder AND re-raises the same payload publicly.
+    ///
+    /// No-ops (server-side guard — design spec Phase 3, T6 "Readonly blocks
+    /// both", Phase-2 lesson on a mid-drag Readonly flip surviving
+    /// <c>unregisterRowReorderDrag</c> — same reasoning as <see
+    /// cref="Lumeo.GanttTimeline.CommitDrag"/>'s own <see cref="Readonly"/>
+    /// guard) when <see cref="Readonly"/> or <see cref="AllowRowReorder"/> is
+    /// off, when <paramref name="taskId"/> doesn't resolve, or when the
+    /// clamped target index equals the task's current index (a genuine
+    /// no-op — mirrors <c>CommitDrag</c>'s own <c>movedDays == 0</c> rule).
+    /// </summary>
+    [JSInvokable]
+    public async Task CommitRowReorder(string taskId, int targetIndex)
+    {
+        if (Readonly || !AllowRowReorder) return;
+
+        var task = FindTask(taskId);
+        if (task is null) return;
+
+        var visible = GanttRowModel.FilterValidDurationTasks(Tasks);
+        var siblings = GanttReorderModel.SiblingsOf(visible, task);
+        var previousIndex = -1;
+        for (var i = 0; i < siblings.Count; i++)
+        {
+            if (siblings[i].Id == taskId) { previousIndex = i; break; }
+        }
+        if (previousIndex < 0) return;
+
+        var clamped = Math.Clamp(targetIndex, 0, siblings.Count - 1);
+        if (clamped == previousIndex) return;
+
+        var reorder = new GanttRowReorder(taskId, task.ParentId, task.ParentId, previousIndex, clamped);
+        if (OnRowReorder.HasDelegate) await OnRowReorder.InvokeAsync(reorder);
+    }
+
     // ── Splitter (design spec Phase 3, T5) ──────────────────────────────────
     //
     // Reuses the gantt-v3.js drag-engine conventions (pointer capture, a
@@ -313,10 +613,60 @@
     private DotNetObjectReference<GanttTree>? _selfRef;
     private bool _splitterRegistered;
     private GanttSplitterOptions _lastSplitterOptions;
+    private bool _reorderRegistered;
+
+    // Phase 3, T1's own _taskIndex idiom (GanttTimeline) — rebuilt on EVERY
+    // parameter pass (OnParametersSet runs synchronously before any render,
+    // including the first), so it always reflects whatever Tasks a render
+    // just committed, in lockstep with ReorderPositions/SelectionStates.
+    protected override void OnParametersSet()
+    {
+        var index = new Dictionary<string, GanttTask>(Tasks.Count);
+        foreach (var t in Tasks) index[t.Id] = t;
+        _taskIndex = index;
+    }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         await SyncSplitterRegistrationAsync();
+        await SyncRowReorderRegistrationAsync();
+    }
+
+    // Design spec Phase 3, T6 — registers/unregisters gantt-v3.js's
+    // registerRowReorderDrag against THIS pane's own root (_paneRef — the
+    // element every row lives inside, mirroring GanttTimeline.SyncDragRegistrationAsync's
+    // own "delegate on the container that owns the recycled elements" choice).
+    // Readonly is checked FRESH here too (not only at mount), exactly like
+    // GanttTimeline.SyncDragRegistrationAsync's own contract — a runtime
+    // Readonly (or AllowRowReorder) flip un-registers/re-registers instead of
+    // only taking effect at the next mount.
+    private async Task SyncRowReorderRegistrationAsync()
+    {
+        var want = AllowRowReorder && !Readonly;
+        if (!want)
+        {
+            if (_reorderRegistered)
+            {
+                _reorderRegistered = false;
+                try { await Interop.GanttV3UnregisterRowReorderDragAsync(_paneRef); }
+                catch (JSDisconnectedException) { }
+            }
+            return;
+        }
+        if (_reorderRegistered) return; // no options bag to re-diff — see GanttV3RegisterRowReorderDragAsync's own remarks; register once, idempotent
+
+        _selfRef ??= DotNetObjectReference.Create(this);
+        _reorderRegistered = true;
+        try
+        {
+            await Interop.GanttV3RegisterRowReorderDragAsync(_paneRef, _selfRef);
+        }
+        catch (Exception)
+        {
+            // Mirrors SyncSplitterRegistrationAsync's own "keep the rest of
+            // the pane working when drag interop is unavailable" fix.
+            _reorderRegistered = false;
+        }
     }
 
     // Re-registers whenever TreePaneWidth/the min/max clamps actually change
@@ -410,6 +760,11 @@
         if (_splitterRegistered)
         {
             try { await Interop.GanttV3UnregisterSplitterDragAsync(_dividerRef); }
+            catch (JSDisconnectedException) { }
+        }
+        if (_reorderRegistered)
+        {
+            try { await Interop.GanttV3UnregisterRowReorderDragAsync(_paneRef); }
             catch (JSDisconnectedException) { }
         }
         _selfRef?.Dispose();

@@ -331,5 +331,9 @@ internal static partial class LumeoDefaultStrings
         ["Gantt.PercentComplete"] = "{0}% 完了",
         ["Gantt.SummaryProgress"] = "{0}%",
         ["Gantt.ResizeTreePane"] = "ツリーペインのサイズを変更",
+        ["Gantt.SelectRow"] = "{0}を選択",
+        ["Gantt.SelectRowGroup"] = "{0}内をすべて選択",
+        ["Gantt.DragToReorderRow"] = "ドラッグして{0}を並べ替え",
+        ["Gantt.RowReorderUnavailable"] = "読み取り専用モードでは行の並べ替えはできません",
     };
 }

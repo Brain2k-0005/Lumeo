@@ -331,5 +331,9 @@ internal static partial class LumeoDefaultStrings
         ["Gantt.PercentComplete"] = "{0}% voltooid",
         ["Gantt.SummaryProgress"] = "{0}%",
         ["Gantt.ResizeTreePane"] = "Boomdeelvenster van grootte wijzigen",
+        ["Gantt.SelectRow"] = "{0} selecteren",
+        ["Gantt.SelectRowGroup"] = "Alles in {0} selecteren",
+        ["Gantt.DragToReorderRow"] = "{0} slepen om te herschikken",
+        ["Gantt.RowReorderUnavailable"] = "Rijen herschikken is niet beschikbaar in alleen-lezen modus",
     };
 }

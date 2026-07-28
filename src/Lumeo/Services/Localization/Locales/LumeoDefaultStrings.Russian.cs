@@ -282,6 +282,10 @@ internal static partial class LumeoDefaultStrings
         ["Gantt.PercentComplete"] = "Выполнено {0}%",
         ["Gantt.SummaryProgress"] = "{0}%",
         ["Gantt.ResizeTreePane"] = "Изменить размер панели дерева",
+        ["Gantt.SelectRow"] = "Выбрать {0}",
+        ["Gantt.SelectRowGroup"] = "Выбрать все в {0}",
+        ["Gantt.DragToReorderRow"] = "Перетащите, чтобы изменить порядок {0}",
+        ["Gantt.RowReorderUnavailable"] = "Изменение порядка строк недоступно в режиме только для чтения",
 
         // Editor
         ["Editor.Paragraph"] = "Абзац",

@@ -498,6 +498,14 @@ internal static partial class LumeoDefaultStrings
         // Design spec Phase 3, T5 — the tree/timeline splitter handle's
         // aria-label (WAI-ARIA separator pattern).
         ["Gantt.ResizeTreePane"] = "Resize tree pane",
+        // Design spec Phase 3, T6 — leaf checkbox / parent-group tri-state
+        // checkbox aria-labels (ShowRowCheckboxes).
+        ["Gantt.SelectRow"] = "Select {0}",
+        ["Gantt.SelectRowGroup"] = "Select all in {0}",
+        // Design spec Phase 3, T6 — row-reorder drag grip aria-label/title
+        // (AllowRowReorder) + its Readonly-inert counterpart.
+        ["Gantt.DragToReorderRow"] = "Drag to reorder {0}",
+        ["Gantt.RowReorderUnavailable"] = "Row reordering is unavailable while read-only",
 
         // ── Theme ───────────────────────────────────────────────────
         ["Theme.Light"] = "Light",
@@ -1035,6 +1043,10 @@ internal static partial class LumeoDefaultStrings
         ["Gantt.PercentComplete"] = "{0}% abgeschlossen",
         ["Gantt.SummaryProgress"] = "{0}%",
         ["Gantt.ResizeTreePane"] = "Baumbereich anpassen",
+        ["Gantt.SelectRow"] = "{0} auswählen",
+        ["Gantt.SelectRowGroup"] = "Alle in {0} auswählen",
+        ["Gantt.DragToReorderRow"] = "{0} zum Umsortieren ziehen",
+        ["Gantt.RowReorderUnavailable"] = "Zeilen können im Lesemodus nicht neu angeordnet werden",
 
         // ── Theme ───────────────────────────────────────────────────
         ["Theme.Light"] = "Hell",

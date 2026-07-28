@@ -1748,6 +1748,26 @@ public sealed class ComponentInteropService : IComponentInteropService
         catch (JSDisconnectedException) { }
     }
 
+    public async Task GanttV3RegisterRowReorderDragAsync<[System.Diagnostics.CodeAnalysis.DynamicallyAccessedMembers(System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicMethods)] T>(Microsoft.AspNetCore.Components.ElementReference paneEl, DotNetObjectReference<T> dotNetRef) where T : class
+    {
+        try
+        {
+            var module = await GetGanttV3ModuleAsync();
+            await module.InvokeVoidAsync("ganttV3.registerRowReorderDrag", paneEl, dotNetRef);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
+    public async Task GanttV3UnregisterRowReorderDragAsync(Microsoft.AspNetCore.Components.ElementReference paneEl)
+    {
+        try
+        {
+            var module = await GetGanttV3ModuleAsync();
+            await module.InvokeVoidAsync("ganttV3.unregisterRowReorderDrag", paneEl);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
     // --- Toolbar overflow observer ---
     // Toolbar ships its own tiny JS module (toolbar.js) that wraps a
     // ResizeObserver to measure how many child items fit before an overflow

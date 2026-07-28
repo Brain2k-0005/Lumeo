@@ -197,6 +197,13 @@ public class P2LocalizationSweepTests : IAsyncLifetime
         // aria-label, extended here per this test's own "extend, don't
         // duplicate" precedent (same as every other Gantt.* key above).
         "Gantt.ResizeTreePane",
+        // Design spec Phase 3, T6 — leaf/parent-group checkbox aria-labels
+        // (ShowRowCheckboxes) and the row-reorder grip's aria-label/title +
+        // its Readonly-inert counterpart (AllowRowReorder), extended here
+        // per this test's own "extend, don't duplicate" precedent (same as
+        // every other Gantt.* key above).
+        "Gantt.SelectRow", "Gantt.SelectRowGroup",
+        "Gantt.DragToReorderRow", "Gantt.RowReorderUnavailable",
     };
 
     [Theory]
