@@ -288,6 +288,10 @@ internal static partial class LumeoDefaultStrings
         ["Gantt.SelectRowGroup"] = "تحديد الكل في {0}",
         ["Gantt.DragToReorderRow"] = "اسحب لإعادة ترتيب {0}",
         ["Gantt.RowReorderUnavailable"] = "إعادة ترتيب الصفوف غير متاحة في وضع القراءة فقط",
+        ["Gantt.ZoomIn"] = "تكبير",
+        ["Gantt.ZoomOut"] = "تصغير",
+        ["Gantt.ScrollToEarlierTask"] = "التمرير إلى {0} (سابقًا)",
+        ["Gantt.ScrollToLaterTask"] = "التمرير إلى {0} (لاحقًا)",
 
         // Editor
         ["Editor.Paragraph"] = "فقرة",

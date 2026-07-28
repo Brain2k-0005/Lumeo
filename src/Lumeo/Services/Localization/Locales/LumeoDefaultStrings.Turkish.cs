@@ -283,6 +283,10 @@ internal static partial class LumeoDefaultStrings
         ["Gantt.SelectRowGroup"] = "{0} içindeki tümünü seç",
         ["Gantt.DragToReorderRow"] = "{0} öğesini yeniden sıralamak için sürükle",
         ["Gantt.RowReorderUnavailable"] = "Salt okunur modda satır sıralaması değiştirilemez",
+        ["Gantt.ZoomIn"] = "Yakınlaştır",
+        ["Gantt.ZoomOut"] = "Uzaklaştır",
+        ["Gantt.ScrollToEarlierTask"] = "{0} konumuna kaydır (önce)",
+        ["Gantt.ScrollToLaterTask"] = "{0} konumuna kaydır (sonra)",
 
         // Editor
         ["Editor.Paragraph"] = "Paragraf",

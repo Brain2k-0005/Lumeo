@@ -187,12 +187,21 @@ function unregisterHeaderScrollSync(canvasEl) {
 // precisely the mode where this virtualization actually matters at scale),
 // rAF-throttled so a fast scroll/drag doesn't flood Blazor with an
 // invokeMethodAsync round-trip per native 'scroll' event.
-const verticalScrollTrackers = new Map(); // el -> { dotNetRef, onScroll, pendingFrame, lastScrollTop, lastClientHeight, resizeObserver }
+const verticalScrollTrackers = new Map(); // el -> { dotNetRef, onScroll, pendingFrame, lastScrollTop, lastClientHeight, lastScrollLeft, lastClientWidth, resizeObserver }
 
 function registerVerticalScrollTracking(el, dotNetRef) {
     if (!el || verticalScrollTrackers.has(el)) return;
     const report = () => {
         tracker.pendingFrame = null;
+        // Design spec Phase 3, T7 — off-screen indicators need the shared
+        // pane's HORIZONTAL extent too; fromNativeScrollLeft (this file's own
+        // RTL-normalization helper, already used by registerHeaderScrollSync
+        // for the identical "live native 'scroll' event -> logical offset"
+        // conversion) un-mirrors it into the SAME never-mirrored coordinate
+        // space GanttScale.DateToPixel/every bar's own X already live in, so
+        // the .NET side needs no further conversion.
+        const scrollLeft = fromNativeScrollLeft(el, el.scrollLeft);
+        const clientWidth = el.clientWidth;
         // Bug fix (Codex round 5, P2 #8): a horizontal-only pan (scrolling the
         // SAME shared pane sideways to browse dates) fires the identical
         // native 'scroll' event this listener reacts to — there is only one
@@ -212,9 +221,20 @@ function registerVerticalScrollTracking(el, dotNetRef) {
         // position) was silently swallowed by this SAME check, even though
         // clientHeight is the other half of the culling window's own inputs.
         // Now requires BOTH to be unchanged before skipping.
-        if (el.scrollTop === tracker.lastScrollTop && el.clientHeight === tracker.lastClientHeight) return;
+        //
+        // Design spec Phase 3, T7: scrollLeft/clientWidth joined the SAME
+        // dedup — critically, this is what makes a PURE horizontal pan (the
+        // exact scenario off-screen indicators exist for) actually report at
+        // all: before T7, scrollTop/clientHeight alone would have kept
+        // matching their cached values throughout a horizontal-only drag,
+        // silently swallowing every such report the same class of bug the
+        // round-6 clientHeight fix already closed for resize.
+        if (el.scrollTop === tracker.lastScrollTop && el.clientHeight === tracker.lastClientHeight &&
+            scrollLeft === tracker.lastScrollLeft && clientWidth === tracker.lastClientWidth) return;
         tracker.lastScrollTop = el.scrollTop;
         tracker.lastClientHeight = el.clientHeight;
+        tracker.lastScrollLeft = scrollLeft;
+        tracker.lastClientWidth = clientWidth;
         // Debug/test-observability counter (Codex round 5, P2 #8): the
         // invokeMethodAsync call below crosses a Blazor Server SignalR
         // round-trip with no console/network signal an E2E test could
@@ -223,13 +243,13 @@ function registerVerticalScrollTracking(el, dotNetRef) {
         // to assert "no report fired" against, matching the existing
         // data-gantt-v3-initial-scroll latch's own reasoning (centerOn's remarks).
         el.dataset.ganttV3VerticalReportCount = String((Number(el.dataset.ganttV3VerticalReportCount) || 0) + 1);
-        dotNetRef.invokeMethodAsync('OnGanttV3VerticalScroll', el.scrollTop, el.clientHeight);
+        dotNetRef.invokeMethodAsync('OnGanttV3VerticalScroll', el.scrollTop, el.clientHeight, scrollLeft, clientWidth);
     };
     const onScroll = () => {
         if (tracker.pendingFrame) return; // already scheduled for this frame
         tracker.pendingFrame = requestAnimationFrame(report);
     };
-    const tracker = { dotNetRef, onScroll, pendingFrame: null, lastScrollTop: null, lastClientHeight: null, resizeObserver: null };
+    const tracker = { dotNetRef, onScroll, pendingFrame: null, lastScrollTop: null, lastClientHeight: null, lastScrollLeft: null, lastClientWidth: null, resizeObserver: null };
     el.addEventListener('scroll', onScroll, { passive: true });
     // Bug fix (Codex round 6, P1 #2): a rows-count change never fires this
     // native 'scroll' event at all (nothing about the SCROLL POSITION

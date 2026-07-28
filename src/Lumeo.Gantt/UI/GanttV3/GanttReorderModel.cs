@@ -42,13 +42,27 @@ internal static class GanttReorderModel
     /// cref="GanttRollupModel.ComputeGroupRollups"/> already do.
     /// </summary>
     internal static string? BucketKey(IReadOnlyList<GanttTask> tasks, GanttTask task) =>
-        GanttRowModel.UsesHierarchy(tasks) ? task.ParentId : NormalizedGroupLabel(task.GroupLabel);
+        BucketKey(GanttRowModel.UsesHierarchy(tasks), task);
+
+    /// <summary>
+    /// Same as <see cref="BucketKey(IReadOnlyList{GanttTask}, GanttTask)"/>, for a
+    /// caller that already knows <see cref="GanttRowModel.UsesHierarchy"/> for the
+    /// task set (design spec Phase 3, T7 — <c>Lumeo.GanttTimeline</c>'s own
+    /// <c>ColorByGroup</c> resolution needs this key once PER RENDERED ROW; calling
+    /// the <c>tasks</c>-taking overload there would re-run <see
+    /// cref="GanttRowModel.UsesHierarchy"/>'s own O(n) scan for EVERY row instead
+    /// of once for the whole render, the exact O(rows) redundant-scan class <see
+    /// cref="Lumeo.GanttV3.GanttReorderModel.ComputeBucketPositions"/> already
+    /// avoids for the identical reason — see that method's own remarks).
+    /// </summary>
+    internal static string? BucketKey(bool usesHierarchy, GanttTask task) =>
+        usesHierarchy ? task.ParentId : NormalizedGroupLabel(task.GroupLabel);
 
     private static string? NormalizedGroupLabel(string? label) => string.IsNullOrEmpty(label) ? null : label;
 
     /// <summary>
     /// Every task in <paramref name="tasks"/> sharing <paramref name="task"/>'s
-    /// own reorder bucket (<see cref="BucketKey"/>), INCLUDING <paramref
+    /// own reorder bucket (<see cref="BucketKey(IReadOnlyList{GanttTask}, GanttTask)"/>), INCLUDING <paramref
     /// name="task"/> itself, in the task set's own original relative order —
     /// the same "preserve caller order, group by key" discipline <see
     /// cref="GanttRowModel.BuildHierarchyRows"/>'s own children-by-parent map
@@ -68,11 +82,11 @@ internal static class GanttReorderModel
         return result;
     }
 
-    /// <summary>Sentinel used in place of a <c>null</c> bucket key (the root bucket, either mode — see <see cref="BucketKey"/>) so a caller (e.g. a <c>data-reorder-bucket</c> DOM attribute) always has a concrete, non-null string to compare against.</summary>
+    /// <summary>Sentinel used in place of a <c>null</c> bucket key (the root bucket, either mode — see <see cref="BucketKey(IReadOnlyList{GanttTask}, GanttTask)"/>) so a caller (e.g. a <c>data-reorder-bucket</c> DOM attribute) always has a concrete, non-null string to compare against.</summary>
     internal const string RootBucketSentinel = "\0root";
 
     /// <summary>
-    /// Bulk, O(n) single-pass equivalent of calling <see cref="BucketKey"/> +
+    /// Bulk, O(n) single-pass equivalent of calling <see cref="BucketKey(IReadOnlyList{GanttTask}, GanttTask)"/> +
     /// "this task's index within <see cref="SiblingsOf"/>" for every task in
     /// <paramref name="tasks"/> — <see cref="Lumeo.GanttTree"/>'s own rendering
     /// needs BOTH per row, and computing them independently per row (an O(n)

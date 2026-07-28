@@ -283,6 +283,10 @@ internal static partial class LumeoDefaultStrings
         ["Gantt.SelectRowGroup"] = "{0}의 전체 선택",
         ["Gantt.DragToReorderRow"] = "드래그하여 {0} 순서 변경",
         ["Gantt.RowReorderUnavailable"] = "읽기 전용 모드에서는 행 순서를 변경할 수 없습니다",
+        ["Gantt.ZoomIn"] = "확대",
+        ["Gantt.ZoomOut"] = "축소",
+        ["Gantt.ScrollToEarlierTask"] = "{0}(으)로 스크롤 (이전)",
+        ["Gantt.ScrollToLaterTask"] = "{0}(으)로 스크롤 (이후)",
 
         // Editor
         ["Editor.Paragraph"] = "단락",

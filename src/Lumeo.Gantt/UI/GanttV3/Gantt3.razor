@@ -28,7 +28,8 @@
               PeriodLabel="@PeriodLabel"
               OnToday="GoToTodayAsync"
               OnPrevious="ShiftToPreviousAsync"
-              OnNext="ShiftToNextAsync" />
+              OnNext="ShiftToNextAsync"
+              ZoomLevels="@ZoomLevels" />
 
     @* Phase 2's "one shared scroll container wrapping both panes" (T3 design
        spec, scroll sync): tree pane + timeline are laid out side by side as
@@ -92,6 +93,7 @@
             <GanttTimeline Tasks="@_state.Tasks"
                            Rows="@rows"
                            ViewMode="@_state.ViewMode"
+                           ViewModeChanged="HandleViewModeChangedAsync"
                            RangeStart="@_state.VisibleRange.Start"
                            RangeEnd="@_state.VisibleRange.End"
                            BarHeight="@BarHeight"
@@ -108,6 +110,7 @@
                            Today="@EffectiveToday"
                            ScrollTargetDate="@_scrollTargetDate"
                            ScrollHostLeadingOffset="@ScrollHostLeadingOffset"
+                           LeadingPaneWidth="@(EffectiveShowTreePane ? EffectiveTreePaneTotalWidth : 0)"
                            ScrollHost="@_scrollPaneRef"
                            Readonly="@Readonly"
                            OnTaskUpdate="HandleTaskUpdateAsync"
@@ -117,6 +120,10 @@
                            ShowSummaryBars="@ShowSummaryBars"
                            RollupMath="RollupMath"
                            SummaryTemplate="SummaryTemplate"
+                           ColorByGroup="@ColorByGroup"
+                           ShowOffscreenIndicators="@ShowOffscreenIndicators"
+                           ShowZoomControl="@ShowZoomControl"
+                           ZoomLevels="@ZoomLevels"
                            Class="grow shrink-0" />
         </div>
     </div>
@@ -290,6 +297,43 @@
     /// through to <see cref="GanttTimeline.SummaryTemplate"/>, unchanged.
     /// </summary>
     [Parameter] public RenderFragment<GanttRollup>? SummaryTemplate { get; set; }
+
+    /// <summary>
+    /// Assigns each task a stable per-group palette colour when
+    /// <see cref="BarColor"/> is null (design spec Phase 3, T7). Passed
+    /// straight through to <see cref="GanttTimeline.ColorByGroup"/> — see its
+    /// own remarks for the full default-off reasoning and the group-colour
+    /// stability contract.
+    /// </summary>
+    [Parameter] public bool ColorByGroup { get; set; }
+
+    /// <summary>
+    /// Off-screen indicator chips at a row's edge, click-to-scroll (design
+    /// spec Phase 3, T7). Passed straight through to
+    /// <see cref="GanttTimeline.ShowOffscreenIndicators"/> — see its own
+    /// remarks for the default-TRUE reasoning (the one deliberate exception
+    /// to this campaign's default-off precedent for new REUI-parity look
+    /// additions).
+    /// </summary>
+    [Parameter] public bool ShowOffscreenIndicators { get; set; } = true;
+
+    /// <summary>
+    /// Floating +/- zoom control in the canvas corner (design spec Phase 3,
+    /// T7). Passed straight through to <see cref="GanttTimeline.ShowZoomControl"/>.
+    /// </summary>
+    [Parameter] public bool ShowZoomControl { get; set; }
+
+    /// <summary>
+    /// Restricts/orders which zoom levels BOTH <c>GanttNav</c>'s toolbar
+    /// switcher and <see cref="ShowZoomControl"/>'s floating stepper offer
+    /// (design spec Phase 3, T7 — fixes a pre-existing gap: <c>GanttNav.ZoomLevels</c>
+    /// already existed but was never reachable through <c>Gantt3</c>'s own
+    /// surface before this task added a caller for it). Null (the default)
+    /// shows the full default Day/Week/Month/Year set on both surfaces — see
+    /// <see cref="GanttV3.GanttZoomLevelModel"/> for the exact resolution
+    /// contract, including the Quarter-must-be-explicit rule.
+    /// </summary>
+    [Parameter] public IReadOnlyList<GanttViewMode>? ZoomLevels { get; set; }
 
     /// <summary>
     /// Extra tree-pane columns rendered after the pinned name column (design spec

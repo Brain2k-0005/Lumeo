@@ -204,6 +204,12 @@ public class P2LocalizationSweepTests : IAsyncLifetime
         // every other Gantt.* key above).
         "Gantt.SelectRow", "Gantt.SelectRowGroup",
         "Gantt.DragToReorderRow", "Gantt.RowReorderUnavailable",
+        // Design spec Phase 3, T7 — the floating zoom control's +/- aria-labels
+        // and the off-screen indicator chip's per-direction aria-labels,
+        // extended here per this test's own "extend, don't duplicate"
+        // precedent (same as every other Gantt.* key above).
+        "Gantt.ZoomIn", "Gantt.ZoomOut",
+        "Gantt.ScrollToEarlierTask", "Gantt.ScrollToLaterTask",
     };
 
     [Theory]

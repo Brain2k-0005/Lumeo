@@ -82,6 +82,9 @@
                 MarkOffDays="@_markOffDays"
                 NowIndicator="@_nowIndicator"
                 FirstDayOfWeek="@_firstDayOfWeek"
+                ColorByGroup="@_colorByGroup"
+                ShowOffscreenIndicators="@_showOffscreenIndicators"
+                ShowZoomControl="@_showZoomControl"
                 OnTaskClick="HandleTaskClick"
                 OnDateChange="HandleDateChange"
                 OnProgressChange="HandleProgressChange"
@@ -127,6 +130,14 @@
     [SupplyParameterFromQuery(Name = "markOffDays")] public string? MarkOffDaysQuery { get; set; }
     [SupplyParameterFromQuery(Name = "nowIndicator")] public string? NowIndicatorQuery { get; set; }
     [SupplyParameterFromQuery(Name = "firstDayOfWeek")] public string? FirstDayOfWeekQuery { get; set; }
+    // Design spec Phase 3, T7 additions.
+    [SupplyParameterFromQuery(Name = "colorByGroup")] public string? ColorByGroupQuery { get; set; }
+    // ShowOffscreenIndicators defaults to true (Gantt3's own parameter
+    // default) — this query flag exists to turn it OFF for the "no chip even
+    // though a bar is offscreen" comparison spec, not to turn it on (already
+    // the default).
+    [SupplyParameterFromQuery(Name = "showOffscreenIndicators")] public string? ShowOffscreenIndicatorsQuery { get; set; }
+    [SupplyParameterFromQuery(Name = "showZoomControl")] public string? ShowZoomControlQuery { get; set; }
 
     private GanttViewMode _viewMode = GanttViewMode.Day;
     private List<GanttTask> _tasks = new();
@@ -141,6 +152,9 @@
     private bool _markOffDays;
     private bool _nowIndicator;
     private DayOfWeek? _firstDayOfWeek;
+    private bool _colorByGroup;
+    private bool _showOffscreenIndicators = true;
+    private bool _showZoomControl;
 
     private string? _lastClickJson;
     // Invocation-COUNT sink (Phase-1/Phase-2 reconciliation fix-round): the
@@ -182,6 +196,9 @@
         _nowIndicator = NowIndicatorQuery == "1";
         if (!string.IsNullOrEmpty(FirstDayOfWeekQuery) && Enum.TryParse<DayOfWeek>(FirstDayOfWeekQuery, out var fdow))
             _firstDayOfWeek = fdow;
+        _colorByGroup = ColorByGroupQuery == "1";
+        if (ShowOffscreenIndicatorsQuery == "0") _showOffscreenIndicators = false;
+        _showZoomControl = ShowZoomControlQuery == "1";
     }
 
     // Phase 2, T2/T3 (drag-parity sinks) + Codex round 5 review (real-DOM

@@ -506,6 +506,10 @@ internal static partial class LumeoDefaultStrings
         // (AllowRowReorder) + its Readonly-inert counterpart.
         ["Gantt.DragToReorderRow"] = "Drag to reorder {0}",
         ["Gantt.RowReorderUnavailable"] = "Row reordering is unavailable while read-only",
+        ["Gantt.ZoomIn"] = "Zoom in",
+        ["Gantt.ZoomOut"] = "Zoom out",
+        ["Gantt.ScrollToEarlierTask"] = "Scroll to {0} (earlier)",
+        ["Gantt.ScrollToLaterTask"] = "Scroll to {0} (later)",
 
         // ── Theme ───────────────────────────────────────────────────
         ["Theme.Light"] = "Light",
@@ -1047,6 +1051,10 @@ internal static partial class LumeoDefaultStrings
         ["Gantt.SelectRowGroup"] = "Alle in {0} auswählen",
         ["Gantt.DragToReorderRow"] = "{0} zum Umsortieren ziehen",
         ["Gantt.RowReorderUnavailable"] = "Zeilen können im Lesemodus nicht neu angeordnet werden",
+        ["Gantt.ZoomIn"] = "Vergrößern",
+        ["Gantt.ZoomOut"] = "Verkleinern",
+        ["Gantt.ScrollToEarlierTask"] = "Zu {0} scrollen (früher)",
+        ["Gantt.ScrollToLaterTask"] = "Zu {0} scrollen (später)",
 
         // ── Theme ───────────────────────────────────────────────────
         ["Theme.Light"] = "Hell",

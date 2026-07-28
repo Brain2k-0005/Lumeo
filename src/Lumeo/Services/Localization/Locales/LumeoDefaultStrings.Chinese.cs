@@ -283,6 +283,10 @@ internal static partial class LumeoDefaultStrings
         ["Gantt.SelectRowGroup"] = "全选{0}中的项",
         ["Gantt.DragToReorderRow"] = "拖动以重新排列{0}",
         ["Gantt.RowReorderUnavailable"] = "只读模式下无法重新排列行",
+        ["Gantt.ZoomIn"] = "放大",
+        ["Gantt.ZoomOut"] = "缩小",
+        ["Gantt.ScrollToEarlierTask"] = "滚动到{0}(较早)",
+        ["Gantt.ScrollToLaterTask"] = "滚动到{0}(较晚)",
 
         // Editor
         ["Editor.Paragraph"] = "段落",

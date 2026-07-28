@@ -179,6 +179,120 @@ public class GanttParityVisualTests : GanttParityTestBase
         }
     }
 
+    /// <summary>
+    /// Design spec Phase 3, T7 — the new canvas chrome's own look: the
+    /// floating zoom control (bottom-end corner) + <c>ColorByGroup</c>'s
+    /// per-group bar palette, together on one baseline (v3-only — no v2
+    /// route/parity theory entry exists or is needed, same "new v3-only
+    /// look gets its OWN baseline" precedent T2/T3 already established for
+    /// the today-tint/off-day-tint/summary-strip additions). A separate,
+    /// dedicated test rather than a new row in <see cref="Gantt_page_matches_baseline"/>'s
+    /// theory: that theory's existing 8 baselines are the READ-ONLY v2/v3
+    /// PARITY set (byte-for-byte structural match across routes) — this is a
+    /// v3-only opt-in look with no v2 counterpart to compare against at all.
+    /// </summary>
+    [Fact]
+    public async Task Gantt_v3_canvas_chrome_matches_baseline()
+    {
+        if (Environment.GetEnvironmentVariable("CI") == "true"
+            && Environment.GetEnvironmentVariable("LUMEO_E2E_UPDATE_SNAPSHOTS") != "1")
+        {
+            return;
+        }
+
+        // Same frozen-clock rationale as Gantt_page_matches_baseline above —
+        // SharedTasks' fixed 2026 window, no today-marker drift over time.
+        await Page.AddInitScriptAsync(@"
+            window.__lumeoFrozenNow = new Date(2026, 2, 15).getTime();
+            var RealDate = Date;
+            window.Date = function (...args) {
+                if (args.length === 0) return new RealDate(window.__lumeoFrozenNow);
+                return new RealDate(...args);
+            };
+            window.Date.now = function () { return window.__lumeoFrozenNow; };
+            window.Date.prototype = RealDate.prototype;
+        ");
+
+        // Dedicated, taller viewport (NOT the shared ViewportWidth/Height —
+        // those back the 8 existing parity baselines; changing them would
+        // invalidate every one of those unrelated to this test): SharedTasks'
+        // own row count (12 tasks + 2 group headers) renders shorter than
+        // Gantt3's own 900px pane Height, so the pane never actually needs
+        // to scroll vertically — position:sticky has NOTHING to stick
+        // against in that case and the zoom control simply sits at its
+        // normal in-flow position near the LAST row, past the shared
+        // suite's 700px clip (confirmed empirically: the first captured
+        // baseline at 700px genuinely did not include it, not a flaky
+        // render — this is deterministic given the fixed fixture/mode). A
+        // taller clip that comfortably covers the full ~600px content area
+        // plus the header is a real fix, not a workaround for a race.
+        const int chromeViewportHeight = 760;
+        await Page.SetViewportSizeAsync(ViewportWidth, chromeViewportHeight);
+        await GotoHost("/e2e/gantt-v3?viewMode=Month&colorByGroup=1&showZoomControl=1&tree=0");
+
+        await Page.Locator("[data-testid='gantt-v3-root'] [data-task-id]").First
+            .WaitForAsync(new() { State = WaitForSelectorState.Attached, Timeout = 15000 });
+
+        await Page.AddStyleTagAsync(new() { Content = "*, *::before, *::after { animation-duration: 0s !important; animation-delay: 0s !important; transition-duration: 0s !important; transition-delay: 0s !important; }" });
+        await Page.EvaluateAsync("() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))");
+        await Page.WaitForTimeoutAsync(250);
+
+        var scrollHost = Page.Locator("[data-testid='gantt-v3-root'] div[style*='overflow']").First;
+        await Assertions.Expect(scrollHost).ToHaveAttributeAsync("data-gantt-v3-initial-scroll", "done", new() { Timeout = 5000 });
+        // The zoom control is itself sticky-positioned against live scroll —
+        // wait for it to actually be in the DOM before capturing.
+        await Page.Locator("[data-testid='gantt-v3-root'] .lumeo-gantt-v3-zoom-control").WaitForAsync(new() { Timeout = 5000 });
+
+        var screenshotBytes = await Page.ScreenshotAsync(new PageScreenshotOptions
+        {
+            Clip = new Clip { X = 0, Y = 0, Width = ViewportWidth, Height = chromeViewportHeight },
+        });
+
+        var baselinePath = Path.Combine(GetSnapshotsDir(), "gantt-v3-t7-chrome.png");
+
+        if (Environment.GetEnvironmentVariable("LUMEO_E2E_UPDATE_SNAPSHOTS") == "1")
+        {
+            Directory.CreateDirectory(GetSnapshotsDir());
+            await File.WriteAllBytesAsync(baselinePath, screenshotBytes);
+            return;
+        }
+
+        Assert.True(File.Exists(baselinePath),
+            $"Visual baseline missing at: {baselinePath}. Run with LUMEO_E2E_UPDATE_SNAPSHOTS=1 to generate it.");
+
+        var baselineBytes = await File.ReadAllBytesAsync(baselinePath);
+
+        using var baselineImage = Image.Load<Rgba32>(baselineBytes);
+        using var currentImage = Image.Load<Rgba32>(screenshotBytes);
+
+        if (baselineImage.Width != currentImage.Width || baselineImage.Height != currentImage.Height)
+        {
+            Assert.Fail($"Screenshot dimensions changed: baseline {baselineImage.Width}x{baselineImage.Height} vs current {currentImage.Width}x{currentImage.Height}.");
+        }
+
+        int width = baselineImage.Width, height = baselineImage.Height;
+        int totalPixels = width * height, differentPixels = 0;
+
+        for (var y = 0; y < height; y++)
+        {
+            for (var x = 0; x < width; x++)
+            {
+                var b = baselineImage[x, y];
+                var c = currentImage[x, y];
+                var manhattan = Math.Abs(b.R - c.R) + Math.Abs(b.G - c.G) + Math.Abs(b.B - c.B) + Math.Abs(b.A - c.A);
+                if (manhattan > PixelDeltaThreshold) differentPixels++;
+            }
+        }
+
+        var ratio = (double)differentPixels / totalPixels;
+        if (ratio >= ToleranceRatio)
+        {
+            var diffPath = Path.Combine(Path.GetTempPath(), $"lumeo-gantt-visual-diff-v3-t7-chrome-{DateTime.UtcNow:yyyyMMdd-HHmmss}.png");
+            await File.WriteAllBytesAsync(diffPath, screenshotBytes);
+            Assert.Fail($"gantt-v3-t7-chrome screenshot differs from baseline: {differentPixels:N0}/{totalPixels:N0} pixels ({ratio:P2}) exceed the threshold. Current screenshot saved: {diffPath}. If intentional, regenerate with LUMEO_E2E_UPDATE_SNAPSHOTS=1.");
+        }
+    }
+
     // Bug fix (Codex round 7 review / cx7b, Important #1): a fixed 5-level
     // `..` walk from AppContext.BaseDirectory assumes
     // tests/Lumeo.Tests.E2E/bin/{Config}/net10.0/ — but running with

@@ -98,20 +98,29 @@ public class GanttV3ArrowVirtualizationTests : GanttParityTestBase
     }
 
     [Fact]
-    public async Task Horizontal_Only_Scroll_Does_Not_Trigger_A_Vertical_Scroll_Report()
+    public async Task A_Genuinely_Unchanged_Scroll_Report_Is_Deduped()
     {
-        // Bug fix (Codex round 5, P2 #8): registerVerticalScrollTracking
-        // listens for the pane's native 'scroll' event, which fires
-        // identically for a horizontal-only pan (browsing dates sideways) —
-        // there is no separate horizontal/vertical scroll event — so every
-        // sideways drag used to ALSO dispatch a full invokeMethodAsync
-        // round-trip reporting an unchanged scrollTop, for no purpose (the
-        // culled row range is a pure function of scrollTop/clientHeight).
-        // gantt-v3.js now stamps a `data-gantt-v3-vertical-report-count`
-        // attribute on an actual (post-dedup) report — a deterministic,
-        // Playwright-observable proxy for the otherwise-invisible interop
-        // call count, matching the existing data-gantt-v3-initial-scroll
-        // latch's own reasoning.
+        // Bug fix (Codex round 5, P2 #8), UPDATED for design spec Phase 3,
+        // T7: registerVerticalScrollTracking listens for the pane's native
+        // 'scroll' event, which fires identically for a horizontal-only pan
+        // (browsing dates sideways) — there is no separate horizontal/
+        // vertical scroll event. Round 5 P2#8 originally deduped away a
+        // horizontal-only pan ENTIRELY (nothing arrow-culling-relevant
+        // changes then) — but T7's off-screen indicators need EXACTLY that
+        // horizontal-only signal (see GanttTimeline.OnGanttV3VerticalScroll's
+        // own remarks — a real bug found via this project's own E2E gate: a
+        // horizontal-only pan silently never re-rendered the off-screen
+        // chips at all under the OLD dedup). gantt-v3.js's report() now
+        // dedups on scrollTop AND clientHeight AND scrollLeft AND
+        // clientWidth TOGETHER — a report is skipped only when ALL FOUR are
+        // unchanged from the last one, not just the vertical two. This spec
+        // now proves the NARROWER, still-true guarantee: dispatching a
+        // native 'scroll' event that changes NOTHING (not even scrollLeft)
+        // still adds no report — gantt-v3.js now stamps a
+        // `data-gantt-v3-vertical-report-count` attribute on an actual
+        // (post-dedup) report — a deterministic, Playwright-observable proxy
+        // for the otherwise-invisible interop call count, matching the
+        // existing data-gantt-v3-initial-scroll latch's own reasoning.
         await GotoHost("/e2e/gantt-v3?fixture=tall&viewMode=Day");
 
         var scrollPane = Page.Locator("[data-testid='gantt-v3-root'] div[style*='overflow']").First;
@@ -119,23 +128,45 @@ public class GanttV3ArrowVirtualizationTests : GanttParityTestBase
         await Assertions.Expect(scrollPane).ToHaveAttributeAsync("data-gantt-v3-initial-scroll", "done", new() { Timeout = 15000 });
 
         // The tracker fires one report immediately on registration, but a
-        // legitimate mount-time clientHeight settle (the pane finalizing its
-        // own height as the horizontal scrollbar/layout land, AFTER the
-        // initial-scroll latch) can fire ONE more correct report a frame or two
-        // later — so the count is NOT reliably "1" the instant initial-scroll
-        // lands (it may already be "2"). Hardcoding "1" here therefore raced the
-        // mount settle. What this spec actually guards is that a HORIZONTAL-only
-        // scroll adds NO report — so wait for the count to STABILIZE (whatever
-        // it settles to), then assert the horizontal scroll leaves it unchanged.
+        // legitimate mount-time clientHeight/clientWidth settle (the pane
+        // finalizing its own size as the scrollbar/layout land, AFTER the
+        // initial-scroll latch) can fire ONE more correct report a frame or
+        // two later — so the count is NOT reliably "1" the instant
+        // initial-scroll lands. Wait for the count to STABILIZE first.
         var baseline = await WaitForStableReportCountAsync(scrollPane);
 
-        await scrollPane.EvaluateAsync("el => el.scrollLeft = 500"); // horizontal-only — scrollTop AND clientHeight unchanged
+        // Re-dispatch 'scroll' with NOTHING actually different (no property
+        // assignment at all — the purest "nothing changed" case).
+        await scrollPane.EvaluateAsync("el => el.dispatchEvent(new Event('scroll'))");
         await Page.WaitForTimeoutAsync(300); // comfortably outlasts a single rAF frame
 
-        // The horizontal pan must not have added a vertical report (the JS
-        // dedups on both scrollTop AND clientHeight, neither of which a sideways
-        // scroll moves) — the stabilized count is unchanged.
         await Assertions.Expect(scrollPane).ToHaveAttributeAsync("data-gantt-v3-vertical-report-count", baseline);
+    }
+
+    [Fact]
+    public async Task A_Horizontal_Only_Scroll_Now_Adds_Exactly_One_Report_For_Offscreen_Indicators()
+    {
+        // The COMPLEMENT of the spec above — design spec Phase 3, T7's own
+        // requirement (off-screen indicators must react to a pure
+        // horizontal pan) is the reason the dedup broadened in the first
+        // place; pinning it here as its own positive assertion so a future
+        // regression back to "horizontal-only = always deduped" (the
+        // pre-T7 behavior) fails a test immediately instead of silently
+        // reintroducing the exact bug T7's own gate found.
+        await GotoHost("/e2e/gantt-v3?fixture=tall&viewMode=Day");
+
+        var scrollPane = Page.Locator("[data-testid='gantt-v3-root'] div[style*='overflow']").First;
+        await scrollPane.WaitForAsync(new() { Timeout = 15000 });
+        await Assertions.Expect(scrollPane).ToHaveAttributeAsync("data-gantt-v3-initial-scroll", "done", new() { Timeout = 15000 });
+
+        var baseline = await WaitForStableReportCountAsync(scrollPane);
+        var baselineCount = int.Parse(baseline);
+
+        await scrollPane.EvaluateAsync("el => el.scrollLeft = 500"); // horizontal-only — scrollTop AND clientHeight unchanged
+        await Page.WaitForTimeoutAsync(300);
+
+        var afterCount = int.Parse(await WaitForStableReportCountAsync(scrollPane));
+        Assert.Equal(baselineCount + 1, afterCount);
     }
 
     // Polls the vertical-report count until it stops changing across two

@@ -1016,11 +1016,24 @@ public class TrackingInteropService : IComponentInteropService
         GanttV3UnregisterVerticalScrollTrackingCallCount++;
         return Task.CompletedTask;
     }
-    /// <summary>Simulates a JS-side vertical scroll report by invoking the captured component's own <c>OnGanttV3VerticalScroll</c> method directly.</summary>
-    public void RaiseGanttV3VerticalScroll(double scrollTop, double clientHeight)
+    /// <summary>
+    /// Simulates a JS-side scroll report by invoking the captured component's
+    /// own <c>OnGanttV3VerticalScroll</c> method directly. <paramref name="scrollLeft"/>/
+    /// <paramref name="clientWidth"/> (design spec Phase 3, T7 — off-screen
+    /// indicators' own viewport signal, added to this SAME payload — see that
+    /// method's own remarks) default to 0: every call site written BEFORE T7
+    /// only ever meant to simulate a VERTICAL scroll/resize and never touched
+    /// horizontal state at all — GanttTimeline.VisibleTimelineWindow treats a
+    /// non-positive clientWidth as "not yet measured" (mirrors
+    /// RecomputeVisibleRowRange's identical clientHeight guard), so those
+    /// existing callers keep their EXACT prior behavior (no off-screen chip
+    /// ever renders) with no call-site changes required. A new T7 test opts
+    /// in by passing real, positive values for both.
+    /// </summary>
+    public void RaiseGanttV3VerticalScroll(double scrollTop, double clientHeight, double scrollLeft = 0, double clientWidth = 0)
     {
         var method = _ganttV3VerticalScrollDotNetRef?.GetType().GetMethod("OnGanttV3VerticalScroll");
-        method?.Invoke(_ganttV3VerticalScrollDotNetRef, new object[] { scrollTop, clientHeight });
+        method?.Invoke(_ganttV3VerticalScrollDotNetRef, new object[] { scrollTop, clientHeight, scrollLeft, clientWidth });
     }
 
     // GanttV3 live scroll-center reading (Codex round 5, P2 #5) — settable so

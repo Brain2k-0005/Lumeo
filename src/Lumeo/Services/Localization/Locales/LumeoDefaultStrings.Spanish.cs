@@ -335,5 +335,9 @@ internal static partial class LumeoDefaultStrings
         ["Gantt.SelectRowGroup"] = "Seleccionar todo en {0}",
         ["Gantt.DragToReorderRow"] = "Arrastrar para reordenar {0}",
         ["Gantt.RowReorderUnavailable"] = "No se puede reordenar filas en modo de solo lectura",
+        ["Gantt.ZoomIn"] = "Acercar",
+        ["Gantt.ZoomOut"] = "Alejar",
+        ["Gantt.ScrollToEarlierTask"] = "Desplazar a {0} (antes)",
+        ["Gantt.ScrollToLaterTask"] = "Desplazar a {0} (después)",
     };
 }

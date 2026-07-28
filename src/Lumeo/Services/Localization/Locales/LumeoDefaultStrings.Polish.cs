@@ -338,5 +338,9 @@ internal static partial class LumeoDefaultStrings
         ["Gantt.SelectRowGroup"] = "Zaznacz wszystko w {0}",
         ["Gantt.DragToReorderRow"] = "Przeciągnij, aby zmienić kolejność {0}",
         ["Gantt.RowReorderUnavailable"] = "Zmiana kolejności wierszy jest niedostępna w trybie tylko do odczytu",
+        ["Gantt.ZoomIn"] = "Powiększ",
+        ["Gantt.ZoomOut"] = "Pomniejsz",
+        ["Gantt.ScrollToEarlierTask"] = "Przewiń do {0} (wcześniej)",
+        ["Gantt.ScrollToLaterTask"] = "Przewiń do {0} (później)",
     };
 }

@@ -286,6 +286,10 @@ internal static partial class LumeoDefaultStrings
         ["Gantt.SelectRowGroup"] = "Выбрать все в {0}",
         ["Gantt.DragToReorderRow"] = "Перетащите, чтобы изменить порядок {0}",
         ["Gantt.RowReorderUnavailable"] = "Изменение порядка строк недоступно в режиме только для чтения",
+        ["Gantt.ZoomIn"] = "Увеличить",
+        ["Gantt.ZoomOut"] = "Уменьшить",
+        ["Gantt.ScrollToEarlierTask"] = "Прокрутить к {0} (раньше)",
+        ["Gantt.ScrollToLaterTask"] = "Прокрутить к {0} (позже)",
 
         // Editor
         ["Editor.Paragraph"] = "Абзац",

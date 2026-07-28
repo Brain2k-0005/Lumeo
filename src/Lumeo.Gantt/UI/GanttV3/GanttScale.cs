@@ -200,6 +200,31 @@ internal static class GanttScale
     internal const int MaxTreePaneWidth = 640;
 
     /// <summary>
+    /// Minimum bar pixel width (design spec Phase 3, T7) below which an
+    /// in-bar task label falls back to rendering BESIDE the bar instead —
+    /// same idea as <see cref="Lumeo.GanttBar"/>'s existing milestone label,
+    /// which always renders outside its (small, fixed-size) diamond. v2
+    /// (gantt-v2.js) has NO equivalent narrow-bar threshold to port for
+    /// parity: its own regular-bar label (gantt-v2.js lines 540-550) is an
+    /// unconditional SVG &lt;text&gt; node at a fixed x1+PADDING_X offset —
+    /// no width comparison, no clipping, no outside-fallback branch anywhere
+    /// in that file (verified by a full-file search for "big"/"outside"/
+    /// "clip"/"getBBox"/"measureText" — zero matches; the milestone-only
+    /// outside-label branch, gantt-v2.js lines 486-495, is unconditional too,
+    /// never width-gated). v2's own label is simply left to visually overflow
+    /// a too-narrow bar with nothing protecting it — not a behavior worth
+    /// porting for "parity" (parity doctrine: v2 asserts only apply where v2
+    /// actually HAS the feature; this is v3-only, REUI-referenced only in
+    /// spirit, no REUI pixel spec available). 40px is roughly what's needed
+    /// to show 2-3 characters plus an ellipsis at the label's own 12px
+    /// (text-xs) font size, given the label's existing 8px-per-side (px-2)
+    /// padding — empirically chosen the same way <see cref="MinTreePaneWidth"/>
+    /// was (a concrete minimum-readable-content floor), not an arbitrary
+    /// round number picked without reasoning.
+    /// </summary>
+    internal const int MinInBarLabelWidth = 40;
+
+    /// <summary>
     /// Faithful port of gantt-v2.js's <c>VIEW_MODES</c> table (lines 29-36). Every
     /// field below is copied verbatim from the corresponding JS literal; see each
     /// <see cref="GanttScaleUnit"/>/<see cref="GanttHeaderUpperKind"/>/<see cref="GanttHeaderLowerKind"/>

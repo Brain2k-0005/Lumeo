@@ -1,5 +1,6 @@
 @namespace Lumeo
 @using System.ComponentModel
+@using Lumeo.GanttV3
 @inject Lumeo.Services.Localization.ILumeoLocalizer L
 @attribute [EditorBrowsable(EditorBrowsableState.Never)]
 
@@ -82,31 +83,15 @@
 
     private string RootClass => Cx.Merge("flex flex-wrap items-center justify-between gap-2", Class);
 
-    private static readonly GanttViewMode[] DefaultZoomLevels =
-    {
-        GanttViewMode.Day, GanttViewMode.Week, GanttViewMode.Month, GanttViewMode.Year,
-    };
-
-    // Design spec Phase 3, T2 — GanttViewMode.Quarter is toolbar-REPRESENTABLE
-    // (has its own label/toolbar value below) but deliberately NOT part of
-    // DefaultZoomLevels: adding a 5th button to the toolbar's DEFAULT (no
-    // ZoomLevels supplied) rendering would silently change every existing v3
-    // chart's default look/visual-snapshot baselines with no explicit opt-in —
-    // a consumer wanting Quarter reachable from the toolbar passes it in their
-    // own ZoomLevels list (e.g. [Day, Week, Month, Quarter, Year]), which this
-    // set (not DefaultZoomLevels) now allows through instead of silently
-    // filtering it out as an "unrecognized" level.
-    private static readonly GanttViewMode[] RepresentableZoomLevels =
-    {
-        GanttViewMode.Day, GanttViewMode.Week, GanttViewMode.Month, GanttViewMode.Quarter, GanttViewMode.Year,
-    };
-
-    // Only the toolbar-representable levels, in canonical order — same precedent
-    // as v2's Gantt.razor ResolvedZoomLevels.
-    private IReadOnlyList<GanttViewMode> ResolvedZoomLevels =>
-        ZoomLevels is { Count: > 0 }
-            ? ZoomLevels.Where(l => Array.IndexOf(RepresentableZoomLevels, l) >= 0).ToList()
-            : DefaultZoomLevels;
+    // Design spec Phase 3, T7 — extracted to GanttZoomLevelModel (shared with
+    // the new GanttZoomControl's own stepper, so the toolbar and the floating
+    // control can never silently diverge on "what's representable" — see
+    // that type's own remarks). Pure "extract method" refactor: same values,
+    // same order, same filtering — this component's own rendered output is
+    // unchanged (verified against GanttZoomLevelsTests/GanttViewModeControlledTests/
+    // GanttControlledRollbackTests, none of which needed a single assertion
+    // changed).
+    private IReadOnlyList<GanttViewMode> ResolvedZoomLevels => GanttZoomLevelModel.Resolve(ZoomLevels);
 
     // Unselected (null) when ViewMode is QuarterDay/HalfDay or excluded by ZoomLevels
     // — same as v2's _toolbarViewValue.
@@ -120,15 +105,7 @@
         _ => null,
     };
 
-    private static string ZoomLabelKey(GanttViewMode level) => level switch
-    {
-        GanttViewMode.Day => "Gantt.Day",
-        GanttViewMode.Week => "Gantt.Week",
-        GanttViewMode.Month => "Gantt.Month",
-        GanttViewMode.Quarter => "Gantt.Quarter",
-        GanttViewMode.Year => "Gantt.Year",
-        _ => "Gantt.Day",
-    };
+    private static string ZoomLabelKey(GanttViewMode level) => GanttZoomLevelModel.LabelKey(level);
 
     private async Task HandleViewModeChangedAsync(string? v)
     {

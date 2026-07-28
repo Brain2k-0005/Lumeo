@@ -335,5 +335,9 @@ internal static partial class LumeoDefaultStrings
         ["Gantt.SelectRowGroup"] = "Alles in {0} selecteren",
         ["Gantt.DragToReorderRow"] = "{0} slepen om te herschikken",
         ["Gantt.RowReorderUnavailable"] = "Rijen herschikken is niet beschikbaar in alleen-lezen modus",
+        ["Gantt.ZoomIn"] = "Inzoomen",
+        ["Gantt.ZoomOut"] = "Uitzoomen",
+        ["Gantt.ScrollToEarlierTask"] = "Scrollen naar {0} (eerder)",
+        ["Gantt.ScrollToLaterTask"] = "Scrollen naar {0} (later)",
     };
 }

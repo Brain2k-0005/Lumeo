@@ -49,12 +49,31 @@
                     {
                         @BarTemplate(Task)
                     }
-                    else
+                    else if (LabelFitsInsideBar)
                     {
-                        <span class="lumeo-gantt-v3-bar-label relative truncate px-2 text-xs font-medium text-foreground">@Task.Name</span>
+                        <span class="@InBarLabelClass" style="@InBarLabelStyle">@Task.Name</span>
                     }
                 }
             </div>
+            @* Narrow-bar fallback label (design spec Phase 3, T7 — "falls back
+               beside the bar when too narrow"). Rendered as a SIBLING of
+               @InnerClass, not nested inside it — the SAME reason the
+               progress-handle div below is a sibling (see its own remarks):
+               @InnerClass carries "overflow-hidden" for every non-milestone
+               bar UNCONDITIONALLY (so the in-bar label/bg/progress clip to
+               the bar's own rounded corners), which would silently clip this
+               label's "start-full" (deliberately OUTSIDE the bar's own box,
+               same positioning idiom as the milestone label above) position
+               right back down to invisible if it lived inside that div
+               instead. No contrast handling here (unlike the in-bar label
+               above): this text sits over the ambient row/canvas background,
+               never over Color, so the existing text-foreground token is
+               already correct — exactly like the milestone label's own
+               "beside, always text-foreground" treatment, which this mirrors. *@
+            @if (!Task.IsMilestone && !LabelFitsInsideBar && BarTemplate is null)
+            {
+                <span class="lumeo-gantt-v3-bar-label-outside absolute start-full top-1/2 ms-2 -translate-y-1/2 whitespace-nowrap text-xs font-medium text-foreground">@Task.Name</span>
+            }
             @* Progress handle (Phase 2, T2 — v2 parity: gantt-v2.js:564-574's
                progressHandle circle, "small circle at the right edge of progress
                overlay", shown only on hover via opacity 0->1, gantt-v2.js:578-586's
@@ -220,7 +239,13 @@
     // applied BROADLY (a whole container, always), not from a small,
     // conditionally-applied touch-action on the exact elements a gesture is
     // actually registered for.
-    private string WrapperClass => Cx.Merge("group absolute rounded", !Readonly ? "touch-pan-y" : null, Task.CustomClass, Class);
+    // "transition-shadow hover:shadow-md" (design spec Phase 3, T7 — "bar
+    // ... hover states") — same class pairing Lumeo.KanbanCard already uses
+    // for its own hover "lift" (a shadow change never affects layout/
+    // geometry, unlike a hover:scale-* transform, which would visually
+    // overlap a bar's own precisely-positioned neighbors in a densely-packed
+    // timeline — the geometry-neutral choice, not merely a stylistic one).
+    private string WrapperClass => Cx.Merge("group absolute rounded transition-shadow hover:shadow-md", !Readonly ? "touch-pan-y" : null, Task.CustomClass, Class);
 
     // Bug fix (Codex round 4, P2 #5; moved Codex round 5, P1 #1 / P2 #2/#3):
     // the focus-visible ring classes used to live on WrapperClass (the outer
@@ -281,6 +306,32 @@
 
     private string ProgressStyle =>
         FormattableString.Invariant($"width:{ClampedProgress}%;background-color:{ResolvedColor};");
+
+    // Design spec Phase 3, T7 — "falls back beside the bar when too narrow".
+    // No v2 threshold exists to port for parity (see
+    // GanttScale.MinInBarLabelWidth's own remarks — a full-file search of
+    // gantt-v2.js found no width-gated label-placement logic at all); this is
+    // v3-only. Milestones never reach this — the markup's own @if guards on
+    // !Task.IsMilestone for both branches, matching the milestone label's
+    // existing unconditional "always beside" treatment above.
+    private bool LabelFitsInsideBar => Width >= GanttScale.MinInBarLabelWidth;
+
+    // Design spec Phase 3, T7 — "contrast handling (CSS color-mix/var-based
+    // foreground pick vs custom bar colors)". Null (Color unset, or
+    // unparseable) means "keep the EXISTING text-foreground class" — see
+    // GanttColorModel.PickLabelForegroundVar's own remarks for the full
+    // reasoning (why a plain var() pick was chosen over color-mix/
+    // contrast-color(), and why an unparseable custom color intentionally
+    // falls back rather than guessing).
+    private string? InBarLabelForegroundVar => GanttColorModel.PickLabelForegroundVar(Color, Theme.IsDark);
+
+    private string InBarLabelClass => Cx.Merge(
+        "lumeo-gantt-v3-bar-label relative truncate px-2 text-xs font-medium",
+        InBarLabelForegroundVar is null ? "text-foreground" : null);
+
+    private string? InBarLabelStyle => InBarLabelForegroundVar is { } fg
+        ? FormattableString.Invariant($"color:{fg};")
+        : null;
 
     // "Small circle at the right edge of progress overlay" (gantt-v2.js:564-574) —
     // v2 positions its circle's CENTER at the progress boundary (cx = x1 + progressW);

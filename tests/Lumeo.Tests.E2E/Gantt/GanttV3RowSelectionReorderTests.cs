@@ -138,7 +138,23 @@ public class GanttV3RowSelectionReorderTests : GanttParityTestBase
         // of child1's own new list position (GanttReorderModel.Move only
         // relocates the DRAGGED task's own slot; render order is driven by
         // parent/child relationships, not raw list adjacency).
-        await Assertions.Expect(rows).ToHaveCountAsync(5);
+        //
+        // Real, reproducible flake found while hardening this suite (T7's
+        // own gate run): CommitRowReorder is a genuinely ASYNC interop
+        // round-trip (JS -> the bound OnRowReorder handler mutating the
+        // task list -> a Blazor re-render) that Mouse.UpAsync() does NOT
+        // block on — the OLD assertion here (ToHaveCountAsync(5), which is
+        // trivially already true both BEFORE and AFTER a reorder, so it
+        // never actually waited for anything) was immediately followed by a
+        // ONE-SHOT AllTextContentsAsync() read that could race ahead of the
+        // round-trip landing, observing the STALE pre-drag order (confirmed
+        // via direct instrumentation: the committed target index was
+        // correct every time; only the DOM read was too early). Polling for
+        // the actual expected POST-reorder text (a real Playwright
+        // auto-retry assertion, not a fixed sleep) waits for the round-trip
+        // to genuinely land before the one-shot snapshot below is taken.
+        await Assertions.Expect(rows.Nth(1)).ToContainTextAsync("Build Phase", new() { Timeout = 10000 });
+
         var after = await rows.AllTextContentsAsync();
         Assert.Contains("Program Kickoff", after[0]);
         Assert.Contains("Build Phase", after[1]);

@@ -335,5 +335,9 @@ internal static partial class LumeoDefaultStrings
         ["Gantt.SelectRowGroup"] = "{0}内をすべて選択",
         ["Gantt.DragToReorderRow"] = "ドラッグして{0}を並べ替え",
         ["Gantt.RowReorderUnavailable"] = "読み取り専用モードでは行の並べ替えはできません",
+        ["Gantt.ZoomIn"] = "ズームイン",
+        ["Gantt.ZoomOut"] = "ズームアウト",
+        ["Gantt.ScrollToEarlierTask"] = "{0}へスクロール(前)",
+        ["Gantt.ScrollToLaterTask"] = "{0}へスクロール(後)",
     };
 }
