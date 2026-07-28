@@ -99,6 +99,34 @@
             }
         </ChildContentSlot>
     </TooltipTrigger>
+    @* Design spec Phase 3, T8 — DragGhostTemplate's hidden clone source. See
+       gantt-v3.js's makeGhost for the full "why clone THIS instead of the bar"
+       reasoning; this is the .razor half: a SIBLING of the Tooltip wrapper
+       above (same parent — the row-canvas's per-row item div GanttTimeline
+       renders this component into), positioned with the EXACT SAME
+       WrapperStyle (same X/Width/RowIndex/BarHeight this bar itself was
+       given, so --lumeo-gantt-bar-x/-w/-row + left/top/width/height are
+       byte-identical) — the pinned Phase-2 coordinate-space rule ("bars are
+       nested inside the row canvas, arrows are the outer canvas + HeaderHeight
+       — mixing the two up is the bug class to avoid") is satisfied by
+       construction: this node lives in the SAME parent as the real bar, not a
+       new one, so cloning it instead of the bar changes only WHAT gets
+       rendered inside the ghost, never WHERE the ghost's own box starts out.
+       `hidden` (Tailwind's display:none) keeps this out of layout/paint and
+       off the accessibility tree entirely while idle; gantt-v3.js's makeGhost
+       strips both the class and any inline display:none the instant it clones
+       this node into a live ghost. Gated on !Readonly — see
+       GanttTimeline.SyncDragRegistrationAsync's own "no listeners at all when
+       Readonly" contract: no drag ever starts on a Readonly chart, so there is
+       nothing for this template to ever be cloned into. *@
+    @if (DragGhostTemplate is not null && !Readonly)
+    {
+        <div class="hidden absolute rounded" style="@WrapperStyle" data-gantt-ghost-template="true" aria-hidden="true">
+            <div class="@InnerClass">
+                @DragGhostTemplate(Task)
+            </div>
+        </div>
+    }
     <TooltipContent>
         <div class="font-medium">@Task.Name</div>
         <div class="mt-0.5 opacity-75">@Task.Start.ToString("MMM d, yyyy", CultureInfo.CurrentCulture) &#8594; @TooltipEndDate.ToString("MMM d, yyyy", CultureInfo.CurrentCulture)</div>
@@ -140,6 +168,17 @@
 
     /// <summary>Replaces the bar's default label content when set. Not used for milestones (v2 parity: milestones always show their name next to the diamond).</summary>
     [Parameter] public RenderFragment<GanttTask>? BarTemplate { get; set; }
+
+    /// <summary>
+    /// Overrides the drag ghost's rendered CONTENT (design spec Phase 3, T8). Null
+    /// (the default) keeps the prior behavior — gantt-v3.js's <c>makeGhost</c> clones
+    /// this bar's own rendered markup. When set, a HIDDEN sibling template carrying
+    /// this fragment's output is cloned instead — see the markup's own remarks for
+    /// the full coordinate-space contract (byte-identical position/size to the real
+    /// bar; only the ghost's visual content differs). Applies to move/resize/progress
+    /// drags of THIS bar, including for a milestone.
+    /// </summary>
+    [Parameter] public RenderFragment<GanttTask>? DragGhostTemplate { get; set; }
 
     /// <summary>
     /// Raised when the bar is activated via mouse click OR keyboard (Enter/Space

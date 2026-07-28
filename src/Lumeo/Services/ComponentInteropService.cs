@@ -1768,6 +1768,26 @@ public sealed class ComponentInteropService : IComponentInteropService
         catch (JSDisconnectedException) { }
     }
 
+    public async Task GanttV3RegisterBarContextMenuAsync<[System.Diagnostics.CodeAnalysis.DynamicallyAccessedMembers(System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicMethods)] T>(Microsoft.AspNetCore.Components.ElementReference el, DotNetObjectReference<T> dotNetRef) where T : class
+    {
+        try
+        {
+            var module = await GetGanttV3ModuleAsync();
+            await module.InvokeVoidAsync("ganttV3.registerBarContextMenu", el, dotNetRef);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
+    public async Task GanttV3UnregisterBarContextMenuAsync(Microsoft.AspNetCore.Components.ElementReference el)
+    {
+        try
+        {
+            var module = await GetGanttV3ModuleAsync();
+            await module.InvokeVoidAsync("ganttV3.unregisterBarContextMenu", el);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
     // --- Toolbar overflow observer ---
     // Toolbar ships its own tiny JS module (toolbar.js) that wraps a
     // ResizeObserver to measure how many child items fit before an overflow

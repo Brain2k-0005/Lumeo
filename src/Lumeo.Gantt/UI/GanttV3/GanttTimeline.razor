@@ -306,6 +306,7 @@
                             }
                             <GanttBar Task="row.Task" X="row.X" Width="row.Width" RowIndex="row.RowIndex"
                                       BarHeight="EffectiveBarHeight" Color="@row.Color" BarTemplate="BarTemplate"
+                                      DragGhostTemplate="DragGhostTemplate"
                                       Readonly="@Readonly" OnTaskClick="OnTaskClick"
                                       SuppressPointerClick="@_dragConfirmed" />
                             @* Design spec Phase 3, T3 — a hierarchy-parent Task row (HasChildren)
@@ -487,6 +488,35 @@
         </div>
     </div>
 </div>
+
+@* Design spec Phase 3, T8 — bar context menu (right-click a bar opens a Lumeo
+   ContextMenu at the pointer). Deliberately NOT composed from
+   <ContextMenu>/<ContextMenuTrigger> — those render an extra "relative
+   inline-block" wrapper div around whatever they enclose; wrapping the
+   row-canvas markup above in one would insert a NEW positioned ancestor
+   between the bars/arrows and the containing block they resolve their own
+   position:absolute against today, exactly the "split coordinate space" bug
+   class the Phase-2 ledger watch-list warns about. Composed directly from a
+   plain <see cref="ContextMenu.ContextMenuContext"/> CascadingValue (no
+   wrapper element at all) + the reusable <c>ContextMenuContent</c> building
+   block instead — a SIBLING of the root div above, not nested inside it, so
+   it can never affect that div's own layout/positioning context either.
+   Right-click DETECTION lives entirely in gantt-v3.js's own delegated
+   'contextmenu' listener (see GanttV3RegisterBarContextMenuAsync's own
+   remarks) — never a Blazor-bound @@oncontextmenu on any individual
+   (virtualized) bar, which would cost one extra event binding per rendered
+   bar for a feature most charts never opt into. *@
+@if (BarContextMenu is not null)
+{
+    <CascadingValue Value="@_barContextMenuContext" IsFixed="false">
+        <ContextMenuContent>
+            @if (_barContextMenuTask is not null)
+            {
+                @BarContextMenu(_barContextMenuTask)
+            }
+        </ContextMenuContent>
+    </CascadingValue>
+}
 
 @code {
     /// <summary>The tasks (and milestones) rendered as bars, in display order. Ignored when <see cref="Rows"/> is set.</summary>
@@ -870,6 +900,25 @@
     /// </summary>
     [Parameter] public IReadOnlyList<GanttViewMode>? ZoomLevels { get; set; }
 
+    /// <summary>
+    /// Overrides the drag ghost's rendered content for every bar (design spec Phase
+    /// 3, T8). Passed straight through to <see cref="Lumeo.GanttBar.DragGhostTemplate"/>
+    /// — see its own remarks for the full coordinate-space contract.
+    /// </summary>
+    [Parameter] public RenderFragment<GanttTask>? DragGhostTemplate { get; set; }
+
+    /// <summary>
+    /// Renders a Lumeo <c>ContextMenu</c> at the pointer when a bar is right-clicked
+    /// (design spec Phase 3, T8). Null (the default) leaves right-click on a bar
+    /// alone — the browser's native context menu shows, exactly as before this
+    /// parameter existed. Deliberately independent of <see cref="Readonly"/> — a
+    /// context menu is a VIEW action, not an edit; see
+    /// <see cref="NotifyBarContextMenu"/>'s own remarks for the full reasoning and
+    /// the drag-isolation contract (a right-click landing on a bar mid-gesture is
+    /// swallowed entirely, never opens a menu).
+    /// </summary>
+    [Parameter] public RenderFragment<GanttTask>? BarContextMenu { get; set; }
+
     private ElementReference _scrollHostRef;
     private ElementReference _headerInnerRef;
     // The last scroll-intent version actually CONSUMED (applied to the DOM).
@@ -954,6 +1003,44 @@
     // "confirmed." This one flips true only once the register call has
     // actually RETURNED without throwing.
     private bool _dragConfirmed;
+
+    // Design spec Phase 3, T8 — bar context-menu bookkeeping (see
+    // SyncBarContextMenuRegistrationAsync/NotifyBarContextMenu). Deliberately
+    // its OWN registration flag, not folded into _dragRegistered — this
+    // channel's registration is independent of Readonly (see BarContextMenu's
+    // own remarks), so it cannot share _dragRegistered's Readonly-gated
+    // lifecycle.
+    private bool _barContextMenuRegistered;
+    private bool _barContextMenuOpen;
+    private GanttTask? _barContextMenuTask;
+    private double _barContextMenuX;
+    private double _barContextMenuY;
+
+    // Built fresh each render from the four fields above — ContextMenuContent
+    // (the reusable building block this renders into) only ever READS this
+    // record's fields; SetPosition is wired for interface symmetry with
+    // ContextMenu.razor's own context (ContextMenuContent never actually
+    // calls it — only ContextMenuTrigger does, and this component uses no
+    // ContextMenuTrigger — see BarContextMenu's markup remarks), SetOpen is
+    // the real close path (Escape / click-outside).
+    private ContextMenu.ContextMenuContext _barContextMenuContext =>
+        new(_barContextMenuOpen, _barContextMenuX, _barContextMenuY,
+            EventCallback.Factory.Create<bool>(this, SetBarContextMenuOpen),
+            EventCallback.Factory.Create<(double, double)>(this, SetBarContextMenuPosition));
+
+    private Task SetBarContextMenuOpen(bool open)
+    {
+        _barContextMenuOpen = open;
+        StateHasChanged();
+        return Task.CompletedTask;
+    }
+
+    private Task SetBarContextMenuPosition((double X, double Y) pos)
+    {
+        _barContextMenuX = pos.X;
+        _barContextMenuY = pos.Y;
+        return Task.CompletedTask;
+    }
 
     // Codex round 2, P1 #3: this root no longer establishes any scroll
     // container itself at all — the header (sticky) and the row-canvas
@@ -1519,6 +1606,12 @@
             // calls (each keyed off its own independent Map in gantt-v3.js), so
             // reordering only this call is safe.
             await SyncDragRegistrationAsync();
+            // Design spec Phase 3, T8 — a SEPARATE channel from the drag engine
+            // above (see BarContextMenu's own remarks for why); registering it
+            // here too, in the SAME first-render block, keeps both delegated
+            // listeners attached before the first real pointer/mouse event a
+            // Playwright spec could possibly fire.
+            await SyncBarContextMenuRegistrationAsync();
 
             // Codex round 3, P2 #1: the JS scroll-sync transform exists ONLY to
             // work around an intervening overflow-x:auto ancestor hijacking the
@@ -1693,6 +1786,11 @@
         }
 
         await SyncDragRegistrationAsync();
+        // Design spec Phase 3, T8 — checked on EVERY render too (not just
+        // firstRender), same "a runtime flip re-syncs immediately" contract as
+        // SyncDragRegistrationAsync's own remarks: a caller wiring/un-wiring
+        // BarContextMenu after mount takes effect on the very next render.
+        await SyncBarContextMenuRegistrationAsync();
     }
 
     // Codex round 4, P2 #3. Idempotent per EffectiveScrollHost value — the JS
@@ -2056,6 +2154,59 @@
         }
     }
 
+    // Design spec Phase 3, T8 — (un)registers gantt-v3.js's bar context-menu
+    // channel against _scrollHostRef (the SAME delegation target
+    // SyncDragRegistrationAsync uses — bars/tracks live there). Checked on
+    // EVERY render (see both OnAfterRenderAsync call sites' own remarks), so a
+    // runtime BarContextMenu wire/un-wire re-syncs immediately.
+    //
+    // Deliberately INDEPENDENT of Readonly — see BarContextMenu's own remarks
+    // for why a context menu is a view action, not an edit, and must not
+    // share the drag engine's "no listeners at all when Readonly" contract.
+    // Idempotent per gantt-v3.js's own registerBarContextMenu (re-registering
+    // just swaps the stored dotNetRef in place), so this only needs to gate
+    // on "has BarContextMenu ever been set", not track any options equality
+    // the way SyncDragRegistrationAsync's GanttInteropOptions does — there is
+    // no options bag for this channel at all (bucket/task identity is read
+    // straight off data-task-id, same as every other bar-scoped interaction).
+    private async Task SyncBarContextMenuRegistrationAsync()
+    {
+        if (BarContextMenu is null)
+        {
+            if (_barContextMenuRegistered)
+            {
+                _barContextMenuRegistered = false;
+                await Interop.GanttV3UnregisterBarContextMenuAsync(_scrollHostRef);
+            }
+            return;
+        }
+
+        if (_barContextMenuRegistered) return;
+
+        _selfRef ??= DotNetObjectReference.Create(this);
+        _barContextMenuRegistered = true;
+        try
+        {
+            await Interop.GanttV3RegisterBarContextMenuAsync(_scrollHostRef, _selfRef);
+        }
+        catch (Exception)
+        {
+            // Same "degrade, don't take the render down" reasoning as
+            // SyncDragRegistrationAsync's own catch — a custom
+            // IComponentInteropService that never overrides this method, or a
+            // register call that genuinely throws, should leave the chart
+            // showing the browser's native context menu on right-click rather
+            // than faulting.
+            _barContextMenuRegistered = false;
+        }
+
+        if (_disposed)
+        {
+            try { await Interop.GanttV3UnregisterBarContextMenuAsync(_scrollHostRef); }
+            catch (JSDisconnectedException) { }
+        }
+    }
+
     // gantt-v2.js's pixelsPerDay(viewMode) (lines 727-734) ported to C# as
     // GanttScale.PixelsPerDay — "JS never re-derives" the snap config (Global
     // constraints), so this number is computed HERE and handed to JS as a
@@ -2339,6 +2490,42 @@
     }
 
     /// <summary>
+    /// JS -&gt; .NET bar right-click notification (design spec Phase 3, T8). Called
+    /// by gantt-v3.js's own delegated <c>contextmenu</c> listener (<c>ganttV3.
+    /// registerBarContextMenu</c>) — see its own remarks for the FULL drag-isolation
+    /// contract: it never even reaches here for a bar with an active drag/pending
+    /// gesture (the JS side swallows that case itself, <c>preventDefault</c> and no
+    /// invocation at all), and it never competes with a drag STARTING either — a real
+    /// drag only ever begins from a LEFT-button pointerdown (<c>registerDrag</c>'s own
+    /// unconditional <c>e.button !== 0</c> gate), unrelated to this channel's native
+    /// 'contextmenu' event entirely.
+    ///
+    /// Deliberately does NOT check <see cref="Readonly"/> — see <see
+    /// cref="BarContextMenu"/>'s own remarks: a context menu is a view action, not an
+    /// edit, and stays available on a Readonly chart by design (the caller's own menu
+    /// content decides what actions to offer there, exactly like <see
+    /// cref="GanttBar"/>'s tooltip/keyboard focus already do). Guards only on <see
+    /// cref="BarContextMenu"/> itself being set — a defensive, "public surface, don't
+    /// trust it blindly" check mirroring every other JSInvokable in this class, for the
+    /// case where a caller un-wires the parameter between this channel's registration
+    /// and a JS call already in flight.
+    /// </summary>
+    [JSInvokable]
+    public void NotifyBarContextMenu(string taskId, double clientX, double clientY)
+    {
+        if (BarContextMenu is null) return;
+
+        var task = FindTask(taskId);
+        if (task is null) return;
+
+        _barContextMenuTask = task;
+        _barContextMenuX = clientX;
+        _barContextMenuY = clientY;
+        _barContextMenuOpen = true;
+        StateHasChanged();
+    }
+
+    /// <summary>
     /// JS -&gt; .NET live scheduling drop validation (design spec Phase 2, T2 —
     /// the REUI <c>canDropEvent</c> analog). Called by gantt-v3.js at most once
     /// per SNAPPED position during a move/resize drag (never for a progress drag)
@@ -2447,6 +2634,15 @@
         if (_dragRegistered)
         {
             try { await Interop.GanttV3UnregisterDragAsync(_scrollHostRef); }
+            catch (JSDisconnectedException) { }
+        }
+
+        // Design spec Phase 3, T8 — tear down the bar context-menu channel too
+        // (a separate registration from the drag listener above — see its own
+        // remarks).
+        if (_barContextMenuRegistered)
+        {
+            try { await Interop.GanttV3UnregisterBarContextMenuAsync(_scrollHostRef); }
             catch (JSDisconnectedException) { }
         }
 

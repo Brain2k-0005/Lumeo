@@ -210,6 +210,18 @@ public class P2LocalizationSweepTests : IAsyncLifetime
         // precedent (same as every other Gantt.* key above).
         "Gantt.ZoomIn", "Gantt.ZoomOut",
         "Gantt.ScrollToEarlierTask", "Gantt.ScrollToLaterTask",
+        // Design spec Phase 3, T8 — GanttSettingsMenu's trigger, group
+        // headings, toggle labels, and "Reset to defaults" button, extended
+        // here per this test's own "extend, don't duplicate" precedent (same
+        // as every other Gantt.* key above).
+        "Gantt.Settings", "Gantt.SettingsDisplay", "Gantt.SettingsBehavior",
+        "Gantt.SettingsRegion", "Gantt.SettingsStyle",
+        "Gantt.SettingsShowRowCheckboxes", "Gantt.SettingsShowSummaryBars",
+        "Gantt.SettingsShowZoomControl", "Gantt.SettingsShowOffscreenIndicators",
+        "Gantt.SettingsNowIndicator", "Gantt.SettingsMarkOffDays",
+        "Gantt.SettingsReadonly", "Gantt.SettingsAllowCreate", "Gantt.SettingsAllowRowReorder",
+        "Gantt.SettingsFirstDayOfWeek", "Gantt.SettingsOffDays",
+        "Gantt.SettingsColorByGroup", "Gantt.SettingsReset",
     };
 
     [Theory]

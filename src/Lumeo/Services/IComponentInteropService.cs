@@ -777,6 +777,32 @@ public interface IComponentInteropService : IAsyncDisposable, IDisposable
     /// <summary>Tears down the row-reorder drag registered by <see cref="GanttV3RegisterRowReorderDragAsync{T}"/> — removes the delegated pointerdown listener and cancels (never commits) any drag in flight. Default no-op.</summary>
     Task GanttV3UnregisterRowReorderDragAsync(Microsoft.AspNetCore.Components.ElementReference paneEl) => Task.CompletedTask;
 
+    /// <summary>
+    /// Registers GanttV3's bar context-menu channel (design spec Phase 3, T8 —
+    /// gantt-v3.js's <c>ganttV3.registerBarContextMenu</c>) — a FOURTH registration
+    /// channel alongside <see cref="GanttV3RegisterDragAsync{T}"/>/<see
+    /// cref="GanttV3RegisterSplitterDragAsync{T}"/>/<see cref="GanttV3RegisterRowReorderDragAsync{T}"/>,
+    /// deliberately independent of <c>GanttTimeline.Readonly</c> (a context menu is a
+    /// VIEW action, not an edit — see that component's own remarks). A single
+    /// delegated native <c>contextmenu</c> listener on <paramref name="el"/> (the same
+    /// scroll-host element <see cref="GanttV3RegisterDragAsync{T}"/> targets) resolves
+    /// which <c>[data-task-id]</c> bar (if any) was right-clicked, defers to any
+    /// currently-in-flight drag on that same bar (swallowed, no menu — see the JS
+    /// implementation's own remarks for the drag-isolation contract), and otherwise
+    /// invokes the caller's <c>NotifyBarContextMenu</c> JSInvokable with the resolved
+    /// task id and pointer coordinates. Calling this again for an already-registered
+    /// <paramref name="el"/> updates the stored <paramref name="dotNetRef"/> in place
+    /// (idempotent), mirroring every other registration channel above. Default no-op
+    /// DIM so existing implementers/test doubles keep compiling; <see
+    /// cref="Lumeo.Services.ComponentInteropService"/> overrides both with the real
+    /// registration.
+    /// </summary>
+    Task GanttV3RegisterBarContextMenuAsync<[System.Diagnostics.CodeAnalysis.DynamicallyAccessedMembers(System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicMethods)] T>(Microsoft.AspNetCore.Components.ElementReference el, DotNetObjectReference<T> dotNetRef) where T : class
+        => Task.CompletedTask;
+
+    /// <summary>Tears down the bar context-menu channel registered by <see cref="GanttV3RegisterBarContextMenuAsync{T}"/> — removes the delegated <c>contextmenu</c> listener. Default no-op.</summary>
+    Task GanttV3UnregisterBarContextMenuAsync(Microsoft.AspNetCore.Components.ElementReference el) => Task.CompletedTask;
+
     // Toolbar overflow observer — registers a ResizeObserver on the toolbar
     // element and invokes the handler with (fittingCount, totalCount) whenever
     // the number of items that fit before the "..." overflow trigger changes.

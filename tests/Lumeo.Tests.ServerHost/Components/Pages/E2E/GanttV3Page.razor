@@ -29,6 +29,24 @@
      (always accepts what Gantt3 pushes) so a created task's ids are observable
      in their own sink without ever vetoing/reverting an edit.
 
+   Design spec Phase 3, T8 additions:
+   - ?settingsMenu=1 -> renders a real GanttSettingsMenu in Gantt3.TrailingContent,
+     two-way bound to the SAME fields already backing this page's own Gantt3
+     parameters (settings-menu toggles are observable through the SAME live
+     chart this page already renders, not a second/parallel instance) — lets an
+     E2E spec drive a real settings-menu checkbox click and assert a live
+     chart feature (e.g. ShowZoomControl's own ".lumeo-gantt-v3-zoom-control")
+     actually flips.
+   - ?barContextMenu=1 -> wires Gantt3.BarContextMenu to a minimal test menu
+     (one item, data-testid="gantt-v3-context-menu-item", clicking it writes
+     the right-clicked task's id into a sink) so an E2E spec can right-click a
+     bar and assert the menu opens/positions/closes, and stays isolated from
+     an in-flight drag (design spec Phase 3, T8, decision 4).
+   - ?dragGhostTemplate=1 -> wires Gantt3.DragGhostTemplate to a distinctly
+     testid'd/styled fragment (data-testid="gantt-v3-custom-ghost") so an E2E
+     spec can assert the CUSTOM ghost (not the default bar clone) is what's
+     actually visible during a live drag.
+
    ?rtl=1 (Codex round 3, P2 #7): wraps Gantt3 in Lumeo's own DirectionProvider
    (the standard idiom every RTL-aware Lumeo component relies on — see
    DirectionProvider.razor's own remarks — sets dir="rtl" on a wrapping div,
@@ -85,11 +103,18 @@
                 ColorByGroup="@_colorByGroup"
                 ShowOffscreenIndicators="@_showOffscreenIndicators"
                 ShowZoomControl="@_showZoomControl"
+                ShowSummaryBars="@_showSummaryBars"
+                ShowRowCheckboxes="@_showRowCheckboxes"
+                AllowRowReorder="@_allowRowReorder"
+                OffDays="@_offDays"
                 OnTaskClick="HandleTaskClick"
                 OnDateChange="HandleDateChange"
                 OnProgressChange="HandleProgressChange"
                 OnTaskUpdate="HandleTaskUpdate"
                 OnTaskCreate="HandleTaskCreate"
+                DragGhostTemplate="@(_showDragGhostTemplate ? DragGhostTemplateFragment : null)"
+                BarContextMenu="@(_showBarContextMenu ? BarContextMenuFragment : null)"
+                TrailingContent="@(_showSettingsMenu ? SettingsMenuFragment : null)"
                 data-testid="gantt-v3-root" />
     </DirectionProvider>
 
@@ -101,6 +126,7 @@
     <pre data-testid="event-sink-taskcreate" style="display:none">@_lastTaskCreateJson</pre>
     <pre data-testid="event-sink-taskschanged" style="display:none">@_lastTasksChangedJson</pre>
     <pre data-testid="candrop-call-count" style="display:none">@_validateDropCallCount</pre>
+    <pre data-testid="gantt-v3-context-menu-selected" style="display:none">@_lastContextMenuTaskId</pre>
     @* Bug fix (cx7b review): kept BELOW the chart, not above it - the visual
        snapshot suite screenshots a FIXED viewport clip from (0,0), so any
        harness control placed ABOVE the chart shifts the whole captured
@@ -138,6 +164,10 @@
     // the default).
     [SupplyParameterFromQuery(Name = "showOffscreenIndicators")] public string? ShowOffscreenIndicatorsQuery { get; set; }
     [SupplyParameterFromQuery(Name = "showZoomControl")] public string? ShowZoomControlQuery { get; set; }
+    // Design spec Phase 3, T8 additions — see this file's own header remarks.
+    [SupplyParameterFromQuery(Name = "settingsMenu")] public string? SettingsMenuQuery { get; set; }
+    [SupplyParameterFromQuery(Name = "barContextMenu")] public string? BarContextMenuQuery { get; set; }
+    [SupplyParameterFromQuery(Name = "dragGhostTemplate")] public string? DragGhostTemplateQuery { get; set; }
 
     private GanttViewMode _viewMode = GanttViewMode.Day;
     private List<GanttTask> _tasks = new();
@@ -155,6 +185,16 @@
     private bool _colorByGroup;
     private bool _showOffscreenIndicators = true;
     private bool _showZoomControl;
+    private bool _showSummaryBars;
+    private bool _showRowCheckboxes;
+    private bool _allowRowReorder;
+    private IReadOnlySet<DayOfWeek>? _offDays;
+
+    // Design spec Phase 3, T8 additions.
+    private bool _showSettingsMenu;
+    private bool _showBarContextMenu;
+    private bool _showDragGhostTemplate;
+    private string? _lastContextMenuTaskId;
 
     private string? _lastClickJson;
     // Invocation-COUNT sink (Phase-1/Phase-2 reconciliation fix-round): the
@@ -199,7 +239,58 @@
         _colorByGroup = ColorByGroupQuery == "1";
         if (ShowOffscreenIndicatorsQuery == "0") _showOffscreenIndicators = false;
         _showZoomControl = ShowZoomControlQuery == "1";
+        _showSettingsMenu = SettingsMenuQuery == "1";
+        _showBarContextMenu = BarContextMenuQuery == "1";
+        _showDragGhostTemplate = DragGhostTemplateQuery == "1";
     }
+
+    // Design spec Phase 3, T8 — the real GanttSettingsMenu, two-way bound to
+    // the SAME fields already backing this page's own <Gantt3> parameters
+    // above (see this file's own header remarks) — a settings-menu toggle
+    // click is observable through the identical live chart, not a second
+    // instance. A plain attribute (not the <TrailingContent> child-content-
+    // tag syntax) on <Gantt3> above, specifically so the ternary can still
+    // supply a genuine null (no wrapper div at all on GanttNav's own side —
+    // see GanttNav.razor's own "@if (TrailingContent is not null)" gate) when
+    // ?settingsMenu=1 is absent, keeping every pre-T8 spec on this page
+    // byte-identical.
+    private RenderFragment SettingsMenuFragment =>
+        @<GanttSettingsMenu @bind-ShowRowCheckboxes="_showRowCheckboxes"
+                             @bind-ShowSummaryBars="_showSummaryBars"
+                             @bind-ShowZoomControl="_showZoomControl"
+                             @bind-ShowOffscreenIndicators="_showOffscreenIndicators"
+                             @bind-NowIndicator="_nowIndicator"
+                             @bind-MarkOffDays="_markOffDays"
+                             @bind-Readonly="_readonly"
+                             @bind-AllowCreate="_allowCreate"
+                             @bind-AllowRowReorder="_allowRowReorder"
+                             @bind-FirstDayOfWeek="_firstDayOfWeek"
+                             @bind-OffDays="_offDays"
+                             @bind-ColorByGroup="_colorByGroup" />;
+
+    // Design spec Phase 3, T8 — minimal test menu (one item) wired via
+    // ?barContextMenu=1. Selecting it writes the right-clicked task's id into
+    // a sink so an E2E spec can prove the resolved task matches the bar that
+    // was actually right-clicked, not just "a menu opened".
+    private RenderFragment<GanttTask> BarContextMenuFragment => task =>
+        @<ContextMenuItem OnClick="@(() => HandleContextMenuItemSelect(task))" data-testid="gantt-v3-context-menu-item">
+            Task: @task.Name
+        </ContextMenuItem>;
+
+    private void HandleContextMenuItemSelect(GanttTask task)
+    {
+        _lastContextMenuTaskId = task.Id;
+        StateHasChanged();
+    }
+
+    // Design spec Phase 3, T8 — a distinctly testid'd/styled ghost so an E2E
+    // spec can assert the CUSTOM content (not the default bar clone) is what
+    // actually renders during a live drag. Deliberately does NOT include a
+    // ".lumeo-gantt-v3-bar-progress" element (see GanttBar.DragGhostTemplate's
+    // own remarks — a progress drag simply skips the live fill repaint for a
+    // custom template; this fixture intentionally exercises that path too).
+    private static readonly RenderFragment<GanttTask> DragGhostTemplateFragment = task =>
+        @<div class="absolute inset-0 rounded border-2 border-dashed border-destructive bg-destructive/20" data-testid="gantt-v3-custom-ghost"></div>;
 
     // Phase 2, T2/T3 (drag-parity sinks) + Codex round 5 review (real-DOM
     // click proof) share this one handler: sets the plain last-clicked-id

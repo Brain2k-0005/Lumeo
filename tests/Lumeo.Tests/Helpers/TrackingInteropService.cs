@@ -938,6 +938,37 @@ public class TrackingInteropService : IComponentInteropService
         return (bool?)method.Invoke(_ganttV3RowReorderDotNetRef, new object[] { taskId, targetIndex });
     }
 
+    // GanttV3 bar-context-menu registration tracking (design spec Phase 3,
+    // T8) — mirrors the row-reorder tracking immediately above: call counts
+    // plus a captured DotNetObjectReference so a test can simulate a JS-side
+    // right-click notification without a real browser contextmenu event. No
+    // options bag (see GanttV3RegisterBarContextMenuAsync's own remarks) —
+    // this channel is deliberately as simple as row-reorder's.
+    private int _ganttV3RegisterBarContextMenuCallCount;
+    private int _ganttV3UnregisterBarContextMenuCallCount;
+    public int GanttV3RegisterBarContextMenuCallCount => _ganttV3RegisterBarContextMenuCallCount;
+    public int GanttV3UnregisterBarContextMenuCallCount => _ganttV3UnregisterBarContextMenuCallCount;
+    private object? _ganttV3BarContextMenuDotNetRef;
+    public Task GanttV3RegisterBarContextMenuAsync<T>(ElementReference el, DotNetObjectReference<T> dotNetRef) where T : class
+    {
+        _ganttV3RegisterBarContextMenuCallCount++;
+        _ganttV3BarContextMenuDotNetRef = dotNetRef.Value;
+        return Task.CompletedTask;
+    }
+    public Task GanttV3UnregisterBarContextMenuAsync(ElementReference el)
+    {
+        _ganttV3UnregisterBarContextMenuCallCount++;
+        return Task.CompletedTask;
+    }
+    /// <summary>Simulates a JS-side bar right-click by invoking the captured component's own <c>NotifyBarContextMenu</c> method directly.</summary>
+    public bool SimulateGanttV3BarContextMenu(string taskId, double clientX, double clientY)
+    {
+        var method = _ganttV3BarContextMenuDotNetRef?.GetType().GetMethod("NotifyBarContextMenu");
+        if (method is null) return false;
+        method.Invoke(_ganttV3BarContextMenuDotNetRef, new object[] { taskId, clientX, clientY });
+        return true;
+    }
+
     // GanttV3 browser-local-"today" tracking (Codex round 2, P2 #9) — settable
     // so a test can simulate the browser reporting a date that differs from
     // whatever DateTime.Today happens to be on the machine running the suite.

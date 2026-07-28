@@ -124,6 +124,9 @@ export const ganttV3 = {
 
     registerRowReorderDrag,
     unregisterRowReorderDrag,
+
+    registerBarContextMenu,
+    unregisterBarContextMenu,
 };
 
 // Sticky-header horizontal scroll sync (Codex round 2, P1 #3 — "sticky header
@@ -685,10 +688,37 @@ function resolveHitMode(barEl, clientX, isMilestone) {
 // bar div is never mutated by JS (only re-rendered once by .NET after
 // CommitDrag), so there is nothing for Blazor's diff to fight or leave stale
 // on an aborted/failed drag.
+//
+// Design spec Phase 3, T8 — DragGhostTemplate: when GanttBar.razor rendered a
+// custom ghost template for THIS task (see GanttBar's own remarks — a HIDDEN
+// sibling div, `[data-gantt-ghost-template]`, positioned with the EXACT SAME
+// --lumeo-gantt-bar-x/-w/-row + left/top/width/height WrapperStyle the real
+// bar itself carries, since both come from the same X/Width/RowIndex/BarHeight
+// props on the same GanttBar instance), clone THAT node instead of barEl —
+// same coordinate space (a sibling of barEl inside the SAME row-canvas parent,
+// per the pinned Phase-2 "bars are nested, arrows are outer-canvas" coordinate
+// rule — nothing here changes WHICH element the ghost is appended to, only
+// WHICH element supplies its cloned content), so the ghost's initial position
+// is byte-identical to cloning the bar itself. The move/resize/progress preview
+// logic below only ever WRITES ghost.style.left/width/etc — it never reads
+// them back off the clone — and its own delta math (dx, geo) is always derived
+// from barEl's OWN readBarGeometry/data-task-* attributes, never from the
+// template — so which element was cloned cannot skew any drag math, only the
+// ghost's visual content. A progress-drag preview specifically looks for
+// `.lumeo-gantt-v3-bar-progress` inside the ghost (see onPointerMove's own
+// progress branch) — a custom template that doesn't include one simply skips
+// that live repaint (guarded by `if (fill)` there already); the ghost still
+// tracks position/size correctly either way.
 function makeGhost(barEl) {
-    const ghost = barEl.cloneNode(true);
+    const templateEl = barEl.parentElement
+        ? barEl.parentElement.querySelector('[data-gantt-ghost-template]')
+        : null;
+    const ghost = (templateEl || barEl).cloneNode(true);
     ghost.classList.add('lumeo-gantt-v3-drag-ghost');
     ghost.removeAttribute('data-task-id'); // never itself a hit-test target for a second, nested pointerdown
+    ghost.removeAttribute('data-gantt-ghost-template');
+    ghost.classList.remove('hidden');
+    ghost.style.display = ''; // clear the template's own inline display:none (see GanttBar.razor's remarks) — the class above already handles Tailwind's `hidden` utility; this covers a template whose visibility came from the inline style instead
     ghost.style.opacity = '0.6';
     ghost.style.pointerEvents = 'none';
     ghost.style.zIndex = '50';
@@ -1573,6 +1603,87 @@ function unregisterRowReorderDrag(paneEl) {
     // Dispose/re-render racing a live gesture must not let it reach
     // CommitRowReorder afterward).
     for (const cleanup of Array.from(reg.activeCleanups)) cleanup();
+}
+
+// ── Bar context menu (design spec Phase 3, T8) ──────────────────────────────
+//
+// A FOURTH, SEPARATE registration channel alongside registerDrag/
+// registerSplitterDrag/registerRowReorderDrag — deliberately NOT folded into
+// registerDrag's own registration object, for one concrete reason:
+// registerDrag is torn down ENTIRELY whenever Readonly is true
+// (SyncDragRegistrationAsync's own "no listeners at all when Readonly"
+// contract), but BarContextMenu is a VIEW action (right-click -> caller-
+// supplied menu content), not an edit — it must stay available on a Readonly
+// chart (a consumer's own menu content can still offer non-mutating actions
+// like "view details"/"copy" there, exactly the same way GanttBar's tooltip
+// and keyboard focus stay available when Readonly). Sharing registerDrag's
+// registration would tie this feature's lifecycle to Readonly for no reason.
+//
+// Delegated on the SAME scroll-host element registerDrag uses (bars/tracks
+// live there) — a native 'contextmenu' event, not a pointer event, so it
+// needs no pointer-capture/pointer-id isolation of its own; the isolation
+// this needs is from a CONCURRENT bar drag, not from a second contextmenu
+// gesture (there is only ever one contextmenu event per right-click).
+//
+// Drag isolation (design spec Phase 3, T8, decision 4): checks the SAME
+// module-level `activeBarDrags` WeakSet registerDrag's own onPointerDown
+// populates/clears — true for exactly the span of a real, currently-in-flight
+// pointer session on that bar (from pointerdown, whether or not the
+// DRAG_THRESHOLD_PX has been crossed yet, through pointerup/pointercancel's
+// own synchronous cleanup() — see registerDrag's remarks). A right-click
+// landing on a bar mid-session is swallowed entirely (preventDefault, no
+// NotifyBarContextMenu call, no native menu either) rather than opening a
+// menu that could then race a still-in-flight move/resize commit. This is
+// symmetric with the OTHER direction (a real drag never starts from a
+// right-button pointerdown at all — registerDrag's own `if (e.button !== 0)
+// return;` gate, unconditional and unrelated to this channel).
+const barContextMenuRegistrations = new Map(); // el -> { dotNetRef, onContextMenu }
+
+function registerBarContextMenu(el, dotNetRef) {
+    if (!el) return;
+    const existing = barContextMenuRegistrations.get(el);
+    if (existing) {
+        // Idempotent re-registration — mirrors registerDrag's own dotNetRef-swap-
+        // in-place precedent (a re-render handing a fresh DotNetObjectReference
+        // must not attach a second listener).
+        existing.dotNetRef = dotNetRef;
+        return;
+    }
+
+    const onContextMenu = (e) => {
+        const barEl = e.target.closest('[data-task-id]');
+        if (!barEl || !el.contains(barEl)) return; // not a bar — leave the native/default context menu alone
+        if (activeBarDrags.has(barEl)) {
+            e.preventDefault(); // a real drag/pending gesture already owns this bar — swallow, no menu, no native fallback either
+            return;
+        }
+        e.preventDefault();
+        const reg = barContextMenuRegistrations.get(el);
+        if (!reg || !reg.dotNetRef) return;
+        const taskId = barEl.getAttribute('data-task-id');
+        // Keyboard-invoked contextmenu (Shift+F10 / the Menu key, with focus on
+        // the bar) reports (0, 0) in most engines — fall back to the bar's own
+        // bottom-left corner, the same convention Lumeo's own
+        // ContextMenuTrigger.HandleKeyDown already uses for its keyboard path.
+        let x = e.clientX;
+        let y = e.clientY;
+        if (x === 0 && y === 0) {
+            const rect = barEl.getBoundingClientRect();
+            x = rect.left;
+            y = rect.bottom;
+        }
+        reg.dotNetRef.invokeMethodAsync('NotifyBarContextMenu', taskId, x, y).catch(() => {});
+    };
+    el.addEventListener('contextmenu', onContextMenu);
+    barContextMenuRegistrations.set(el, { dotNetRef, onContextMenu });
+}
+
+function unregisterBarContextMenu(el) {
+    if (!el) return;
+    const reg = barContextMenuRegistrations.get(el);
+    if (!reg) return;
+    el.removeEventListener('contextmenu', reg.onContextMenu);
+    barContextMenuRegistrations.delete(el);
 }
 
 export default ganttV3;

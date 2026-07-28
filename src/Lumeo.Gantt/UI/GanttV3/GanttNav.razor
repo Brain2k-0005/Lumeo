@@ -36,16 +36,29 @@
         }
     </div>
 
-    <ToggleGroup Type="ToggleGroup.ToggleGroupType.Single"
-                 Variant="ToggleGroup.ToggleGroupVariant.Outline"
-                 Size="Lumeo.Size.Sm"
-                 Value="@ToolbarValue"
-                 ValueChanged="HandleViewModeChangedAsync">
-        @foreach (var level in ResolvedZoomLevels)
+    <div class="flex flex-wrap items-center gap-2">
+        <ToggleGroup Type="ToggleGroup.ToggleGroupType.Single"
+                     Variant="ToggleGroup.ToggleGroupVariant.Outline"
+                     Size="Lumeo.Size.Sm"
+                     Value="@ToolbarValue"
+                     ValueChanged="HandleViewModeChangedAsync">
+            @foreach (var level in ResolvedZoomLevels)
+            {
+                <ToggleGroupItem Value="@level.ToString()">@L[ZoomLabelKey(level)]</ToggleGroupItem>
+            }
+        </ToggleGroup>
+        @* Design spec Phase 3, T8 — GanttSettingsMenu's own slot (v2 parity:
+           Gantt.razor's identical TrailingContent, rendered in the SAME
+           trailing position next to the zoom switcher — see that component's
+           own markup remarks). Null (the default) renders nothing extra here,
+           byte-identical to every pre-T8 toolbar. *@
+        @if (TrailingContent is not null)
         {
-            <ToggleGroupItem Value="@level.ToString()">@L[ZoomLabelKey(level)]</ToggleGroupItem>
+            <div class="flex items-center gap-2">
+                @TrailingContent
+            </div>
         }
-    </ToggleGroup>
+    </div>
 </div>
 
 @code {
@@ -65,6 +78,13 @@
 
     /// <summary>The current period's title (e.g. "January 2026"), computed by whatever owns the GanttState's VisibleRange.</summary>
     [Parameter] public string? PeriodLabel { get; set; }
+
+    /// <summary>
+    /// Extra content rendered after the zoom switcher (design spec Phase 3, T8 —
+    /// v2 parity with <c>Gantt.TrailingContent</c>, the slot a <c>GanttSettingsMenu</c>
+    /// companion plugs into). Null (the default) renders nothing extra.
+    /// </summary>
+    [Parameter] public RenderFragment? TrailingContent { get; set; }
 
     /// <summary>Raised when Today is clicked — the owner recenters VisibleRange on today.</summary>
     [Parameter] public EventCallback OnToday { get; set; }
