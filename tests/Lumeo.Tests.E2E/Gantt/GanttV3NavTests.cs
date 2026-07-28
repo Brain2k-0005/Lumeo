@@ -113,7 +113,7 @@ public class GanttV3NavTests : GanttParityTestBase
         var host = Page.Locator("[data-testid='gantt-v3-root'] div[style*='overflow']").First;
         await host.WaitForAsync(new() { Timeout = 15000 });
 
-        var todayLine = Page.Locator("[data-testid='gantt-v3-root'] .lumeo-gantt-v3-today-line");
+        var todayLine = Page.Locator("[data-testid='gantt-v3-root'] .lumeo-gantt-v3-today-tint");
         await todayLine.WaitForAsync(new() { State = WaitForSelectorState.Attached, Timeout = 15000 });
 
         // Deflake (CI-only race, review wave round 3): wait for the

@@ -271,6 +271,7 @@ internal static partial class LumeoDefaultStrings
         ["Gantt.Week"] = "أسبوع",
         ["Gantt.Month"] = "شهر",
         ["Gantt.Year"] = "سنة",
+        ["Gantt.Quarter"] = "ربع",
         // Codex round 4, P2 #6 — locale completeness: this block only ever had Day/Week/Month/Year
         ["Gantt.Today"] = "اليوم",
         ["Gantt.PreviousPeriod"] = "الفترة السابقة",

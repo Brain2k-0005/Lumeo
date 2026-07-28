@@ -87,11 +87,25 @@
         GanttViewMode.Day, GanttViewMode.Week, GanttViewMode.Month, GanttViewMode.Year,
     };
 
+    // Design spec Phase 3, T2 — GanttViewMode.Quarter is toolbar-REPRESENTABLE
+    // (has its own label/toolbar value below) but deliberately NOT part of
+    // DefaultZoomLevels: adding a 5th button to the toolbar's DEFAULT (no
+    // ZoomLevels supplied) rendering would silently change every existing v3
+    // chart's default look/visual-snapshot baselines with no explicit opt-in —
+    // a consumer wanting Quarter reachable from the toolbar passes it in their
+    // own ZoomLevels list (e.g. [Day, Week, Month, Quarter, Year]), which this
+    // set (not DefaultZoomLevels) now allows through instead of silently
+    // filtering it out as an "unrecognized" level.
+    private static readonly GanttViewMode[] RepresentableZoomLevels =
+    {
+        GanttViewMode.Day, GanttViewMode.Week, GanttViewMode.Month, GanttViewMode.Quarter, GanttViewMode.Year,
+    };
+
     // Only the toolbar-representable levels, in canonical order — same precedent
     // as v2's Gantt.razor ResolvedZoomLevels.
     private IReadOnlyList<GanttViewMode> ResolvedZoomLevels =>
         ZoomLevels is { Count: > 0 }
-            ? ZoomLevels.Where(l => Array.IndexOf(DefaultZoomLevels, l) >= 0).ToList()
+            ? ZoomLevels.Where(l => Array.IndexOf(RepresentableZoomLevels, l) >= 0).ToList()
             : DefaultZoomLevels;
 
     // Unselected (null) when ViewMode is QuarterDay/HalfDay or excluded by ZoomLevels
@@ -101,6 +115,7 @@
         GanttViewMode.Day => "Day",
         GanttViewMode.Week => "Week",
         GanttViewMode.Month => "Month",
+        GanttViewMode.Quarter => "Quarter",
         GanttViewMode.Year => "Year",
         _ => null,
     };
@@ -110,6 +125,7 @@
         GanttViewMode.Day => "Gantt.Day",
         GanttViewMode.Week => "Gantt.Week",
         GanttViewMode.Month => "Gantt.Month",
+        GanttViewMode.Quarter => "Gantt.Quarter",
         GanttViewMode.Year => "Gantt.Year",
         _ => "Gantt.Day",
     };

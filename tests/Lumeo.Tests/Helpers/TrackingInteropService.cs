@@ -890,6 +890,17 @@ public class TrackingInteropService : IComponentInteropService
         return Task.FromResult(GanttV3LocalDateToReturn);
     }
 
+    // GanttV3 browser-local-"now" tracking (design spec Phase 3, T2 —
+    // NowIndicator) — same shape as the date-only tracking immediately above,
+    // for the sibling GanttV3GetLocalDateTimeAsync interop call.
+    public string? GanttV3LocalDateTimeToReturn { get; set; }
+    public int GanttV3GetLocalDateTimeCallCount { get; private set; }
+    public Task<string?> GanttV3GetLocalDateTimeAsync()
+    {
+        GanttV3GetLocalDateTimeCallCount++;
+        return Task.FromResult(GanttV3LocalDateTimeToReturn);
+    }
+
     // GanttV3 sticky-header scroll-sync registration tracking (Codex round 2,
     // P1 #3) — records register/unregister calls so a test can assert the
     // (un)registration lifecycle without a real browser/JS scroll listener.

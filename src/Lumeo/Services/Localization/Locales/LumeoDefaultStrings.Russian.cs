@@ -269,6 +269,7 @@ internal static partial class LumeoDefaultStrings
         ["Gantt.Week"] = "Неделя",
         ["Gantt.Month"] = "Месяц",
         ["Gantt.Year"] = "Год",
+        ["Gantt.Quarter"] = "Квартал",
         // Codex round 4, P2 #6 — locale completeness: this block only ever had Day/Week/Month/Year
         ["Gantt.Today"] = "Сегодня",
         ["Gantt.PreviousPeriod"] = "Предыдущий период",

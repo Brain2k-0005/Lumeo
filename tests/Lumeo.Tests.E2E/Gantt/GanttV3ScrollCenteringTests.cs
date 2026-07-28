@@ -28,7 +28,7 @@ public class GanttV3ScrollCenteringTests : GanttParityTestBase
         await scrollPane.WaitForAsync(new() { Timeout = 15000 });
         await Assertions.Expect(scrollPane).ToHaveAttributeAsync("data-gantt-v3-initial-scroll", "done", new() { Timeout = 15000 });
 
-        var todayLine = Page.Locator("[data-testid='gantt-v3-root'] .lumeo-gantt-v3-today-line");
+        var todayLine = Page.Locator("[data-testid='gantt-v3-root'] .lumeo-gantt-v3-today-tint");
         await todayLine.WaitForAsync(new() { Timeout = 15000 });
 
         var lineBox = await todayLine.BoundingBoxAsync();
@@ -54,7 +54,7 @@ public class GanttV3ScrollCenteringTests : GanttParityTestBase
         await scrollPane.WaitForAsync(new() { Timeout = 15000 });
         await Assertions.Expect(scrollPane).ToHaveAttributeAsync("data-gantt-v3-initial-scroll", "done", new() { Timeout = 15000 });
 
-        var todayLine = Page.Locator("[data-testid='gantt-v3-root'] .lumeo-gantt-v3-today-line");
+        var todayLine = Page.Locator("[data-testid='gantt-v3-root'] .lumeo-gantt-v3-today-tint");
         await todayLine.WaitForAsync(new() { Timeout = 15000 });
 
         var treeRowCount = await Page.Locator("[data-testid='gantt-v3-root'] [data-row-kind]").CountAsync();

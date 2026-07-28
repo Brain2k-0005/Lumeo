@@ -79,6 +79,9 @@
                 Readonly="@_readonly"
                 AllowCreate="@_allowCreate"
                 CanDrop="@(_useCanDrop ? CanDropHandler : null)"
+                MarkOffDays="@_markOffDays"
+                NowIndicator="@_nowIndicator"
+                FirstDayOfWeek="@_firstDayOfWeek"
                 OnTaskClick="HandleTaskClick"
                 OnDateChange="HandleDateChange"
                 OnProgressChange="HandleProgressChange"
@@ -120,6 +123,10 @@
     [SupplyParameterFromQuery(Name = "candropthrow")] public string? CanDropThrowQuery { get; set; }
     [SupplyParameterFromQuery] public string? Rtl { get; set; }
     [SupplyParameterFromQuery] public string? Tree { get; set; }
+    // Design spec Phase 3, T2 additions.
+    [SupplyParameterFromQuery(Name = "markOffDays")] public string? MarkOffDaysQuery { get; set; }
+    [SupplyParameterFromQuery(Name = "nowIndicator")] public string? NowIndicatorQuery { get; set; }
+    [SupplyParameterFromQuery(Name = "firstDayOfWeek")] public string? FirstDayOfWeekQuery { get; set; }
 
     private GanttViewMode _viewMode = GanttViewMode.Day;
     private List<GanttTask> _tasks = new();
@@ -131,6 +138,9 @@
     private bool? _showTreePaneOverride;
     private string _lastClickedTaskId = "";
     private LayoutDirection _direction = LayoutDirection.Ltr;
+    private bool _markOffDays;
+    private bool _nowIndicator;
+    private DayOfWeek? _firstDayOfWeek;
 
     private string? _lastClickJson;
     // Invocation-COUNT sink (Phase-1/Phase-2 reconciliation fix-round): the
@@ -168,6 +178,10 @@
         _throwInCanDrop = CanDropThrowQuery == "1";
         if (Tree == "0") _showTreePaneOverride = false;
         if (Rtl == "1") _direction = LayoutDirection.Rtl;
+        _markOffDays = MarkOffDaysQuery == "1";
+        _nowIndicator = NowIndicatorQuery == "1";
+        if (!string.IsNullOrEmpty(FirstDayOfWeekQuery) && Enum.TryParse<DayOfWeek>(FirstDayOfWeekQuery, out var fdow))
+            _firstDayOfWeek = fdow;
     }
 
     // Phase 2, T2/T3 (drag-parity sinks) + Codex round 5 review (real-DOM

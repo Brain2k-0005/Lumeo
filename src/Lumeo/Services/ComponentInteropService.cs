@@ -1648,6 +1648,16 @@ public sealed class ComponentInteropService : IComponentInteropService
         catch (JSDisconnectedException) { return null; }
     }
 
+    public async Task<string?> GanttV3GetLocalDateTimeAsync()
+    {
+        try
+        {
+            var module = await GetGanttV3ModuleAsync();
+            return await module.InvokeAsync<string>("ganttV3.getLocalDateTimeIso");
+        }
+        catch (JSDisconnectedException) { return null; }
+    }
+
     public async Task GanttV3RegisterHeaderScrollSyncAsync(Microsoft.AspNetCore.Components.ElementReference canvasEl, Microsoft.AspNetCore.Components.ElementReference headerInnerEl)
     {
         try

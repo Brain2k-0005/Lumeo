@@ -480,6 +480,8 @@ internal static partial class LumeoDefaultStrings
         ["Gantt.Week"] = "Week",
         ["Gantt.Month"] = "Month",
         ["Gantt.Year"] = "Year",
+        // Design spec Phase 3, T2 — GanttViewMode.Quarter's own toolbar/settings-menu label.
+        ["Gantt.Quarter"] = "Quarter",
         ["Gantt.Today"] = "Today",
         ["Gantt.PreviousPeriod"] = "Previous period",
         ["Gantt.NextPeriod"] = "Next period",
@@ -1014,6 +1016,7 @@ internal static partial class LumeoDefaultStrings
         ["Gantt.Week"] = "Woche",
         ["Gantt.Month"] = "Monat",
         ["Gantt.Year"] = "Jahr",
+        ["Gantt.Quarter"] = "Quartal",
         ["Gantt.Today"] = "Heute",
         ["Gantt.PreviousPeriod"] = "Vorheriger Zeitraum",
         ["Gantt.NextPeriod"] = "Nächster Zeitraum",

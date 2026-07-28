@@ -231,30 +231,52 @@ public class Gantt3RenderTests : IAsyncLifetime
         var barStyle = cut.Find("[data-task-id='t1']").GetAttribute("style") ?? "";
         Assert.Contains($"--lumeo-gantt-bar-x:{expectedX.ToString(CultureInfo.InvariantCulture)}px", barStyle);
 
-        var todayStyle = cut.Find(".lumeo-gantt-v3-today-line").GetAttribute("style") ?? "";
+        // Design spec Phase 3, T2: the today marker is now a full-column tint
+        // (.lumeo-gantt-v3-today-tint), not a line — its left edge is still
+        // exactly TodayX for Day mode (TodayColumnLeft's own remarks: Day's
+        // step=1 columns mean Today's DateToPixel value already sits exactly
+        // on a column boundary, so flooring it to the nearest column-width
+        // multiple is a no-op), so this assertion is unchanged in substance.
+        var todayStyle = cut.Find(".lumeo-gantt-v3-today-tint").GetAttribute("style") ?? "";
         Assert.Contains($"left:{expectedTodayX.ToString(CultureInfo.InvariantCulture)}px", todayStyle);
     }
 
     [Fact]
     public void GanttTimeline_Header_Shows_Expected_Upper_And_Lower_Runs_For_Day_Mode_Crossing_A_Month_Boundary()
     {
-        var rangeStart = D(2026, 1, 28);
-        var rangeEnd = D(2026, 2, 3);
+        // Design spec Phase 3, T2: Day mode's upper row is now ISO week bands
+        // (GanttHeaderUpperKind.Week), not month runs — pinned to en-US here
+        // (this test never pinned a culture before this change; the week-band
+        // RUN COUNT is banding/culture-sensitive — see WeekBand_* in
+        // GanttScaleTests for the exhaustive per-culture coverage — so this
+        // component-level test now pins the SAME culture that makes "2 runs"
+        // a deterministic, not coincidental, expectation for this exact range).
+        var original = CultureInfo.CurrentCulture;
+        CultureInfo.CurrentCulture = CultureInfo.GetCultureInfo("en-US");
+        try
+        {
+            var rangeStart = D(2026, 1, 28);
+            var rangeEnd = D(2026, 2, 3);
 
-        var cut = _ctx.Render<L.GanttTimeline>(p => p
-            .Add(c => c.ViewMode, L.GanttViewMode.Day)
-            .Add(c => c.RangeStart, rangeStart)
-            .Add(c => c.RangeEnd, rangeEnd));
+            var cut = _ctx.Render<L.GanttTimeline>(p => p
+                .Add(c => c.ViewMode, L.GanttViewMode.Day)
+                .Add(c => c.RangeStart, rangeStart)
+                .Add(c => c.RangeEnd, rangeEnd));
 
-        var units = GanttScale.BuildDateUnits(L.GanttViewMode.Day, rangeStart, rangeEnd);
-        var upperRuns = GanttScale.UpperRuns(L.GanttViewMode.Day, units);
-        var lowerLabels = GanttScale.LowerLabels(L.GanttViewMode.Day, units);
+            var units = GanttScale.BuildDateUnits(L.GanttViewMode.Day, rangeStart, rangeEnd);
+            var upperRuns = GanttScale.UpperRuns(L.GanttViewMode.Day, units);
+            var lowerLabels = GanttScale.LowerLabels(L.GanttViewMode.Day, units);
 
-        Assert.Equal(2, upperRuns.Count); // January run + February run
-        foreach (var run in upperRuns)
-            Assert.Contains(run.Label, cut.Markup);
-        foreach (var label in lowerLabels)
-            Assert.Contains(label, cut.Markup);
+            Assert.Equal(2, upperRuns.Count); // Jan 25-31 week band + Feb 1-7 week band (en-US, Sunday-first)
+            foreach (var run in upperRuns)
+                Assert.Contains(run.Label, cut.Markup);
+            foreach (var label in lowerLabels)
+                Assert.Contains(label, cut.Markup);
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = original;
+        }
     }
 
     [Fact]
@@ -291,14 +313,14 @@ public class Gantt3RenderTests : IAsyncLifetime
             .Add(c => c.RangeEnd, rangeEnd)
             .Add(c => c.TodayHighlight, true));
 
-        Assert.Contains("lumeo-gantt-v3-today-line", cut.Markup);
+        Assert.Contains("lumeo-gantt-v3-today-tint", cut.Markup);
 
         // Rigor parity with the bar/milestone tests: assert the marker's actual
         // left px, not just its presence — a wrong Origin/off-by-one in TodayX
         // would otherwise go uncaught.
         var origin = GanttScale.BuildDateUnits(L.GanttViewMode.Day, rangeStart, rangeEnd)[0];
         var expectedTodayX = GanttScale.DateToPixel(L.GanttViewMode.Day, origin, today);
-        var marker = cut.Find(".lumeo-gantt-v3-today-line");
+        var marker = cut.Find(".lumeo-gantt-v3-today-tint");
         Assert.Contains($"left:{expectedTodayX.ToString(CultureInfo.InvariantCulture)}px", marker.GetAttribute("style"));
     }
 
@@ -312,7 +334,7 @@ public class Gantt3RenderTests : IAsyncLifetime
             .Add(c => c.RangeEnd, today.AddDays(3))
             .Add(c => c.TodayHighlight, false));
 
-        Assert.DoesNotContain("lumeo-gantt-v3-today-line", cut.Markup);
+        Assert.DoesNotContain("lumeo-gantt-v3-today-tint", cut.Markup);
     }
 
     [Fact]
@@ -325,7 +347,7 @@ public class Gantt3RenderTests : IAsyncLifetime
             .Add(c => c.RangeEnd, farPast.AddDays(10))
             .Add(c => c.TodayHighlight, true));
 
-        Assert.DoesNotContain("lumeo-gantt-v3-today-line", cut.Markup);
+        Assert.DoesNotContain("lumeo-gantt-v3-today-tint", cut.Markup);
     }
 
     [Fact]

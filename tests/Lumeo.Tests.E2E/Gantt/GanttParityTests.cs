@@ -232,10 +232,20 @@ public class GanttParityTests : GanttParityTestBase
 
     // ── Header label runs, all 6 view modes ──────────────────────────────────
 
+    // Design spec Phase 3, T2: "Day" removed from this theory — v2 parity
+    // doctrine ("v2 parity asserts only where v2 HAS the feature") no longer
+    // holds for Day mode's upper row: v3's is now an ISO week band
+    // (GanttHeaderUpperKind.Week, a deliberate, pinned v2 delta — see
+    // gantt-v3-ledger.md), which has no v2 counterpart to compare against
+    // verbatim. Day mode gets its own dedicated coverage below instead
+    // (Day_header_upper_is_a_v3_only_ISO_week_band_structural_check), which
+    // still asserts v2's OWN month grouping is genuinely unchanged AND v3's
+    // week-band format/finer granularity is genuinely present — a structural
+    // comparison, not a weakened one. Every OTHER mode here is UNCHANGED
+    // (both upper and lower kinds still match v2 verbatim).
     [Theory]
     [InlineData("QuarterDay")]
     [InlineData("HalfDay")]
-    [InlineData("Day")]
     [InlineData("Week")]
     [InlineData("Month")]
     [InlineData("Year")]
@@ -253,6 +263,75 @@ public class GanttParityTests : GanttParityTestBase
 
         Assert.Equal(v2Upper, v3Upper);
         Assert.Equal(v2Lower, v3Lower);
+    }
+
+    [Fact]
+    public async Task Day_header_upper_is_a_v3_only_ISO_week_band_structural_check()
+    {
+        // What this proves (design spec Phase 3, T2's own instruction: convert
+        // to a STRUCTURAL comparison, state exactly what it still verifies):
+        //  1. v2's Day-mode upper row is genuinely UNCHANGED (still plain
+        //     month-name grouping) — v2 product code was never touched.
+        //  2. v3's Day-mode LOWER row (day numbers) is BYTE-IDENTICAL to v2's
+        //     — proves ONLY the upper kind changed, isolating the delta to
+        //     exactly the one field GanttScale.ViewModes' Day entry documents.
+        //  3. Every v3 upper-row text matches the "W<n> ..." ISO week-band
+        //     shape — proves the NEW format is actually rendered, not just
+        //     "some other text".
+        //  4. v3 has MORE upper runs than v2 for the identical date range —
+        //     weeks are strictly finer-grained than months, so a genuine
+        //     week-banded grouping MUST produce more runs than a month-banded
+        //     one over the same span; this is a real (if coarse) proof that
+        //     v3 is grouping by week and not accidentally still by month.
+        await GotoHost("/e2e/gantt-v2?viewMode=Day");
+        await WaitAndCountV2Bars();
+        var v2Upper = await ReadV2HeaderTexts(isUpperRow: true);
+        var v2Lower = await ReadV2HeaderTexts(isUpperRow: false);
+        Assert.All(v2Upper, t => Assert.DoesNotMatch(@"^W\d", t)); // v2: month names, never "W<n>..."
+
+        await GotoHost("/e2e/gantt-v3?viewMode=Day");
+        await WaitAndCountV3Bars();
+        var v3Upper = await ReadV3UpperRunTexts();
+        var v3Lower = await ReadV3LowerLabelTexts();
+
+        Assert.Equal(v2Lower, v3Lower); // lower row (day numbers) is untouched by this delta
+        Assert.NotEmpty(v3Upper);
+        Assert.All(v3Upper, t => Assert.Matches(@"^W\d{1,2} ", t)); // "W29 Jul 12 – 18"-shaped
+        Assert.True(v3Upper.Count > v2Upper.Count,
+            $"expected v3's week-banded upper row ({v3Upper.Count} runs) to have MORE runs than v2's month-banded one ({v2Upper.Count}) over the identical date range");
+    }
+
+    // ── Quarter mode (design spec Phase 3, T2 — v3-ONLY) ─────────────────────
+
+    [Fact]
+    public async Task Quarter_view_mode_is_rejected_by_the_v2_route()
+    {
+        // GanttV2Page.razor's own guard (parsed != GanttViewMode.Quarter)
+        // must keep v2's route on its Day-mode default rather than ever
+        // forwarding Quarter to v2's Gantt component — v2's gantt-v2.js
+        // VIEW_MODES table has no 'Quarter' entry and would fail. Proven two
+        // ways: the page doesn't crash (bars still render), AND the rendered
+        // lower-row format is Day-shaped (2-digit day numbers), not
+        // Quarter-shaped ("Q1".."Q4") — a genuine fall-through-to-Day check,
+        // not just "didn't crash by accident".
+        await GotoHost("/e2e/gantt-v2?viewMode=Quarter");
+        await WaitAndCountV2Bars();
+        var v2Lower = await ReadV2HeaderTexts(isUpperRow: false);
+        Assert.NotEmpty(v2Lower);
+        Assert.All(v2Lower, t => Assert.Matches(@"^\d{2}$", t)); // Day mode's dayNum format
+    }
+
+    [Fact]
+    public async Task Quarter_view_mode_renders_on_the_v3_route()
+    {
+        // v3-only mode, reachable via the SAME generic ?viewMode= query
+        // mechanism the other 6 modes already use — no v2 comparison (there
+        // is nothing on the v2 side to compare against).
+        await GotoHost("/e2e/gantt-v3?viewMode=Quarter");
+        await WaitAndCountV3Bars();
+        var v3Lower = await ReadV3LowerLabelTexts();
+        Assert.NotEmpty(v3Lower);
+        Assert.All(v3Lower, t => Assert.Matches(@"^Q[1-4]$", t));
     }
 
     // ── Zoom switcher (interactive, Day/Week/Month/Year — the 4 toolbar buttons) ──
@@ -325,9 +404,23 @@ public class GanttParityTests : GanttParityTestBase
 
         await GotoHost("/e2e/gantt-v3?fixture=today");
         await WaitAndCountV3Bars(expectedCountAtLeast: 1);
-        var v3Line = Page.Locator("[data-testid='gantt-v3-root'] .lumeo-gantt-v3-today-line");
-        await v3Line.WaitForAsync(new() { State = WaitForSelectorState.Attached, Timeout = 15000 });
-        var v3Style = await v3Line.GetAttributeAsync("style");
+        // Design spec Phase 3, T2: v3's today marker is now a full-column tint
+        // (.lumeo-gantt-v3-today-tint) + header dot + accent label, replacing
+        // the line-only look — a DELIBERATE, PINNED v2 delta (v2 stays a
+        // date-chip + thin line; see gantt-v3-ledger.md). What this assertion
+        // still proves, unchanged: the tint's OWN left edge is the correct
+        // pixel boundary for "today"'s column, cross-checked against the SAME
+        // independent ground-truth math (GanttDayModeMath) AND against v2's
+        // own line position within PxTolerance — the Day-mode fixture this
+        // test uses means TodayColumnLeft (the tint's left edge — see
+        // GanttTimeline.TodayColumnLeft's own remarks) is mathematically
+        // IDENTICAL to the old line's TodayX for every Day-mode date, so this
+        // is a selector swap, not a weakened comparison — the dot/label/tint
+        // WIDTH are look-only and deliberately NOT asserted here (structural
+        // position only, not styling).
+        var v3Tint = Page.Locator("[data-testid='gantt-v3-root'] .lumeo-gantt-v3-today-tint");
+        await v3Tint.WaitForAsync(new() { State = WaitForSelectorState.Attached, Timeout = 15000 });
+        var v3Style = await v3Tint.GetAttributeAsync("style");
         var v3Match = Regex.Match(v3Style ?? "", @"left:(-?\d+(?:\.\d+)?)px");
         Assert.True(v3Match.Success);
         var v3X = double.Parse(v3Match.Groups[1].Value, CultureInfo.InvariantCulture);

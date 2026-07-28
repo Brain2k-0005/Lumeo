@@ -319,6 +319,7 @@ internal static partial class LumeoDefaultStrings
         ["Gantt.Week"] = "Semaine",
         ["Gantt.Month"] = "Mois",
         ["Gantt.Year"] = "Année",
+        ["Gantt.Quarter"] = "Trimestre",
         ["Gantt.Today"] = "Aujourd'hui",
         ["Gantt.PreviousPeriod"] = "Période précédente",
         ["Gantt.NextPeriod"] = "Période suivante",

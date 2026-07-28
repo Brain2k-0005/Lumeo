@@ -35,7 +35,7 @@ public class GanttV3RtlTests : GanttParityTestBase
         var direction = await scrollPane.EvaluateAsync<string>("el => getComputedStyle(el).direction");
         Assert.Equal("rtl", direction);
 
-        var todayLine = Page.Locator("[data-testid='gantt-v3-root'] .lumeo-gantt-v3-today-line");
+        var todayLine = Page.Locator("[data-testid='gantt-v3-root'] .lumeo-gantt-v3-today-tint");
         await todayLine.WaitForAsync(new() { State = WaitForSelectorState.Attached, Timeout = 15000 });
 
         // Same completion latch every other scroll-to-today spec uses (gantt-v3.js's
@@ -105,7 +105,7 @@ public class GanttV3RtlTests : GanttParityTestBase
         await scrollPane.WaitForAsync(new() { Timeout = 15000 });
         await Assertions.Expect(scrollPane).ToHaveAttributeAsync("data-gantt-v3-initial-scroll", "done", new() { Timeout = 15000 });
 
-        var todayLine = Page.Locator("[data-testid='gantt-v3-root'] .lumeo-gantt-v3-today-line");
+        var todayLine = Page.Locator("[data-testid='gantt-v3-root'] .lumeo-gantt-v3-today-tint");
         await todayLine.WaitForAsync(new() { Timeout = 15000 });
 
         var lineBox = await todayLine.BoundingBoxAsync();
@@ -180,7 +180,7 @@ public class GanttV3RtlTests : GanttParityTestBase
         await scrollPane.WaitForAsync(new() { Timeout = 15000 });
         await Assertions.Expect(scrollPane).ToHaveAttributeAsync("data-gantt-v3-initial-scroll", "done", new() { Timeout = 15000 });
 
-        var todayLine = Page.Locator("[data-testid='gantt-v3-root'] .lumeo-gantt-v3-today-line");
+        var todayLine = Page.Locator("[data-testid='gantt-v3-root'] .lumeo-gantt-v3-today-tint");
         await todayLine.WaitForAsync(new() { State = WaitForSelectorState.Attached, Timeout = 15000 });
 
         // Sanity: centered correctly under the INITIAL (LTR) direction —

@@ -266,6 +266,7 @@ internal static partial class LumeoDefaultStrings
         ["Gantt.Week"] = "周",
         ["Gantt.Month"] = "月",
         ["Gantt.Year"] = "年",
+        ["Gantt.Quarter"] = "季度",
         // Codex round 4, P2 #6 — locale completeness: this block only ever had Day/Week/Month/Year
         ["Gantt.Today"] = "今天",
         ["Gantt.PreviousPeriod"] = "上一时段",

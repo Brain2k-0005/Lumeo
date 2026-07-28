@@ -620,6 +620,27 @@ public interface IComponentInteropService : IAsyncDisposable, IDisposable
     Task<string?> GanttV3GetLocalDateAsync() => Task.FromResult<string?>(null);
 
     /// <summary>
+    /// Browser-local "now" as an ISO-ish <c>"yyyy-MM-ddTHH:mm:ss"</c> string
+    /// (design spec Phase 3, T2 — <c>NowIndicator</c>'s precise current-TIME
+    /// line in sub-day view modes). Extends the SAME <c>GanttV3Get*</c> browser-
+    /// clock interop family <see cref="GanttV3GetLocalDateAsync"/> already
+    /// established (same module, same "browser clock, not the SERVER's" reason
+    /// — Blazor Server's C# <c>DateTime.Now</c> is the server's own clock) rather
+    /// than a second, parallel channel: <see cref="GanttV3GetLocalDateAsync"/>
+    /// itself is UNCHANGED (still date-only, still what Gantt3's Today logic
+    /// reads) — this is a NEW sibling for the one caller (<c>NowIndicator</c>)
+    /// that genuinely needs sub-day precision, not a replacement. Returns
+    /// <c>null</c> under the exact same conditions <see cref="GanttV3GetLocalDateAsync"/>
+    /// does (JS interop unavailable — prerendering, a torn-down circuit).
+    /// DO-NOT-PROMOTE: joins the rest of the GanttV3 Unshipped surface — see
+    /// <see cref="GanttV3GetLocalDateAsync"/>'s own DO-NOT-PROMOTE precedent
+    /// (tracked in the campaign ledger/memory, not inline here) — stays
+    /// Unshipped until the Phase-4 GanttV3-&gt;Gantt rename. Default no-op DIM
+    /// so existing implementers/test doubles keep compiling.
+    /// </summary>
+    Task<string?> GanttV3GetLocalDateTimeAsync() => Task.FromResult<string?>(null);
+
+    /// <summary>
     /// Registers a one-way horizontal-scroll mirror from <paramref name="canvasEl"/>
     /// (the row-canvas's own scrollable element) onto <paramref name="headerInnerEl"/>
     /// (a <c>transform: translateX(...)</c> target) — Codex round 2, P1 #3's sticky-

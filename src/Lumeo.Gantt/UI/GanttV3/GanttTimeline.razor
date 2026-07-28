@@ -49,7 +49,17 @@
        registerHeaderScrollSync mirrors the canvas's scrollLeft onto it via
        a transform so the two stay column-aligned. *@
     <div class="lumeo-gantt-v3-header sticky top-0 z-10 overflow-hidden border-b border-border/60 bg-card" style="@HeaderOuterStyle">
-        <div @ref="_headerInnerRef" style="@HeaderInnerStyle">
+        @* class="relative" on the headerInner (not the upper-row div below) is
+           the today-dot's OWN positioning context — see the dot's own remarks
+           near the bottom of this block for why it is a SIBLING of, not
+           nested inside, the upper-row div: E2E's ReadV3UpperRunTexts locator
+           (`.lumeo-gantt-v3-header > div > div:nth-child(1) > div`) reads
+           EVERY direct child of the upper-row div as an upper-run label —
+           nesting the dot there polluted that read with an extra
+           empty-text-content entry (real bug, caught live: Header_label_runs_
+           match_between_v2_and_v3(Year) expected zero upper runs, actual
+           [""]). *@
+        <div @ref="_headerInnerRef" class="relative" style="@HeaderInnerStyle">
             <div class="relative" style="height:20px;">
                 @foreach (var run in UpperRuns)
                 {
@@ -77,9 +87,32 @@
                 @for (var i = 0; i < Units.Count; i++)
                 {
                     var label = LowerLabels[i];
-                    <div class="shrink-0 text-center text-xs text-muted-foreground" style="@ColumnCellStyle">@label</div>
+                    @* Today column accent label (design spec Phase 3, T2) —
+                       IsTodayColumn(i) gates only the CSS class, same column
+                       cell markup otherwise. *@
+                    <div class="@ColumnCellClass(i)" style="@ColumnCellStyle">@label</div>
                 }
             </div>
+
+            @* Today header dot (design spec Phase 3, T2 — "accent header
+               label + dot + full-column tint, replacing the line-only
+               look"; see TodayColumnStyle's own remarks for the shared
+               column-boundary math this and the row-canvas tint below
+               both use). A SIBLING of the upper/lower-row divs (not nested in
+               either — see the headerInner's own remarks above for why),
+               positioned absolutely against headerInner's own new
+               "relative" context. *@
+            @if (TodayHighlight && TodayInRange)
+            {
+                @* Theme-token status-dot rounding (the calc(var(--radius)*N)
+                   form), same convention as Badge.razor's own dot and
+                   ToolCallCard's h-1.5/w-1.5 status dots — RadiusTokenGuardTests
+                   pins the OTHER (hardcoded-circle) utility to an audited
+                   semantic allowlist; a small status dot is thematic
+                   roundness, not the Spinner/Avatar-class "circle IS the
+                   semantic" exception. *@
+                <div class="lumeo-gantt-v3-today-dot pointer-events-none absolute h-1.5 w-1.5 rounded-[calc(var(--radius)*2)] bg-primary" style="@TodayDotStyle"></div>
+            }
         </div>
     </div>
 
@@ -93,6 +126,25 @@
        their previous "+GanttScale.HeaderHeight" terms accordingly. *@
     <div class="@CanvasScrollClass" @ref="_scrollHostRef">
         <div class="relative" style="@CanvasStyle">
+            @* Off-day column tint (design spec Phase 3, T2 — "Mark off days").
+               Rendered BEHIND the grid lines/bars (background fill, painted
+               first in DOM order = bottom of the stacking context here — none
+               of these siblings set z-index, so paint order follows DOM
+               order). Only rendered for day-granularity view modes — see
+               SupportsOffDayMarking's own remarks for why coarser modes
+               (Week/Month/Quarter/Year, whose OWN grid columns already span
+               far more than a single day) are excluded. *@
+            @if (MarkOffDays && SupportsOffDayMarking)
+            {
+                @for (var i = 0; i < Units.Count; i++)
+                {
+                    if (IsOffDayColumn(i))
+                    {
+                        <div class="lumeo-gantt-v3-off-day pointer-events-none absolute inset-y-0 bg-muted/40" style="@OffDayColumnStyle(i)"></div>
+                    }
+                }
+            }
+
             @* Vertical grid lines, spanning the full row canvas height. *@
             <div class="pointer-events-none absolute inset-x-0" style="@GridLinesContainerStyle">
                 @for (var i = 0; i <= Units.Count; i++)
@@ -101,9 +153,33 @@
                 }
             </div>
 
-            @if (TodayInRange)
+            @* Today column treatment (design spec Phase 3, T2 — "accent header
+               label + dot + full-column tint (params: keep TodayHighlight as
+               master switch), replacing the line-only look"). REPLACES the
+               prior line-only `.lumeo-gantt-v3-today-line` — see
+               TodayColumnStyle's own remarks for why this tint's left edge is
+               STILL the exact same pixel this codebase's own ground-truth math
+               (GanttDayModeMath) and v2's own today-line already agree on for
+               every mode whose columns are exactly 1 day wide (Day/QuarterDay/
+               HalfDay) — the parity/E2E position assertion this replaces did
+               not need to weaken, only re-target its DOM selector. *@
+            @if (TodayHighlight && TodayInRange)
             {
-                <div class="lumeo-gantt-v3-today-line pointer-events-none absolute inset-y-0 border-s border-primary opacity-60" style="@TodayLineStyle"></div>
+                <div class="lumeo-gantt-v3-today-tint pointer-events-none absolute inset-y-0 bg-primary/10" style="@TodayColumnStyle"></div>
+            }
+
+            @* Now indicator (design spec Phase 3, T2 — precise current-TIME
+               line, DISTINCT from the today column above: only meaningful in
+               sub-day (Hour-unit) modes, where a day itself spans many
+               columns and "the exact current minute" is a real, renderable
+               position — Day/Week/Month/Quarter/Year's columns are already
+               coarser than "right now" could distinguish. Uses --color-info
+               (existing Lumeo token) rather than --color-primary specifically
+               so it reads as visually DISTINCT from the today column's own
+               accent — no new CSS token needed. *@
+            @if (NowInRange)
+            {
+                <div class="lumeo-gantt-v3-now-line pointer-events-none absolute inset-y-0 border-s border-info opacity-80" style="@NowLineStyle"></div>
             }
 
             @* Empty state (Codex round 3, P2 #4): v2 renders a centered "No
@@ -325,8 +401,58 @@
     /// <summary>Override the pixel width of each date column for the current view mode.</summary>
     [Parameter] public int? ColumnWidth { get; set; }
 
-    /// <summary>Highlight today with a vertical marker line. Default true.</summary>
+    /// <summary>
+    /// Highlight today with an accent header label, header dot, and full-column
+    /// tint. Default true. Master switch (design spec Phase 3, T2) — the SAME
+    /// parameter that gated the old line-only look now gates the whole upgraded
+    /// treatment; nothing else needs a separate opt-in.
+    /// </summary>
     [Parameter] public bool TodayHighlight { get; set; } = true;
+
+    /// <summary>
+    /// Explicit first-day-of-week override for the <see cref="GanttViewMode.Day"/>
+    /// ISO week-band upper header (design spec Phase 3, T2 — see
+    /// <see cref="GanttScale.UpperRuns"/>'s own <c>firstDayOfWeek</c> parameter).
+    /// Null (the default) derives it from <see cref="CultureInfo.CurrentCulture"/>.
+    /// Ignored by every OTHER view mode.
+    /// </summary>
+    [Parameter] public DayOfWeek? FirstDayOfWeek { get; set; }
+
+    /// <summary>
+    /// The week days treated as "off" for <see cref="MarkOffDays"/>'s column
+    /// tint (design spec Phase 3, T2). Null (the default) derives a
+    /// region-appropriate set from <see cref="CultureInfo.CurrentCulture"/> via
+    /// <see cref="GanttScale.DefaultOffDays"/> — see its own remarks for the
+    /// CLDR-sourced weekend table (NOT hardcoded Saturday/Sunday).
+    /// </summary>
+    [Parameter] public IReadOnlySet<DayOfWeek>? OffDays { get; set; }
+
+    /// <summary>
+    /// Tints <see cref="OffDays"/> columns (design spec Phase 3, T2 — "Mark off
+    /// days"). Default <c>false</c> — no v2 equivalent, opt-in like every other
+    /// REUI-parity addition with no v2 precedent. Only rendered for
+    /// day-granularity view modes — see <see cref="SupportsOffDayMarking"/>.
+    /// </summary>
+    [Parameter] public bool MarkOffDays { get; set; }
+
+    /// <summary>
+    /// Renders a precise current-TIME line in sub-day view modes (design spec
+    /// Phase 3, T2 — distinct from <see cref="TodayHighlight"/>'s whole-DAY
+    /// column treatment). Default <c>false</c> (opt-in). Only rendered for
+    /// Hour-unit view modes (QuarterDay/HalfDay) — see
+    /// <see cref="SupportsNowIndicator"/>.
+    /// </summary>
+    [Parameter] public bool NowIndicator { get; set; }
+
+    /// <summary>
+    /// The browser-resolved current date+time backing <see cref="NowIndicator"/>
+    /// (design spec Phase 3, T2 — same "caller resolves via JS, this component
+    /// just renders the resolved value" pattern <see cref="Today"/> already
+    /// uses). Null (the default) falls back to <see cref="DateTime.Now"/> (the
+    /// SERVER's local time) — the same standalone-usage fallback <see cref="Today"/>
+    /// gives when no <c>Gantt3</c> wraps this component.
+    /// </summary>
+    [Parameter] public DateTime? Now { get; set; }
 
     /// <summary>Per-task bar colour override — see <c>Lumeo.Gantt</c>'s v2 <c>Gantt.BarColor</c> for the contract.</summary>
     [Parameter] public Func<GanttTask, string?>? BarColor { get; set; }
@@ -374,7 +500,7 @@
     /// by <c>Gantt3</c> specifically when recentering after a view-mode switch
     /// (Codex round 4, P2 #8) — the user's previously-centered date, not
     /// necessarily today. <see cref="Today"/> itself still drives the MARKER's
-    /// own position (<see cref="TodayInRange"/>/<see cref="TodayLineStyle"/>) —
+    /// own position (<see cref="TodayInRange"/>/<see cref="TodayColumnStyle"/>) —
     /// this only redirects where the DOM actually scrolls to.
     /// </summary>
     [Parameter] public DateTime? ScrollTargetDate { get; set; }
@@ -670,8 +796,14 @@
     // matching "+HeaderHeight" term for the same reason.
     private double CanvasHeight => Math.Max(1, EffectiveRows.Count) * GanttScale.RowHeight;
 
-    private IReadOnlyList<GanttHeaderRun> UpperRuns => GanttScale.UpperRuns(ViewMode, Units);
+    // Design spec Phase 3, T2 — see GanttScale.UpperRuns' own firstDayOfWeek
+    // remarks; ignored by every HeaderUpper kind except Week (GanttViewMode.Day).
+    private IReadOnlyList<GanttHeaderRun> UpperRuns => GanttScale.UpperRuns(ViewMode, Units, EffectiveFirstDayOfWeek);
     private IReadOnlyList<string> LowerLabels => GanttScale.LowerLabels(ViewMode, Units);
+
+    private DayOfWeek EffectiveFirstDayOfWeek => FirstDayOfWeek ?? CultureInfo.CurrentCulture.DateTimeFormat.FirstDayOfWeek;
+    private IReadOnlySet<DayOfWeek> EffectiveOffDays => OffDays ?? GanttScale.DefaultOffDays(CultureInfo.CurrentCulture);
+    private DateTime EffectiveNow => Now ?? DateTime.Now;
 
     // Bug fix (Codex review wave): must pass EffectiveColumnWidth explicitly —
     // DateToPixel defaults to the mode's own config width when no override is
@@ -680,6 +812,45 @@
     // directly rather than through DateToPixel, were already correct).
     private double TodayX => GanttScale.DateToPixel(ViewMode, Origin, Today, EffectiveColumnWidth);
     private bool TodayInRange => TodayHighlight && Units.Count > 0 && TodayX >= 0 && TodayX <= TotalWidth;
+
+    // Design spec Phase 3, T2 — Today column upgrade. DateToPixel's output is a
+    // continuous "column-space" coordinate for EVERY unit (Day/Week/Month/
+    // Year/Quarter alike: each formula is `(wholeUnits + fractionWithinUnit) *
+    // colW` — see GanttScale.DateToPixel's own per-unit remarks), so flooring
+    // TodayX to the nearest whole EffectiveColumnWidth multiple gives the LEFT
+    // EDGE of the column containing Today, mode-agnostically — no per-mode
+    // switch needed here. For Day/QuarterDay/HalfDay (this codebase's only
+    // "1 column = 1 day-or-finer" modes), Today's own DateToPixel value is
+    // ALREADY exactly on a column boundary (its date/hour is truncated to the
+    // unit before the pixel math runs), so this floor is a no-op there and
+    // TodayColumnLeft == TodayX exactly — the E2E parity spec this feeds
+    // still reads the identical pixel value the old line-only marker did.
+    private double TodayColumnLeft => Math.Floor(TodayX / EffectiveColumnWidth) * EffectiveColumnWidth;
+    private int? TodayColumnIndex => TodayInRange ? (int)Math.Floor(TodayX / EffectiveColumnWidth) : null;
+    private bool IsTodayColumn(int index) => TodayColumnIndex == index;
+
+    private string ColumnCellClass(int index) => Cx.Merge(
+        "shrink-0 text-center text-xs",
+        IsTodayColumn(index) ? "font-bold text-primary" : "text-muted-foreground");
+
+    // Design spec Phase 3, T2 — "Mark off days". Column tinting only makes
+    // visual sense when a single rendered column IS a single calendar day (or
+    // finer) — Week/Month/Quarter/Year's own columns each already span many
+    // days, so "this whole [week/month/quarter/year] column is a weekend"
+    // would be a category error, not a useful highlight. Day mode (Unit=Day,
+    // Step=1) and the two Hour-unit modes (QuarterDay/HalfDay, several columns
+    // PER day) both qualify; Week (Unit=Day, Step=7 — one column per WEEK) is
+    // deliberately excluded despite sharing Day's own GanttScaleUnit.
+    private bool SupportsOffDayMarking => Cfg.Unit == GanttScaleUnit.Hour || (Cfg.Unit == GanttScaleUnit.Day && Cfg.Step == 1);
+    private bool IsOffDayColumn(int index) => EffectiveOffDays.Contains(Units[index].DayOfWeek);
+
+    // Design spec Phase 3, T2 — "Now indicator ... in sub-day modes". Only the
+    // two Hour-unit modes render multiple columns within a single day, the
+    // only granularity where "the exact current minute" is a meaningfully
+    // distinct position from "today's column" above.
+    private bool SupportsNowIndicator => Cfg.Unit == GanttScaleUnit.Hour;
+    private double NowX => GanttScale.DateToPixel(ViewMode, Origin, EffectiveNow, EffectiveColumnWidth);
+    private bool NowInRange => NowIndicator && SupportsNowIndicator && Units.Count > 0 && NowX >= 0 && NowX <= TotalWidth;
 
     // Codex round 4, P2 #8: the pixel the scroll-to-center mechanism targets —
     // ScrollTargetDate when the caller (Gantt3, after a recenter) supplies one,
@@ -770,11 +941,33 @@
     private string GridLineStyle(int columnIndex) =>
         FormattableString.Invariant($"left:{columnIndex * EffectiveColumnWidth}px;");
 
-    // Codex round 2, P1 #3: top:-4px (was HeaderHeight-4) — the same 4px
-    // decorative overhang above row 0's own top, just relative to THIS
-    // canvas's new (header-less) origin instead of the header's old bottom edge.
-    private string TodayLineStyle =>
-        FormattableString.Invariant($"left:{TodayX}px;top:-4px;");
+    // Design spec Phase 3, T2 — off-day column tint. Same left/width shape as
+    // OffDayColumnStyle's caller passes columnIndex directly (Units[i]'s own
+    // index), so no separate pixel-to-column lookup is needed the way
+    // TodayColumnStyle below needs one (Today is an arbitrary DateTime, not
+    // already an index into Units).
+    private string OffDayColumnStyle(int index) =>
+        FormattableString.Invariant($"left:{index * EffectiveColumnWidth}px;width:{EffectiveColumnWidth}px;");
+
+    // Design spec Phase 3, T2 — replaces the old line-only TodayLineStyle.
+    // TodayColumnLeft (see its own remarks) is already the containing
+    // column's left edge, mode-agnostically.
+    private string TodayColumnStyle =>
+        FormattableString.Invariant($"left:{TodayColumnLeft}px;width:{EffectiveColumnWidth}px;");
+
+    // Header dot, centered horizontally over the today column, vertically
+    // centered within the 20px-tall upper header row (see the markup's own
+    // placement remarks) — 3px = half of the dot's own h-1.5/w-1.5 (6px) size.
+    private string TodayDotStyle =>
+        FormattableString.Invariant($"left:{TodayColumnLeft + EffectiveColumnWidth / 2.0 - 3}px;top:7px;");
+
+    // Design spec Phase 3, T2 — Now indicator. Same "-4px decorative overhang
+    // above row 0's own top" shape the old TodayLineStyle used (Codex round 2,
+    // P1 #3's own header-height removal note) — NowIndicator is a thin,
+    // PRECISE line (unlike Today's now-wide column tint), so it keeps that
+    // line-marker shape.
+    private string NowLineStyle =>
+        FormattableString.Invariant($"left:{NowX}px;top:-4px;");
 
     // Positions a GanttRowKind.GroupHeader slot's full-width stripe (Codex round
     // 2, P2 #7) — mirrors GanttBar's own RowIndex*RowHeight top math (see its

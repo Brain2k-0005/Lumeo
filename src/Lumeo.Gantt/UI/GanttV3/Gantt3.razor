@@ -82,6 +82,11 @@
                            BarHeight="@BarHeight"
                            ColumnWidth="@ColumnWidth"
                            TodayHighlight="@TodayHighlight"
+                           FirstDayOfWeek="@FirstDayOfWeek"
+                           OffDays="@OffDays"
+                           MarkOffDays="@MarkOffDays"
+                           NowIndicator="@NowIndicator"
+                           Now="@_browserNow"
                            BarColor="@BarColor"
                            BarTemplate="@BarTemplate"
                            ScrollToTodayRequestId="@_scrollToTodayRequestId"
@@ -120,8 +125,24 @@
     /// <summary>CSS max-height of the timeline's scrollable viewport. Default <c>"500px"</c>.</summary>
     [Parameter] public string Height { get; set; } = "500px";
 
-    /// <summary>Highlight today with a vertical marker line. Default true.</summary>
+    /// <summary>
+    /// Highlight today with an accent header label, header dot, and full-column
+    /// tint (design spec Phase 3, T2 — master switch, see
+    /// <c>GanttTimeline.TodayHighlight</c>'s own remarks). Default true.
+    /// </summary>
     [Parameter] public bool TodayHighlight { get; set; } = true;
+
+    /// <summary>Explicit first-day-of-week override for the Day-mode ISO week-band upper header (design spec Phase 3, T2). Null derives it from <see cref="CultureInfo.CurrentCulture"/>.</summary>
+    [Parameter] public DayOfWeek? FirstDayOfWeek { get; set; }
+
+    /// <summary>The week days treated as "off" for <see cref="MarkOffDays"/> (design spec Phase 3, T2). Null derives a region-appropriate set from <see cref="CultureInfo.CurrentCulture"/> — see <see cref="GanttScale.DefaultOffDays"/>.</summary>
+    [Parameter] public IReadOnlySet<DayOfWeek>? OffDays { get; set; }
+
+    /// <summary>Tints <see cref="OffDays"/> columns (design spec Phase 3, T2). Default false — no v2 equivalent.</summary>
+    [Parameter] public bool MarkOffDays { get; set; }
+
+    /// <summary>Renders a precise current-time line in sub-day view modes (design spec Phase 3, T2). Default false.</summary>
+    [Parameter] public bool NowIndicator { get; set; }
 
     /// <summary>Override the pixel height of each task bar (default <see cref="GanttScale.DefaultBarHeight"/>).</summary>
     [Parameter] public int? BarHeight { get; set; }
@@ -1053,6 +1074,7 @@
             StateHasChanged();
 
             await RefreshBrowserTodayAsync();
+            await RefreshBrowserNowAsync();
             // Seeds the server-day baseline the staleness check below
             // compares against, so the very next render doesn't immediately
             // re-query again just because _lastCheckedServerDay was still
@@ -1101,7 +1123,11 @@
         var serverToday = DateTime.Today.Date;
         var serverDayAdvanced = _lastCheckedServerDay is null || serverToday > _lastCheckedServerDay.Value;
         _lastCheckedServerDay = serverToday;
-        if (serverDayAdvanced) await RefreshBrowserTodayAsync();
+        if (serverDayAdvanced)
+        {
+            await RefreshBrowserTodayAsync();
+            await RefreshBrowserNowAsync();
+        }
     }
 
     // Queries the browser's local date via JS and reconciles it against the
@@ -1152,6 +1178,37 @@
 
         // Re-renders GanttTimeline's Today parameter too (marker position /
         // scroll-to-today math) with the corrected date.
+        StateHasChanged();
+    }
+
+    // Design spec Phase 3, T2 — browser-resolved "now" backing GanttTimeline's
+    // NowIndicator param. Refreshed at the SAME points RefreshBrowserTodayAsync
+    // already resolves _browserToday (mount, the once-per-server-day staleness
+    // check, and an explicit Today-button click — see each call site) rather
+    // than on a NEW independent schedule: NowIndicator's own line therefore
+    // stays correct across a local-midnight rollover and re-syncs whenever the
+    // user explicitly asks to (Today), but does NOT tick every second/minute
+    // on its own — no client-side timer/JS polling loop was added for that
+    // (deliberately out of this task's scope: Gantt3's viewport-reconciliation
+    // state machine is a carefully-hardened, many-rounds-tested piece of
+    // infrastructure — see the campaign ledger's cx9-cx20 entries — and a new
+    // autonomous timer-driven StateHasChanged is exactly the kind of "no
+    // consumer asked for this render, but state changed anyway" event that
+    // machinery's generation/supersession invariants were never exercised
+    // against; a live-ticking indicator is a natural follow-up layered on top
+    // of this same interop foundation, not a T2 requirement). Guarded on
+    // NowIndicator itself so a chart that never enables the feature pays zero
+    // extra interop cost.
+    private DateTime? _browserNow;
+
+    private async Task RefreshBrowserNowAsync()
+    {
+        if (!NowIndicator) return;
+        var iso = await Interop.GanttV3GetLocalDateTimeAsync();
+        if (_disposed) return;
+        if (iso is null) return; // interop unavailable — GanttTimeline's own DateTime.Now fallback keeps rendering
+        if (!DateTime.TryParseExact(iso, "yyyy-MM-ddTHH:mm:ss", CultureInfo.InvariantCulture, DateTimeStyles.None, out var browserNow)) return;
+        _browserNow = browserNow;
         StateHasChanged();
     }
 
@@ -1404,6 +1461,14 @@
             GanttScaleUnit.Hour => new GanttDateRange(
                 minDate.AddDays(-Math.Ceiling(cfg.PadBefore * cfg.Step / 24.0)),
                 maxDate.AddDays(Math.Ceiling(cfg.PadAfter * cfg.Step / 24.0))),
+            // Design spec Phase 3, T2 — Quarter mode. Snaps min/max to their own
+            // calendar-quarter start (GanttScale.AlignToUnitStart's Quarter
+            // branch — Jan/Apr/Jul/Oct 1), same "unit-align before padding"
+            // pattern the Month/Year branches above use, then pads by
+            // cfg.PadBefore/PadAfter QUARTERS (*3 months each).
+            GanttScaleUnit.Quarter => new GanttDateRange(
+                GanttScale.AlignToUnitStart(mode, minDate).AddMonths(-cfg.PadBefore * 3),
+                GanttScale.AlignToUnitStart(mode, maxDate).AddMonths(cfg.PadAfter * 3)),
             _ => new GanttDateRange(minDate, maxDate),
         };
     }
@@ -1425,6 +1490,11 @@
             {
                 GanttViewMode.Year => $"{range.Start.Year}–{range.End.Year}",
                 GanttViewMode.Month => range.Start.ToString("MMMM yyyy", CultureInfo.CurrentCulture),
+                // Design spec Phase 3, T2 — Quarter mode. No v2 counterpart to
+                // match; "Q{n} {year} – Q{n} {year}" mirrors the Year branch's
+                // own "{start}–{end}" range shape at the coarser Quarter grain.
+                GanttViewMode.Quarter =>
+                    $"Q{(range.Start.Month - 1) / 3 + 1} {range.Start.Year} – Q{(range.End.Month - 1) / 3 + 1} {range.End.Year}",
                 _ => $"{range.Start.ToString("MMM d, yyyy", CultureInfo.CurrentCulture)} – {range.End.ToString("MMM d, yyyy", CultureInfo.CurrentCulture)}",
             };
         }
@@ -1580,6 +1650,10 @@
             GanttScaleUnit.Month => date.AddMonths(amount),
             GanttScaleUnit.Year => date.AddYears(amount),
             GanttScaleUnit.Hour => date.AddHours(amount),
+            // Design spec Phase 3, T2 — one Quarter step = 3 months (cfg.Step is
+            // always 1 "quarter" for GanttViewMode.Quarter — see its VIEW_MODES
+            // entry's remarks).
+            GanttScaleUnit.Quarter => date.AddMonths(amount * 3),
             _ => date,
         };
     }
@@ -1654,6 +1728,7 @@
         // trip, but that's the existing per-click cost of any interop-backed
         // action, not a new one).
         await RefreshBrowserTodayAsync();
+        await RefreshBrowserNowAsync();
 
         // Supersede any reconcile suspended in its capture await, then re-apply
         // its pending parameter delta (round 18-f2, P1) — done FIRST so a pending
@@ -1704,7 +1779,14 @@
         var cfg = GanttScale.GetConfig(_state.ViewMode);
         var end = cfg.Unit switch
         {
-            GanttScaleUnit.Month => start.AddMonths(MonthsBetween(range.Start, range.End)),
+            // Design spec Phase 3, T2: Quarter reuses the IDENTICAL MonthsBetween
+            // math as Month — both range.Start/range.End are already
+            // quarter-aligned (Jan/Apr/Jul/Oct 1, per ApplyPadding's Quarter
+            // branch/the aligned-origin invariant), so their month difference is
+            // already a multiple of 3 and AddMonths(that) reproduces the exact
+            // same number of quarter-columns Month's own branch reproduces
+            // month-columns — no separate "QuartersBetween" helper needed.
+            GanttScaleUnit.Month or GanttScaleUnit.Quarter => start.AddMonths(MonthsBetween(range.Start, range.End)),
             GanttScaleUnit.Year => start.AddYears(range.End.Year - range.Start.Year),
             _ => start + width,
         };

@@ -319,6 +319,7 @@ internal static partial class LumeoDefaultStrings
         ["Gantt.Week"] = "週",
         ["Gantt.Month"] = "月",
         ["Gantt.Year"] = "年",
+        ["Gantt.Quarter"] = "四半期",
         ["Gantt.Today"] = "今日",
         ["Gantt.PreviousPeriod"] = "前の期間",
         ["Gantt.NextPeriod"] = "次の期間",

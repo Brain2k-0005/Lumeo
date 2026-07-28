@@ -65,6 +65,23 @@ export const ganttV3 = {
         return `${y}-${m}-${day}`;
     },
 
+    // Browser-local "now" as yyyy-MM-ddTHH:mm:ss (design spec Phase 3, T2 —
+    // NowIndicator's precise current-TIME line in sub-day view modes). Extends
+    // the SAME browser-clock family getLocalDateIso above already established
+    // rather than a parallel channel — see GanttV3GetLocalDateTimeAsync's own
+    // remarks. Same local-field construction (never toISOString) as
+    // getLocalDateIso, for the same UTC-conversion-would-roll-the-day reason.
+    getLocalDateTimeIso() {
+        const d = new Date();
+        const y = d.getFullYear();
+        const m = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        const h = String(d.getHours()).padStart(2, '0');
+        const min = String(d.getMinutes()).padStart(2, '0');
+        const s = String(d.getSeconds()).padStart(2, '0');
+        return `${y}-${m}-${day}T${h}:${min}:${s}`;
+    },
+
     // Reads el's CURRENT logical horizontal center (Codex round 5, P2 #5) —
     // the same "logical" coordinate space (0 = the scrollable content's own
     // physical-left origin, RTL-normalized via fromNativeScrollLeft) that

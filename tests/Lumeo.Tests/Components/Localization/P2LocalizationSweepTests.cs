@@ -172,6 +172,10 @@ public class P2LocalizationSweepTests : IAsyncLifetime
         // else was missing entirely) — extended here rather than a new test
         // file, per this test's own "extend it instead of duplicating" intent.
         "Gantt.Day", "Gantt.Week", "Gantt.Month", "Gantt.Year",
+        // Design spec Phase 3, T2 — GanttViewMode.Quarter's toolbar label, added
+        // straight to this completeness guard per its own "extend, don't
+        // duplicate" precedent (see the round-4/round-5 notes above).
+        "Gantt.Quarter",
         "Gantt.Today", "Gantt.PreviousPeriod", "Gantt.NextPeriod",
         "Gantt.ExpandRow", "Gantt.CollapseRow", "Gantt.NoTasksToDisplay",
         "Gantt.TaskAriaLabel",
