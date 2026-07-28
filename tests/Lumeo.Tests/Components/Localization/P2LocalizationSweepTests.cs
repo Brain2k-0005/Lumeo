@@ -184,6 +184,10 @@ public class P2LocalizationSweepTests : IAsyncLifetime
         // above rather than a new key list, matching round 4's own "extend,
         // don't duplicate" precedent.
         "Gantt.PercentComplete",
+        // Design spec Phase 3, T3 — GanttSummaryBar's compact "N%" rollup
+        // label, extended here per this test's own "extend, don't duplicate"
+        // precedent (same as every other Gantt.* key above).
+        "Gantt.SummaryProgress",
         // Codex P2 finding ("Translate the new task label in every supported
         // locale"): GanttTimeline.CommitCreate names a drag-created task via
         // L["Gantt.NewTask"], but it shipped in only en/de — extended here

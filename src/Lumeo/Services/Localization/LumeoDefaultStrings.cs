@@ -491,6 +491,10 @@ internal static partial class LumeoDefaultStrings
         ["Gantt.NoTasksToDisplay"] = "No tasks to display",
         ["Gantt.TaskAriaLabel"] = "{0}, {1} to {2}",
         ["Gantt.PercentComplete"] = "{0}% complete",
+        // Design spec Phase 3, T3 — the summary-envelope strip's compact %
+        // label (a bare number, not the full "N% complete" sentence
+        // Gantt.PercentComplete's tooltip context calls for).
+        ["Gantt.SummaryProgress"] = "{0}%",
 
         // ── Theme ───────────────────────────────────────────────────
         ["Theme.Light"] = "Light",
@@ -1026,6 +1030,7 @@ internal static partial class LumeoDefaultStrings
         ["Gantt.NoTasksToDisplay"] = "Keine Aufgaben vorhanden",
         ["Gantt.TaskAriaLabel"] = "{0}, {1} bis {2}",
         ["Gantt.PercentComplete"] = "{0}% abgeschlossen",
+        ["Gantt.SummaryProgress"] = "{0}%",
 
         // ── Theme ───────────────────────────────────────────────────
         ["Theme.Light"] = "Hell",

@@ -150,6 +150,17 @@ internal static class GanttScale
     internal const int HeaderHeight = 56;
 
     /// <summary>
+    /// Height in pixels of a summary-rollup envelope strip (design spec Phase
+    /// 3, T3 — "thin bar spanning children range"; no v2 equivalent, v2 has no
+    /// hierarchy at all). Deliberately much thinner than <see cref="DefaultBarHeight"/>
+    /// (22px) — it renders flush against the row's OWN bottom edge (see
+    /// <c>GanttTimeline.SummaryTop</c>) so it never visually competes with a
+    /// hierarchy-parent row's own, independently-dated <c>GanttBar</c>, which
+    /// stays centered in the row exactly as before.
+    /// </summary>
+    internal const int SummaryBarHeight = 8;
+
+    /// <summary>
     /// GanttTree's fixed pane width in pixels (Codex round 4, P2 #2) — the
     /// SINGLE source of truth for both GanttTree's own rendered width (a
     /// Tailwind utility class can't be parameterized from C#, so GanttTree

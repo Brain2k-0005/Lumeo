@@ -277,6 +277,7 @@ internal static partial class LumeoDefaultStrings
         ["Gantt.NoTasksToDisplay"] = "没有可显示的任务",
         ["Gantt.TaskAriaLabel"] = "{0}，{1}至{2}",
         ["Gantt.PercentComplete"] = "已完成 {0}%",
+        ["Gantt.SummaryProgress"] = "{0}%",
 
         // Editor
         ["Editor.Paragraph"] = "段落",

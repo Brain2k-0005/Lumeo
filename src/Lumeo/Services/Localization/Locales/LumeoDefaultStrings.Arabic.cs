@@ -282,6 +282,7 @@ internal static partial class LumeoDefaultStrings
         ["Gantt.NoTasksToDisplay"] = "لا توجد مهام لعرضها",
         ["Gantt.TaskAriaLabel"] = "{0}, من {1} إلى {2}",
         ["Gantt.PercentComplete"] = "اكتمل {0}%",
+        ["Gantt.SummaryProgress"] = "{0}%",
 
         // Editor
         ["Editor.Paragraph"] = "فقرة",

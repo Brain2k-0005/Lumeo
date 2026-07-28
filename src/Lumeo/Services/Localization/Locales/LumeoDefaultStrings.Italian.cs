@@ -329,5 +329,6 @@ internal static partial class LumeoDefaultStrings
         ["Gantt.NoTasksToDisplay"] = "Nessuna attività da visualizzare",
         ["Gantt.TaskAriaLabel"] = "{0}, dal {1} al {2}",
         ["Gantt.PercentComplete"] = "{0}% completato",
+        ["Gantt.SummaryProgress"] = "{0}%",
     };
 }

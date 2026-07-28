@@ -329,5 +329,6 @@ internal static partial class LumeoDefaultStrings
         ["Gantt.NoTasksToDisplay"] = "No hay tareas que mostrar",
         ["Gantt.TaskAriaLabel"] = "{0}, del {1} al {2}",
         ["Gantt.PercentComplete"] = "{0}% completado",
+        ["Gantt.SummaryProgress"] = "{0}%",
     };
 }

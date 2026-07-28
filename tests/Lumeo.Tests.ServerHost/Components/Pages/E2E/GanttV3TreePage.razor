@@ -19,7 +19,15 @@
 
    ?fixture=tall (Codex round 6, P1 #2): swaps in GanttParityFixtures.
    TallHierarchyFixture() — tall enough to need real virtualization/arrow-
-   culling, unlike the default TreeTasks (5 rows, always fully visible). *@
+   culling, unlike the default TreeTasks (5 rows, always fully visible).
+
+   ?fixture=rollup (design spec Phase 3, T3): swaps in GanttParityFixtures.
+   RollupTasks() and turns on ShowSummaryBars — see that fixture's own
+   remarks for the exact duration-weighted math this drives
+   (GanttV3SummaryRollupTests). Summary bars default OFF (T3's own
+   Phase-3-ledger-pinned v2/REUI look-delta — see GanttTimeline.ShowSummaryBars),
+   so every OTHER route/fixture on this page renders with no strips at all,
+   unaffected by this opt-in. *@
 
 <PageTitle>E2E - Gantt v3 tree</PageTitle>
 
@@ -30,6 +38,7 @@
             Height="900px"
             ShowTreePane="true"
             AllowCreate="@_allowCreate"
+            ShowSummaryBars="@_showSummaryBars"
             data-testid="gantt-v3-tree-root" />
 </div>
 
@@ -39,10 +48,17 @@
 
     private List<GanttTask> _tasks = new();
     private bool _allowCreate;
+    private bool _showSummaryBars;
 
     protected override void OnInitialized()
     {
-        _tasks = Fixture == "tall" ? GanttParityFixtures.TallHierarchyFixture() : GanttParityFixtures.TreeTasks();
+        _tasks = Fixture switch
+        {
+            "tall" => GanttParityFixtures.TallHierarchyFixture(),
+            "rollup" => GanttParityFixtures.RollupTasks(),
+            _ => GanttParityFixtures.TreeTasks(),
+        };
         _allowCreate = AllowCreate == "1";
+        _showSummaryBars = Fixture == "rollup";
     }
 }

@@ -173,3 +173,42 @@ internal readonly record struct GanttInteropOptions(
     bool HasCanDrop,
     bool AllowCreate,
     DateTime Origin);
+
+/// <summary>
+/// A duration-weighted rollup summary for one hierarchy-parent or flat-group
+/// row (design spec Phase 3, T3 — "Duration-weighted progress rollup per
+/// parent/group row (<c>GanttRollup</c> record: Start, End, WeightedProgress)").
+/// Produced by <see cref="GanttRollupModel"/> (the default math) or by a
+/// consumer's own <c>RollupMath</c> override — see
+/// <see cref="Lumeo.GanttTimeline.RollupMath"/>'s remarks for the exact
+/// per-parent-row invocation contract (direct children only; a nested
+/// parent's OWN already-computed rollup stands in for its raw Start/End/
+/// Progress, which is what makes a multi-level hierarchy roll up
+/// transitively without <c>RollupMath</c> itself needing to know anything
+/// about recursion).
+///
+/// A <c>readonly record struct</c> (not a class) — mirrors
+/// <see cref="GanttVisibleRow"/>'s own choice: one of these is computed per
+/// parent/group row, every render, so avoiding a per-row heap allocation
+/// matters the same way it did there (see that type's remarks).
+///
+/// <c>public</c> — crosses <see cref="Lumeo.GanttTimeline"/>/<see cref="Lumeo.Gantt3"/>'s
+/// public <c>RollupMath</c>/<c>SummaryTemplate</c> parameters (same CS0053
+/// public-parameter-can't-expose-a-less-accessible-type constraint as
+/// <see cref="GanttTaskUpdateSource"/>'s remarks explain). Recorded in
+/// PublicAPI.Unshipped.txt; <see cref="EditorBrowsableAttribute"/>(Never)
+/// keeps it out of consumer IntelliSense until the Phase-4 rename, per this
+/// task's explicit instruction — DO-NOT-PROMOTE, same as every other
+/// GanttV3-namespaced type added this campaign.
+/// </summary>
+/// <param name="Start">The earliest effective Start across the row's direct children (a nested parent contributes its OWN rolled-up Start, not its raw one).</param>
+/// <param name="End">The latest effective End across the row's direct children, same substitution rule as <paramref name="Start"/>.</param>
+/// <param name="WeightedProgress">
+/// Duration-weighted mean progress across the row's direct children, 0-100
+/// (fractional — the renderer rounds for display). See
+/// <see cref="GanttRollupModel"/>'s remarks for the exact weighting formula
+/// and how a zero-duration milestone child is handled without dividing by
+/// zero or dropping out of the average.
+/// </param>
+[EditorBrowsable(EditorBrowsableState.Never)]
+public readonly record struct GanttRollup(DateTime Start, DateTime End, double WeightedProgress);
