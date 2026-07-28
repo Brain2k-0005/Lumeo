@@ -135,3 +135,41 @@ public sealed record GanttScheduleDropContext(
     DateTime ProposedStart,
     DateTime ProposedEnd,
     GanttTaskUpdateSource Source);
+
+/// <summary>
+/// The drag-relevant fields <see cref="Lumeo.GanttTimeline"/> pushes to the JS
+/// drag engine (design spec Phase 3, T1 — "replace the growing
+/// <c>HashCode.Combine</c> options-hash with an options record"). Replaces a
+/// plain <c>int</c> hash of the same fields: a record's synthesized structural
+/// equality (<c>==</c>/<c>!=</c>, <c>Equals</c>) directly answers "did anything
+/// drag-relevant actually change" with no collision risk and no fixed argument
+/// ceiling to run into as more fields join it (<c>HashCode.Combine</c> only
+/// overloads up to 8 arguments; this was already at 5 and the Phase-3
+/// watch-list — reorder/selection/splitter — only adds more candidates).
+///
+/// Compared once per render in <see cref="Lumeo.GanttTimeline.SyncDragRegistrationAsync"/>
+/// against the previously-registered value: an unchanged value skips the
+/// <c>GanttV3RegisterDragAsync</c> interop round-trip entirely, the same
+/// short-circuit the old hash comparison provided. This is a PERFORMANCE gate
+/// only, not a drag-safety one — gantt-v3.js's own <c>registerDrag</c> already
+/// snapshots <c>reg.options</c> into a local at the moment a gesture begins
+/// (see its own "Snapshot drag options at pointerdown" remarks), so even a
+/// registration call that DOES land mid-drag (a genuine options change while a
+/// gesture is already in flight) only updates the STORED config for the NEXT
+/// gesture — the currently-running one keeps reading its own local snapshot
+/// and is structurally unreachable by the swap. Record-equality re-registration
+/// therefore changes nothing about drag safety; it keeps the interop call
+/// count low exactly as the hash did, just without a hash's collision risk and
+/// without capping how many fields can ever describe "the options".
+/// </summary>
+/// <param name="ColumnWidth"><see cref="Lumeo.GanttTimeline.EffectiveColumnWidth"/> at push time.</param>
+/// <param name="PixelsPerDay"><see cref="Lumeo.GanttTimeline.PixelsPerDay"/> at push time (move/resize snap math).</param>
+/// <param name="HasCanDrop">Whether <see cref="Lumeo.GanttTimeline.CanDrop"/> is set (gates whether JS ever calls <c>ValidateDrop</c> at all).</param>
+/// <param name="AllowCreate"><see cref="Lumeo.GanttTimeline.AllowCreate"/> at push time.</param>
+/// <param name="Origin">The row-canvas-space date origin (drag-create's only anchor — see <c>BuildDragOptions</c>'s remarks).</param>
+internal readonly record struct GanttInteropOptions(
+    int ColumnWidth,
+    double PixelsPerDay,
+    bool HasCanDrop,
+    bool AllowCreate,
+    DateTime Origin);

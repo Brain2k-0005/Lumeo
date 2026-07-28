@@ -122,32 +122,6 @@
 
             @* Row canvas. *@
             <div class="relative" style="@RowsContainerStyle">
-                @* Phase 2, T3 — empty-track drag-create hit targets. One per row,
-                   rendered BEFORE the Virtualize block below so a bar (rendered
-                   after, hence painted on top in this shared stacking context)
-                   always wins the hit-test over its own row's track when the two
-                   overlap — gantt-v3.js's onPointerDown only ever falls through to
-                   '[data-gantt-row-track]' when e.target.closest('[data-task-id]')
-                   found nothing. Only rendered at all when AllowCreate is on AND
-                   not Readonly (Readonly wins unconditionally — see AllowCreate's
-                   own remarks) so the opt-in feature costs nothing (no extra DOM,
-                   no extra hit-test surface) for every existing v3 chart that
-                   never turns it on. Deliberately NOT virtualized (unlike the bars
-                   below) — a plain per-row div with no children is cheap, and
-                   keeping it simple here avoids reconciling two different
-                   Virtualize row-index spaces; worth revisiting if a future v3
-                   chart with thousands of rows ever turns AllowCreate on. *@
-                @if (AllowCreate && !Readonly)
-                {
-                    @foreach (var track in RowTrackItems)
-                    {
-                        @* touch-pan-y — see GanttBar.WrapperClass's own remarks on the
-                           identical fix ("Opt touch drag targets out of native
-                           horizontal panning"); unconditional here since this whole
-                           block is already gated on AllowCreate && !Readonly. *@
-                        <div class="absolute touch-pan-y" data-gantt-row-track="true" data-row-key="@track.Key" style="@RowTrackStyle(track.RowIndex)"></div>
-                    }
-                }
                 <Virtualize Items="@RowItems" Context="row" ItemSize="@((float)GanttScale.RowHeight)">
                     @* Bug fix (Codex round 10 review, P2 #1): every item template
                        below renders ONLY absolutely-positioned content (GanttBar's
@@ -202,6 +176,48 @@
                     <div class="lumeo-gantt-v3-row-item" @key="@(row.Task is not null ? "t:" + row.Task.Id : $"g:{row.RowIndex}")" style="height:@(GanttScale.RowHeight)px;">
                         @if (row.Task is not null)
                         {
+                            @* Phase 3, T1 — empty-track drag-create hit target
+                               (Phase 2, T3's own feature), now rendered INSIDE
+                               THIS SAME virtualized item instead of a separate
+                               @foreach loop that used to render one such div
+                               per EffectiveRows entry BEFORE this Virtualize
+                               block regardless of scroll position — the bars
+                               beside it were already virtualized (Codex round
+                               3, P2 #1, pulled forward from Phase 3 T1; see
+                               GanttV3StickyHeaderTests' own remarks), but this
+                               track div was not, so a tall AllowCreate chart
+                               still materialized all N of these on every
+                               render. Only rendered at all when AllowCreate is
+                               on AND not Readonly (Readonly wins
+                               unconditionally — see AllowCreate's own remarks)
+                               so the opt-in feature costs nothing (no extra
+                               DOM, no extra hit-test surface) for every
+                               existing v3 chart that never turns it on.
+                               Rendered BEFORE GanttBar below — paint order
+                               (later DOM wins, same stacking context —
+                               RowsContainerStyle's own `.relative` ancestor;
+                               this wrapper establishes no positioning context
+                               of its own, per the round-10 remarks above) is
+                               unchanged from the old sibling-loop's ordering,
+                               so the bar still wins the hit-test over its own
+                               row's track when the two overlap —
+                               gantt-v3.js's onPointerDown only ever falls
+                               through to '[data-gantt-row-track]' when
+                               e.target.closest('[data-task-id]') found
+                               nothing. "task:" + row.Task.Id mirrors RowKey's
+                               own Task branch (see RowKey's remarks) —
+                               GroupHeader rows never reach this branch (Task
+                               is null there), so there is no risk of
+                               duplicating the pair the group-header stripe
+                               below already carries for its own row. *@
+                            @if (AllowCreate && !Readonly)
+                            {
+                                @* touch-pan-y — see GanttBar.WrapperClass's own remarks on the
+                                   identical fix ("Opt touch drag targets out of native
+                                   horizontal panning"); unconditional here since this whole
+                                   block is already gated on AllowCreate && !Readonly. *@
+                                <div class="absolute touch-pan-y" data-gantt-row-track="true" data-row-key="@("task:" + row.Task.Id)" style="@RowTrackStyle(row.RowIndex)"></div>
+                            }
                             <GanttBar Task="row.Task" X="row.X" Width="row.Width" RowIndex="row.RowIndex"
                                       BarHeight="EffectiveBarHeight" Color="@row.Color" BarTemplate="BarTemplate"
                                       Readonly="@Readonly" OnTaskClick="OnTaskClick"
@@ -228,27 +244,30 @@
 
                                Bug fix (Codex P2 finding, "Make group-header
                                tracks hittable"): a plain per-row
-                               [data-gantt-row-track] div (the loop above)
-                               painted BELOW this stripe — gantt-v3.js's
-                               onPointerDown hit-tests via
+                               [data-gantt-row-track] div (rendered inside the
+                               TASK branch above, for a Task row — see its own
+                               remarks) would paint BELOW this stripe if a
+                               GroupHeader row ever rendered one too —
+                               gantt-v3.js's onPointerDown hit-tests via
                                e.target.closest('[data-gantt-row-track]'),
-                               which a click on the (fully covered, hence
-                               unreachable) div below could never satisfy, so
+                               which a click on a fully-covered, hence
+                               unreachable, div below could never satisfy, so
                                AllowCreate's drag-create path was unreachable
                                for any grouped row. Fixed by carrying the SAME
                                data-* pair directly on the stripe (gated on the
                                identical AllowCreate/Readonly condition the
-                               track-div loop uses, so a chart with the feature
-                               off still emits neither attribute) — see
-                               GanttTimelineRow.GroupRowKey's own remarks for
-                               where the key comes from.
+                               task branch's own track div uses, so a chart
+                               with the feature off still emits neither
+                               attribute) — see GanttTimelineRow.GroupRowKey's
+                               own remarks for where the key comes from.
                                Follow-up bug fix (E2E strict-mode violation —
                                two elements answering
                                '[data-gantt-row-track][data-row-key=...]' for
-                               the SAME group row): RowTrackItems now EXCLUDES
-                               GroupHeader rows outright (see its own remarks),
-                               so this stripe is the row's ONLY element
-                               carrying the pair — not a sibling duplicating
+                               the SAME group row): a GroupHeader row's Task is
+                               always null, so it never reaches the task
+                               branch's own track div at all (see its remarks)
+                               — this stripe is the row's ONLY element
+                               carrying the pair, never a sibling duplicating
                                it. *@
                             @* touch-pan-y (Codex P2 finding "Opt touch drag targets out of
                                native horizontal panning" — see GanttBar.WrapperClass's own
@@ -457,8 +476,9 @@
     /// <c>false</c>, which keeps a v3 chart's interaction surface strict v2 parity
     /// until a caller explicitly opts in). When <c>true</c> (and not
     /// <see cref="Readonly"/>), a pointer-down on a row's empty track background
-    /// (never a bar — see <see cref="RowTrackItems"/>'s remarks on hit-test
-    /// ordering) followed by a horizontal drag paints a create-ghost spanning the
+    /// (never a bar — see the row canvas markup's own per-task-row
+    /// <c>data-gantt-row-track</c> div, in <see cref="RowItems"/>'s Virtualize
+    /// item template, for the hit-test ordering) followed by a horizontal drag paints a create-ghost spanning the
     /// snapped range, committing via <see cref="CommitCreate"/> on release.
     /// <see cref="Readonly"/> WINS over this unconditionally: when readonly, NO
     /// listeners are ever registered at all (see <see cref="SyncDragRegistrationAsync"/>),
@@ -523,8 +543,10 @@
     private int _lastCulledRowCount = -1;
 
     // Phase 2, T1 — drag-registration bookkeeping (see SyncDragRegistrationAsync).
+    // Phase 3, T1 — GanttInteropOptions (a record) replaced a plain int hash;
+    // see SyncDragRegistrationAsync's own remarks and GanttInteropOptions'.
     private bool _dragRegistered;
-    private int _lastDragOptionsHash;
+    private GanttInteropOptions _lastDragOptions;
 
     // Bug fix (Codex P2 finding "Keep pointer clicks when drag interop is
     // unavailable") — see SyncDragRegistrationAsync's own remarks and
@@ -782,15 +804,16 @@
     // (see the @if (row.Task is not null) guard in the markup above).
     //
     // GroupRowKey (Codex P2 finding, "Make group-header tracks hittable"):
-    // only ever set for a GroupHeader slot (Task is null) — the SAME RowKey
-    // RowTrackItems would otherwise compute for this row index, threaded
-    // here instead so the markup's group-header stripe can carry the
-    // data-gantt-row-track/data-row-key pair ITSELF. Without this, a pointer
-    // on that stripe hit-tests the stripe, e.target.closest('[data-gantt-row-track]')
-    // finds nothing, and gantt-v3.js's drag-create path can never start for a
-    // grouped row. RowTrackItems now excludes GroupHeader rows outright (see
-    // its own remarks) — this stripe is the row's ONLY carrier of the pair,
-    // not a second one layered over a sibling div that duplicated it.
+    // only ever set for a GroupHeader slot (Task is null) — the SAME RowKey a
+    // Task row's own inline track div (see the markup's Task branch) computes
+    // for itself, threaded here instead so the markup's group-header stripe
+    // can carry the data-gantt-row-track/data-row-key pair ITSELF. Without
+    // this, a pointer on that stripe hit-tests the stripe,
+    // e.target.closest('[data-gantt-row-track]') finds nothing, and
+    // gantt-v3.js's drag-create path can never start for a grouped row. A
+    // GroupHeader row's Task is always null, so it never reaches the Task
+    // branch's own track div at all — this stripe is the row's ONLY carrier
+    // of the pair, never a second one layered over a sibling div.
     internal sealed record GanttTimelineRow(GanttTask? Task, double X, double Width, int RowIndex, string? Color, string? Label, string? GroupRowKey = null);
 
     // Virtualize<TItem>.Items requires ICollection<TItem> (IReadOnlyList doesn't
@@ -811,8 +834,8 @@
                     // rowSlot, which advances for header rows too) — Label carries
                     // the group's own name (Codex round 2, P2 #7) so the markup's
                     // else-branch above can render v2's section-header stripe here.
-                    // GroupRowKey mirrors RowTrackItems' own RowKey(visibleRows[i])
-                    // call for this SAME row — see GanttTimelineRow's own remarks.
+                    // GroupRowKey calls RowKey(visibleRows[i]) for this SAME row —
+                    // see GanttTimelineRow's own remarks.
                     rows.Add(new GanttTimelineRow(null, 0, 0, i, null, visibleRows[i].Label, RowKey(visibleRows[i])));
                     continue;
                 }
@@ -824,43 +847,13 @@
         }
     }
 
-    // Phase 2, T3 — one (Key, RowIndex) pair per EffectiveRows entry, feeding the
-    // AllowCreate row-track markup above. Kept separate from RowItems (rather than
-    // adding a Key field there too) since RowItems' GanttTimelineRow is a hot,
-    // per-render-recomputed record already consumed by the (always-on) Virtualize
-    // block — this list only exists at all when AllowCreate is on.
-    //
-    // Bug fix (E2E follow-up to the "Make group-header tracks hittable" P2
-    // finding): a GanttRowKind.GroupHeader row is EXCLUDED here — its own
-    // group-header stripe (the markup's `else` branch below) now carries the
-    // identical data-gantt-row-track/data-row-key pair itself (see
-    // GanttTimelineRow.GroupRowKey's remarks) and paints ON TOP of, covering
-    // the EXACT SAME rectangle as, the blind div this loop would otherwise add
-    // for that row. That div was never reachable by a pointer for a group row
-    // even before this fix — closest('[data-gantt-row-track]') walks up from
-    // the click target, and the stripe (rendered later, hence higher paint
-    // order, at the SAME position) always intercepts first — so keeping BOTH
-    // produced no hit-test coverage the stripe didn't already provide, only
-    // TWO elements answering `[data-gantt-row-track][data-row-key='group::X']`
-    // (a Playwright strict-mode violation, and an ambiguous DOM contract for
-    // any other consumer of that pair). A Task row has no such duplicate —
-    // GanttBar renders no data-gantt-row-track attribute of its own — so this
-    // loop remains its ONLY source and stays unconditional for it.
-    private List<(string Key, int RowIndex)> RowTrackItems
-    {
-        get
-        {
-            var visibleRows = EffectiveRows;
-            var items = new List<(string, int)>(visibleRows.Count);
-            for (var i = 0; i < visibleRows.Count; i++)
-            {
-                if (visibleRows[i].Kind == GanttRowKind.GroupHeader) continue;
-                items.Add((RowKey(visibleRows[i]), i));
-            }
-            return items;
-        }
-    }
-
+    // Phase 3, T1 — the per-row AllowCreate track div's own style (see the
+    // markup's Task branch above): the row-track markup itself now lives
+    // INSIDE RowItems' Virtualize item template (one div per rendered Task
+    // row, virtualized in lockstep with its own bar — was a separate,
+    // un-virtualized RowTrackItems list rendered before the Virtualize block
+    // entirely; see GanttV3StickyHeaderTests' remarks on the matching bar/tree
+    // fix this mirrors), so only the pure style-string helper remains here.
     private string RowTrackStyle(int rowIndex) =>
         FormattableString.Invariant($"left:0px;top:{rowIndex * GanttScale.RowHeight}px;height:{GanttScale.RowHeight}px;width:{TotalWidth}px;");
 
@@ -1278,7 +1271,7 @@
             return;
         }
 
-        // Phase 2, T2 — CanDrop's null-ness is folded into the hash too: a
+        // Phase 2, T2 — CanDrop's null-ness is folded into the options too: a
         // runtime CanDrop change (null <-> non-null) must re-push
         // BuildDragOptions' hasCanDrop flag to JS even when ColumnWidth/
         // PixelsPerDay are unchanged, or a caller that starts/stops validating
@@ -1292,12 +1285,21 @@
         // EffectiveColumnWidth/PixelsPerDay, so panning via GanttNav's
         // Previous/Next (which moves RangeStart without touching ColumnWidth)
         // would otherwise leave JS computing create dates off a stale origin.
-        var optionsHash = HashCode.Combine(EffectiveColumnWidth, PixelsPerDay, CanDrop is not null, AllowCreate, Origin);
-        if (_dragRegistered && optionsHash == _lastDragOptionsHash) return;
+        //
+        // Phase 3, T1 — GanttInteropOptions (a record) replaces a plain
+        // HashCode.Combine of these same 5 fields: `==` on a record is exact
+        // structural equality (no collision risk, no HashCode.Combine 8-arg
+        // ceiling to run into as the Phase-3 watch-list adds more candidate
+        // fields) — see GanttInteropOptions' own remarks for why this is a
+        // pure representation swap, not a behavior change (same 5 fields,
+        // same gate, same drag-safety story: gantt-v3.js snapshots options at
+        // pointerdown regardless of when/whether a re-registration lands).
+        var options = new GanttInteropOptions(EffectiveColumnWidth, PixelsPerDay, CanDrop is not null, AllowCreate, Origin);
+        if (_dragRegistered && options == _lastDragOptions) return;
 
         _selfRef ??= DotNetObjectReference.Create(this);
         _dragRegistered = true;
-        _lastDragOptionsHash = optionsHash;
+        _lastDragOptions = options;
 
         // Bug fix (Codex P2 finding, "Keep pointer clicks when drag interop
         // is unavailable"): every existing IComponentInteropService consumer
@@ -1324,7 +1326,7 @@
         // fix closes.
         try
         {
-            await Interop.GanttV3RegisterDragAsync(_scrollHostRef, _selfRef, BuildDragOptions());
+            await Interop.GanttV3RegisterDragAsync(_scrollHostRef, _selfRef, BuildDragOptions(options));
             if (!_dragConfirmed)
             {
                 _dragConfirmed = true;
@@ -1379,10 +1381,16 @@
     // a Dictionary (not an anonymous type) so the option bag survives a
     // trimmed publish (JSRuntime's reflection-based serializer otherwise
     // throws ConstructorContainsNullParameterNames for an anonymous type).
-    private object BuildDragOptions() => new Dictionary<string, object?>
+    //
+    // Phase 3, T1 — takes the SAME GanttInteropOptions instance
+    // SyncDragRegistrationAsync just compared for equality (not a fresh
+    // read of EffectiveColumnWidth/PixelsPerDay/etc.), so the wire payload
+    // and the re-registration gate can never observe two different values
+    // for the same field within one call.
+    private object BuildDragOptions(GanttInteropOptions options) => new Dictionary<string, object?>
     {
-        ["columnWidth"] = EffectiveColumnWidth,
-        ["pixelsPerDay"] = PixelsPerDay,
+        ["columnWidth"] = options.ColumnWidth,
+        ["pixelsPerDay"] = options.PixelsPerDay,
         ["resizeHandlePx"] = 6,
         // Phase 2, T2 — tells gantt-v3.js whether to bother calling ValidateDrop
         // AT ALL during a move/resize drag. A plain "CanDrop is null on the C#
@@ -1391,14 +1399,14 @@
         // is exactly the "NO ValidateDrop calls happen at all" the plan rules out
         // when no validator is configured — so the gate lives on the JS side,
         // driven by this flag, not merely as a permissive .NET return value.
-        ["hasCanDrop"] = CanDrop is not null,
+        ["hasCanDrop"] = options.HasCanDrop,
         // Phase 2, T3 — gates whether gantt-v3.js's onPointerDown even LOOKS for
         // a [data-gantt-row-track] hit when no bar was hit. The row-track
         // elements themselves are also only rendered at all when this is true
         // (see the markup's own @if (AllowCreate && !Readonly) guard) — this
         // flag is defense-in-depth on top of "the elements don't even exist",
         // not the only thing stopping a stray create-drag.
-        ["allowCreate"] = AllowCreate,
+        ["allowCreate"] = options.AllowCreate,
         // Phase 2, T3 — the row-canvas-space date origin (Origin below), needed
         // ONLY for drag-create: unlike move/resize/progress (which always have
         // an EXISTING bar's data-task-start/-end to anchor from), a brand-new
@@ -1406,7 +1414,7 @@
         // date to convert a snapped day-COLUMN index back into a real calendar
         // date. "JS never re-derives" (Global constraints) — Origin is computed
         // here from GanttScale.BuildDateUnits, never recalculated in JS.
-        ["originIso"] = Origin.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+        ["originIso"] = options.Origin.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
         // Bug fix (Codex P2 finding "Map drag-create pixels through the
         // active calendar scale"): drag-create used pixelsPerDay's own
         // columnWidth/30-or-/365 APPROXIMATION (see PixelsPerDay's remarks —
@@ -1698,8 +1706,50 @@
     // Shared by CommitDrag/CommitProgress/NotifyTaskClick/ValidateDrop — resolves
     // against EffectiveRows (not the raw Tasks parameter), see CommitDrag's own
     // remarks for why that's correct for a hierarchy-filtered/collapsed caller.
+    //
+    // Phase 3, T1 — O(1) dictionary lookup (was an O(rows) Select+FirstOrDefault
+    // LINQ scan, re-walked from scratch on EVERY one of these 4 JSInvokable
+    // calls). _taskIndex is rebuilt once per parameter pass (OnParametersSet,
+    // below) — "alongside Rows", i.e. from the exact same EffectiveRows a
+    // render just committed — rather than lazily on first use, since a
+    // JSInvokable can arrive at any time BETWEEN renders (a drag commit, a
+    // click) and must resolve against whatever was last actually rendered, the
+    // same snapshot-timing CommitDrag's own remarks already rely on ("any task
+    // with an active drag is, by definition, currently rendered").
     private GanttTask? FindTask(string taskId) =>
-        EffectiveRows.Select(r => r.Task).FirstOrDefault(t => t is not null && t.Id == taskId);
+        _taskIndex.TryGetValue(taskId, out var task) ? task : null;
+
+    // Phase 3, T1 — the task-index dictionary itself (see FindTask's remarks).
+    // Starts as a shared empty instance so FindTask is always safe to call even
+    // before the first OnParametersSet has run (unreachable in practice — no JS
+    // listener exists yet at that point — but costs nothing to make provably
+    // safe rather than relying on that being true).
+    private Dictionary<string, GanttTask> _taskIndex = new();
+
+    // Rebuilds _taskIndex from EffectiveRows — called once per parameter pass
+    // (OnParametersSet), so it always reflects whatever Rows/Tasks a render
+    // just committed, in lockstep with every other EffectiveRows-derived
+    // markup this component renders (RowItems, the per-row drag-create track).
+    // GroupHeader rows (Task null) are skipped, same population FindTask's old
+    // LINQ scan implicitly filtered via `t is not null`.
+    private void RebuildTaskIndex()
+    {
+        var rows = EffectiveRows;
+        var index = new Dictionary<string, GanttTask>(rows.Count);
+        foreach (var row in rows)
+        {
+            if (row.Task is not null) index[row.Task.Id] = row.Task;
+        }
+        _taskIndex = index;
+    }
+
+    // Phase 3, T1 — the one place _taskIndex is kept in sync with Rows/Tasks:
+    // OnParametersSet runs synchronously on EVERY parameter-driven render pass
+    // (including the very first, before OnInitialized's own first render), so
+    // by the time any JSInvokable below could possibly be reachable (a JS
+    // listener only attaches after OnAfterRenderAsync's own first pass), the
+    // index already reflects the just-set parameters.
+    protected override void OnParametersSet() => RebuildTaskIndex();
 
     public async ValueTask DisposeAsync()
     {
