@@ -7,6 +7,7 @@
 @inject Lumeo.Services.IThemeService Theme
 @attribute [EditorBrowsable(EditorBrowsableState.Never)]
 @implements IDisposable
+@implements IGanttStateHost
 
 @* Gantt3 — v3's root component (design spec Phase 2, T2 "read-only markup";
    working name — renamed in Phase 4 once it replaces the v2 Gantt public API).
@@ -108,6 +109,36 @@
 </div>
 
 @code {
+    /// <summary>
+    /// Hoists this chart's <see cref="GanttV3.GanttState"/> store (design spec Phase
+    /// 3, T4 — the REUI <c>useGanttState</c> analog). <c>null</c> (the default) keeps
+    /// the PRIOR, fully self-contained behavior: an internally-owned instance,
+    /// constructed once at mount, invisible to anything outside this component —
+    /// byte-identical to every pre-T4 render (see <see cref="_state"/>'s own remarks
+    /// for the mount-time resolution and <c>Gantt3RenderTests</c>'s own byte-identical
+    /// golden-markup regression). Supplying an instance lets a consumer read/react to
+    /// this chart's state externally and drive it imperatively
+    /// (<see cref="GanttV3.GanttState.ScrollToTaskAsync"/>/<see
+    /// cref="GanttV3.GanttState.ScrollToDateAsync"/>/<see
+    /// cref="GanttV3.GanttState.SetViewMode"/>), and lets multiple components share
+    /// ONE instance (see <see cref="GanttV3.GanttState"/>'s own attach/detach
+    /// remarks for exactly what "sharing" means: every attached-or-not subscriber
+    /// re-renders on any change; only ONE at a time is the imperative-API target).
+    ///
+    /// Read ONCE, at <c>OnInitialized</c> — like <see cref="ViewMode"/>'s own mount
+    /// seed, this is an "owned outright for the component's lifetime" parameter, not
+    /// a reactively-rebound one (design spec "keep it simple" precedent, same
+    /// rationale <see cref="_state"/>'s predecessor field already used). Changing
+    /// WHICH instance is bound after mount is deliberately out of T4's scope — a live
+    /// swap would need to rebuild every per-instance reconcile-tracking field
+    /// (<c>_lastSnapshot</c>/<c>_tasksVersion</c>/<c>_viewModeIntent</c>/etc.) against
+    /// the new instance's already-committed values, which is a different, harder
+    /// problem T4 does not need to solve to satisfy the plan's own contract ("nav and
+    /// view rendered separately against ONE shared state instance must work" — a
+    /// stable instance for the component's lifetime, not a reactive one).
+    /// </summary>
+    [Parameter] public GanttState? State { get; set; }
+
     /// <summary>The tasks (and milestones) rendered as bars.</summary>
     [Parameter] public IEnumerable<GanttTask>? Tasks { get; set; }
 
@@ -252,11 +283,22 @@
     /// <summary>Captures unmatched attributes and applies them to the root element.</summary>
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
-    // Owned outright for now (design spec "keep it simple: internal field for
-    // now") — Phase 3 promotes this to a hoistable `State` parameter so a
-    // separately rendered GanttNav/GanttTimeline pair can share one instance
-    // without either owning the other's lifetime (see GanttState's remarks).
-    private readonly GanttState _state = new();
+    // Design spec Phase 3, T4 — resolved ONCE in OnInitialized, to either the
+    // caller-supplied State parameter (hoisted) or a freshly-constructed,
+    // internally-owned instance (State null — the byte-identical default; see
+    // State's own remarks for why this stays a mount-time resolution, not a
+    // reactive one). Everything below that reads/writes `_state` is completely
+    // unaware of which case it is in — the ENTIRE hoisting surface is this field's
+    // own source (owned vs. supplied) plus the _hoisted-gated attach/subscribe
+    // block in OnInitialized/Dispose below.
+    private GanttState _state = null!;
+
+    // True exactly when State was non-null at OnInitialized — gates every NEW T4
+    // code path (Attach/Detach, the Changed subscription) so State == null takes
+    // NONE of them: not merely "no observable difference", the code is literally
+    // unreached, which is what makes the default case provably byte-identical
+    // rather than "byte-identical by construction of a shared branch".
+    private bool _hoisted;
 
     // Codex round 3, P2 #1 — the shared outer pane's own element reference,
     // handed down to GanttTimeline as ScrollHost so it (and its Virtualize)
@@ -477,7 +519,7 @@
             _state.SetTasks(nextTasks);
             _tasksVersion = nextTasksVersion;
         }
-        _state.SetViewMode(nextMode); // no-op when unchanged
+        _state.CommitViewMode(nextMode); // no-op when unchanged
 
         switch (decision.Range)
         {
@@ -634,9 +676,14 @@
     // GanttViewModeIntent's own remarks for the four facts it carries. Three
     // rules, each stated exactly once in this file:
     //
-    //  1. CLAIM — a new intent is created in exactly two places: the toolbar
-    //     (HandleViewModeChangedAsync) and a parameter pass whose ViewMode says
-    //     something genuinely new (ResolveParameterMode). Claiming REPLACES the
+    //  1. CLAIM — a new intent is created in exactly three places (design spec
+    //     Phase 3, T4 added the third): the toolbar (HandleViewModeChangedAsync),
+    //     a parameter pass whose ViewMode says something genuinely new
+    //     (ResolveParameterMode), and an imperative GanttState.SetViewMode call
+    //     (IGanttStateHost.SetViewModeAsync) — the latter two both funnel through
+    //     ApplyViewModeIntentAsync's own single ClaimViewModeIntent call, tagged
+    //     with a different GanttViewModeSource, so this is still ONE call site
+    //     for "claim", not three independent ones. Claiming REPLACES the
     //     previous intent outright, which is what makes supersession a single
     //     decision rather than something re-derived per call site.
     //  2. REPLAY — ANYTHING that supersedes an in-flight reconcile must re-execute
@@ -793,7 +840,12 @@
         if (intent.Id != intentId) return outcome;
         if (intent.Phase != GanttViewModePhase.Applying) return outcome;
 
-        var owesConsumerEcho = intent.Source == GanttViewModeSource.Toolbar
+        // Design spec Phase 3, T4 — Imperative (a GanttState.SetViewMode call)
+        // owes the SAME consumer echo Toolbar does: from a controlled parent's
+        // point of view, an imperative pick and a user's own toolbar click are
+        // indistinguishable ("the component decided a new mode, ratify it or
+        // not") — see GanttViewModeSource.Imperative's own remarks.
+        var owesConsumerEcho = (intent.Source == GanttViewModeSource.Toolbar || intent.Source == GanttViewModeSource.Imperative)
             && ViewModeChanged.HasDelegate
             && outcome == GanttReconcileOutcome.Committed;
 
@@ -948,13 +1000,27 @@
 
     protected override void OnInitialized()
     {
+        // Design spec Phase 3, T4 — resolve `_state` FIRST, before anything below
+        // touches it (see State's and _state's own remarks for why this is a
+        // one-time, mount-only resolution). State null takes the IDENTICAL branch
+        // every pre-T4 render took (`new GanttState()`); _hoisted stays false, so
+        // the Attach/Changed-subscription block below never runs at all for that
+        // case.
+        _hoisted = State is not null;
+        _state = State ?? new GanttState();
+        if (_hoisted)
+        {
+            _state.Attach(this);
+            _state.Changed += OnSharedStateChanged;
+        }
+
         // The mount intent: born Settled, since OnInitialized commits it below
         // synchronously and there is no consumer to notify about a value the
         // consumer itself supplied.
         _viewModeIntent = new GanttViewModeIntent(
             _viewModeIntentId, ViewMode, GanttViewModeSource.Mount, GanttViewModePhase.Settled,
             ViewMode, ViewModeChanged.HasDelegate);
-        _state.SetViewMode(ViewMode);
+        _state.CommitViewMode(ViewMode);
         // Merge note (phase-2 x master #382): MaterializeTasks() is still the
         // one legitimate mount-time enumeration of the Tasks parameter (its
         // own contract below — every replay reads _materializedTasks instead
@@ -1047,6 +1113,64 @@
         });
     }
 
+    // Design spec Phase 3, T4 — hoisted-state reactivity. When State is supplied
+    // externally (_hoisted), this component is no longer the ONLY mutator of
+    // _state: a sibling Gantt3 sharing the same instance, or an imperative
+    // GanttState.ScrollToTaskAsync/ScrollToDateAsync/SetViewMode call routed to
+    // WHICHEVER instance is currently attached (see IGanttStateHost below), can
+    // change it without going through any of THIS component's own event
+    // handlers — nothing else here would know to re-render. Subscribed ONLY
+    // when _hoisted (see OnInitialized) — an owned _state (State null) never
+    // adds this subscription, so that path is not merely "no observable
+    // difference", the handler is never invoked at all.
+    //
+    // Every markup binding in this file already reads `_state.*` directly
+    // (`<GanttNav ViewMode="@_state.ViewMode">`, `<GanttTimeline Tasks="@_state.Tasks"
+    // ...>`, etc.) rather than through any per-component cached copy, so a bare
+    // StateHasChanged() here is SUFFICIENT to bring this instance's rendered
+    // output back in sync with the shared store after an external mutation —
+    // this component's own private reconcile bookkeeping (_lastSnapshot/
+    // _tasksVersion/_viewModeIntent) only governs ITS OWN future scroll/
+    // recenter decisions, not whether its current markup is correct.
+    //
+    // Dispatched via InvokeAsync (discarded, matching OnThemeChanged's own
+    // fire-and-forget precedent) — a sibling's own mutation happens on the SAME
+    // renderer/circuit's sync context (both components necessarily share one,
+    // since they hold a live reference to the same C# object), so this is
+    // already on the right thread in every case this campaign's Blazor Server/
+    // WASM hosting model produces; InvokeAsync costs nothing extra when already
+    // there and is the one safe way to handle it if that assumption is ever
+    // violated by a future caller.
+    private void OnSharedStateChanged() => _ = InvokeAsync(() =>
+    {
+        if (!_disposed) StateHasChanged();
+    });
+
+    // ── IGanttStateHost — the attach contract's host side (design spec Phase 3, T4) ──
+    //
+    // EXPLICIT interface implementation: keeps these two members OFF Gantt3's own
+    // public surface (already forced public by the Razor compiler — see the class
+    // remarks at the top of this file) and reachable ONLY through a GanttState's
+    // internal IGanttStateHost reference (i.e. only GanttState itself, via Attach,
+    // ever calls them) — never directly on a Gantt3 instance, and never a
+    // PublicAPI.Unshipped entry (internal-interface members are not part of the
+    // shipped surface even though the class implementing them is public).
+
+    Task IGanttStateHost.ScrollToDateAsync(DateTime date) => InvokeAsync(() =>
+    {
+        if (_disposed) return;
+        EmitScrollIntent(date);
+        StateHasChanged();
+    });
+
+    // Routes through the SAME CLAIM-based ownership pipeline HandleViewModeChangedAsync
+    // (the toolbar) uses — see ApplyViewModeIntentAsync's own remarks for why this is
+    // what stops an imperative SetViewMode from reopening PR #382's bug class: this is
+    // not a new mutation path, it is the existing hardened one, entered from a third
+    // call site instead of two.
+    Task IGanttStateHost.SetViewModeAsync(GanttViewMode mode) =>
+        InvokeAsync(() => ApplyViewModeIntentAsync(mode, GanttViewModeSource.Imperative));
+
     // Codex PR-382 review round 6, P2 — see SettleViewModeIntentAsync's own
     // remarks. Deliberately NOT a general replacement for round 17's
     // generation-based disposal guard (which still covers every suspended
@@ -1058,6 +1182,19 @@
     {
         _disposed = true;
         Theme.OnThemeChanged -= OnThemeChanged;
+
+        // Design spec Phase 3, T4 — the explicit half of the attach/detach
+        // contract (see GanttState.Detach's own remarks for the weak-reference
+        // safety-net half). Unconditional whenever this instance attached at all
+        // (_hoisted), regardless of whether it is STILL the currently-attached
+        // one — Detach itself is the no-op-safe check for "was I superseded by a
+        // later Attach" (a component disposed after being replaced by a sibling
+        // sharing the same State must not clear the NEWER attachment).
+        if (_hoisted)
+        {
+            _state.Changed -= OnSharedStateChanged;
+            _state.Detach(this);
+        }
 
         // Bug fix (Codex round 17 review, P2): a reconcile currently suspended
         // awaiting the live-center capture (ResolveCurrentCenterDateAsync)
@@ -1529,13 +1666,32 @@
         }
     }
 
-    // The GanttNav toolbar's zoom trigger. A mode-only change against the
-    // CURRENT task set — routed through the SAME reconcile every other trigger
-    // uses (Codex round 14), which decides it as a self-centered recenter that
-    // preserves the live scroll position (capture live center, reshape the
-    // range around it, emit a one-shot scroll intent). No separate
-    // ApplyViewModeChangeAsync/RecenterOn copy of that pipeline anymore.
-    private async Task HandleViewModeChangedAsync(GanttViewMode mode)
+    // The GanttNav toolbar's zoom trigger — a thin wrapper over
+    // ApplyViewModeIntentAsync tagging the claim as GanttViewModeSource.Toolbar.
+    private Task HandleViewModeChangedAsync(GanttViewMode mode) =>
+        ApplyViewModeIntentAsync(mode, GanttViewModeSource.Toolbar);
+
+    // A mode-only change against the CURRENT task set — routed through the SAME
+    // reconcile every other trigger uses (Codex round 14), which decides it as a
+    // self-centered recenter that preserves the live scroll position (capture
+    // live center, reshape the range around it, emit a one-shot scroll intent).
+    // No separate ApplyViewModeChangeAsync/RecenterOn copy of that pipeline
+    // anymore.
+    //
+    // Design spec Phase 3, T4 — SHARED by two callers now, distinguished only by
+    // SOURCE: HandleViewModeChangedAsync (the toolbar, above) and
+    // IGanttStateHost.SetViewModeAsync (an imperative GanttState.SetViewMode
+    // call, routed here by the attach contract — see that method's own remarks).
+    // This is deliberately the SAME pipeline, not a parallel one: an imperative
+    // caller gets every invariant PR #382 already hardened here (the generation
+    // guard, Notifying-phase pending-rejection handling, navigation replay, the
+    // disposal guard inside ReconcileAsync) for free, because it is not a new
+    // mutation path — it is this exact method, entered from a third call site.
+    // The only place `source` is actually consulted downstream is
+    // SettleViewModeIntentAsync's owesConsumerEcho check, which now treats
+    // Imperative exactly like Toolbar (a controlled consumer is asked to ratify
+    // an imperative pick the same way it would a user's own toolbar click).
+    private async Task ApplyViewModeIntentAsync(GanttViewMode mode, GanttViewModeSource source)
     {
         if (mode == _state.ViewMode) return;
 
@@ -1544,7 +1700,7 @@
         // rather than losing it (round 19 finding #1) — and so the current
         // ViewMode parameter value is recorded as accounted-for by the same
         // write, since this pick deliberately overrides it (round 20 finding B).
-        var intent = ClaimViewModeIntent(mode, GanttViewModeSource.Toolbar);
+        var intent = ClaimViewModeIntent(mode, source);
 
         var outcome = await ReconcileAsync(_state.Tasks, mode);
         // Superseded/no-op: suppress every side effect, not just the commit

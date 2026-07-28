@@ -108,6 +108,22 @@ internal enum GanttViewModeSource
 
     /// <summary>A zoom pick from <c>GanttNav</c>'s toolbar.</summary>
     Toolbar,
+
+    /// <summary>
+    /// A programmatic <c>GanttState.SetViewMode</c> call (design spec Phase 3, T4 —
+    /// the REUI apiRef <c>setViewMode</c> analog), claimed via
+    /// <c>Gantt3.ApplyViewModeIntentAsync</c> — the SAME claim/reconcile/settle
+    /// pipeline <see cref="Toolbar"/> uses, entered from a third call site
+    /// (<c>IGanttStateHost.SetViewModeAsync</c>) instead of a new one. Treated
+    /// exactly like <see cref="Toolbar"/> for the controlled-consumer echo
+    /// (<c>SettleViewModeIntentAsync</c>'s <c>owesConsumerEcho</c>): an imperative
+    /// pick against a CONTROLLED chart still asks the parent to ratify it, same as a
+    /// user's own toolbar click would — the two are indistinguishable from the
+    /// parent's point of view (both are "the component decided a new mode"), only
+    /// the trigger differs, which this member exists purely to record for
+    /// clarity/audit, not to branch on anywhere else.
+    /// </summary>
+    Imperative,
 }
 
 /// <summary>
