@@ -490,6 +490,16 @@ internal static partial class LumeoDefaultStrings
         ["Gantt.TaskAriaLabel"] = "{0}, {1} to {2}",
         ["Gantt.PercentComplete"] = "{0}% complete",
 
+        // ── Scheduler (first-party view engine, wave 1b) ──────────────
+        ["Scheduler.AllDay"] = "All day",
+        ["Scheduler.NoEvents"] = "No events",
+        ["Scheduler.EventCount"] = "{0} events",
+        ["Scheduler.EventCount.One"] = "{0} event",
+        ["Scheduler.EventCount.Other"] = "{0} events",
+        ["Scheduler.MoreEvents"] = "{0} more",
+        ["Scheduler.MoreEvents.One"] = "{0} more",
+        ["Scheduler.MoreEvents.Other"] = "{0} more",
+
         // ── Theme ───────────────────────────────────────────────────
         ["Theme.Light"] = "Light",
         ["Theme.Dark"] = "Dark",
@@ -1023,6 +1033,16 @@ internal static partial class LumeoDefaultStrings
         ["Gantt.NoTasksToDisplay"] = "Keine Aufgaben vorhanden",
         ["Gantt.TaskAriaLabel"] = "{0}, {1} bis {2}",
         ["Gantt.PercentComplete"] = "{0}% abgeschlossen",
+
+        // ── Scheduler (first-party view engine, wave 1b) ──────────────
+        ["Scheduler.AllDay"] = "Ganztägig",
+        ["Scheduler.NoEvents"] = "Keine Termine",
+        ["Scheduler.EventCount"] = "{0} Termine",
+        ["Scheduler.EventCount.One"] = "{0} Termin",
+        ["Scheduler.EventCount.Other"] = "{0} Termine",
+        ["Scheduler.MoreEvents"] = "{0} weitere",
+        ["Scheduler.MoreEvents.One"] = "{0} weiterer",
+        ["Scheduler.MoreEvents.Other"] = "{0} weitere",
 
         // ── Theme ───────────────────────────────────────────────────
         ["Theme.Light"] = "Hell",

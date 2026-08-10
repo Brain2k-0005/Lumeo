@@ -419,6 +419,28 @@ else
                     hash.Add((int)d);
             }
 
+            // Same reasoning, extended to the wave-1 structured Recurrence rule
+            // (Lumeo.Scheduler's SchedulerEvent.Recurrence, additive alongside the
+            // legacy DaysOfWeek pair above): fold it by value, not by reference/
+            // presence, so e.g. flipping Freq or editing an Interval/Count/Until/
+            // ByDay entry is detected even though the record reference itself may
+            // differ from a caller rebuilding it each render regardless of edit.
+            if (ev.Recurrence is { } rule)
+            {
+                hash.Add(rule.Freq);
+                hash.Add(rule.Interval);
+                hash.Add(rule.Count);
+                hash.Add(rule.Until);
+                if (rule.ByDay is { Count: > 0 })
+                {
+                    foreach (var byDay in rule.ByDay)
+                    {
+                        hash.Add((int)byDay.Day);
+                        hash.Add(byDay.Ordinal);
+                    }
+                }
+            }
+
             // ExceptionDates carry real recurrence edits (skip/un-skip a day);
             // omitting them suppressed the JS round-trip entirely.
             if (ev.ExceptionDates is { Count: > 0 })

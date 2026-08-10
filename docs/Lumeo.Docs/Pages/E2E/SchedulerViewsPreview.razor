@@ -1,0 +1,113 @@
+@page "/e2e/scheduler-views-preview"
+@using Lumeo.Services
+
+@* E2E harness for the first-party Scheduler view engine (wave 1b — view components +
+   interaction layer). Deliberately NOT linked in navigation and NOT part of the component
+   registry — SchedulerMonthView/SchedulerTimeGridView/SchedulerAgendaView/SchedulerToolbar
+   ship alongside the FullCalendar-backed Scheduler (spec §0/§6 wave 1), not wired into its
+   public API surface yet. This page exists purely so Playwright can drive real pointer
+   geometry (drag pixel maths, ghost creation/removal, fail-closed CanDrop, now-indicator
+   local time) against the new views — bUnit's headless DOM cannot exercise any of that.
+   Mirrors the same house pattern as docs/Lumeo.Docs/Pages/E2E/GanttV3Preview.razor. *@
+
+<PageTitle>Scheduler views preview — Lumeo</PageTitle>
+
+<PageHeader Title="Scheduler view engine (work in progress)"
+            Description="E2E harness for the first-party Month/TimeGrid/Agenda views and their drag/resize/create interaction layer. Not a public API yet." />
+
+<Stack Gap="8" Class="mt-8">
+    <div class="space-y-3" data-testid="month-section">
+        <Heading Id="month" Level="2" Class="scroll-mt-20">Month view</Heading>
+        <p data-testid="month-candrop-log">Last CanDrop check: @(_lastCanDropCheck ?? "(none)")</p>
+        <p data-testid="month-change-log">Last change: @(_lastChange ?? "(none)")</p>
+        <p data-testid="last-clicked-log">Last clicked: @(_lastClicked ?? "(none)")</p>
+        <SchedulerMonthView Events="_events"
+                            AnchorDate="_anchor"
+                            CanDrop="RejectDrop15th"
+                            OnEventChange="OnMonthEventChange"
+                            OnEventClick="OnEventClick"
+                            OnDateSelect="OnDateSelect" />
+    </div>
+
+    <div class="space-y-3" data-testid="week-section">
+        <Heading Id="week" Level="2" Class="scroll-mt-20">Week view (time-grid)</Heading>
+        <p data-testid="week-change-log">Last change: @(_lastWeekChange ?? "(none)")</p>
+        <SchedulerTimeGridView Events="_events"
+                               AnchorDate="_anchor"
+                               Days="7"
+                               OnEventChange="OnWeekEventChange"
+                               OnEventClick="OnEventClick"
+                               OnDateSelect="OnWeekDateSelect" />
+    </div>
+
+    <div class="space-y-3" data-testid="day-section">
+        <Heading Id="day" Level="2" Class="scroll-mt-20">Day view (time-grid, Days=1)</Heading>
+        <SchedulerTimeGridView Events="_events" AnchorDate="_anchor" Days="1" />
+    </div>
+
+    <div class="space-y-3" data-testid="agenda-section">
+        <Heading Id="agenda" Level="2" Class="scroll-mt-20">Agenda view</Heading>
+        <SchedulerAgendaView Events="_events" AnchorDate="_anchor" DaysToShow="14" />
+    </div>
+</Stack>
+
+@code {
+    // Anchored on "today" (not a fixed date) so the now-indicator's browser-local-time
+    // assertion (§2.2) has a real "today" column to render against regardless of when
+    // this page is loaded during CI/local E2E runs.
+    private readonly DateTime _anchor = DateTime.Today;
+    private string? _lastChange;
+    private string? _lastWeekChange;
+    private string? _lastCanDropCheck;
+    private string? _lastClicked;
+    private List<SchedulerEvent> _events = new();
+
+    protected override void OnInitialized()
+    {
+        var t = DateTime.Today;
+        _events = new List<SchedulerEvent>
+        {
+            new("e2e-1", "Draggable Standup", t.AddDays(2).AddHours(9), t.AddDays(2).AddHours(9.5), Color: "var(--color-chart-1)"),
+            new("e2e-2", "Fixed Review", t.AddDays(3).AddHours(14), t.AddDays(3).AddHours(15), Color: "var(--color-chart-2)"),
+            new("e2e-3", "All-day Offsite", t.AddDays(5), t.AddDays(7), AllDay: true, Color: "var(--color-chart-3)"),
+        };
+    }
+
+    // Rejects any drop landing on the 15th of the month — an E2E-observable, deterministic
+    // CanDrop predicate so Playwright can assert the fail-closed path without needing a real
+    // async delay (the JS-side await/.catch(() => false) path is exercised regardless of
+    // whether the predicate itself is fast or slow).
+    private bool RejectDrop15th(SchedulerEvent ev, SchedulerScheduleDropContext ctx)
+    {
+        _lastCanDropCheck = $"{ev.Id} -> {ctx.ProposedStart:yyyy-MM-dd} ({ctx.Source})";
+        // CanDrop is a plain Func delegate, not an EventCallback — unlike OnEventChange/
+        // OnEventClick/OnDateSelect below (whose EventCallback.InvokeAsync automatically
+        // re-renders the receiving component), a raw delegate invocation has no such
+        // machinery, so this component's own render never gets scheduled without an
+        // explicit nudge here.
+        _ = InvokeAsync(StateHasChanged);
+        return ctx.ProposedStart.Day != 15;
+    }
+
+    private void OnMonthEventChange(SchedulerEvent ev)
+    {
+        ApplyChange(ev);
+        _lastChange = $"{ev.Id}: {ev.Start:yyyy-MM-dd HH:mm} -> {ev.End:yyyy-MM-dd HH:mm}";
+    }
+
+    private void OnWeekEventChange(SchedulerEvent ev)
+    {
+        ApplyChange(ev);
+        _lastWeekChange = $"{ev.Id}: {ev.Start:yyyy-MM-dd HH:mm} -> {ev.End:yyyy-MM-dd HH:mm}";
+    }
+
+    private void ApplyChange(SchedulerEvent ev)
+    {
+        var idx = _events.FindIndex(e => e.Id == ev.Id);
+        if (idx >= 0) _events[idx] = ev;
+    }
+
+    private void OnEventClick(SchedulerEvent ev) => _lastClicked = $"clicked {ev.Id}";
+    private void OnDateSelect(SchedulerDateRange range) => _lastChange = $"selected {range.Start:yyyy-MM-dd HH:mm}";
+    private void OnWeekDateSelect(SchedulerDateRange range) => _lastWeekChange = $"selected {range.Start:yyyy-MM-dd HH:mm}";
+}

@@ -1,0 +1,457 @@
+@namespace Lumeo
+@using System.Globalization
+@using Lumeo.SchedulerKernel
+@using Lumeo.Services.Localization
+@implements IAsyncDisposable
+@inject Lumeo.Services.IComponentInteropService Interop
+@inject Lumeo.Services.Localization.ILumeoLocalizer L
+
+@* First-party month-grid view (spec §1.1/§1.2/§1.4/§5). Consumes SchedulerDateMath.BuildMonthGrid
+   for the always-42-cell grid, SchedulerRecurrenceExpander for occurrence expansion, and
+   SchedulerMonthLayout for continuous multi-day lane assignment. Internal building block —
+   Scheduler.razor (the only component with public parameters, spec §1.2) is the eventual host;
+   this component is usable and independently testable on its own in the meantime. *@
+<div class="@($"flex flex-col rounded-md border border-border/60 overflow-hidden {Class}".Trim())" @attributes="AdditionalAttributes">
+    <div class="grid grid-cols-7 border-b border-border/60 bg-card">
+        @foreach (var d in _weekdayHeaders)
+        {
+            <span class="px-2 py-1.5 text-right text-[11px] font-medium text-muted-foreground">@d</span>
+        }
+    </div>
+    <div class="grid grid-cols-7" role="grid" aria-label="@L["Scheduler.Month"]" @ref="_hostRef">
+        @for (var row = 0; row < 6; row++)
+        {
+            <div role="row" class="contents">
+                @for (var col = 0; col < 7; col++)
+                {
+                    var cellIndex = row * 7 + col;
+                    var cell = _cellModels[cellIndex];
+                    var isFocused = cellIndex == _focusedIndex;
+                    <div role="gridcell"
+                         @ref="_cellRefs[cellIndex]"
+                         tabindex="@(isFocused ? "0" : "-1")"
+                         data-cell-date="@cell.Date.ToString("yyyy-MM-dd")"
+                         data-cell-index="@cellIndex"
+                         aria-label="@CellAriaLabel(cell)"
+                         aria-selected="@(SelectedDate.HasValue && SelectedDate.Value.Date == cell.Date ? "true" : "false")"
+                         class="@CellClasses(cell)"
+                         @onclick="() => OnCellClickAsync(cellIndex)"
+                         @ondblclick="() => OnCellDoubleClickAsync(cell.Date)"
+                         @onkeydown="e => OnGridKeyDownAsync(e, cellIndex)">
+                        <span class="@DayNumberClasses(cell)">@cell.Date.Day</span>
+                        @foreach (var slot in cell.Lanes)
+                        {
+                            if (slot is null)
+                            {
+                                <div class="h-[19px]" aria-hidden="true"></div>
+                            }
+                            else
+                            {
+                                var key = InstanceKey(slot.Instance);
+                                <button type="button"
+                                        @ref="_pillRefs[key]"
+                                        class="@PillClasses(slot)"
+                                        data-event-instance="@key"
+                                        data-event-id="@slot.Instance.EventId"
+                                        style="@PillStyle(slot)"
+                                        tabindex="-1"
+                                        aria-label="@PillAriaLabel(slot)"
+                                        @onclick:stopPropagation="true"
+                                        @onclick="() => OnEventClickAsync(slot.Source)"
+                                        @onkeydown="e => OnPillKeyDownAsync(e, slot.Source, cellIndex)">
+                                    @if (slot.ShowTitle)
+                                    {
+                                        @slot.Source.Title
+                                    }
+                                    else
+                                    {
+                                        <span aria-hidden="true">&nbsp;</span>
+                                    }
+                                </button>
+                            }
+                        }
+                        @if (cell.HiddenCount > 0)
+                        {
+                            <span class="px-0.5 text-[11px] text-muted-foreground">
+                                @L[LumeoPlurals.PluralKey(cell.HiddenCount, "Scheduler.MoreEvents", CultureInfo.CurrentUICulture), cell.HiddenCount]
+                            </span>
+                        }
+                    </div>
+                }
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    /// <summary>The calendar's events (expanded per occurrence internally via <c>SchedulerRecurrenceExpander</c>).</summary>
+    [Parameter] public IEnumerable<SchedulerEvent>? Events { get; set; }
+
+    /// <summary>The month this grid renders. Only Year/Month are read.</summary>
+    [Parameter] public DateTime AnchorDate { get; set; } = DateTime.Today;
+
+    /// <summary>First day of the week for grid layout. Default Monday.</summary>
+    [Parameter] public DayOfWeek FirstDayOfWeek { get; set; } = DayOfWeek.Monday;
+
+    /// <summary>Max visible pill lanes per day before "+N more". Default <see cref="SchedulerMonthLayout.DefaultMaxVisibleLanes"/>.</summary>
+    [Parameter] public int MaxVisibleLanes { get; set; } = SchedulerMonthLayout.DefaultMaxVisibleLanes;
+
+    /// <summary>The currently selected date (keyboard focus anchor / agenda-strip driver). Controlled via <see cref="SelectedDateChanged"/>.</summary>
+    [Parameter] public DateTime? SelectedDate { get; set; }
+    [Parameter] public EventCallback<DateTime> SelectedDateChanged { get; set; }
+
+    /// <summary>Raised when an event chip is clicked or activated (Enter/Space).</summary>
+    [Parameter] public EventCallback<SchedulerEvent> OnEventClick { get; set; }
+
+    /// <summary>Raised when the user selects a date (double-click, or Enter/Space on an empty cell).</summary>
+    [Parameter] public EventCallback<SchedulerDateRange> OnDateSelect { get; set; }
+
+    /// <summary>Bubbles a PageUp (previous month) keyboard request up to the toolbar's own Prev.</summary>
+    [Parameter] public EventCallback OnRequestPrev { get; set; }
+
+    /// <summary>Bubbles a PageDown (next month) keyboard request up to the toolbar's own Next.</summary>
+    [Parameter] public EventCallback OnRequestNext { get; set; }
+
+    /// <summary>Resolves the effective CSS color for an event chip. Falls back to <c>var(--color-primary)</c>.</summary>
+    [Parameter] public Func<SchedulerEvent, string?>? ResolveEventColor { get; set; }
+
+    /// <summary>Resolves extra CSS class names appended to an event chip.</summary>
+    [Parameter] public Func<SchedulerEvent, string?>? ResolveEventClassNames { get; set; }
+
+    /// <summary>Allows events to be dragged to another day. Month has no edge-resize (spec §3.4). Default true.</summary>
+    [Parameter] public bool Editable { get; set; } = true;
+
+    /// <summary>
+    /// Fail-closed validation predicate for a day-move drop (spec §3.2). <c>null</c> (default)
+    /// means no consumer opted in — JS is told via <c>hasCanDrop: false</c> so zero
+    /// <see cref="ValidateDrop"/> interop calls happen per drag.
+    /// </summary>
+    [Parameter] public Func<SchedulerEvent, SchedulerScheduleDropContext, bool>? CanDrop { get; set; }
+
+    /// <summary>Raised after a day-move drag commits (post-<see cref="CanDrop"/> validation, ghost already removed).</summary>
+    [Parameter] public EventCallback<SchedulerEvent> OnEventChange { get; set; }
+
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private DateTime[] _cells = Array.Empty<DateTime>();
+    private MonthCellModel[] _cellModels = new MonthCellModel[42];
+    private readonly ElementReference[] _cellRefs = new ElementReference[42];
+    private readonly Dictionary<string, ElementReference> _pillRefs = new(StringComparer.Ordinal);
+    private int _focusedIndex;
+    private string[] _weekdayHeaders = Array.Empty<string>();
+    private ElementReference _hostRef;
+    private DotNetObjectReference<SchedulerMonthView>? _selfRef;
+    private bool _dragRegistered;
+    private int _lastDragOptionsHash;
+
+    protected override void OnParametersSet()
+    {
+        _cells = SchedulerDateMath.BuildMonthGrid(AnchorDate, FirstDayOfWeek).ToArray();
+        BuildWeekdayHeaders();
+        BuildCellModels();
+
+        // Keep the roving-tabindex anchor in bounds when the grid changes from under it.
+        if (_focusedIndex < 0 || _focusedIndex >= 42)
+            _focusedIndex = 0;
+    }
+
+    private void BuildWeekdayHeaders()
+    {
+        var culture = CultureInfo.CurrentUICulture;
+        var headers = new string[7];
+        for (var i = 0; i < 7; i++)
+        {
+            var dow = (DayOfWeek)(((int)FirstDayOfWeek + i) % 7);
+            headers[i] = culture.DateTimeFormat.AbbreviatedDayNames[(int)dow];
+        }
+        _weekdayHeaders = headers;
+    }
+
+    private void BuildCellModels()
+    {
+        _pillRefs.Clear();
+        if (_cells.Length == 0) { _cellModels = new MonthCellModel[42]; return; }
+
+        var events = (Events ?? Enumerable.Empty<SchedulerEvent>()).ToList();
+        var byId = new Dictionary<string, SchedulerEvent>(StringComparer.Ordinal);
+        foreach (var ev in events)
+            if (!string.IsNullOrEmpty(ev.Id)) byId[ev.Id] = ev;
+
+        var rangeStart = _cells[0];
+        var rangeEnd = _cells[^1].AddDays(1);
+        var allInstances = SchedulerRecurrenceExpander.ExpandAll(events, rangeStart, rangeEnd);
+
+        var models = new MonthCellModel[42];
+        for (var row = 0; row < 6; row++)
+        {
+            var weekStart = _cells[row * 7];
+            var weekEnd = weekStart.AddDays(7);
+
+            var rowInstances = allInstances
+                .Where(i => i.Start < weekEnd && i.End > weekStart && byId.ContainsKey(i.EventId))
+                .ToList();
+
+            var packInput = rowInstances
+                .Select(i => (Id: InstanceKey(i), StartDate: i.Start, EndDate: i.End, AllDay: byId[i.EventId].AllDay))
+                .ToList();
+
+            var lanes = SchedulerMonthLayout.PackRow(weekStart, packInput);
+            var hidden = SchedulerMonthLayout.HiddenCounts(weekStart, lanes, packInput, MaxVisibleLanes);
+
+            var maxLane = lanes.Count == 0 ? -1 : lanes.Values.Max();
+            var visibleLaneCount = Math.Max(0, Math.Min(MaxVisibleLanes, maxLane + 1));
+
+            for (var col = 0; col < 7; col++)
+            {
+                var date = weekStart.AddDays(col);
+                var touching = rowInstances.Where(i => TouchesDay(i.Start, i.End, byId[i.EventId].AllDay, date)).ToList();
+
+                var slots = new PillSlot?[visibleLaneCount];
+                for (var lane = 0; lane < visibleLaneCount; lane++)
+                {
+                    var found = touching.FirstOrDefault(i => lanes.TryGetValue(InstanceKey(i), out var l) && l == lane);
+                    if (found.EventId is null) { slots[lane] = null; continue; }
+
+                    var src = byId[found.EventId];
+                    var contL = date.Date > found.Start.Date;
+                    var contR = date.Date < LastTouchedDate(found.End, src.AllDay, found.Start);
+                    slots[lane] = new PillSlot(found, src, contL, contR, !contL);
+                }
+
+                models[row * 7 + col] = new MonthCellModel(
+                    date,
+                    date.Month == AnchorDate.Month && date.Year == AnchorDate.Year,
+                    date.Date == DateTime.Today,
+                    slots,
+                    hidden.TryGetValue(date, out var h) ? h : 0,
+                    touching.Count);
+            }
+        }
+
+        _cellModels = models;
+    }
+
+    private static DateTime LastTouchedDate(DateTime end, bool allDay, DateTime start)
+    {
+        if (!allDay && end.Date == start.Date) return start.Date;
+        var last = end.TimeOfDay == TimeSpan.Zero ? end.Date.AddDays(-1) : end.Date;
+        return last < start.Date ? start.Date : last;
+    }
+
+    private static bool TouchesDay(DateTime start, DateTime end, bool allDay, DateTime day)
+    {
+        if (!allDay && end.Date == start.Date) return day.Date == start.Date;
+        var last = LastTouchedDate(end, allDay, start);
+        return day.Date >= start.Date && day.Date <= last;
+    }
+
+    private static string InstanceKey(SchedulerEventInstance i) => $"{i.EventId}|{i.Start:O}";
+
+    private string CellClasses(MonthCellModel cell)
+    {
+        var classes = "relative flex flex-col gap-0.5 min-h-[92px] p-1 border-b border-r border-border/60 cursor-pointer transition-colors hover:bg-accent/50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring focus-visible:-outline-offset-2";
+        if (!cell.InCurrentMonth) classes += " bg-muted/30 text-muted-foreground";
+        if (SelectedDate.HasValue && SelectedDate.Value.Date == cell.Date) classes += " outline outline-2 outline-ring -outline-offset-2";
+        return classes;
+    }
+
+    private static string DayNumberClasses(MonthCellModel cell)
+    {
+        var classes = "self-end w-6 h-6 rounded-[calc(var(--radius)*4)] flex items-center justify-center text-xs font-medium";
+        if (cell.IsToday) classes += " bg-primary text-primary-foreground font-semibold";
+        return classes;
+    }
+
+    private string PillClasses(PillSlot slot)
+    {
+        var classes = "block w-full text-left text-[11px] leading-tight font-medium px-1.5 py-0.5 rounded truncate cursor-pointer select-none border-0";
+        if (slot.ContL) classes += " rounded-l-none";
+        if (slot.ContR) classes += " rounded-r-none";
+        var extra = ResolveEventClassNames?.Invoke(slot.Source);
+        if (!string.IsNullOrEmpty(extra)) classes += " " + extra;
+        return classes;
+    }
+
+    private string PillStyle(PillSlot slot)
+    {
+        var color = ResolveEventColor?.Invoke(slot.Source) ?? slot.Source.Color ?? "var(--color-primary)";
+        return $"background-color: color-mix(in oklab, {color} 18%, transparent); color: {color};";
+    }
+
+    private string CellAriaLabel(MonthCellModel cell)
+    {
+        var dateLabel = cell.Date.ToString("D", CultureInfo.CurrentUICulture);
+        var countLabel = L[LumeoPlurals.PluralKey(cell.TotalCount, "Scheduler.EventCount", CultureInfo.CurrentUICulture), cell.TotalCount];
+        return $"{dateLabel}, {countLabel}";
+    }
+
+    private static string PillAriaLabel(PillSlot slot) => slot.Source.AllDay
+        ? slot.Source.Title
+        : $"{slot.Source.Title}, {slot.Instance.Start:t}";
+
+    // ── Interaction ──────────────────────────────────────────────────────
+
+    private async Task OnCellClickAsync(int index)
+    {
+        _focusedIndex = index;
+        var date = _cellModels[index].Date;
+        if (SelectedDateChanged.HasDelegate) await SelectedDateChanged.InvokeAsync(date);
+    }
+
+    private async Task OnCellDoubleClickAsync(DateTime date)
+    {
+        if (OnDateSelect.HasDelegate)
+            await OnDateSelect.InvokeAsync(new SchedulerDateRange(date, date.AddDays(1), true));
+    }
+
+    private async Task OnEventClickAsync(SchedulerEvent ev)
+    {
+        if (OnEventClick.HasDelegate) await OnEventClick.InvokeAsync(ev);
+    }
+
+    private async Task OnPillKeyDownAsync(KeyboardEventArgs e, SchedulerEvent ev, int cellIndex)
+    {
+        if (e.Key is "Enter" or " ")
+        {
+            await OnEventClickAsync(ev);
+        }
+        else if (e.Key == "Escape")
+        {
+            _focusedIndex = cellIndex;
+            await FocusCellAsync(cellIndex);
+        }
+    }
+
+    /// <summary>
+    /// Roving-tabindex 2-D grid navigation (spec §5.2's Month column). Arrow keys move one
+    /// day/week; Home/End snap to the row's first/last day; PageUp/PageDown bubble up as a
+    /// month-navigation request (same effect as the toolbar's own Prev/Next); Enter/Space
+    /// opens <see cref="OnDateSelect"/> for an empty cell, or moves focus to the cell's first
+    /// event chip when one exists (mirrors a native listbox's "hand off focus to content").
+    /// </summary>
+    private async Task OnGridKeyDownAsync(KeyboardEventArgs e, int cellIndex)
+    {
+        _focusedIndex = cellIndex;
+        int next;
+        switch (e.Key)
+        {
+            case "ArrowRight": next = Math.Min(41, cellIndex + 1); break;
+            case "ArrowLeft": next = Math.Max(0, cellIndex - 1); break;
+            case "ArrowDown": next = Math.Min(41, cellIndex + 7); break;
+            case "ArrowUp": next = Math.Max(0, cellIndex - 7); break;
+            case "Home": next = cellIndex - (cellIndex % 7); break;
+            case "End": next = cellIndex - (cellIndex % 7) + 6; break;
+            case "PageUp":
+                if (OnRequestPrev.HasDelegate) await OnRequestPrev.InvokeAsync();
+                return;
+            case "PageDown":
+                if (OnRequestNext.HasDelegate) await OnRequestNext.InvokeAsync();
+                return;
+            case "Enter":
+            case " ":
+                await ActivateFocusedCellAsync(cellIndex);
+                return;
+            default:
+                return;
+        }
+
+        if (next != cellIndex)
+        {
+            _focusedIndex = next;
+            await FocusCellAsync(next);
+        }
+    }
+
+    private async Task ActivateFocusedCellAsync(int cellIndex)
+    {
+        var cell = _cellModels[cellIndex];
+        var first = cell.Lanes.FirstOrDefault(s => s is not null);
+        if (first is not null)
+        {
+            var key = InstanceKey(first.Instance);
+            if (_pillRefs.TryGetValue(key, out var pillRef))
+            {
+                try { await pillRef.FocusAsync(); }
+                catch (Microsoft.JSInterop.JSDisconnectedException) { }
+            }
+        }
+        else if (OnDateSelect.HasDelegate)
+        {
+            await OnDateSelect.InvokeAsync(new SchedulerDateRange(cell.Date, cell.Date.AddDays(1), true));
+        }
+    }
+
+    private async Task FocusCellAsync(int index)
+    {
+        try { await _cellRefs[index].FocusAsync(); }
+        catch (Microsoft.JSInterop.JSDisconnectedException) { }
+    }
+
+    // ── Drag (whole-day move only — month has no edge-resize, spec §3.4) ──────
+    // Ghost-only + fail-closed: see SchedulerTimeGridView's identical remarks and
+    // scheduler-views.js's own header comment — the same two invariants apply here.
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        var hash = HashCode.Combine(Editable, CanDrop is not null);
+        if (_dragRegistered && hash == _lastDragOptionsHash) return;
+        _lastDragOptionsHash = hash;
+        _selfRef ??= DotNetObjectReference.Create(this);
+        try
+        {
+            var options = new Dictionary<string, object?> { ["editable"] = Editable, ["hasCanDrop"] = CanDrop is not null };
+            await Interop.SchedulerViewsRegisterMonthDragAsync(_hostRef, _selfRef, options);
+            _dragRegistered = true;
+        }
+        catch (Microsoft.JSInterop.JSDisconnectedException) { }
+    }
+
+    /// <summary>
+    /// [JSInvokable] fail-closed CanDrop check for a candidate day-move. Returns
+    /// <c>false</c> for any input JS shouldn't have been able to produce (unknown
+    /// event id, unparsable date) rather than treating an unrecognized shape as
+    /// permission.
+    /// </summary>
+    [JSInvokable]
+    public bool ValidateDrop(string eventId, string dateIso)
+    {
+        if (CanDrop is null) return true;
+        var ev = FindEvent(eventId);
+        if (ev is null) return false;
+        if (!DateTime.TryParse(dateIso, CultureInfo.InvariantCulture, DateTimeStyles.None, out var date)) return false;
+        var newStart = date.Date + ev.Start.TimeOfDay;
+        var newEnd = newStart + (ev.End - ev.Start);
+        return CanDrop(ev, new SchedulerScheduleDropContext(newStart, newEnd, SchedulerEventUpdateSource.Move));
+    }
+
+    [JSInvokable]
+    public async Task CommitDrag(string eventId, string dateIso)
+    {
+        var ev = FindEvent(eventId);
+        if (ev is null) return;
+        if (!DateTime.TryParse(dateIso, CultureInfo.InvariantCulture, DateTimeStyles.None, out var date)) return;
+        var newStart = date.Date + ev.Start.TimeOfDay;
+        if (newStart == ev.Start) return;
+        var newEnd = newStart + (ev.End - ev.Start);
+        var updated = ev with { Start = newStart, End = newEnd };
+        if (OnEventChange.HasDelegate) await OnEventChange.InvokeAsync(updated);
+    }
+
+    private SchedulerEvent? FindEvent(string id) =>
+        (Events ?? Enumerable.Empty<SchedulerEvent>()).FirstOrDefault(e => e.Id == id);
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_dragRegistered)
+        {
+            try { await Interop.SchedulerViewsUnregisterMonthDragAsync(_hostRef); }
+            catch (Microsoft.JSInterop.JSDisconnectedException) { }
+        }
+        _selfRef?.Dispose();
+    }
+
+    private sealed record MonthCellModel(DateTime Date, bool InCurrentMonth, bool IsToday, IReadOnlyList<PillSlot?> Lanes, int HiddenCount, int TotalCount);
+
+    private sealed record PillSlot(SchedulerEventInstance Instance, SchedulerEvent Source, bool ContL, bool ContR, bool ShowTitle);
+}
