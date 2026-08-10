@@ -28,7 +28,7 @@ public class GanttV3StickyLeftTests : GanttParityTestBase
     [Fact]
     public async Task GanttTree_Stays_Pinned_To_The_Left_Edge_After_Scrolling_Most_Of_The_Way_Across()
     {
-        await GotoHost("/e2e/gantt-v3?fixture=tall&viewMode=Day");
+        await GotoHost("/e2e/gantt-v3?fixture=tall&viewMode=Day&infiniteScroll=0");
 
         var scrollPane = Page.Locator("[data-testid='gantt-v3-root'] div[style*='overflow']").First;
         await scrollPane.WaitForAsync(new() { Timeout = 15000 });
@@ -81,7 +81,7 @@ public class GanttV3StickyLeftTests : GanttParityTestBase
         // swapping to `start-0` (CSS `inset-inline-start:0`), which resolves
         // to `left:0` under LTR (unchanged — see the LTR spec above) and
         // `right:0` under RTL.
-        await GotoHost("/e2e/gantt-v3?fixture=tall&viewMode=Day&rtl=1");
+        await GotoHost("/e2e/gantt-v3?fixture=tall&viewMode=Day&rtl=1&infiniteScroll=0");
 
         var scrollPane = Page.Locator("[data-testid='gantt-v3-root'] div[style*='overflow']").First;
         await scrollPane.WaitForAsync(new() { Timeout = 15000 });

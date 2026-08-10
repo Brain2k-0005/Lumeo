@@ -1,4 +1,5 @@
 @page "/e2e/gantt-v3-tree"
+@using Lumeo.GanttV3
 @using Lumeo.Tests.ServerHost.E2E
 
 @* Gantt v2/v3 parity harness (feat/gantt-v3, T4) — v3-ONLY. v2 has no
@@ -19,7 +20,61 @@
 
    ?fixture=tall (Codex round 6, P1 #2): swaps in GanttParityFixtures.
    TallHierarchyFixture() — tall enough to need real virtualization/arrow-
-   culling, unlike the default TreeTasks (5 rows, always fully visible). *@
+   culling, unlike the default TreeTasks (5 rows, always fully visible).
+
+   ?fixture=rollup (design spec Phase 3, T3): swaps in GanttParityFixtures.
+   RollupTasks() and turns on ShowSummaryBars — see that fixture's own
+   remarks for the exact duration-weighted math this drives
+   (GanttV3SummaryRollupTests). Summary bars default OFF (T3's own
+   Phase-3-ledger-pinned v2/REUI look-delta — see GanttTimeline.ShowSummaryBars),
+   so every OTHER route/fixture on this page renders with no strips at all,
+   unaffected by this opt-in.
+
+   ?fixture=columns (design spec Phase 3, T5): turns on TreeColumns (a
+   "Duration" column, days-derived — deterministic against TreeTasks' own
+   known dates) + TreeHeaderMenu (a plain trigger button) + RowTemplate (a
+   bullet-prefixed name span) so GanttV3TreeColumnsSplitterTests can assert
+   real column alignment/header-menu/RowTemplate-vs-chrome behavior against a
+   live browser. The splitter itself (GanttTree's own divider) needs no
+   fixture flag — it renders whenever the tree pane does, on every route on
+   this page.
+
+   ?checkboxes=1 / ?reorder=1 / ?readonly=1 / ?veto=1 (design spec Phase 3,
+   T6): independent opt-in flags against the DEFAULT TreeTasks() fixture
+   (root1[child1[grandchild1], child2], root2 — child1/child2 share root1 as
+   ParentId, a real 2-member sibling bucket for a real reorder drag) —
+   UNCONTROLLED (no SelectedIds/OnRowReorder bound at all): Gantt3 owns
+   _state internally, so a real checkbox click / real row drag is directly
+   observable in the rendered DOM with no extra page-level wiring, exactly
+   like every other uncontrolled fixture on this page. ?veto=1 wires a
+   CanDropRow that rejects every candidate position (GanttV3RowSelectionReorderTests'
+   own veto-path spec) — deterministic and fixture-independent, unlike
+   pinning the rejection to one specific task id.
+
+   ?vetoslow=1 (Codex review, P1 #2 - "row-drop commits before CanDropRow
+   validation resolves"): same rejects-everything predicate as ?veto=1, but
+   blocks synchronously for a few hundred ms first - deliberately simulating
+   real SignalR round-trip latency (CanDropRow's own signature is
+   synchronous, so a genuine Task.Delay isn't an option; the block happens
+   server-side, inside the JSInvokable dispatch, which is exactly where real
+   latency would show up too). Lets GanttV3RowSelectionReorderTests assert a
+   release that lands BEFORE the round trip resolves still fails closed
+   (never commits), which ?veto=1's own spec can't exercise - it always
+   waits for the drop-line to paint invalid before releasing.
+
+   ?vetoResize=1 (Codex review, P2 #9 - "vetoed controlled splitter drag is
+   not reverted in the DOM"): wires TreePaneWidth to a FIXED, never-adopted
+   value (VetoedTreePaneWidth) and TreePaneWidthChanged to a no-op - every
+   splitter drag is a controlled veto by construction. registerSplitterDrag's
+   own onPointerMove (gantt-v3.js) mutates the real pane element's inline
+   width directly during the live gesture; on release, since this route
+   never adopts the result, Blazor's next render computes the SAME style
+   string it rendered before the drag ever started, and its diff never
+   re-touches the DOM - GanttV3TreeColumnsSplitterTests' own veto-path spec
+   asserts the REAL (post-drag) DOM width reverts to VetoedTreePaneWidth,
+   not merely that Blazor's OWN model value stayed unchanged (a bUnit test
+   can only ever prove the latter - there is no real DOM/JS to mutate
+   outside Blazor's tracking there). *@
 
 <PageTitle>E2E - Gantt v3 tree</PageTitle>
 
@@ -30,19 +85,125 @@
             Height="900px"
             ShowTreePane="true"
             AllowCreate="@_allowCreate"
+            ShowSummaryBars="@_showSummaryBars"
+            TreeColumns="@_treeColumns"
+            TreeHeaderMenu="@(_showColumns ? TreeHeaderMenuContent : null)"
+            RowTemplate="@(_showColumns ? RowTemplateContent : null)"
+            Readonly="@_readonly"
+            ShowRowCheckboxes="@_showRowCheckboxes"
+            AllowRowReorder="@_allowRowReorder"
+            CanDropRow="@(_vetoAll ? RejectEveryDrop : (_vetoSlow ? RejectEveryDropSlow : null))"
+            InfiniteScroll="@_infiniteScroll"
+            TreePaneWidth="@(_vetoResize ? (double?)VetoedTreePaneWidth : null)"
+            TreePaneWidthChanged="@(_vetoResize ? EventCallback.Factory.Create<double>(this, _ => { /* controlled + always vetoes: never adopts the new width */ }) : default)"
             data-testid="gantt-v3-tree-root" />
 </div>
 
 @code {
     [SupplyParameterFromQuery] public string? AllowCreate { get; set; }
     [SupplyParameterFromQuery] public string? Fixture { get; set; }
+    [SupplyParameterFromQuery] public string? Checkboxes { get; set; }
+    [SupplyParameterFromQuery] public string? Reorder { get; set; }
+    [SupplyParameterFromQuery] public string? Readonly { get; set; }
+    [SupplyParameterFromQuery] public string? Veto { get; set; }
+    [SupplyParameterFromQuery] public string? VetoSlow { get; set; }
+    [SupplyParameterFromQuery] public string? VetoResize { get; set; }
+    // Design spec Phase 3, T9 — see GanttV3Page's own identical parameter for
+    // the full remarks: InfiniteScroll defaults to true (Gantt3's own
+    // default), so this query flag exists to turn it OFF for specs that
+    // predate T9 and rely on a stable, non-shifting VisibleRange/scroll
+    // position for their own precise geometry assertions.
+    [SupplyParameterFromQuery(Name = "infiniteScroll")] public string? InfiniteScrollQuery { get; set; }
 
     private List<GanttTask> _tasks = new();
     private bool _allowCreate;
+    private bool _showSummaryBars;
+    private bool _showColumns;
+    private List<GanttTreeColumn>? _treeColumns;
+    private bool _showRowCheckboxes;
+    private bool _allowRowReorder;
+    private bool _readonly;
+    private bool _vetoAll;
+    private bool _vetoSlow;
+    private bool _vetoResize;
+    private bool _infiniteScroll = true;
+
+    // Codex review, P2 #9: a fixed, never-adopted TreePaneWidth for
+    // ?vetoResize=1 — GanttV3RowSelectionReorderTests' (row-reorder) own
+    // sibling fixture, GanttV3TreeColumnsSplitterTests' own splitter-drag
+    // spec, EXCEPT this pane never adopts a resize at all (the DOM must
+    // revert to this SAME value after every drag).
+    private const double VetoedTreePaneWidth = 224;
 
     protected override void OnInitialized()
     {
-        _tasks = Fixture == "tall" ? GanttParityFixtures.TallHierarchyFixture() : GanttParityFixtures.TreeTasks();
+        _tasks = Fixture switch
+        {
+            "tall" => GanttParityFixtures.TallHierarchyFixture(),
+            "rollup" => GanttParityFixtures.RollupTasks(),
+            _ => GanttParityFixtures.TreeTasks(),
+        };
         _allowCreate = AllowCreate == "1";
+        _showSummaryBars = Fixture == "rollup";
+        _showColumns = Fixture == "columns";
+        _treeColumns = _showColumns
+            ? new List<GanttTreeColumn>
+            {
+                new("Duration", 80, DurationCellContent),
+            }
+            : null;
+        _showRowCheckboxes = Checkboxes == "1";
+        _allowRowReorder = Reorder == "1";
+        _readonly = Readonly == "1";
+        _vetoAll = Veto == "1";
+        _vetoSlow = VetoSlow == "1";
+        _vetoResize = VetoResize == "1";
+        if (InfiniteScrollQuery == "0") _infiniteScroll = false;
     }
+
+    // Design spec Phase 3, T6 — deterministic veto-path fixture (?veto=1):
+    // rejects every candidate row-reorder position regardless of context, so
+    // GanttV3RowSelectionReorderTests can assert a real drag never commits
+    // (the drop-index line paints invalid, the task order is unchanged after
+    // release) without pinning the rejection to one specific task/position.
+    private static bool RejectEveryDrop(GanttTask task, GanttDropContext context) => false;
+
+    // ?vetoslow=1 (Codex review, P1 #2) — same verdict as RejectEveryDrop
+    // above, but blocks the calling thread for a few hundred ms first. This
+    // runs INSIDE the JSInvokable ValidateRowDrop dispatch (server-side,
+    // over the real SignalR circuit this page uses), so from gantt-v3.js's
+    // perspective it is indistinguishable from genuine network/circuit
+    // latency delaying the round trip — exactly the window
+    // Row_Drag_Released_Before_Slow_Validation_Resolves_Never_Commits needs
+    // to release the pointer INSIDE.
+    private static bool RejectEveryDropSlow(GanttTask task, GanttDropContext context)
+    {
+        Thread.Sleep(400);
+        return false;
+    }
+
+    private static RenderFragment<GanttTask> DurationCellContent => task => builder =>
+    {
+        builder.OpenElement(0, "span");
+        builder.AddAttribute(1, "class", "gantt-e2e-duration-cell");
+        builder.AddContent(2, $"{(task.End.Date - task.Start.Date).Days}d");
+        builder.CloseElement();
+    };
+
+    private static RenderFragment<GanttTask> RowTemplateContent => task => builder =>
+    {
+        builder.OpenElement(0, "span");
+        builder.AddAttribute(1, "class", "gantt-e2e-row-template truncate text-sm");
+        builder.AddContent(2, $"• {task.Name}");
+        builder.CloseElement();
+    };
+
+    private static RenderFragment TreeHeaderMenuContent => builder =>
+    {
+        builder.OpenElement(0, "button");
+        builder.AddAttribute(1, "type", "button");
+        builder.AddAttribute(2, "class", "gantt-e2e-tree-header-menu");
+        builder.AddContent(3, "...");
+        builder.CloseElement();
+    };
 }

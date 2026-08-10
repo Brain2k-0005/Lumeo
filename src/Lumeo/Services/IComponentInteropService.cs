@@ -620,6 +620,27 @@ public interface IComponentInteropService : IAsyncDisposable, IDisposable
     Task<string?> GanttV3GetLocalDateAsync() => Task.FromResult<string?>(null);
 
     /// <summary>
+    /// Browser-local "now" as an ISO-ish <c>"yyyy-MM-ddTHH:mm:ss"</c> string
+    /// (design spec Phase 3, T2 — <c>NowIndicator</c>'s precise current-TIME
+    /// line in sub-day view modes). Extends the SAME <c>GanttV3Get*</c> browser-
+    /// clock interop family <see cref="GanttV3GetLocalDateAsync"/> already
+    /// established (same module, same "browser clock, not the SERVER's" reason
+    /// — Blazor Server's C# <c>DateTime.Now</c> is the server's own clock) rather
+    /// than a second, parallel channel: <see cref="GanttV3GetLocalDateAsync"/>
+    /// itself is UNCHANGED (still date-only, still what Gantt3's Today logic
+    /// reads) — this is a NEW sibling for the one caller (<c>NowIndicator</c>)
+    /// that genuinely needs sub-day precision, not a replacement. Returns
+    /// <c>null</c> under the exact same conditions <see cref="GanttV3GetLocalDateAsync"/>
+    /// does (JS interop unavailable — prerendering, a torn-down circuit).
+    /// DO-NOT-PROMOTE: joins the rest of the GanttV3 Unshipped surface — see
+    /// <see cref="GanttV3GetLocalDateAsync"/>'s own DO-NOT-PROMOTE precedent
+    /// (tracked in the campaign ledger/memory, not inline here) — stays
+    /// Unshipped until the Phase-4 GanttV3-&gt;Gantt rename. Default no-op DIM
+    /// so existing implementers/test doubles keep compiling.
+    /// </summary>
+    Task<string?> GanttV3GetLocalDateTimeAsync() => Task.FromResult<string?>(null);
+
+    /// <summary>
     /// Registers a one-way horizontal-scroll mirror from <paramref name="canvasEl"/>
     /// (the row-canvas's own scrollable element) onto <paramref name="headerInnerEl"/>
     /// (a <c>transform: translateX(...)</c> target) — Codex round 2, P1 #3's sticky-
@@ -681,6 +702,34 @@ public interface IComponentInteropService : IAsyncDisposable, IDisposable
     Task<double?> GanttV3GetScrollCenterXAsync(Microsoft.AspNetCore.Components.ElementReference el, string? direction = null) => Task.FromResult<double?>(null);
 
     /// <summary>
+    /// True while ANY GanttV3 pointer gesture (bar move/resize/progress drag OR
+    /// drag-create on an empty track — gantt-v3.js's <c>activeBarDrags</c>/
+    /// <c>activeCreateDrags</c> WeakSets) is currently in flight, on ANY GanttV3
+    /// chart on the page (design spec Phase 3, T9 — infinite scroll's own
+    /// gesture-suppression gate, decision 3: "suppress extension while a drag is
+    /// in flight"). A plain module-level pull, deliberately NOT scoped to one
+    /// scroll-host element the way <see cref="GanttV3RegisterDragAsync{T}"/>'s own
+    /// registrations are: gantt-v3.js's <c>activeBarDrags</c>/<c>activeCreateDrags</c>
+    /// are ALREADY module-level/page-global (concurrent drags on different bars
+    /// are explicitly permitted — see that file's own remarks), so this mirrors
+    /// their existing scope rather than introducing a NARROWER one just for this
+    /// one signal; the only cost of that choice is a purely conservative one (an
+    /// unrelated chart's drag can defer another chart's extension by a frame),
+    /// never an incorrect commit.
+    ///
+    /// Queried at two points: <c>GanttTimeline</c>'s own gate before ever asking
+    /// <c>Gantt3</c> to extend <c>VisibleRange</c>, and <c>Gantt3</c>'s own
+    /// re-check immediately before it actually commits a leading-edge extension
+    /// — closing the narrow race where a gesture starts DURING the one await
+    /// (<c>GanttV3GetScrollCenterXAsync</c>'s own live-scroll-center read) that
+    /// sits between those two points. Default no-op DIM (returns <c>false</c> —
+    /// "no drag in flight", the same fail-toward-proceeding choice
+    /// <c>GanttV3GetScrollCenterXAsync</c>'s own null-fallback makes) so existing
+    /// implementers/test doubles keep compiling.
+    /// </summary>
+    Task<bool> GanttV3HasActiveDragAsync() => Task.FromResult(false);
+
+    /// <summary>
     /// Registers GanttV3's pointer drag engine (design spec Phase 2, T1 — gantt-v3.js's
     /// <c>ganttV3.registerDrag</c>) on <paramref name="el"/> — the SAME scroll-host
     /// element <see cref="GanttV3ScrollToXAsync"/> targets. A single delegated
@@ -706,6 +755,108 @@ public interface IComponentInteropService : IAsyncDisposable, IDisposable
 
     /// <summary>Tears down the drag engine registered by <see cref="GanttV3RegisterDragAsync{T}"/> — removes the delegated listener and releases any drag in flight. Default no-op.</summary>
     Task GanttV3UnregisterDragAsync(Microsoft.AspNetCore.Components.ElementReference el) => Task.CompletedTask;
+
+    /// <summary>
+    /// Registers GanttV3's tree/timeline splitter drag (design spec Phase 3, T5 —
+    /// gantt-v3.js's <c>ganttV3.registerSplitterDrag</c>) — a SEPARATE registration
+    /// channel from <see cref="GanttV3RegisterDragAsync{T}"/> (a dedicated handle
+    /// element, not a delegated listener over recycled bars), reusing the SAME
+    /// conventions (pointer capture, a per-gesture options snapshot, pointer-id
+    /// isolation, cancel-in-flight-on-unregister). <paramref name="handleEl"/> is
+    /// the divider the user drags; <paramref name="paneEl"/> is the tree pane
+    /// element whose width/--lumeo-gantt-tree-name-width custom property the live
+    /// drag mutates directly (no Blazor round-trip mid-gesture). Calling this
+    /// again for an already-registered <paramref name="handleEl"/> updates the
+    /// stored <paramref name="dotNetRef"/>/<paramref name="options"/>/<paramref
+    /// name="paneEl"/> in place (idempotent), mirroring
+    /// <see cref="GanttV3RegisterDragAsync{T}"/>'s own re-registration contract.
+    /// Default no-op DIM so existing implementers/test doubles keep compiling;
+    /// <see cref="Lumeo.Services.ComponentInteropService"/> overrides both with
+    /// the real registration.
+    /// </summary>
+    Task GanttV3RegisterSplitterDragAsync<[System.Diagnostics.CodeAnalysis.DynamicallyAccessedMembers(System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicMethods)] T>(Microsoft.AspNetCore.Components.ElementReference handleEl, Microsoft.AspNetCore.Components.ElementReference paneEl, DotNetObjectReference<T> dotNetRef, object options) where T : class
+        => Task.CompletedTask;
+
+    /// <summary>Tears down the splitter drag registered by <see cref="GanttV3RegisterSplitterDragAsync{T}"/> — removes the pointerdown listener and cancels (never commits) any drag in flight. Default no-op.</summary>
+    Task GanttV3UnregisterSplitterDragAsync(Microsoft.AspNetCore.Components.ElementReference handleEl) => Task.CompletedTask;
+
+    /// <summary>
+    /// Force-applies <paramref name="totalWidth"/>/<paramref name="nameWidth"/>
+    /// directly onto <paramref name="paneEl"/>'s inline <c>width</c> style and
+    /// its <c>--lumeo-gantt-tree-name-width</c> custom property (design spec
+    /// Phase 3, T5) — bug fix (Codex review, P2 #9): the live splitter drag
+    /// (<see cref="GanttV3RegisterSplitterDragAsync{T}"/>'s own
+    /// <c>onPointerMove</c>) mutates the REAL pane element's inline width
+    /// directly during the gesture, entirely outside Blazor's own render
+    /// tracking. If a controlled <c>TreePaneWidth</c> caller vetoes the
+    /// resulting <c>CommitSplitterWidth</c> request (keeps its own value
+    /// unchanged), the NEXT render's computed style string is IDENTICAL to
+    /// the last one Blazor actually applied — Blazor's diff sees no change
+    /// and never re-touches the DOM, leaving the rejected, JS-mutated width
+    /// in place indefinitely. <c>GanttTree.CommitSplitterWidth</c> calls this
+    /// UNCONDITIONALLY right after its own round trip resolves (accepted or
+    /// vetoed) to force the DOM back in sync with whatever the resolved,
+    /// authoritative width actually is — the same "always re-push, don't
+    /// rely on Blazor's diff" pattern already established for v2 Gantt's own
+    /// controlled-veto rollback (<c>gantt.setTasks</c> — see
+    /// <c>GanttControlledRollbackTests</c>). Idempotent/harmless when the
+    /// commit WAS accepted (Blazor's own render already applied the
+    /// identical values). Default no-op DIM so existing implementers/test
+    /// doubles keep compiling; <see cref="Lumeo.Services.ComponentInteropService"/>
+    /// overrides it with the real DOM write.
+    /// </summary>
+    Task GanttV3ResetSplitterWidthAsync(Microsoft.AspNetCore.Components.ElementReference paneEl, double totalWidth, double nameWidth) => Task.CompletedTask;
+
+    /// <summary>
+    /// Registers GanttV3's tree-row reorder drag (design spec Phase 3, T6 —
+    /// gantt-v3.js's <c>ganttV3.registerRowReorderDrag</c>) — a THIRD registration
+    /// channel alongside <see cref="GanttV3RegisterDragAsync{T}"/>/<see
+    /// cref="GanttV3RegisterSplitterDragAsync{T}"/>, reusing the SAME conventions
+    /// (delegated <c>pointerdown</c> on <paramref name="paneEl"/>, filtered to
+    /// <c>[data-row-reorder-grip]</c>; pointer capture; a per-gesture snapshot;
+    /// pointer-id isolation; cancel-in-flight-on-unregister). Unlike the other two
+    /// channels, there is no options bag to push: bucket/index identity for every
+    /// candidate drop row is read directly off that row's own
+    /// <c>data-reorder-bucket</c>/<c>data-reorder-index</c> DOM attributes (always
+    /// fresh — <c>GanttTree</c> re-renders them every pass), so re-registering
+    /// after a Virtualize recycle or a data change is never needed; calling this
+    /// again for an already-registered <paramref name="paneEl"/> simply updates
+    /// the stored <paramref name="dotNetRef"/> in place (idempotent). Default
+    /// no-op DIM so existing implementers/test doubles keep compiling; <see
+    /// cref="Lumeo.Services.ComponentInteropService"/> overrides both with the
+    /// real registration.
+    /// </summary>
+    Task GanttV3RegisterRowReorderDragAsync<[System.Diagnostics.CodeAnalysis.DynamicallyAccessedMembers(System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicMethods)] T>(Microsoft.AspNetCore.Components.ElementReference paneEl, DotNetObjectReference<T> dotNetRef) where T : class
+        => Task.CompletedTask;
+
+    /// <summary>Tears down the row-reorder drag registered by <see cref="GanttV3RegisterRowReorderDragAsync{T}"/> — removes the delegated pointerdown listener and cancels (never commits) any drag in flight. Default no-op.</summary>
+    Task GanttV3UnregisterRowReorderDragAsync(Microsoft.AspNetCore.Components.ElementReference paneEl) => Task.CompletedTask;
+
+    /// <summary>
+    /// Registers GanttV3's bar context-menu channel (design spec Phase 3, T8 —
+    /// gantt-v3.js's <c>ganttV3.registerBarContextMenu</c>) — a FOURTH registration
+    /// channel alongside <see cref="GanttV3RegisterDragAsync{T}"/>/<see
+    /// cref="GanttV3RegisterSplitterDragAsync{T}"/>/<see cref="GanttV3RegisterRowReorderDragAsync{T}"/>,
+    /// deliberately independent of <c>GanttTimeline.Readonly</c> (a context menu is a
+    /// VIEW action, not an edit — see that component's own remarks). A single
+    /// delegated native <c>contextmenu</c> listener on <paramref name="el"/> (the same
+    /// scroll-host element <see cref="GanttV3RegisterDragAsync{T}"/> targets) resolves
+    /// which <c>[data-task-id]</c> bar (if any) was right-clicked, defers to any
+    /// currently-in-flight drag on that same bar (swallowed, no menu — see the JS
+    /// implementation's own remarks for the drag-isolation contract), and otherwise
+    /// invokes the caller's <c>NotifyBarContextMenu</c> JSInvokable with the resolved
+    /// task id and pointer coordinates. Calling this again for an already-registered
+    /// <paramref name="el"/> updates the stored <paramref name="dotNetRef"/> in place
+    /// (idempotent), mirroring every other registration channel above. Default no-op
+    /// DIM so existing implementers/test doubles keep compiling; <see
+    /// cref="Lumeo.Services.ComponentInteropService"/> overrides both with the real
+    /// registration.
+    /// </summary>
+    Task GanttV3RegisterBarContextMenuAsync<[System.Diagnostics.CodeAnalysis.DynamicallyAccessedMembers(System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicMethods)] T>(Microsoft.AspNetCore.Components.ElementReference el, DotNetObjectReference<T> dotNetRef) where T : class
+        => Task.CompletedTask;
+
+    /// <summary>Tears down the bar context-menu channel registered by <see cref="GanttV3RegisterBarContextMenuAsync{T}"/> — removes the delegated <c>contextmenu</c> listener. Default no-op.</summary>
+    Task GanttV3UnregisterBarContextMenuAsync(Microsoft.AspNetCore.Components.ElementReference el) => Task.CompletedTask;
 
     // Toolbar overflow observer — registers a ResizeObserver on the toolbar
     // element and invokes the handler with (fittingCount, totalCount) whenever

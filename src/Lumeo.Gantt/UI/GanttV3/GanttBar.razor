@@ -39,22 +39,50 @@
                 @if (Task.IsMilestone)
                 {
                     <div class="lumeo-gantt-v3-milestone rounded-sm" style="@ColorStyle"></div>
-                    <span class="lumeo-gantt-v3-milestone-label absolute start-full top-1/2 ms-2 -translate-y-1/2 whitespace-nowrap text-xs font-medium text-foreground">@Task.Name</span>
+                    @* G4c (2026-08-10 shadcn alignment) — see OutsideLabelClass's own remarks:
+                       unified with the bar-outside and summary-strip labels (was
+                       font-medium/text-foreground here). *@
+                    <span class="lumeo-gantt-v3-milestone-label @OutsideLabelClass absolute start-full top-1/2 ms-2 -translate-y-1/2 whitespace-nowrap">@Task.Name</span>
                 }
                 else
                 {
-                    <div class="lumeo-gantt-v3-bar-bg absolute inset-0 rounded opacity-30" style="@ColorStyle"></div>
-                    <div class="lumeo-gantt-v3-bar-progress absolute inset-y-0 start-0 rounded" style="@ProgressStyle"></div>
+                    @* G4a/G4b (2026-08-10 shadcn alignment): rounded → rounded-sm (see
+                       WrapperClass's own remarks); the flat "opacity-30" element-wide fade
+                       is replaced by baking the alpha directly into background-color AND
+                       adding the demo's defining 1px border (its own alpha independent of
+                       the fill's — an element-wide opacity would have diluted the border to
+                       ~7% instead of the demo's 45%, see BarBgStyle's own remarks). *@
+                    <div class="lumeo-gantt-v3-bar-bg absolute inset-0 rounded-sm border" style="@BarBgStyle"></div>
+                    <div class="@ProgressFillClass" style="@ProgressStyle"></div>
                     @if (BarTemplate is not null)
                     {
                         @BarTemplate(Task)
                     }
-                    else
+                    else if (LabelFitsInsideBar)
                     {
-                        <span class="lumeo-gantt-v3-bar-label relative truncate px-2 text-xs font-medium text-foreground">@Task.Name</span>
+                        <span class="@InBarLabelClass" style="@InBarLabelStyle">@Task.Name</span>
                     }
                 }
             </div>
+            @* Narrow-bar fallback label (design spec Phase 3, T7 — "falls back
+               beside the bar when too narrow"). Rendered as a SIBLING of
+               @InnerClass, not nested inside it — the SAME reason the
+               progress-handle div below is a sibling (see its own remarks):
+               @InnerClass carries "overflow-hidden" for every non-milestone
+               bar UNCONDITIONALLY (so the in-bar label/bg/progress clip to
+               the bar's own rounded corners), which would silently clip this
+               label's "start-full" (deliberately OUTSIDE the bar's own box,
+               same positioning idiom as the milestone label above) position
+               right back down to invisible if it lived inside that div
+               instead. No contrast handling here (unlike the in-bar label
+               above): this text sits over the ambient row/canvas background,
+               never over Color, so the existing text-foreground token is
+               already correct — exactly like the milestone label's own
+               "beside, always text-foreground" treatment, which this mirrors. *@
+            @if (!Task.IsMilestone && !LabelFitsInsideBar && BarTemplate is null)
+            {
+                <span class="lumeo-gantt-v3-bar-label-outside @OutsideLabelClass absolute start-full top-1/2 ms-2 -translate-y-1/2 whitespace-nowrap">@Task.Name</span>
+            }
             @* Progress handle (Phase 2, T2 — v2 parity: gantt-v2.js:564-574's
                progressHandle circle, "small circle at the right edge of progress
                overlay", shown only on hover via opacity 0->1, gantt-v2.js:578-586's
@@ -80,6 +108,34 @@
             }
         </ChildContentSlot>
     </TooltipTrigger>
+    @* Design spec Phase 3, T8 — DragGhostTemplate's hidden clone source. See
+       gantt-v3.js's makeGhost for the full "why clone THIS instead of the bar"
+       reasoning; this is the .razor half: a SIBLING of the Tooltip wrapper
+       above (same parent — the row-canvas's per-row item div GanttTimeline
+       renders this component into), positioned with the EXACT SAME
+       WrapperStyle (same X/Width/RowIndex/BarHeight this bar itself was
+       given, so --lumeo-gantt-bar-x/-w/-row + left/top/width/height are
+       byte-identical) — the pinned Phase-2 coordinate-space rule ("bars are
+       nested inside the row canvas, arrows are the outer canvas + HeaderHeight
+       — mixing the two up is the bug class to avoid") is satisfied by
+       construction: this node lives in the SAME parent as the real bar, not a
+       new one, so cloning it instead of the bar changes only WHAT gets
+       rendered inside the ghost, never WHERE the ghost's own box starts out.
+       `hidden` (Tailwind's display:none) keeps this out of layout/paint and
+       off the accessibility tree entirely while idle; gantt-v3.js's makeGhost
+       strips both the class and any inline display:none the instant it clones
+       this node into a live ghost. Gated on !Readonly — see
+       GanttTimeline.SyncDragRegistrationAsync's own "no listeners at all when
+       Readonly" contract: no drag ever starts on a Readonly chart, so there is
+       nothing for this template to ever be cloned into. *@
+    @if (DragGhostTemplate is not null && !Readonly)
+    {
+        <div class="hidden absolute rounded-sm" style="@WrapperStyle" data-gantt-ghost-template="true" aria-hidden="true">
+            <div class="@InnerClass">
+                @DragGhostTemplate(Task)
+            </div>
+        </div>
+    }
     <TooltipContent>
         <div class="font-medium">@Task.Name</div>
         <div class="mt-0.5 opacity-75">@Task.Start.ToString("MMM d, yyyy", CultureInfo.CurrentCulture) &#8594; @TooltipEndDate.ToString("MMM d, yyyy", CultureInfo.CurrentCulture)</div>
@@ -121,6 +177,17 @@
 
     /// <summary>Replaces the bar's default label content when set. Not used for milestones (v2 parity: milestones always show their name next to the diamond).</summary>
     [Parameter] public RenderFragment<GanttTask>? BarTemplate { get; set; }
+
+    /// <summary>
+    /// Overrides the drag ghost's rendered CONTENT (design spec Phase 3, T8). Null
+    /// (the default) keeps the prior behavior — gantt-v3.js's <c>makeGhost</c> clones
+    /// this bar's own rendered markup. When set, a HIDDEN sibling template carrying
+    /// this fragment's output is cloned instead — see the markup's own remarks for
+    /// the full coordinate-space contract (byte-identical position/size to the real
+    /// bar; only the ghost's visual content differs). Applies to move/resize/progress
+    /// drags of THIS bar, including for a milestone.
+    /// </summary>
+    [Parameter] public RenderFragment<GanttTask>? DragGhostTemplate { get; set; }
 
     /// <summary>
     /// Raised when the bar is activated via mouse click OR keyboard (Enter/Space
@@ -220,7 +287,20 @@
     // applied BROADLY (a whole container, always), not from a small,
     // conditionally-applied touch-action on the exact elements a gesture is
     // actually registered for.
-    private string WrapperClass => Cx.Merge("group absolute rounded", !Readonly ? "touch-pan-y" : null, Task.CustomClass, Class);
+    // "transition-shadow hover:shadow-md" (design spec Phase 3, T7 — "bar
+    // ... hover states") — same class pairing Lumeo.KanbanCard already uses
+    // for its own hover "lift" (a shadow change never affects layout/
+    // geometry, unlike a hover:scale-* transform, which would visually
+    // overlap a bar's own precisely-positioned neighbors in a densely-packed
+    // timeline — the geometry-neutral choice, not merely a stylistic one).
+    // G4a (2026-08-10 shadcn alignment): bare "rounded" is Tailwind v4's
+    // hardcoded legacy alias (border-radius:.25rem = 4px), entirely outside
+    // the --radius-* token namespace — un-themeable and, per the audit, 2px
+    // LESS round than the demo's 6px bars, not more (S2's radius-scale
+    // re-anchor never touches this class since it was never on the token
+    // scale to begin with). rounded-sm = --radius-sm = 6px, an exact match,
+    // brought into the token system for the first time.
+    private string WrapperClass => Cx.Merge("group absolute rounded-sm transition-shadow hover:shadow-md", !Readonly ? "touch-pan-y" : null, Task.CustomClass, Class);
 
     // Bug fix (Codex round 4, P2 #5; moved Codex round 5, P1 #1 / P2 #2/#3):
     // the focus-visible ring classes used to live on WrapperClass (the outer
@@ -233,8 +313,9 @@
     // same h-full/w-full square Wrapper's own dimensions describe (a
     // milestone's diamond rotation lives on ITS OWN inner sub-div, not this
     // one), only which element the CSS pseudo-class is declared ON has moved.
+    // G4a — see WrapperClass's own remarks: rounded → rounded-sm.
     private string InnerClass => Cx.Merge(
-        "relative flex h-full w-full items-center rounded focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-2",
+        "relative flex h-full w-full items-center rounded-sm focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-2",
         Task.IsMilestone ? "justify-center" : "overflow-hidden");
 
     private string ResolvedColor => Color ?? "var(--color-primary)";
@@ -271,6 +352,20 @@
         ? FormattableString.Invariant($"background-color:{ResolvedColor};transform:rotate(45deg);width:{MilestoneSidePx}px;height:{MilestoneSidePx}px;")
         : FormattableString.Invariant($"background-color:{ResolvedColor};");
 
+    // G4b (2026-08-10 shadcn alignment): the demo's `--ev-bg` bakes its ~10-16%
+    // effective alpha directly INTO the background colour (measured per-accent:
+    // 0.099-0.157 light, a literal 0.16 constant in dark — an encoding
+    // necessity of THEIR token pipeline, not per-mode tuning; house rule
+    // forbids a `dark:` branch here regardless, so this uses one constant,
+    // 16%, toward the top of that measured range). Deliberately NOT a
+    // Tailwind `opacity-*` utility (the previous `opacity-30` approach) — an
+    // element-wide opacity would ALSO fade the border below to ~7% (16% x
+    // 45%) instead of the demo's independent 45%, which is exactly what
+    // "carries edge definition at low tint" and would be lost. color-mix
+    // keeps the two alphas independent by construction.
+    private string BarBgStyle => FormattableString.Invariant(
+        $"background-color:color-mix(in oklab, {ResolvedColor} 16%, transparent);border-color:color-mix(in oklab, {ResolvedColor} 45%, transparent);");
+
     // Bug fix (Codex round 9 review, P2 #6): extracted so the tooltip's own
     // display (below) uses the IDENTICAL clamp as the progress fill's width,
     // instead of risking a second, unclamped read of Task.Progress —
@@ -281,6 +376,59 @@
 
     private string ProgressStyle =>
         FormattableString.Invariant($"width:{ClampedProgress}%;background-color:{ResolvedColor};");
+
+    // G4b — the demo's `.g-prog` squares its trailing (end) edge, rounding
+    // only at 100% (its own defining detail: a progress fill mid-bar reads as
+    // a partial fill sliding UNDER the bar's own rounded end, not a
+    // second independently-rounded pill floating inside it). `rounded-s-sm`
+    // (Tailwind's LOGICAL start-side radius) rounds only the inline-start
+    // corners — physically left under LTR, right under RTL, matching
+    // ProgressStyle's own `start-0` anchor and every other logical property
+    // this component already uses (border-s, inset-inline-start) — so this
+    // needs no separate RTL branch. At ClampedProgress==100 the fill's own
+    // trailing edge coincides with the bar's, so it gets the SAME full
+    // rounded-sm as the bar shape (G4a) instead of a visible square notch.
+    private string ProgressFillClass => Cx.Merge(
+        "lumeo-gantt-v3-bar-progress absolute inset-y-0 start-0",
+        ClampedProgress >= 100 ? "rounded-sm" : "rounded-s-sm");
+
+    // Design spec Phase 3, T7 — "falls back beside the bar when too narrow".
+    // No v2 threshold exists to port for parity (see
+    // GanttScale.MinInBarLabelWidth's own remarks — a full-file search of
+    // gantt-v2.js found no width-gated label-placement logic at all); this is
+    // v3-only. Milestones never reach this — the markup's own @if guards on
+    // !Task.IsMilestone for both branches, matching the milestone label's
+    // existing unconditional "always beside" treatment above.
+    private bool LabelFitsInsideBar => Width >= GanttScale.MinInBarLabelWidth;
+
+    // G4c (2026-08-10 shadcn alignment): the milestone label, the bar-outside
+    // fallback label AND GanttSummaryBar's own outside label were three
+    // independently-drifted class strings (font-medium/text-foreground here
+    // and on the milestone label, text-[11px]/font-semibold/muted-foreground
+    // on the summary strip) for what the demo renders as ONE `.g-out` style
+    // (12px / weight 400 / muted-foreground) everywhere text sits beside
+    // (never inside) a bar/strip. Shared here so this component's own two
+    // sites can never re-diverge from each other; GanttSummaryBar.razor
+    // duplicates the identical literal (no cross-package internal visibility
+    // to share the constant itself across Lumeo.Gantt's public API surface).
+    private const string OutsideLabelClass = "text-xs font-normal text-muted-foreground";
+
+    // Design spec Phase 3, T7 — "contrast handling (CSS color-mix/var-based
+    // foreground pick vs custom bar colors)". Null (Color unset, or
+    // unparseable) means "keep the EXISTING text-foreground class" — see
+    // GanttColorModel.PickLabelForegroundVar's own remarks for the full
+    // reasoning (why a plain var() pick was chosen over color-mix/
+    // contrast-color(), and why an unparseable custom color intentionally
+    // falls back rather than guessing).
+    private string? InBarLabelForegroundVar => GanttColorModel.PickLabelForegroundVar(Color, Theme.IsDark);
+
+    private string InBarLabelClass => Cx.Merge(
+        "lumeo-gantt-v3-bar-label relative truncate px-2 text-xs font-medium",
+        InBarLabelForegroundVar is null ? "text-foreground" : null);
+
+    private string? InBarLabelStyle => InBarLabelForegroundVar is { } fg
+        ? FormattableString.Invariant($"color:{fg};")
+        : null;
 
     // "Small circle at the right edge of progress overlay" (gantt-v2.js:564-574) —
     // v2 positions its circle's CENTER at the progress boundary (cx = x1 + progressW);

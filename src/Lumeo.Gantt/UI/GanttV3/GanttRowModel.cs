@@ -85,6 +85,27 @@ internal static class GanttRowModel
     /// <summary>The <see cref="GanttState.Collapsed"/> key for the flat group named <paramref name="groupLabel"/>.</summary>
     internal static string GroupToggleKey(string groupLabel) => GroupKeyPrefix + groupLabel;
 
+    /// <summary>
+    /// Inverse of <see cref="GroupToggleKey"/> (design spec Phase 3, T6 —
+    /// <c>GanttSelectionModel</c>'s own tri-state/leaf-resolution needs to tell
+    /// a flat-group <see cref="GanttVisibleRow.ToggleKey"/> apart from a plain
+    /// hierarchy-parent task id, which is exactly the SAME "group::"-prefixed
+    /// namespace <see cref="GroupToggleKey"/> already established for collapse
+    /// — reused here rather than inventing a second key scheme). Returns
+    /// <c>false</c> (and an empty <paramref name="label"/>) for anything not in
+    /// that namespace, including a plain task id.
+    /// </summary>
+    internal static bool TryGetGroupLabel(string toggleKey, out string label)
+    {
+        if (toggleKey.StartsWith(GroupKeyPrefix, StringComparison.Ordinal))
+        {
+            label = toggleKey[GroupKeyPrefix.Length..];
+            return true;
+        }
+        label = "";
+        return false;
+    }
+
     /// <summary>True when at least one task in the list sets <see cref="GanttTask.ParentId"/> — the signal that hierarchy mode (not flat <see cref="GanttTask.GroupLabel"/> grouping) governs row order.</summary>
     internal static bool UsesHierarchy(IReadOnlyList<GanttTask> tasks)
     {

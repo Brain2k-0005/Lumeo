@@ -1,0 +1,90 @@
+@namespace Lumeo
+@using System.ComponentModel
+@using Lumeo.GanttV3
+@inject Lumeo.Services.Localization.ILumeoLocalizer L
+@attribute [EditorBrowsable(EditorBrowsableState.Never)]
+
+@* GanttZoomControl — the floating +/- zoom stepper (design spec Phase 3, T7
+   — "Floating zoom control (+/- overlay in the canvas corner) in addition to
+   the toolbar switcher"). Purely presentational and unpositioned (no
+   absolute/sticky classes of its own) — the caller (GanttTimeline) owns
+   WHERE it sits in the canvas corner, this component only owns "which two
+   buttons, in what enabled state, stepping through which levels". Steps
+   through the SAME resolved zoom-level list GanttNav's own toolbar switcher
+   uses (GanttZoomLevelModel — shared, not duplicated, see that type's own
+   remarks) so the two surfaces can never silently disagree about what's
+   reachable.
+
+   NOTE (accessibility): see GanttBar.razor's identical NOTE — the Razor
+   compiler always generates a component's class as `public`, so despite the
+   design intent of `internal`, this stays `public` with its members recorded
+   in PublicAPI.Unshipped.txt. [EditorBrowsable(Never)] keeps it out of
+   consumer IntelliSense until the Phase-4 rename. *@
+<div class="@RootClass" @attributes="AdditionalAttributes">
+    <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Icon"
+            aria-label="@L["Gantt.ZoomOut"]" Disabled="@(!CanZoomOut)"
+            OnClick="HandleZoomOutAsync">
+        <SvgGlyph Svg="@(LumeoIcons.Minus)" class="h-3.5 w-3.5" />
+    </Button>
+    <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Icon"
+            aria-label="@L["Gantt.ZoomIn"]" Disabled="@(!CanZoomIn)"
+            OnClick="HandleZoomInAsync">
+        <SvgGlyph Svg="@(LumeoIcons.Plus)" class="h-3.5 w-3.5" />
+    </Button>
+</div>
+
+@code {
+    /// <summary>The active zoom level.</summary>
+    [Parameter, EditorRequired] public GanttViewMode ViewMode { get; set; } = GanttViewMode.Day;
+
+    /// <summary>Raised when +/- steps to a new zoom level.</summary>
+    [Parameter] public EventCallback<GanttViewMode> ViewModeChanged { get; set; }
+
+    /// <summary>Restricts/orders which levels +/- steps through — same contract as <c>GanttNav.ZoomLevels</c> (see <see cref="GanttZoomLevelModel"/>).</summary>
+    [Parameter] public IReadOnlyList<GanttViewMode>? ZoomLevels { get; set; }
+
+    /// <summary>Additional CSS classes merged onto the root element.</summary>
+    [Parameter] public string? Class { get; set; }
+
+    /// <summary>Captures unmatched attributes and applies them to the root element.</summary>
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private string RootClass => Cx.Merge(
+        "lumeo-gantt-v3-zoom-control inline-flex items-center gap-0.5 rounded-md border border-border/60 bg-card p-0.5 shadow-md",
+        Class);
+
+    private IReadOnlyList<GanttViewMode> ResolvedLevels => GanttZoomLevelModel.Resolve(ZoomLevels);
+
+    // -1 when ViewMode isn't among the resolved levels at all (e.g. a
+    // sub-day mode, or a ZoomLevels list that excludes the chart's current
+    // mode) — both buttons disable in that case (see CanZoomIn/CanZoomOut)
+    // rather than guessing which direction to jump from an unknown position.
+    private int CurrentIndex
+    {
+        get
+        {
+            var levels = ResolvedLevels;
+            for (var i = 0; i < levels.Count; i++)
+            {
+                if (levels[i] == ViewMode) return i;
+            }
+            return -1;
+        }
+    }
+
+    // DefaultLevels/RepresentableLevels are ordered coarsest-last (Day..Year
+    // — GanttZoomLevelModel's own order, matching GanttNav's toolbar left-to-
+    // right layout): "+" (zoom IN, more detail) steps TOWARD index 0; "-"
+    // (zoom OUT, less detail) steps TOWARD the last index.
+    private bool CanZoomIn => CurrentIndex > 0;
+    private bool CanZoomOut => CurrentIndex >= 0 && CurrentIndex < ResolvedLevels.Count - 1;
+
+    private Task HandleZoomInAsync() => CanZoomIn ? StepToAsync(CurrentIndex - 1) : Task.CompletedTask;
+    private Task HandleZoomOutAsync() => CanZoomOut ? StepToAsync(CurrentIndex + 1) : Task.CompletedTask;
+
+    private Task StepToAsync(int index)
+    {
+        var mode = ResolvedLevels[index];
+        return mode == ViewMode || !ViewModeChanged.HasDelegate ? Task.CompletedTask : ViewModeChanged.InvokeAsync(mode);
+    }
+}
