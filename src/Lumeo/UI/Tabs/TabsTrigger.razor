@@ -256,18 +256,30 @@
         }
     }
 
-    // Trigger padding tracks the ambient DensityScope. Comfortable is `px-3 py-1`
-    // (was `py-1.5`, wave-0 C2 fix): text-sm's 20px line-height + the old py-1.5
-    // (12px) needed 32px, inside the TabsList Default track's h-9 p-1, whose
-    // content box is only 28px — the pill overflowed its own track and the
-    // declared 4px muted band collapsed to ~2px per side. py-1 (4px) drops the
-    // intrinsic pill height to 24px, comfortably inside the 28px content box
-    // with no overflow — matching shadcn's own `py-1` for this size.
-    private string PadClass => Density switch
+    // Trigger padding tracks the ambient DensityScope. Comfortable Default is
+    // `px-3 py-1` (was `py-1.5`, wave-0 C2 fix): text-sm's 20px line-height +
+    // the old py-1.5 (12px) needed 32px, inside the TabsList Default track's
+    // h-9 p-1, whose content box is only 28px — the pill overflowed its own
+    // track and the declared 4px muted band collapsed to ~2px per side. py-1
+    // (4px) drops the intrinsic pill height to 24px, comfortably inside the
+    // 28px content box with no overflow — matching shadcn's own `py-1` for
+    // this size.
+    //
+    // That overflow argument is specific to Default's `h-9 p-1` track — Card/
+    // Pill/Underline all render inside TabsList's `h-10` track instead (see
+    // TabsList.razor's CssClass), which carries NO `p-1` padding at all
+    // (Card/Underline are `items-end` against a border, Pill is
+    // `items-center`), so their triggers have a full 40px of headroom and were
+    // never at overflow risk. The py-1 fix originally applied to every variant
+    // via this shared switch, silently shrinking Card/Pill/Underline's
+    // Comfortable trigger from 32px to 28px with no matching justification
+    // (Codex #386 P2 finding 2) — scoped back to Default only here.
+    private string PadClass => (CurrentVariant, Density) switch
     {
-        Lumeo.Density.Compact => "px-2 py-1",
-        Lumeo.Density.Spacious => "px-4 py-2",
-        _ => "px-3 py-1"
+        (_, Lumeo.Density.Compact) => "px-2 py-1",
+        (_, Lumeo.Density.Spacious) => "px-4 py-2",
+        (Tabs.TabsVariant.Default, _) => "px-3 py-1",
+        _ => "px-3 py-1.5"
     };
 
     private async Task Activate()

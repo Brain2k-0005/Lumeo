@@ -40,6 +40,25 @@ public class SplitButtonTests : IAsyncLifetime
     }
 
     [Fact]
+    public void Xs_Size_Chevron_Half_Gets_A_Dedicated_Width_Not_The_Default_Fallback()
+    {
+        // ChevronWidth's switch predates ButtonSize.Xs and fell through its `_ => "w-9"`
+        // catch-all for any unhandled size — which would have put a 36px-wide chevron
+        // half next to a 24px-tall (h-6) Xs primary half. Predicted-vs-actual: without
+        // the added Xs arm, this renders "w-9" instead of "w-6" (confirmed manually
+        // before adding the arm).
+        var cut = _ctx.Render<Lumeo.SplitButton>(p => p
+            .Add(b => b.Text, "Save")
+            .Add(b => b.Size, Lumeo.Button.ButtonSize.Xs)
+            .Add(b => b.MenuContent, (RenderFragment)(_ => { })));
+
+        var buttons = cut.FindAll("button");
+        var chevronButton = buttons[1];
+        Assert.Contains("w-6", chevronButton.GetAttribute("class"));
+        Assert.DoesNotContain("w-9", chevronButton.GetAttribute("class"));
+    }
+
+    [Fact]
     public void Primary_Button_Displays_Text()
     {
         var cut = _ctx.Render<Lumeo.SplitButton>(p => p
