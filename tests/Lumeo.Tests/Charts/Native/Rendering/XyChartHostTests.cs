@@ -164,6 +164,24 @@ public class XyChartHostTests : IAsyncLifetime
         Assert.Contains("S1", tooltip.TextContent);
     }
 
+    // --- Aspect-ratio fix (see CartesianChartHostTests' identical block for
+    // the full rigor-standard rationale) ---
+
+    [Fact]
+    public async Task OnChartBoxResize_Syncs_The_ViewBox_To_The_Real_Measured_Box()
+    {
+        var cut = _ctx.Render<L.XyChartHost>(p => p.Add(b => b.Series, new List<L.NativeXySeries>
+        {
+            new() { Name = "S1", Points = new List<(double, double)> { (1, 1) } },
+        }));
+
+        Assert.Equal("0 0 600 350", cut.Find("svg.lumeo-chart-native-svg").GetAttribute("viewBox"));
+
+        await cut.InvokeAsync(() => cut.Instance.OnChartBoxResize(280, 350));
+
+        Assert.Equal("0 0 280 350", cut.Find("svg.lumeo-chart-native-svg").GetAttribute("viewBox"));
+    }
+
     [Fact]
     public void Accessibility_Table_Lists_Every_Point()
     {

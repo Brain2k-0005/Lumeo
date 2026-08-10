@@ -1,20 +1,34 @@
 // Lumeo.Charts — native rendering engine JS interop.
 //
 // This module is the ENTIRE JS surface of the native (non-ECharts) charting
-// engine: four narrow calls, each corresponding to a deliberate C#/JS
+// engine: five narrow calls, each corresponding to a deliberate C#/JS
 // boundary decision (see docs/superpowers/specs "charts-first-party-engine").
 // C# owns every layout/scale/tick/path/hit-test decision; JS never decides
 // anything here, it only measures, forwards raw input, paints pre-computed
-// commands, or reads computed CSS. Do not add a fifth call without revisiting
+// commands, or reads computed CSS. Do not add a sixth call without revisiting
 // that boundary decision first.
 //
 //   measureTextWidths(requests)                    — batched text metrics
 //   registerPointerTrack / unregisterPointerTrack   — rAF-throttled pointer index forwarding
 //   canvasDraw(elementId, commandsJson)             — Canvas fallback paint execution
 //   resolveThemeColors(tokens)                      — export-time theme color resolution
+//   observeChartBox / unobserveChartBox             — ResizeObserver-backed real-box-size reporting
 //
 // Does NOT touch echarts-interop.js — the legacy ECharts path stays fully
 // independent and unmodified.
+//
+// observeChartBox/unobserveChartBox is the fifth call, added deliberately to
+// close the native engine's aspect-ratio distortion bug: every chart built on
+// CartesianChartHost/XyChartHost rendered into a hardcoded 600x350 viewBox
+// with preserveAspectRatio="none", so whenever the REAL rendered box's aspect
+// differed from 600:350 (essentially always, since these charts default to
+// Width="100%") the SVG stretched non-uniformly — circles became ellipses,
+// axis-label glyphs stretched. The original Wave-0 authors deliberately did
+// NOT wire up a JS round-trip for layout measurement (see
+// NativeChartViewport's remarks) to avoid a flash of wrong margins on first
+// paint; this call is opted into ONLY by the two hosts that need real-pixel
+// parity, and the C# side renders nothing (not a wrong-aspect frame) until
+// the first callback lands — see CartesianChartHost/XyChartHost's own remarks.
 
 // ---------------------------------------------------------------------------
 // measureTextWidths — batched, offscreen-canvas text measurement.
@@ -197,4 +211,58 @@ export function resolveThemeColors(tokens) {
     result[token] = style.getPropertyValue(token).trim();
   }
   return result;
+}
+
+// ---------------------------------------------------------------------------
+// observeChartBox / unobserveChartBox — see the module-header remarks. Uses
+// ResizeObserver's contentBoxSize/contentRect rather than
+// getBoundingClientRect (which CartesianChartHost/XyChartHost already use for
+// tooltip positioning, per THEIR OWN documented remarks): contentRect is
+// relative to the element's own border box, not the viewport, so — unlike
+// getBoundingClientRect — it never goes stale when the page scrolls; it only
+// fires when the box's own SIZE actually changes. Per spec, browsers deliver
+// the FIRST ResizeObserver callback for a newly-observed element before the
+// next paint (not on some later macrotask), so the very first real layout
+// already reflects the true box size.
+// ---------------------------------------------------------------------------
+
+const boxObservers = new Map(); // elementId -> ResizeObserver
+
+export function observeChartBox(elementId, dotNetRef, callbackName) {
+  // Idempotent: tear down any previous observer for this id first, so a
+  // caller can simply re-register after a loading-skeleton swap (a new DOM
+  // element under the same id) without a separate "update" call.
+  unobserveChartBox(elementId);
+
+  const el = document.getElementById(elementId);
+  if (!el) return;
+
+  const report = (width, height) => {
+    if (width > 0 && height > 0) {
+      dotNetRef.invokeMethodAsync(callbackName, width, height).catch(() => {});
+    }
+  };
+
+  const ro = new ResizeObserver((entries) => {
+    for (const entry of entries) {
+      // contentBoxSize is the modern, DPI/writing-mode-correct API; entries[0]
+      // (not the whole array — Blink can report multiple fragments) covers
+      // every UA that ships ResizeObserver at all. contentRect is the
+      // universal fallback for the rare implementation missing it.
+      const box = entry.contentBoxSize && entry.contentBoxSize.length > 0
+        ? { width: entry.contentBoxSize[0].inlineSize, height: entry.contentBoxSize[0].blockSize }
+        : entry.contentRect;
+      report(box.width, box.height);
+    }
+  });
+  ro.observe(el);
+  boxObservers.set(elementId, ro);
+}
+
+export function unobserveChartBox(elementId) {
+  const ro = boxObservers.get(elementId);
+  if (ro) {
+    ro.disconnect();
+    boxObservers.delete(elementId);
+  }
 }

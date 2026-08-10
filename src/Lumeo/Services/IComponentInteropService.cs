@@ -921,6 +921,29 @@ public interface IComponentInteropService : IAsyncDisposable, IDisposable
     Task ChartUnregisterPointerTrack(Microsoft.AspNetCore.Components.ElementReference element) => Task.CompletedTask;
 
     /// <summary>
+    /// Observes the element identified by <paramref name="elementId"/> with a
+    /// ResizeObserver and invokes <paramref name="callbackName"/> on
+    /// <paramref name="dotNetRef"/> with <c>(double width, double height)</c>
+    /// every time its real content-box size changes — including once
+    /// immediately after registration. Fixes the native engine's aspect-ratio
+    /// distortion: <c>CartesianChartHost</c>/<c>XyChartHost</c> use the
+    /// reported size as the SVG's actual <c>viewBox</c> instead of a hardcoded
+    /// 600x350, so <c>preserveAspectRatio="none"</c> never has to stretch
+    /// non-uniformly. Deliberately NOT <c>GetElementRect</c>
+    /// (<c>getBoundingClientRect</c>): that's viewport-relative and goes stale
+    /// on scroll (see those hosts' own tooltip-positioning remarks); a
+    /// ResizeObserver's content box is relative to the element itself, so it
+    /// is immune to scroll and only fires on a genuine size change. Default
+    /// no-op DIM so existing implementers/test doubles keep compiling.
+    /// </summary>
+    Task ChartObserveBox<[System.Diagnostics.CodeAnalysis.DynamicallyAccessedMembers(System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicMethods)] T>(
+        string elementId, DotNetObjectReference<T> dotNetRef, string callbackName) where T : class
+        => Task.CompletedTask;
+
+    /// <summary>Tears down the listener registered by <see cref="ChartObserveBox{T}"/>.</summary>
+    Task ChartUnobserveBox(string elementId) => Task.CompletedTask;
+
+    /// <summary>
     /// Executes a pre-computed list of Canvas 2D draw commands (JSON-serialized
     /// <c>ChartCanvasCommand</c> list) against the canvas identified by
     /// <paramref name="elementId"/> — the Canvas-fallback paint path (spec

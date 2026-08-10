@@ -1,4 +1,5 @@
 @namespace Lumeo
+@implements IAsyncDisposable
 @inject IComponentInteropService Interop
 
 @* Shared rendering/interaction orchestrator for the continuous-x/y native
@@ -27,7 +28,7 @@
 }
 else
 {
-    <div class="lumeo-chart-native relative inline-block w-full @Class" style="width:@Width;height:@Height;" @attributes="AdditionalAttributes">
+    <div class="lumeo-chart-native relative inline-block w-full @Class" style="width:@Width;height:@Height;@(_hasMeasuredBox ? "" : "visibility:hidden;")" @attributes="AdditionalAttributes">
         <svg id="@_svgId" viewBox="@Invariant($"0 0 {Fmt(_viewW)} {Fmt(_viewH)}")" preserveAspectRatio="none" class="lumeo-chart-native-svg block w-full h-full" role="presentation" focusable="false">
             <ChartAxis Ticks="@_xTicks" Orientation="ChartAxisOrientation.Bottom" GridStart="@_plot.Y" GridEnd="@_plot.Bottom" AxisLinePosition="@_plot.Bottom" />
             <ChartAxis Ticks="@_yTicks" Orientation="ChartAxisOrientation.Left" GridStart="@_plot.X" GridEnd="@_plot.Right" AxisLinePosition="@_plot.X" />
@@ -150,40 +151,80 @@ else
     // inside a narrow 280px column). Measured FRESH on every hover (not
     // cached from first render) because getBoundingClientRect is
     // viewport-relative and a cached value goes stale the moment the page
-    // scrolls after mount.
+    // scrolls after mount. Shared implementation — see
+    // NativeChartScreenTransform's own remarks.
     private readonly string _svgId = $"lumeo-chart-native-svg-{Guid.NewGuid():N}";
-    private double _rectX, _rectY;
-    private double _scaleX = 1, _scaleY = 1;
+    private readonly NativeChartScreenTransform _screen = new();
 
-    private async Task RefreshScreenTransformAsync()
+    private Task RefreshScreenTransformAsync() => _screen.RefreshAsync(Interop, _svgId, _viewW, _viewH);
+
+    private (double X, double Y) ToScreen(double logicalX, double logicalY) => _screen.ToScreen(logicalX, logicalY);
+
+    // --- Aspect-ratio fix: sync the viewBox to the REAL measured box -------
+    // See CartesianChartHost's identical block for the full rationale
+    // (hardcoded 600x350 viewBox + preserveAspectRatio="none" + Width="100%"
+    // == circles rendered as ellipses) and the no-flash trade (this host's
+    // outer container also stays `visibility:hidden` — see the markup above
+    // — until the first real ResizeObserver measurement lands).
+    private bool _hasMeasuredBox;
+    private bool _boxObserverRegistered;
+    private DotNetObjectReference<XyChartHost>? _boxSelfRef;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        try
+        if (IsLoading && ShowLoadingSkeleton)
         {
-            var rect = await Interop.GetElementRect(_svgId);
-            if (rect is { Width: > 0, Height: > 0 } && _viewW > 0 && _viewH > 0)
-            {
-                _rectX = rect.X;
-                _rectY = rect.Y;
-                _scaleX = rect.Width / _viewW;
-                _scaleY = rect.Height / _viewH;
-            }
+            _boxObserverRegistered = false;
+            return;
         }
-        catch (Microsoft.JSInterop.JSDisconnectedException) { }
+        if (_boxObserverRegistered) return;
+
+        _boxSelfRef ??= DotNetObjectReference.Create(this);
+        await Interop.ChartObserveBox(_svgId, _boxSelfRef, nameof(OnChartBoxResize));
+        _boxObserverRegistered = true;
     }
 
-    private (double X, double Y) ToScreen(double logicalX, double logicalY) =>
-        (_rectX + logicalX * _scaleX, _rectY + logicalY * _scaleY);
+    [Microsoft.JSInterop.JSInvokable]
+    public void OnChartBoxResize(double width, double height)
+    {
+        if (width <= 0 || height <= 0) return;
+        if (_hasMeasuredBox && _viewW == width && _viewH == height) return;
+
+        _viewW = width;
+        _viewH = height;
+        _hasMeasuredBox = true;
+        RebuildAll();
+        StateHasChanged();
+    }
 
     protected override void OnParametersSet()
     {
-        _viewW = NativeChartViewport.ParseViewBoxDimension(Width, NativeChartViewport.DefaultViewBoxWidth);
-        _viewH = NativeChartViewport.ParseViewBoxDimension(Height, NativeChartViewport.DefaultViewBoxHeight);
+        if (!_hasMeasuredBox)
+        {
+            _viewW = NativeChartViewport.ParseViewBoxDimension(Width, NativeChartViewport.DefaultViewBoxWidth);
+            _viewH = NativeChartViewport.ParseViewBoxDimension(Height, NativeChartViewport.DefaultViewBoxHeight);
+        }
 
+        RebuildAll();
+    }
+
+    private void RebuildAll()
+    {
         BuildFlatIndex();
         RecomputeLayout();
         BuildLegend();
         BuildAccessibility();
         if (ShowDataLabels) BuildLabelsMarkup(); else _labelsMarkup = "";
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        try
+        {
+            await Interop.ChartUnobserveBox(_svgId);
+        }
+        catch (Microsoft.JSInterop.JSDisconnectedException) { }
+        _boxSelfRef?.Dispose();
     }
 
     private void BuildFlatIndex()

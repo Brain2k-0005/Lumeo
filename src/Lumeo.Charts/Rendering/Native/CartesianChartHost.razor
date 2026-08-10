@@ -25,7 +25,7 @@
 }
 else
 {
-    <div class="lumeo-chart-native relative inline-block w-full @Class" style="width:@Width;height:@Height;" @attributes="AdditionalAttributes">
+    <div class="lumeo-chart-native relative inline-block w-full @Class" style="width:@Width;height:@Height;@(_hasMeasuredBox ? "" : "visibility:hidden;")" @attributes="AdditionalAttributes">
         <svg id="@_svgId" viewBox="@Invariant($"0 0 {Fmt(_viewW)} {Fmt(_viewH)}")" preserveAspectRatio="none" class="lumeo-chart-native-svg block w-full h-full" role="presentation" focusable="false">
             <defs>@ExtraDefs</defs>
 
@@ -170,55 +170,94 @@ else
     private string[] _resolvedColors = Array.Empty<string>();
 
     // --- Screen-space tooltip positioning -----------------------------------
-    // The SVG is drawn in a fixed LOGICAL viewBox (_viewW x _viewH) and scaled
-    // to its actual CSS box via preserveAspectRatio="none" — necessary so a
-    // "100%" width or a resized container stretches the chart instead of
-    // letterboxing it. That stretch means logical viewBox coordinates are NOT
-    // screen pixels whenever the rendered box's aspect/size differs from the
-    // viewBox (e.g. Width="100%" inside a narrow column), which is exactly
-    // what made ChartTooltipHost (position:fixed, raw X/Y) drift from the
-    // cursor — a known, previously-flagged gap.
-    //
-    // Fixed by measuring the SVG's real client rect via getBoundingClientRect
-    // and converting every logical point through it before handing it to
-    // ChartTooltipHost. Measured FRESH on every resolved hover-index change
-    // (not cached from first render) deliberately: getBoundingClientRect is
-    // VIEWPORT-relative, so a cached value goes stale the moment the page
-    // scrolls after mount — extremely common for a chart that isn't at the
-    // very top of the page. ChartInteractionSurface/registerPointerTrack
-    // already collapses a 60fps pointermove down to one call per RESOLVED
-    // index change, so this adds at most one interop round-trip per index
-    // change, not per frame.
+    // The SVG is drawn in a fixed LOGICAL viewBox (_viewW x _viewH). Once
+    // _hasMeasuredBox is true, _viewW/_viewH ARE the real rendered box's pixel
+    // size (see the aspect-ratio-fix remarks below), so preserveAspectRatio's
+    // scaling is an identity transform and ToScreen below is nearly a no-op
+    // translate; before that first measurement lands (or in a JS-less/test
+    // context) it still correctly accounts for a genuine viewBox/box mismatch.
+    // Converting through NativeChartScreenTransform — shared with XyChartHost/
+    // NativeBoxPlotChart/NativeCandlestickChart, see its own remarks for why
+    // this is ONE implementation instead of four — is what makes
+    // ChartTooltipHost (position:fixed, raw X/Y) track the cursor instead of
+    // drifting.
     private readonly string _svgId = $"lumeo-chart-native-svg-{Guid.NewGuid():N}";
-    private double _rectX, _rectY;
-    private double _scaleX = 1, _scaleY = 1;
+    private readonly NativeChartScreenTransform _screen = new();
 
-    private async Task RefreshScreenTransformAsync()
-    {
-        try
-        {
-            var rect = await Interop.GetElementRect(_svgId);
-            if (rect is { Width: > 0, Height: > 0 } && _viewW > 0 && _viewH > 0)
-            {
-                _rectX = rect.X;
-                _rectY = rect.Y;
-                _scaleX = rect.Width / _viewW;
-                _scaleY = rect.Height / _viewH;
-            }
-        }
-        catch (Microsoft.JSInterop.JSDisconnectedException) { }
-    }
+    private Task RefreshScreenTransformAsync() => _screen.RefreshAsync(Interop, _svgId, _viewW, _viewH);
 
     /// <summary>Converts a logical (viewBox-space) point to real viewport
     /// pixels, for <see cref="ChartTooltipHost"/>'s position:fixed coordinates.</summary>
-    private (double X, double Y) ToScreen(double logicalX, double logicalY) =>
-        (_rectX + logicalX * _scaleX, _rectY + logicalY * _scaleY);
+    private (double X, double Y) ToScreen(double logicalX, double logicalY) => _screen.ToScreen(logicalX, logicalY);
+
+    // --- Aspect-ratio fix: sync the viewBox to the REAL measured box -------
+    // Every native chart used to render into a hardcoded 600x350 viewBox with
+    // preserveAspectRatio="none". Since these charts default to Width="100%",
+    // the rendered box's aspect essentially never matched 600:350, so the
+    // non-uniform stretch turned circles into ellipses and stretched axis
+    // glyphs — the largest remaining visual defect in the native engine.
+    //
+    // The Wave-0 authors deliberately did NOT wire up a JS round-trip for
+    // layout measurement (see NativeChartViewport's own remarks) specifically
+    // to avoid a flash of wrong margins on first paint, before axis-label
+    // text metrics arrive. That reasoning is respected here, not overridden:
+    // this host still renders synchronously with a best-effort viewW/viewH
+    // (parsed from Width/Height, falling back to the historical 600x350) on
+    // first render — but the outer container stays `visibility:hidden` (see
+    // the markup above) until the FIRST real ResizeObserver measurement
+    // lands, so no visibly-wrong-aspect frame is ever painted; the trade is a
+    // brief blank instead, resolved within one interop round-trip (a single
+    // microtask on WASM; one circuit message on Server). Once measured,
+    // _hasMeasuredBox latches true and _viewW/_viewH permanently track the
+    // real box (Width/Height parameters no longer override it) — a
+    // ResizeObserver keeps reporting on every subsequent resize.
+    private bool _hasMeasuredBox;
+    private bool _boxObserverRegistered;
+    private DotNetObjectReference<CartesianChartHost>? _boxSelfRef;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (IsLoading && ShowLoadingSkeleton)
+        {
+            // The skeleton branch renders no <svg id="@_svgId">; once loading
+            // ends the "else" branch mounts a BRAND NEW element under the same
+            // id, so force re-registration next time instead of no-op'ing.
+            _boxObserverRegistered = false;
+            return;
+        }
+        if (_boxObserverRegistered) return;
+
+        _boxSelfRef ??= DotNetObjectReference.Create(this);
+        await Interop.ChartObserveBox(_svgId, _boxSelfRef, nameof(OnChartBoxResize));
+        _boxObserverRegistered = true;
+    }
+
+    [Microsoft.JSInterop.JSInvokable]
+    public void OnChartBoxResize(double width, double height)
+    {
+        if (width <= 0 || height <= 0) return;
+        if (_hasMeasuredBox && _viewW == width && _viewH == height) return;
+
+        _viewW = width;
+        _viewH = height;
+        _hasMeasuredBox = true;
+        RebuildAll();
+        StateHasChanged();
+    }
 
     protected override void OnParametersSet()
     {
-        _viewW = NativeChartViewport.ParseViewBoxDimension(Width, NativeChartViewport.DefaultViewBoxWidth);
-        _viewH = NativeChartViewport.ParseViewBoxDimension(Height, NativeChartViewport.DefaultViewBoxHeight);
+        if (!_hasMeasuredBox)
+        {
+            _viewW = NativeChartViewport.ParseViewBoxDimension(Width, NativeChartViewport.DefaultViewBoxWidth);
+            _viewH = NativeChartViewport.ParseViewBoxDimension(Height, NativeChartViewport.DefaultViewBoxHeight);
+        }
 
+        RebuildAll();
+    }
+
+    private void RebuildAll()
+    {
         _resolvedColors = Series.Select((s, i) => s.Color ?? NativeChartPalette.Resolve(ColorPalette, Colors, i)).ToArray();
 
         RecomputeVisibleWindow();
@@ -700,7 +739,15 @@ else
 
     private Task OnSeriesChangedAsync(int seriesIndex) => Task.CompletedTask;
 
-    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+    public async ValueTask DisposeAsync()
+    {
+        try
+        {
+            await Interop.ChartUnobserveBox(_svgId);
+        }
+        catch (Microsoft.JSInterop.JSDisconnectedException) { }
+        _boxSelfRef?.Dispose();
+    }
 
     private static string Fmt(double v) => v.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture);
     private static string Invariant(FormattableString s) => s.ToString(System.Globalization.CultureInfo.InvariantCulture);

@@ -263,6 +263,88 @@ public class CartesianChartHostTests : IAsyncLifetime
         Assert.NotEmpty(cut.FindAll(".lumeo-chart-zoom-slider"));
     }
 
+    // --- Aspect-ratio fix ---------------------------------------------------
+    // Rigor standard: assert the rendered viewBox VALUE, which is what
+    // determines whether preserveAspectRatio="none" stretches non-uniformly —
+    // not just that OnChartBoxResize "did something". Once viewBox == the
+    // measured real box, scaleX/scaleY (real-box-px / viewBox-units) are BOTH
+    // 1, so any shape drawn with equal cx/cy-relative dimensions (a circle's
+    // r, in particular) renders with equal real-pixel width/height. bUnit has
+    // no browser layout engine to directly measure a rendered circle's pixel
+    // bounding box, so this test asserts the ALGEBRAIC precondition for that
+    // (viewBox == measured box) directly; the real-pixel roundness itself is
+    // covered by AspectRatioDistortionTests (Lumeo.Tests.E2E, a real Chromium).
+
+    [Fact]
+    public async Task Before_Any_Measurement_The_ViewBox_Falls_Back_To_The_Historical_600x350_Default()
+    {
+        var cut = _ctx.Render<L.CartesianChartHost>(p => p
+            .Add(b => b.Categories, new List<string> { "A" })
+            .Add(b => b.Series, new List<L.NativeCartesianSeries> { new() { Name = "S1", Kind = L.NativeCartesianSeriesKind.Line, Values = new double?[] { 1 } } })
+            .Add(b => b.UsePointScale, true));
+
+        var svg = cut.Find("svg.lumeo-chart-native-svg");
+        Assert.Equal("0 0 600 350", svg.GetAttribute("viewBox"));
+    }
+
+    [Fact]
+    public async Task OnChartBoxResize_Syncs_The_ViewBox_To_The_Real_Measured_Box_Not_The_Fallback()
+    {
+        var cut = _ctx.Render<L.CartesianChartHost>(p => p
+            .Add(b => b.Categories, new List<string> { "A" })
+            .Add(b => b.Series, new List<L.NativeCartesianSeries> { new() { Name = "S1", Kind = L.NativeCartesianSeriesKind.Line, Values = new double?[] { 1 } } })
+            .Add(b => b.UsePointScale, true));
+
+        // Deliberately NOT the 600x350 default, and NOT even 600:350's aspect
+        // ratio — a narrow column, like the e2e comparison page's Scatter panel.
+        await cut.InvokeAsync(() => cut.Instance.OnChartBoxResize(280, 350));
+
+        var svg = cut.Find("svg.lumeo-chart-native-svg");
+        Assert.Equal("0 0 280 350", svg.GetAttribute("viewBox"));
+    }
+
+    [Fact]
+    public async Task DisableCheck_Without_The_Fix_The_ViewBox_Would_Stay_600x350_In_A_280px_Column()
+    {
+        // Predicted WRONG value if OnChartBoxResize were never wired up (the
+        // pre-fix behavior): the viewBox stays the hardcoded 600x350 fallback
+        // regardless of the real 280x350 box, which is exactly the mismatch
+        // that made preserveAspectRatio="none" stretch non-uniformly
+        // (scaleX = 280/600 ≈ 0.467, scaleY = 350/350 = 1 — a circle would
+        // render 0.467x as wide as it is tall). Simulated here by simply
+        // never calling OnChartBoxResize; DisableCheck lives beside the real
+        // fix's own test above specifically so a future revert of the fix
+        // makes the ABOVE test fail instead of this one silently starting
+        // to "pass" the wrong way.
+        var cut = _ctx.Render<L.CartesianChartHost>(p => p
+            .Add(b => b.Categories, new List<string> { "A" })
+            .Add(b => b.Series, new List<L.NativeCartesianSeries> { new() { Name = "S1", Kind = L.NativeCartesianSeriesKind.Line, Values = new double?[] { 1 } } })
+            .Add(b => b.UsePointScale, true));
+
+        var svg = cut.Find("svg.lumeo-chart-native-svg");
+        Assert.NotEqual("0 0 280 350", svg.GetAttribute("viewBox"));
+        Assert.Equal("0 0 600 350", svg.GetAttribute("viewBox"));
+    }
+
+    [Fact]
+    public async Task OnChartBoxResize_Reflows_Layout_So_Series_Geometry_Uses_The_New_ViewBox()
+    {
+        var cut = _ctx.Render<L.CartesianChartHost>(p => p
+            .Add(b => b.Categories, new List<string> { "A", "B" })
+            .Add(b => b.Series, new List<L.NativeCartesianSeries> { new() { Name = "S1", Kind = L.NativeCartesianSeriesKind.Bar, Values = new double?[] { 10, 20 } } })
+            .Add(b => b.UsePointScale, false));
+
+        var beforeX = Num(cut.Find(".lumeo-chart-native-bar").GetAttribute("data-x"));
+
+        await cut.InvokeAsync(() => cut.Instance.OnChartBoxResize(1200, 600));
+
+        var afterX = Num(cut.Find(".lumeo-chart-native-bar").GetAttribute("data-x"));
+        // Disable-check: if RecomputeLayout weren't re-run on resize, the bar's
+        // x position would stay pinned to the OLD (600-wide) plot rect instead
+        // of shifting for the new, much wider 1200-unit viewBox.
+        Assert.NotEqual(beforeX, afterX, 3);
+    }
+
     [Fact]
     public void ShowDataLabels_Renders_One_Text_Per_Point()
     {

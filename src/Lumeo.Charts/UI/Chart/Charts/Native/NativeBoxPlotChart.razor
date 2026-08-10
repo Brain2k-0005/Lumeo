@@ -1,4 +1,5 @@
 @namespace Lumeo
+@inject IComponentInteropService Interop
 
 @* Native (first-party, non-ECharts) BoxPlot chart — computes real quartiles,
    a 1.5×IQR whisker range, and outliers FROM RAW SAMPLES via
@@ -10,7 +11,7 @@
 
 <div class="lumeo-native-boxplot relative flex flex-col gap-2 @Class" style="width:@Width;height:@Height" @attributes="AdditionalAttributes">
     <div class="relative min-h-0 flex-1">
-        <svg viewBox="0 0 @ViewW @ViewH" preserveAspectRatio="xMidYMid meet" class="h-full w-full" role="img" aria-label="@_a11ySummary">
+        <svg id="@_svgId" viewBox="0 0 @ViewW @ViewH" preserveAspectRatio="xMidYMid meet" class="h-full w-full" role="img" aria-label="@_a11ySummary">
             <ChartAxis Ticks="_yTicks" Orientation="ChartAxisOrientation.Left" GridStart="@_plot.X" GridEnd="@_plot.Right" AxisLinePosition="@_plot.X" />
             @((MarkupString)_xAxisMarkup)
             @for (var i = 0; i < _boxes.Count; i++)
@@ -164,6 +165,15 @@
     private int EntryDurationMs => AnimationDuration ?? 400;
     private bool ShouldShowSkeleton => IsLoading && ShowLoadingSkeleton;
 
+    // Tooltip positioning shares NativeChartScreenTransform with
+    // CartesianChartHost/XyChartHost/NativeCandlestickChart — see that type's
+    // remarks. This chart used to hand ChartTooltipHost (position:fixed) raw
+    // viewBox coordinates directly, the identical logical-vs-real-pixel bug
+    // fixed centrally in the other two hosts; this file was mid-edit at the
+    // time and got skipped.
+    private readonly string _svgId = $"lumeo-chart-native-svg-{Guid.NewGuid():N}";
+    private readonly NativeChartScreenTransform _screen = new();
+
     private readonly ChartZoomState _zoom = new();
     private ChartPlotRect _plot;
     private List<BoxRender> _boxes = new();
@@ -297,21 +307,25 @@
         _medianLabelsMarkup = sb.ToString();
     }
 
-    private void OnIndexChanged(int? index)
+    private async Task OnIndexChanged(int? index)
     {
         _hoverIndex = index;
         if (index is { } i && i < _boxes.Count)
         {
             var box = _boxes[i];
             _crosshairX = box.CX;
-            _pointerX = box.CX;
-            _pointerY = box.YMedian;
+            // Fresh measurement per resolved index change — see
+            // NativeChartScreenTransform's remarks (getBoundingClientRect is
+            // viewport-relative and goes stale on scroll if cached).
+            await _screen.RefreshAsync(Interop, _svgId, ViewW, ViewH);
+            (_pointerX, _pointerY) = _screen.ToScreen(box.CX, box.YMedian);
             _crosshairMarkers = new List<ChartCrosshairMarker> { new(box.CX, box.YMedian, box.Color) };
         }
         else
         {
             _crosshairMarkers = new List<ChartCrosshairMarker>();
         }
+        StateHasChanged();
     }
 
     private void OnZoomRangeChanged((double Start, double End) range)

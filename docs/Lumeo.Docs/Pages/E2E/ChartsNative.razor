@@ -25,13 +25,18 @@
                 <code>MarkLine</code>/<code>MarkPoint</code>/<code>MarkArea</code> are not
                 implemented natively — every native instance below simply omits them rather than
                 faking the behavior.</li>
-            <li>Tooltip positioning is now converted from logical SVG-viewBox coordinates to the
-                real rendered box (measured once per layout) for every type built on
-                <code>CartesianChartHost</code>/<code>XyChartHost</code> — Line, Area, Bar, Mixed,
-                Waterfall, Scatter, EffectScatter. The <a href="#chart-scatter"
-                class="underline">Scatter</a> pair below (deliberately rendered inside a narrow
-                column) is the regression check for this. BoxPlot and Candlestick position their
-                own tooltips independently and still use raw viewBox coordinates — not yet fixed.</li>
+            <li><code>CartesianChartHost</code>/<code>XyChartHost</code> now sync the SVG
+                <code>viewBox</code> to the container's REAL measured pixel box (a live
+                <code>ResizeObserver</code>, not a one-time measurement) instead of a hardcoded
+                600x350 — fixes the aspect-ratio distortion (circles rendering as ellipses, axis
+                text stretched) that a fixed viewBox + <code>preserveAspectRatio="none"</code>
+                caused whenever the rendered box's aspect differed from 600:350, which was
+                essentially always. Tooltip positioning (converted from logical SVG-viewBox
+                coordinates to real screen pixels, measured fresh on every hover) is shared by
+                every native chart type that positions its own tooltip — Line, Area, Bar, Mixed,
+                Waterfall, Scatter, EffectScatter, BoxPlot, and Candlestick alike. The
+                <a href="#chart-scatter" class="underline">Scatter</a> pair below (deliberately
+                rendered inside a narrow column) is the regression check for both.</li>
             <li><code>SkeletonStyle.Phantom</code> falls back to the Silhouette skeleton on the
                 native engine — see <a href="#loading-state" class="underline">Loading state</a>.</li>
         </ul>

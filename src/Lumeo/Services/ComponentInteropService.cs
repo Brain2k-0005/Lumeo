@@ -1932,6 +1932,27 @@ public sealed class ComponentInteropService : IComponentInteropService
         catch (JSDisconnectedException) { }
     }
 
+    public async Task ChartObserveBox<[System.Diagnostics.CodeAnalysis.DynamicallyAccessedMembers(System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicMethods)] T>(
+        string elementId, DotNetObjectReference<T> dotNetRef, string callbackName) where T : class
+    {
+        try
+        {
+            var module = await GetChartModuleAsync();
+            await module.InvokeVoidAsync("observeChartBox", elementId, dotNetRef, callbackName);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
+    public async Task ChartUnobserveBox(string elementId)
+    {
+        try
+        {
+            if (_chartModule is null) return;
+            await _chartModule.InvokeVoidAsync("unobserveChartBox", elementId);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
     public async ValueTask ChartCanvasDraw(string elementId, string commandsJson)
     {
         try
