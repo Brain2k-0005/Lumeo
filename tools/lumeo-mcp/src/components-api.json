@@ -1,10 +1,10 @@
 {
   "$schema": "https://lumeo.nativ.sh/components-api-schema.json",
   "version": "4.3.3",
-  "generated": "2026-08-10T12:48:41.8416387Z",
+  "generated": "2026-08-10T13:00:33.0048368Z",
   "stats": {
     "componentCount": 164,
-    "totalParameters": 4457,
+    "totalParameters": 4625,
     "totalEnums": 91,
     "totalRecords": 65,
     "serviceCount": 33,
@@ -5582,7 +5582,7 @@
           "name": "Size",
           "type": "Lumeo.Size",
           "default": "Lumeo.Size.Md",
-          "description": "Controls padding, icon size and text size. Default Md.",
+          "description": "Alert size, driving padding, icon size and title/description typography. Supports all 7 Size values (Xxs–Xxl). Default Md.",
           "isCascading": false,
           "captureUnmatched": false,
           "isEditorRequired": false
@@ -7068,7 +7068,7 @@
           "name": "Size",
           "type": "Lumeo.Size",
           "default": "Lumeo.Size.Md",
-          "description": "Avatar size. Supported values: Sm, Md (default), Lg, Xl. Other values fall through to Md.",
+          "description": "Avatar size. Supports all 7 Size values (Xxs–Xxl). Default Md.",
           "isCascading": false,
           "captureUnmatched": false,
           "isEditorRequired": false
@@ -10848,9 +10848,17 @@
         "UI/Chart/Charts/MixedChart.razor",
         "UI/Chart/Charts/Native/NativeAreaChart.razor",
         "UI/Chart/Charts/Native/NativeBarChart.razor",
+        "UI/Chart/Charts/Native/NativeBoxPlotChart.razor",
+        "UI/Chart/Charts/Native/NativeCandlestickChart.razor",
+        "UI/Chart/Charts/Native/NativeChartShared.cs",
+        "UI/Chart/Charts/Native/NativeDonutChart.razor",
         "UI/Chart/Charts/Native/NativeEffectScatterChart.razor",
+        "UI/Chart/Charts/Native/NativeHeatmapChart.razor",
         "UI/Chart/Charts/Native/NativeLineChart.razor",
         "UI/Chart/Charts/Native/NativeMixedChart.razor",
+        "UI/Chart/Charts/Native/NativeNightingaleChart.razor",
+        "UI/Chart/Charts/Native/NativePieChart.razor",
+        "UI/Chart/Charts/Native/NativeRadarChart.razor",
         "UI/Chart/Charts/Native/NativeScatterChart.razor",
         "UI/Chart/Charts/Native/NativeWaterfallChart.razor",
         "UI/Chart/Charts/NightingaleChart.razor",
@@ -11225,8 +11233,10 @@
         "--color-background",
         "--color-border",
         "--color-destructive",
+        "--color-foreground",
         "--color-muted",
         "--color-muted-foreground",
+        "--color-popover",
         "--radius"
       ],
       "examples": [],
@@ -16355,6 +16365,735 @@
           "parseFailed": false,
           "parseError": null
         },
+        "NativeBoxPlotChart": {
+          "componentName": "NativeBoxPlotChart",
+          "fileName": "NativeBoxPlotChart.razor",
+          "namespace": "Lumeo",
+          "inheritsFrom": null,
+          "implements": [],
+          "parameters": [
+            {
+              "name": "Categories",
+              "type": "List<string>",
+              "default": "new()",
+              "description": "Category labels along the axis, one per data point.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "Samples",
+              "type": "List<List<double>>?",
+              "default": null,
+              "description": "Raw per-category samples — the PRIMARY input. Quartiles, the 1.5×IQR whisker range, and outliers are computed FROM these via Quartiles (matches the owner's chartsextended.html reference). Takes precedence over Data when both are set.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "Data",
+              "type": "List<double[]>?",
+              "default": null,
+              "description": "Legacy pre-aggregated [min, Q1, median, Q3, max] per category — the ECharts wrapper's original shape, kept for parameter-surface parity when a consumer only has summary statistics (no raw samples) available. Used only when Samples is not set; in that mode there is no outlier concept (whiskers ARE min/max, matching the ECharts convention this shape was designed for) — pass Samples for real outlier detection.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "ShowLegend",
+              "type": "bool",
+              "default": "true",
+              "description": "When true (default), renders a legend listing each series/segment name.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "ShowTooltip",
+              "type": "bool",
+              "default": "true",
+              "description": "When true (default), shows a tooltip with quartile/whisker/outlier detail under the cursor on hover.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "Colors",
+              "type": "List<string>?",
+              "default": null,
+              "description": "Explicit colors, in category order. Falls back to the active theme's chart palette when not set and ColorPalette is not set.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "ColorPalette",
+              "type": "List<string>?",
+              "default": null,
+              "description": "Explicit ordered color palette; takes precedence over Colors when both are set.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "Width",
+              "type": "string",
+              "default": "\"100%\"",
+              "description": "CSS width of the chart container. Defaults to 100%.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "Height",
+              "type": "string",
+              "default": "\"350px\"",
+              "description": "CSS height of the chart container. Defaults to 350px.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "Class",
+              "type": "string?",
+              "default": null,
+              "description": "Additional CSS class(es) applied to the chart's root element.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "AdditionalAttributes",
+              "type": "Dictionary<string, object>?",
+              "default": null,
+              "description": "Additional HTML attributes captured and forwarded to the chart's root element.",
+              "isCascading": false,
+              "captureUnmatched": true,
+              "isEditorRequired": false
+            },
+            {
+              "name": "IsLoading",
+              "type": "bool",
+              "default": "false",
+              "description": "When true, overlays a shape-aware loading skeleton on top of the chart (consumer is fetching data).",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "ShowLoadingSkeleton",
+              "type": "bool",
+              "default": "true",
+              "description": "When true (default), renders a shape-aware skeleton while IsLoading is true.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "SkeletonKind",
+              "type": "ChartSkeletonKind",
+              "default": "ChartSkeletonKind.Bars",
+              "description": "Shape family for the loading skeleton. Defaults to ChartSkeletonKind.Bars.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "SkeletonStyle",
+              "type": "ChartSkeletonStyle",
+              "default": "ChartSkeletonStyle.Phantom",
+              "description": "See SkeletonStyle — only Silhouette is implemented natively.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "PhantomCycleMs",
+              "type": "int",
+              "default": "1400",
+              "description": "Inert on the native engine; kept for API parity.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "ShowLoadingLabel",
+              "type": "bool",
+              "default": "true",
+              "description": "When true (default), shows a small \"Loading…\" pill in the top-right corner whenever IsLoading is active.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "LoadingText",
+              "type": "string?",
+              "default": "\"Loading…\"",
+              "description": "Label rendered next to the loading pill. Defaults to \"Loading…\".",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "ShowDataLabels",
+              "type": "bool",
+              "default": "false",
+              "description": "When true, renders the median value above each box.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "LabelPosition",
+              "type": "string",
+              "default": "\"top\"",
+              "description": "Placement of the value label; kept for API parity (native median labels always render above the box).",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "LabelFormat",
+              "type": "string?",
+              "default": null,
+              "description": "Label formatter template supporting the {c} (median) token from the legacy ECharts formatter mini-language.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "LabelStrategy",
+              "type": "ChartLabelStrategy",
+              "default": "ChartLabelStrategy.Smart",
+              "description": "Controls category-axis label rendering. Smart auto-rotates at higher densities; ShowAll forces all horizontal; Auto thins overlapping labels.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "LabelRotate",
+              "type": "int?",
+              "default": null,
+              "description": "Manual rotation override (degrees) for category-axis labels.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "DataZoom",
+              "type": "bool",
+              "default": "false",
+              "description": "When true, adds a zoom slider so users can navigate a wide category range.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "AnimationDuration",
+              "type": "int?",
+              "default": null,
+              "description": "Entrance-animation duration (ms) for each box's fade-in. Defaults to 400ms.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "AnimationEasing",
+              "type": "string?",
+              "default": null,
+              "description": "See AnimationEasing — accepted for API parity, currently has no effect.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            }
+          ],
+          "events": [],
+          "enums": [],
+          "records": [],
+          "gotchas": [],
+          "parseFailed": false,
+          "parseError": null
+        },
+        "NativeCandlestickChart": {
+          "componentName": "NativeCandlestickChart",
+          "fileName": "NativeCandlestickChart.razor",
+          "namespace": "Lumeo",
+          "inheritsFrom": null,
+          "implements": [],
+          "parameters": [
+            {
+              "name": "Categories",
+              "type": "List<string>",
+              "default": "new()",
+              "description": "Category labels along the axis, one per data point.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "Data",
+              "type": "List<double[]>",
+              "default": "new()",
+              "description": "OHLC values as [open, close, low, high] arrays, one entry per Categories item — same order the legacy ECharts wrapper documents.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "ShowLegend",
+              "type": "bool",
+              "default": "true",
+              "description": "When true (default), renders a small up/down color-key legend.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "ShowTooltip",
+              "type": "bool",
+              "default": "true",
+              "description": "When true (default), shows an OHLC tooltip under the cursor on hover.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "Colors",
+              "type": "List<string>?",
+              "default": null,
+              "description": "Up/down candle colors as a 2-entry list — [0] = up (close ≥ open), [1] = down. Defaults to var(--color-success) / var(--color-destructive), matching the semantic tokens the rest of Lumeo uses for gain/loss — never raw hex.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "ColorPalette",
+              "type": "List<string>?",
+              "default": null,
+              "description": "Present for API parity with the legacy wrapper's shared color-palette parameter; candlestick only ever uses two colors (see Colors), so this has no additional effect here.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "Width",
+              "type": "string",
+              "default": "\"100%\"",
+              "description": "CSS width of the chart container. Defaults to 100%.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "Height",
+              "type": "string",
+              "default": "\"350px\"",
+              "description": "CSS height of the chart container. Defaults to 350px.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "Class",
+              "type": "string?",
+              "default": null,
+              "description": "Additional CSS class(es) applied to the chart's root element.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "AdditionalAttributes",
+              "type": "Dictionary<string, object>?",
+              "default": null,
+              "description": "Additional HTML attributes captured and forwarded to the chart's root element.",
+              "isCascading": false,
+              "captureUnmatched": true,
+              "isEditorRequired": false
+            },
+            {
+              "name": "IsLoading",
+              "type": "bool",
+              "default": "false",
+              "description": "When true, overlays a shape-aware loading skeleton on top of the chart (consumer is fetching data).",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "ShowLoadingSkeleton",
+              "type": "bool",
+              "default": "true",
+              "description": "When true (default), renders a shape-aware skeleton while IsLoading is true.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "SkeletonKind",
+              "type": "ChartSkeletonKind",
+              "default": "ChartSkeletonKind.Candlestick",
+              "description": "Shape family for the loading skeleton. Defaults to ChartSkeletonKind.Candlestick.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "SkeletonStyle",
+              "type": "ChartSkeletonStyle",
+              "default": "ChartSkeletonStyle.Phantom",
+              "description": "See SkeletonStyle — only Silhouette is implemented natively.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "PhantomCycleMs",
+              "type": "int",
+              "default": "1400",
+              "description": "Inert on the native engine; kept for API parity.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "ShowLoadingLabel",
+              "type": "bool",
+              "default": "true",
+              "description": "When true (default), shows a small \"Loading…\" pill in the top-right corner whenever IsLoading is active.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "LoadingText",
+              "type": "string?",
+              "default": "\"Loading…\"",
+              "description": "Label rendered next to the loading pill. Defaults to \"Loading…\".",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "ShowDataLabels",
+              "type": "bool",
+              "default": "false",
+              "description": "Present for API parity; native candlesticks don't render an additional value label (the OHLC tooltip already surfaces every value).",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "LabelPosition",
+              "type": "string",
+              "default": "\"top\"",
+              "description": "Present for API parity with the legacy wrapper; currently unused (see ShowDataLabels).",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "LabelFormat",
+              "type": "string?",
+              "default": null,
+              "description": "Present for API parity with the legacy wrapper; currently unused (see ShowDataLabels).",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "LabelStrategy",
+              "type": "ChartLabelStrategy",
+              "default": "ChartLabelStrategy.Smart",
+              "description": "Controls category-axis label rendering. Smart auto-rotates at higher densities; ShowAll forces all horizontal; Auto thins overlapping labels.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "LabelRotate",
+              "type": "int?",
+              "default": null,
+              "description": "Manual rotation override (degrees) for category-axis labels.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "DataZoom",
+              "type": "bool",
+              "default": "false",
+              "description": "When true, adds a zoom slider so users can navigate a wide category range.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "AnimationDuration",
+              "type": "int?",
+              "default": null,
+              "description": "Entrance-animation duration (ms) for each candle body's grow-in. Defaults to 350ms.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "AnimationEasing",
+              "type": "string?",
+              "default": null,
+              "description": "See AnimationEasing — accepted for API parity, currently has no effect.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            }
+          ],
+          "events": [],
+          "enums": [],
+          "records": [],
+          "gotchas": [],
+          "parseFailed": false,
+          "parseError": null
+        },
+        "NativeDonutChart": {
+          "componentName": "NativeDonutChart",
+          "fileName": "NativeDonutChart.razor",
+          "namespace": "Lumeo",
+          "inheritsFrom": null,
+          "implements": [],
+          "parameters": [
+            {
+              "name": "Data",
+              "type": "List<DonutChartData>",
+              "default": "new()",
+              "description": "Slice data — name/value pairs — rendered as the donut's segments.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "ShowLegend",
+              "type": "bool",
+              "default": "true",
+              "description": "When true (default), renders a legend listing each series/segment name.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "ShowTooltip",
+              "type": "bool",
+              "default": "true",
+              "description": "When true (default), shows a tooltip with the value(s) under the cursor on hover.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "ShowLabels",
+              "type": "bool",
+              "default": "true",
+              "description": "When true (default), shows a label next to each slice, independent of ShowDataLabels.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "InnerRadius",
+              "type": "string",
+              "default": "\"50%\"",
+              "description": "Inner radius of the donut ring, expressed as a percentage string (e.g. 50%) of the chart's nominal max radius.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "OuterRadius",
+              "type": "string",
+              "default": "\"70%\"",
+              "description": "Outer radius of the donut ring, expressed as a percentage string (e.g. 70%) of the chart's nominal max radius.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "CenterLabel",
+              "type": "string?",
+              "default": null,
+              "description": "Text rendered in the empty center of the donut (e.g. a total value).",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "Colors",
+              "type": "List<string>?",
+              "default": null,
+              "description": "Explicit colors, in series/segment order. Falls back to the active theme's chart palette when not set and ColorPalette is not set.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "ColorPalette",
+              "type": "List<string>?",
+              "default": null,
+              "description": "Explicit ordered color palette applied to the chart's series/segments; takes precedence over Colors when both are set.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "Width",
+              "type": "string",
+              "default": "\"100%\"",
+              "description": "CSS width of the chart container. Defaults to 100%.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "Height",
+              "type": "string",
+              "default": "\"350px\"",
+              "description": "CSS height of the chart container. Defaults to 350px.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "Class",
+              "type": "string?",
+              "default": null,
+              "description": "Additional CSS class(es) applied to the chart's root element.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "AdditionalAttributes",
+              "type": "Dictionary<string, object>?",
+              "default": null,
+              "description": "Additional HTML attributes captured and forwarded to the chart's root element.",
+              "isCascading": false,
+              "captureUnmatched": true,
+              "isEditorRequired": false
+            },
+            {
+              "name": "IsLoading",
+              "type": "bool",
+              "default": "false",
+              "description": "When true, overlays a shape-aware loading skeleton on top of the chart (consumer is fetching data).",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "ShowLoadingSkeleton",
+              "type": "bool",
+              "default": "true",
+              "description": "When true (default), renders a shape-aware skeleton while IsLoading is true.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "SkeletonKind",
+              "type": "ChartSkeletonKind",
+              "default": "ChartSkeletonKind.Pie",
+              "description": "Shape family for the loading skeleton. Defaults to ChartSkeletonKind.Pie.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "SkeletonStyle",
+              "type": "ChartSkeletonStyle",
+              "default": "ChartSkeletonStyle.Phantom",
+              "description": "See SkeletonStyle — only Silhouette is implemented natively; Phantom falls back to it (documented, not silent).",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "PhantomCycleMs",
+              "type": "int",
+              "default": "1400",
+              "description": "Inert on the native engine (see PhantomCycleMs); kept for API parity.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "ShowLoadingLabel",
+              "type": "bool",
+              "default": "true",
+              "description": "When true (default), shows a small \"Loading…\" pill in the top-right corner whenever IsLoading is active.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "LoadingText",
+              "type": "string?",
+              "default": "\"Loading…\"",
+              "description": "Label rendered next to the loading pill. Defaults to \"Loading…\".",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "ShowDataLabels",
+              "type": "bool",
+              "default": "false",
+              "description": "When true, renders a label with each data point's value directly on the chart.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "LabelPosition",
+              "type": "string",
+              "default": "\"outside\"",
+              "description": "Placement of the value label. Only outside (leader-line label) is implemented natively; kept for API parity.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "LabelFormat",
+              "type": "string?",
+              "default": null,
+              "description": "Label formatter template supporting the {b}/{c}/{d} tokens from the legacy ECharts formatter mini-language.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "AnimationDuration",
+              "type": "int?",
+              "default": null,
+              "description": "Entrance-animation duration (ms) for each slice's fade-in. Defaults to 500ms.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "AnimationEasing",
+              "type": "string?",
+              "default": null,
+              "description": "See AnimationEasing — accepted for API parity, currently has no effect.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            }
+          ],
+          "events": [],
+          "enums": [],
+          "records": [],
+          "gotchas": [],
+          "parseFailed": false,
+          "parseError": null
+        },
         "NativeEffectScatterChart": {
           "componentName": "NativeEffectScatterChart",
           "fileName": "NativeEffectScatterChart.razor",
@@ -16529,6 +17268,237 @@
               "type": "List<string>?",
               "default": null,
               "description": null,
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            }
+          ],
+          "events": [],
+          "enums": [],
+          "records": [],
+          "gotchas": [],
+          "parseFailed": false,
+          "parseError": null
+        },
+        "NativeHeatmapChart": {
+          "componentName": "NativeHeatmapChart",
+          "fileName": "NativeHeatmapChart.razor",
+          "namespace": "Lumeo",
+          "inheritsFrom": null,
+          "implements": [],
+          "parameters": [
+            {
+              "name": "XCategories",
+              "type": "List<string>",
+              "default": "new()",
+              "description": "Category labels along the X-axis.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "YCategories",
+              "type": "List<string>",
+              "default": "new()",
+              "description": "Category labels along the Y-axis.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "Data",
+              "type": "List<double[]>",
+              "default": "new()",
+              "description": "Cell values as [xIndex, yIndex, value] triples, indexing into XCategories and YCategories.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "ShowLegend",
+              "type": "bool",
+              "default": "true",
+              "description": "When true (default), renders a color-scale gradient legend.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "ShowTooltip",
+              "type": "bool",
+              "default": "true",
+              "description": "When true (default), shows a value tooltip on hover. Only honored in the SVG render path — above DiscreteShapeBudget cells the chart falls back to Canvas (see the type's XML remarks), where per-cell pointer hit-testing isn't wired yet (documented follow-up); keyboard cell navigation + the status readout work in BOTH modes.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "Colors",
+              "type": "List<string>?",
+              "default": null,
+              "description": "Gradient color stops (low→high), evenly spaced across the data range. Falls back to a 2-stop chart-1 → primary gradient when neither this nor ColorPalette is set.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "ColorPalette",
+              "type": "List<string>?",
+              "default": null,
+              "description": "Explicit ordered gradient stops; takes precedence over Colors when both are set.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "Width",
+              "type": "string",
+              "default": "\"100%\"",
+              "description": "CSS width of the chart container. Defaults to 100%.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "Height",
+              "type": "string",
+              "default": "\"350px\"",
+              "description": "CSS height of the chart container. Defaults to 350px.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "Class",
+              "type": "string?",
+              "default": null,
+              "description": "Additional CSS class(es) applied to the chart's root element.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "AdditionalAttributes",
+              "type": "Dictionary<string, object>?",
+              "default": null,
+              "description": "Additional HTML attributes captured and forwarded to the chart's root element.",
+              "isCascading": false,
+              "captureUnmatched": true,
+              "isEditorRequired": false
+            },
+            {
+              "name": "IsLoading",
+              "type": "bool",
+              "default": "false",
+              "description": "When true, overlays a shape-aware loading skeleton on top of the chart (consumer is fetching data).",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "ShowLoadingSkeleton",
+              "type": "bool",
+              "default": "true",
+              "description": "When true (default), renders a shape-aware skeleton while IsLoading is true.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "SkeletonKind",
+              "type": "ChartSkeletonKind",
+              "default": "ChartSkeletonKind.Grid",
+              "description": "Shape family for the loading skeleton. Defaults to ChartSkeletonKind.Grid.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "SkeletonStyle",
+              "type": "ChartSkeletonStyle",
+              "default": "ChartSkeletonStyle.Phantom",
+              "description": "See SkeletonStyle — only Silhouette is implemented natively.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "PhantomCycleMs",
+              "type": "int",
+              "default": "1400",
+              "description": "Inert on the native engine; kept for API parity.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "ShowLoadingLabel",
+              "type": "bool",
+              "default": "true",
+              "description": "When true (default), shows a small \"Loading…\" pill in the top-right corner whenever IsLoading is active.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "LoadingText",
+              "type": "string?",
+              "default": "\"Loading…\"",
+              "description": "Label rendered next to the loading pill. Defaults to \"Loading…\".",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "ShowDataLabels",
+              "type": "bool",
+              "default": "false",
+              "description": "When true, renders each cell's value directly on the chart (SVG mode only).",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "LabelPosition",
+              "type": "string",
+              "default": "\"inside\"",
+              "description": "Placement of the value label; kept for API parity (native labels always center in the cell).",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "LabelFormat",
+              "type": "string?",
+              "default": null,
+              "description": "Label formatter template supporting the {c} (value) token from the legacy ECharts formatter mini-language.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "DataZoom",
+              "type": "bool",
+              "default": "false",
+              "description": "When true, adds a zoom slider so users can navigate a wide X-axis category range.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "AnimationDuration",
+              "type": "int?",
+              "default": null,
+              "description": "Entrance-animation duration (ms) for the cell fade-in (SVG mode only). Defaults to 400ms.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "AnimationEasing",
+              "type": "string?",
+              "default": null,
+              "description": "See AnimationEasing — accepted for API parity, currently has no effect.",
               "isCascading": false,
               "captureUnmatched": false,
               "isEditorRequired": false
@@ -17027,6 +17997,663 @@
               "type": "string?",
               "default": null,
               "description": null,
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            }
+          ],
+          "events": [],
+          "enums": [],
+          "records": [],
+          "gotchas": [],
+          "parseFailed": false,
+          "parseError": null
+        },
+        "NativeNightingaleChart": {
+          "componentName": "NativeNightingaleChart",
+          "fileName": "NativeNightingaleChart.razor",
+          "namespace": "Lumeo",
+          "inheritsFrom": null,
+          "implements": [],
+          "parameters": [
+            {
+              "name": "Data",
+              "type": "List<NightingaleData>",
+              "default": "new()",
+              "description": "Slice data — name/value pairs — rendered as nightingale-rose segments whose radius scales with value.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "ShowLegend",
+              "type": "bool",
+              "default": "true",
+              "description": "When true (default), renders a legend listing each series/segment name.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "ShowTooltip",
+              "type": "bool",
+              "default": "true",
+              "description": "When true (default), shows a tooltip with the value(s) under the cursor on hover.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "ShowLabels",
+              "type": "bool",
+              "default": "true",
+              "description": "When true (default), shows a category label around each segment, independent of ShowDataLabels.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "Colors",
+              "type": "List<string>?",
+              "default": null,
+              "description": "Explicit colors, in series/segment order. Falls back to the active theme's chart palette when not set and ColorPalette is not set.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "ColorPalette",
+              "type": "List<string>?",
+              "default": null,
+              "description": "Explicit ordered color palette applied to the chart's series/segments; takes precedence over Colors when both are set.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "Width",
+              "type": "string",
+              "default": "\"100%\"",
+              "description": "CSS width of the chart container. Defaults to 100%.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "Height",
+              "type": "string",
+              "default": "\"350px\"",
+              "description": "CSS height of the chart container. Defaults to 350px.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "Class",
+              "type": "string?",
+              "default": null,
+              "description": "Additional CSS class(es) applied to the chart's root element.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "AdditionalAttributes",
+              "type": "Dictionary<string, object>?",
+              "default": null,
+              "description": "Additional HTML attributes captured and forwarded to the chart's root element.",
+              "isCascading": false,
+              "captureUnmatched": true,
+              "isEditorRequired": false
+            },
+            {
+              "name": "IsLoading",
+              "type": "bool",
+              "default": "false",
+              "description": "When true, overlays a shape-aware loading skeleton on top of the chart (consumer is fetching data).",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "ShowLoadingSkeleton",
+              "type": "bool",
+              "default": "true",
+              "description": "When true (default), renders a shape-aware skeleton while IsLoading is true.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "SkeletonKind",
+              "type": "ChartSkeletonKind",
+              "default": "ChartSkeletonKind.Pie",
+              "description": "Shape family for the loading skeleton. Defaults to ChartSkeletonKind.Pie.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "SkeletonStyle",
+              "type": "ChartSkeletonStyle",
+              "default": "ChartSkeletonStyle.Phantom",
+              "description": "See SkeletonStyle — only Silhouette is implemented natively.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "PhantomCycleMs",
+              "type": "int",
+              "default": "1400",
+              "description": "Inert on the native engine; kept for API parity.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "ShowLoadingLabel",
+              "type": "bool",
+              "default": "true",
+              "description": "When true (default), shows a small \"Loading…\" pill in the top-right corner whenever IsLoading is active.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "LoadingText",
+              "type": "string?",
+              "default": "\"Loading…\"",
+              "description": "Label rendered next to the loading pill. Defaults to \"Loading…\".",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "ShowDataLabels",
+              "type": "bool",
+              "default": "false",
+              "description": "When true, renders a label with each data point's value directly on the chart.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "LabelPosition",
+              "type": "string",
+              "default": "\"outside\"",
+              "description": "Placement of the value label; kept for API parity (nightingale labels always render around the outer ring).",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "LabelFormat",
+              "type": "string?",
+              "default": null,
+              "description": "Label formatter template supporting the {b}/{c}/{d} tokens from the legacy ECharts formatter mini-language.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "AnimationDuration",
+              "type": "int?",
+              "default": null,
+              "description": "Entrance-animation duration (ms) for each wedge's fade-in. Defaults to 500ms.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "AnimationEasing",
+              "type": "string?",
+              "default": null,
+              "description": "See AnimationEasing — accepted for API parity, currently has no effect.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            }
+          ],
+          "events": [],
+          "enums": [],
+          "records": [],
+          "gotchas": [],
+          "parseFailed": false,
+          "parseError": null
+        },
+        "NativePieChart": {
+          "componentName": "NativePieChart",
+          "fileName": "NativePieChart.razor",
+          "namespace": "Lumeo",
+          "inheritsFrom": null,
+          "implements": [],
+          "parameters": [
+            {
+              "name": "Data",
+              "type": "List<PieChartData>",
+              "default": "new()",
+              "description": "Slice data — name/value pairs — rendered as the pie's segments.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "ShowLegend",
+              "type": "bool",
+              "default": "true",
+              "description": "When true (default), renders a legend listing each series/segment name.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "ShowTooltip",
+              "type": "bool",
+              "default": "true",
+              "description": "When true (default), shows a tooltip with the value(s) under the cursor on hover.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "ShowLabels",
+              "type": "bool",
+              "default": "true",
+              "description": "When true (default), shows a label next to each slice, independent of ShowDataLabels.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "Colors",
+              "type": "List<string>?",
+              "default": null,
+              "description": "Explicit colors, in series/segment order. Falls back to the active theme's chart palette when not set and ColorPalette is not set.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "ColorPalette",
+              "type": "List<string>?",
+              "default": null,
+              "description": "Explicit ordered color palette applied to the chart's series/segments; takes precedence over Colors when both are set.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "Width",
+              "type": "string",
+              "default": "\"100%\"",
+              "description": "CSS width of the chart container. Defaults to 100%.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "Height",
+              "type": "string",
+              "default": "\"350px\"",
+              "description": "CSS height of the chart container. Defaults to 350px.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "Class",
+              "type": "string?",
+              "default": null,
+              "description": "Additional CSS class(es) applied to the chart's root element.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "AdditionalAttributes",
+              "type": "Dictionary<string, object>?",
+              "default": null,
+              "description": "Additional HTML attributes captured and forwarded to the chart's root element.",
+              "isCascading": false,
+              "captureUnmatched": true,
+              "isEditorRequired": false
+            },
+            {
+              "name": "IsLoading",
+              "type": "bool",
+              "default": "false",
+              "description": "When true, overlays a shape-aware loading skeleton on top of the chart (consumer is fetching data).",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "ShowLoadingSkeleton",
+              "type": "bool",
+              "default": "true",
+              "description": "When true (default), renders a shape-aware skeleton while IsLoading is true.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "SkeletonKind",
+              "type": "ChartSkeletonKind",
+              "default": "ChartSkeletonKind.Pie",
+              "description": "Shape family for the loading skeleton. Defaults to ChartSkeletonKind.Pie.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "SkeletonStyle",
+              "type": "ChartSkeletonStyle",
+              "default": "ChartSkeletonStyle.Phantom",
+              "description": "Only Silhouette is implemented by the native engine (a static SVG skeleton overlay) — Phantom (cycling placeholder data through the real chart via ECharts' option-merge animation) needs the orchestrator-level phantom-cycling infrastructure (PeriodicTimer + placeholder factory), which is out of scope for the chart-TYPES wave and doesn't exist yet on the native path. Requesting Phantom here renders Silhouette instead — a documented, non-silent reduction, not a silent no-op.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "PhantomCycleMs",
+              "type": "int",
+              "default": "1400",
+              "description": "Inert on the native engine: only meaningful for Phantom, which isn't implemented yet (see SkeletonStyle). Kept as a parameter so existing call sites migrating from the ECharts wrapper keep compiling unchanged.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "ShowLoadingLabel",
+              "type": "bool",
+              "default": "true",
+              "description": "When true (default), shows a small \"Loading…\" pill in the top-right corner whenever IsLoading is active.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "LoadingText",
+              "type": "string?",
+              "default": "\"Loading…\"",
+              "description": "Label rendered next to the loading pill. Defaults to \"Loading…\".",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "ShowDataLabels",
+              "type": "bool",
+              "default": "false",
+              "description": "When true, renders a label with each data point's value directly on the chart.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "LabelPosition",
+              "type": "string",
+              "default": "\"outside\"",
+              "description": "Placement of the value label. Only outside (leader-line label) is implemented natively; kept for API parity.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "LabelFormat",
+              "type": "string?",
+              "default": null,
+              "description": "Label formatter template supporting the {b} (name)/{c} (value)/{d} (percent) tokens from the legacy ECharts formatter mini-language.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "AnimationDuration",
+              "type": "int?",
+              "default": null,
+              "description": "Entrance-animation duration (ms) for each slice's fade-in. Defaults to 500ms.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "AnimationEasing",
+              "type": "string?",
+              "default": null,
+              "description": "Present for API parity with the ECharts wrapper's AnimationEasing (an ECharts easing-function NAME, e.g. cubicOut). The native engine animates via a plain SVG <animate> opacity fade (see AnimationDuration), which has no named-easing-function concept — this parameter is accepted but currently has no effect.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            }
+          ],
+          "events": [],
+          "enums": [],
+          "records": [],
+          "gotchas": [],
+          "parseFailed": false,
+          "parseError": null
+        },
+        "NativeRadarChart": {
+          "componentName": "NativeRadarChart",
+          "fileName": "NativeRadarChart.razor",
+          "namespace": "Lumeo",
+          "inheritsFrom": null,
+          "implements": [],
+          "parameters": [
+            {
+              "name": "Indicators",
+              "type": "List<RadarIndicator>",
+              "default": "new()",
+              "description": "The radar's axes, each with a name and a max value defining its scale.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "Series",
+              "type": "List<RadarSeriesData>",
+              "default": "new()",
+              "description": "Each data line's values, one per Indicators entry, drawn across the radar axes.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "ShowLegend",
+              "type": "bool",
+              "default": "true",
+              "description": "When true (default), renders a legend listing each series/segment name.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "ShowTooltip",
+              "type": "bool",
+              "default": "true",
+              "description": "When true (default), shows a tooltip with the value(s) under the cursor on hover.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "Shape",
+              "type": "string",
+              "default": "\"polygon\"",
+              "description": "Radar grid shape. circle draws circular rings; anything else (default polygon) draws polygon rings matching the axis count. Data boundaries are always straight-line polygons (matches ECharts' own behavior — Shape only affects the background grid).",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "FillArea",
+              "type": "bool",
+              "default": "true",
+              "description": "When true (default), fills the area under each series line.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "Colors",
+              "type": "List<string>?",
+              "default": null,
+              "description": "Explicit colors, in series order. Falls back to the active theme's chart palette when not set and ColorPalette is not set.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "ColorPalette",
+              "type": "List<string>?",
+              "default": null,
+              "description": "Explicit ordered color palette applied to each series; takes precedence over Colors when both are set.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "Width",
+              "type": "string",
+              "default": "\"100%\"",
+              "description": "CSS width of the chart container. Defaults to 100%.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "Height",
+              "type": "string",
+              "default": "\"350px\"",
+              "description": "CSS height of the chart container. Defaults to 350px.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "Class",
+              "type": "string?",
+              "default": null,
+              "description": "Additional CSS class(es) applied to the chart's root element.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "AdditionalAttributes",
+              "type": "Dictionary<string, object>?",
+              "default": null,
+              "description": "Additional HTML attributes captured and forwarded to the chart's root element.",
+              "isCascading": false,
+              "captureUnmatched": true,
+              "isEditorRequired": false
+            },
+            {
+              "name": "IsLoading",
+              "type": "bool",
+              "default": "false",
+              "description": "When true, overlays a shape-aware loading skeleton on top of the chart (consumer is fetching data).",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "ShowLoadingSkeleton",
+              "type": "bool",
+              "default": "true",
+              "description": "When true (default), renders a shape-aware skeleton while IsLoading is true.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "SkeletonKind",
+              "type": "ChartSkeletonKind",
+              "default": "ChartSkeletonKind.Radar",
+              "description": "Shape family for the loading skeleton. Defaults to ChartSkeletonKind.Radar.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "SkeletonStyle",
+              "type": "ChartSkeletonStyle",
+              "default": "ChartSkeletonStyle.Phantom",
+              "description": "See SkeletonStyle — only Silhouette is implemented natively.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "PhantomCycleMs",
+              "type": "int",
+              "default": "1400",
+              "description": "Inert on the native engine; kept for API parity.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "ShowLoadingLabel",
+              "type": "bool",
+              "default": "true",
+              "description": "When true (default), shows a small \"Loading…\" pill in the top-right corner whenever IsLoading is active.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "LoadingText",
+              "type": "string?",
+              "default": "\"Loading…\"",
+              "description": "Label rendered next to the loading pill. Defaults to \"Loading…\".",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "ShowDataLabels",
+              "type": "bool",
+              "default": "false",
+              "description": "When true, renders a label with each data point's value directly on the chart.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "LabelPosition",
+              "type": "string",
+              "default": "\"top\"",
+              "description": "Placement of the value label; kept for API parity (native dots always sit at the axis position).",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "LabelFormat",
+              "type": "string?",
+              "default": null,
+              "description": "Label formatter template supporting the {b}/{c} tokens from the legacy ECharts formatter mini-language.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "AnimationDuration",
+              "type": "int?",
+              "default": null,
+              "description": "Entrance-animation duration (ms) for each series polygon's fade-in. Defaults to 500ms.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "AnimationEasing",
+              "type": "string?",
+              "default": null,
+              "description": "See AnimationEasing — accepted for API parity, currently has no effect.",
               "isCascading": false,
               "captureUnmatched": false,
               "isEditorRequired": false
@@ -21375,8 +23002,15 @@
           "aria-label",
           "aria-live"
         ],
-        "keys": [],
-        "keyboardInteractive": false,
+        "keys": [
+          "ArrowDown",
+          "ArrowLeft",
+          "ArrowRight",
+          "ArrowUp",
+          "End",
+          "Home"
+        ],
+        "keyboardInteractive": true,
         "focusManaged": true
       },
       "parseFailed": false,
@@ -21697,7 +23331,7 @@
           "name": "Size",
           "type": "Lumeo.Size",
           "default": "Lumeo.Size.Md",
-          "description": "Chip size, driving text size, corner radius, avatar/close-icon dimensions, and (together with Density) the padding.",
+          "description": "Chip size, driving text size, corner radius, avatar/close-icon dimensions, and (together with Density) the padding. Supports all 7 Size values (Xxs–Xxl). Default Md.",
           "isCascading": false,
           "captureUnmatched": false,
           "isEditorRequired": false
@@ -21855,7 +23489,7 @@
         },
         {
           "title": "Sizes",
-          "code": "<Flex Class=\"items-center gap-2\">\n    <Chip Size=\"Lumeo.Size.Sm\">Small</Chip>\n    <Chip>Default</Chip>\n    <Chip Size=\"Lumeo.Size.Lg\">Large</Chip>\n</Flex>"
+          "code": "<Flex Class=\"items-center gap-2\">\n    <Chip Size=\"Lumeo.Size.Xxs\">Xxs</Chip>\n    <Chip Size=\"Lumeo.Size.Xs\">Xs</Chip>\n    <Chip Size=\"Lumeo.Size.Sm\">Small</Chip>\n    <Chip>Default</Chip>\n    <Chip Size=\"Lumeo.Size.Lg\">Large</Chip>\n    <Chip Size=\"Lumeo.Size.Xl\">Xl</Chip>\n    <Chip Size=\"Lumeo.Size.Xxl\">Xxl</Chip>\n</Flex>"
         },
         {
           "title": "Closable",
@@ -34043,7 +35677,7 @@
           "name": "Size",
           "type": "Lumeo.Size",
           "default": "Lumeo.Size.Md",
-          "description": "Size of the trigger when Variant=\"Button\". Mirrors ButtonSize so a button-variant FileUpload can match neighbouring buttons in toolbars or compact forms. Has no visual effect on Dropzone or Avatar variants today.",
+          "description": "Size of the trigger when Variant=\"Button\". Supports all 7 Size values (Xxs–Xxl). Has NO visual effect on Dropzone or Avatar variants — their icon size and padding are fixed regardless of this parameter.",
           "isCascading": false,
           "captureUnmatched": false,
           "isEditorRequired": false
@@ -36789,7 +38423,7 @@
           "name": "Size",
           "type": "Lumeo.Size",
           "default": "Lumeo.Size.Md",
-          "description": "Size preset. Sets Tailwind h-{n} w-{n} on the SVG. Defaults to Md (h-4 w-4).",
+          "description": "Size preset. Sets Tailwind h-{n} w-{n} on the SVG. Supports all 7 Size values (Xxs–Xxl). Defaults to Md (h-4 w-4).",
           "isCascading": false,
           "captureUnmatched": false,
           "isEditorRequired": false
@@ -38546,7 +40180,7 @@
           "name": "Size",
           "type": "Lumeo.Size",
           "default": "Lumeo.Size.Md",
-          "description": "Size of the badge. Defaults to Md.",
+          "description": "Size of the badge. Supports all 7 Size values (Xxs–Xxl). Defaults to Md.",
           "isCascading": false,
           "captureUnmatched": false,
           "isEditorRequired": false
@@ -39023,7 +40657,7 @@
           "name": "Size",
           "type": "Lumeo.Size",
           "default": "Lumeo.Size.Md",
-          "description": "Controls each ListItem's row padding. Cascaded to items via ListContext. Default Md.",
+          "description": "Controls each ListItem's row padding. Cascaded to items via ListContext. Supports all 7 Size values (Xxs–Xxl). Default Md.",
           "isCascading": false,
           "captureUnmatched": false,
           "isEditorRequired": false
@@ -39079,7 +40713,7 @@
         },
         {
           "title": "Sizes",
-          "code": "<List Bordered=\"true\" Size=\"Lumeo.Size.Sm\">...</List>\n<List Bordered=\"true\">...</List>\n<List Bordered=\"true\" Size=\"Lumeo.Size.Lg\">...</List>"
+          "code": "<List Bordered=\"true\" Size=\"Lumeo.Size.Xxs\">...</List>\n<List Bordered=\"true\" Size=\"Lumeo.Size.Xs\">...</List>\n<List Bordered=\"true\" Size=\"Lumeo.Size.Sm\">...</List>\n<List Bordered=\"true\">...</List> @* Md, the default *@\n<List Bordered=\"true\" Size=\"Lumeo.Size.Lg\">...</List>\n<List Bordered=\"true\" Size=\"Lumeo.Size.Xl\">...</List>\n<List Bordered=\"true\" Size=\"Lumeo.Size.Xxl\">...</List>"
         }
       ],
       "subComponents": {
@@ -47341,7 +48975,7 @@
           "name": "Size",
           "type": "Lumeo.Size",
           "default": "Lumeo.Size.Md",
-          "description": "Star size. Default Md.",
+          "description": "Star size. Supports all 7 Size values (Xxs–Xxl). Default Md. Sm and Md are padded up to the 24px touch-target minimum (their star glyph itself is unchanged — only the button's hit box grows, which also widens the visible gap between adjacent stars at those two rungs). Xxs and Xs are a deliberate exception: their 8px/12px hit area stays below the 24px minimum on purpose — an app that opts into Xxs/Xs is explicitly asking for a dense, non-touch-primary control, so no padding is added there. Lg/Xl/Xxl already clear 24px without any change.",
           "isCascading": false,
           "captureUnmatched": false,
           "isEditorRequired": false
@@ -47543,7 +49177,7 @@
           "name": "Size",
           "type": "Lumeo.Size",
           "default": "Lumeo.Size.Md",
-          "description": "Text and spacing size of the summary and body. Defaults to Md.",
+          "description": "Text and spacing size of the summary and body. Supports all 7 Size values (Xxs–Xxl). Defaults to Md.",
           "isCascading": false,
           "captureUnmatched": false,
           "isEditorRequired": false
@@ -47999,7 +49633,7 @@
           "name": "Size",
           "type": "Lumeo.Size",
           "default": "Lumeo.Size.Md",
-          "description": "Controls the icon badge size, title/subtitle typography, and vertical padding. Defaults to Md.",
+          "description": "Controls the icon badge size, title/subtitle typography, and vertical padding. Supports all 7 Size values (Xxs–Xxl). Defaults to Md.",
           "isCascading": false,
           "captureUnmatched": false,
           "isEditorRequired": false
@@ -48085,8 +49719,8 @@
           "code": "<Result Status=\"Result.ResultStatus.Warning\" Title=\"Warning\" SubTitle=\"Proceed with caution.\" />\n<Result Status=\"Result.ResultStatus.Info\" Title=\"Information\" SubTitle=\"Useful info.\" />\n<Result Status=\"Result.ResultStatus.NotFound\" Title=\"404 Not Found\" SubTitle=\"Page does not exist.\" />\n<Result Status=\"Result.ResultStatus.Forbidden\" Title=\"403 Forbidden\" SubTitle=\"No permission.\" />"
         },
         {
-          "title": "Status — interactive",
-          "code": "<Result Status=\"Result.ResultStatus.Success\" Title=\"Success Result\" SubTitle=\"This is a success result page.\" />"
+          "title": "Sizes",
+          "code": "<Result Size=\"Lumeo.Size.Xxs\" Title=\"Xxs\" SubTitle=\"Zero vertical padding.\" />\n<Result Size=\"Lumeo.Size.Xs\" Title=\"Xs\" SubTitle=\"Extra compact result.\" />\n<Result Size=\"Lumeo.Size.Sm\" Title=\"Small\" SubTitle=\"Compact result.\" />\n<Result Title=\"Medium\" SubTitle=\"Default result.\" /> @* Md, the default *@\n<Result Size=\"Lumeo.Size.Lg\" Title=\"Large\" SubTitle=\"Prominent result.\" />\n<Result Size=\"Lumeo.Size.Xl\" Title=\"Xl\" SubTitle=\"Extra prominent result.\" />\n<Result Size=\"Lumeo.Size.Xxl\" Title=\"Xxl\" SubTitle=\"Maximum result.\" />"
         }
       ],
       "subComponents": {},
@@ -53645,7 +55279,7 @@
           "name": "Size",
           "type": "Lumeo.Size",
           "default": "Lumeo.Size.Md",
-          "description": "Controls padding, typography and sparkline height. Defaults to Md.",
+          "description": "Controls padding, typography and sparkline height. Supports all 7 Size values (Xxs–Xxl). Defaults to Md.",
           "isCascading": false,
           "captureUnmatched": false,
           "isEditorRequired": false
@@ -54234,7 +55868,7 @@
           "name": "Size",
           "type": "Lumeo.Size",
           "default": "Lumeo.Size.Md",
-          "description": "Spinner size — scales the SVG ring / dot / bar dimensions and their gap. Default Md.",
+          "description": "Spinner size — scales the SVG ring / dot / bar dimensions and their gap. Supports all 7 Size values (Xxs–Xxl). Default Md. Xxs/Xs on the Dots and Bars variants floor at very small dimensions — see component notes.",
           "isCascading": false,
           "captureUnmatched": false,
           "isEditorRequired": false
@@ -54982,7 +56616,7 @@
           "name": "Size",
           "type": "Lumeo.Size",
           "default": "Lumeo.Size.Md",
-          "description": "Controls the title/value/suffix text sizes (Sm, Md default, Lg).",
+          "description": "Controls the title/value/suffix text sizes. Supports all 7 Size values (Xxs–Xxl). Default Md.",
           "isCascading": false,
           "captureUnmatched": false,
           "isEditorRequired": false
@@ -55056,7 +56690,7 @@
         },
         {
           "title": "Size (interactive)",
-          "code": "<Segmented @bind-Value=\"_size\">\n    <SegmentedItem Value=\"@Lumeo.Size.Sm\">Small</SegmentedItem>\n    <SegmentedItem Value=\"@Lumeo.Size.Md\">Medium</SegmentedItem>\n    <SegmentedItem Value=\"@Lumeo.Size.Lg\">Large</SegmentedItem>\n</Segmented>\n<Statistic Title=\"Monthly Revenue\" Value=\"48,290\" Size=\"@_size\" ShowTrend=\"true\" TrendValue=\"+12%\" TrendDirection=\"Statistic.TrendType.Up\">\n    <Prefix><Lumeo.Text As=\"span\">$</Lumeo.Text></Prefix>\n</Statistic>\n\n@code { private Lumeo.Size _size = Lumeo.Size.Md; }"
+          "code": "<Segmented @bind-Value=\"_size\">\n    <SegmentedItem Value=\"@Lumeo.Size.Xxs\">Xxs</SegmentedItem>\n    <SegmentedItem Value=\"@Lumeo.Size.Xs\">Xs</SegmentedItem>\n    <SegmentedItem Value=\"@Lumeo.Size.Sm\">Small</SegmentedItem>\n    <SegmentedItem Value=\"@Lumeo.Size.Md\">Medium</SegmentedItem>\n    <SegmentedItem Value=\"@Lumeo.Size.Lg\">Large</SegmentedItem>\n    <SegmentedItem Value=\"@Lumeo.Size.Xl\">Xl</SegmentedItem>\n    <SegmentedItem Value=\"@Lumeo.Size.Xxl\">Xxl</SegmentedItem>\n</Segmented>\n<Statistic Title=\"Monthly Revenue\" Value=\"48,290\" Size=\"@_size\" ShowTrend=\"true\" TrendValue=\"+12%\" TrendDirection=\"Statistic.TrendType.Up\">\n    <Prefix><Lumeo.Text As=\"span\">$</Lumeo.Text></Prefix>\n</Statistic>\n\n@code { private Lumeo.Size _size = Lumeo.Size.Md; }"
         },
         {
           "title": "Variant (interactive)",
@@ -56055,7 +57689,7 @@
           "name": "Size",
           "type": "Lumeo.Size",
           "default": "Lumeo.Size.Md",
-          "description": "Switch size. Supports Sm, Md (default), Lg.",
+          "description": "Switch size. Supports all 7 Size values (Xxs–Xxl). Sm and Md get an invisible touch-target extension up to the 24px minimum (the visible track is pixel-identical to before — only the click/touch-catching zone around it grows). Xxs and Xs are a deliberate exception: their 8px/12px track stays below the 24px minimum on purpose — an app that opts into Xxs/Xs is explicitly asking for a dense, non-touch-primary control, so no hit-area extension is added there. Lg/Xl/Xxl already clear 24px without any change. Default Md.",
           "isCascading": false,
           "captureUnmatched": false,
           "isEditorRequired": false
@@ -59550,7 +61184,7 @@
           "name": "Size",
           "type": "Lumeo.Size",
           "default": "Lumeo.Size.Md",
-          "description": "Controls the toggle's height and horizontal padding. Default Md.",
+          "description": "Controls the toggle's height and horizontal padding. Supports all 7 Size values (Xxs–Xxl). Note: Xxs falls under the 24px touch-target minimum at Compact and even Spacious density. Default Md.",
           "isCascading": false,
           "captureUnmatched": false,
           "isEditorRequired": false
@@ -59649,7 +61283,7 @@
         },
         {
           "title": "Sizes",
-          "code": "<Toggle Size=\"Lumeo.Size.Sm\" @bind-Pressed=\"_sm\">\n    <SvgGlyph Svg=\"@(Lucide.Bold)\" class=\"h-3 w-3\" />\n</Toggle>\n<Toggle @bind-Pressed=\"_md\">\n    <SvgGlyph Svg=\"@(Lucide.Bold)\" class=\"h-4 w-4\" />\n</Toggle>\n<Toggle Size=\"Lumeo.Size.Lg\" @bind-Pressed=\"_lg\">\n    <SvgGlyph Svg=\"@(Lucide.Bold)\" class=\"h-5 w-5\" />\n</Toggle>"
+          "code": "<Toggle Size=\"Lumeo.Size.Xxs\" @bind-Pressed=\"_xxs\">\n    <SvgGlyph Svg=\"@(Lucide.Bold)\" class=\"h-2 w-2\" />\n</Toggle>\n<Toggle Size=\"Lumeo.Size.Xs\" @bind-Pressed=\"_xs\">\n    <SvgGlyph Svg=\"@(Lucide.Bold)\" class=\"h-2.5 w-2.5\" />\n</Toggle>\n<Toggle Size=\"Lumeo.Size.Sm\" @bind-Pressed=\"_sm\">\n    <SvgGlyph Svg=\"@(Lucide.Bold)\" class=\"h-3 w-3\" />\n</Toggle>\n<Toggle @bind-Pressed=\"_md\">\n    <SvgGlyph Svg=\"@(Lucide.Bold)\" class=\"h-4 w-4\" />\n</Toggle>\n<Toggle Size=\"Lumeo.Size.Lg\" @bind-Pressed=\"_lg\">\n    <SvgGlyph Svg=\"@(Lucide.Bold)\" class=\"h-5 w-5\" />\n</Toggle>\n<Toggle Size=\"Lumeo.Size.Xl\" @bind-Pressed=\"_xl\">\n    <SvgGlyph Svg=\"@(Lucide.Bold)\" class=\"h-6 w-6\" />\n</Toggle>\n<Toggle Size=\"Lumeo.Size.Xxl\" @bind-Pressed=\"_xxl\">\n    <SvgGlyph Svg=\"@(Lucide.Bold)\" class=\"h-7 w-7\" />\n</Toggle>"
         },
         {
           "title": "With Text",
@@ -59717,7 +61351,7 @@
           "name": "Size",
           "type": "Lumeo.Size",
           "default": "Lumeo.Size.Md",
-          "description": "Item size, cascaded to every ToggleGroupItem. Defaults to Md.",
+          "description": "Item size, cascaded to every ToggleGroupItem. Supports all 7 Size values (Xxs–Xxl). Defaults to Md.",
           "isCascading": false,
           "captureUnmatched": false,
           "isEditorRequired": false
@@ -59848,7 +61482,7 @@
         },
         {
           "title": "Sizes",
-          "code": "<ToggleGroup Type=\"ToggleGroup.ToggleGroupType.Single\" Size=\"Lumeo.Size.Sm\">\n    ...\n</ToggleGroup>\n\n<ToggleGroup Type=\"ToggleGroup.ToggleGroupType.Single\">\n    ...\n</ToggleGroup>\n\n<ToggleGroup Type=\"ToggleGroup.ToggleGroupType.Single\" Size=\"Lumeo.Size.Lg\">\n    ...\n</ToggleGroup>"
+          "code": "<ToggleGroup Type=\"ToggleGroup.ToggleGroupType.Single\" Size=\"Lumeo.Size.Xxs\">\n    ...\n</ToggleGroup>\n\n<ToggleGroup Type=\"ToggleGroup.ToggleGroupType.Single\" Size=\"Lumeo.Size.Xs\">\n    ...\n</ToggleGroup>\n\n<ToggleGroup Type=\"ToggleGroup.ToggleGroupType.Single\" Size=\"Lumeo.Size.Sm\">\n    ...\n</ToggleGroup>\n\n<ToggleGroup Type=\"ToggleGroup.ToggleGroupType.Single\">\n    ...\n</ToggleGroup>\n\n<ToggleGroup Type=\"ToggleGroup.ToggleGroupType.Single\" Size=\"Lumeo.Size.Lg\">\n    ...\n</ToggleGroup>\n\n<ToggleGroup Type=\"ToggleGroup.ToggleGroupType.Single\" Size=\"Lumeo.Size.Xl\">\n    ...\n</ToggleGroup>\n\n<ToggleGroup Type=\"ToggleGroup.ToggleGroupType.Single\" Size=\"Lumeo.Size.Xxl\">\n    ...\n</ToggleGroup>"
         }
       ],
       "subComponents": {
