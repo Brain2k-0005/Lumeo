@@ -146,8 +146,15 @@ else
 
     /// <summary>Controls the input's height, font size and horizontal padding. Supports all 7
     /// <see cref="Lumeo.Size"/> values (Xxs–Xxl). Mobile text stays 16px (<c>text-base</c>) at
-    /// every rung to avoid iOS Safari's input-zoom bug; only the desktop (<c>md:</c>) size
-    /// shrinks. Default <see cref="Lumeo.Size.Md"/>.</summary>
+    /// <see cref="Lumeo.Size.Sm"/> and above to avoid iOS Safari's input-zoom bug; only the
+    /// desktop (<c>md:</c>) size shrinks. <b><see cref="Lumeo.Size.Xxs"/> and
+    /// <see cref="Lumeo.Size.Xs"/> are the exception</b>: their control height at Compact
+    /// (and Xxs at Comfortable) is too short to hold a 16px line box without overflowing, so
+    /// those two rungs render their small font (8px / 10px) at every breakpoint, mobile
+    /// included, and do not get the zoom guard — focusing an <c>Xxs</c> or <c>Xs</c> input on
+    /// iOS Safari will zoom the viewport. This is a deliberate, owner-approved trade-off
+    /// (control size wins over the zoom guard at these two rungs); pick <see cref="Lumeo.Size.Sm"/>
+    /// or larger if the zoom is unacceptable for your use case. Default <see cref="Lumeo.Size.Md"/>.</summary>
     [Parameter] public Lumeo.Size Size { get; set; } = Lumeo.Size.Md;
 
     /// <summary>Overrides the ambient <c>DensityScope</c> for this input's vertical rhythm and accessory padding. Falls back to the cascaded density, then <see cref="Lumeo.Density.Comfortable"/>.</summary>
@@ -380,15 +387,24 @@ else
     private string SmFontClasses => HasFontSizeOverride ? "" : " text-base md:text-xs max-md:leading-none";
     private string DefaultFontClasses => HasFontSizeOverride ? "" : " text-base md:text-sm max-md:leading-none";
 
-    // Full-scale rollout (Xxs/Xs/Xl/Xxl): same HasFontSizeOverride-suppressed
-    // "text-base md:text-<n> max-md:leading-none" trio as SmFontClasses/DefaultFontClasses
-    // above, just with a different desktop token per rung. Xxs/Xs need the leading-none fix
-    // even more than the rungs it originally shipped for — see the SizeClasses remarks below
-    // for the measured line-box numbers. Applied uniformly to Xl/Xxl too (harmless there, no
-    // measured overflow) for the same "keep every mobile/desktop-split arm identical" reasoning
-    // documented on the finding-3 fix above.
-    private string XxsFontClasses => HasFontSizeOverride ? "" : " text-base md:text-[8px] max-md:leading-none";
-    private string XsFontClasses => HasFontSizeOverride ? "" : " text-base md:text-[10px] max-md:leading-none";
+    // Full-scale rollout (Xl/Xxl): same HasFontSizeOverride-suppressed "text-base md:text-<n>
+    // max-md:leading-none" trio as SmFontClasses/DefaultFontClasses above, just with a
+    // different desktop token per rung — these two rungs never overflowed (plenty of available
+    // space, see the height table below) so they keep the zoom guard exactly as shipped.
+    //
+    // Xxs/Xs are the OWNER-DECIDED EXCEPTION (2026-08-10, PR #391): three combinations —
+    // Xxs/Compact, Xxs/Comfortable, Xs/Compact — physically cannot hold a 16px line box inside
+    // their control height even with max-md:leading-none (see the measurements below). The
+    // owner was given three options (keep the 16px floor and let the line box overflow, drop
+    // the floor and accept iOS zoom, or raise the heights) and chose: drop the floor at Xxs and
+    // Xs. So unlike every other rung, these two render their small font (8px / 10px) UNCONDITIONALLY
+    // — no text-base mobile floor, no md: breakpoint split, no max-md:-gated leading override —
+    // and pair it with a permanent (not breakpoint-gated) `leading-none` so the line box stays
+    // tight enough to fit at every density, mobile included. The accepted consequence is that
+    // focusing an Xxs or Xs input on iOS Safari zooms the viewport; that trade-off is documented
+    // on the Size parameter's XML doc and the Input docs page.
+    private string XxsFontClasses => HasFontSizeOverride ? "" : " text-[8px] leading-none";
+    private string XsFontClasses => HasFontSizeOverride ? "" : " text-[10px] leading-none";
     private string XlFontClasses => HasFontSizeOverride ? "" : " text-base md:text-lg max-md:leading-none";
     private string XxlFontClasses => HasFontSizeOverride ? "" : " text-base md:text-xl max-md:leading-none";
 
@@ -397,21 +413,20 @@ else
     // from Lg using S2, Xxs/Xs extrapolate inward from Sm using S1. Comfortable's 52/60px land
     // on no named Tailwind step, hence the two arbitrary h-[52px]/h-[60px] brackets.
     //
-    // Measured line-box vs. control height at mobile width (text-base=16px, line-height 1.5=24px
-    // baseline; max-md:leading-none tightens it to 16px; available = border-box height - 8px
-    // padding (py-1 both sides) - 2px border):
-    //   Xxs/Compact:    h-5  (20px) -> available 10px < 16px leading-none line box -> OVERFLOWS by 6px
-    //   Xxs/Comfortable:h-6  (24px) -> available 14px < 16px leading-none line box -> OVERFLOWS by 2px
-    //   Xxs/Spacious:   h-7  (28px) -> available 18px >= 16px -> OK (2px to spare)
-    //   Xs/Compact:     h-6  (24px) -> available 14px < 16px leading-none line box -> OVERFLOWS by 2px
-    //   Xs/Comfortable: h-7  (28px) -> available 18px >= 16px -> OK (2px to spare)
-    //   Xs/Spacious:    h-8  (32px) -> available 22px >= 16px -> OK (6px to spare)
-    // Xxs/Compact, Xxs/Comfortable and Xs/Compact remain below the 16px iOS-zoom floor even
-    // with the leading-none fix applied — a physical conflict between the zoom guard (16px
-    // minimum focused font) and a sub-24px control height, not something leading-none alone can
-    // close. Flagged for the owner per the campaign's "flag loudly, don't fix beyond what was
-    // asked" convention; the fix is applied uniformly anyway since it's still strictly better
-    // than the unfixed 24px line-height and matches every other rung's pattern.
+    // Xxs/Xs line-box math (available = border-box height - 8px padding (py-1 both sides) - 2px
+    // border), now against their OWN small font + leading-none (line box = font-size * 1, since
+    // leading-none sets line-height:1) rather than the 16px zoom-guard floor:
+    //   Xxs/Compact:     h-5 (20px) -> available 10px, line box 8px  -> OK (2px to spare)
+    //   Xxs/Comfortable: h-6 (24px) -> available 14px, line box 8px  -> OK (6px to spare)
+    //   Xxs/Spacious:    h-7 (28px) -> available 18px, line box 8px  -> OK (10px to spare)
+    //   Xs/Compact:      h-6 (24px) -> available 14px, line box 10px -> OK (4px to spare)
+    //   Xs/Comfortable:  h-7 (28px) -> available 18px, line box 10px -> OK (8px to spare)
+    //   Xs/Spacious:     h-8 (32px) -> available 22px, line box 10px -> OK (12px to spare)
+    // Every combination fits — the three that used to overflow the 16px zoom-guard floor
+    // (Xxs/Compact, Xxs/Comfortable, Xs/Compact) are the ones that motivated the trade-off.
+    // NOTE: without leading-none, the inherited Preflight line-height (html { line-height: 1.5 })
+    // would still overflow Xxs/Compact (8*1.5=12px > 10px avail) and Xs/Compact (10*1.5=15px >
+    // 14px avail) — leading-none is load-bearing here, not optional polish.
     private string SizeClasses => (Size, EffectiveDensity) switch
     {
         (Lumeo.Size.Xxs, Lumeo.Density.Compact)  => $"h-5{XxsFontClasses} px-1",
@@ -440,16 +455,19 @@ else
     // Wrapper/wrapped-input paths (Prefix/Suffix/Search/Clearable/number-stepper branch):
     // Class merges onto the WRAPPER div here (see the Class parameter doc), never onto the
     // inner <input> — so HasFontSizeOverride suppression doesn't apply (there is nothing of
-    // the caller's for the responsive pair to fight on the actual focusable element). Only
-    // the finding-3 max-md:leading-none line-height fix carries over.
+    // the caller's for the responsive pair to fight on the actual focusable element). The
+    // finding-3 max-md:leading-none line-height fix carries over for Sm/Default/Xl/Xxl. Xxs/Xs
+    // carry the owner-decided exception instead (see XxsFontClasses/XsFontClasses remarks
+    // above): their own small font + unconditional leading-none at every breakpoint, no
+    // text-base mobile floor.
     private string WrapperSizeClasses => (Size, EffectiveDensity) switch
     {
-        (Lumeo.Size.Xxs, Lumeo.Density.Compact)  => "h-5 text-base md:text-[8px] max-md:leading-none",
-        (Lumeo.Size.Xxs, Lumeo.Density.Spacious) => "h-7 text-base md:text-[8px] max-md:leading-none",
-        (Lumeo.Size.Xxs, _)                      => "h-6 text-base md:text-[8px] max-md:leading-none",
-        (Lumeo.Size.Xs, Lumeo.Density.Compact)   => "h-6 text-base md:text-[10px] max-md:leading-none",
-        (Lumeo.Size.Xs, Lumeo.Density.Spacious)  => "h-8 text-base md:text-[10px] max-md:leading-none",
-        (Lumeo.Size.Xs, _)                       => "h-7 text-base md:text-[10px] max-md:leading-none",
+        (Lumeo.Size.Xxs, Lumeo.Density.Compact)  => "h-5 text-[8px] leading-none",
+        (Lumeo.Size.Xxs, Lumeo.Density.Spacious) => "h-7 text-[8px] leading-none",
+        (Lumeo.Size.Xxs, _)                      => "h-6 text-[8px] leading-none",
+        (Lumeo.Size.Xs, Lumeo.Density.Compact)   => "h-6 text-[10px] leading-none",
+        (Lumeo.Size.Xs, Lumeo.Density.Spacious)  => "h-8 text-[10px] leading-none",
+        (Lumeo.Size.Xs, _)                       => "h-7 text-[10px] leading-none",
         (Lumeo.Size.Sm, Lumeo.Density.Compact)  => "h-7 text-base md:text-xs max-md:leading-none",
         (Lumeo.Size.Sm, Lumeo.Density.Spacious) => "h-9 text-base md:text-xs max-md:leading-none",
         (Lumeo.Size.Sm, _)                      => "h-8 text-base md:text-xs max-md:leading-none",
@@ -491,15 +509,17 @@ else
     // Sets the font-size on the actual focusable <input> inside the accessory wrapper
     // (Prefix/Suffix/Search/Clearable/number-stepper branch) — this is the element the
     // iOS zoom check reads, and its own explicit text-* class always wins over whatever
-    // WrapperSizeClasses puts on the ancestor div, so it must carry the same fix.
+    // WrapperSizeClasses puts on the ancestor div. Sm/Default/Xl/Xxl carry the finding-3
+    // max-md:leading-none fix; Xxs/Xs carry the owner-decided exception (own small font +
+    // unconditional leading-none, no text-base mobile floor — see XxsFontClasses remarks).
     private string WrappedInputSizeClasses => (Size, EffectiveDensity) switch
     {
-        (Lumeo.Size.Xxs, Lumeo.Density.Compact)  => "px-1 text-base md:text-[8px] max-md:leading-none",
-        (Lumeo.Size.Xxs, Lumeo.Density.Spacious) => "px-2 text-base md:text-[8px] max-md:leading-none",
-        (Lumeo.Size.Xxs, _)                      => "px-1.5 text-base md:text-[8px] max-md:leading-none",
-        (Lumeo.Size.Xs, Lumeo.Density.Compact)   => "px-1.5 text-base md:text-[10px] max-md:leading-none",
-        (Lumeo.Size.Xs, Lumeo.Density.Spacious)  => "px-2 text-base md:text-[10px] max-md:leading-none",
-        (Lumeo.Size.Xs, _)                       => "px-2 text-base md:text-[10px] max-md:leading-none",
+        (Lumeo.Size.Xxs, Lumeo.Density.Compact)  => "px-1 text-[8px] leading-none",
+        (Lumeo.Size.Xxs, Lumeo.Density.Spacious) => "px-2 text-[8px] leading-none",
+        (Lumeo.Size.Xxs, _)                      => "px-1.5 text-[8px] leading-none",
+        (Lumeo.Size.Xs, Lumeo.Density.Compact)   => "px-1.5 text-[10px] leading-none",
+        (Lumeo.Size.Xs, Lumeo.Density.Spacious)  => "px-2 text-[10px] leading-none",
+        (Lumeo.Size.Xs, _)                       => "px-2 text-[10px] leading-none",
         (Lumeo.Size.Sm, Lumeo.Density.Compact)  => "px-2 text-base md:text-xs max-md:leading-none",
         (Lumeo.Size.Sm, Lumeo.Density.Spacious) => "px-3 text-base md:text-xs max-md:leading-none",
         (Lumeo.Size.Sm, _)                      => "px-2.5 text-base md:text-xs max-md:leading-none",

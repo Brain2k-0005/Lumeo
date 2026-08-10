@@ -71,9 +71,10 @@ public class InputSizeScaleTests : IAsyncLifetime
         AssertHasClass(cls, px);
     }
 
+    // Sm/Md/Xl/Xxl keep the iOS-zoom guard (16px mobile floor, md: breakpoint split) exactly
+    // as shipped. Xxs/Xs do NOT — see Plain_Input_Xxs_Xs_Render_Small_Font_At_Every_Breakpoint
+    // below for the owner-decided exception (PR #391).
     [Theory]
-    [InlineData(L.Size.Xxs, "md:text-[8px]")]
-    [InlineData(L.Size.Xs, "md:text-[10px]")]
     [InlineData(L.Size.Sm, "md:text-xs")]
     [InlineData(L.Size.Md, "md:text-sm")]
     [InlineData(L.Size.Xl, "md:text-lg")]
@@ -83,7 +84,7 @@ public class InputSizeScaleTests : IAsyncLifetime
         var cut = _ctx.Render<L.Input>(p => p.Add(i => i.Size, size));
 
         var cls = cut.Find("input").GetAttribute("class");
-        AssertHasClass(cls, "text-base"); // mobile floor, iOS-zoom guard, every rung
+        AssertHasClass(cls, "text-base"); // mobile floor, iOS-zoom guard
         AssertHasClass(cls, mdTextClass);
     }
 
@@ -101,16 +102,37 @@ public class InputSizeScaleTests : IAsyncLifetime
     }
 
     [Theory]
-    [InlineData(L.Size.Xxs)]
-    [InlineData(L.Size.Xs)]
     [InlineData(L.Size.Sm)]
     [InlineData(L.Size.Md)]
     [InlineData(L.Size.Xl)]
     [InlineData(L.Size.Xxl)]
-    public void Plain_Input_Renders_MaxMd_Leading_None_At_Every_Non_Lg_Rung(L.Size size)
+    public void Plain_Input_Renders_MaxMd_Leading_None_At_Every_Guarded_Rung(L.Size size)
     {
+        // Xxs/Xs are excluded — they carry a bare (non-breakpoint-gated) leading-none
+        // instead, asserted separately below.
         var cut = _ctx.Render<L.Input>(p => p.Add(i => i.Size, size));
         AssertHasClass(cut.Find("input").GetAttribute("class"), "max-md:leading-none");
+    }
+
+    // ============================== Xxs/Xs owner-decided exception (PR #391) ==============================
+    // The owner chose: control size wins over the iOS-zoom guard at Xxs and Xs. Those two
+    // rungs render their small font (8px / 10px) UNCONDITIONALLY — no text-base mobile floor,
+    // no md: breakpoint split — paired with a permanent (non-gated) leading-none so the line
+    // box fits inside the control at every density. Sm and up are untouched (asserted above).
+
+    [Theory]
+    [InlineData(L.Size.Xxs, "text-[8px]")]
+    [InlineData(L.Size.Xs, "text-[10px]")]
+    public void Plain_Input_Xxs_Xs_Render_Small_Font_At_Every_Breakpoint(L.Size size, string textClass)
+    {
+        var cut = _ctx.Render<L.Input>(p => p.Add(i => i.Size, size));
+
+        var cls = cut.Find("input").GetAttribute("class") ?? "";
+        AssertHasClass(cls, textClass);
+        AssertHasClass(cls, "leading-none");
+        AssertDoesNotHaveClass(cls, "text-base");
+        AssertDoesNotHaveClass(cls, "max-md:leading-none");
+        Assert.DoesNotContain("md:text-", cls);
     }
 
     // ============================== Wrapper div path (WrapperSizeClasses) ==============================
@@ -153,8 +175,6 @@ public class InputSizeScaleTests : IAsyncLifetime
     }
 
     [Theory]
-    [InlineData(L.Size.Xxs, "md:text-[8px]")]
-    [InlineData(L.Size.Xs, "md:text-[10px]")]
     [InlineData(L.Size.Xl, "md:text-lg")]
     [InlineData(L.Size.Xxl, "md:text-xl")]
     public void Wrapper_Div_Desktop_Text_Size_Per_New_Rung(L.Size size, string mdTextClass)
@@ -169,6 +189,25 @@ public class InputSizeScaleTests : IAsyncLifetime
         AssertHasClass(cls, "text-base");
         AssertHasClass(cls, mdTextClass);
         AssertHasClass(cls, "max-md:leading-none");
+    }
+
+    [Theory]
+    [InlineData(L.Size.Xxs, "text-[8px]")]
+    [InlineData(L.Size.Xs, "text-[10px]")]
+    public void Wrapper_Div_Xxs_Xs_Render_Small_Font_At_Every_Breakpoint(L.Size size, string textClass)
+    {
+        var cut = _ctx.Render<L.Input>(p => p
+            .Add(i => i.Size, size)
+            .Add(i => i.Clearable, true)
+            .Add(i => i.Value, "x"));
+
+        var wrapperDiv = cut.Find("div input").ParentElement;
+        var cls = wrapperDiv!.GetAttribute("class") ?? "";
+        AssertHasClass(cls, textClass);
+        AssertHasClass(cls, "leading-none");
+        AssertDoesNotHaveClass(cls, "text-base");
+        AssertDoesNotHaveClass(cls, "max-md:leading-none");
+        Assert.DoesNotContain("md:text-", cls);
     }
 
     // ============================== Wrapped <input> path (WrappedInputSizeClasses) ==============================
@@ -208,8 +247,6 @@ public class InputSizeScaleTests : IAsyncLifetime
     }
 
     [Theory]
-    [InlineData(L.Size.Xxs, "md:text-[8px]")]
-    [InlineData(L.Size.Xs, "md:text-[10px]")]
     [InlineData(L.Size.Xl, "md:text-lg")]
     [InlineData(L.Size.Xxl, "md:text-xl")]
     public void Wrapped_Input_Desktop_Text_Size_Per_New_Rung(L.Size size, string mdTextClass)
@@ -223,6 +260,24 @@ public class InputSizeScaleTests : IAsyncLifetime
         AssertHasClass(cls, "text-base");
         AssertHasClass(cls, mdTextClass);
         AssertHasClass(cls, "max-md:leading-none");
+    }
+
+    [Theory]
+    [InlineData(L.Size.Xxs, "text-[8px]")]
+    [InlineData(L.Size.Xs, "text-[10px]")]
+    public void Wrapped_Input_Xxs_Xs_Render_Small_Font_At_Every_Breakpoint(L.Size size, string textClass)
+    {
+        var cut = _ctx.Render<L.Input>(p => p
+            .Add(i => i.Size, size)
+            .Add(i => i.Clearable, true)
+            .Add(i => i.Value, "x"));
+
+        var cls = cut.Find("div input").GetAttribute("class") ?? "";
+        AssertHasClass(cls, textClass);
+        AssertHasClass(cls, "leading-none");
+        AssertDoesNotHaveClass(cls, "text-base");
+        AssertDoesNotHaveClass(cls, "max-md:leading-none");
+        Assert.DoesNotContain("md:text-", cls);
     }
 
     // ============================== Deliberate ties (flagged, not bugs) ==============================
@@ -274,6 +329,10 @@ public class InputSizeScaleTests : IAsyncLifetime
         // the NEW rungs specifically — the suppression mechanism (HasFontSizeOverride)
         // must keep working once XxsFontClasses/XsFontClasses/XlFontClasses/
         // XxlFontClasses exist, not just for the original SmFontClasses/DefaultFontClasses.
+        // Xxs/Xs are included here too: HasFontSizeOverride suppresses their WHOLE font
+        // string (own small font + leading-none), not just the guard's text-base/md: pair —
+        // a caller who supplies their own font-size class opts out of everything, including
+        // the leading-none that's otherwise load-bearing for those two rungs.
         var cut = _ctx.Render<L.Input>(p => p.Add(i => i.Size, size).Add(i => i.Class, "text-lg"));
 
         var cls = cut.Find("input").GetAttribute("class") ?? "";
@@ -281,5 +340,6 @@ public class InputSizeScaleTests : IAsyncLifetime
         Assert.DoesNotContain("text-base", cls);
         Assert.DoesNotContain("md:text-", cls);
         Assert.DoesNotContain("max-md:leading-none", cls);
+        Assert.DoesNotContain("leading-none", cls);
     }
 }
