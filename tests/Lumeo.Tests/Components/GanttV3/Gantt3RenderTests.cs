@@ -198,7 +198,11 @@ public class Gantt3RenderTests : IAsyncLifetime
             .Add(c => c.BarColor, (Func<L.GanttTask, string?>)(_ => "#f59e0b")));
 
         var bg = cut.Find("[data-task-id='t1'] .lumeo-gantt-v3-bar-bg");
-        Assert.Contains("background-color:#f59e0b", bg.GetAttribute("style"));
+        // G4b (2026-08-10 shadcn alignment): background-color now bakes its ~16%
+        // tint into a color-mix() expression around the resolved color (see
+        // GanttBar.BarBgStyle's own remarks) — the wrapped literal still proves
+        // row.Color (not the row's own default) reached this style.
+        Assert.Contains("background-color:color-mix(in oklab, #f59e0b 16%, transparent)", bg.GetAttribute("style"));
         Assert.DoesNotContain("row.Color", cut.Markup);
     }
 

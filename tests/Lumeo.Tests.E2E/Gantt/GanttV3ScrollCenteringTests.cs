@@ -93,7 +93,12 @@ public class GanttV3ScrollCenteringTests : GanttParityTestBase
         var centeredBar = Page.Locator("[data-testid='gantt-v3-root'] [data-task-id='fe3']"); // "Integration", mid-range
         await centeredBar.WaitForAsync(new() { Timeout = 15000 });
 
-        var monthToggle = Page.GetByRole(AriaRole.Button, new() { Name = "Month", Exact = true });
+        // G1 (2026-08-10 shadcn alignment): GanttNav's zoom switcher swapped
+        // ToggleGroup -> Segmented, whose items render role="radio" (not
+        // "button") inside a role="radiogroup" track — the accessible role
+        // Playwright resolves changed, even though the underlying element is
+        // still a <button> tag.
+        var monthToggle = Page.GetByRole(AriaRole.Radio, new() { Name = "Month", Exact = true });
         await monthToggle.ClickAsync();
 
         // The mode switch re-renders the whole canvas at a new column width —
@@ -149,7 +154,12 @@ public class GanttV3ScrollCenteringTests : GanttParityTestBase
         await pannedToBar.ScrollIntoViewIfNeededAsync();
         await Assertions.Expect(pannedToBar).ToBeInViewportAsync(new() { Timeout = 10000 });
 
-        var monthToggle = Page.GetByRole(AriaRole.Button, new() { Name = "Month", Exact = true });
+        // G1 (2026-08-10 shadcn alignment): GanttNav's zoom switcher swapped
+        // ToggleGroup -> Segmented, whose items render role="radio" (not
+        // "button") inside a role="radiogroup" track — the accessible role
+        // Playwright resolves changed, even though the underlying element is
+        // still a <button> tag.
+        var monthToggle = Page.GetByRole(AriaRole.Radio, new() { Name = "Month", Exact = true });
         await monthToggle.ClickAsync();
 
         await Assertions.Expect(scrollPane).ToHaveAttributeAsync("data-gantt-v3-initial-scroll", "done", new() { Timeout = 15000 });

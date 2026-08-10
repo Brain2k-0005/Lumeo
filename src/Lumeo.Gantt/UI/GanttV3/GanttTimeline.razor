@@ -162,10 +162,33 @@
                (GanttDayModeMath) and v2's own today-line already agree on for
                every mode whose columns are exactly 1 day wide (Day/QuarterDay/
                HalfDay) — the parity/E2E position assertion this replaces did
-               not need to weaken, only re-target its DOM selector. *@
+               not need to weaken, only re-target its DOM selector.
+
+               G8 (2026-08-10 shadcn alignment): the FULL-COLUMN tint is only
+               meaningful when a rendered column IS a single day — the SAME
+               "category error" SupportsOffDayMarking/IsDayGranularityMode
+               already gates off-day shading against (a Week/Month/Quarter/Year
+               column spans many days; tinting the WHOLE thing as "today" is
+               precisely as wrong as tinting it "off day"). Day-granularity
+               modes keep the exact tint above; coarser modes fall back to a
+               precise 2px line at Today's own exact pixel (TodayX, not the
+               floored TodayColumnLeft) — restoring v2's own line-only
+               precision for exactly the modes where a whole-column band would
+               mislead, while day-granularity modes keep the T2 upgrade
+               unchanged (TodayColumnLeft == TodayX there anyway — see
+               TodayColumnLeft's own remarks — so this is not a second,
+               independently-drifting position formula, just a second RENDER
+               of the same value pinned by GanttDayModeMath). *@
             @if (TodayHighlight && TodayInRange)
             {
-                <div class="lumeo-gantt-v3-today-tint pointer-events-none absolute inset-y-0 bg-primary/10" style="@TodayColumnStyle"></div>
+                @if (IsDayGranularityMode)
+                {
+                    <div class="lumeo-gantt-v3-today-tint pointer-events-none absolute inset-y-0 bg-primary/10" style="@TodayColumnStyle"></div>
+                }
+                else
+                {
+                    <div class="lumeo-gantt-v3-today-line pointer-events-none absolute inset-y-0 border-s-2 border-primary" style="@TodayLineStyle"></div>
+                }
             }
 
             @* Now indicator (design spec Phase 3, T2 — precise current-TIME
@@ -259,7 +282,20 @@
                        sizing) — reusing it for row hover costs zero new DOM,
                        matching GanttTree.RowClass's own identical treatment
                        on the sibling pane. *@
-                    <div class="lumeo-gantt-v3-row-item hover:bg-accent/10 transition-colors" @key="@(row.Task is not null ? "t:" + row.Task.Id : $"g:{row.RowIndex}")" style="height:@(GanttScale.RowHeight)px;">
+                    @* G3 (2026-08-10 shadcn alignment): the canvas previously drew ONLY
+                       vertical day grid lines (see GridLineStyle above); a multi-row chart
+                       read as an unruled block past the row labels since GanttTree already
+                       draws horizontal row separators (RowClass below) but the timeline
+                       pane where the bars actually live did not. Reusing this SAME
+                       always-rendered, in-flow row wrapper (round-10's own remarks above)
+                       costs zero new DOM — border-b paints the separator at the row's own
+                       bottom edge, unioned with the pointer-events-none vertical grid lines
+                       already in this stacking context (paint order irrelevant since
+                       neither sets z-index and they never overlap the SAME edge pixel
+                       except at intersections, same as GanttTree's own row lines). Left at
+                       border-border/50 to match the demo's row rule opacity; unifies with
+                       GanttTree.RowClass's own /30 → /50 change below. *@
+                    <div class="lumeo-gantt-v3-row-item hover:bg-accent/10 transition-colors border-b border-border/50" @key="@(row.Task is not null ? "t:" + row.Task.Id : $"g:{row.RowIndex}")" style="height:@(GanttScale.RowHeight)px;">
                         @if (row.Task is not null)
                         {
                             @* Phase 3, T1 — empty-track drag-create hit target
@@ -1275,9 +1311,27 @@
     private int? TodayColumnIndex => TodayInRange ? (int)Math.Floor(TodayX / EffectiveColumnWidth) : null;
     private bool IsTodayColumn(int index) => TodayColumnIndex == index;
 
-    private string ColumnCellClass(int index) => Cx.Merge(
-        "shrink-0 text-center text-xs",
-        IsTodayColumn(index) ? "font-bold text-primary" : "text-muted-foreground");
+    // G7 (2026-08-10 shadcn alignment): the off-day column tint (below) used to
+    // start BELOW the sticky header — the header's own cells had no off-day
+    // branch at all, so a weekend's date label stayed full-strength and the
+    // muted band visibly broke at the header/canvas seam instead of reading as
+    // ONE continuous band (the demo tints both: `.g-subcell.we` gets a
+    // muted/.5 bg + muted-foreground/.7 label). Same MarkOffDays &&
+    // SupportsOffDayMarking gate as the canvas tint below — a header cell for
+    // a mode that doesn't support off-day marking never evaluates
+    // IsOffDayColumn at all, matching the canvas branch's own short-circuit.
+    // Today wins the TEXT colour when a column is both today and an off day
+    // (a Saturday "today" should still read as accented, not muted) — the
+    // background tint still applies underneath either way, exactly like the
+    // canvas's own independently-layered today-tint/off-day-tint divs.
+    private string ColumnCellClass(int index)
+    {
+        var isOffDay = MarkOffDays && SupportsOffDayMarking && IsOffDayColumn(index);
+        var textColor = IsTodayColumn(index)
+            ? "font-bold text-primary"
+            : isOffDay ? "text-muted-foreground/70" : "text-muted-foreground";
+        return Cx.Merge("shrink-0 text-center text-xs", textColor, isOffDay ? "bg-muted/50" : null);
+    }
 
     // Design spec Phase 3, T2 — "Mark off days". Column tinting only makes
     // visual sense when a single rendered column IS a single calendar day (or
@@ -1287,7 +1341,16 @@
     // Step=1) and the two Hour-unit modes (QuarterDay/HalfDay, several columns
     // PER day) both qualify; Week (Unit=Day, Step=7 — one column per WEEK) is
     // deliberately excluded despite sharing Day's own GanttScaleUnit.
-    private bool SupportsOffDayMarking => Cfg.Unit == GanttScaleUnit.Hour || (Cfg.Unit == GanttScaleUnit.Day && Cfg.Step == 1);
+    //
+    // G8 (2026-08-10 shadcn alignment): the identical "column IS a single day"
+    // test also gates the today marker's full-column tint (see the markup's
+    // own remarks) — extracted so off-day marking and today-marker precision
+    // can never silently diverge on what counts as day granularity.
+    // SupportsOffDayMarking is kept as its own name (the off-day feature's own
+    // established public-facing vocabulary in this file's comments/tests)
+    // aliasing the shared test, rather than renaming call sites wholesale.
+    private bool IsDayGranularityMode => Cfg.Unit == GanttScaleUnit.Hour || (Cfg.Unit == GanttScaleUnit.Day && Cfg.Step == 1);
+    private bool SupportsOffDayMarking => IsDayGranularityMode;
     private bool IsOffDayColumn(int index) => EffectiveOffDays.Contains(Units[index].DayOfWeek);
 
     // Design spec Phase 3, T2 — "Now indicator ... in sub-day modes". Only the
@@ -1408,6 +1471,17 @@
     // column's left edge, mode-agnostically.
     private string TodayColumnStyle =>
         FormattableString.Invariant($"left:{TodayColumnLeft}px;width:{EffectiveColumnWidth}px;");
+
+    // G8 (2026-08-10 shadcn alignment) — coarse-mode (non-day-granularity)
+    // fallback for the today marker: TodayX (Today's own exact, unfloored
+    // pixel — NOT TodayColumnLeft, which floors to the whole containing
+    // column's edge) at the SAME "-4px decorative overhang above row 0's own
+    // top" shape NowLineStyle already uses, so the two precise-line markers
+    // (today/now) read as one visual family. Only ever rendered when
+    // !IsDayGranularityMode (see the markup's own remarks) — a day-granularity
+    // chart keeps the wide TodayColumnStyle tint unchanged.
+    private string TodayLineStyle =>
+        FormattableString.Invariant($"left:{TodayX}px;top:-4px;");
 
     // Header dot, centered horizontally over the today column, vertically
     // centered within the 20px-tall upper header row (see the markup's own

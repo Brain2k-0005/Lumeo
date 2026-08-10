@@ -61,7 +61,12 @@ public class GanttV3Phase3T7Tests : IAsyncLifetime
             .Add(c => c.GroupBy, (L.GanttTask t) => t.GroupLabel ?? "")
             .Add(c => c.ColorByGroup, false));
 
-        Assert.Equal("var(--color-primary)", BarColorStyle(cut, "a1")); // GanttBar.ResolvedColor's own unchanged default
+        // G4b (2026-08-10 shadcn alignment): bar-bg's background-color now bakes its
+        // ~16% tint directly into a color-mix() expression around ResolvedColor
+        // (see GanttBar.BarBgStyle's own remarks) instead of the raw resolved
+        // color plus a Tailwind opacity-* utility — the wrapped literal still
+        // proves ResolvedColor's own unchanged default (var(--color-primary)).
+        Assert.Equal("color-mix(in oklab, var(--color-primary) 16%, transparent)", BarColorStyle(cut, "a1"));
     }
 
     [Fact]
@@ -91,7 +96,8 @@ public class GanttV3Phase3T7Tests : IAsyncLifetime
             .Add(c => c.ColorByGroup, true)
             .Add(c => c.BarColor, (L.GanttTask t) => t.Id == "a1" ? "#ff0000" : null));
 
-        Assert.Equal("#ff0000", BarColorStyle(cut, "a1"));
+        // G4b — see the color-mix() note above.
+        Assert.Equal("color-mix(in oklab, #ff0000 16%, transparent)", BarColorStyle(cut, "a1"));
     }
 
     [Fact]

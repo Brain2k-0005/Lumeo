@@ -1,3 +1,4 @@
+using System.Globalization;
 using Bunit;
 using Lumeo.GanttV3;
 using Lumeo.Services;
@@ -188,6 +189,84 @@ public class GanttV3Phase3T5Tests : IAsyncLifetime
         // still renders its own label via the default path.
         Assert.Equal(2, cut.FindAll(".custom-row-marker").Count);
         Assert.Contains("Design", cut.FindAll(".lumeo-gantt-v3-tree-label")[0].TextContent);
+    }
+
+    // ── ShowTaskMeta (2026-08-10 shadcn alignment, G6) ──────────────────────
+
+    [Fact]
+    public void ShowTaskMeta_Renders_A_DateRange_And_Progress_Line_Under_The_Name()
+    {
+        // Pinned culture (en-US) — TaskMetaText formats via CurrentCulture (same
+        // determinism concern GanttV3Phase3T2Tests' off-day tests already pin
+        // for), so the "Mar 1"/"Mar 4" literals below are deterministic
+        // regardless of the test runner's ambient culture.
+        var original = CultureInfo.CurrentCulture;
+        CultureInfo.CurrentCulture = CultureInfo.GetCultureInfo("en-US");
+        try
+        {
+            var cut = RenderTree(p => p
+                .Add(c => c.Tasks, new List<L.GanttTask>
+                {
+                    new("t1", "Design Phase", D(2026, 3, 1), D(2026, 3, 4), Progress: 40),
+                })
+                .Add(c => c.ShowTaskMeta, true));
+
+            var meta = cut.Find(".lumeo-gantt-v3-tree-meta");
+            Assert.Contains("Mar 1", meta.TextContent);
+            Assert.Contains("Mar 4", meta.TextContent);
+            Assert.Contains("40%", meta.TextContent);
+            Assert.Contains("Design Phase", cut.Find(".lumeo-gantt-v3-tree-label").TextContent);
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = original;
+        }
+    }
+
+    [Fact]
+    public void ShowTaskMeta_Default_False_Renders_No_Meta_Line()
+    {
+        var cut = RenderTree(p => p
+            .Add(c => c.Tasks, new List<L.GanttTask>
+            {
+                new("t1", "Design Phase", D(2026, 3, 1), D(2026, 3, 4), Progress: 40),
+            }));
+
+        Assert.Empty(cut.FindAll(".lumeo-gantt-v3-tree-meta"));
+    }
+
+    [Fact]
+    public void ShowTaskMeta_Never_Renders_For_A_GroupHeader_Row_With_No_Task()
+    {
+        var cut = RenderTree(p => p
+            .Add(c => c.Tasks, GroupFixture())
+            .Add(c => c.GroupBy, (L.GanttTask t) => t.GroupLabel ?? "")
+            .Add(c => c.ShowTaskMeta, true));
+
+        // 2 real task rows get a meta line; the GroupHeader row (no Task) has
+        // no Start/End/Progress to show and falls back to the plain label.
+        Assert.Equal(2, cut.FindAll(".lumeo-gantt-v3-tree-meta").Count);
+    }
+
+    [Fact]
+    public void ShowTaskMeta_Is_Ignored_When_RowTemplate_Is_Set()
+    {
+        var cut = RenderTree(p => p
+            .Add(c => c.Tasks, new List<L.GanttTask>
+            {
+                new("t1", "Design Phase", D(2026, 3, 1), D(2026, 3, 4), Progress: 40),
+            })
+            .Add(c => c.ShowTaskMeta, true)
+            .Add(c => c.RowTemplate, (RenderFragment<L.GanttTask>)(task => b =>
+            {
+                b.OpenElement(0, "span");
+                b.AddAttribute(1, "class", "custom-row-marker");
+                b.AddContent(2, task.Name);
+                b.CloseElement();
+            })));
+
+        Assert.Empty(cut.FindAll(".lumeo-gantt-v3-tree-meta"));
+        Assert.Single(cut.FindAll(".custom-row-marker"));
     }
 
     // ── Row-alignment drift guards (decision #1) ────────────────────────────

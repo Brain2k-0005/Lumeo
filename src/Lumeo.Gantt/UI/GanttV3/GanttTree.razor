@@ -1,5 +1,6 @@
 @namespace Lumeo
 @using System.ComponentModel
+@using System.Globalization
 @using System.Linq
 @using Lumeo.GanttV3
 @implements IAsyncDisposable
@@ -184,6 +185,23 @@
                 {
                     @RowTemplate(row.Task)
                 }
+                else if (ShowTaskMeta && row.Task is not null)
+                {
+                    @* G6 (2026-08-10 shadcn alignment): the demo always shows a second
+                       "date-range · N%" line under the name; ours showed the label only.
+                       Data is already on the model (row.Task.Start/End/Progress) — this
+                       is purely a rendering addition, gated OFF by default (see the
+                       parameter's own remarks). "leading-4" x2 + the 1px gap below = 33px,
+                       fitting inside the row's existing 36px height (GanttScale.RowHeight
+                       is unchanged — see G5's own "do not touch" note in the shadcn
+                       alignment plan). Never for a GroupHeader row (row.Task is null there
+                       — no date/progress data exists to show), matching RowTemplate's
+                       identical gate immediately above. *@
+                    <span class="flex min-w-0 flex-col justify-center gap-px">
+                        <span class="lumeo-gantt-v3-tree-label truncate text-sm leading-4">@row.Label</span>
+                        <span class="lumeo-gantt-v3-tree-meta truncate text-xs leading-4 text-muted-foreground">@TaskMetaText(row.Task)</span>
+                    </span>
+                }
                 else
                 {
                     <span class="lumeo-gantt-v3-tree-label truncate text-sm">@row.Label</span>
@@ -249,6 +267,20 @@
 
     /// <summary>Replaces a row's default label-cell content when set (design spec Phase 3, T5). The indent spacer and expander/toggle button are ALWAYS rendered by this component regardless — see the class remarks. Never invoked for a row with no <see cref="GanttVisibleRow.Task"/>.</summary>
     [Parameter] public RenderFragment<GanttTask>? RowTemplate { get; set; }
+
+    /// <summary>
+    /// Renders a second "date-range · N%" line under a row's name (2026-08-10
+    /// shadcn alignment plan, G6 — the reference always shows this; Lumeo
+    /// showed the label only). Default <c>false</c>, matching this codebase's
+    /// own convention for every optional display toggle added since Phase 3
+    /// (<c>ShowSummaryBars</c>/<c>MarkOffDays</c>/<c>NowIndicator</c>/
+    /// <c>ColorByGroup</c> all default off). Ignored when <see
+    /// cref="RowTemplate"/> is set (the custom template already owns the
+    /// entire name-cell content) or for a row with no <see
+    /// cref="GanttVisibleRow.Task"/> (a flat-grouping <c>GroupHeader</c> row
+    /// has no Start/End/Progress to show).
+    /// </summary>
+    [Parameter] public bool ShowTaskMeta { get; set; }
 
     /// <summary>
     /// The pinned name column's CURRENT resolved width in pixels. Gantt3 owns
@@ -439,14 +471,26 @@
     // alike) — a summary row already carries its own static bg-accent/20, so
     // its hover simply layers a slightly deeper tint on top, same visual
     // family, no separate branch needed.
+    // G3 (2026-08-10 shadcn alignment): /30 → /50, unifying with
+    // GanttTimeline's own new row-bottom lines (see that file's remarks) so
+    // both panes' row separators read as ONE rule crossing the tree/canvas
+    // seam at the same opacity, matching the demo's row lines (~/.55).
     private static string RowClass(GanttVisibleRow row) => Cx.Merge(
-        "flex items-center border-b border-border/30 text-foreground hover:bg-accent/10 transition-colors",
+        "flex items-center border-b border-border/50 text-foreground hover:bg-accent/10 transition-colors",
         row.Kind == GanttRowKind.GroupHeader || row.HasChildren
             ? "lumeo-gantt-v3-tree-summary-row bg-accent/20 text-xs font-semibold uppercase tracking-wide text-muted-foreground"
             : null);
 
     private static string IndentStyle(GanttVisibleRow row) =>
         FormattableString.Invariant($"width:{row.Depth * 16}px;");
+
+    // G6 — "date-range · N%", same clamp GanttBar's own tooltip/progress-fill
+    // apply (Task.Progress carries no enforced range). No-year date format
+    // ("MMM d") keeps the line short enough to fit the pinned 36px row
+    // alongside the name line above it; CurrentCulture matches every other
+    // date string this component family already renders (GanttBar's tooltip).
+    private static string TaskMetaText(GanttTask task) =>
+        $"{task.Start.ToString("MMM d", CultureInfo.CurrentCulture)}–{task.End.ToString("MMM d", CultureInfo.CurrentCulture)} · {Math.Clamp(task.Progress, 0, 100).ToString(CultureInfo.CurrentCulture)}%";
 
     private Task HandleToggleAsync(string? key) =>
         key is not null && OnToggleCollapse.HasDelegate ? OnToggleCollapse.InvokeAsync(key) : Task.CompletedTask;

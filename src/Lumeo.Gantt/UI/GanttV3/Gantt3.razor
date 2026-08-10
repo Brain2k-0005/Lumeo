@@ -23,6 +23,22 @@
    [EditorBrowsable(Never)] keeps this working-name API out of consumer
    IntelliSense until the Phase-4 rename (fix-round follow-up). *@
 <div class="@RootClass" @attributes="AdditionalAttributes">
+    @* shadcn alignment (2026-08-10 plan, G2 "unified card shell"): the demo
+       renders toolbar + canvas as ONE .card (1px border, 12px radius,
+       overflow-hidden) with the toolbar as an internal .card-toolbar strip
+       sharing the same surface — previously this root was a borderless
+       `flex flex-col gap-3` with only the scroll pane bordered, so toolbar
+       and canvas read as two floating blocks. RootClass below now owns the
+       outer border; GanttNav gets its strip look (rounded top corners,
+       bottom divider) via its own Class parameter, and the scroll pane keeps
+       its own bottom-corner rounding (see that div's own remarks) — EACH
+       piece rounds its own corners rather than the shell clipping via
+       overflow-hidden. Deliberate: GanttNav's TrailingContent slot hosts
+       GanttSettingsMenu's popover and GanttTimeline hosts BarContextMenu,
+       both `position: fixed` DOM descendants that are NOT portaled to
+       <body> (see ContextMenuContent.razor/Popover) — an overflow-hidden
+       ancestor would clip them whenever they open near an edge. Per-piece
+       rounding gets the same unified-card look with zero clipping risk. *@
     <GanttNav ViewMode="@_state.ViewMode"
               ViewModeChanged="HandleViewModeChangedAsync"
               PeriodLabel="@PeriodLabel"
@@ -30,7 +46,8 @@
               OnPrevious="ShiftToPreviousAsync"
               OnNext="ShiftToNextAsync"
               ZoomLevels="@ZoomLevels"
-              TrailingContent="@TrailingContent" />
+              TrailingContent="@TrailingContent"
+              Class="rounded-t-md border-b border-border px-3 py-2" />
 
     @* Phase 2's "one shared scroll container wrapping both panes" (T3 design
        spec, scroll sync): tree pane + timeline are laid out side by side as
@@ -66,7 +83,7 @@
        across the full scroll range (reproduced live before this second
        change: bbox still at x=-3114 after scrolling to 70% of maxScroll,
        despite the first change already being in place). *@
-    <div class="rounded-md border border-border/60" style="max-height:@Height;overflow:auto;" @ref="_scrollPaneRef">
+    <div class="rounded-b-md" style="max-height:@Height;overflow:auto;" @ref="_scrollPaneRef">
         @* Rows is a computed property (see below) — read it into a local ONCE
            per render and hand the same value to both bindings below, rather
            than letting each binding re-invoke the property (which would run
@@ -80,6 +97,7 @@
                            TreeColumns="@TreeColumns"
                            TreeHeaderMenu="@TreeHeaderMenu"
                            RowTemplate="@RowTemplate"
+                           ShowTaskMeta="@ShowTaskMeta"
                            TreePaneWidth="@EffectiveTreePaneWidth"
                            OnResize="HandleTreePaneResizeAsync"
                            Tasks="@_state.Tasks"
@@ -369,6 +387,15 @@
     [Parameter] public RenderFragment<GanttTask>? RowTemplate { get; set; }
 
     /// <summary>
+    /// Renders a second "date-range · N%" line under a tree row's name
+    /// (2026-08-10 shadcn alignment plan, G6). Default <c>false</c> — see
+    /// <see cref="Lumeo.GanttTree.ShowTaskMeta"/>'s own remarks (this
+    /// parameter is a straight pass-through). Ignored when <see
+    /// cref="RowTemplate"/> is set.
+    /// </summary>
+    [Parameter] public bool ShowTaskMeta { get; set; }
+
+    /// <summary>
     /// Controlled width (pixels) of the tree pane's pinned name column (design
     /// spec Phase 3, T5 — the resizable tree/timeline splitter). Null (the
     /// default) is UNCONTROLLED: the chart tracks its own width internally,
@@ -558,7 +585,18 @@
     // instead of a now-removed inner wrapper. See the markup's own remarks.
     private ElementReference _scrollPaneRef;
 
-    private string RootClass => Cx.Merge("flex flex-col gap-3", Class);
+    // G2 (2026-08-10 shadcn alignment): the shell now owns ONE border wrapping
+    // GanttNav + the scroll pane, which are plain block-stacked children (no
+    // flex/gap needed for that — normal-flow div stacking). No `overflow`
+    // here (see the markup's own remarks: GanttNav's TrailingContent and
+    // GanttTimeline's BarContextMenu render position:fixed popovers that
+    // would be clipped by an overflow-hidden ancestor) — GanttNav rounds its
+    // own top corners and the scroll pane rounds its own bottom corners
+    // instead. Uses the full-opacity `border-border` (the S1 token direction)
+    // rather than `/60` — this is a new, local surface, not a rewrite of an
+    // existing library-wide class string, so it does not touch any shared
+    // token or `src/Lumeo/UI` file.
+    private string RootClass => Cx.Merge("rounded-md border border-border", Class);
 
     // The single, shared row list GanttTree/GanttTimeline/GanttArrowLayer all
     // render against (design spec Phase 2, T3 — see GanttRowModel's remarks).

@@ -174,6 +174,67 @@ public class GanttV3Phase3T2Tests : IAsyncLifetime
         Assert.Empty(cut.FindAll(".lumeo-gantt-v3-off-day"));
     }
 
+    // G7 (2026-08-10 shadcn alignment): the off-day tint used to start BELOW
+    // the sticky header — the header's OWN lower-row cells had no off-day
+    // branch, so a weekend date label stayed full-strength and the muted band
+    // visibly broke at the header/canvas seam. ColumnCellClass now carries the
+    // same MarkOffDays && SupportsOffDayMarking && IsOffDayColumn gate as the
+    // canvas tint below it.
+    [Fact]
+    public void MarkOffDays_Tints_The_Header_Cell_For_An_Off_Day_Column_Too()
+    {
+        var original = CultureInfo.CurrentCulture;
+        CultureInfo.CurrentCulture = CultureInfo.GetCultureInfo("en-US");
+        try
+        {
+            // Same fixture as MarkOffDays_Tints_The_Correct_Weekend_Columns_In_Day_Mode:
+            // 2026-01-05 (Mon) .. 2026-01-11 (Sun), default Sat/Sun off-days.
+            var cut = _ctx.Render<L.GanttTimeline>(p => p
+                .Add(c => c.ViewMode, L.GanttViewMode.Day)
+                .Add(c => c.RangeStart, D(2026, 1, 5))
+                .Add(c => c.RangeEnd, D(2026, 1, 11))
+                .Add(c => c.MarkOffDays, true));
+
+            // The lower header row renders one cell per unit, in order — cell
+            // index 5 (Sat) and 6 (Sun) must carry the muted header treatment;
+            // every weekday cell must NOT.
+            var lowerCells = cut.FindAll("div.shrink-0.text-center.text-xs");
+            Assert.True(lowerCells.Count >= 7, $"expected at least 7 lower-header cells, found {lowerCells.Count}");
+
+            for (var i = 0; i < 7; i++)
+            {
+                var isOffDay = i == 5 || i == 6; // Sat/Sun (Mon=0)
+                var cls = lowerCells[i].GetAttribute("class") ?? "";
+                if (isOffDay)
+                {
+                    Assert.Contains("bg-muted/50", cls);
+                    Assert.Contains("text-muted-foreground/70", cls);
+                }
+                else
+                {
+                    Assert.DoesNotContain("bg-muted/50", cls);
+                }
+            }
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = original;
+        }
+    }
+
+    [Fact]
+    public void MarkOffDays_False_Renders_No_Header_Tint_Even_On_A_Weekend()
+    {
+        var cut = _ctx.Render<L.GanttTimeline>(p => p
+            .Add(c => c.ViewMode, L.GanttViewMode.Day)
+            .Add(c => c.RangeStart, D(2026, 1, 5))
+            .Add(c => c.RangeEnd, D(2026, 1, 11))
+            .Add(c => c.MarkOffDays, false));
+
+        var lowerCells = cut.FindAll("div.shrink-0.text-center.text-xs");
+        Assert.All(lowerCells, c => Assert.DoesNotContain("bg-muted/50", c.GetAttribute("class") ?? ""));
+    }
+
     // ── Today column upgrade (tint + dot + accent label) ─────────────────
 
     [Fact]
@@ -218,14 +279,25 @@ public class GanttV3Phase3T2Tests : IAsyncLifetime
         Assert.Empty(cut.FindAll(".text-primary.font-bold"));
     }
 
+    // G8 (2026-08-10 shadcn alignment): a whole-column tint in Month mode is
+    // exactly the "category error" this item calls out (the SAME reasoning
+    // SupportsOffDayMarking already applies to off-day shading) — a Month
+    // column spans ~30 days, so tinting the WHOLE thing as "today" is
+    // materially imprecise. Coarse (non-day-granularity) modes now render a
+    // precise 2px line at Today's own exact pixel instead; this test replaces
+    // the old "whole containing column" assertion with the new precise-line
+    // one. The OLD assertion (a full-column tint at the FLOORED column edge)
+    // is exactly what a disable-check on IsDayGranularityMode reproduces —
+    // see the T10 report.
     [Fact]
-    public void TodayColumn_Tint_Left_Edge_Is_The_Whole_Containing_Column_In_Month_Mode()
+    public void TodayMarker_Renders_A_Precise_Line_Not_A_Whole_Column_Tint_In_Month_Mode()
     {
         // Month mode: a single day's DateToPixel value sits at a FRACTIONAL
         // position within its month column (Codex round 3, P2 #6's own
-        // aligned-origin math) — TodayColumnLeft must floor that down to the
-        // column's own left edge (index*colW), not leave the tint's left
-        // edge at the fractional sub-column offset TodayX itself would give.
+        // aligned-origin math) — the precise line must land at that EXACT
+        // (unfloored) pixel, not the column's own floored left edge (which is
+        // what the whole-column tint used to render at, and what the
+        // day-granularity branch still floors to for TodayColumnLeft).
         var today = D(2026, 3, 15); // mid-March
         var cut = _ctx.Render<L.GanttTimeline>(p => p
             .Add(c => c.ViewMode, L.GanttViewMode.Month)
@@ -237,12 +309,31 @@ public class GanttV3Phase3T2Tests : IAsyncLifetime
         var origin = GanttScale.BuildDateUnits(L.GanttViewMode.Month, D(2026, 1, 1), D(2026, 6, 1))[0];
         var colW = GanttScale.GetConfig(L.GanttViewMode.Month).ColumnWidth;
         var rawTodayX = GanttScale.DateToPixel(L.GanttViewMode.Month, origin, today, colW);
-        var expectedColumnLeft = 2 * colW; // March = index 2 (Jan=0, Feb=1, Mar=2)
+        var flooredColumnLeft = 2 * colW; // March = index 2 (Jan=0, Feb=1, Mar=2)
 
-        Assert.NotEqual(expectedColumnLeft, rawTodayX); // sanity: the raw (fractional) position is NOT the column edge
+        Assert.NotEqual(flooredColumnLeft, rawTodayX); // sanity: the raw (fractional) position is NOT the column edge
 
-        var tint = cut.Find(".lumeo-gantt-v3-today-tint");
-        Assert.Contains($"left:{((double)expectedColumnLeft).ToString(CultureInfo.InvariantCulture)}px", tint.GetAttribute("style"));
+        Assert.Empty(cut.FindAll(".lumeo-gantt-v3-today-tint")); // no whole-column band in a coarse mode
+        var line = cut.Find(".lumeo-gantt-v3-today-line");
+        Assert.Contains($"left:{rawTodayX.ToString(CultureInfo.InvariantCulture)}px", line.GetAttribute("style"));
+    }
+
+    [Fact]
+    public void TodayMarker_Keeps_The_Whole_Column_Tint_In_Day_Mode()
+    {
+        // Day mode IS day-granularity — the T2 upgrade's whole-column tint
+        // (and TodayColumnLeft == TodayX exactly, for a 1-day-wide column)
+        // stays unchanged by G8; no line renders alongside it.
+        var today = D(2026, 1, 15);
+        var cut = _ctx.Render<L.GanttTimeline>(p => p
+            .Add(c => c.ViewMode, L.GanttViewMode.Day)
+            .Add(c => c.RangeStart, D(2026, 1, 12))
+            .Add(c => c.RangeEnd, D(2026, 1, 20))
+            .Add(c => c.Today, today)
+            .Add(c => c.TodayHighlight, true));
+
+        Assert.Single(cut.FindAll(".lumeo-gantt-v3-today-tint"));
+        Assert.Empty(cut.FindAll(".lumeo-gantt-v3-today-line"));
     }
 
     // ── Now indicator ──────────────────────────────────────────────────────

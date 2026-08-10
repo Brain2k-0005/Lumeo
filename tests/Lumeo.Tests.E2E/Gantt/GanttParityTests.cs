@@ -145,7 +145,13 @@ public class GanttParityTests : GanttParityTestBase
         var v3Style = await Page.Locator($"[data-testid='gantt-v3-root'] [data-task-id='{taskId}'] .lumeo-gantt-v3-bar-bg").GetAttributeAsync("style");
 
         Assert.Equal(expectedColor, v2Fill);
-        Assert.Contains($"background-color:{expectedColor}", v3Style);
+        // G4b (2026-08-10 shadcn alignment): v3's bar-bg background-color now bakes
+        // its ~16% tint into a color-mix() expression around the resolved color
+        // (see GanttBar.BarBgStyle's own remarks) instead of the raw resolved
+        // color plus a Tailwind opacity-* utility — this pinned intentional v2/v3
+        // look-delta (recorded in the ledger) still proves the SAME per-task
+        // colour drives both renderers.
+        Assert.Contains($"background-color:color-mix(in oklab, {expectedColor} 16%, transparent)", v3Style);
     }
 
     // ── Progress fill (representation differs: v2 = px width, v3 = CSS %; ratio must agree) ──

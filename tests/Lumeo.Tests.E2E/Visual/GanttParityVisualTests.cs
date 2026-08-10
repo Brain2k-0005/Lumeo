@@ -293,6 +293,295 @@ public class GanttParityVisualTests : GanttParityTestBase
         }
     }
 
+    // ── T10a look-alignment wave (2026-08-10 shadcn alignment plan) ──────────
+    //
+    // The 8 baselines above (Gantt_page_matches_baseline) and gantt-v3-t7-chrome
+    // already cover "in-bar labels" and "zoom control" — both routes render
+    // through the SAME GanttBar/GanttNav markup this task's G1/G2/G3/G4
+    // changes touch, so regenerating those 9 existing baselines (see the T10
+    // report) already picks up the new look for those items. The tests below
+    // add the states the existing set does NOT exercise: off-days + the
+    // header/canvas seam (G7), duration-weighted summary strips, the settings
+    // menu's OPEN popover state, Quarter mode (exercises G8's coarse-mode
+    // today-line fallback), tree columns + the splitter, selection + reorder
+    // affordances, and an off-screen indicator chip.
+    //
+    // Shared helpers below (FreezeClockAsync/DisableAnimationsAsync/SkipOnCi/
+    // ScreenshotAndCompareAsync) extract the boilerplate the two methods above
+    // duplicate — new tests use them; the two existing methods are left
+    // untouched to keep this change's diff scoped to genuinely new coverage.
+
+    private static bool SkipOnCi() =>
+        Environment.GetEnvironmentVariable("CI") == "true"
+        && Environment.GetEnvironmentVariable("LUMEO_E2E_UPDATE_SNAPSHOTS") != "1";
+
+    // Same frozen-clock rationale as Gantt_page_matches_baseline above —
+    // SharedTasks'/TreeTasks' fixed 2026 windows, no today-marker drift over
+    // time between runs.
+    private Task FreezeClockAsync() => Page.AddInitScriptAsync(@"
+        window.__lumeoFrozenNow = new Date(2026, 2, 15).getTime();
+        var RealDate = Date;
+        window.Date = function (...args) {
+            if (args.length === 0) return new RealDate(window.__lumeoFrozenNow);
+            return new RealDate(...args);
+        };
+        window.Date.now = function () { return window.__lumeoFrozenNow; };
+        window.Date.prototype = RealDate.prototype;
+    ");
+
+    private Task DisableAnimationsAsync() => Page.AddStyleTagAsync(new()
+    {
+        Content = "*, *::before, *::after { animation-duration: 0s !important; animation-delay: 0s !important; transition-duration: 0s !important; transition-delay: 0s !important; }",
+    });
+
+    /// <summary>Waits for Gantt3's own scroll-to-today/initial-centering latch
+    /// (stamped atomically on the shared scroll pane — see the class remarks
+    /// on <c>Gantt_page_matches_baseline</c>) so a snapshot never races the
+    /// async scroll landing, regardless of which page/route rendered it.</summary>
+    private async Task WaitForGanttScrollSettledAsync(string rootTestId)
+    {
+        var scrollHost = Page.Locator($"[data-testid='{rootTestId}'] div[style*='overflow']").First;
+        await Assertions.Expect(scrollHost).ToHaveAttributeAsync("data-gantt-v3-initial-scroll", "done", new() { Timeout = 5000 });
+    }
+
+    private async Task ScreenshotAndCompareAsync(string baselineName, int width, int height)
+    {
+        var screenshotBytes = await Page.ScreenshotAsync(new PageScreenshotOptions
+        {
+            Clip = new Clip { X = 0, Y = 0, Width = width, Height = height },
+        });
+
+        var baselinePath = Path.Combine(GetSnapshotsDir(), $"{baselineName}.png");
+
+        if (Environment.GetEnvironmentVariable("LUMEO_E2E_UPDATE_SNAPSHOTS") == "1")
+        {
+            Directory.CreateDirectory(GetSnapshotsDir());
+            await File.WriteAllBytesAsync(baselinePath, screenshotBytes);
+            return;
+        }
+
+        Assert.True(File.Exists(baselinePath),
+            $"Visual baseline missing at: {baselinePath}. Run with LUMEO_E2E_UPDATE_SNAPSHOTS=1 to generate it.");
+
+        var baselineBytes = await File.ReadAllBytesAsync(baselinePath);
+
+        using var baselineImage = Image.Load<Rgba32>(baselineBytes);
+        using var currentImage = Image.Load<Rgba32>(screenshotBytes);
+
+        if (baselineImage.Width != currentImage.Width || baselineImage.Height != currentImage.Height)
+        {
+            Assert.Fail($"Screenshot dimensions changed: baseline {baselineImage.Width}x{baselineImage.Height} vs current {currentImage.Width}x{currentImage.Height}.");
+        }
+
+        int w = baselineImage.Width, h = baselineImage.Height;
+        int totalPixels = w * h, differentPixels = 0;
+
+        for (var y = 0; y < h; y++)
+        {
+            for (var x = 0; x < w; x++)
+            {
+                var b = baselineImage[x, y];
+                var c = currentImage[x, y];
+                var manhattan = Math.Abs(b.R - c.R) + Math.Abs(b.G - c.G) + Math.Abs(b.B - c.B) + Math.Abs(b.A - c.A);
+                if (manhattan > PixelDeltaThreshold) differentPixels++;
+            }
+        }
+
+        var ratio = (double)differentPixels / totalPixels;
+        if (ratio >= ToleranceRatio)
+        {
+            var diffPath = Path.Combine(Path.GetTempPath(), $"lumeo-gantt-visual-diff-{baselineName}-{DateTime.UtcNow:yyyyMMdd-HHmmss}.png");
+            await File.WriteAllBytesAsync(diffPath, screenshotBytes);
+            Assert.Fail($"{baselineName} screenshot differs from baseline: {differentPixels:N0}/{totalPixels:N0} pixels ({ratio:P2}) exceed the threshold. Current screenshot saved: {diffPath}. If intentional, regenerate with LUMEO_E2E_UPDATE_SNAPSHOTS=1.");
+        }
+    }
+
+    /// <summary>
+    /// G7 (off-day header+canvas tint) + G6 (tree meta line) + the T2 today
+    /// treatment, together on the default SharedTasks/Day-mode fixture — the
+    /// tree pane's own row separators (G3) and the unified card shell (G2)
+    /// are visible here too since the tree pane renders by default on this
+    /// route.
+    /// </summary>
+    [Fact]
+    public async Task Gantt_v3_off_days_and_task_meta_matches_baseline()
+    {
+        if (SkipOnCi()) return;
+        await FreezeClockAsync();
+        await Page.SetViewportSizeAsync(ViewportWidth, ViewportHeight);
+        await GotoHost("/e2e/gantt-v3?markOffDays=1&showTaskMeta=1&infiniteScroll=0");
+
+        await Page.Locator("[data-testid='gantt-v3-root'] [data-task-id]").First
+            .WaitForAsync(new() { State = WaitForSelectorState.Attached, Timeout = 15000 });
+        await DisableAnimationsAsync();
+        await Page.EvaluateAsync("() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))");
+        await Page.WaitForTimeoutAsync(250);
+        await WaitForGanttScrollSettledAsync("gantt-v3-root");
+
+        await ScreenshotAndCompareAsync("gantt-v3-t10-off-days", ViewportWidth, ViewportHeight);
+    }
+
+    /// <summary>
+    /// Duration-weighted summary rollup strips on parent rows
+    /// (<c>ShowSummaryBars</c>, T3) — <c>?fixture=rollup</c> turns it on
+    /// against a fixture built specifically for its own math
+    /// (<c>GanttParityFixtures.RollupTasks</c>).
+    /// </summary>
+    [Fact]
+    public async Task Gantt_v3_summary_bars_matches_baseline()
+    {
+        if (SkipOnCi()) return;
+        await FreezeClockAsync();
+        await Page.SetViewportSizeAsync(ViewportWidth, ViewportHeight);
+        await GotoHost("/e2e/gantt-v3-tree?fixture=rollup&infiniteScroll=0");
+
+        await Page.Locator("[data-testid='gantt-v3-tree-root'] [data-task-id]").First
+            .WaitForAsync(new() { State = WaitForSelectorState.Attached, Timeout = 15000 });
+        await DisableAnimationsAsync();
+        await Page.EvaluateAsync("() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))");
+        await Page.WaitForTimeoutAsync(250);
+        await WaitForGanttScrollSettledAsync("gantt-v3-tree-root");
+
+        await ScreenshotAndCompareAsync("gantt-v3-t10-summary-bars", ViewportWidth, ViewportHeight);
+    }
+
+    /// <summary>
+    /// The <c>GanttSettingsMenu</c> companion's OPEN popover state (T8) — the
+    /// four Display/Behavior/Region/Style groups, on the new card-shell toolbar
+    /// look (G1/G2).
+    /// </summary>
+    [Fact]
+    public async Task Gantt_v3_settings_menu_open_matches_baseline()
+    {
+        if (SkipOnCi()) return;
+        await FreezeClockAsync();
+        await Page.SetViewportSizeAsync(ViewportWidth, ViewportHeight);
+        await GotoHost("/e2e/gantt-v3?tree=0&settingsMenu=1&infiniteScroll=0");
+
+        await Page.Locator("[data-testid='gantt-v3-root'] [data-task-id]").First
+            .WaitForAsync(new() { State = WaitForSelectorState.Visible, Timeout = 15000 });
+        await WaitForGanttScrollSettledAsync("gantt-v3-root");
+
+        await Page.Locator("button[aria-label='Settings']").ClickAsync();
+        // Same locator idiom GanttV3SettingsMenuTests already uses for proof
+        // the popover actually opened (a Display-group checkbox label).
+        await Page.Locator("label:has-text('Zoom control')").WaitForAsync(new() { Timeout = 5000 });
+
+        await DisableAnimationsAsync();
+        await Page.WaitForTimeoutAsync(150);
+
+        await ScreenshotAndCompareAsync("gantt-v3-t10-settings-menu-open", ViewportWidth, ViewportHeight);
+    }
+
+    /// <summary>
+    /// Quarter mode (T2 — v3-only, no v2 counterpart) — also the state most
+    /// likely to exercise G8's coarse-mode today-marker fallback (a precise
+    /// line rather than the whole-column tint) since Quarter is a
+    /// non-day-granularity scale.
+    /// </summary>
+    [Fact]
+    public async Task Gantt_v3_quarter_mode_matches_baseline()
+    {
+        if (SkipOnCi()) return;
+        await FreezeClockAsync();
+        await Page.SetViewportSizeAsync(ViewportWidth, ViewportHeight);
+        await GotoHost("/e2e/gantt-v3?viewMode=Quarter&infiniteScroll=0");
+
+        await Page.Locator("[data-testid='gantt-v3-root'] [data-task-id]").First
+            .WaitForAsync(new() { State = WaitForSelectorState.Attached, Timeout = 15000 });
+        await DisableAnimationsAsync();
+        await Page.EvaluateAsync("() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))");
+        await Page.WaitForTimeoutAsync(250);
+        await WaitForGanttScrollSettledAsync("gantt-v3-root");
+
+        await ScreenshotAndCompareAsync("gantt-v3-t10-quarter-mode", ViewportWidth, ViewportHeight);
+    }
+
+    /// <summary>
+    /// Multi-column task tree + the resizable splitter (T5) —
+    /// <c>?fixture=columns</c> wires a "Duration" column, a header-menu
+    /// trigger, and a bullet-prefixed <c>RowTemplate</c> (see
+    /// <c>GanttV3TreePage</c>'s own remarks).
+    /// </summary>
+    [Fact]
+    public async Task Gantt_v3_tree_columns_and_splitter_matches_baseline()
+    {
+        if (SkipOnCi()) return;
+        await FreezeClockAsync();
+        await Page.SetViewportSizeAsync(ViewportWidth, ViewportHeight);
+        await GotoHost("/e2e/gantt-v3-tree?fixture=columns&infiniteScroll=0");
+
+        await Page.Locator("[data-testid='gantt-v3-tree-root'] [data-task-id]").First
+            .WaitForAsync(new() { State = WaitForSelectorState.Attached, Timeout = 15000 });
+        await DisableAnimationsAsync();
+        await Page.EvaluateAsync("() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))");
+        await Page.WaitForTimeoutAsync(250);
+        await WaitForGanttScrollSettledAsync("gantt-v3-tree-root");
+
+        await ScreenshotAndCompareAsync("gantt-v3-t10-tree-columns-splitter", ViewportWidth, ViewportHeight);
+    }
+
+    /// <summary>
+    /// Leaf-row checkboxes + row-reorder grips (T6), together against the
+    /// default <c>TreeTasks</c> fixture (a real sibling bucket under root1).
+    /// </summary>
+    [Fact]
+    public async Task Gantt_v3_selection_and_reorder_affordances_matches_baseline()
+    {
+        if (SkipOnCi()) return;
+        await FreezeClockAsync();
+        await Page.SetViewportSizeAsync(ViewportWidth, ViewportHeight);
+        await GotoHost("/e2e/gantt-v3-tree?checkboxes=1&reorder=1&infiniteScroll=0");
+
+        await Page.Locator("[data-testid='gantt-v3-tree-root'] [data-task-id]").First
+            .WaitForAsync(new() { State = WaitForSelectorState.Attached, Timeout = 15000 });
+        await DisableAnimationsAsync();
+        await Page.EvaluateAsync("() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))");
+        await Page.WaitForTimeoutAsync(250);
+        await WaitForGanttScrollSettledAsync("gantt-v3-tree-root");
+
+        await ScreenshotAndCompareAsync("gantt-v3-t10-selection-reorder", ViewportWidth, ViewportHeight);
+    }
+
+    /// <summary>
+    /// An off-screen indicator chip (T7) actually visible in the frame.
+    /// SharedTasks' own dates span far more pixels than the viewport —
+    /// forcing <c>scrollLeft</c> to 0 (the earliest rendered date) reliably
+    /// pushes every task off the trailing edge, same technique
+    /// <c>GanttV3CanvasChromeTests</c> already established for its own
+    /// (non-visual) assertions.
+    /// </summary>
+    [Fact]
+    public async Task Gantt_v3_offscreen_chip_matches_baseline()
+    {
+        if (SkipOnCi()) return;
+        await FreezeClockAsync();
+        await Page.SetViewportSizeAsync(ViewportWidth, ViewportHeight);
+        await GotoHost("/e2e/gantt-v3?tree=0&infiniteScroll=0");
+
+        await Page.Locator("[data-testid='gantt-v3-root'] [data-task-id]").First
+            .WaitForAsync(new() { State = WaitForSelectorState.Attached, Timeout = 15000 });
+        await WaitForGanttScrollSettledAsync("gantt-v3-root");
+
+        var scrollPane = Page.Locator("[data-testid='gantt-v3-root'] div[style*='overflow']").First;
+        double? lastSeen = null;
+        for (var attempt = 0; attempt < 20; attempt++)
+        {
+            await scrollPane.EvaluateAsync("el => { el.scrollLeft = 0; el.dispatchEvent(new Event('scroll')); }");
+            await Page.WaitForTimeoutAsync(150);
+            var current = await scrollPane.EvaluateAsync<double>("el => el.scrollLeft");
+            if (current == 0 && lastSeen == 0) break;
+            lastSeen = current;
+        }
+        await Page.Locator("[data-testid='gantt-v3-root'] [data-gantt-offscreen-chip]").First
+            .WaitForAsync(new() { Timeout = 5000 });
+
+        await DisableAnimationsAsync();
+        await Page.WaitForTimeoutAsync(150);
+
+        await ScreenshotAndCompareAsync("gantt-v3-t10-offscreen-chip", ViewportWidth, ViewportHeight);
+    }
+
     // Bug fix (Codex round 7 review / cx7b, Important #1): a fixed 5-level
     // `..` walk from AppContext.BaseDirectory assumes
     // tests/Lumeo.Tests.E2E/bin/{Config}/net10.0/ — but running with

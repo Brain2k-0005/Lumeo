@@ -37,16 +37,24 @@
     </div>
 
     <div class="flex flex-wrap items-center gap-2">
-        <ToggleGroup Type="ToggleGroup.ToggleGroupType.Single"
-                     Variant="ToggleGroup.ToggleGroupVariant.Outline"
-                     Size="Lumeo.Size.Sm"
-                     Value="@ToolbarValue"
-                     ValueChanged="HandleViewModeChangedAsync">
+        @* shadcn alignment (2026-08-10 plan, G1/C1): swapped from ToggleGroup to
+           Segmented — the demo's zoom switcher is a muted track with a raised
+           pill (Segmented.razor:238-252), not a row of individually-bordered
+           buttons (ToggleGroup's Outline variant). Same Value/ValueChanged
+           contract, so this is a markup-only swap. Segmented has no Size
+           parameter, only Density — Compact is the closest visual match to the
+           former Sm ToggleGroupItem (see the T10a report for the eyeballed
+           comparison). Bonus: Segmented's role="radiogroup"/role="radio" is the
+           correct ARIA pattern for an exclusive view-mode picker; ToggleGroup's
+           role="group" was not. *@
+        <Segmented Density="Density.Compact"
+                   Value="@ToolbarValue"
+                   ValueChanged="HandleViewModeChangedAsync">
             @foreach (var level in ResolvedZoomLevels)
             {
-                <ToggleGroupItem Value="@level.ToString()">@L[ZoomLabelKey(level)]</ToggleGroupItem>
+                <SegmentedItem Value="@level.ToString()">@L[ZoomLabelKey(level)]</SegmentedItem>
             }
-        </ToggleGroup>
+        </Segmented>
         @* Design spec Phase 3, T8 — GanttSettingsMenu's own slot (v2 parity:
            Gantt.razor's identical TrailingContent, rendered in the SAME
            trailing position next to the zoom switcher — see that component's
