@@ -288,8 +288,12 @@ public class GanttV3CodexRound16Tests : IAsyncLifetime
         L.GanttViewMode mode = L.GanttViewMode.Day,
         int columnWidth = 38,
         bool showTreePane = false,
-        LayoutDirection direction = LayoutDirection.Ltr) =>
-        new(tasksVersion, renderableEmpty, mode, columnWidth, showTreePane, direction);
+        LayoutDirection direction = LayoutDirection.Ltr,
+        // Design spec Phase 3, T5 — GanttViewportSnapshot grew a TreePaneWidth
+        // field (see its own remarks); defaulted here to the pre-T5 constant so
+        // every existing call site in this file stays byte-identical.
+        double treePaneWidth = GanttScale.DefaultTreePaneWidth) =>
+        new(tasksVersion, renderableEmpty, mode, columnWidth, showTreePane, direction, treePaneWidth);
 
     [Fact]
     public void Decide_Disjoint_Task_Range_With_Unchanged_Params_Targets_TodayOrMidpoint()

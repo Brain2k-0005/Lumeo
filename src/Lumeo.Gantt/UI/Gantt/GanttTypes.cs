@@ -58,5 +58,18 @@ public enum GanttViewMode
     Day,
     Week,
     Month,
-    Year
+    Year,
+
+    /// <summary>
+    /// 3-month columns (design spec Phase 3, T2 — REUI parity matrix "Quarter
+    /// scale", a gap v2 never had: gantt-v2.js's own <c>VIEW_MODES</c> table has
+    /// no quarter entry, and there is no toolbar button or query-string route
+    /// that can reach it on the v2 side of the parity harness). v3-ONLY: driving
+    /// v2's <c>Gantt</c> component with this value is unsupported — v2's
+    /// <c>VIEW_MODES[viewMode]</c> JS lookup has no <c>'Quarter'</c> key and
+    /// would fail — see <c>GanttV2Page.razor</c>'s explicit guard against it in
+    /// the parity test harness. Appended at the END of the enum (value 6) so
+    /// every existing shipped member keeps its numeric value.
+    /// </summary>
+    Quarter
 }

@@ -1,0 +1,492 @@
+@namespace Lumeo
+@using System.ComponentModel
+@using System.Globalization
+@using Lumeo.GanttV3
+@inject Lumeo.Services.Localization.ILumeoLocalizer L
+@attribute [EditorBrowsable(EditorBrowsableState.Never)]
+
+@* GanttSettingsMenu — a companion popover (design spec Phase 3, T8 — "Look &
+   configurability audit": every REUI settings toggle exposed as a component
+   parameter, PLUS this menu so consumers get the REUI-demo experience out of
+   the box) exposing Display/Behavior/Region/Style toggles for a Gantt3
+   instance. Slots into Gantt3.TrailingContent (-> GanttNav.TrailingContent),
+   e.g.:
+     <Gantt3 ShowSummaryBars="@_showSummaryBars" ...>
+         <TrailingContent>
+             <GanttSettingsMenu @bind-ShowSummaryBars="_showSummaryBars" ... />
+         </TrailingContent>
+     </Gantt3>
+
+   DECISION 1 (state-first vs. explicit two-way parameters — design spec
+   Phase 3, T8 dispatch: "decide, record"): explicit two-way parameters WIN,
+   UNCONDITIONALLY — this component accepts NO GanttState parameter at all.
+   Researched first (T7 decision 5's own precedent: research can replace a
+   plan's literal wording when the wording doesn't hold up against the actual
+   code): GanttState (see its own class remarks) models exactly Tasks/
+   ViewMode/VisibleRange/Collapsed/SelectedIds — the REUI useGanttState
+   "shared nav/view state" surface — and NONE of the eleven Display/Behavior/
+   Region/Style settings this menu manages. Every one of them is ALREADY a
+   plain Gantt3 [Parameter] with Gantt3's OWN parameters as their one true
+   owner. Retrofitting GanttState with eleven more properties (and Gantt3
+   with the controlled/uncontrolled plumbing to read them back) would be
+   EXACTLY the "third, inconsistent way to own the same values" the T8
+   dispatch itself warns against — Gantt3's plain parameters would become a
+   SECOND owner alongside a new GanttState-hosted one, not a replacement —
+   and it would touch ~2500 lines of reconcile-critical Gantt3 code that 18+
+   Codex review rounds hardened, for a companion-COMPONENT task. So "state-
+   first, params override" resolves the only coherent way available: there
+   is no state to defer to, so this component's own two-way parameters are
+   authoritative. A consumer wires the SAME backing field to both Gantt3
+   (one-way) and this menu (two-way) — precisely the "lifted state" pattern
+   every other Gantt3 controlled/uncontrolled pair already asks of a
+   consumer building custom surrounding UI (TreePaneWidth/SelectedIds).
+
+   Controlled-ness idiom, chosen per parameter TYPE, not applied uniformly
+   (a second, equally deliberate decision worth recording alongside #1):
+   - The nine plain `bool` settings (no natural "unset" sentinel — `false`
+     is a fully meaningful explicit value) gate controlled-ness on their OWN
+     Changed callback's HasDelegate, mirroring Lumeo's OWN Popover.Open/
+     Checkbox.Checked idiom for exactly this situation.
+   - FirstDayOfWeek (DayOfWeek?) and OffDays (IReadOnlySet<DayOfWeek>?) gate
+     on the PARAMETER's own nullability instead, mirroring Gantt3.TreePaneWidth
+     — both types have a genuine, meaningful "unset" value (null = culture-
+     derived) to use as the sentinel, the same reason TreePaneWidth's own
+     T5 disable-check fix moved OFF HasDelegate-gating (a caller wiring only
+     Changed to OBSERVE, while leaving the value itself null/uncontrolled,
+     must not get silently frozen). Using nullability where it is
+     semantically available is the STRICTER, bug-resistant option; using
+     HasDelegate where it is NOT available (a plain bool) is the only viable
+     option, not a lesser one.
+
+   DECISION 2 ("Reset to defaults" semantics): restores each setting to the
+   value THIS component instance had at its OWN first render (captured once,
+   OnInitialized — before any user interaction), NOT this library's hardcoded
+   parameter defaults. For an uncontrolled field the two coincide (nothing
+   else could have set it before mount). They diverge, in the RIGHT
+   direction, for a CONTROLLED field: a consumer's app very often has its own
+   sensible starting configuration (e.g. ShowSummaryBars="true" by default in
+   THEIR product) — "reset" restoring the library's bare `false` instead
+   would silently fight the consumer's own app default, not the user's own
+   session changes, which is what a settings-panel reset button
+   conventionally means (the same convention a per-document "restore
+   defaults" panel uses: back to how THIS view/document started, not a
+   whole-product factory reset). It is also the only option that does not
+   need this component to duplicate Gantt3's own default constants a second,
+   driftable time. *@
+<Popover>
+    <PopoverTrigger AsChild>
+        <Button Variant="Button.ButtonVariant.Outline" Size="Button.ButtonSize.Icon" aria-label="@L["Gantt.Settings"]" title="@L["Gantt.Settings"]">
+            <SvgGlyph Svg="@(LumeoIcons.Settings2)" class="h-4 w-4" />
+        </Button>
+    </PopoverTrigger>
+    <PopoverContent Align="Lumeo.Align.End" Class="w-80 max-h-[70vh] overflow-y-auto" @attributes="AdditionalAttributes">
+        @* @key="_commitGeneration" (see the field's own remarks): forces Blazor
+           to treat this whole body as a NEW logical instance after every
+           committed toggle, sidestepping a real Blazor/Checkbox rendering
+           quirk — see _commitGeneration's own remarks for the full mechanism
+           and why this is necessary for the controlled-veto contract. *@
+        <div class="@RootClass" @key="_commitGeneration">
+            <div class="flex items-center justify-between gap-2">
+                <span class="text-sm font-semibold text-foreground">@L["Gantt.Settings"]</span>
+                <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Sm" OnClick="ResetAsync" data-testid="gantt-settings-reset">
+                    <SvgGlyph Svg="@(LumeoIcons.RotateCcw)" class="h-3.5 w-3.5 me-1.5" />
+                    @L["Gantt.SettingsReset"]
+                </Button>
+            </div>
+
+            <div role="group" aria-labelledby="@_displayHeadingId" class="flex flex-col gap-2.5">
+                <div id="@_displayHeadingId" class="text-xs font-semibold text-muted-foreground uppercase tracking-wide">@L["Gantt.SettingsDisplay"]</div>
+                <Checkbox Label="@L["Gantt.SettingsShowRowCheckboxes"]" Checked="@EffectiveShowRowCheckboxes" CheckedChanged="@(v => SetShowRowCheckboxesAsync(v))" />
+                <Checkbox Label="@L["Gantt.SettingsShowSummaryBars"]" Checked="@EffectiveShowSummaryBars" CheckedChanged="@(v => SetShowSummaryBarsAsync(v))" />
+                <Checkbox Label="@L["Gantt.SettingsShowZoomControl"]" Checked="@EffectiveShowZoomControl" CheckedChanged="@(v => SetShowZoomControlAsync(v))" />
+                <Checkbox Label="@L["Gantt.SettingsShowOffscreenIndicators"]" Checked="@EffectiveShowOffscreenIndicators" CheckedChanged="@(v => SetShowOffscreenIndicatorsAsync(v))" />
+                @* T9 wiring point filled (design spec Phase 3, T9): matches
+                   the plan's own Display-group ordering "checkboxes/summary/
+                   zoom/off-screen chips/infinite scroll/now/off-days" —
+                   immediately below ShowOffscreenIndicators, above
+                   NowIndicator. Default true — mirrors Gantt3.InfiniteScroll's
+                   OWN default-true (same "this menu's uncontrolled fallback
+                   matches Gantt3's real default deliberately" precedent
+                   ShowOffscreenIndicators above already established), so a
+                   menu rendered before any user interaction reflects reality
+                   even when unbound. *@
+                <Checkbox Label="@L["Gantt.SettingsInfiniteScroll"]" Checked="@EffectiveInfiniteScroll" CheckedChanged="@(v => SetInfiniteScrollAsync(v))" />
+                <Checkbox Label="@L["Gantt.SettingsNowIndicator"]" Checked="@EffectiveNowIndicator" CheckedChanged="@(v => SetNowIndicatorAsync(v))" />
+                <Checkbox Label="@L["Gantt.SettingsMarkOffDays"]" Checked="@EffectiveMarkOffDays" CheckedChanged="@(v => SetMarkOffDaysAsync(v))" />
+            </div>
+
+            <Separator />
+
+            <div role="group" aria-labelledby="@_behaviorHeadingId" class="flex flex-col gap-2.5">
+                <div id="@_behaviorHeadingId" class="text-xs font-semibold text-muted-foreground uppercase tracking-wide">@L["Gantt.SettingsBehavior"]</div>
+                <Checkbox Label="@L["Gantt.SettingsReadonly"]" Checked="@EffectiveReadonly" CheckedChanged="@(v => SetReadonlyAsync(v))" />
+                <Checkbox Label="@L["Gantt.SettingsAllowCreate"]" Checked="@EffectiveAllowCreate" CheckedChanged="@(v => SetAllowCreateAsync(v))" />
+                <Checkbox Label="@L["Gantt.SettingsAllowRowReorder"]" Checked="@EffectiveAllowRowReorder" CheckedChanged="@(v => SetAllowRowReorderAsync(v))" />
+            </div>
+
+            <Separator />
+
+            <div role="group" aria-labelledby="@_regionHeadingId" class="flex flex-col gap-2.5">
+                <div id="@_regionHeadingId" class="text-xs font-semibold text-muted-foreground uppercase tracking-wide">@L["Gantt.SettingsRegion"]</div>
+                <div class="flex flex-col gap-1.5">
+                    <span class="text-sm text-foreground">@L["Gantt.SettingsFirstDayOfWeek"]</span>
+                    <ToggleGroup Type="ToggleGroup.ToggleGroupType.Single" Variant="ToggleGroup.ToggleGroupVariant.Outline" Size="Lumeo.Size.Sm"
+                                 Value="@DisplayFirstDayOfWeek.ToString()" ValueChanged="HandleFirstDayOfWeekToggledAsync">
+                        @foreach (var day in WeekDays)
+                        {
+                            <ToggleGroupItem Value="@day.ToString()" AriaLabel="@FullDayName(day)">@AbbreviatedDayName(day)</ToggleGroupItem>
+                        }
+                    </ToggleGroup>
+                </div>
+                <div class="flex flex-col gap-1.5">
+                    <span class="text-sm text-foreground">@L["Gantt.SettingsOffDays"]</span>
+                    <ToggleGroup Type="ToggleGroup.ToggleGroupType.Multiple" Variant="ToggleGroup.ToggleGroupVariant.Outline" Size="Lumeo.Size.Sm"
+                                 SelectedValues="@DisplayOffDays.Select(d => d.ToString())" SelectedValuesChanged="HandleOffDaysToggledAsync">
+                        @foreach (var day in WeekDays)
+                        {
+                            <ToggleGroupItem Value="@day.ToString()" AriaLabel="@FullDayName(day)">@AbbreviatedDayName(day)</ToggleGroupItem>
+                        }
+                    </ToggleGroup>
+                </div>
+            </div>
+
+            <Separator />
+
+            <div role="group" aria-labelledby="@_styleHeadingId" class="flex flex-col gap-2.5">
+                <div id="@_styleHeadingId" class="text-xs font-semibold text-muted-foreground uppercase tracking-wide">@L["Gantt.SettingsStyle"]</div>
+                <Checkbox Label="@L["Gantt.SettingsColorByGroup"]" Checked="@EffectiveColorByGroup" CheckedChanged="@(v => SetColorByGroupAsync(v))" />
+            </div>
+        </div>
+    </PopoverContent>
+</Popover>
+
+@code {
+    // ── Display group ────────────────────────────────────────────────────
+
+    /// <summary>Two-way bindable — mirrors <see cref="Gantt3.ShowRowCheckboxes"/>. Uncontrolled default <c>false</c>.</summary>
+    [Parameter] public bool ShowRowCheckboxes { get; set; }
+    [Parameter] public EventCallback<bool> ShowRowCheckboxesChanged { get; set; }
+
+    /// <summary>Two-way bindable — mirrors <see cref="Gantt3.ShowSummaryBars"/>. Uncontrolled default <c>false</c>.</summary>
+    [Parameter] public bool ShowSummaryBars { get; set; }
+    [Parameter] public EventCallback<bool> ShowSummaryBarsChanged { get; set; }
+
+    /// <summary>Two-way bindable — mirrors <see cref="Gantt3.ShowZoomControl"/>. Uncontrolled default <c>false</c>.</summary>
+    [Parameter] public bool ShowZoomControl { get; set; }
+    [Parameter] public EventCallback<bool> ShowZoomControlChanged { get; set; }
+
+    /// <summary>
+    /// Two-way bindable — mirrors <see cref="Gantt3.ShowOffscreenIndicators"/>,
+    /// INCLUDING its default-<c>true</c> (this menu's own uncontrolled fallback
+    /// matches Gantt3's real default deliberately, so a menu rendered before any
+    /// user interaction reflects reality even when unbound).
+    /// </summary>
+    [Parameter] public bool ShowOffscreenIndicators { get; set; } = true;
+    [Parameter] public EventCallback<bool> ShowOffscreenIndicatorsChanged { get; set; }
+
+    /// <summary>
+    /// Two-way bindable — mirrors <see cref="Gantt3.InfiniteScroll"/>, INCLUDING
+    /// its default-<c>true</c> (design spec Phase 3, T9 — same "this menu's
+    /// uncontrolled fallback matches Gantt3's real default deliberately"
+    /// precedent <see cref="ShowOffscreenIndicators"/> above already
+    /// established), so a menu rendered before any user interaction reflects
+    /// reality even when unbound.
+    /// </summary>
+    [Parameter] public bool InfiniteScroll { get; set; } = true;
+    [Parameter] public EventCallback<bool> InfiniteScrollChanged { get; set; }
+
+    /// <summary>Two-way bindable — mirrors <see cref="Gantt3.NowIndicator"/>. Uncontrolled default <c>false</c>.</summary>
+    [Parameter] public bool NowIndicator { get; set; }
+    [Parameter] public EventCallback<bool> NowIndicatorChanged { get; set; }
+
+    /// <summary>Two-way bindable — mirrors <see cref="Gantt3.MarkOffDays"/>. Uncontrolled default <c>false</c>.</summary>
+    [Parameter] public bool MarkOffDays { get; set; }
+    [Parameter] public EventCallback<bool> MarkOffDaysChanged { get; set; }
+
+    // ── Behavior group ───────────────────────────────────────────────────
+
+    /// <summary>Two-way bindable — mirrors <see cref="Gantt3.Readonly"/>. Uncontrolled default <c>false</c>.</summary>
+    [Parameter] public bool Readonly { get; set; }
+    [Parameter] public EventCallback<bool> ReadonlyChanged { get; set; }
+
+    /// <summary>Two-way bindable — mirrors <see cref="Gantt3.AllowCreate"/>. Uncontrolled default <c>false</c>.</summary>
+    [Parameter] public bool AllowCreate { get; set; }
+    [Parameter] public EventCallback<bool> AllowCreateChanged { get; set; }
+
+    /// <summary>Two-way bindable — mirrors <see cref="Gantt3.AllowRowReorder"/>. Uncontrolled default <c>false</c>.</summary>
+    [Parameter] public bool AllowRowReorder { get; set; }
+    [Parameter] public EventCallback<bool> AllowRowReorderChanged { get; set; }
+
+    // ── Region group ─────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Two-way bindable — mirrors <see cref="Gantt3.FirstDayOfWeek"/>. Controlled-ness
+    /// is decided by THIS parameter's own nullability (not
+    /// <see cref="FirstDayOfWeekChanged"/>'s HasDelegate — see the class remarks for
+    /// why nullable settings use this idiom, unlike the plain-bool ones above). Null
+    /// (the default, both as a parameter and as this menu's own internal fallback) is
+    /// "culture-derived" — the toggle group still shows the resolved day pressed (see
+    /// <see cref="DisplayFirstDayOfWeek"/>), it is simply not an EXPLICIT choice yet.
+    /// </summary>
+    [Parameter] public DayOfWeek? FirstDayOfWeek { get; set; }
+    [Parameter] public EventCallback<DayOfWeek?> FirstDayOfWeekChanged { get; set; }
+
+    /// <summary>
+    /// Two-way bindable — mirrors <see cref="Gantt3.OffDays"/>. Same nullability-based
+    /// controlled-ness as <see cref="FirstDayOfWeek"/>. Null is "culture-derived" (see
+    /// <see cref="DisplayOffDays"/> for what actually renders pressed); an EXPLICIT
+    /// empty set (every day toggled off) is a genuinely different, valid value — "zero
+    /// off days" — and is never silently coerced back to null (see
+    /// <see cref="HandleOffDaysToggledAsync"/>'s own remarks).
+    /// </summary>
+    [Parameter] public IReadOnlySet<DayOfWeek>? OffDays { get; set; }
+    [Parameter] public EventCallback<IReadOnlySet<DayOfWeek>?> OffDaysChanged { get; set; }
+
+    // ── Style group ──────────────────────────────────────────────────────
+
+    /// <summary>Two-way bindable — mirrors <see cref="Gantt3.ColorByGroup"/>. Uncontrolled default <c>false</c>.</summary>
+    [Parameter] public bool ColorByGroup { get; set; }
+    [Parameter] public EventCallback<bool> ColorByGroupChanged { get; set; }
+
+    /// <summary>Additional CSS classes merged onto the popover panel's inner content wrapper.</summary>
+    [Parameter] public string? Class { get; set; }
+
+    /// <summary>Captures unmatched attributes and applies them to the popover panel.</summary>
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private string RootClass => Cx.Merge("flex flex-col gap-3", Class);
+
+    // Lumeo.Internal.LumeoIds (the core project's own id-generator) is
+    // internal to the core Lumeo assembly and not visible from this one
+    // (Lumeo.Gantt) — no InternalsVisibleTo grants it (see GanttBar.razor's
+    // own identical remark on its own _barId) — so this inlines the same
+    // "{prefix}-{guidN}" format directly instead.
+    private readonly string _displayHeadingId = $"gantt-settings-display-{Guid.NewGuid():N}";
+    private readonly string _behaviorHeadingId = $"gantt-settings-behavior-{Guid.NewGuid():N}";
+    private readonly string _regionHeadingId = $"gantt-settings-region-{Guid.NewGuid():N}";
+    private readonly string _styleHeadingId = $"gantt-settings-style-{Guid.NewGuid():N}";
+
+    // Uncontrolled backing store — only ever read/written when the matching
+    // Changed callback has no delegate (see the class remarks' controlled-ness
+    // idiom split). Seeded to the SAME defaults the parameters themselves
+    // declare above, so an entirely-unbound menu (no parameters at all —
+    // unlikely in practice, but the simplest self-consistency check) renders
+    // identically to one whose parameters were explicitly passed their own
+    // declared defaults.
+    private bool _internalShowRowCheckboxes;
+    private bool _internalShowSummaryBars;
+    private bool _internalShowZoomControl;
+    private bool _internalShowOffscreenIndicators = true;
+    private bool _internalInfiniteScroll = true;
+    private bool _internalNowIndicator;
+    private bool _internalMarkOffDays;
+    private bool _internalReadonly;
+    private bool _internalAllowCreate;
+    private bool _internalAllowRowReorder;
+    private bool _internalColorByGroup;
+    private DayOfWeek? _internalFirstDayOfWeek;
+    private IReadOnlySet<DayOfWeek>? _internalOffDays;
+
+    private bool EffectiveShowRowCheckboxes => ShowRowCheckboxesChanged.HasDelegate ? ShowRowCheckboxes : _internalShowRowCheckboxes;
+    private bool EffectiveShowSummaryBars => ShowSummaryBarsChanged.HasDelegate ? ShowSummaryBars : _internalShowSummaryBars;
+    private bool EffectiveShowZoomControl => ShowZoomControlChanged.HasDelegate ? ShowZoomControl : _internalShowZoomControl;
+    private bool EffectiveShowOffscreenIndicators => ShowOffscreenIndicatorsChanged.HasDelegate ? ShowOffscreenIndicators : _internalShowOffscreenIndicators;
+    private bool EffectiveInfiniteScroll => InfiniteScrollChanged.HasDelegate ? InfiniteScroll : _internalInfiniteScroll;
+    private bool EffectiveNowIndicator => NowIndicatorChanged.HasDelegate ? NowIndicator : _internalNowIndicator;
+    private bool EffectiveMarkOffDays => MarkOffDaysChanged.HasDelegate ? MarkOffDays : _internalMarkOffDays;
+    private bool EffectiveReadonly => ReadonlyChanged.HasDelegate ? Readonly : _internalReadonly;
+    private bool EffectiveAllowCreate => AllowCreateChanged.HasDelegate ? AllowCreate : _internalAllowCreate;
+    private bool EffectiveAllowRowReorder => AllowRowReorderChanged.HasDelegate ? AllowRowReorder : _internalAllowRowReorder;
+    private bool EffectiveColorByGroup => ColorByGroupChanged.HasDelegate ? ColorByGroup : _internalColorByGroup;
+    private DayOfWeek? EffectiveFirstDayOfWeek => FirstDayOfWeek ?? _internalFirstDayOfWeek;
+    private IReadOnlySet<DayOfWeek>? EffectiveOffDays => OffDays ?? _internalOffDays;
+
+    // Display-only resolution of the two Region settings — what the toggle
+    // groups actually show pressed. EffectiveFirstDayOfWeek/EffectiveOffDays
+    // stay nullable (a real, meaningful "no explicit choice yet" value that
+    // Reset/equality-checks/the Changed payload all need to see); these two
+    // additionally fall back to the SAME culture-derived resolution Gantt3
+    // itself would apply (GanttScale.DefaultOffDays; DateTimeFormatInfo's own
+    // FirstDayOfWeek), so the menu never visually LIES about which day/days
+    // are actually in effect just because nobody has touched Region yet.
+    private DayOfWeek DisplayFirstDayOfWeek => EffectiveFirstDayOfWeek ?? CultureInfo.CurrentCulture.DateTimeFormat.FirstDayOfWeek;
+    private IReadOnlySet<DayOfWeek> DisplayOffDays => EffectiveOffDays ?? GanttScale.DefaultOffDays(CultureInfo.CurrentCulture);
+
+    private static readonly DayOfWeek[] WeekDays =
+    {
+        DayOfWeek.Sunday, DayOfWeek.Monday, DayOfWeek.Tuesday, DayOfWeek.Wednesday,
+        DayOfWeek.Thursday, DayOfWeek.Friday, DayOfWeek.Saturday,
+    };
+
+    private static string AbbreviatedDayName(DayOfWeek day) => CultureInfo.CurrentCulture.DateTimeFormat.AbbreviatedDayNames[(int)day];
+    private static string FullDayName(DayOfWeek day) => CultureInfo.CurrentCulture.DateTimeFormat.DayNames[(int)day];
+
+    // Forces the popover BODY's @key to change on every COMMITTED toggle
+    // attempt (see the markup's own remarks) — a real Blazor rendering
+    // quirk, found and fixed during this task's own disable-check pass, not
+    // a hypothetical: Checkbox.razor's own Toggle() (a house component this
+    // task does not own/modify — out of scope to change its fundamental
+    // click mechanism) MUTATES ITS OWN `Checked` PARAMETER DIRECTLY as a C#
+    // field assignment (`Checked = !Checked;`) BEFORE invoking
+    // CheckedChanged — bypassing Blazor's own parameter-diffing bookkeeping
+    // entirely. When a CONTROLLED consumer vetoes the click by re-supplying
+    // the EXACT SAME value it handed down before the click (this component's
+    // own controlled-veto contract, see the class remarks), the newly
+    // computed EffectiveX value is IDENTICAL to what THIS component last
+    // rendered — Blazor's diff (RenderTreeDiffBuilder comparing THIS
+    // component's OWN successive render frames, not the child's current
+    // in-memory field) sees "no change" at that frame position and skips
+    // re-invoking SetParametersAsync on the child Checkbox entirely, leaving
+    // its self-mutated (now-stale) `Checked` untouched — the checkbox stays
+    // VISUALLY toggled even though the veto "worked" at the data layer (the
+    // Changed callback still fired with the correct value; only the CHILD'S
+    // OWN redundant, bypassed shadow copy is wrong). A changing @key forces
+    // Blazor to tear down and recreate the keyed subtree as a logically NEW
+    // instance on every commit (vetoed or not) instead of patching the old
+    // one in place — a fresh instance always starts from whatever `Checked`
+    // THIS render actually computes, with no stale shadow copy to carry
+    // forward. Harmless in the non-veto case too (a genuine value change
+    // recreates the control showing the correct, already-intended value).
+    private int _commitGeneration;
+
+    // Shared write path for every plain-bool setting (design spec Phase 3,
+    // T8 — see the class remarks for the HasDelegate-gated controlled-ness
+    // idiom this implements). Idempotent w.r.t. notification — a no-op when
+    // `next` already matches the CURRENT effective value — mirroring
+    // GanttState's own mutator discipline throughout this campaign; this is
+    // what makes ResetAsync below safe to call unconditionally against every
+    // setting without spamming Changed for the ones already at baseline.
+    // Bumps _commitGeneration (see its own remarks) on every GENUINE commit
+    // attempt — after the no-op guard, so a truly redundant call (next
+    // already matches) doesn't remount the panel for nothing.
+    private async Task SetBoolAsync(bool current, bool next, Action<bool> writeInternal, EventCallback<bool> changed)
+    {
+        if (current == next) return;
+        _commitGeneration++;
+        if (!changed.HasDelegate) writeInternal(next);
+        StateHasChanged();
+        if (changed.HasDelegate) await changed.InvokeAsync(next);
+    }
+
+    private Task SetShowRowCheckboxesAsync(bool v) => SetBoolAsync(EffectiveShowRowCheckboxes, v, x => _internalShowRowCheckboxes = x, ShowRowCheckboxesChanged);
+    private Task SetShowSummaryBarsAsync(bool v) => SetBoolAsync(EffectiveShowSummaryBars, v, x => _internalShowSummaryBars = x, ShowSummaryBarsChanged);
+    private Task SetShowZoomControlAsync(bool v) => SetBoolAsync(EffectiveShowZoomControl, v, x => _internalShowZoomControl = x, ShowZoomControlChanged);
+    private Task SetShowOffscreenIndicatorsAsync(bool v) => SetBoolAsync(EffectiveShowOffscreenIndicators, v, x => _internalShowOffscreenIndicators = x, ShowOffscreenIndicatorsChanged);
+    private Task SetInfiniteScrollAsync(bool v) => SetBoolAsync(EffectiveInfiniteScroll, v, x => _internalInfiniteScroll = x, InfiniteScrollChanged);
+    private Task SetNowIndicatorAsync(bool v) => SetBoolAsync(EffectiveNowIndicator, v, x => _internalNowIndicator = x, NowIndicatorChanged);
+    private Task SetMarkOffDaysAsync(bool v) => SetBoolAsync(EffectiveMarkOffDays, v, x => _internalMarkOffDays = x, MarkOffDaysChanged);
+    private Task SetReadonlyAsync(bool v) => SetBoolAsync(EffectiveReadonly, v, x => _internalReadonly = x, ReadonlyChanged);
+    private Task SetAllowCreateAsync(bool v) => SetBoolAsync(EffectiveAllowCreate, v, x => _internalAllowCreate = x, AllowCreateChanged);
+    private Task SetAllowRowReorderAsync(bool v) => SetBoolAsync(EffectiveAllowRowReorder, v, x => _internalAllowRowReorder = x, AllowRowReorderChanged);
+    private Task SetColorByGroupAsync(bool v) => SetBoolAsync(EffectiveColorByGroup, v, x => _internalColorByGroup = x, ColorByGroupChanged);
+
+    private async Task SetFirstDayOfWeekAsync(DayOfWeek? next)
+    {
+        if (EffectiveFirstDayOfWeek == next) return;
+        _commitGeneration++; // see its own remarks — forces a fresh ToggleGroup instance so a vetoed pick can't leave the just-clicked item visually stuck pressed
+        if (FirstDayOfWeek is null) _internalFirstDayOfWeek = next; // nullability decides control (see class remarks and TreePaneWidth's own identical precedent) — a null FirstDayOfWeek is ALWAYS treated as uncontrolled, with NO way to distinguish "explicitly passed null" from "never set" (nullable value types carry no such signal) — so a genuine veto requires a NON-null controlled value (e.g. a consumer pinned at DayOfWeek.Monday ignoring further changes), exactly mirroring why TreePaneWidth's own veto only works for a real committed width, never for "null width"
+        StateHasChanged();
+        if (FirstDayOfWeekChanged.HasDelegate) await FirstDayOfWeekChanged.InvokeAsync(next);
+    }
+
+    private Task HandleFirstDayOfWeekToggledAsync(string? value) =>
+        SetFirstDayOfWeekAsync(!string.IsNullOrEmpty(value) && Enum.TryParse<DayOfWeek>(value, out var parsed) ? parsed : null);
+
+    private async Task SetOffDaysAsync(IReadOnlySet<DayOfWeek>? next)
+    {
+        if (SetEquals(EffectiveOffDays, next)) return;
+        _commitGeneration++; // see its own remarks
+        if (OffDays is null) _internalOffDays = next;
+        StateHasChanged();
+        if (OffDaysChanged.HasDelegate) await OffDaysChanged.InvokeAsync(next);
+    }
+
+    // Every day toggled OFF is a genuinely different value from "unset" —
+    // "zero off days" is a real, deliberate choice (e.g. a 7-day operation)
+    // a user can reach by clearing every chip, and it must NOT be silently
+    // reinterpreted as null/culture-derived (which would reintroduce
+    // Sat/Sun — or whatever the culture's own weekend is — right back after
+    // the user explicitly cleared them). Represented as an explicit EMPTY
+    // set, never null, from this handler.
+    private Task HandleOffDaysToggledAsync(IEnumerable<string> values)
+    {
+        var days = new HashSet<DayOfWeek>();
+        foreach (var v in values)
+        {
+            if (Enum.TryParse<DayOfWeek>(v, out var parsed)) days.Add(parsed);
+        }
+        return SetOffDaysAsync(days);
+    }
+
+    private static bool SetEquals(IReadOnlySet<DayOfWeek>? a, IReadOnlySet<DayOfWeek>? b)
+    {
+        if (a is null || b is null) return a is null && b is null;
+        if (b is null) return false;
+        return a.SetEquals(b);
+    }
+
+    // Design spec Phase 3, T8, decision 2 (see the class remarks for the full
+    // "mount-time snapshot, not the library's hardcoded defaults" reasoning).
+    // Captured exactly once, in OnInitialized — Blazor has already applied
+    // every [Parameter] from SetParametersAsync by the time OnInitialized
+    // runs, so EffectiveX here reads the value this instance actually opened
+    // with (controlled: the consumer's own initial bound value; uncontrolled:
+    // this component's own declared default — see the class remarks for why
+    // those coincide in the uncontrolled case).
+    private readonly record struct Baseline(
+        bool ShowRowCheckboxes, bool ShowSummaryBars, bool ShowZoomControl, bool ShowOffscreenIndicators,
+        bool InfiniteScroll, bool NowIndicator, bool MarkOffDays, bool Readonly, bool AllowCreate, bool AllowRowReorder, bool ColorByGroup,
+        DayOfWeek? FirstDayOfWeek, IReadOnlySet<DayOfWeek>? OffDays);
+
+    private Baseline _baseline;
+
+    protected override void OnInitialized()
+    {
+        _baseline = new Baseline(
+            EffectiveShowRowCheckboxes, EffectiveShowSummaryBars, EffectiveShowZoomControl, EffectiveShowOffscreenIndicators,
+            EffectiveInfiniteScroll, EffectiveNowIndicator, EffectiveMarkOffDays, EffectiveReadonly, EffectiveAllowCreate, EffectiveAllowRowReorder, EffectiveColorByGroup,
+            EffectiveFirstDayOfWeek,
+            // Bug fix (Codex review, P2 #10): every OTHER Baseline field above
+            // is a value type (bool/DayOfWeek?), copied by value automatically
+            // — but EffectiveOffDays can resolve to the CONTROLLED `OffDays`
+            // parameter, a consumer-owned `IReadOnlySet<DayOfWeek>` reference.
+            // Storing that reference directly (not a copy) meant a controlled
+            // caller mutating its OWN set in place (e.g. `myOffDays.Add(...)`,
+            // with no new Blazor render/parameter re-assignment) silently
+            // mutated this "mount-time" baseline too — Reset would then
+            // restore whatever the set currently holds, or (observed in
+            // practice — see GanttV3Phase3T8Tests' own regression test) no-op
+            // entirely: SetOffDaysAsync's own `SetEquals(EffectiveOffDays, next)`
+            // short-circuit compares the (mutated) live set against the
+            // (identically mutated, same-reference) "baseline" and finds them
+            // equal, so it never even calls OffDaysChanged. Clone it into a
+            // genuinely independent snapshot instead.
+            EffectiveOffDays is null ? null : new HashSet<DayOfWeek>(EffectiveOffDays));
+    }
+
+    /// <summary>
+    /// "Reset to defaults" (design spec Phase 3, T8) — restores every setting to
+    /// this instance's own mount-time <see cref="Baseline"/> (see the class
+    /// remarks, decision 2). Routes through the SAME setters every toggle click
+    /// uses, so a controlled setting's own veto contract applies identically here
+    /// (a consumer that ignores the resulting Changed callback keeps its current
+    /// value on the next render, exactly like any other controlled/uncontrolled
+    /// pair in this campaign) — this is a request, not a guaranteed mutation.
+    /// </summary>
+    private async Task ResetAsync()
+    {
+        await SetShowRowCheckboxesAsync(_baseline.ShowRowCheckboxes);
+        await SetShowSummaryBarsAsync(_baseline.ShowSummaryBars);
+        await SetShowZoomControlAsync(_baseline.ShowZoomControl);
+        await SetShowOffscreenIndicatorsAsync(_baseline.ShowOffscreenIndicators);
+        await SetInfiniteScrollAsync(_baseline.InfiniteScroll);
+        await SetNowIndicatorAsync(_baseline.NowIndicator);
+        await SetMarkOffDaysAsync(_baseline.MarkOffDays);
+        await SetReadonlyAsync(_baseline.Readonly);
+        await SetAllowCreateAsync(_baseline.AllowCreate);
+        await SetAllowRowReorderAsync(_baseline.AllowRowReorder);
+        await SetColorByGroupAsync(_baseline.ColorByGroup);
+        await SetFirstDayOfWeekAsync(_baseline.FirstDayOfWeek);
+        await SetOffDaysAsync(_baseline.OffDays);
+    }
+}

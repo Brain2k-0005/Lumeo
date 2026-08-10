@@ -1,5 +1,6 @@
 @namespace Lumeo
 @using System.ComponentModel
+@using Lumeo.GanttV3
 @inject Lumeo.Services.Localization.ILumeoLocalizer L
 @attribute [EditorBrowsable(EditorBrowsableState.Never)]
 
@@ -35,16 +36,37 @@
         }
     </div>
 
-    <ToggleGroup Type="ToggleGroup.ToggleGroupType.Single"
-                 Variant="ToggleGroup.ToggleGroupVariant.Outline"
-                 Size="Lumeo.Size.Sm"
-                 Value="@ToolbarValue"
-                 ValueChanged="HandleViewModeChangedAsync">
-        @foreach (var level in ResolvedZoomLevels)
+    <div class="flex flex-wrap items-center gap-2">
+        @* shadcn alignment (2026-08-10 plan, G1/C1): swapped from ToggleGroup to
+           Segmented — the demo's zoom switcher is a muted track with a raised
+           pill (Segmented.razor:238-252), not a row of individually-bordered
+           buttons (ToggleGroup's Outline variant). Same Value/ValueChanged
+           contract, so this is a markup-only swap. Segmented has no Size
+           parameter, only Density — Compact is the closest visual match to the
+           former Sm ToggleGroupItem (see the T10a report for the eyeballed
+           comparison). Bonus: Segmented's role="radiogroup"/role="radio" is the
+           correct ARIA pattern for an exclusive view-mode picker; ToggleGroup's
+           role="group" was not. *@
+        <Segmented Density="Density.Compact"
+                   Value="@ToolbarValue"
+                   ValueChanged="HandleViewModeChangedAsync">
+            @foreach (var level in ResolvedZoomLevels)
+            {
+                <SegmentedItem Value="@level.ToString()">@L[ZoomLabelKey(level)]</SegmentedItem>
+            }
+        </Segmented>
+        @* Design spec Phase 3, T8 — GanttSettingsMenu's own slot (v2 parity:
+           Gantt.razor's identical TrailingContent, rendered in the SAME
+           trailing position next to the zoom switcher — see that component's
+           own markup remarks). Null (the default) renders nothing extra here,
+           byte-identical to every pre-T8 toolbar. *@
+        @if (TrailingContent is not null)
         {
-            <ToggleGroupItem Value="@level.ToString()">@L[ZoomLabelKey(level)]</ToggleGroupItem>
+            <div class="flex items-center gap-2">
+                @TrailingContent
+            </div>
         }
-    </ToggleGroup>
+    </div>
 </div>
 
 @code {
@@ -65,6 +87,13 @@
     /// <summary>The current period's title (e.g. "January 2026"), computed by whatever owns the GanttState's VisibleRange.</summary>
     [Parameter] public string? PeriodLabel { get; set; }
 
+    /// <summary>
+    /// Extra content rendered after the zoom switcher (design spec Phase 3, T8 —
+    /// v2 parity with <c>Gantt.TrailingContent</c>, the slot a <c>GanttSettingsMenu</c>
+    /// companion plugs into). Null (the default) renders nothing extra.
+    /// </summary>
+    [Parameter] public RenderFragment? TrailingContent { get; set; }
+
     /// <summary>Raised when Today is clicked — the owner recenters VisibleRange on today.</summary>
     [Parameter] public EventCallback OnToday { get; set; }
 
@@ -82,17 +111,15 @@
 
     private string RootClass => Cx.Merge("flex flex-wrap items-center justify-between gap-2", Class);
 
-    private static readonly GanttViewMode[] DefaultZoomLevels =
-    {
-        GanttViewMode.Day, GanttViewMode.Week, GanttViewMode.Month, GanttViewMode.Year,
-    };
-
-    // Only the toolbar-representable levels, in canonical order — same precedent
-    // as v2's Gantt.razor ResolvedZoomLevels.
-    private IReadOnlyList<GanttViewMode> ResolvedZoomLevels =>
-        ZoomLevels is { Count: > 0 }
-            ? ZoomLevels.Where(l => Array.IndexOf(DefaultZoomLevels, l) >= 0).ToList()
-            : DefaultZoomLevels;
+    // Design spec Phase 3, T7 — extracted to GanttZoomLevelModel (shared with
+    // the new GanttZoomControl's own stepper, so the toolbar and the floating
+    // control can never silently diverge on "what's representable" — see
+    // that type's own remarks). Pure "extract method" refactor: same values,
+    // same order, same filtering — this component's own rendered output is
+    // unchanged (verified against GanttZoomLevelsTests/GanttViewModeControlledTests/
+    // GanttControlledRollbackTests, none of which needed a single assertion
+    // changed).
+    private IReadOnlyList<GanttViewMode> ResolvedZoomLevels => GanttZoomLevelModel.Resolve(ZoomLevels);
 
     // Unselected (null) when ViewMode is QuarterDay/HalfDay or excluded by ZoomLevels
     // — same as v2's _toolbarViewValue.
@@ -101,18 +128,12 @@
         GanttViewMode.Day => "Day",
         GanttViewMode.Week => "Week",
         GanttViewMode.Month => "Month",
+        GanttViewMode.Quarter => "Quarter",
         GanttViewMode.Year => "Year",
         _ => null,
     };
 
-    private static string ZoomLabelKey(GanttViewMode level) => level switch
-    {
-        GanttViewMode.Day => "Gantt.Day",
-        GanttViewMode.Week => "Gantt.Week",
-        GanttViewMode.Month => "Gantt.Month",
-        GanttViewMode.Year => "Gantt.Year",
-        _ => "Gantt.Day",
-    };
+    private static string ZoomLabelKey(GanttViewMode level) => GanttZoomLevelModel.LabelKey(level);
 
     private async Task HandleViewModeChangedAsync(string? v)
     {

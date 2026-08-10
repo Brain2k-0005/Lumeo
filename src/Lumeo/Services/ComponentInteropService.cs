@@ -1658,6 +1658,16 @@ public sealed class ComponentInteropService : IComponentInteropService
         catch (JSDisconnectedException) { return null; }
     }
 
+    public async Task<string?> GanttV3GetLocalDateTimeAsync()
+    {
+        try
+        {
+            var module = await GetGanttV3ModuleAsync();
+            return await module.InvokeAsync<string>("ganttV3.getLocalDateTimeIso");
+        }
+        catch (JSDisconnectedException) { return null; }
+    }
+
     public async Task GanttV3RegisterHeaderScrollSyncAsync(Microsoft.AspNetCore.Components.ElementReference canvasEl, Microsoft.AspNetCore.Components.ElementReference headerInnerEl)
     {
         try
@@ -1708,6 +1718,16 @@ public sealed class ComponentInteropService : IComponentInteropService
         catch (JSDisconnectedException) { return null; }
     }
 
+    public async Task<bool> GanttV3HasActiveDragAsync()
+    {
+        try
+        {
+            var module = await GetGanttV3ModuleAsync();
+            return await module.InvokeAsync<bool>("ganttV3.hasActiveDrag");
+        }
+        catch (JSDisconnectedException) { return false; }
+    }
+
     public async Task GanttV3RegisterDragAsync<[System.Diagnostics.CodeAnalysis.DynamicallyAccessedMembers(System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicMethods)] T>(Microsoft.AspNetCore.Components.ElementReference el, DotNetObjectReference<T> dotNetRef, object options) where T : class
     {
         try
@@ -1724,6 +1744,76 @@ public sealed class ComponentInteropService : IComponentInteropService
         {
             var module = await GetGanttV3ModuleAsync();
             await module.InvokeVoidAsync("ganttV3.unregisterDrag", el);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
+    public async Task GanttV3RegisterSplitterDragAsync<[System.Diagnostics.CodeAnalysis.DynamicallyAccessedMembers(System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicMethods)] T>(Microsoft.AspNetCore.Components.ElementReference handleEl, Microsoft.AspNetCore.Components.ElementReference paneEl, DotNetObjectReference<T> dotNetRef, object options) where T : class
+    {
+        try
+        {
+            var module = await GetGanttV3ModuleAsync();
+            await module.InvokeVoidAsync("ganttV3.registerSplitterDrag", handleEl, paneEl, dotNetRef, options);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
+    public async Task GanttV3UnregisterSplitterDragAsync(Microsoft.AspNetCore.Components.ElementReference handleEl)
+    {
+        try
+        {
+            var module = await GetGanttV3ModuleAsync();
+            await module.InvokeVoidAsync("ganttV3.unregisterSplitterDrag", handleEl);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
+    public async Task GanttV3ResetSplitterWidthAsync(Microsoft.AspNetCore.Components.ElementReference paneEl, double totalWidth, double nameWidth)
+    {
+        try
+        {
+            var module = await GetGanttV3ModuleAsync();
+            await module.InvokeVoidAsync("ganttV3.resetSplitterWidth", paneEl, totalWidth, nameWidth);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
+    public async Task GanttV3RegisterRowReorderDragAsync<[System.Diagnostics.CodeAnalysis.DynamicallyAccessedMembers(System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicMethods)] T>(Microsoft.AspNetCore.Components.ElementReference paneEl, DotNetObjectReference<T> dotNetRef) where T : class
+    {
+        try
+        {
+            var module = await GetGanttV3ModuleAsync();
+            await module.InvokeVoidAsync("ganttV3.registerRowReorderDrag", paneEl, dotNetRef);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
+    public async Task GanttV3UnregisterRowReorderDragAsync(Microsoft.AspNetCore.Components.ElementReference paneEl)
+    {
+        try
+        {
+            var module = await GetGanttV3ModuleAsync();
+            await module.InvokeVoidAsync("ganttV3.unregisterRowReorderDrag", paneEl);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
+    public async Task GanttV3RegisterBarContextMenuAsync<[System.Diagnostics.CodeAnalysis.DynamicallyAccessedMembers(System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicMethods)] T>(Microsoft.AspNetCore.Components.ElementReference el, DotNetObjectReference<T> dotNetRef) where T : class
+    {
+        try
+        {
+            var module = await GetGanttV3ModuleAsync();
+            await module.InvokeVoidAsync("ganttV3.registerBarContextMenu", el, dotNetRef);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
+    public async Task GanttV3UnregisterBarContextMenuAsync(Microsoft.AspNetCore.Components.ElementReference el)
+    {
+        try
+        {
+            var module = await GetGanttV3ModuleAsync();
+            await module.InvokeVoidAsync("ganttV3.unregisterBarContextMenu", el);
         }
         catch (JSDisconnectedException) { }
     }

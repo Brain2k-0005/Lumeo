@@ -1,0 +1,87 @@
+@namespace Lumeo
+@using System.ComponentModel
+@using System.Globalization
+@using Lumeo.GanttV3
+@inject Lumeo.Services.Localization.ILumeoLocalizer L
+@attribute [EditorBrowsable(EditorBrowsableState.Never)]
+
+@* GanttSummaryBar — the REUI-style envelope strip rendered on a hierarchy-
+   parent or flat-group row (design spec Phase 3, T3: "Render as REUI-style
+   envelope strip on parent/group rows (thin bar spanning children range, %
+   label at strip end)"). The timeline-canvas analog of GanttBar.razor: a
+   purely presentational component — X/Width/RowIndex are already-resolved
+   geometry the caller (GanttTimeline) computes, this component has no
+   knowledge of dates, view modes, or GanttScale's own formulas beyond
+   BarTop's shared row-centering math.
+
+   pointer-events-none unconditionally (see WrapperClass): the strip is
+   decorative only, never a drag/click/hit-test target — GanttBar (for a
+   hierarchy-parent row that also has its own bar) and the row's own
+   data-gantt-row-track div keep the ENTIRE interaction surface; this never
+   competes with either. aria-hidden for the same reason (the row's own
+   label/bar already carry the accessible name; a bare "67%" here would be a
+   redundant, unlabeled announcement).
+
+   NOTE (accessibility / public-ness): see GanttBar.razor's identical NOTE —
+   the Razor compiler always generates a component's class as `public`, so
+   despite the design intent of `internal`, this stays `public` with its
+   members recorded in PublicAPI.Unshipped.txt. [EditorBrowsable(Never)]
+   keeps it out of consumer IntelliSense until the Phase-4 rename. *@
+<div class="@WrapperClass" style="@WrapperStyle" aria-hidden="true" @attributes="AdditionalAttributes">
+    @if (SummaryTemplate is not null)
+    {
+        @SummaryTemplate(Rollup)
+    }
+    else
+    {
+        <div class="lumeo-gantt-v3-summary-bg absolute inset-0 rounded-sm bg-muted-foreground/30"></div>
+        <div class="lumeo-gantt-v3-summary-fill absolute inset-y-0 start-0 rounded-sm bg-primary" style="@FillStyle"></div>
+        <span class="lumeo-gantt-v3-summary-label absolute start-full top-1/2 ms-2 -translate-y-1/2 whitespace-nowrap text-[11px] font-semibold text-muted-foreground">@LabelText</span>
+    }
+</div>
+
+@code {
+    /// <summary>The computed (already-sanitized — see <c>GanttRollupModel.SafeInvokeRollupMath</c>) rollup this strip visualizes.</summary>
+    [Parameter, EditorRequired] public GanttRollup Rollup { get; set; }
+
+    /// <summary>Left pixel offset within the timeline canvas, resolved by the caller from <see cref="Rollup"/>'s Start/End the same way <c>GanttScale.BarGeometry</c> resolves a task's.</summary>
+    [Parameter] public double X { get; set; }
+
+    /// <summary>Pixel width of the strip.</summary>
+    [Parameter] public double Width { get; set; }
+
+    /// <summary>Zero-based row slot within the timeline (same coordinate space as <c>GanttBar.RowIndex</c>).</summary>
+    [Parameter] public int RowIndex { get; set; }
+
+    /// <summary>Strip height in pixels. Defaults to <see cref="GanttScale.SummaryBarHeight"/>.</summary>
+    [Parameter] public int BarHeight { get; set; } = GanttScale.SummaryBarHeight;
+
+    /// <summary>Replaces the strip's default (bg + fill + % label) content when set — the REUI "summary renderer" slot (design spec Phase 3, T3).</summary>
+    [Parameter] public RenderFragment<GanttRollup>? SummaryTemplate { get; set; }
+
+    /// <summary>Additional CSS classes merged onto the positioned wrapper.</summary>
+    [Parameter] public string? Class { get; set; }
+
+    /// <summary>Captures unmatched attributes and applies them to the positioned wrapper.</summary>
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private string WrapperClass => Cx.Merge("lumeo-gantt-v3-summary-bar pointer-events-none absolute", Class);
+
+    // Rollup.WeightedProgress is already sanitized into 0..100 by the time it
+    // reaches here (GanttRollupModel.Sanitize runs for BOTH the default math
+    // and every custom RollupMath result) — Math.Clamp here is belt-and-braces
+    // for a caller that builds a GanttRollup by hand (e.g. a bUnit test, or a
+    // future direct-construction API) without going through that path.
+    private int ClampedPercent => (int)Math.Round(Math.Clamp(Rollup.WeightedProgress, 0, 100), MidpointRounding.AwayFromZero);
+
+    private string LabelText => L["Gantt.SummaryProgress", ClampedPercent];
+
+    private string FillStyle => FormattableString.Invariant($"width:{ClampedPercent}%;");
+
+    // Flush against the row's own bottom edge (SummaryBarHeight's own remarks)
+    // rather than GanttScale.BarTop's usual row-centering — a hierarchy-parent
+    // row's own GanttBar already owns the row's centerline.
+    private string WrapperStyle =>
+        FormattableString.Invariant(
+            $"left:{X}px;top:{RowIndex * GanttScale.RowHeight + GanttScale.RowHeight - BarHeight}px;width:{Math.Max(Width, 1)}px;height:{BarHeight}px;");
+}

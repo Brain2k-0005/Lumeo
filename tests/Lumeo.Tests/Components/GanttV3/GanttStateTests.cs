@@ -111,20 +111,25 @@ public class GanttStateTests
     }
 
     [Fact]
-    public void SetViewMode_Raises_Changed_Only_On_A_Genuine_Change()
+    public void CommitViewMode_Raises_Changed_Only_On_A_Genuine_Change()
     {
+        // Renamed from SetViewMode (design spec Phase 3, T4) — this tests the RAW,
+        // internal write Gantt3's own reconcile-commit phase uses; the PUBLIC
+        // SetViewMode (a different, ownership-routed method — see
+        // GanttStateImperativeApiTests) intentionally does NOT share this name or
+        // shape.
         var state = new GanttState();
         var raised = 0;
         state.Changed += () => raised++;
 
-        state.SetViewMode(GanttViewMode.Day); // same as default -> no-op
+        state.CommitViewMode(GanttViewMode.Day); // same as default -> no-op
         Assert.Equal(0, raised);
 
-        state.SetViewMode(GanttViewMode.Week);
+        state.CommitViewMode(GanttViewMode.Week);
         Assert.Equal(1, raised);
         Assert.Equal(GanttViewMode.Week, state.ViewMode);
 
-        state.SetViewMode(GanttViewMode.Week); // re-applying current value -> no-op
+        state.CommitViewMode(GanttViewMode.Week); // re-applying current value -> no-op
         Assert.Equal(1, raised);
     }
 
@@ -186,5 +191,88 @@ public class GanttStateTests
         state.ToggleCollapsed("group-a");
         Assert.Equal(2, raised);
         Assert.False(state.IsCollapsed("group-a"));
+    }
+
+    // ── SelectedIds (design spec Phase 3, T4 — T6's backing store) ─────────────
+    // Same idempotent-no-op discipline as Collapsed above, mirrored 1:1 — see the
+    // class's own remarks for why the write side (SetSelectedIds/SetSelected/
+    // ToggleSelected) is internal.
+
+    [Fact]
+    public void Defaults_Include_An_Empty_SelectedIds()
+    {
+        var state = new GanttState();
+
+        Assert.Empty(state.SelectedIds);
+        Assert.False(state.IsSelected("anything"));
+    }
+
+    [Fact]
+    public void SetSelected_Raises_Changed_Only_On_A_Genuine_Change()
+    {
+        var state = new GanttState();
+        var raised = 0;
+        state.Changed += () => raised++;
+
+        state.SetSelected("t1", selected: false); // already unselected -> no-op
+        Assert.Equal(0, raised);
+
+        state.SetSelected("t1", selected: true);
+        Assert.Equal(1, raised);
+        Assert.True(state.IsSelected("t1"));
+        Assert.Contains("t1", state.SelectedIds);
+
+        state.SetSelected("t1", selected: true); // already selected -> no-op
+        Assert.Equal(1, raised);
+
+        state.SetSelected("t1", selected: false);
+        Assert.Equal(2, raised);
+        Assert.False(state.IsSelected("t1"));
+    }
+
+    [Fact]
+    public void ToggleSelected_Flips_State_And_Always_Raises_Changed()
+    {
+        var state = new GanttState();
+        var raised = 0;
+        state.Changed += () => raised++;
+
+        state.ToggleSelected("t1");
+        Assert.Equal(1, raised);
+        Assert.True(state.IsSelected("t1"));
+
+        state.ToggleSelected("t1");
+        Assert.Equal(2, raised);
+        Assert.False(state.IsSelected("t1"));
+    }
+
+    [Fact]
+    public void SetSelectedIds_Replaces_The_Whole_Set_And_Raises_Changed_Once()
+    {
+        var state = new GanttState();
+        state.SetSelected("stale", true);
+        var raised = 0;
+        state.Changed += () => raised++;
+
+        state.SetSelectedIds(new[] { "t1", "t2" });
+
+        Assert.Equal(1, raised);
+        Assert.False(state.IsSelected("stale"));
+        Assert.True(state.IsSelected("t1"));
+        Assert.True(state.IsSelected("t2"));
+    }
+
+    [Fact]
+    public void SetSelectedIds_With_The_Same_Membership_In_A_Different_Order_Does_Not_Raise_Changed()
+    {
+        var state = new GanttState();
+        state.SetSelectedIds(new[] { "t1", "t2" });
+        var raised = 0;
+        state.Changed += () => raised++;
+
+        // Order-independent — SelectedIds is a set, not a sequence.
+        state.SetSelectedIds(new[] { "t2", "t1" });
+
+        Assert.Equal(0, raised);
     }
 }

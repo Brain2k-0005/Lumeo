@@ -480,6 +480,8 @@ internal static partial class LumeoDefaultStrings
         ["Gantt.Week"] = "Week",
         ["Gantt.Month"] = "Month",
         ["Gantt.Year"] = "Year",
+        // Design spec Phase 3, T2 — GanttViewMode.Quarter's own toolbar/settings-menu label.
+        ["Gantt.Quarter"] = "Quarter",
         ["Gantt.Today"] = "Today",
         ["Gantt.PreviousPeriod"] = "Previous period",
         ["Gantt.NextPeriod"] = "Next period",
@@ -489,6 +491,49 @@ internal static partial class LumeoDefaultStrings
         ["Gantt.NoTasksToDisplay"] = "No tasks to display",
         ["Gantt.TaskAriaLabel"] = "{0}, {1} to {2}",
         ["Gantt.PercentComplete"] = "{0}% complete",
+        // Design spec Phase 3, T3 — the summary-envelope strip's compact %
+        // label (a bare number, not the full "N% complete" sentence
+        // Gantt.PercentComplete's tooltip context calls for).
+        ["Gantt.SummaryProgress"] = "{0}%",
+        // Design spec Phase 3, T5 — the tree/timeline splitter handle's
+        // aria-label (WAI-ARIA separator pattern).
+        ["Gantt.ResizeTreePane"] = "Resize tree pane",
+        // Design spec Phase 3, T6 — leaf checkbox / parent-group tri-state
+        // checkbox aria-labels (ShowRowCheckboxes).
+        ["Gantt.SelectRow"] = "Select {0}",
+        ["Gantt.SelectRowGroup"] = "Select all in {0}",
+        // Design spec Phase 3, T6 — row-reorder drag grip aria-label/title
+        // (AllowRowReorder) + its Readonly-inert counterpart.
+        ["Gantt.DragToReorderRow"] = "Drag to reorder {0}",
+        ["Gantt.RowReorderUnavailable"] = "Row reordering is unavailable while read-only",
+        ["Gantt.ZoomIn"] = "Zoom in",
+        ["Gantt.ZoomOut"] = "Zoom out",
+        ["Gantt.ScrollToEarlierTask"] = "Scroll to {0} (earlier)",
+        ["Gantt.ScrollToLaterTask"] = "Scroll to {0} (later)",
+        // Design spec Phase 3, T8 — GanttSettingsMenu's own trigger, group
+        // headings, toggle labels, and "Reset to defaults" button.
+        ["Gantt.Settings"] = "Settings",
+        ["Gantt.SettingsDisplay"] = "Display",
+        ["Gantt.SettingsBehavior"] = "Behavior",
+        ["Gantt.SettingsRegion"] = "Region",
+        ["Gantt.SettingsStyle"] = "Style",
+        ["Gantt.SettingsShowRowCheckboxes"] = "Row checkboxes",
+        ["Gantt.SettingsShowSummaryBars"] = "Summary bars",
+        ["Gantt.SettingsShowZoomControl"] = "Zoom control",
+        ["Gantt.SettingsShowOffscreenIndicators"] = "Off-screen indicators",
+        // Design spec Phase 3, T9 — the GanttSettingsMenu Display-group toggle
+        // for InfiniteScroll, added straight to the T8 group above per this
+        // codebase's own "extend, don't duplicate" localization precedent.
+        ["Gantt.SettingsInfiniteScroll"] = "Infinite scroll",
+        ["Gantt.SettingsNowIndicator"] = "Now indicator",
+        ["Gantt.SettingsMarkOffDays"] = "Mark off days",
+        ["Gantt.SettingsReadonly"] = "Read-only",
+        ["Gantt.SettingsAllowCreate"] = "Allow create",
+        ["Gantt.SettingsAllowRowReorder"] = "Allow row reorder",
+        ["Gantt.SettingsFirstDayOfWeek"] = "First day of week",
+        ["Gantt.SettingsOffDays"] = "Off days",
+        ["Gantt.SettingsColorByGroup"] = "Color by group",
+        ["Gantt.SettingsReset"] = "Reset to defaults",
 
         // ── Theme ───────────────────────────────────────────────────
         ["Theme.Light"] = "Light",
@@ -1014,6 +1059,7 @@ internal static partial class LumeoDefaultStrings
         ["Gantt.Week"] = "Woche",
         ["Gantt.Month"] = "Monat",
         ["Gantt.Year"] = "Jahr",
+        ["Gantt.Quarter"] = "Quartal",
         ["Gantt.Today"] = "Heute",
         ["Gantt.PreviousPeriod"] = "Vorheriger Zeitraum",
         ["Gantt.NextPeriod"] = "Nächster Zeitraum",
@@ -1023,6 +1069,35 @@ internal static partial class LumeoDefaultStrings
         ["Gantt.NoTasksToDisplay"] = "Keine Aufgaben vorhanden",
         ["Gantt.TaskAriaLabel"] = "{0}, {1} bis {2}",
         ["Gantt.PercentComplete"] = "{0}% abgeschlossen",
+        ["Gantt.SummaryProgress"] = "{0}%",
+        ["Gantt.ResizeTreePane"] = "Baumbereich anpassen",
+        ["Gantt.SelectRow"] = "{0} auswählen",
+        ["Gantt.SelectRowGroup"] = "Alle in {0} auswählen",
+        ["Gantt.DragToReorderRow"] = "{0} zum Umsortieren ziehen",
+        ["Gantt.RowReorderUnavailable"] = "Zeilen können im Lesemodus nicht neu angeordnet werden",
+        ["Gantt.ZoomIn"] = "Vergrößern",
+        ["Gantt.ZoomOut"] = "Verkleinern",
+        ["Gantt.ScrollToEarlierTask"] = "Zu {0} scrollen (früher)",
+        ["Gantt.ScrollToLaterTask"] = "Zu {0} scrollen (später)",
+        ["Gantt.Settings"] = "Einstellungen",
+        ["Gantt.SettingsDisplay"] = "Anzeige",
+        ["Gantt.SettingsBehavior"] = "Verhalten",
+        ["Gantt.SettingsRegion"] = "Region",
+        ["Gantt.SettingsStyle"] = "Stil",
+        ["Gantt.SettingsShowRowCheckboxes"] = "Zeilen-Kontrollkästchen",
+        ["Gantt.SettingsShowSummaryBars"] = "Zusammenfassungsbalken",
+        ["Gantt.SettingsShowZoomControl"] = "Zoom-Regler",
+        ["Gantt.SettingsShowOffscreenIndicators"] = "Off-Screen-Indikatoren",
+        ["Gantt.SettingsInfiniteScroll"] = "Endloses Scrollen",
+        ["Gantt.SettingsNowIndicator"] = "Jetzt-Anzeige",
+        ["Gantt.SettingsMarkOffDays"] = "Freie Tage markieren",
+        ["Gantt.SettingsReadonly"] = "Schreibgeschützt",
+        ["Gantt.SettingsAllowCreate"] = "Erstellen erlauben",
+        ["Gantt.SettingsAllowRowReorder"] = "Zeilen umsortieren erlauben",
+        ["Gantt.SettingsFirstDayOfWeek"] = "Erster Wochentag",
+        ["Gantt.SettingsOffDays"] = "Freie Tage",
+        ["Gantt.SettingsColorByGroup"] = "Farbe nach Gruppe",
+        ["Gantt.SettingsReset"] = "Auf Standard zurücksetzen",
 
         // ── Theme ───────────────────────────────────────────────────
         ["Theme.Light"] = "Hell",

@@ -25,7 +25,7 @@ public class GanttV3StickyHeaderTests : GanttParityTestBase
     [Fact]
     public async Task Sticky_header_stays_visible_while_scrolling_a_tall_task_list()
     {
-        await GotoHost("/e2e/gantt-v3?fixture=tall&viewMode=Day");
+        await GotoHost("/e2e/gantt-v3?fixture=tall&viewMode=Day&infiniteScroll=0");
 
         var header = Page.Locator("[data-testid='gantt-v3-root'] .lumeo-gantt-v3-header");
         await header.WaitForAsync(new() { Timeout = 15000 });
@@ -131,7 +131,7 @@ public class GanttV3StickyHeaderTests : GanttParityTestBase
         // "columns stay aligned" is asserted directly against its on-screen
         // position shifting by exactly the scroll delta — no transform to
         // read anymore.
-        await GotoHost("/e2e/gantt-v3?fixture=tall&viewMode=Day");
+        await GotoHost("/e2e/gantt-v3?fixture=tall&viewMode=Day&infiniteScroll=0");
 
         var scrollPane = Page.Locator("[data-testid='gantt-v3-root'] div[style*='overflow']").First;
         await scrollPane.WaitForAsync(new() { Timeout = 15000 });

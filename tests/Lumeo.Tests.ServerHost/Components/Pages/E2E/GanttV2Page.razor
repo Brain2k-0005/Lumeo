@@ -66,7 +66,16 @@
     protected override void OnInitialized()
     {
         _tasks = Fixture == "today" ? GanttParityFixtures.TodayMarkerTasks() : GanttParityFixtures.SharedTasks();
-        if (!string.IsNullOrEmpty(ViewMode) && Enum.TryParse<GanttViewMode>(ViewMode, out var parsed))
+        // Design spec Phase 3, T2: GanttViewMode.Quarter is v3-ONLY — v2's own
+        // gantt-v2.js VIEW_MODES table has no 'Quarter' entry, so driving v2's
+        // Gantt component with it would fail at the JS layer (VIEW_MODES[mode]
+        // lookup -> undefined -> TypeError reading its .columnWidth etc.).
+        // parsed != Quarter guards this test harness's own generic
+        // ?viewMode=<any GanttViewMode> mechanism from ever reaching v2 with a
+        // mode it structurally cannot support — see
+        // GanttParityTests.Quarter_view_mode_is_rejected_by_the_v2_route for
+        // the regression coverage.
+        if (!string.IsNullOrEmpty(ViewMode) && Enum.TryParse<GanttViewMode>(ViewMode, out var parsed) && parsed != GanttViewMode.Quarter)
             _viewMode = parsed;
         _readonly = Readonly == "1";
     }
