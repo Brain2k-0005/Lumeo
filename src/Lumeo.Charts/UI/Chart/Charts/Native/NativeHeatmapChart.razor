@@ -1,0 +1,429 @@
+@namespace Lumeo
+@inject IComponentInteropService Interop
+
+@* Native (first-party, non-ECharts) Heatmap chart — the DiscreteShapeBudget
+   test case (spec §2.4 point 4 / ChartRenderStrategy.ForDiscreteShapes):
+   under Lumeo.ChartRenderStrategy.DiscreteShapeBudget cells it renders individual
+   SVG <rect> cells with native pointer events; above it, it falls through to
+   ChartCanvasSurface + resolved-hex paint commands. Sits ALONGSIDE the legacy
+   ECharts HeatmapChart — that file is untouched. *@
+
+<div class="lumeo-native-heatmap relative flex flex-col gap-2 @Class" style="width:@Width;height:@Height" @attributes="AdditionalAttributes">
+    <div class="relative min-h-0 flex-1">
+        @if (_mode == HeatmapRenderMode.Svg)
+        {
+            <svg viewBox="0 0 @ViewW @ViewH" preserveAspectRatio="xMidYMid meet" class="h-full w-full" role="img" aria-label="@_a11ySummary">
+                @for (var i = 0; i < _cells.Count; i++)
+                {
+                    var cell = _cells[i];
+                    var isActive = _activeCol == cell.ColIndex && _activeRow == cell.RowIndex && (_hovered || _keyboardActive);
+                    <rect class="lumeo-native-heatmap-cell" x="@NativeChartShared.Fmt(cell.X)" y="@NativeChartShared.Fmt(cell.Y)" width="@NativeChartShared.Fmt(cell.W)" height="@NativeChartShared.Fmt(cell.H)"
+                          rx="2" fill="@cell.Color" stroke="@(isActive ? "var(--color-foreground)" : "none")" stroke-width="@(isActive ? "1.5" : "0")"
+                          style="transition:stroke 100ms ease;"
+                          @onpointerenter="@(e => OnCellEnter(cell, e))" @onpointerleave="OnCellLeave">
+                        <animate attributeName="opacity" from="0" to="1" dur="@(EntryDurationMs)ms" begin="@(i % 40 * 6)ms" fill="freeze" />
+                    </rect>
+                }
+                @((MarkupString)_labelsMarkup)
+                @((MarkupString)_axisLabelsMarkup)
+                @((MarkupString)_legendMarkup)
+                <rect x="@NativeChartShared.Fmt(_plot.X)" y="@NativeChartShared.Fmt(_plot.Y)" width="@NativeChartShared.Fmt(_plot.Width)" height="@NativeChartShared.Fmt(_plot.Height)"
+                      fill="transparent" tabindex="0" role="img" aria-label="@_a11ySummary"
+                      class="focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary focus-visible:outline-offset-2"
+                      @onkeydown="OnKeyDown" @onfocus="OnFocusHost" @onblur="OnBlurHost" />
+            </svg>
+        }
+        else
+        {
+            <div class="relative h-full w-full">
+                <ChartCanvasSurface ElementId="@_canvasId" Width="@ViewW" Height="@ViewH" DevicePixelRatio="@_dpr" Commands="_canvasCommands" Class="h-full w-full" />
+                <svg viewBox="0 0 @ViewW @ViewH" preserveAspectRatio="xMidYMid meet" class="absolute inset-0 h-full w-full">
+                    @((MarkupString)_axisLabelsMarkup)
+                    @((MarkupString)_legendMarkup)
+                    <rect x="@NativeChartShared.Fmt(_plot.X)" y="@NativeChartShared.Fmt(_plot.Y)" width="@NativeChartShared.Fmt(_plot.Width)" height="@NativeChartShared.Fmt(_plot.Height)"
+                          fill="transparent" tabindex="0" role="img" aria-label="@_a11ySummary"
+                          class="focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary focus-visible:outline-offset-2"
+                          @onkeydown="OnKeyDown" @onfocus="OnFocusHost" @onblur="OnBlurHost" />
+                </svg>
+            </div>
+        }
+        <div class="pointer-events-none absolute left-2 top-2 max-w-[70%] rounded-md border border-border/60 bg-background/90 px-2 py-1 text-xs text-foreground shadow-sm transition-opacity"
+             style="opacity:@(string.IsNullOrEmpty(_statusText) ? "0" : "1")" role="status" aria-live="polite">
+            @_statusText
+        </div>
+        @if (ShouldShowSkeleton)
+        {
+            <div class="absolute inset-0 pointer-events-none">
+                <ChartSkeleton Kind="@SkeletonKind" Width="100%" Height="100%" Class="!rounded-none" />
+            </div>
+            @if (ShowLoadingLabel)
+            {
+                <div role="status" aria-live="polite" class="pointer-events-none absolute top-2 right-2 rounded-[calc(var(--radius)*2)] border border-border/60 bg-background/85 px-2.5 py-1 text-xs shadow-sm">
+                    @(LoadingText ?? "Loading…")
+                </div>
+            }
+        }
+    </div>
+    @if (DataZoom && XCategories.Count > 1)
+    {
+        <ChartZoomSlider Width="@ViewW" Height="18" Start="@_zoom.Start" End="@_zoom.End"
+                          OnRangeChanged="@(EventCallback.Factory.Create<(double, double)>(this, OnZoomRangeChanged))" />
+    }
+    @if (_a11yTable is { } table)
+    {
+        <table class="sr-only" aria-label="@table.Summary">
+            <caption>@table.Summary</caption>
+            <thead><tr>@foreach (var h in table.ColumnHeaders) { <th scope="col">@h</th> }</tr></thead>
+            <tbody>
+                @foreach (var row in table.Rows)
+                {
+                    <tr><th scope="row">@row.Header</th>@foreach (var cell in row.Cells) { <td>@cell</td> }</tr>
+                }
+                @if (table.TruncationNote is { } note)
+                {
+                    <tr><td colspan="@table.ColumnHeaders.Count">@note</td></tr>
+                }
+            </tbody>
+        </table>
+    }
+</div>
+
+@code {
+    /// <summary>Category labels along the X-axis.</summary>
+    [Parameter] public List<string> XCategories { get; set; } = new();
+    /// <summary>Category labels along the Y-axis.</summary>
+    [Parameter] public List<string> YCategories { get; set; } = new();
+    /// <summary>Cell values as <c>[xIndex, yIndex, value]</c> triples, indexing into <see cref="XCategories"/> and <see cref="YCategories"/>.</summary>
+    [Parameter] public List<double[]> Data { get; set; } = new();
+    /// <summary>When true (default), renders a color-scale gradient legend.</summary>
+    [Parameter] public bool ShowLegend { get; set; } = true;
+    /// <summary>
+    /// When true (default), shows a value tooltip on hover. Only honored in the
+    /// SVG render path — above <see cref="Lumeo.ChartRenderStrategy.DiscreteShapeBudget"/>
+    /// cells the chart falls back to Canvas (see the type's XML remarks), where
+    /// per-cell pointer hit-testing isn't wired yet (documented follow-up);
+    /// keyboard cell navigation + the status readout work in BOTH modes.
+    /// </summary>
+    [Parameter] public bool ShowTooltip { get; set; } = true;
+    /// <summary>Gradient color stops (low→high), evenly spaced across the data range. Falls back to a 2-stop <c>chart-1 → primary</c> gradient when neither this nor <see cref="ColorPalette"/> is set.</summary>
+    [Parameter] public List<string>? Colors { get; set; }
+    /// <summary>Explicit ordered gradient stops; takes precedence over <see cref="Colors"/> when both are set.</summary>
+    [Parameter] public List<string>? ColorPalette { get; set; }
+    /// <summary>CSS width of the chart container. Defaults to <c>100%</c>.</summary>
+    [Parameter] public string Width { get; set; } = "100%";
+    /// <summary>CSS height of the chart container. Defaults to <c>350px</c>.</summary>
+    [Parameter] public string Height { get; set; } = "350px";
+    /// <summary>Additional CSS class(es) applied to the chart's root element.</summary>
+    [Parameter] public string? Class { get; set; }
+    /// <summary>Additional HTML attributes captured and forwarded to the chart's root element.</summary>
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+    /// <summary>When true, overlays a shape-aware loading skeleton on top of the chart (consumer is fetching data).</summary>
+    [Parameter] public bool IsLoading { get; set; }
+    /// <summary>When true (default), renders a shape-aware skeleton while <see cref="IsLoading"/> is true.</summary>
+    [Parameter] public bool ShowLoadingSkeleton { get; set; } = true;
+    /// <summary>Shape family for the loading skeleton. Defaults to <c>ChartSkeletonKind.Grid</c>.</summary>
+    [Parameter] public ChartSkeletonKind SkeletonKind { get; set; } = ChartSkeletonKind.Grid;
+    /// <summary>See <see cref="NativePieChart.SkeletonStyle"/> — only <c>Silhouette</c> is implemented natively.</summary>
+    [Parameter] public ChartSkeletonStyle SkeletonStyle { get; set; } = ChartSkeletonStyle.Phantom;
+    /// <summary>Inert on the native engine; kept for API parity.</summary>
+    [Parameter] public int PhantomCycleMs { get; set; } = 1400;
+    /// <summary>When true (default), shows a small "Loading…" pill in the top-right corner whenever <see cref="IsLoading"/> is active.</summary>
+    [Parameter] public bool ShowLoadingLabel { get; set; } = true;
+    /// <summary>Label rendered next to the loading pill. Defaults to "Loading…".</summary>
+    [Parameter] public string? LoadingText { get; set; } = "Loading…";
+    /// <summary>When true, renders each cell's value directly on the chart (SVG mode only).</summary>
+    [Parameter] public bool ShowDataLabels { get; set; }
+    /// <summary>Placement of the value label; kept for API parity (native labels always center in the cell).</summary>
+    [Parameter] public string LabelPosition { get; set; } = "inside";
+    /// <summary>Label formatter template supporting the <c>{c}</c> (value) token from the legacy ECharts formatter mini-language.</summary>
+    [Parameter] public string? LabelFormat { get; set; }
+    /// <summary>When true, adds a zoom slider so users can navigate a wide X-axis category range.</summary>
+    [Parameter] public bool DataZoom { get; set; }
+    /// <summary>Entrance-animation duration (ms) for the cell fade-in (SVG mode only). Defaults to 400ms.</summary>
+    [Parameter] public int? AnimationDuration { get; set; }
+    /// <summary>See <see cref="NativePieChart.AnimationEasing"/> — accepted for API parity, currently has no effect.</summary>
+    [Parameter] public string? AnimationEasing { get; set; }
+
+    private const double ViewW = 700, ViewH = 320;
+    private int EntryDurationMs => AnimationDuration ?? 400;
+    private bool ShouldShowSkeleton => IsLoading && ShowLoadingSkeleton;
+    private readonly string _canvasId = $"lumeo-native-heatmap-{Guid.NewGuid():N}";
+    private readonly double _dpr = 1;
+
+    private enum HeatmapRenderMode { Svg, Canvas }
+
+    private readonly ChartZoomState _zoom = new();
+    private HeatmapRenderMode _mode;
+    private ChartPlotRect _plot;
+    private List<HeatmapCell> _cells = new();
+    private List<string> _visibleXCategories = new();
+    private IReadOnlyList<ChartCanvasCommand>? _canvasCommands;
+    private Dictionary<string, string>? _resolvedStopColors;
+    private List<ChartColorStop> _stops = new();
+    private int? _activeCol;
+    private int? _activeRow;
+    private bool _hovered;
+    private bool _keyboardActive;
+    private string _statusText = string.Empty;
+    private string _a11ySummary = string.Empty;
+    private string _labelsMarkup = string.Empty;
+    private string _axisLabelsMarkup = string.Empty;
+    private string _legendMarkup = string.Empty;
+    private ChartAccessibility.ChartDataTable? _a11yTable;
+
+    protected override void OnParametersSet()
+    {
+        Rebuild();
+        BuildAccessibility();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_mode != HeatmapRenderMode.Canvas) return;
+        if (_resolvedStopColors is not null) return;
+
+        var tokens = _stops.Select(s => s.Color).Distinct().ToList();
+        try
+        {
+            var resolved = await Interop.ChartResolveThemeColors(tokens);
+            _resolvedStopColors = resolved is null ? new Dictionary<string, string>() : new Dictionary<string, string>(resolved);
+            BuildCanvasCommands();
+            StateHasChanged();
+        }
+        catch (JSDisconnectedException) { }
+    }
+
+    private void Rebuild()
+    {
+        var margin = new ChartMargin(Top: 10, Right: ShowLegend ? 96 : 16, Bottom: 34, Left: 54);
+        _plot = ChartLayout.ComputePlotRect(ViewW, ViewH, margin);
+
+        var xStart = (int)Math.Round(_zoom.Start * XCategories.Count);
+        var xEnd = Math.Max(xStart + 1, (int)Math.Round(_zoom.End * XCategories.Count));
+        xEnd = Math.Min(xEnd, XCategories.Count);
+        _visibleXCategories = XCategories.Skip(xStart).Take(xEnd - xStart).ToList();
+
+        var xScale = new BandScale(_visibleXCategories.Count, _plot.X, _plot.Right, paddingInner: 0.06, paddingOuter: 0);
+        var yScale = new BandScale(YCategories.Count, _plot.Y, _plot.Bottom, paddingInner: 0.06, paddingOuter: 0);
+
+        var tokens = ColorPalette is { Count: > 0 } ? ColorPalette : Colors is { Count: > 0 } ? Colors : new List<string> { "var(--color-chart-1)", "var(--color-primary)" };
+        var values = Data.Where(d => d.Length > 2).Select(d => d[2]).ToList();
+        var min = values.Count > 0 ? values.Min() : 0;
+        var max = values.Count > 0 ? values.Max() : 1;
+        if (max <= min) max = min + 1;
+        _stops = tokens.Select((c, i) => new ChartColorStop(min + (max - min) * i / Math.Max(1, tokens.Count - 1), c)).ToList();
+
+        _cells = new List<HeatmapCell>();
+        foreach (var d in Data)
+        {
+            if (d.Length < 3) continue;
+            var xi = (int)d[0];
+            var yi = (int)d[1];
+            var localXi = xi - xStart;
+            if (localXi < 0 || localXi >= _visibleXCategories.Count || yi < 0 || yi >= YCategories.Count) continue;
+
+            var value = d[2];
+            var color = ChartColorScale.Resolve(_stops, value);
+            var label = ShowDataLabels
+                ? (!string.IsNullOrEmpty(LabelFormat) ? LabelFormat!.Replace("{c}", NativeChartShared.FmtValue(value)) : NativeChartShared.FmtValue(value))
+                : null;
+            _cells.Add(new HeatmapCell(xi, yi, xScale.Start(localXi), yScale.Start(yi), xScale.Bandwidth, yScale.Bandwidth, value, color, label));
+        }
+
+        _mode = ChartRenderStrategy.ForDiscreteShapes(_cells.Count, liveHighFrequencyOptIn: false) == ChartRenderMode.Canvas
+            ? HeatmapRenderMode.Canvas : HeatmapRenderMode.Svg;
+
+        if (_mode == HeatmapRenderMode.Svg)
+        {
+            BuildLabelsMarkup();
+        }
+        else
+        {
+            _labelsMarkup = string.Empty;
+            _resolvedStopColors = null; // force re-resolve on next OnAfterRenderAsync
+            _canvasCommands = null;
+        }
+
+        BuildAxisLabelsMarkup(xScale, yScale);
+        BuildLegendMarkup();
+    }
+
+    private void BuildLabelsMarkup()
+    {
+        var sb = new System.Text.StringBuilder();
+        foreach (var cell in _cells)
+        {
+            if (cell.Label is null) continue;
+            sb.Append("<text x=\"").Append(NativeChartShared.Fmt(cell.X + cell.W / 2)).Append("\" y=\"").Append(NativeChartShared.Fmt(cell.Y + cell.H / 2))
+              .Append("\" fill=\"var(--color-foreground)\" font-size=\"9.5\" text-anchor=\"middle\" dominant-baseline=\"middle\">")
+              .Append(System.Net.WebUtility.HtmlEncode(cell.Label)).Append("</text>");
+        }
+        _labelsMarkup = sb.ToString();
+    }
+
+    private void BuildAxisLabelsMarkup(BandScale xScale, BandScale yScale)
+    {
+        var sb = new System.Text.StringBuilder();
+        for (var i = 0; i < YCategories.Count; i++)
+        {
+            sb.Append("<text x=\"").Append(NativeChartShared.Fmt(_plot.X - 8)).Append("\" y=\"").Append(NativeChartShared.Fmt(yScale.Center(i)))
+              .Append("\" fill=\"var(--color-muted-foreground)\" font-size=\"10.5\" text-anchor=\"end\" dominant-baseline=\"middle\">")
+              .Append(System.Net.WebUtility.HtmlEncode(YCategories[i])).Append("</text>");
+        }
+        for (var i = 0; i < _visibleXCategories.Count; i++)
+        {
+            // Thin out labels on dense axes so text doesn't overlap.
+            if (_visibleXCategories.Count > 16 && i % (int)Math.Ceiling(_visibleXCategories.Count / 16.0) != 0) continue;
+            sb.Append("<text x=\"").Append(NativeChartShared.Fmt(xScale.Center(i))).Append("\" y=\"").Append(NativeChartShared.Fmt(_plot.Bottom + 14))
+              .Append("\" fill=\"var(--color-muted-foreground)\" font-size=\"10.5\" text-anchor=\"middle\">")
+              .Append(System.Net.WebUtility.HtmlEncode(_visibleXCategories[i])).Append("</text>");
+        }
+        _axisLabelsMarkup = sb.ToString();
+    }
+
+    private void BuildLegendMarkup()
+    {
+        if (!ShowLegend || _stops.Count == 0) { _legendMarkup = string.Empty; return; }
+        var gradId = $"lumeo-heatmap-grad-{GetHashCode()}";
+        var x = _plot.Right + 24;
+        var yTop = _plot.Y;
+        var barH = _plot.Height;
+        var min = _stops.Min(s => s.Value);
+        var max = _stops.Max(s => s.Value);
+
+        var sb = new System.Text.StringBuilder();
+        sb.Append("<defs><linearGradient id=\"").Append(gradId).Append("\" x1=\"0\" y1=\"1\" x2=\"0\" y2=\"0\">");
+        foreach (var stop in _stops.OrderBy(s => s.Value))
+        {
+            var pct = max > min ? (stop.Value - min) / (max - min) * 100 : 0;
+            sb.Append("<stop offset=\"").Append(NativeChartShared.Fmt(pct)).Append("%\" stop-color=\"").Append(stop.Color).Append("\" />");
+        }
+        sb.Append("</linearGradient></defs>");
+        sb.Append("<rect x=\"").Append(NativeChartShared.Fmt(x)).Append("\" y=\"").Append(NativeChartShared.Fmt(yTop))
+          .Append("\" width=\"12\" height=\"").Append(NativeChartShared.Fmt(barH)).Append("\" fill=\"url(#").Append(gradId).Append(")\" rx=\"3\" />");
+        sb.Append("<text x=\"").Append(NativeChartShared.Fmt(x + 18)).Append("\" y=\"").Append(NativeChartShared.Fmt(yTop + 8))
+          .Append("\" fill=\"var(--color-muted-foreground)\" font-size=\"10\">").Append(NativeChartShared.FmtValue(max)).Append("</text>");
+        sb.Append("<text x=\"").Append(NativeChartShared.Fmt(x + 18)).Append("\" y=\"").Append(NativeChartShared.Fmt(yTop + barH))
+          .Append("\" fill=\"var(--color-muted-foreground)\" font-size=\"10\">").Append(NativeChartShared.FmtValue(min)).Append("</text>");
+        _legendMarkup = sb.ToString();
+    }
+
+    private void BuildCanvasCommands()
+    {
+        if (_resolvedStopColors is null) return;
+        var resolvedStops = _stops
+            .Select(s => (s.Value, Hex: _resolvedStopColors.TryGetValue(s.Color, out var hex) ? hex : "#888888"))
+            .OrderBy(s => s.Value)
+            .ToList();
+
+        string ResolveHex(double value)
+        {
+            if (resolvedStops.Count == 0) return "#888888";
+            if (resolvedStops.Count == 1) return resolvedStops[0].Hex;
+            if (value <= resolvedStops[0].Value) return resolvedStops[0].Hex;
+            if (value >= resolvedStops[^1].Value) return resolvedStops[^1].Hex;
+            for (var i = 0; i < resolvedStops.Count - 1; i++)
+            {
+                var lo = resolvedStops[i];
+                var hi = resolvedStops[i + 1];
+                if (value < lo.Value || value > hi.Value) continue;
+                var span = hi.Value - lo.Value;
+                var t = span == 0 ? 0 : (value - lo.Value) / span;
+                return NativeChartShared.LerpHex(lo.Hex, hi.Hex, t);
+            }
+            return resolvedStops[^1].Hex;
+        }
+
+        var commands = new List<ChartCanvasCommand> { new("clearRect", new double[] { 0, 0, ViewW, ViewH }) };
+        foreach (var cell in _cells)
+        {
+            var hex = ResolveHex(cell.Value);
+            commands.Add(new ChartCanvasCommand("beginPath"));
+            commands.Add(new ChartCanvasCommand("rect", new[] { cell.X, cell.Y, cell.W, cell.H }, new ChartCanvasStyle(hex)));
+            commands.Add(new ChartCanvasCommand("fill"));
+        }
+        _canvasCommands = commands;
+    }
+
+    private void OnCellEnter(HeatmapCell cell, Microsoft.AspNetCore.Components.Web.PointerEventArgs _)
+    {
+        if (_mode != HeatmapRenderMode.Svg) return;
+        _hovered = true;
+        _activeCol = cell.ColIndex;
+        _activeRow = cell.RowIndex;
+        UpdateStatus(cell);
+    }
+
+    private void OnCellLeave()
+    {
+        _hovered = false;
+        if (!_keyboardActive) { _activeCol = null; _activeRow = null; _statusText = string.Empty; }
+    }
+
+    private void OnFocusHost()
+    {
+        _keyboardActive = true;
+        if (_activeCol is null && _cells.Count > 0) { _activeCol = _cells[0].ColIndex; _activeRow = _cells[0].RowIndex; }
+        var cell = _cells.FirstOrDefault(c => c.ColIndex == _activeCol && c.RowIndex == _activeRow);
+        if (cell is not null) UpdateStatus(cell);
+    }
+
+    private void OnBlurHost()
+    {
+        _keyboardActive = false;
+        if (!_hovered) { _activeCol = null; _activeRow = null; _statusText = string.Empty; }
+    }
+
+    private void OnKeyDown(Microsoft.AspNetCore.Components.Web.KeyboardEventArgs e)
+    {
+        if (_visibleXCategories.Count == 0 || YCategories.Count == 0) return;
+        _keyboardActive = true;
+        var col = _activeCol is { } c && _visibleXCategories.Contains(XCategories[Math.Min(c, XCategories.Count - 1)]) ? c : 0;
+        var row = _activeRow ?? 0;
+
+        switch (e.Key)
+        {
+            case "ArrowRight": col = Math.Min(col + 1, XCategories.Count - 1); break;
+            case "ArrowLeft": col = Math.Max(col - 1, 0); break;
+            case "ArrowDown": row = Math.Min(row + 1, YCategories.Count - 1); break;
+            case "ArrowUp": row = Math.Max(row - 1, 0); break;
+            case "Home": col = 0; break;
+            case "End": col = XCategories.Count - 1; break;
+            default: return;
+        }
+        _activeCol = col;
+        _activeRow = row;
+        var cell = _cells.FirstOrDefault(cc => cc.ColIndex == col && cc.RowIndex == row);
+        UpdateStatus(cell, fallbackXi: col, fallbackYi: row);
+    }
+
+    private void UpdateStatus(HeatmapCell? cell, int? fallbackXi = null, int? fallbackYi = null)
+    {
+        if (!ShowTooltip) { _statusText = string.Empty; return; }
+        var xi = cell?.ColIndex ?? fallbackXi ?? 0;
+        var yi = cell?.RowIndex ?? fallbackYi ?? 0;
+        var xName = xi < XCategories.Count ? XCategories[xi] : xi.ToString();
+        var yName = yi < YCategories.Count ? YCategories[yi] : yi.ToString();
+        _statusText = cell is not null
+            ? $"{yName} · {xName}: {NativeChartShared.FmtValue(cell.Value)}"
+            : $"{yName} · {xName}: (no data)";
+    }
+
+    private void OnZoomRangeChanged((double Start, double End) range)
+    {
+        _zoom.SetRange(range.Start, range.End);
+        Rebuild();
+    }
+
+    private void BuildAccessibility()
+    {
+        var items = Data.Where(d => d.Length > 2 && (int)d[0] < XCategories.Count && (int)d[1] < YCategories.Count)
+            .Select(d => ($"{YCategories[(int)d[1]]} · {XCategories[(int)d[0]]}", d[2]))
+            .ToList();
+        var json = NativeChartShared.BuildCategoricalOptionJson("heatmap", items);
+        _a11yTable = ChartAccessibility.Build(json);
+        _a11ySummary = _a11yTable?.Summary ?? "Heatmap";
+    }
+
+    private sealed record HeatmapCell(int ColIndex, int RowIndex, double X, double Y, double W, double H, double Value, string Color, string? Label);
+}
