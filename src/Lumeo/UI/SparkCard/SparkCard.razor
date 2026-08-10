@@ -46,7 +46,8 @@
     /// <summary>Custom content for the sparkline region, replacing the built-in chart driven by <see cref="Data"/>.</summary>
     [Parameter] public RenderFragment? ChildContent { get; set; }
 
-    /// <summary>Controls padding, typography and sparkline height. Defaults to <see cref="Lumeo.Size.Md"/>.</summary>
+    /// <summary>Controls padding, typography and sparkline height. Supports all 7
+    /// <see cref="Lumeo.Size"/> values (Xxs–Xxl). Defaults to <see cref="Lumeo.Size.Md"/>.</summary>
     [Parameter] public Lumeo.Size Size { get; set; } = Lumeo.Size.Md;
 
     /// <summary>Card surface style: <see cref="SparkCardVariant.Default"/> (standard border), <see cref="SparkCardVariant.Bordered"/> (thicker 2px border), or <see cref="SparkCardVariant.Filled"/> (muted background).</summary>
@@ -81,36 +82,68 @@
 
     private int SparkHeight => Size switch
     {
+        Lumeo.Size.Xxs => 16,
+        Lumeo.Size.Xs => 24,
         Lumeo.Size.Sm => 32,
         Lumeo.Size.Lg => 56,
+        Lumeo.Size.Xl => 72,
+        Lumeo.Size.Xxl => 88,
         _ => 40
     };
 
+    // Xxs floors to zero padding — a bordered card's border touches the
+    // content directly at this rung (spec-flagged, not fixed).
     private string SizePadding => Size switch
     {
+        Lumeo.Size.Xxs => "p-0",
+        Lumeo.Size.Xs => "p-1",
         Lumeo.Size.Sm => "p-3",
         Lumeo.Size.Lg => "p-6",
+        Lumeo.Size.Xl => "p-7",
+        Lumeo.Size.Xxl => "p-8",
         _ => "p-5"
     };
 
+    // h-[72px]/h-[88px] are arbitrary values (no named Tailwind step at those
+    // pixel counts) and MUST stay pixel-matched to SparkHeight above, or the
+    // chart clips inside its wrapper.
     private string SparklineHeightClass => Size switch
     {
+        Lumeo.Size.Xxs => "mt-0 h-4",
+        Lumeo.Size.Xs => "mt-1 h-6",
         Lumeo.Size.Sm => "mt-2 h-8",
         Lumeo.Size.Lg => "mt-4 h-14",
+        Lumeo.Size.Xl => "mt-5 h-[72px]",
+        Lumeo.Size.Xxl => "mt-6 h-[88px]",
         _ => "mt-3 h-10"
     };
 
     private string LabelClass => Size switch
     {
+        Lumeo.Size.Xxs => "text-[8px] text-muted-foreground truncate",
+        Lumeo.Size.Xs => "text-[10px] text-muted-foreground truncate",
         Lumeo.Size.Sm => "text-xs text-muted-foreground truncate",
         Lumeo.Size.Lg => "text-base text-muted-foreground truncate",
+        Lumeo.Size.Xl => "text-lg text-muted-foreground truncate",
+        Lumeo.Size.Xxl => "text-xl text-muted-foreground truncate",
         _ => "text-sm text-muted-foreground truncate"
     };
 
+    // Xxs/Xs both clamp mt to mt-0 (raw arithmetic goes negative below Sm's
+    // mt-0.5). Value text: Xs lands exactly on text-xs (12px); Xxs's raw
+    // arithmetic (6px) is unreadable, so it's floored to text-[10px] instead
+    // of following the arithmetic down — a deliberate readability floor.
+    // Xxl's raw arithmetic (42px) has no named token; deviates to the named
+    // text-5xl (48px) rather than adding a third arbitrary bracket to this
+    // component (spec-flagged deviation).
     private string ValueClass => Size switch
     {
+        Lumeo.Size.Xxs => "mt-0 text-[10px] font-semibold tracking-tight text-foreground",
+        Lumeo.Size.Xs => "mt-0 text-xs font-semibold tracking-tight text-foreground",
         Lumeo.Size.Sm => "mt-0.5 text-lg font-semibold tracking-tight text-foreground",
         Lumeo.Size.Lg => "mt-1.5 text-3xl font-semibold tracking-tight text-foreground",
+        Lumeo.Size.Xl => "mt-2 text-4xl font-semibold tracking-tight text-foreground",
+        Lumeo.Size.Xxl => "mt-2.5 text-5xl font-semibold tracking-tight text-foreground",
         _ => "mt-1 text-2xl font-semibold tracking-tight text-foreground"
     };
 
