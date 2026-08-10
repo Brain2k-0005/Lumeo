@@ -289,4 +289,197 @@ public class SchedulerTimeGridViewTests : IAsyncLifetime
 
         Assert.Equal(0, _interop.SchedulerViewsRegisterNowIndicatorCallCount);
     }
+
+    // ── CanDrop three-way: reject / accept / accept-with-adjustment ──────────
+
+    [Fact]
+    public void ValidateDrop_Accepts_When_CanDrop_Returns_SchedulerDropResult_Accept()
+    {
+        var events = new[] { new L.SchedulerEvent("e1", "Standup", D(2026, 3, 11, 9, 0), D(2026, 3, 11, 9, 30)) };
+        var cut = _ctx.Render<L.SchedulerTimeGridView>(p => p
+            .Add(c => c.Events, events)
+            .Add(c => c.CanDrop, (L.SchedulerEvent _, L.SchedulerScheduleDropContext _) => L.SchedulerDropResult.Accept));
+
+        Assert.True(cut.Instance.ValidateDrop(Key("e1", D(2026, 3, 11, 9, 0)), "move", "2026-03-12", 0));
+    }
+
+    [Fact]
+    public void ValidateDrop_Rejects_When_CanDrop_Returns_SchedulerDropResult_Reject()
+    {
+        var events = new[] { new L.SchedulerEvent("e1", "Standup", D(2026, 3, 11, 9, 0), D(2026, 3, 11, 9, 30)) };
+        var cut = _ctx.Render<L.SchedulerTimeGridView>(p => p
+            .Add(c => c.Events, events)
+            .Add(c => c.CanDrop, (L.SchedulerEvent _, L.SchedulerScheduleDropContext _) => L.SchedulerDropResult.Reject));
+
+        Assert.False(cut.Instance.ValidateDrop(Key("e1", D(2026, 3, 11, 9, 0)), "move", "2026-03-12", 0));
+    }
+
+    [Fact]
+    public async Task CommitDrag_Applies_The_CanDrop_Adjustment_Instead_Of_The_Raw_Proposal()
+    {
+        // Predicted: a plain move-by-60-minutes on 2026-03-13 would normally land at
+        // 10:00-10:30 (matches CommitDrag_Fires_OnEventChange_With_The_New_Window's own raw
+        // math). CanDrop here snaps the commit 15 minutes later instead — proving the
+        // adjustment reaches the committed event, not just the accept/reject verdict.
+        L.SchedulerEvent? changed = null;
+        var events = new[] { new L.SchedulerEvent("e1", "Standup", D(2026, 3, 11, 9, 0), D(2026, 3, 11, 9, 30)) };
+        var cut = _ctx.Render<L.SchedulerTimeGridView>(p => p
+            .Add(c => c.Events, events)
+            .Add(c => c.OnEventChange, (L.SchedulerEvent e) => changed = e)
+            .Add(c => c.CanDrop, (L.SchedulerEvent _, L.SchedulerScheduleDropContext ctx) =>
+                L.SchedulerDropResult.AcceptWith(new L.SchedulerDropAdjustment(Start: ctx.ProposedStart.AddMinutes(15), End: ctx.ProposedEnd.AddMinutes(15)))));
+
+        await cut.InvokeAsync(() => cut.Instance.CommitDrag(Key("e1", D(2026, 3, 11, 9, 0)), "move", "2026-03-13", 60));
+
+        Assert.NotNull(changed);
+        Assert.Equal(new DateTime(2026, 3, 13, 10, 15, 0), changed!.Start); // predicted 10:15, NOT the raw 10:00 proposal
+        Assert.Equal(new DateTime(2026, 3, 13, 10, 45, 0), changed.End);
+    }
+
+    [Fact]
+    public async Task CommitDrag_Re_Validates_CanDrop_And_Refuses_A_Rejected_Commit()
+    {
+        // Same reasoning as SchedulerMonthView's identical test: CommitDrag now re-validates
+        // CanDrop itself rather than trusting a prior JS-side ValidateDrop poll — this is the
+        // mutation-test surface for the TimeGrid half of the widened contract.
+        var fired = false;
+        var events = new[] { new L.SchedulerEvent("e1", "Standup", D(2026, 3, 11, 9, 0), D(2026, 3, 11, 9, 30)) };
+        var cut = _ctx.Render<L.SchedulerTimeGridView>(p => p
+            .Add(c => c.Events, events)
+            .Add(c => c.OnEventChange, (L.SchedulerEvent _) => fired = true)
+            .Add(c => c.CanDrop, (L.SchedulerEvent _, L.SchedulerScheduleDropContext _) => L.SchedulerDropResult.Reject));
+
+        await cut.InvokeAsync(() => cut.Instance.CommitDrag(Key("e1", D(2026, 3, 11, 9, 0)), "move", "2026-03-13", 60));
+
+        Assert.False(fired);
+    }
+
+    // ── Business-hours off-slot shading (spec's business-hours regression fix) ───
+
+    [Fact]
+    public void BusinessHours_False_By_Default_Never_Emits_Data_Off()
+    {
+        var cut = _ctx.Render<L.SchedulerTimeGridView>(p => p
+            .Add(c => c.AnchorDate, D(2026, 3, 11))
+            .Add(c => c.Days, 1));
+
+        Assert.Empty(cut.FindAll("[data-off]"));
+    }
+
+    [Fact]
+    public void BusinessHours_True_Marks_Slots_Outside_9_To_17_Off()
+    {
+        // 2026-03-11 is a Wednesday (a business day) — predicted: the 8:00 slot is off
+        // (before BusinessHoursStart), the 12:00 slot is on-hours, the 17:00 slot is off
+        // (at/after the exclusive BusinessHoursEnd).
+        var cut = _ctx.Render<L.SchedulerTimeGridView>(p => p
+            .Add(c => c.AnchorDate, D(2026, 3, 11))
+            .Add(c => c.Days, 1)
+            .Add(c => c.BusinessHours, true));
+
+        Assert.Equal("true", cut.Find("[data-slot-hour='8']").GetAttribute("data-off"));
+        Assert.Null(cut.Find("[data-slot-hour='12']").GetAttribute("data-off"));
+        Assert.Equal("true", cut.Find("[data-slot-hour='17']").GetAttribute("data-off"));
+    }
+
+    [Fact]
+    public void BusinessHours_True_Marks_A_Whole_Weekend_Day_Off_Regardless_Of_Hour()
+    {
+        // 2026-03-14 is a Saturday — every slot in that day column is off, even the ones
+        // that would be within business HOURS on a weekday.
+        var cut = _ctx.Render<L.SchedulerTimeGridView>(p => p
+            .Add(c => c.AnchorDate, D(2026, 3, 11)) // week containing Sat 2026-03-14
+            .Add(c => c.Days, 7)
+            .Add(c => c.BusinessHours, true));
+
+        var saturdayColumn = cut.Find("[data-daycol='2026-03-14']");
+        var slotsInColumn = saturdayColumn.QuerySelectorAll("[data-slot-hour]");
+        Assert.NotEmpty(slotsInColumn);
+        Assert.All(slotsInColumn, el => Assert.Equal("true", el.GetAttribute("data-off")));
+    }
+
+    // ── Resize-handle visual affordance (audit: "a hit zone nobody can see is not a feature") ─
+
+    [Fact]
+    public void Editable_Timed_Pill_Carries_Data_Resizable()
+    {
+        var events = new[] { new L.SchedulerEvent("e1", "Standup", D(2026, 3, 11, 9, 0), D(2026, 3, 11, 9, 30)) };
+        var cut = _ctx.Render<L.SchedulerTimeGridView>(p => p
+            .Add(c => c.AnchorDate, D(2026, 3, 11))
+            .Add(c => c.Days, 1)
+            .Add(c => c.Events, events)
+            .Add(c => c.Editable, true));
+
+        Assert.Equal("true", cut.Find("[data-event-id='e1']").GetAttribute("data-resizable"));
+    }
+
+    [Fact]
+    public void NonEditable_Timed_Pill_Has_No_Data_Resizable()
+    {
+        // Predicted: pre-fix markup never emits data-resizable at all (the attribute didn't
+        // exist), so this assertion would also incidentally pass against the OLD code for the
+        // wrong reason — paired with the test above (which DOES fail against old markup, since
+        // the attribute is simply absent there) to actually pin the Editable-gating behavior.
+        var events = new[] { new L.SchedulerEvent("e1", "Standup", D(2026, 3, 11, 9, 0), D(2026, 3, 11, 9, 30)) };
+        var cut = _ctx.Render<L.SchedulerTimeGridView>(p => p
+            .Add(c => c.AnchorDate, D(2026, 3, 11))
+            .Add(c => c.Days, 1)
+            .Add(c => c.Events, events)
+            .Add(c => c.Editable, false));
+
+        Assert.Null(cut.Find("[data-event-id='e1']").GetAttribute("data-resizable"));
+    }
+
+    // ── All-day strip lane packing (structural fix: reuse SchedulerMonthLayout.PackRow) ──
+
+    [Fact]
+    public void MultiDay_AllDay_Event_Keeps_The_Same_Lane_Across_Day_Columns()
+    {
+        // The exact regression the audit found: A (single-day, day1 only), B (multi-day,
+        // day1+day2), C (single-day, day2 only). The OLD per-column-independent `.Where(...)`
+        // filter placed each day column's own events in list order — day1 renders [A, B] (B at
+        // lane/DOM-index 1, after A), day2 renders [B, C] (B at lane/DOM-index 0, since A isn't
+        // present there) — B's vertical position SHIFTS between columns. Predicted wrong value
+        // against the pre-fix code: day1's B has data-lane="1", day2's B has data-lane="0" (a
+        // concrete, different, wrong pair of values) — this test fails against that state.
+        // SchedulerMonthLayout.PackRow computes ONE shared lane per event across the whole row
+        // instead, so the fixed code keeps B at the SAME data-lane on both columns.
+        var events = new[]
+        {
+            new L.SchedulerEvent("a", "A", D(2026, 3, 11), D(2026, 3, 12), AllDay: true),
+            new L.SchedulerEvent("b", "B", D(2026, 3, 11), D(2026, 3, 13), AllDay: true),
+            new L.SchedulerEvent("c", "C", D(2026, 3, 12), D(2026, 3, 13), AllDay: true),
+        };
+        var cut = _ctx.Render<L.SchedulerTimeGridView>(p => p
+            .Add(c => c.AnchorDate, D(2026, 3, 11))
+            .Add(c => c.Days, 7)
+            .Add(c => c.Events, events));
+
+        // The all-day strip's day columns render in the same left-to-right order as
+        // _dayColumns, so the two "b" pill occurrences in DOM order correspond to day1 then
+        // day2 — assert their data-lane values match.
+        var bPills = cut.FindAll("[data-event-id='b']");
+        Assert.Equal(2, bPills.Count);
+        Assert.Equal(bPills[0].GetAttribute("data-lane"), bPills[1].GetAttribute("data-lane"));
+    }
+
+    [Fact]
+    public void AllDay_Strip_Renders_A_Lane_Placeholder_When_A_Days_Lane_Is_Empty()
+    {
+        // A (day1 only) and C (day2 only) share lane 0 in the packer (their spans don't
+        // overlap on any shared day cell) — day1's own strip column must NOT render C's pill,
+        // proving lane reuse doesn't leak an event onto a day it doesn't touch.
+        var events = new[]
+        {
+            new L.SchedulerEvent("a", "A", D(2026, 3, 11), D(2026, 3, 12), AllDay: true),
+            new L.SchedulerEvent("c", "C", D(2026, 3, 12), D(2026, 3, 13), AllDay: true),
+        };
+        var cut = _ctx.Render<L.SchedulerTimeGridView>(p => p
+            .Add(c => c.AnchorDate, D(2026, 3, 11))
+            .Add(c => c.Days, 7)
+            .Add(c => c.Events, events));
+
+        Assert.Single(cut.FindAll("[data-event-id='a']"));
+        Assert.Single(cut.FindAll("[data-event-id='c']"));
+    }
 }

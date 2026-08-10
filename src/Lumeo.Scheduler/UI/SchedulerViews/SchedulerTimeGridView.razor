@@ -19,14 +19,40 @@
             <div class="flex-1 grid min-w-0" style="grid-template-columns: repeat(@Days, minmax(0, 1fr));">
                 @for (var d = 0; d < Days; d++)
                 {
-                    var day = _dayColumns[d];
+                    var dayIndex = d;
+                    var laneSlots = dayIndex < _allDayLaneSlots.Length ? _allDayLaneSlots[dayIndex] : Array.Empty<AllDaySlot?>();
                     <div class="border-l border-border/40 p-1 flex flex-col gap-0.5 min-w-0">
-                        @foreach (var inst in _allDayInstances.Where(i => TouchesDay(i.Instance.Start, i.Instance.End, true, day)))
+                        @for (var lane = 0; lane < laneSlots.Count; lane++)
                         {
-                            <button type="button" class="@AllDayPillClasses(inst)" style="@PillStyle(inst.Source)"
-                                    @onclick="() => OnEventClickAsync(inst.Source)">
-                                @inst.Source.Title
-                            </button>
+                            var slot = laneSlots[lane];
+                            if (slot is null)
+                            {
+                                <div class="h-[19px]" data-lane="@lane" aria-hidden="true"></div>
+                            }
+                            else
+                            {
+                                <Tooltip ShowDelay="400" Class="w-full">
+                                    <TooltipTrigger AsChild="true">
+                                        <ChildContentSlot Context="pillSlot">
+                                            <button type="button" class="@AllDayPillClasses(slot)" style="@PillStyle(slot.Source)"
+                                                    data-event-id="@slot.Instance.EventId"
+                                                    data-lane="@lane"
+                                                    @attributes="pillSlot.Attributes"
+                                                    @onclick="() => OnEventClickAsync(slot.Source)">
+                                                @if (slot.ShowTitle)
+                                                {
+                                                    @slot.Source.Title
+                                                }
+                                                else
+                                                {
+                                                    <span aria-hidden="true">&nbsp;</span>
+                                                }
+                                            </button>
+                                        </ChildContentSlot>
+                                    </TooltipTrigger>
+                                    <TooltipContent>@TooltipLabel(slot.Source, slot.Instance)</TooltipContent>
+                                </Tooltip>
+                            }
                         }
                     </div>
                 }
@@ -58,6 +84,7 @@
                              @ref="_cellRefs[cellLinear]"
                              tabindex="@(isFocused ? "0" : "-1")"
                              data-slot-hour="@_hours[hourIndex]"
+                             data-off="@(IsOffSlot(day, _hours[hourIndex]) ? "true" : null)"
                              aria-label="@SlotAriaLabel(day, _hours[hourIndex])"
                              class="h-12 border-b border-border/30 cursor-crosshair focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring focus-visible:-outline-offset-2"
                              @onclick="() => OnSlotClickAsync(day, _hours[hourIndex])"
@@ -69,20 +96,29 @@
                     {
                         var key = InstanceKey(block.Instance);
                         var blockHourIndex = HourIndexOf(block.Instance.Start);
-                        <button type="button"
-                                @ref="_pillRefs[key]"
-                                class="@TimedPillClasses()"
-                                style="@TimedPillStyle(block)"
-                                data-event-instance="@key"
-                                data-event-id="@block.Instance.EventId"
-                                tabindex="-1"
-                                aria-label="@PillAriaLabel(block.Source, block.Instance)"
-                                @onclick:stopPropagation="true"
-                                @onclick="() => OnEventClickAsync(block.Source)"
-                                @onkeydown="e => OnPillKeyDownAsync(e, block.Source, dayIndex, blockHourIndex)">
-                            <span class="block font-semibold truncate">@block.Source.Title</span>
-                            <span class="block text-[10px] opacity-80">@block.Instance.Start.ToString("t", CultureInfo.CurrentUICulture)</span>
-                        </button>
+                        <Tooltip ShowDelay="400" Class="static">
+                            <TooltipTrigger AsChild="true">
+                                <ChildContentSlot Context="pillSlot">
+                                    <button type="button"
+                                            @ref="_pillRefs[key]"
+                                            class="@TimedPillClasses()"
+                                            style="@TimedPillStyle(block)"
+                                            data-event-instance="@key"
+                                            data-event-id="@block.Instance.EventId"
+                                            data-resizable="@(Editable ? "true" : null)"
+                                            tabindex="-1"
+                                            aria-label="@PillAriaLabel(block.Source, block.Instance)"
+                                            @attributes="pillSlot.Attributes"
+                                            @onclick:stopPropagation="true"
+                                            @onclick="() => OnEventClickAsync(block.Source)"
+                                            @onkeydown="e => OnPillKeyDownAsync(e, block.Source, dayIndex, blockHourIndex)">
+                                        <span class="block font-semibold truncate">@block.Source.Title</span>
+                                        <span class="block text-[10px] opacity-80">@block.Instance.Start.ToString("t", CultureInfo.CurrentUICulture)</span>
+                                    </button>
+                                </ChildContentSlot>
+                            </TooltipTrigger>
+                            <TooltipContent>@TooltipLabel(block.Source, block.Instance)</TooltipContent>
+                        </Tooltip>
                     }
                 </div>
             }
@@ -125,11 +161,31 @@
     [Parameter] public bool NowIndicator { get; set; } = true;
 
     /// <summary>
-    /// Fail-closed validation predicate for a move/resize drop (spec §3.2). <c>null</c> (default)
+    /// Fail-closed validation predicate for a move/resize drop (spec §3.2), widened to a
+    /// three-way reject/accept/accept-with-adjustment contract (mirrors ReUI's
+    /// <c>onEventUpdate</c>) — see <see cref="SchedulerDropResult"/>. <c>null</c> (default)
     /// means no consumer opted in — JS is told via <c>hasCanDrop: false</c> so zero
     /// <see cref="ValidateDrop"/> interop calls happen per drag, not "always permit".
     /// </summary>
-    [Parameter] public Func<SchedulerEvent, SchedulerScheduleDropContext, bool>? CanDrop { get; set; }
+    [Parameter] public Func<SchedulerEvent, SchedulerScheduleDropContext, SchedulerDropResult>? CanDrop { get; set; }
+
+    /// <summary>
+    /// Shades non-business-hour slots and non-business days (spec's business-hours regression
+    /// fix — the first-party views previously had no equivalent at all, unlike the FullCalendar
+    /// wrapper's <c>BusinessHours</c> toggle). Default false (opt-in, matches the wrapper's own
+    /// default). Grid interval and snap duration remain out of scope for this pass (still
+    /// hardcoded — see the report).
+    /// </summary>
+    [Parameter] public bool BusinessHours { get; set; }
+
+    /// <summary>Earliest business hour (inclusive) when <see cref="BusinessHours"/> is true. Default 09:00, matching the FullCalendar wrapper's own hardcoded default.</summary>
+    [Parameter] public TimeOnly BusinessHoursStart { get; set; } = new(9, 0);
+
+    /// <summary>Latest business hour (exclusive) when <see cref="BusinessHours"/> is true. Default 17:00.</summary>
+    [Parameter] public TimeOnly BusinessHoursEnd { get; set; } = new(17, 0);
+
+    /// <summary>Which days of the week count as business days when <see cref="BusinessHours"/> is true. Default Mon–Fri, matching FullCalendar's own hardcoded default.</summary>
+    [Parameter] public IReadOnlyList<DayOfWeek>? BusinessDays { get; set; }
 
     /// <summary>Raised after a move/resize drag commits (post-<see cref="CanDrop"/> validation, ghost already removed).</summary>
     [Parameter] public EventCallback<SchedulerEvent> OnEventChange { get; set; }
@@ -143,6 +199,7 @@
     private int _maxMinute = 1440;
     private List<TimedBlock>[] _timedByDay = Array.Empty<List<TimedBlock>>();
     private List<TimedBlock> _allDayInstances = new();
+    private IReadOnlyList<AllDaySlot?>[] _allDayLaneSlots = Array.Empty<IReadOnlyList<AllDaySlot?>>();
     private int _focusedIndex;
     private ElementReference _scrollRef;
     private ElementReference _hostRef;
@@ -256,7 +313,7 @@
     private void BuildEventLayout()
     {
         _pillRefs.Clear();
-        if (_dayColumns.Length == 0) { _timedByDay = Array.Empty<List<TimedBlock>>(); _allDayInstances = new(); return; }
+        if (_dayColumns.Length == 0) { _timedByDay = Array.Empty<List<TimedBlock>>(); _allDayInstances = new(); _allDayLaneSlots = Array.Empty<IReadOnlyList<AllDaySlot?>>(); return; }
 
         var events = (Events ?? Enumerable.Empty<SchedulerEvent>()).ToList();
         var byId = new Dictionary<string, SchedulerEvent>(StringComparer.Ordinal);
@@ -273,6 +330,7 @@
             .Where(i => byId[i.EventId].AllDay)
             .Select(i => new TimedBlock(i, byId[i.EventId], 0, 1))
             .ToList();
+        BuildAllDayLanes();
 
         var timedByDay = new List<TimedBlock>[_dayColumns.Length];
         for (var d = 0; d < _dayColumns.Length; d++)
@@ -298,6 +356,74 @@
             timedByDay[d] = blocks;
         }
         _timedByDay = timedByDay;
+    }
+
+    /// <summary>
+    /// Lane-packs the all-day strip via <see cref="SchedulerMonthLayout.PackRow"/> — the SAME
+    /// kernel algorithm Month view already uses for its own row continuity (spec's "one engine"
+    /// point) — instead of the previous per-day-column independent <c>.Where(...)</c> filter,
+    /// whose stacking order silently shifted a multi-day all-day event's vertical position
+    /// between day columns (the structural gap the audit found, not previously flagged
+    /// anywhere: Month view's rows were lane-packed for continuity, the TimeGrid's own all-day
+    /// strip was not).
+    /// </summary>
+    private void BuildAllDayLanes()
+    {
+        if (_allDayInstances.Count == 0 || _dayColumns.Length == 0)
+        {
+            _allDayLaneSlots = Array.Empty<IReadOnlyList<AllDaySlot?>>();
+            return;
+        }
+
+        var rowStart = _dayColumns[0];
+        var packInput = _allDayInstances
+            .Select(b => (Id: InstanceKey(b.Instance), StartDate: b.Instance.Start, EndDate: b.Instance.End, AllDay: true))
+            .ToList();
+        var lanes = SchedulerMonthLayout.PackRow(rowStart, packInput);
+        var maxLane = lanes.Count == 0 ? -1 : lanes.Values.Max();
+        var laneCount = maxLane + 1;
+
+        var perDay = new IReadOnlyList<AllDaySlot?>[_dayColumns.Length];
+        for (var d = 0; d < _dayColumns.Length; d++)
+        {
+            var day = _dayColumns[d];
+            var daySlots = new AllDaySlot?[laneCount];
+            foreach (var block in _allDayInstances)
+            {
+                if (!TouchesDay(block.Instance.Start, block.Instance.End, true, day)) continue;
+                var key = InstanceKey(block.Instance);
+                if (!lanes.TryGetValue(key, out var lane) || lane >= laneCount) continue;
+
+                var contL = day.Date > block.Instance.Start.Date;
+                var contR = day.Date < LastTouchedDate(block.Instance.End, true, block.Instance.Start);
+                daySlots[lane] = new AllDaySlot(block.Instance, block.Source, contL, contR, !contL);
+            }
+            perDay[d] = daySlots;
+        }
+        _allDayLaneSlots = perDay;
+    }
+
+    /// <summary>Whether <paramref name="day"/>/<paramref name="hour"/> falls outside <see cref="BusinessHoursStart"/>/<see cref="BusinessHoursEnd"/>/<see cref="BusinessDays"/> when <see cref="BusinessHours"/> is enabled.</summary>
+    private bool IsOffSlot(DateTime day, int hour)
+    {
+        if (!BusinessHours) return false;
+        var businessDays = BusinessDays ?? DefaultBusinessDays;
+        if (!businessDays.Contains(day.DayOfWeek)) return true;
+        var slotStart = new TimeOnly(hour % 24, 0);
+        return slotStart < BusinessHoursStart || slotStart >= BusinessHoursEnd;
+    }
+
+    private static readonly DayOfWeek[] DefaultBusinessDays =
+        { DayOfWeek.Monday, DayOfWeek.Tuesday, DayOfWeek.Wednesday, DayOfWeek.Thursday, DayOfWeek.Friday };
+
+    /// <summary>Hover-tooltip label for an event chip: title + time range (spec §3.4's promised "title, time range, resource" — resource omitted here since neither view resolves a resource DISPLAY NAME, only the raw <see cref="SchedulerEvent.ResourceId"/>; falls back to that id, labelled, when present).</summary>
+    private static string TooltipLabel(SchedulerEvent ev, SchedulerEventInstance inst)
+    {
+        var time = ev.AllDay ? null : $"{inst.Start:t}–{inst.End:t}";
+        var parts = new List<string> { ev.Title };
+        if (time is not null) parts.Add(time);
+        if (!string.IsNullOrEmpty(ev.ResourceId)) parts.Add(ev.ResourceId);
+        return string.Join(" · ", parts);
     }
 
     private static DateTime LastTouchedDate(DateTime end, bool allDay, DateTime start)
@@ -326,10 +452,12 @@
     private static string PillAriaLabel(SchedulerEvent ev, SchedulerEventInstance inst) =>
         $"{ev.Title}, {inst.Start:t}–{inst.End:t}";
 
-    private string AllDayPillClasses(TimedBlock block)
+    private string AllDayPillClasses(AllDaySlot slot)
     {
         var classes = "block w-full text-left text-[11px] font-medium px-1.5 py-0.5 rounded truncate border-0 cursor-pointer";
-        var extra = ResolveEventClassNames?.Invoke(block.Source);
+        if (slot.ContL) classes += " rounded-l-none";
+        if (slot.ContR) classes += " rounded-r-none";
+        var extra = ResolveEventClassNames?.Invoke(slot.Source);
         if (!string.IsNullOrEmpty(extra)) classes += " " + extra;
         return classes;
     }
@@ -473,7 +601,11 @@
     /// [JSInvokable] fail-closed CanDrop check for a move/resize candidate. Returns
     /// <c>false</c> (never permits) for any input JS shouldn't have been able to produce
     /// (unknown instance key, malformed mode) — an unrecognized shape is not evidence of
-    /// permission, only of something already gone wrong upstream.
+    /// permission, only of something already gone wrong upstream. Only the
+    /// <see cref="SchedulerDropResult.Accepted"/> half of the three-way verdict crosses the JS
+    /// boundary here — the visual ghost only needs accept/reject;
+    /// <see cref="SchedulerDropResult.Adjustment"/> is applied once, authoritatively, in
+    /// <see cref="CommitDrag"/>.
     /// </summary>
     [JSInvokable]
     public bool ValidateDrop(string instanceKey, string mode, string? dayIso, int deltaMinutes)
@@ -485,7 +617,7 @@
         if (src is null) return false;
         var (newStart, newEnd, source) = ComputeCandidate(p.Start, src.End - src.Start, mode, dayIso, deltaMinutes);
         if (newStart is null || newEnd is null) return false;
-        return CanDrop(src, new SchedulerScheduleDropContext(newStart.Value, newEnd.Value, source));
+        return CanDrop(src, new SchedulerScheduleDropContext(newStart.Value, newEnd.Value, source)).Accepted;
     }
 
     [JSInvokable]
@@ -495,9 +627,30 @@
         if (parsed is not { } p) return;
         var src = FindEvent(p.EventId);
         if (src is null) return;
-        var (newStart, newEnd, _) = ComputeCandidate(p.Start, src.End - src.Start, mode, dayIso, deltaMinutes);
+        var (newStart, newEnd, source) = ComputeCandidate(p.Start, src.End - src.Start, mode, dayIso, deltaMinutes);
         if (newStart is null || newEnd is null || newStart == src.Start && newEnd == src.End) return;
-        var updated = src with { Start = newStart.Value, End = newEnd.Value };
+        var finalStart = newStart.Value;
+        var finalEnd = newEnd.Value;
+        var finalAllDay = src.AllDay;
+
+        // Re-validate at commit time — same reasoning as SchedulerMonthView.CommitDrag: this is
+        // the only place a SchedulerDropResult.Adjustment can be applied (ValidateDrop only
+        // surfaces Accepted over the JS boundary), and it closes the staleness gap where JS's
+        // last cached ValidateDrop poll could otherwise be trusted without a final re-check.
+        if (CanDrop is not null)
+        {
+            var ctx = new SchedulerScheduleDropContext(finalStart, finalEnd, source);
+            var result = CanDrop(src, ctx);
+            if (!result.Accepted) return;
+            if (result.Adjustment is { } adjustment)
+            {
+                finalStart = adjustment.Start ?? finalStart;
+                finalEnd = adjustment.End ?? finalEnd;
+                finalAllDay = adjustment.AllDay ?? finalAllDay;
+            }
+        }
+
+        var updated = src with { Start = finalStart, End = finalEnd, AllDay = finalAllDay };
         if (OnEventChange.HasDelegate) await OnEventChange.InvokeAsync(updated);
     }
 
@@ -563,4 +716,7 @@
     }
 
     private sealed record TimedBlock(SchedulerEventInstance Instance, SchedulerEvent Source, int Column, int ColumnsInCluster);
+
+    /// <summary>An all-day strip lane slot — mirrors <c>SchedulerMonthView.PillSlot</c>'s continuation-styling shape (spec's "one engine" point, §1's structural fix).</summary>
+    private sealed record AllDaySlot(SchedulerEventInstance Instance, SchedulerEvent Source, bool ContL, bool ContR, bool ShowTitle);
 }

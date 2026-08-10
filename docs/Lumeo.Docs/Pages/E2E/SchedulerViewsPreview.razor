@@ -24,6 +24,7 @@
         <SchedulerMonthView Events="_events"
                             AnchorDate="_anchor"
                             CanDrop="RejectDrop15th"
+                            BusinessHours="true"
                             OnEventChange="OnMonthEventChange"
                             OnEventClick="OnEventClick"
                             OnDateSelect="OnDateSelect" />
@@ -49,6 +50,11 @@
         <Heading Id="agenda" Level="2" Class="scroll-mt-20">Agenda view</Heading>
         <SchedulerAgendaView Events="_events" AnchorDate="_anchor" DaysToShow="14" />
     </div>
+
+    <div class="space-y-3" data-testid="business-hours-section">
+        <Heading Id="business-hours" Level="2" Class="scroll-mt-20">Business hours (TimeGrid, 9–17 Mon–Fri)</Heading>
+        <SchedulerTimeGridView Events="_events" AnchorDate="_anchor" Days="7" BusinessHours="true" />
+    </div>
 </Stack>
 
 @code {
@@ -70,14 +76,23 @@
             new("e2e-1", "Draggable Standup", t.AddDays(2).AddHours(9), t.AddDays(2).AddHours(9.5), Color: "var(--color-chart-1)"),
             new("e2e-2", "Fixed Review", t.AddDays(3).AddHours(14), t.AddDays(3).AddHours(15), Color: "var(--color-chart-2)"),
             new("e2e-3", "All-day Offsite", t.AddDays(5), t.AddDays(7), AllDay: true, Color: "var(--color-chart-3)"),
+            // 4 same-day events (> Month's default MaxVisibleLanes=3) — deterministically
+            // overflows into "+N more" on day+9 for the popover E2E coverage.
+            new("e2e-overflow-1", "Overflow A", t.AddDays(9).AddHours(8), t.AddDays(9).AddHours(8.5)),
+            new("e2e-overflow-2", "Overflow B", t.AddDays(9).AddHours(9), t.AddDays(9).AddHours(9.5)),
+            new("e2e-overflow-3", "Overflow C", t.AddDays(9).AddHours(10), t.AddDays(9).AddHours(10.5)),
+            new("e2e-overflow-4", "Overflow D", t.AddDays(9).AddHours(11), t.AddDays(9).AddHours(11.5)),
         };
     }
 
-    // Rejects any drop landing on the 15th of the month — an E2E-observable, deterministic
-    // CanDrop predicate so Playwright can assert the fail-closed path without needing a real
-    // async delay (the JS-side await/.catch(() => false) path is exercised regardless of
-    // whether the predicate itself is fast or slow).
-    private bool RejectDrop15th(SchedulerEvent ev, SchedulerScheduleDropContext ctx)
+    // Rejects any drop landing on the 15th of the month, and SNAPS any drop landing on the
+    // 22nd forward one day to the 23rd (an E2E-observable accept-with-adjustment case,
+    // distinct from the plain-move test's own reserved 20th target below) — a deterministic
+    // CanDrop predicate so Playwright can assert both the fail-closed path and the three-way
+    // accept-with-adjustment path without needing a real async delay (the JS-side
+    // await/.catch(() => false) path is exercised regardless of whether the predicate itself
+    // is fast or slow).
+    private SchedulerDropResult RejectDrop15th(SchedulerEvent ev, SchedulerScheduleDropContext ctx)
     {
         _lastCanDropCheck = $"{ev.Id} -> {ctx.ProposedStart:yyyy-MM-dd} ({ctx.Source})";
         // CanDrop is a plain Func delegate, not an EventCallback — unlike OnEventChange/
@@ -86,7 +101,13 @@
         // machinery, so this component's own render never gets scheduled without an
         // explicit nudge here.
         _ = InvokeAsync(StateHasChanged);
-        return ctx.ProposedStart.Day != 15;
+        if (ctx.ProposedStart.Day == 15) return SchedulerDropResult.Reject;
+        if (ctx.ProposedStart.Day == 22)
+        {
+            var snapped = ctx.ProposedStart.AddDays(1);
+            return SchedulerDropResult.AcceptWith(new SchedulerDropAdjustment(Start: snapped, End: snapped + (ctx.ProposedEnd - ctx.ProposedStart)));
+        }
+        return true;
     }
 
     private void OnMonthEventChange(SchedulerEvent ev)

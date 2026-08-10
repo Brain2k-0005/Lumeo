@@ -265,4 +265,213 @@ public class SchedulerMonthViewTests : IAsyncLifetime
         Assert.Equal("-1", cells[0].GetAttribute("tabindex"));
         Assert.Equal("0", cells[1].GetAttribute("tabindex"));
     }
+
+    // ── CanDrop three-way: reject / accept / accept-with-adjustment ──────────
+
+    [Fact]
+    public void ValidateDrop_Accepts_When_CanDrop_Returns_SchedulerDropResult_Accept()
+    {
+        var events = new[] { new L.SchedulerEvent("e1", "Standup", D(2026, 3, 10, 9, 0), D(2026, 3, 10, 9, 30)) };
+        var cut = _ctx.Render<L.SchedulerMonthView>(p => p
+            .Add(c => c.Events, events)
+            .Add(c => c.CanDrop, (L.SchedulerEvent _, L.SchedulerScheduleDropContext _) => L.SchedulerDropResult.Accept));
+
+        Assert.True(cut.Instance.ValidateDrop("e1", "2026-03-12"));
+    }
+
+    [Fact]
+    public void ValidateDrop_Rejects_When_CanDrop_Returns_SchedulerDropResult_Reject()
+    {
+        var events = new[] { new L.SchedulerEvent("e1", "Standup", D(2026, 3, 10, 9, 0), D(2026, 3, 10, 9, 30)) };
+        var cut = _ctx.Render<L.SchedulerMonthView>(p => p
+            .Add(c => c.Events, events)
+            .Add(c => c.CanDrop, (L.SchedulerEvent _, L.SchedulerScheduleDropContext _) => L.SchedulerDropResult.Reject));
+
+        Assert.False(cut.Instance.ValidateDrop("e1", "2026-03-12"));
+    }
+
+    [Fact]
+    public async Task CommitDrag_Applies_The_CanDrop_Adjustment_Instead_Of_The_Raw_Proposal()
+    {
+        // Predicted: dragging e1 to the 17th normally lands it on 2026-03-17 09:00 (raw
+        // proposal). CanDrop here accepts but snaps the commit to the 18th instead — proving
+        // the three-way contract's "adjust" branch actually reaches the committed event, not
+        // just the accept/reject verdict.
+        L.SchedulerEvent? changed = null;
+        var events = new[] { new L.SchedulerEvent("e1", "Standup", D(2026, 3, 10, 9, 0), D(2026, 3, 10, 9, 30)) };
+        var cut = _ctx.Render<L.SchedulerMonthView>(p => p
+            .Add(c => c.Events, events)
+            .Add(c => c.OnEventChange, (L.SchedulerEvent e) => changed = e)
+            .Add(c => c.CanDrop, (L.SchedulerEvent _, L.SchedulerScheduleDropContext ctx) =>
+                L.SchedulerDropResult.AcceptWith(new L.SchedulerDropAdjustment(Start: ctx.ProposedStart.AddDays(1), End: ctx.ProposedEnd.AddDays(1)))));
+
+        await cut.InvokeAsync(() => cut.Instance.CommitDrag("e1", "2026-03-17"));
+
+        Assert.NotNull(changed);
+        Assert.Equal(new DateTime(2026, 3, 18, 9, 0, 0), changed!.Start); // predicted 18th, NOT the raw 17th proposal
+        Assert.Equal(new DateTime(2026, 3, 18, 9, 30, 0), changed.End);
+    }
+
+    [Fact]
+    public async Task CommitDrag_Re_Validates_CanDrop_And_Refuses_A_Rejected_Commit()
+    {
+        // CommitDrag now calls CanDrop itself (not just trusting a prior JS-side ValidateDrop
+        // poll) — this is the mutation-test surface: an accept-by-default regression here would
+        // let this event change fire even though CanDrop rejects every proposal.
+        var fired = false;
+        var events = new[] { new L.SchedulerEvent("e1", "Standup", D(2026, 3, 10, 9, 0), D(2026, 3, 10, 9, 30)) };
+        var cut = _ctx.Render<L.SchedulerMonthView>(p => p
+            .Add(c => c.Events, events)
+            .Add(c => c.OnEventChange, (L.SchedulerEvent _) => fired = true)
+            .Add(c => c.CanDrop, (L.SchedulerEvent _, L.SchedulerScheduleDropContext _) => L.SchedulerDropResult.Reject));
+
+        await cut.InvokeAsync(() => cut.Instance.CommitDrag("e1", "2026-03-17"));
+
+        Assert.False(fired);
+    }
+
+    [Fact]
+    public async Task CommitDrag_Adjustment_Can_Flip_AllDay()
+    {
+        L.SchedulerEvent? changed = null;
+        var events = new[] { new L.SchedulerEvent("e1", "Standup", D(2026, 3, 10, 9, 0), D(2026, 3, 10, 9, 30)) };
+        var cut = _ctx.Render<L.SchedulerMonthView>(p => p
+            .Add(c => c.Events, events)
+            .Add(c => c.OnEventChange, (L.SchedulerEvent e) => changed = e)
+            .Add(c => c.CanDrop, (L.SchedulerEvent _, L.SchedulerScheduleDropContext _) =>
+                L.SchedulerDropResult.AcceptWith(new L.SchedulerDropAdjustment(AllDay: true))));
+
+        await cut.InvokeAsync(() => cut.Instance.CommitDrag("e1", "2026-03-17"));
+
+        Assert.NotNull(changed);
+        Assert.True(changed!.AllDay);
+    }
+
+    // ── Business-hours off-day shading (spec's business-hours regression fix) ────
+
+    [Fact]
+    public void BusinessHours_False_By_Default_Never_Emits_Data_Off()
+    {
+        // 2026-03-15 is a Sunday. Predicted: with the default (BusinessHours=false),
+        // NO cell — including the Sunday cell — carries data-off, since the feature is
+        // entirely opt-in (matches the FullCalendar wrapper's own default).
+        var cut = _ctx.Render<L.SchedulerMonthView>(p => p.Add(c => c.AnchorDate, D(2026, 3, 15)));
+
+        Assert.Empty(cut.FindAll("[data-off]"));
+    }
+
+    [Fact]
+    public void BusinessHours_True_Marks_Weekend_Cells_Off()
+    {
+        // 2026-03-15 is a Sunday, 2026-03-14 a Saturday — both must carry data-off="true"
+        // when BusinessHours is enabled with the default Mon–Fri business days; a Monday
+        // cell (2026-03-16) must NOT.
+        var cut = _ctx.Render<L.SchedulerMonthView>(p => p
+            .Add(c => c.AnchorDate, D(2026, 3, 15))
+            .Add(c => c.BusinessHours, true));
+
+        Assert.Equal("true", cut.Find("[data-cell-date='2026-03-14']").GetAttribute("data-off"));
+        Assert.Equal("true", cut.Find("[data-cell-date='2026-03-15']").GetAttribute("data-off"));
+        Assert.Null(cut.Find("[data-cell-date='2026-03-16']").GetAttribute("data-off"));
+    }
+
+    // ── "+N more" popover (spec's dead-text regression fix) ───────────────────
+
+    [Fact]
+    public void HiddenCount_Zero_Renders_No_More_Trigger()
+    {
+        var events = new[] { new L.SchedulerEvent("e1", "Standup", D(2026, 3, 10, 9, 0), D(2026, 3, 10, 9, 30)) };
+        var cut = _ctx.Render<L.SchedulerMonthView>(p => p
+            .Add(c => c.AnchorDate, D(2026, 3, 15))
+            .Add(c => c.Events, events));
+
+        Assert.Empty(cut.FindAll("[data-testid='month-more-events']"));
+    }
+
+    [Fact]
+    public void Overflow_Day_Renders_A_Clickable_More_Trigger_Not_Dead_Text()
+    {
+        // Predicted wrong value against the pre-fix markup: a plain, non-interactive <span>
+        // with no data-testid attribute at all — this Find(...) would throw
+        // ElementNotFoundException against the old code (there is no way to reach the hidden
+        // events), which is the concrete "the affordance is not [there]" regression this closes.
+        var day = D(2026, 3, 10);
+        var events = Enumerable.Range(0, 4)
+            .Select(i => new L.SchedulerEvent($"e{i}", $"Event {i}", day.AddHours(8 + i), day.AddHours(8.5 + i)))
+            .ToArray();
+        var cut = _ctx.Render<L.SchedulerMonthView>(p => p
+            .Add(c => c.AnchorDate, D(2026, 3, 15))
+            .Add(c => c.Events, events));
+
+        var trigger = cut.Find("[data-testid='month-more-events']");
+        Assert.Equal("BUTTON", trigger.TagName);
+        Assert.Contains("1", trigger.TextContent); // 4 events, MaxVisibleLanes default 3 -> 1 hidden
+    }
+
+    [Fact]
+    public void Clicking_More_Trigger_Opens_A_Popover_Listing_The_Hidden_Events()
+    {
+        var day = D(2026, 3, 10);
+        var events = Enumerable.Range(0, 4)
+            .Select(i => new L.SchedulerEvent($"e{i}", $"Event {i}", day.AddHours(8 + i), day.AddHours(8.5 + i)))
+            .ToArray();
+        var cut = _ctx.Render<L.SchedulerMonthView>(p => p
+            .Add(c => c.AnchorDate, D(2026, 3, 15))
+            .Add(c => c.Events, events));
+
+        cut.Find("[data-testid='month-more-events']").Click();
+
+        var popover = cut.Find("[data-testid='month-more-popover']");
+        // The 4th (0-indexed "Event 3") event is the one that overflows past MaxVisibleLanes=3.
+        Assert.Contains("Event 3", popover.TextContent);
+    }
+
+    [Fact]
+    public void Clicking_A_Hidden_Event_In_The_Popover_Fires_OnEventClick()
+    {
+        L.SchedulerEvent? clicked = null;
+        var day = D(2026, 3, 10);
+        var events = Enumerable.Range(0, 4)
+            .Select(i => new L.SchedulerEvent($"e{i}", $"Event {i}", day.AddHours(8 + i), day.AddHours(8.5 + i)))
+            .ToArray();
+        var cut = _ctx.Render<L.SchedulerMonthView>(p => p
+            .Add(c => c.AnchorDate, D(2026, 3, 15))
+            .Add(c => c.Events, events)
+            .Add(c => c.OnEventClick, (L.SchedulerEvent e) => clicked = e));
+
+        cut.Find("[data-testid='month-more-events']").Click();
+        cut.Find("[data-testid='month-more-popover'] [data-event-id='e3']").Click();
+
+        Assert.NotNull(clicked);
+        Assert.Equal("e3", clicked!.Id);
+    }
+
+    // ── Month drag-to-create (spec §3.4's Month row — previously entirely absent) ─
+
+    [Fact]
+    public async Task CommitDateRangeSelect_Fires_OnDateSelect_With_The_Normalized_Range()
+    {
+        L.SchedulerDateRange? selected = null;
+        var cut = _ctx.Render<L.SchedulerMonthView>(p => p
+            .Add(c => c.OnDateSelect, (L.SchedulerDateRange r) => selected = r));
+
+        // Reversed order (end before start) — CommitDateRangeSelect must normalize.
+        await cut.InvokeAsync(() => cut.Instance.CommitDateRangeSelect("2026-03-20", "2026-03-17"));
+
+        Assert.NotNull(selected);
+        Assert.Equal(D(2026, 3, 17), selected!.Start);
+        Assert.Equal(D(2026, 3, 21), selected.End); // exclusive end: day after the LATER date
+        Assert.True(selected.AllDay);
+    }
+
+    [Fact]
+    public void Registers_Drag_With_Selectable_Option()
+    {
+        _ctx.Render<L.SchedulerMonthView>(p => p
+            .Add(c => c.AnchorDate, D(2026, 3, 15))
+            .Add(c => c.Selectable, false));
+
+        var options = Assert.IsType<Dictionary<string, object?>>(_interop.LastSchedulerViewsMonthDragOptions);
+        Assert.Equal(false, options["selectable"]);
+    }
 }

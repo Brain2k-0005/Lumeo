@@ -167,6 +167,89 @@ public class SchedulerViewsDragTests : PlaywrightTestBase
     }
 
     [Fact]
+    public async Task Month_DragToCreate_On_Empty_Background_Fires_OnDateSelect()
+    {
+        // Spec §3.4's Month row promise — previously entirely absent (only click/dblclick on a
+        // single cell existed). Drag across two empty cells and expect OnDateSelect, mirroring
+        // the existing Week_DragToCreate test's own shape.
+        await Goto("/e2e/scheduler-views-preview");
+
+        var monthSection = Page.Locator("[data-testid='month-section']");
+        await monthSection.ScrollIntoViewIfNeededAsync();
+
+        // Two adjacent empty cells, never day 15/20/22 (the CanDrop-log tests' own reserved
+        // targets) and never one of the seeded event days.
+        var fromCell = monthSection.Locator("[data-cell-date$='-05']").First;
+        var toCell = monthSection.Locator("[data-cell-date$='-06']").First;
+        await fromCell.ScrollIntoViewIfNeededAsync();
+
+        var from = await CenterOf(fromCell);
+        var to = await CenterOf(toCell);
+        await DragAsync(from, to);
+
+        await Assertions.Expect(Page.Locator("[data-testid='month-change-log']")).ToContainTextAsync("selected", new() { Timeout = 5000 });
+    }
+
+    [Fact]
+    public async Task Month_Drag_Highlights_The_Range_During_The_Drag()
+    {
+        await Goto("/e2e/scheduler-views-preview");
+
+        var monthSection = Page.Locator("[data-testid='month-section']");
+        await monthSection.ScrollIntoViewIfNeededAsync();
+
+        var fromCell = monthSection.Locator("[data-cell-date$='-05']").First;
+        var toCell = monthSection.Locator("[data-cell-date$='-06']").First;
+        await fromCell.ScrollIntoViewIfNeededAsync();
+
+        var from = await CenterOf(fromCell);
+        var to = await CenterOf(toCell);
+
+        await Page.Mouse.MoveAsync(from.X, from.Y);
+        await Page.Mouse.DownAsync();
+        await Page.Mouse.MoveAsync(from.X + 8, from.Y + 8);
+        await Page.Mouse.MoveAsync(to.X, to.Y);
+
+        // Both the start and end cell must carry the selection highlight attribute mid-drag.
+        await Assertions.Expect(fromCell).ToHaveAttributeAsync("data-select-target", "true");
+        await Assertions.Expect(toCell).ToHaveAttributeAsync("data-select-target", "true");
+
+        await Page.Mouse.UpAsync();
+
+        // Cleaned up post-drop.
+        await Assertions.Expect(fromCell).Not.ToHaveAttributeAsync("data-select-target", "true");
+    }
+
+    [Fact]
+    public async Task Month_Drag_With_CanDrop_Adjustment_Commits_The_Snapped_Date_Not_The_Raw_Drop_Target()
+    {
+        // SchedulerViewsPreview.RejectDrop15th snaps any drop landing on the 22nd forward to
+        // the 23rd. Predicted: dragging e2e-1 onto the 22nd commits to the 23rd, not the 22nd —
+        // the concrete, E2E-observable proof that CanDrop's three-way Adjustment reaches the
+        // real committed event through the full pointer -> ValidateDrop -> CommitDrag path.
+        await Goto("/e2e/scheduler-views-preview");
+
+        var monthSection = Page.Locator("[data-testid='month-section']");
+        await monthSection.ScrollIntoViewIfNeededAsync();
+
+        var pill = monthSection.Locator("[data-event-id='e2e-1']").First;
+        await pill.ScrollIntoViewIfNeededAsync();
+
+        var targetCell = monthSection.Locator("[data-cell-date$='-22']").First;
+        await targetCell.ScrollIntoViewIfNeededAsync();
+
+        var from = await CenterOf(pill);
+        var to = await CenterOf(targetCell);
+        await DragAsync(from, to);
+
+        // Predicted-vs-actual: the raw drop target was the 22nd; the committed value must show
+        // "-23" (the adjusted date), never "-22".
+        await Assertions.Expect(Page.Locator("[data-testid='month-change-log']")).ToContainTextAsync("-23", new() { Timeout = 5000 });
+        var log = await Page.Locator("[data-testid='month-change-log']").TextContentAsync();
+        Assert.DoesNotContain("-22 ", log ?? ""); // trailing space avoids matching "-22" as a substring of "-220..." etc.
+    }
+
+    [Fact]
     public async Task NowIndicator_Renders_On_Exactly_One_Column_At_The_Browsers_Local_Time()
     {
         await Goto("/e2e/scheduler-views-preview");

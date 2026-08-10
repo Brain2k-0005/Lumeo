@@ -74,11 +74,32 @@ function registerMonthDrag(hostEl, dotNetRef, options) {
         if (e.button !== 0) return;
         const dragOptions = reg.options;
         const dragDotNet = reg.dotNetRef;
-        if (!dragOptions || !dragOptions.editable) return;
+        if (!dragOptions) return;
 
         const pillEl = e.target.closest('[data-event-instance]');
-        if (!pillEl || !hostEl.contains(pillEl)) return;
+        if (pillEl && hostEl.contains(pillEl) && dragOptions.editable) {
+            startMonthEventMove(pillEl, e, dragOptions, dragDotNet);
+            return;
+        }
 
+        // A pointerdown on any OTHER real control inside the cell (the "+N more" popover
+        // trigger, or an event chip inside its popover) must never start a range-select
+        // gesture: setPointerCapture() on the cell would redirect the resulting synthetic
+        // "click" event to the CELL instead of the button the user actually pressed, so
+        // the button's own @onclick would silently never fire — found via this task's own
+        // Playwright run (a plain mouse ClickAsync on "+N more" did nothing at all, while
+        // a keyboard Enter on the same focused button worked, isolating it to exactly this
+        // pointer-capture interception, not a C#/Blazor wiring problem).
+        const controlEl = e.target.closest('button, [role="button"]');
+        if (controlEl && hostEl.contains(controlEl)) return;
+
+        const cellEl = e.target.closest('[data-cell-date]');
+        if (cellEl && hostEl.contains(cellEl) && dragOptions.selectable) {
+            startMonthRangeSelect(cellEl, e, dragDotNet);
+        }
+    };
+
+    function startMonthEventMove(pillEl, e, dragOptions, dragDotNet) {
         const eventId = pillEl.getAttribute('data-event-id');
         if (!eventId) return;
 
@@ -196,7 +217,91 @@ function registerMonthDrag(hostEl, dotNetRef, options) {
         pillEl.addEventListener('pointermove', onPointerMove);
         pillEl.addEventListener('pointerup', onPointerUp);
         pillEl.addEventListener('pointercancel', onPointerCancel);
-    };
+    }
+
+    // Drag-across-cells date-range selection on empty grid background (spec §3.4's Month
+    // row — previously entirely absent, only a click/dblclick on a single cell existed).
+    // Same ghost-free (attribute-only highlight, not a cloned element) + pointer-capture +
+    // drag-threshold + click-after-drag-swallow pattern as startMonthEventMove above.
+    function startMonthRangeSelect(startCellEl, e, dragDotNet) {
+        const startDateIso = startCellEl.getAttribute('data-cell-date');
+        if (!startDateIso) return;
+
+        const startClientX = e.clientX;
+        const startClientY = e.clientY;
+        const pointerId = e.pointerId;
+        let dragInitiated = false;
+        let lastDateIso = startDateIso;
+        let highlighted = [];
+
+        startCellEl.setPointerCapture(pointerId);
+
+        const onClickCapture = (ce) => {
+            startCellEl.removeEventListener('click', onClickCapture, true);
+            if (dragInitiated) { ce.stopPropagation(); ce.preventDefault(); }
+        };
+        startCellEl.addEventListener('click', onClickCapture, true);
+
+        function paintRange(toIso) {
+            for (const el of highlighted) el.removeAttribute('data-select-target');
+            highlighted = [];
+            const lo = startDateIso <= toIso ? startDateIso : toIso; // yyyy-MM-dd compares lexicographically = chronologically
+            const hi = startDateIso <= toIso ? toIso : startDateIso;
+            hostEl.querySelectorAll('[data-cell-date]').forEach((el) => {
+                const d = el.getAttribute('data-cell-date');
+                if (d >= lo && d <= hi) {
+                    el.setAttribute('data-select-target', 'true');
+                    highlighted.push(el);
+                }
+            });
+        }
+
+        const onPointerMove = (mv) => {
+            if (mv.pointerId !== pointerId) return;
+            const dx = mv.clientX - startClientX;
+            const dy = mv.clientY - startClientY;
+            if (!dragInitiated) {
+                if (Math.abs(dx) < DRAG_THRESHOLD_PX && Math.abs(dy) < DRAG_THRESHOLD_PX) return;
+                dragInitiated = true;
+            }
+
+            const under = document.elementFromPoint(mv.clientX, mv.clientY);
+            const cellEl = under ? under.closest('[data-cell-date]') : null;
+            if (cellEl && hostEl.contains(cellEl)) {
+                const dateIso = cellEl.getAttribute('data-cell-date');
+                if (dateIso !== lastDateIso) {
+                    lastDateIso = dateIso;
+                    paintRange(dateIso);
+                }
+            }
+        };
+
+        const onPointerUp = (up) => {
+            if (up.pointerId !== pointerId) return;
+            cleanup();
+            if (!dragInitiated) return; // below threshold — native click/dblclick already handle this
+            if (!lastDateIso) return;
+            dragDotNet.invokeMethodAsync('CommitDateRangeSelect', startDateIso, lastDateIso).catch(() => {});
+        };
+
+        const onPointerCancel = (cn) => {
+            if (cn.pointerId !== pointerId) return;
+            cleanup();
+        };
+
+        function cleanup() {
+            startCellEl.removeEventListener('pointermove', onPointerMove);
+            startCellEl.removeEventListener('pointerup', onPointerUp);
+            startCellEl.removeEventListener('pointercancel', onPointerCancel);
+            try { startCellEl.releasePointerCapture(pointerId); } catch (_) { /* already released */ }
+            for (const el of highlighted) el.removeAttribute('data-select-target');
+            highlighted = [];
+        }
+
+        startCellEl.addEventListener('pointermove', onPointerMove);
+        startCellEl.addEventListener('pointerup', onPointerUp);
+        startCellEl.addEventListener('pointercancel', onPointerCancel);
+    }
 
     hostEl.addEventListener('pointerdown', reg.onPointerDown);
     monthRegistrations.set(hostEl, reg);
