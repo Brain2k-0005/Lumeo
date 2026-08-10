@@ -43,8 +43,9 @@ else if (Variant == SpinnerVariant.Bars)
 }
 
 @code {
-    /// <summary>Spinner size — scales the SVG ring / dot / bar dimensions and their
-    /// gap. Default <see cref="Lumeo.Size.Md"/>.</summary>
+    /// <summary>Spinner size — scales the SVG ring / dot / bar dimensions and their gap.
+    /// Supports all 7 <see cref="Lumeo.Size"/> values (Xxs–Xxl). Default <see cref="Lumeo.Size.Md"/>.
+    /// Xxs/Xs on the Dots and Bars variants floor at very small dimensions — see component notes.</summary>
     [Parameter] public Lumeo.Size Size { get; set; } = Lumeo.Size.Md;
     /// <summary>Visual style: <see cref="SpinnerVariant.Ring"/> (rotating arc, default),
     /// <see cref="SpinnerVariant.Dots"/> (three bouncing dots), or
@@ -84,19 +85,29 @@ else if (Variant == SpinnerVariant.Bars)
 
     private string SizeClasses => Size switch
     {
+        Lumeo.Size.Xxs => "h-2 w-2",
+        Lumeo.Size.Xs => "h-3 w-3",
         Lumeo.Size.Sm => "h-4 w-4",
         Lumeo.Size.Md => "h-6 w-6",
         Lumeo.Size.Lg => "h-8 w-8",
+        Lumeo.Size.Xl => "h-10 w-10",
+        Lumeo.Size.Xxl => "h-12 w-12",
         _ => "h-6 w-6"
     };
 
     private string DotsContainerClass => $"flex items-center {DotGapClass}".Trim();
 
+    // Xxs/Xs both floor at gap-0 (dots touch) — no valid Tailwind token between
+    // 0 and Sm's gap-0.5; a deliberate tie, not a bug (spec-flagged).
     private string DotGapClass => Size switch
     {
+        Lumeo.Size.Xxs => "gap-0",
+        Lumeo.Size.Xs => "gap-0",
         Lumeo.Size.Sm => "gap-0.5",
         Lumeo.Size.Md => "gap-1",
         Lumeo.Size.Lg => "gap-1.5",
+        Lumeo.Size.Xl => "gap-2",
+        Lumeo.Size.Xxl => "gap-2.5",
         _ => "gap-1"
     };
 
@@ -106,9 +117,13 @@ else if (Variant == SpinnerVariant.Bars)
         {
             var sizeClass = Size switch
             {
+                Lumeo.Size.Xxs => "h-0.5 w-0.5",
+                Lumeo.Size.Xs => "h-1 w-1",
                 Lumeo.Size.Sm => "h-1.5 w-1.5",
                 Lumeo.Size.Md => "h-2 w-2",
                 Lumeo.Size.Lg => "h-3 w-3",
+                Lumeo.Size.Xl => "h-4 w-4",
+                Lumeo.Size.Xxl => "h-5 w-5",
                 _ => "h-2 w-2"
             };
             return $"{sizeClass} rounded-full bg-current animate-bounce";
@@ -121,24 +136,35 @@ else if (Variant == SpinnerVariant.Bars)
         {
             var heightClass = Size switch
             {
+                Lumeo.Size.Xxs => "h-1",
+                Lumeo.Size.Xs => "h-2",
                 Lumeo.Size.Sm => "h-3",
                 Lumeo.Size.Md => "h-4",
                 Lumeo.Size.Lg => "h-6",
+                Lumeo.Size.Xl => "h-8",
+                Lumeo.Size.Xxl => "h-10",
                 _ => "h-4"
             };
             return $"flex items-end gap-0.5 {heightClass}";
         }
     }
 
+    // Xxs/Xs both floor at w-0.5, tying Sm — Sm - 0.5-step would be zero-width
+    // (invisible); a deliberate three-way tie on width alone (spec-flagged).
+    // Bar height (BarsContainerClass) still differs across these three rungs.
     private string BarClass
     {
         get
         {
             var widthClass = Size switch
             {
+                Lumeo.Size.Xxs => "w-0.5",
+                Lumeo.Size.Xs => "w-0.5",
                 Lumeo.Size.Sm => "w-0.5",
                 Lumeo.Size.Md => "w-1",
                 Lumeo.Size.Lg => "w-1.5",
+                Lumeo.Size.Xl => "w-2",
+                Lumeo.Size.Xxl => "w-2.5",
                 _ => "w-1"
             };
             return $"{widthClass} bg-current rounded-sm animate-pulse";
