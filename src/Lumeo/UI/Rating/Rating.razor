@@ -30,7 +30,7 @@
             <button type="button"
                     role="radio"
                     aria-checked="@(IsStarChecked(starIndex).ToString().ToLowerInvariant())"
-                    class="@GetStarClasses(isFull || isHalf) @SizeClasses @StarInteractClasses"
+                    class="inline-flex items-center justify-center @GetStarClasses(isFull || isHalf) @SizeClasses @StarInteractClasses"
                     tabindex="@GetStarTabIndex(starIndex)"
                     disabled="@ReadOnly"
                     aria-label="@(string.Format(L["Rating.RateOf"], starIndex, Max))"
@@ -47,7 +47,7 @@
             <button type="button"
                     role="radio"
                     aria-checked="@(IsStarChecked(starIndex).ToString().ToLowerInvariant())"
-                    class="@SizeClasses @StarInteractClasses relative"
+                    class="inline-flex items-center justify-center @SizeClasses @StarInteractClasses relative"
                     tabindex="@GetStarTabIndex(starIndex)"
                     disabled="@ReadOnly"
                     aria-label="@(string.Format(L["Rating.RateOf"], starIndex, Max))"
@@ -123,7 +123,14 @@
     /// <summary>Icon slot. Named <c>IconContent</c> to avoid shadowing the <c>&lt;Icon&gt;</c> component.</summary>
     [Parameter] public RenderFragment? IconContent { get; set; }
 
-    /// <summary>Star size. Default <see cref="Lumeo.Size.Md"/>.</summary>
+    /// <summary>Star size. Supports all 7 <see cref="Lumeo.Size"/> values (Xxs–Xxl). Default
+    /// <see cref="Lumeo.Size.Md"/>. Sm and Md are padded up to the 24px touch-target minimum
+    /// (their star glyph itself is unchanged — only the button's hit box grows, which also
+    /// widens the visible gap between adjacent stars at those two rungs). <b>Xxs and Xs are a
+    /// deliberate exception</b>: their 8px/12px hit area stays below the 24px minimum on
+    /// purpose — an app that opts into <c>Xxs</c>/<c>Xs</c> is explicitly asking for a dense,
+    /// non-touch-primary control, so no padding is added there. Lg/Xl/Xxl already clear 24px
+    /// without any change.</summary>
     [Parameter] public Lumeo.Size Size { get; set; } = Lumeo.Size.Md;
     /// <summary>Marks the field as required, appending a destructive-colored asterisk to the label (outside a <c>FormField</c>). Purely visual — the widget does not enforce a non-zero selection.</summary>
     [Parameter] public bool Required { get; set; }
@@ -191,11 +198,35 @@
 
     private string CssClass => Cx.Merge("inline-flex items-center gap-0.5", Class);
 
+    // Touch-target fix (owner decision, PR #388 follow-up): the star buttons
+    // have zero padding, so their hit area equals the icon size. Measured:
+    // Xxs 8px, Xs 12px, Sm 16px, Md 20px all sit below the 24px minimum;
+    // Lg (32px)/Xl (36px)/Xxl (40px) already clear it. Owner chose to patch
+    // ONLY Sm and Md — the two rungs a user gets WITHOUT deliberately opting
+    // into a dense size (Md is the component default) — and to deliberately
+    // leave Xxs/Xs tiny, since picking Xxs/Xs is itself an explicit request
+    // for a dense control. Lg and up are untouched (already passing).
+    //
+    // Implemented as button padding (p-1 / p-0.5), NOT a change to the icon's
+    // own [&_svg]:h-N/w-N token — the rendered star glyph is therefore exactly
+    // the same pixel size as before; only the button's hit box (and, as a
+    // direct consequence, the visible gap between adjacent stars) grows. Math:
+    // Sm's 16px icon + p-1 (4px/side) = 24px exact. Md's 20px icon + p-0.5
+    // (2px/side) = 24px exact. See RatingSizeScaleTests for the padding+icon
+    // math and RatingSizeScaleTests' report of the resulting inter-star gap
+    // change (Sm: 2px -> 10px edge-to-edge; Md: 2px -> 6px).
     private string SizeClasses => Size switch
     {
-        Lumeo.Size.Sm => "[&_svg]:h-4 [&_svg]:w-4",
+        // Sm->Md->Lg is non-uniform (S1=4px, S2=12px); using S2 outward would
+        // produce absurd 44px/56px stars, so both directions extrapolate off
+        // S1 (4px) per the spec's deliberate deviation.
+        Lumeo.Size.Xxs => "[&_svg]:h-2 [&_svg]:w-2",
+        Lumeo.Size.Xs => "[&_svg]:h-3 [&_svg]:w-3",
+        Lumeo.Size.Sm => "[&_svg]:h-4 [&_svg]:w-4 p-1",
         Lumeo.Size.Lg => "[&_svg]:h-8 [&_svg]:w-8",
-        _ => "[&_svg]:h-5 [&_svg]:w-5"
+        Lumeo.Size.Xl => "[&_svg]:h-9 [&_svg]:w-9",
+        Lumeo.Size.Xxl => "[&_svg]:h-10 [&_svg]:w-10",
+        _ => "[&_svg]:h-5 [&_svg]:w-5 p-0.5"
     };
 
     private string GetStarClasses(bool isActive) => isActive

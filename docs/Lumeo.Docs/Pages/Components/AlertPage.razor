@@ -180,8 +180,8 @@
         <Container MaxWidth="md" Center="false" Padding="">
             <Stack Gap="4">
                 <Lumeo.Text Size="sm" Color="muted">Pick a size to see it applied live.</Lumeo.Text>
-                <Flex Gap="2">
-                    @foreach (var s in new[] { "Small", "Medium", "Large" })
+                <Flex Wrap="true" Gap="2">
+                    @foreach (var s in _sizeOptions)
                     {
                         var size = s;
                         <Button Size="Button.ButtonSize.Sm"
@@ -191,7 +191,7 @@
                 </Flex>
                 <Alert Size="@ParseSize(_selectedSize)" Variant="Alert.AlertVariant.Info">
                     <Lumeo.Text Weight="medium">@_selectedSize size</Lumeo.Text>
-                    <Lumeo.Text Size="sm" Class="mt-1">This alert uses the @_selectedSize.ToLower() size.</Lumeo.Text>
+                    <Lumeo.Text Size="sm" Class="mt-1">This alert uses the @_selectedSize size (all 7 Lumeo.Size rungs are supported).</Lumeo.Text>
                 </Alert>
             </Stack>
         </Container>
@@ -263,7 +263,11 @@
 @code {
     private string[] _variantOptions = ["Default", "Destructive", "Success", "Warning", "Info"];
     private string _selectedVariant = "Default";
-    private string _selectedSize = "Medium";
+
+    // Visual order (not declaration order — see Lumeo.Size's own remarks):
+    // Xxs is the smallest rung, Xxl the largest.
+    private string[] _sizeOptions = ["Xxs", "Xs", "Sm", "Md", "Lg", "Xl", "Xxl"];
+    private string _selectedSize = "Md";
 
     private Alert.AlertVariant ParseVariant(string v) => v switch
     {
@@ -274,12 +278,7 @@
         _             => Alert.AlertVariant.Default,
     };
 
-    private Lumeo.Size ParseSize(string s) => s switch
-    {
-        "Small" => Lumeo.Size.Sm,
-        "Large" => Lumeo.Size.Lg,
-        _       => Lumeo.Size.Md,
-    };
+    private Lumeo.Size ParseSize(string s) => Enum.Parse<Lumeo.Size>(s);
 
     private string _interactiveVariantCode = @"@* Pick a variant to see it applied live *@
 <Alert Variant=""Alert.AlertVariant.Success"">
