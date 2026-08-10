@@ -59,6 +59,46 @@ public record SchedulerEvent(
     // publish). With this parameterless ctor STJ uses property-based (de)serialization
     // instead. Do not remove.
     public SchedulerEvent() : this("", "", default, default) { }
+
+    /// <summary>
+    /// Optional structured recurrence rule (wave-1 RRULE subset: <c>FREQ=DAILY|WEEKLY|MONTHLY</c>,
+    /// <c>INTERVAL</c>, <c>COUNT</c>, <c>UNTIL</c>, <c>BYDAY</c>). When set, this takes precedence
+    /// over the legacy <see cref="DaysOfWeek"/>/<see cref="RecurrenceEnd"/> pair — both express the
+    /// same underlying recurrence engine (<c>SchedulerRecurrenceExpander</c> translates
+    /// <see cref="DaysOfWeek"/>+<see cref="RecurrenceEnd"/> into the equivalent
+    /// <see cref="SchedulerRecurrenceRule"/> at its own boundary when <see cref="Recurrence"/> is
+    /// unset), so setting both is redundant rather than contradictory — but is still flagged via a
+    /// debug-build assertion (not a thrown exception, matching this repo's "warn, don't crash the
+    /// render" posture) since it usually indicates the caller meant to pick one.
+    /// <see cref="ExceptionDates"/> continues to double as this rule's <c>EXDATE</c> list.
+    /// </summary>
+    /// <remarks>
+    /// Deliberately declared as a body property (<c>{ get; init; }</c>), NOT appended to the
+    /// primary constructor's positional parameter list, even though the parameter-list shape is
+    /// how earlier design notes for this feature sketched it. Appending it positionally would
+    /// change the compiler-synthesized <c>Deconstruct</c>/constructor signature that
+    /// <c>PublicAPI.Shipped.txt</c> already pins for this shipped record — CONTRIBUTING.md's
+    /// "Never delete or change the signature of a shipped public member directly" rule — forcing
+    /// an unnecessary <c>[Obsolete]</c> deprecation cycle for a purely-additive feature. A body
+    /// property adds a new getter/init member without touching anything already shipped: every
+    /// existing call site (positional or named) keeps compiling and behaving identically, and
+    /// object-initializer / <c>with</c>-expression syntax (<c>ev with { Recurrence = rule }</c>)
+    /// already reads/writes it like any other property. The ONE synthesized record member this
+    /// does NOT flow into is <c>Deconstruct</c> — that method (and the primary constructor's own
+    /// signature) is generated strictly from the primary constructor's parameter list, which is
+    /// exactly what stays byte-for-byte unchanged here (verified: adding this property produced
+    /// zero new/changed <c>PublicAPI.*.txt</c> entries for either). <c>Equals</c>/
+    /// <c>GetHashCode</c>/<c>ToString</c>, by contrast, DO already pick it up automatically —
+    /// per the C# record spec, the compiler-synthesized versions of those three compare/print
+    /// every instance field the record declares, which includes this auto-property's backing
+    /// field, not only the primary constructor's positional ones. So two events differing only
+    /// in <see cref="Recurrence"/> are correctly NOT equal and hash differently, with no extra
+    /// work needed here — see <c>SchedulerEventRecurrencePropertyTests</c> for the test that
+    /// pins this down rather than assuming it. (This built-in record equality is a different
+    /// mechanism from <c>Scheduler.razor</c>'s own hand-rolled <c>ComputeEventsHash</c>, which
+    /// remains out of this task's scope — see the wave-1a task report.)
+    /// </remarks>
+    public SchedulerRecurrenceRule? Recurrence { get; init; }
 }
 
 /// <summary>
