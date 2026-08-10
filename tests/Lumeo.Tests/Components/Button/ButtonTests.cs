@@ -110,6 +110,121 @@ public class ButtonTests : IAsyncLifetime
     }
 
     [Fact]
+    public void Sm_Size_Renders_TextSm_Not_TextXs()
+    {
+        // Wave-0 no-op proof (C3): SizeClasses used to emit a dead " text-xs" for
+        // Sm that Cx.Merge always discarded (Size runs before Base in CssClass's
+        // merge order, and Base's text-sm — the LAST font-size utility in source
+        // order — always wins the conflict group). Deleting the dead token must
+        // render byte-identical: text-sm present, text-xs absent, both before and
+        // after the cleanup.
+        var cut = _ctx.Render<Lumeo.Button>(p => p
+            .Add(b => b.Size, Lumeo.Button.ButtonSize.Sm)
+            .AddChildContent("Btn"));
+
+        var cls = cut.Find("button").GetAttribute("class") ?? "";
+        Assert.Contains("text-sm", cls);
+        Assert.DoesNotContain("text-xs", cls);
+    }
+
+    [Fact]
+    public void Xs_Size_Renders_Shadcn_Parity_Classes()
+    {
+        // shadcn `xs`: "h-6 gap-1 rounded-md px-2 text-xs ...". Comfortable/default
+        // density is the row that must match shadcn exactly (shadcn has no density
+        // concept). Predicted-vs-actual (disable check, see
+        // Xs_Size_Gap_And_Text_Survive_BaseClasses_Merge_Order below): with the
+        // SizeOverrideClass merge removed, gap-1/text-xs are silently discarded by
+        // Cx.Merge's last-wins resolution and BaseClasses' gap-2/text-sm win instead.
+        var cut = _ctx.Render<Lumeo.Button>(p => p
+            .Add(b => b.Size, Lumeo.Button.ButtonSize.Xs)
+            .AddChildContent("Btn"));
+
+        var cls = cut.Find("button").GetAttribute("class") ?? "";
+        Assert.Contains("h-6", cls);
+        Assert.Contains("px-2", cls);
+        Assert.Contains("gap-1", cls);
+        Assert.Contains("text-xs", cls);
+        Assert.DoesNotContain("gap-2", cls);
+        Assert.DoesNotContain("text-sm", cls);
+    }
+
+    [Theory]
+    [InlineData(Lumeo.Density.Compact, "h-5", "px-1.5")]
+    [InlineData(Lumeo.Density.Spacious, "h-7", "px-2.5")]
+    public void Xs_Size_Density_Rows_Are_Proportionate(Lumeo.Density density, string expectedHeight, string expectedPad)
+    {
+        var cut = _ctx.Render<Lumeo.Button>(p => p
+            .Add(b => b.Size, Lumeo.Button.ButtonSize.Xs)
+            .Add(b => b.Density, density)
+            .AddChildContent("Btn"));
+
+        var cls = cut.Find("button").GetAttribute("class") ?? "";
+        Assert.Contains(expectedHeight, cls);
+        Assert.Contains(expectedPad, cls);
+    }
+
+    [Fact]
+    public void Sm_Size_Renders_Gap1Point5_Not_Base_Gap2()
+    {
+        // shadcn `sm` carries gap-1.5; Lumeo's BaseClasses fixes gap-2 for every size.
+        // Predicted-vs-actual disable check: reverting SizeOverrideClass to null for Sm
+        // (or moving it before BaseClasses in the CssClass merge) makes this render
+        // "gap-2" instead — confirmed manually before writing this assertion.
+        var cut = _ctx.Render<Lumeo.Button>(p => p
+            .Add(b => b.Size, Lumeo.Button.ButtonSize.Sm)
+            .AddChildContent("Btn"));
+
+        var cls = cut.Find("button").GetAttribute("class") ?? "";
+        Assert.Contains("gap-1.5", cls);
+        Assert.DoesNotContain("gap-2", cls);
+    }
+
+    [Fact]
+    public void Lg_Comfortable_Padding_Matches_Shadcn_Px6_Not_Px8()
+    {
+        // shadcn `lg`: "h-10 rounded-md px-6 has-[>svg]:px-4" — Lumeo previously shipped
+        // px-8 here (16px wider overall than shadcn, the delta the repo owner spotted
+        // side-by-side against the shadcn docs).
+        var cut = _ctx.Render<Lumeo.Button>(p => p
+            .Add(b => b.Size, Lumeo.Button.ButtonSize.Lg)
+            .AddChildContent("Btn"));
+
+        var cls = cut.Find("button").GetAttribute("class") ?? "";
+        Assert.Contains("px-6", cls);
+        Assert.DoesNotContain("px-8", cls);
+    }
+
+    [Theory]
+    [InlineData(Lumeo.Density.Compact, "px-4")]
+    [InlineData(Lumeo.Density.Spacious, "px-8")]
+    public void Lg_Density_Rows_Shift_Proportionately_With_Comfortable(Lumeo.Density density, string expectedPad)
+    {
+        // Compact/Spacious are Lumeo-only (shadcn has no density concept). They are kept
+        // proportionate by shifting the whole family the same -2 units Comfortable moved
+        // (px-8->px-6): Compact px-6->px-4, Spacious px-10->px-8 — preserving the
+        // original +/-2 spread around Comfortable.
+        var cut = _ctx.Render<Lumeo.Button>(p => p
+            .Add(b => b.Size, Lumeo.Button.ButtonSize.Lg)
+            .Add(b => b.Density, density)
+            .AddChildContent("Btn"));
+
+        var cls = cut.Find("button").GetAttribute("class") ?? "";
+        Assert.Contains(expectedPad, cls);
+    }
+
+    [Fact]
+    public void Outline_Variant_Has_ShadowXs()
+    {
+        // shadcn `outline`: "border bg-background shadow-xs hover:bg-accent ...".
+        var cut = _ctx.Render<Lumeo.Button>(p => p
+            .Add(b => b.Variant, Lumeo.Button.ButtonVariant.Outline)
+            .AddChildContent("Outline"));
+
+        Assert.Contains("shadow-xs", cut.Find("button").GetAttribute("class"));
+    }
+
+    [Fact]
     public void Click_Event_Fires()
     {
         var clicked = false;

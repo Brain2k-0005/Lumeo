@@ -52,6 +52,21 @@
 @source inline("justify-{start,center,end,between,around,evenly}");
 @source inline("shadow-{2xs,xs,sm,DEFAULT,md,lg,xl,2xl,inner,none}");
 @source inline("animate-{fade-in,zoom-in,slide-in-from-top,slide-in-from-bottom,slide-in-from-left,slide-in-from-right,pulse,spin,ping,bounce}");
+/* Input.razor's HasFontSizeOverride (Codex #386 review round 3, item 4) accepts a
+   caller's font-size override in ANY documented Tailwind form, including the
+   line-height slash modifier (text-lg/6). That form has no literal usage anywhere
+   in this bundle's scanned .razor sources (it's exercised only by
+   tests/Lumeo.Tests.ServerHost's /e2e/input-sizing page, a private test project
+   deliberately NOT among the @source globs above) — without an explicit safelist
+   entry the class would be silently absent from this compiled bundle, and the E2E
+   assertion asserting its COMPUTED font-size would in fact be testing nothing.
+   (Verified empirically: before this line existed, "text-lg/6" was present in the
+   bundle ONLY because it happened to appear inside a source-code COMMENT in
+   Input.razor — Tailwind's scanner does a raw text match, not class-attribute
+   parsing, so any wording change to that comment would have silently broken the
+   E2E fixture with no build-time signal.) Every named font-size keyword is listed
+   since a caller may pair the slash modifier with any of them, not just lg. */
+@source inline("text-{xs,sm,base,lg,xl,2xl,3xl,4xl,5xl,6xl,7xl,8xl,9xl}/{3,4,5,6,7,8,9,10}");
 /* Grid-rows utilities used by Accordion/Collapsible open/close animation
  * (0fr/1fr trick) — included explicitly so they survive Tailwind purge
  * even if no .razor file mentions them in a way Tailwind can statically

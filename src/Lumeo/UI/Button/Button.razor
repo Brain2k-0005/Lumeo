@@ -148,6 +148,10 @@ else
         VariantClasses,
         SizeClasses,
         BaseClasses,
+        SizeOverrideClass,           // AFTER BaseClasses: BaseClasses' fixed `gap-2 text-sm` would
+                                      // otherwise beat anything SizeClasses sets for the same conflict
+                                      // groups (gap-*, font-size) under Cx.Merge's last-wins resolution
+                                      // — the exact dead-token trap the prior Wave-0 pass found on Sm.
         PressEffectClass,
         "cursor-pointer disabled:cursor-not-allowed",
         Cx.When(IsLoading, "pointer-events-none opacity-70"),
@@ -206,7 +210,7 @@ else
     {
         ButtonVariant.Default => "bg-primary text-primary-foreground shadow hover:bg-primary/90",
         ButtonVariant.Destructive => "bg-destructive text-destructive-foreground shadow-sm hover:bg-destructive/90",
-        ButtonVariant.Outline => "border border-input bg-background hover:bg-accent hover:text-accent-foreground",
+        ButtonVariant.Outline => "border border-input bg-background shadow-xs hover:bg-accent hover:text-accent-foreground",
         ButtonVariant.Secondary => "bg-secondary text-secondary-foreground shadow-sm hover:bg-secondary/80",
         ButtonVariant.Ghost => "hover:bg-accent hover:text-accent-foreground",
         ButtonVariant.Link => "text-primary underline-offset-4 hover:underline",
@@ -221,12 +225,19 @@ else
         {
             var (height, pad, padIcon) = (Size, EffectiveDensity) switch
             {
+                (ButtonSize.Xs, Lumeo.Density.Compact)    => ("h-5",  "px-1.5",  "h-5 w-5"),
+                (ButtonSize.Xs, Lumeo.Density.Spacious)   => ("h-7",  "px-2.5",  "h-7 w-7"),
+                (ButtonSize.Xs, _)                        => ("h-6",  "px-2",    "h-6 w-6"),
                 (ButtonSize.Sm, Lumeo.Density.Compact)    => ("h-7",  "px-2.5",  "h-7 w-7"),
                 (ButtonSize.Sm, Lumeo.Density.Spacious)   => ("h-9",  "px-4",    "h-9 w-9"),
                 (ButtonSize.Sm, _)                        => ("h-8",  "px-3",    "h-8 w-8"),
-                (ButtonSize.Lg, Lumeo.Density.Compact)    => ("h-9",  "px-6",    "h-9 w-9"),
-                (ButtonSize.Lg, Lumeo.Density.Spacious)   => ("h-12", "px-10",   "h-12 w-12"),
-                (ButtonSize.Lg, _)                        => ("h-10", "px-8",    "h-10 w-10"),
+                // Comfortable px-6 is the shadcn `lg` value (px-8 -> px-6, the Wave-0b delta);
+                // Compact/Spacious are Lumeo-only (shadcn has no density concept) and are kept
+                // proportionate by shifting the whole family the same -2 units Comfortable moved
+                // (px-6 -> px-4, px-10 -> px-8), preserving the original +/-2 spread around it.
+                (ButtonSize.Lg, Lumeo.Density.Compact)    => ("h-9",  "px-4",    "h-9 w-9"),
+                (ButtonSize.Lg, Lumeo.Density.Spacious)   => ("h-12", "px-8",    "h-12 w-12"),
+                (ButtonSize.Lg, _)                        => ("h-10", "px-6",    "h-10 w-10"),
                 (ButtonSize.Default, Lumeo.Density.Compact)  => ("h-8",  "px-3",  "h-8 w-8"),
                 (ButtonSize.Default, Lumeo.Density.Spacious) => ("h-11", "px-6 py-2.5", "h-11 w-11"),
                 (ButtonSize.Default, _)                      => ("h-9",  "px-4 py-2",   "h-9 w-9"),
@@ -235,13 +246,24 @@ else
                 (ButtonSize.Icon, _)                      => ("h-9",  "",       "h-9 w-9"),
                 _ => ("", "", "")
             };
-            var textClass = Size == ButtonSize.Sm ? " text-xs" : "";
             var radiusClass = Size is ButtonSize.Sm or ButtonSize.Lg ? " rounded-md" : "";
             return Size == ButtonSize.Icon
                 ? padIcon + radiusClass
-                : $"{height} {pad}{textClass}{radiusClass}";
+                : $"{height} {pad}{radiusClass}";
         }
     }
+
+    // Per-size gap/font-size overrides that must win over BaseClasses' fixed `gap-2`
+    // (and its `text-sm`, for Xs). Matches shadcn: xs carries gap-1 + text-xs, sm
+    // carries gap-1.5. Default/Lg keep BaseClasses' gap-2 untouched (shadcn's own
+    // `default`/`lg` sizes don't override gap either). Must be merged AFTER
+    // BaseClasses in CssClass — see the comment there.
+    private string? SizeOverrideClass => Size switch
+    {
+        ButtonSize.Xs => "gap-1 text-xs",
+        ButtonSize.Sm => "gap-1.5",
+        _ => null
+    };
 
     // Whether the JS pointerdown ripple listener is currently bound to _el.
     // Tracked so the attach/detach is reconciled against the live PressEffect on
@@ -288,7 +310,10 @@ else
     }
 
     public enum ButtonVariant { Default, Destructive, Outline, Secondary, Ghost, Link }
-    public enum ButtonSize { Default, Sm, Lg, Icon }
+    /// <summary><see cref="Xs"/> is a new value (added for shadcn "Extra Small" parity):
+    /// numeric value 4, appended after <see cref="Icon"/> so existing shipped ordinal
+    /// values are untouched.</summary>
+    public enum ButtonSize { Default, Sm, Lg, Icon, Xs }
     public enum ButtonType { Button, Submit, Reset }
 
     private string TypeAttr => Type switch

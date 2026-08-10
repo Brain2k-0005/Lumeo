@@ -118,24 +118,44 @@
     private string VariantClass => Variant switch
     {
         Button.ButtonVariant.Destructive => "bg-destructive text-destructive-foreground shadow-sm hover:bg-destructive/90",
-        Button.ButtonVariant.Outline => "border border-input bg-background hover:bg-accent hover:text-accent-foreground",
+        Button.ButtonVariant.Outline => "border border-input bg-background shadow-xs hover:bg-accent hover:text-accent-foreground",
         Button.ButtonVariant.Secondary => "bg-secondary text-secondary-foreground shadow-sm hover:bg-secondary/80",
         Button.ButtonVariant.Ghost => "hover:bg-accent hover:text-accent-foreground",
         Button.ButtonVariant.Link => "text-primary underline-offset-4 hover:underline",
         _ => "bg-primary text-primary-foreground shadow hover:bg-primary/90"
     };
 
+    // Deliberately EXHAUSTIVE (no `_ => ...` fallback): mirrors Button.ButtonSize
+    // arm-by-arm, same as ShimmerButton.SizeClasses. Every CURRENT member is listed,
+    // so a future ButtonSize addition left unhandled here trips CS8509 ("does not
+    // handle all possible values ... Foo.NewMember is not covered") under
+    // `-warnaserror`, converting a silent fallback-to-Default-geometry into a build
+    // failure (Codex #386 review, round 3).
+    //
+    // The `#pragma` below suppresses ONLY CS8524 — a SEPARATE diagnostic that fires
+    // even when every NAMED member is covered, because an enum's underlying value
+    // isn't restricted to its named members (e.g. an explicit `(ButtonSize)5` cast
+    // could still reach this switch). Verified empirically: building this file as
+    // originally written (all 5 arms, no fallback, no pragma) already emitted
+    // CS8524 under a plain build — i.e. deleting the fallback outright would have
+    // broken the build immediately, not just "on a future ButtonSize addition" as
+    // hoped. Scoping the pragma to CS8524 specifically (never CS8509) keeps the
+    // actually-useful guard live: only the always-on, can't-realistically-fix
+    // unnamed-value warning is silenced.
+#pragma warning disable CS8524
     private string SizeClass => Size switch
     {
-        Button.ButtonSize.Sm => "h-8 rounded-md px-3 text-xs gap-1.5",
-        Button.ButtonSize.Lg => "h-10 rounded-md px-8 gap-2",
+        Button.ButtonSize.Xs => "h-6 rounded-md px-2 gap-1 text-xs",
+        Button.ButtonSize.Sm => "h-8 rounded-md px-3 gap-1.5",
+        Button.ButtonSize.Lg => "h-10 rounded-md px-6 gap-2",
         // Match Button.ButtonSize.Icon's h-9 w-9 square shape so an
         // icon-only upload trigger sits next to a Lumeo icon Button
         // with an identical click target instead of falling back to
         // the padded text-button shape.
         Button.ButtonSize.Icon => "h-9 w-9",
-        _ => "h-9 px-4 py-2 gap-2"
+        Button.ButtonSize.Default => "h-9 px-4 py-2 gap-2",
     };
+#pragma warning restore CS8524
 
     private string LabelClass => Cx.Merge("inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors focus-within:outline-none focus-within:ring-[1.5px] focus-within:ring-ring whitespace-nowrap", SizeClass, VariantClass, (Disabled ? "pointer-events-none opacity-50 cursor-not-allowed" : "cursor-pointer"), Class);
 
