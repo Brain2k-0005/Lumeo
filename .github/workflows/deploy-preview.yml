@@ -109,23 +109,6 @@ jobs:
         # /not-found are excluded — not real content, carry <meta name="robots"
         # content="noindex">. lastmod is each file's actual last commit date (falls
         # back to today for files with no git history yet).
-        #
-        # PREVIEW-ONLY EXCEPTION: /e2e/charts-native and /e2e/gantt-v3-preview are
-        # stakeholder-facing WIP previews (not Playwright harnesses) that the repo
-        # owner needs to open by URL on the Cloudflare Pages preview — see PR #392.
-        # Cloudflare only serves routes this prerender step actually emits, so they
-        # must be in the sitemap to deploy at all. Reachable-but-unlisted, same as
-        # every other route here: not in the site nav, not in the component
-        # registry/search index (that's a separate, hand-curated list — see
-        # scripts/algolia/index-docs.mjs), and the pages themselves carry
-        # <meta name="robots" content="noindex">. robots.txt still blanket-disallows
-        # /e2e/ for any crawler that respects it, so listing these two in the sitemap
-        # does not make them indexable — Google explicitly documents that a
-        # robots.txt-disallowed URL in a sitemap is simply not crawled/indexed.
-        # Every other /e2e/* route (the actual Playwright-only harnesses) stays
-        # excluded. This exception is intentionally NOT mirrored in
-        # deploy-cloudflare.yml (production) — these pages stay off the sitemap on
-        # master until the native chart engine / Gantt v3 ship for real.
         run: |
           SITE="https://lumeo.nativ.sh"
           TODAY=$(date -u +%Y-%m-%d)
@@ -140,7 +123,6 @@ jobs:
                 route=$(sed -E 's/^\xEF\xBB\xBF//' "$file" | grep -E '^@page\s+"[^"]+"' | head -1 | sed -E 's|^@page\s+"([^"]+)"|\1|')
                 [ -z "$route" ] && continue
                 case "$route" in
-                  /e2e/charts-native|/e2e/gantt-v3-preview) ;;
                   /|/e2e/*|/not-found) continue ;;
                 esac
                 case "$route" in
@@ -148,7 +130,6 @@ jobs:
                   /blocks/*)      PRIORITY=0.7; FREQ=monthly ;;
                   /patterns/*)    PRIORITY=0.6; FREQ=monthly ;;
                   /docs/*)        PRIORITY=0.7; FREQ=weekly  ;;
-                  /e2e/*)         PRIORITY=0.1; FREQ=monthly ;;
                   *)              PRIORITY=0.5; FREQ=monthly ;;
                 esac
                 LASTMOD=$(git log -1 --format=%cs -- "$file" 2>/dev/null)
