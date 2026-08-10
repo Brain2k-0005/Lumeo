@@ -1,0 +1,281 @@
+@namespace Lumeo
+
+@* Native (first-party, non-ECharts) Nightingale ("rose") chart — EQUAL-angle
+   wedges whose RADIUS encodes the value (PolarCoordinateSystem.EvenSplit, not
+   SplitByValue — the core primitive added specifically for this type; see
+   PolarCoordinateSystem.cs remarks), per the charts-first-party-engine spec.
+   Sits ALONGSIDE the legacy ECharts NightingaleChart — that file is untouched. *@
+
+<div class="lumeo-native-nightingale relative flex flex-col gap-2 @Class" style="width:@Width;height:@Height" @attributes="AdditionalAttributes">
+    <div class="relative min-h-0 flex-1">
+        <svg viewBox="0 0 @ViewW @ViewH" preserveAspectRatio="xMidYMid meet" class="h-full w-full" role="img" aria-label="@_a11ySummary">
+            @for (var ring = 1; ring <= 3; ring++)
+            {
+                var r = InnerRadiusPx + ring / 3.0 * (MaxRadius - InnerRadiusPx);
+                <circle cx="@NativeChartShared.Fmt(CenterX)" cy="@NativeChartShared.Fmt(CenterY)" r="@NativeChartShared.Fmt(r)" fill="none" stroke="var(--color-border)" opacity="0.5" />
+            }
+            @for (var i = 0; i < _segments.Count; i++)
+            {
+                var seg = _segments[i];
+                var dimmed = _legend.IsDimmed(seg.Key) || (_activeIndex is { } ai && ai != seg.OriginalIndex && (_hovered || _keyboardActive));
+                <path d="@seg.Path" fill="@seg.Color" fill-opacity="@(dimmed ? "0.3" : "0.85")"
+                      style="transition:fill-opacity 150ms ease;"
+                      @onpointerenter="@(e => OnSegmentEnter(seg, e))"
+                      @onpointerleave="OnSegmentLeave"
+                      @onclick="@(() => OnSegmentActivate(seg))">
+                    <animate attributeName="fill-opacity" from="0" to="0.85" dur="@(EntryDurationMs)ms" begin="@(i * 45)ms" fill="freeze" />
+                </path>
+            }
+            @((MarkupString)_labelsMarkup)
+            <rect x="0" y="0" width="@ViewW" height="@ViewH" fill="transparent" tabindex="0" role="img"
+                  aria-label="@_a11ySummary" class="focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary focus-visible:outline-offset-2"
+                  @onkeydown="OnKeyDown" @onfocus="OnFocusHost" @onblur="OnBlurHost" />
+        </svg>
+        <div class="pointer-events-none absolute left-2 top-2 max-w-[70%] rounded-md border border-border/60 bg-background/90 px-2 py-1 text-xs text-foreground shadow-sm transition-opacity"
+             style="opacity:@(string.IsNullOrEmpty(_statusText) ? "0" : "1")" role="status" aria-live="polite">
+            @_statusText
+        </div>
+        @if (ShouldShowSkeleton)
+        {
+            <div class="absolute inset-0 pointer-events-none">
+                <ChartSkeleton Kind="@SkeletonKind" Width="100%" Height="100%" Class="!rounded-none" />
+            </div>
+            @if (ShowLoadingLabel)
+            {
+                <div role="status" aria-live="polite" class="pointer-events-none absolute top-2 right-2 rounded-[calc(var(--radius)*2)] border border-border/60 bg-background/85 px-2.5 py-1 text-xs shadow-sm">
+                    @(LoadingText ?? "Loading…")
+                </div>
+            }
+        }
+    </div>
+    @if (ShowLegend && _legendItems.Count > 0)
+    {
+        <ChartLegend Items="_legendItems" HiddenKeys="_legend.HiddenKeys" HoveredKey="_legend.HoveredKey"
+                     Class="justify-center"
+                     OnToggle="@(EventCallback.Factory.Create<string>(this, OnLegendToggle))"
+                     OnHover="@(EventCallback.Factory.Create<string?>(this, OnLegendHover))" />
+    }
+    @if (_a11yTable is { } table)
+    {
+        <table class="sr-only" aria-label="@table.Summary">
+            <caption>@table.Summary</caption>
+            <thead><tr>@foreach (var h in table.ColumnHeaders) { <th scope="col">@h</th> }</tr></thead>
+            <tbody>
+                @foreach (var row in table.Rows)
+                {
+                    <tr><th scope="row">@row.Header</th>@foreach (var cell in row.Cells) { <td>@cell</td> }</tr>
+                }
+                @if (table.TruncationNote is { } note)
+                {
+                    <tr><td colspan="@table.ColumnHeaders.Count">@note</td></tr>
+                }
+            </tbody>
+        </table>
+    }
+</div>
+
+@code {
+    /// <summary>Slice data — name/value pairs — rendered as nightingale-rose segments whose radius scales with value.</summary>
+    [Parameter] public List<NightingaleData> Data { get; set; } = new();
+    /// <summary>When true (default), renders a legend listing each series/segment name.</summary>
+    [Parameter] public bool ShowLegend { get; set; } = true;
+    /// <summary>When true (default), shows a tooltip with the value(s) under the cursor on hover.</summary>
+    [Parameter] public bool ShowTooltip { get; set; } = true;
+    /// <summary>When true (default), shows a category label around each segment, independent of <see cref="ShowDataLabels"/>.</summary>
+    [Parameter] public bool ShowLabels { get; set; } = true;
+    /// <summary>Explicit colors, in series/segment order. Falls back to the active theme's chart palette when not set and <see cref="ColorPalette"/> is not set.</summary>
+    [Parameter] public List<string>? Colors { get; set; }
+    /// <summary>Explicit ordered color palette applied to the chart's series/segments; takes precedence over <see cref="Colors"/> when both are set.</summary>
+    [Parameter] public List<string>? ColorPalette { get; set; }
+    /// <summary>CSS width of the chart container. Defaults to <c>100%</c>.</summary>
+    [Parameter] public string Width { get; set; } = "100%";
+    /// <summary>CSS height of the chart container. Defaults to <c>350px</c>.</summary>
+    [Parameter] public string Height { get; set; } = "350px";
+    /// <summary>Additional CSS class(es) applied to the chart's root element.</summary>
+    [Parameter] public string? Class { get; set; }
+    /// <summary>Additional HTML attributes captured and forwarded to the chart's root element.</summary>
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+    /// <summary>When true, overlays a shape-aware loading skeleton on top of the chart (consumer is fetching data).</summary>
+    [Parameter] public bool IsLoading { get; set; }
+    /// <summary>When true (default), renders a shape-aware skeleton while <see cref="IsLoading"/> is true.</summary>
+    [Parameter] public bool ShowLoadingSkeleton { get; set; } = true;
+    /// <summary>Shape family for the loading skeleton. Defaults to <c>ChartSkeletonKind.Pie</c>.</summary>
+    [Parameter] public ChartSkeletonKind SkeletonKind { get; set; } = ChartSkeletonKind.Pie;
+    /// <summary>See <see cref="NativePieChart.SkeletonStyle"/> — only <c>Silhouette</c> is implemented natively.</summary>
+    [Parameter] public ChartSkeletonStyle SkeletonStyle { get; set; } = ChartSkeletonStyle.Phantom;
+    /// <summary>Inert on the native engine; kept for API parity.</summary>
+    [Parameter] public int PhantomCycleMs { get; set; } = 1400;
+    /// <summary>When true (default), shows a small "Loading…" pill in the top-right corner whenever <see cref="IsLoading"/> is active.</summary>
+    [Parameter] public bool ShowLoadingLabel { get; set; } = true;
+    /// <summary>Label rendered next to the loading pill. Defaults to "Loading…".</summary>
+    [Parameter] public string? LoadingText { get; set; } = "Loading…";
+    /// <summary>When true, renders a label with each data point's value directly on the chart.</summary>
+    [Parameter] public bool ShowDataLabels { get; set; }
+    /// <summary>Placement of the value label; kept for API parity (nightingale labels always render around the outer ring).</summary>
+    [Parameter] public string LabelPosition { get; set; } = "outside";
+    /// <summary>Label formatter template supporting the <c>{b}</c>/<c>{c}</c>/<c>{d}</c> tokens from the legacy ECharts formatter mini-language.</summary>
+    [Parameter] public string? LabelFormat { get; set; }
+    /// <summary>Entrance-animation duration (ms) for each wedge's fade-in. Defaults to 500ms.</summary>
+    [Parameter] public int? AnimationDuration { get; set; }
+    /// <summary>See <see cref="NativePieChart.AnimationEasing"/> — accepted for API parity, currently has no effect.</summary>
+    [Parameter] public string? AnimationEasing { get; set; }
+
+    private const double ViewW = 420, ViewH = 280;
+    private double CenterX => ViewW / 2;
+    private double CenterY => ViewH / 2;
+    private const double MaxRadius = 92;
+    private const double InnerRadiusPx = 16;
+    private int EntryDurationMs => AnimationDuration ?? 500;
+    private bool ShouldShowSkeleton => IsLoading && ShowLoadingSkeleton;
+
+    private readonly ChartLegendState _legend = new();
+    private List<RoseSegment> _segments = new();
+    private List<ChartLegendItem> _legendItems = new();
+    private int? _activeIndex;
+    private bool _hovered;
+    private bool _keyboardActive;
+    private string _statusText = string.Empty;
+    private string _a11ySummary = string.Empty;
+    private string _labelsMarkup = string.Empty;
+    private ChartAccessibility.ChartDataTable? _a11yTable;
+
+    protected override void OnParametersSet()
+    {
+        BuildSegments();
+        BuildAccessibility();
+    }
+
+    private void BuildSegments()
+    {
+        _segments = new List<RoseSegment>();
+        _legendItems = new List<ChartLegendItem>();
+
+        var visible = new List<(int Index, NightingaleData Data)>();
+        for (var i = 0; i < Data.Count; i++)
+        {
+            var key = SegmentKey(i);
+            _legendItems.Add(new ChartLegendItem(key, Data[i].Name, NativeChartShared.ColorFor(i, ColorPalette, Colors),
+                _legend.IsHidden(key) ? null : NativeChartShared.FmtValue(Data[i].Value)));
+            if (!_legend.IsHidden(key)) visible.Add((i, Data[i]));
+        }
+
+        var maxValue = visible.Count > 0 ? visible.Max(v => v.Data.Value) : 0;
+        if (maxValue <= 0) maxValue = 1;
+        var angles = PolarCoordinateSystem.EvenSplit(visible.Count, gap: 0.06);
+
+        for (var i = 0; i < visible.Count; i++)
+        {
+            var (originalIndex, data) = visible[i];
+            var (a0, a1) = angles[i];
+            var mid = (a0 + a1) / 2;
+            var color = NativeChartShared.ColorFor(originalIndex, ColorPalette, Colors);
+            var r = InnerRadiusPx + Math.Max(0, data.Value) / maxValue * (MaxRadius - InnerRadiusPx);
+            var path = ChartArcPath.Build(CenterX, CenterY, InnerRadiusPx, r, a0, a1);
+
+            var labelX = CenterX + Math.Cos(mid) * (MaxRadius + 14);
+            var labelY = CenterY + Math.Sin(mid) * (MaxRadius + 14);
+            var labelText = ShowDataLabels && !string.IsNullOrEmpty(LabelFormat)
+                ? NativeChartShared.ExpandLabelFormat(LabelFormat!, data.Name, data.Value, data.Value / maxValue * 100)
+                : data.Name;
+
+            _segments.Add(new RoseSegment(originalIndex, SegmentKey(originalIndex), path, color, labelX, labelY, labelText, data.Name, data.Value));
+        }
+        BuildLabelsMarkup();
+    }
+
+    private void BuildLabelsMarkup()
+    {
+        if (!(ShowLabels || ShowDataLabels)) { _labelsMarkup = string.Empty; return; }
+        var sb = new System.Text.StringBuilder();
+        foreach (var seg in _segments)
+        {
+            sb.Append("<text x=\"").Append(NativeChartShared.Fmt(seg.LabelX)).Append("\" y=\"").Append(NativeChartShared.Fmt(seg.LabelY))
+              .Append("\" fill=\"var(--color-muted-foreground)\" font-size=\"10.5\" text-anchor=\"middle\">")
+              .Append(System.Net.WebUtility.HtmlEncode(seg.LabelText)).Append("</text>");
+        }
+        _labelsMarkup = sb.ToString();
+    }
+
+    private string SegmentKey(int index) => $"seg-{index}-{Data[index].Name}";
+
+    private void OnSegmentEnter(RoseSegment seg, Microsoft.AspNetCore.Components.Web.PointerEventArgs _)
+    {
+        _hovered = true;
+        _activeIndex = seg.OriginalIndex;
+        UpdateStatus(seg);
+    }
+
+    private void OnSegmentLeave()
+    {
+        _hovered = false;
+        if (!_keyboardActive) { _activeIndex = null; _statusText = string.Empty; }
+    }
+
+    private void OnSegmentActivate(RoseSegment seg)
+    {
+        _activeIndex = seg.OriginalIndex;
+        UpdateStatus(seg);
+    }
+
+    private void OnFocusHost()
+    {
+        _keyboardActive = true;
+        _activeIndex ??= _segments.Count > 0 ? _segments[0].OriginalIndex : null;
+        if (_activeIndex is { } i) UpdateStatus(_segments.First(s => s.OriginalIndex == i));
+    }
+
+    private void OnBlurHost()
+    {
+        _keyboardActive = false;
+        if (!_hovered) { _activeIndex = null; _statusText = string.Empty; }
+    }
+
+    private void OnKeyDown(Microsoft.AspNetCore.Components.Web.KeyboardEventArgs e)
+    {
+        if (_segments.Count == 0) return;
+        var currentPos = _activeIndex is { } ai ? _segments.FindIndex(s => s.OriginalIndex == ai) : (int?)null;
+        int? nextPos = e.Key switch
+        {
+            "ArrowRight" or "ArrowDown" => ChartKeyboardNav.MoveIndex(currentPos, _segments.Count, 1),
+            "ArrowLeft" or "ArrowUp" => ChartKeyboardNav.MoveIndex(currentPos, _segments.Count, -1),
+            "Home" => ChartKeyboardNav.First(),
+            "End" => ChartKeyboardNav.Last(_segments.Count),
+            _ => null,
+        };
+        if (nextPos is { } np)
+        {
+            _keyboardActive = true;
+            var seg = _segments[np];
+            _activeIndex = seg.OriginalIndex;
+            UpdateStatus(seg);
+        }
+    }
+
+    private void UpdateStatus(RoseSegment seg) =>
+        _statusText = ShowTooltip ? $"{seg.Name}: {NativeChartShared.FmtValue(seg.Value)}" : string.Empty;
+
+    private void OnLegendToggle(string key)
+    {
+        _legend.Toggle(key, Data.Count);
+        BuildSegments();
+    }
+
+    private void OnLegendHover(string? key) => _legend.SetHover(key);
+
+    private void BuildAccessibility()
+    {
+        var json = NativeChartShared.BuildCategoricalOptionJson("pie", Data.Select(d => (d.Name, d.Value)).ToList());
+        _a11yTable = ChartAccessibility.Build(json);
+        _a11ySummary = _a11yTable?.Summary ?? "Nightingale rose chart";
+    }
+
+    private sealed record RoseSegment(
+        int OriginalIndex, string Key, string Path, string Color, double LabelX, double LabelY, string LabelText,
+        string Name, double Value);
+
+    public class NightingaleData
+    {
+        public string Name { get; set; } = "";
+        public double Value { get; set; }
+    }
+}

@@ -1,0 +1,332 @@
+@namespace Lumeo
+
+@* Native (first-party, non-ECharts) BoxPlot chart — computes real quartiles,
+   a 1.5×IQR whisker range, and outliers FROM RAW SAMPLES via
+   Lumeo.ChartStatistics.Quartiles (a deliberate, documented ADDITION beyond the
+   original spec's "Data is already a pre-aggregated double[5]" assumption —
+   see ChartStatistics.cs's own remarks and this type's <see cref="Samples"/>
+   parameter), matching the owner's chartsextended.html reference exactly.
+   Sits ALONGSIDE the legacy ECharts BoxPlotChart — that file is untouched. *@
+
+<div class="lumeo-native-boxplot relative flex flex-col gap-2 @Class" style="width:@Width;height:@Height" @attributes="AdditionalAttributes">
+    <div class="relative min-h-0 flex-1">
+        <svg viewBox="0 0 @ViewW @ViewH" preserveAspectRatio="xMidYMid meet" class="h-full w-full" role="img" aria-label="@_a11ySummary">
+            <ChartAxis Ticks="_yTicks" Orientation="ChartAxisOrientation.Left" GridStart="@_plot.X" GridEnd="@_plot.Right" AxisLinePosition="@_plot.X" />
+            @((MarkupString)_xAxisMarkup)
+            @for (var i = 0; i < _boxes.Count; i++)
+            {
+                var box = _boxes[i];
+                var dimmed = _hoverIndex is { } hi && hi != i;
+                <g opacity="@(dimmed ? "0.35" : "1")" style="transition:opacity 120ms ease;">
+                    <line x1="@NativeChartShared.Fmt(box.CX)" x2="@NativeChartShared.Fmt(box.CX)" y1="@NativeChartShared.Fmt(box.YWhiskerHigh)" y2="@NativeChartShared.Fmt(box.YQ3)" stroke="@box.Color" stroke-width="1.2" />
+                    <line x1="@NativeChartShared.Fmt(box.CX)" x2="@NativeChartShared.Fmt(box.CX)" y1="@NativeChartShared.Fmt(box.YQ1)" y2="@NativeChartShared.Fmt(box.YWhiskerLow)" stroke="@box.Color" stroke-width="1.2" />
+                    <line x1="@NativeChartShared.Fmt(box.CX - box.CapHalf)" x2="@NativeChartShared.Fmt(box.CX + box.CapHalf)" y1="@NativeChartShared.Fmt(box.YWhiskerHigh)" y2="@NativeChartShared.Fmt(box.YWhiskerHigh)" stroke="@box.Color" stroke-width="1.4" />
+                    <line x1="@NativeChartShared.Fmt(box.CX - box.CapHalf)" x2="@NativeChartShared.Fmt(box.CX + box.CapHalf)" y1="@NativeChartShared.Fmt(box.YWhiskerLow)" y2="@NativeChartShared.Fmt(box.YWhiskerLow)" stroke="@box.Color" stroke-width="1.4" />
+                    <path d="@box.BoxPath" fill="@box.Color" fill-opacity="0.18" stroke="@box.Color" stroke-width="1.4" />
+                    <line x1="@NativeChartShared.Fmt(box.CX - box.BoxHalf)" x2="@NativeChartShared.Fmt(box.CX + box.BoxHalf)" y1="@NativeChartShared.Fmt(box.YMedian)" y2="@NativeChartShared.Fmt(box.YMedian)" stroke="@box.Color" stroke-width="2.4" />
+                    @foreach (var outlierY in box.OutlierYs)
+                    {
+                        <circle cx="@NativeChartShared.Fmt(box.CX)" cy="@NativeChartShared.Fmt(outlierY)" r="2.4" fill="none" stroke="@box.Color" stroke-width="1.2" />
+                    }
+                    <animate attributeName="opacity" from="0" to="@(dimmed ? "0.35" : "1")" dur="@(EntryDurationMs)ms" begin="@(i * 40)ms" fill="freeze" />
+                </g>
+            }
+            @((MarkupString)_medianLabelsMarkup)
+            <ChartInteractionSurface PlotX="@_plot.X" PlotY="@_plot.Y" PlotWidth="@_plot.Width" PlotHeight="@_plot.Height"
+                                      PointCount="@_boxes.Count" AriaLabel="@_a11ySummary"
+                                      OnIndexChanged="@(EventCallback.Factory.Create<int?>(this, OnIndexChanged))" />
+            <ChartCrosshair Active="@(_hoverIndex.HasValue)" X="@_crosshairX" GridStart="@_plot.Y" GridEnd="@_plot.Bottom" Markers="_crosshairMarkers" />
+        </svg>
+        @if (ShowTooltip && _hoverIndex is { } hoverIdx && hoverIdx < _boxes.Count)
+        {
+            <ChartTooltipHost Active="true" X="@_pointerX" Y="@_pointerY" Context="ChartTooltipContext.Empty">
+                <div class="rounded-md border border-border/60 bg-popover px-2.5 py-1.5 text-xs shadow-md">
+                    <div class="font-semibold text-foreground">@_boxes[hoverIdx].Category</div>
+                    <div class="text-muted-foreground">Median @NativeChartShared.FmtValue(_boxes[hoverIdx].Stats.Median)</div>
+                    <div class="text-muted-foreground">Q1–Q3 @NativeChartShared.FmtValue(_boxes[hoverIdx].Stats.Q1) – @NativeChartShared.FmtValue(_boxes[hoverIdx].Stats.Q3)</div>
+                    <div class="text-muted-foreground">Whisker @NativeChartShared.FmtValue(_boxes[hoverIdx].Stats.WhiskerLow) – @NativeChartShared.FmtValue(_boxes[hoverIdx].Stats.WhiskerHigh)</div>
+                    @if (_boxes[hoverIdx].Stats.Outliers.Count > 0)
+                    {
+                        <div class="text-muted-foreground">@_boxes[hoverIdx].Stats.Outliers.Count outlier(s)</div>
+                    }
+                </div>
+            </ChartTooltipHost>
+        }
+        @if (ShouldShowSkeleton)
+        {
+            <div class="absolute inset-0 pointer-events-none">
+                <ChartSkeleton Kind="@SkeletonKind" Width="100%" Height="100%" Class="!rounded-none" />
+            </div>
+            @if (ShowLoadingLabel)
+            {
+                <div role="status" aria-live="polite" class="pointer-events-none absolute top-2 right-2 rounded-[calc(var(--radius)*2)] border border-border/60 bg-background/85 px-2.5 py-1 text-xs shadow-sm">
+                    @(LoadingText ?? "Loading…")
+                </div>
+            }
+        }
+    </div>
+    @if (DataZoom && Categories.Count > 1)
+    {
+        <ChartZoomSlider Width="@ViewW" Height="18" Start="@_zoom.Start" End="@_zoom.End"
+                          OnRangeChanged="@(EventCallback.Factory.Create<(double, double)>(this, OnZoomRangeChanged))" />
+    }
+    @if (ShowLegend && _legendItems.Count > 0)
+    {
+        <ChartLegend Items="_legendItems" Class="justify-center" />
+    }
+    @if (_a11yTable is { } table)
+    {
+        <table class="sr-only" aria-label="@table.Summary">
+            <caption>@table.Summary</caption>
+            <thead><tr>@foreach (var h in table.ColumnHeaders) { <th scope="col">@h</th> }</tr></thead>
+            <tbody>
+                @foreach (var row in table.Rows)
+                {
+                    <tr><th scope="row">@row.Header</th>@foreach (var cell in row.Cells) { <td>@cell</td> }</tr>
+                }
+                @if (table.TruncationNote is { } note)
+                {
+                    <tr><td colspan="@table.ColumnHeaders.Count">@note</td></tr>
+                }
+            </tbody>
+        </table>
+    }
+</div>
+
+@code {
+    /// <summary>Category labels along the axis, one per data point.</summary>
+    [Parameter] public List<string> Categories { get; set; } = new();
+    /// <summary>
+    /// Raw per-category samples — the PRIMARY input. Quartiles, the 1.5×IQR
+    /// whisker range, and outliers are computed FROM these via
+    /// <see cref="Lumeo.ChartStatistics.Quartiles"/> (matches the owner's
+    /// chartsextended.html reference). Takes precedence over <see cref="Data"/>
+    /// when both are set.
+    /// </summary>
+    [Parameter] public List<List<double>>? Samples { get; set; }
+    /// <summary>
+    /// Legacy pre-aggregated <c>[min, Q1, median, Q3, max]</c> per category — the
+    /// ECharts wrapper's original shape, kept for parameter-surface parity when a
+    /// consumer only has summary statistics (no raw samples) available. Used only
+    /// when <see cref="Samples"/> is not set; in that mode there is no outlier
+    /// concept (whiskers ARE min/max, matching the ECharts convention this shape
+    /// was designed for) — pass <see cref="Samples"/> for real outlier detection.
+    /// </summary>
+    [Parameter] public List<double[]>? Data { get; set; }
+    /// <summary>When true (default), renders a legend listing each series/segment name.</summary>
+    [Parameter] public bool ShowLegend { get; set; } = true;
+    /// <summary>When true (default), shows a tooltip with quartile/whisker/outlier detail under the cursor on hover.</summary>
+    [Parameter] public bool ShowTooltip { get; set; } = true;
+    /// <summary>Explicit colors, in category order. Falls back to the active theme's chart palette when not set and <see cref="ColorPalette"/> is not set.</summary>
+    [Parameter] public List<string>? Colors { get; set; }
+    /// <summary>Explicit ordered color palette; takes precedence over <see cref="Colors"/> when both are set.</summary>
+    [Parameter] public List<string>? ColorPalette { get; set; }
+    /// <summary>CSS width of the chart container. Defaults to <c>100%</c>.</summary>
+    [Parameter] public string Width { get; set; } = "100%";
+    /// <summary>CSS height of the chart container. Defaults to <c>350px</c>.</summary>
+    [Parameter] public string Height { get; set; } = "350px";
+    /// <summary>Additional CSS class(es) applied to the chart's root element.</summary>
+    [Parameter] public string? Class { get; set; }
+    /// <summary>Additional HTML attributes captured and forwarded to the chart's root element.</summary>
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+    /// <summary>When true, overlays a shape-aware loading skeleton on top of the chart (consumer is fetching data).</summary>
+    [Parameter] public bool IsLoading { get; set; }
+    /// <summary>When true (default), renders a shape-aware skeleton while <see cref="IsLoading"/> is true.</summary>
+    [Parameter] public bool ShowLoadingSkeleton { get; set; } = true;
+    /// <summary>Shape family for the loading skeleton. Defaults to <c>ChartSkeletonKind.Bars</c>.</summary>
+    [Parameter] public ChartSkeletonKind SkeletonKind { get; set; } = ChartSkeletonKind.Bars;
+    /// <summary>See <see cref="NativePieChart.SkeletonStyle"/> — only <c>Silhouette</c> is implemented natively.</summary>
+    [Parameter] public ChartSkeletonStyle SkeletonStyle { get; set; } = ChartSkeletonStyle.Phantom;
+    /// <summary>Inert on the native engine; kept for API parity.</summary>
+    [Parameter] public int PhantomCycleMs { get; set; } = 1400;
+    /// <summary>When true (default), shows a small "Loading…" pill in the top-right corner whenever <see cref="IsLoading"/> is active.</summary>
+    [Parameter] public bool ShowLoadingLabel { get; set; } = true;
+    /// <summary>Label rendered next to the loading pill. Defaults to "Loading…".</summary>
+    [Parameter] public string? LoadingText { get; set; } = "Loading…";
+    /// <summary>When true, renders the median value above each box.</summary>
+    [Parameter] public bool ShowDataLabels { get; set; }
+    /// <summary>Placement of the value label; kept for API parity (native median labels always render above the box).</summary>
+    [Parameter] public string LabelPosition { get; set; } = "top";
+    /// <summary>Label formatter template supporting the <c>{c}</c> (median) token from the legacy ECharts formatter mini-language.</summary>
+    [Parameter] public string? LabelFormat { get; set; }
+    /// <summary>Controls category-axis label rendering. Smart auto-rotates at higher densities; ShowAll forces all horizontal; Auto thins overlapping labels.</summary>
+    [Parameter] public ChartLabelStrategy LabelStrategy { get; set; } = ChartLabelStrategy.Smart;
+    /// <summary>Manual rotation override (degrees) for category-axis labels.</summary>
+    [Parameter] public int? LabelRotate { get; set; }
+    /// <summary>When true, adds a zoom slider so users can navigate a wide category range.</summary>
+    [Parameter] public bool DataZoom { get; set; }
+    /// <summary>Entrance-animation duration (ms) for each box's fade-in. Defaults to 400ms.</summary>
+    [Parameter] public int? AnimationDuration { get; set; }
+    /// <summary>See <see cref="NativePieChart.AnimationEasing"/> — accepted for API parity, currently has no effect.</summary>
+    [Parameter] public string? AnimationEasing { get; set; }
+
+    private const double ViewW = 640, ViewH = 320;
+    private int EntryDurationMs => AnimationDuration ?? 400;
+    private bool ShouldShowSkeleton => IsLoading && ShowLoadingSkeleton;
+
+    private readonly ChartZoomState _zoom = new();
+    private ChartPlotRect _plot;
+    private List<BoxRender> _boxes = new();
+    private List<string> _visibleCategories = new();
+    private List<ChartAxisTick> _yTicks = new();
+    private List<ChartLegendItem> _legendItems = new();
+    private int? _hoverIndex;
+    private double _pointerX, _pointerY, _crosshairX;
+    private List<ChartCrosshairMarker> _crosshairMarkers = new();
+    private string _xAxisMarkup = string.Empty;
+    private string _medianLabelsMarkup = string.Empty;
+    private string _a11ySummary = string.Empty;
+    private ChartAccessibility.ChartDataTable? _a11yTable;
+
+    protected override void OnParametersSet()
+    {
+        Rebuild();
+        BuildAccessibility();
+    }
+
+    private void Rebuild()
+    {
+        var margin = new ChartMargin(Top: 16, Right: 16, Bottom: 36, Left: 46);
+        _plot = ChartLayout.ComputePlotRect(ViewW, ViewH, margin);
+
+        var start = (int)Math.Round(_zoom.Start * Categories.Count);
+        var end = Math.Max(start + 1, (int)Math.Round(_zoom.End * Categories.Count));
+        end = Math.Min(end, Categories.Count);
+        _visibleCategories = Categories.Skip(start).Take(end - start).ToList();
+
+        var xScale = new BandScale(_visibleCategories.Count, _plot.X, _plot.Right, paddingInner: 0.4, paddingOuter: 0.2);
+
+        var allStats = new List<Lumeo.ChartBoxPlotStats>();
+        for (var i = start; i < end; i++)
+        {
+            var stats = ComputeStats(i);
+            if (stats is null) continue;
+            allStats.Add(stats.Value);
+        }
+
+        var lo = allStats.Count > 0 ? allStats.Min(s => Math.Min(s.WhiskerLow, s.Outliers.Count > 0 ? s.Outliers.Min() : s.WhiskerLow)) : 0;
+        var hi = allStats.Count > 0 ? allStats.Max(s => Math.Max(s.WhiskerHigh, s.Outliers.Count > 0 ? s.Outliers.Max() : s.WhiskerHigh)) : 10;
+        if (hi <= lo) hi = lo + 1;
+        var ticks = NiceTicks.Compute(Math.Min(0, lo), hi, 5);
+        var yScale = new LinearScale(ticks[0], ticks[^1], _plot.Bottom, _plot.Y);
+        _yTicks = ticks.Select(t => new ChartAxisTick(yScale.Scale(t), NativeChartShared.FmtValue(t))).ToList();
+
+        _boxes = new List<BoxRender>();
+        _legendItems = new List<ChartLegendItem>();
+        for (var i = 0; i < _visibleCategories.Count; i++)
+        {
+            var globalIndex = start + i;
+            var stats = ComputeStats(globalIndex);
+            if (stats is null) continue;
+            var s = stats.Value;
+            var color = NativeChartShared.ColorFor(globalIndex, ColorPalette, Colors);
+            var cx = xScale.Center(i);
+            var boxHalf = Math.Min(23, xScale.Bandwidth / 2);
+            var yQ3 = yScale.Scale(s.Q3);
+            var yQ1 = yScale.Scale(s.Q1);
+            var boxPath = ChartRoundedRectPath.AllRounded(cx - boxHalf, Math.Min(yQ3, yQ1), boxHalf * 2, Math.Abs(yQ1 - yQ3), 3);
+
+            _boxes.Add(new BoxRender(
+                globalIndex, _visibleCategories[i], color, cx, boxHalf, boxHalf / 1.5,
+                yScale.Scale(s.WhiskerHigh), yQ3, yScale.Scale(s.Median), yQ1, yScale.Scale(s.WhiskerLow),
+                boxPath, s.Outliers.Select(o => yScale.Scale(o)).ToList(), s));
+            _legendItems.Add(new ChartLegendItem($"cat-{globalIndex}", _visibleCategories[i], color));
+        }
+
+        BuildXAxisMarkup(xScale);
+        BuildMedianLabelsMarkup();
+
+        if (_hoverIndex is { } hv && hv >= _boxes.Count) _hoverIndex = null;
+    }
+
+    private Lumeo.ChartBoxPlotStats? ComputeStats(int categoryIndex)
+    {
+        if (Samples is not null && categoryIndex < Samples.Count && Samples[categoryIndex].Count > 0)
+            return Lumeo.ChartStatistics.Quartiles(Samples[categoryIndex]);
+
+        if (Data is not null && categoryIndex < Data.Count && Data[categoryIndex].Length >= 5)
+        {
+            var d = Data[categoryIndex];
+            return new Lumeo.ChartBoxPlotStats(d[0], d[1], d[2], d[3], d[4], d[0], d[4], Array.Empty<double>());
+        }
+        return null;
+    }
+
+    private void BuildXAxisMarkup(BandScale xScale)
+    {
+        var (interval, rotate) = ChartLabelHelper.Resolve(LabelStrategy, _visibleCategories.Count, LabelRotate);
+        var step = interval is > 0 ? interval.Value + 1 : 1;
+        var sb = new System.Text.StringBuilder();
+        for (var i = 0; i < _visibleCategories.Count; i++)
+        {
+            if (step > 1 && i % step != 0) continue;
+            var x = xScale.Center(i);
+            var y = _plot.Bottom + 14;
+            var transform = rotate is { } r && r != 0 ? $" transform=\"rotate({r} {NativeChartShared.Fmt(x)} {NativeChartShared.Fmt(y)})\"" : string.Empty;
+            var anchor = rotate is { } r2 && r2 != 0 ? (r2 < 0 ? "end" : "start") : "middle";
+            sb.Append("<text x=\"").Append(NativeChartShared.Fmt(x)).Append("\" y=\"").Append(NativeChartShared.Fmt(y))
+              .Append("\" fill=\"var(--color-muted-foreground)\" font-size=\"10.5\" text-anchor=\"").Append(anchor).Append('"').Append(transform).Append('>')
+              .Append(System.Net.WebUtility.HtmlEncode(_visibleCategories[i])).Append("</text>");
+        }
+        _xAxisMarkup = sb.ToString();
+    }
+
+    private void BuildMedianLabelsMarkup()
+    {
+        if (!ShowDataLabels) { _medianLabelsMarkup = string.Empty; return; }
+        var sb = new System.Text.StringBuilder();
+        foreach (var box in _boxes)
+        {
+            var text = !string.IsNullOrEmpty(LabelFormat)
+                ? LabelFormat!.Replace("{c}", NativeChartShared.FmtValue(box.Stats.Median))
+                : NativeChartShared.FmtValue(box.Stats.Median);
+            sb.Append("<text x=\"").Append(NativeChartShared.Fmt(box.CX)).Append("\" y=\"").Append(NativeChartShared.Fmt(box.YWhiskerHigh - 6))
+              .Append("\" fill=\"var(--color-foreground)\" font-size=\"10\" text-anchor=\"middle\">")
+              .Append(System.Net.WebUtility.HtmlEncode(text)).Append("</text>");
+        }
+        _medianLabelsMarkup = sb.ToString();
+    }
+
+    private void OnIndexChanged(int? index)
+    {
+        _hoverIndex = index;
+        if (index is { } i && i < _boxes.Count)
+        {
+            var box = _boxes[i];
+            _crosshairX = box.CX;
+            _pointerX = box.CX;
+            _pointerY = box.YMedian;
+            _crosshairMarkers = new List<ChartCrosshairMarker> { new(box.CX, box.YMedian, box.Color) };
+        }
+        else
+        {
+            _crosshairMarkers = new List<ChartCrosshairMarker>();
+        }
+    }
+
+    private void OnZoomRangeChanged((double Start, double End) range)
+    {
+        _zoom.SetRange(range.Start, range.End);
+        Rebuild();
+    }
+
+    private void BuildAccessibility()
+    {
+        var series = new List<(string Name, IReadOnlyList<double> Values)>
+        {
+            ("Min", _boxes.Select(b => b.Stats.Min).ToList()),
+            ("Q1", _boxes.Select(b => b.Stats.Q1).ToList()),
+            ("Median", _boxes.Select(b => b.Stats.Median).ToList()),
+            ("Q3", _boxes.Select(b => b.Stats.Q3).ToList()),
+            ("Max", _boxes.Select(b => b.Stats.Max).ToList()),
+        };
+        var json = NativeChartShared.BuildCartesianOptionJson("boxplot", _visibleCategories, series);
+        _a11yTable = ChartAccessibility.Build(json);
+        _a11ySummary = _a11yTable?.Summary ?? "Box plot";
+    }
+
+    private sealed record BoxRender(
+        int Index, string Category, string Color, double CX, double CapHalf, double BoxHalf,
+        double YWhiskerHigh, double YQ3, double YMedian, double YQ1, double YWhiskerLow,
+        string BoxPath, List<double> OutlierYs, Lumeo.ChartBoxPlotStats Stats);
+}
