@@ -119,6 +119,23 @@ public class ShimmerButtonTests : IAsyncLifetime
     }
 
     [Fact]
+    public void Size_Sm_Renders_TextSm_Not_TextXs()
+    {
+        // Wave-0 fix (C3): ShimmerButton's CssClass is a plain string.Join with no
+        // conflict resolution, so BaseClasses' text-sm and SizeClasses' text-xs both
+        // ended up in the class attribute — stylesheet source order let .text-xs win,
+        // rendering 12px instead of the correct 14px. Deleting the stray text-xs from
+        // Sm's SizeClasses removes the conflict entirely.
+        var cut = _ctx.Render<Lumeo.ShimmerButton>(p => p
+            .Add(b => b.Size, Lumeo.Button.ButtonSize.Sm)
+            .AddChildContent("X"));
+
+        var cls = cut.Find("button").GetAttribute("class") ?? "";
+        Assert.Contains("text-sm", cls);
+        Assert.DoesNotContain("text-xs", cls);
+    }
+
+    [Fact]
     public void Additional_Attributes_Forward()
     {
         var cut = _ctx.Render<Lumeo.ShimmerButton>(p => p

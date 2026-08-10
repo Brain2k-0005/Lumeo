@@ -246,6 +246,58 @@
     }
 
     [Fact]
+    public void Active_Trigger_Has_Dark_Mode_Background_Variant()
+    {
+        // Wave-0 fix (C2): the active-tab pill had no dark-mode branch, so the
+        // light-mode drop shadow rode on a dark surface with the same bg-background
+        // in both themes. shadcn swaps to bg-input/30 in dark mode.
+        var cut = Render(@<Tabs ActiveValue="tab1">
+            <TabsList>
+                <TabsTrigger Value="tab1">Tab 1</TabsTrigger>
+            </TabsList>
+        </Tabs>);
+
+        var classes = cut.Find("[role='tab']").GetAttribute("class") ?? "";
+        Assert.Contains("dark:bg-input/30", classes);
+    }
+
+    [Fact]
+    public void Inactive_Trigger_Has_Hover_Text_Class()
+    {
+        // Wave-0 fix (C2): Default's inactive branch was literally "" — no hover
+        // affordance at all, unlike Lumeo's own Segmented.razor (hover:text-foreground
+        // on its inactive segments).
+        var cut = Render(@<Tabs ActiveValue="tab2">
+            <TabsList>
+                <TabsTrigger Value="tab1">Tab 1</TabsTrigger>
+                <TabsTrigger Value="tab2">Tab 2</TabsTrigger>
+            </TabsList>
+        </Tabs>);
+
+        var tab1Classes = cut.FindAll("[role='tab']")[0].GetAttribute("class") ?? "";
+        Assert.Contains("hover:text-foreground", tab1Classes);
+    }
+
+    [Fact]
+    public void Default_Trigger_Uses_Py1_So_The_Pill_Fits_Its_Track()
+    {
+        // Wave-0 fix (C2): Comfortable's py-1.5 + text-sm's 20px line-height needed
+        // 32px, but the Default TabsList track (h-9 p-1) only has a 28px content
+        // box — the pill overflowed its own track and the declared 4px muted band
+        // collapsed to ~2px per side. py-1 drops the intrinsic pill height to 24px,
+        // which fits inside the 28px content box with room to spare.
+        var cut = Render(@<Tabs ActiveValue="tab1">
+            <TabsList>
+                <TabsTrigger Value="tab1">Tab 1</TabsTrigger>
+            </TabsList>
+        </Tabs>);
+
+        var classes = cut.Find("[role='tab']").GetAttribute("class") ?? "";
+        Assert.Contains("py-1", classes);
+        Assert.DoesNotContain("py-1.5", classes);
+    }
+
+    [Fact]
     public void TabsTrigger_AdditionalAttributes_Are_Forwarded()
     {
         var cut = Render(@<Tabs ActiveValue="tab1">

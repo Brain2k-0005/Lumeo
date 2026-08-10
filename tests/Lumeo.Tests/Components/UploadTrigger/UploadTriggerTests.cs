@@ -41,4 +41,19 @@ public class UploadTriggerTests : IAsyncLifetime
         var cut = _ctx.Render<L.UploadTrigger>(p => p.Add(u => u.Disabled, true));
         Assert.True(cut.Find("input[type='file']").HasAttribute("disabled"));
     }
+
+    [Fact]
+    public void Sm_Size_Renders_TextSm_Not_TextXs()
+    {
+        // Wave-0 fix (C3): unlike Button, UploadTrigger's LabelClass merges
+        // BASE-first then SizeClass, so SizeClass's text-xs (the LAST font-size
+        // utility in source order) used to win the conflict and render 12px
+        // instead of the correct 14px. Deleting the stray text-xs from Sm's
+        // SizeClass lets the base text-sm survive uncontested.
+        var cut = _ctx.Render<L.UploadTrigger>(p => p.Add(u => u.Size, Lumeo.Button.ButtonSize.Sm));
+
+        var cls = cut.Find("label").GetAttribute("class") ?? "";
+        Assert.Contains("text-sm", cls);
+        Assert.DoesNotContain("text-xs", cls);
+    }
 }

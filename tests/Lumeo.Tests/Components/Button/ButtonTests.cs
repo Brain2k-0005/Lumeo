@@ -110,6 +110,24 @@ public class ButtonTests : IAsyncLifetime
     }
 
     [Fact]
+    public void Sm_Size_Renders_TextSm_Not_TextXs()
+    {
+        // Wave-0 no-op proof (C3): SizeClasses used to emit a dead " text-xs" for
+        // Sm that Cx.Merge always discarded (Size runs before Base in CssClass's
+        // merge order, and Base's text-sm — the LAST font-size utility in source
+        // order — always wins the conflict group). Deleting the dead token must
+        // render byte-identical: text-sm present, text-xs absent, both before and
+        // after the cleanup.
+        var cut = _ctx.Render<Lumeo.Button>(p => p
+            .Add(b => b.Size, Lumeo.Button.ButtonSize.Sm)
+            .AddChildContent("Btn"));
+
+        var cls = cut.Find("button").GetAttribute("class") ?? "";
+        Assert.Contains("text-sm", cls);
+        Assert.DoesNotContain("text-xs", cls);
+    }
+
+    [Fact]
     public void Click_Event_Fires()
     {
         var clicked = false;

@@ -224,8 +224,14 @@
                         ? Cx.Join(slidingUnderlineOwnsIndicator ? "border-transparent" : "border-primary", "text-foreground")
                         : "border-transparent text-muted-foreground hover:text-foreground hover:border-border/60"),
                 _ => IsActive
-                    ? "bg-background text-foreground shadow"
-                    : ""
+                    // dark:bg-input/30 mirrors shadcn: the light-mode shadow-plus-white-pill
+                    // reads as a raised chip in dark mode without a bg swap (a light drop
+                    // shadow riding on a dark surface with no contrast from the track).
+                    ? "bg-background text-foreground shadow dark:bg-input/30"
+                    // shadcn parity: inactive tabs get a hover affordance too (Lumeo's own
+                    // Segmented.razor already does this for its inactive segments) — Default
+                    // previously had none at all.
+                    : "hover:text-foreground"
             };
 
             var reorderState = Context.Reorder;
@@ -250,13 +256,18 @@
         }
     }
 
-    // Trigger padding tracks the ambient DensityScope; Comfortable reproduces
-    // the historical `px-3 py-1.5`.
+    // Trigger padding tracks the ambient DensityScope. Comfortable is `px-3 py-1`
+    // (was `py-1.5`, wave-0 C2 fix): text-sm's 20px line-height + the old py-1.5
+    // (12px) needed 32px, inside the TabsList Default track's h-9 p-1, whose
+    // content box is only 28px — the pill overflowed its own track and the
+    // declared 4px muted band collapsed to ~2px per side. py-1 (4px) drops the
+    // intrinsic pill height to 24px, comfortably inside the 28px content box
+    // with no overflow — matching shadcn's own `py-1` for this size.
     private string PadClass => Density switch
     {
         Lumeo.Density.Compact => "px-2 py-1",
         Lumeo.Density.Spacious => "px-4 py-2",
-        _ => "px-3 py-1.5"
+        _ => "px-3 py-1"
     };
 
     private async Task Activate()

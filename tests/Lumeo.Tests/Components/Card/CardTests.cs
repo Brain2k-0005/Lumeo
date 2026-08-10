@@ -34,11 +34,22 @@ public class CardTests : IAsyncLifetime
         var cut = _ctx.Render<L.Card>(p => p.AddChildContent("Content"));
 
         var cls = cut.Find("div").GetAttribute("class");
-        Assert.Contains("rounded-lg", cls);
+        Assert.Contains("rounded-xl", cls);
         Assert.Contains("border", cls);
         Assert.Contains("border-border", cls);
         Assert.Contains("bg-card", cls);
         Assert.Contains("text-card-foreground", cls);
+    }
+
+    [Fact]
+    public void Card_Radius_Matches_Shadcn_Rounded_Xl_Not_Rounded_Lg()
+    {
+        // Wave-0 fix (C.7): shadcn's Card is rounded-xl; Lumeo shipped rounded-lg
+        // (1px off today, would have drifted to 4px off after the Wave-1 radius
+        // rebase). Pin the exact rung, not just "contains rounded-xl" — a stray
+        // rounded-lg wouldn't fail the Contains-only assertion above.
+        var cls = _ctx.Render<L.Card>(p => p.AddChildContent("x")).Find("div").GetAttribute("class") ?? "";
+        Assert.DoesNotContain("rounded-lg", cls);
     }
 
     [Fact]
@@ -97,7 +108,7 @@ public class CardTests : IAsyncLifetime
 
         var cls = cut.Find("div").GetAttribute("class");
         Assert.Contains("my-card-class", cls);
-        Assert.Contains("rounded-lg", cls);
+        Assert.Contains("rounded-xl", cls);
     }
 
     [Fact]
