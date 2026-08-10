@@ -16,6 +16,21 @@ internal static class NativeChartPalette
         var explicitPalette = colorPalette is { Count: > 0 } ? colorPalette : colors;
         if (explicitPalette is { Count: > 0 })
             return explicitPalette[seriesIndex % explicitPalette.Count];
-        return $"var(--color-chart-{(seriesIndex % ThemeTokenCount) + 1})";
+
+        var baseToken = $"var(--color-chart-{(seriesIndex % ThemeTokenCount) + 1})";
+        var round = seriesIndex / ThemeTokenCount;
+        if (round == 0) return baseToken;
+
+        // A 6th+ series (no explicit palette given) cycles back through the
+        // same 5 theme tokens — repeating an EXACT color makes two unrelated
+        // series read as one in the legend/tooltip. Vary each further "round"
+        // through color-mix (still CSS-variable-native, no raw hex — project
+        // rule): odd rounds lighten toward white, even rounds darken toward
+        // black, alternating so round 1 and round 2 aren't just "round 0
+        // again but lighter than round 1", they're distinguishable from each
+        // other too.
+        return round % 2 == 1
+            ? $"color-mix(in oklab, {baseToken} 68%, white)"
+            : $"color-mix(in oklab, {baseToken} 68%, black)";
     }
 }

@@ -26,7 +26,7 @@
 else
 {
     <div class="lumeo-chart-native relative inline-block w-full @Class" style="width:@Width;height:@Height;" @attributes="AdditionalAttributes">
-        <svg viewBox="@Invariant($"0 0 {Fmt(_viewW)} {Fmt(_viewH)}")" preserveAspectRatio="none" class="lumeo-chart-native-svg block w-full h-full" role="presentation" focusable="false">
+        <svg id="@_svgId" viewBox="@Invariant($"0 0 {Fmt(_viewW)} {Fmt(_viewH)}")" preserveAspectRatio="none" class="lumeo-chart-native-svg block w-full h-full" role="presentation" focusable="false">
             <defs>@ExtraDefs</defs>
 
             <ChartAxis Ticks="@_valueTicks" Orientation="@(Horizontal ? ChartAxisOrientation.Bottom : ChartAxisOrientation.Left)"
@@ -168,6 +168,51 @@ else
     private int _visibleStart, _visibleEnd;
     private int _visibleCount => _visibleEnd - _visibleStart;
     private string[] _resolvedColors = Array.Empty<string>();
+
+    // --- Screen-space tooltip positioning -----------------------------------
+    // The SVG is drawn in a fixed LOGICAL viewBox (_viewW x _viewH) and scaled
+    // to its actual CSS box via preserveAspectRatio="none" — necessary so a
+    // "100%" width or a resized container stretches the chart instead of
+    // letterboxing it. That stretch means logical viewBox coordinates are NOT
+    // screen pixels whenever the rendered box's aspect/size differs from the
+    // viewBox (e.g. Width="100%" inside a narrow column), which is exactly
+    // what made ChartTooltipHost (position:fixed, raw X/Y) drift from the
+    // cursor — a known, previously-flagged gap.
+    //
+    // Fixed by measuring the SVG's real client rect via getBoundingClientRect
+    // and converting every logical point through it before handing it to
+    // ChartTooltipHost. Measured FRESH on every resolved hover-index change
+    // (not cached from first render) deliberately: getBoundingClientRect is
+    // VIEWPORT-relative, so a cached value goes stale the moment the page
+    // scrolls after mount — extremely common for a chart that isn't at the
+    // very top of the page. ChartInteractionSurface/registerPointerTrack
+    // already collapses a 60fps pointermove down to one call per RESOLVED
+    // index change, so this adds at most one interop round-trip per index
+    // change, not per frame.
+    private readonly string _svgId = $"lumeo-chart-native-svg-{Guid.NewGuid():N}";
+    private double _rectX, _rectY;
+    private double _scaleX = 1, _scaleY = 1;
+
+    private async Task RefreshScreenTransformAsync()
+    {
+        try
+        {
+            var rect = await Interop.GetElementRect(_svgId);
+            if (rect is { Width: > 0, Height: > 0 } && _viewW > 0 && _viewH > 0)
+            {
+                _rectX = rect.X;
+                _rectY = rect.Y;
+                _scaleX = rect.Width / _viewW;
+                _scaleY = rect.Height / _viewH;
+            }
+        }
+        catch (Microsoft.JSInterop.JSDisconnectedException) { }
+    }
+
+    /// <summary>Converts a logical (viewBox-space) point to real viewport
+    /// pixels, for <see cref="ChartTooltipHost"/>'s position:fixed coordinates.</summary>
+    private (double X, double Y) ToScreen(double logicalX, double logicalY) =>
+        (_rectX + logicalX * _scaleX, _rectY + logicalY * _scaleY);
 
     protected override void OnParametersSet()
     {
@@ -351,18 +396,36 @@ else
         return Horizontal ? (val, cat) : (cat, val);
     }
 
+    /// <summary>Minimum rendered thickness (viewBox units) for a bar whose
+    /// true value is non-zero — a genuinely-zero value still renders nothing
+    /// (0 correctly means "no bar"), but a tiny non-zero value no longer
+    /// disappears into a sub-pixel sliver. The edge anchored to the baseline
+    /// (0, or the layer below in a stack) never moves; only the far edge is
+    /// pushed outward to meet the minimum, so the bar still visually "starts"
+    /// from the right place.</summary>
+    private const double MinVisibleBarThickness = 2;
+
     private (double X, double Y, double W, double H) BarRect(int i, double v0, double v1, int slotIndex, int slotCount, int yAxisIndex)
     {
         var bandStart = _bandScale!.Start(i);
         var slotWidth = _bandScale.Bandwidth / Math.Max(1, slotCount);
-        var gap = slotWidth * 0.1;
+        var gap = slotWidth * 0.16;
         var thickness = Math.Max(0.5, slotWidth - gap);
         var slotStart = bandStart + slotIndex * slotWidth + gap / 2;
 
-        var p0 = ValuePixel(v0, yAxisIndex);
-        var p1 = ValuePixel(v1, yAxisIndex);
-        var lo = Math.Min(p0, p1);
-        var hi = Math.Max(p0, p1);
+        // v0 is always the baseline-side value (0, or the stack layer below);
+        // its pixel position is the edge that must stay fixed when the
+        // minimum-thickness rule below pushes the other edge outward.
+        var baselinePx = ValuePixel(v0, yAxisIndex);
+        var valuePx = ValuePixel(v1, yAxisIndex);
+        double lo, hi;
+        if (valuePx <= baselinePx) { lo = valuePx; hi = baselinePx; } else { lo = baselinePx; hi = valuePx; }
+
+        if (v1 != v0 && hi - lo < MinVisibleBarThickness)
+        {
+            if (valuePx <= baselinePx) lo = hi - MinVisibleBarThickness;
+            else hi = lo + MinVisibleBarThickness;
+        }
 
         return Horizontal ? (lo, slotStart, hi - lo, thickness) : (slotStart, lo, thickness, hi - lo);
     }
@@ -392,7 +455,19 @@ else
             var ser = activeSeries[s];
             var color = _resolvedColors[originalIndex[s]];
             var dur = AnimationDuration is > 0 ? AnimationDuration.Value : 0;
-            var transition = dur > 0 ? $"transition:all {dur}ms {(string.IsNullOrEmpty(AnimationEasing) ? "ease" : AnimationEasing)};" : "";
+            // Transition duration/easing ride in as CSS custom properties, not
+            // a `transition:` property, on purpose: the actual `transition`
+            // rule lives in lumeo.css (`.lumeo-chart-native-line`, `-area`,
+            // `-bar`) behind a `prefers-reduced-motion: reduce` override.
+            // Inline `style="transition:…"` can't be overridden by a
+            // stylesheet media query (inline always wins), which would have
+            // made every data-change/initial-paint animation ignore reduced
+            // motion — the one other animated chart affordance in this file
+            // (the EffectScatter ripple) already respects it; this brings
+            // Line/Area/Bar in line with that instead of being the exception.
+            var transition = dur > 0
+                ? Invariant($"--lumeo-chart-transition-duration:{dur}ms;--lumeo-chart-transition-easing:{System.Net.WebUtility.HtmlEncode(string.IsNullOrEmpty(AnimationEasing) ? "ease" : AnimationEasing)};")
+                : "";
 
             switch (ser.Kind)
             {
@@ -425,13 +500,30 @@ else
                     foreach (var run in ContiguousRuns(ser.Values))
                     {
                         var band = run.Select(i => (X: CategoryPixel(i), Y0: ValuePixel(extents[i].Bottom, ser.YAxisIndex), Y1: ValuePixel(extents[i].Top, ser.YAxisIndex))).ToList();
-                        var d = ChartPathBuilder.BuildBand(band, curve);
-                        sb.Append("<path class=\"lumeo-chart-native-area\" data-series=\"").Append(originalIndex[s]).Append("\" d=\"").Append(System.Net.WebUtility.HtmlEncode(d))
-                          .Append("\" fill=\"").Append(fill).Append("\" stroke=\"").Append(color).Append("\" stroke-width=\"1.75\" style=\"").Append(transition).Append("\" />");
-                        // Dots draw AFTER (on top of, in SVG paint order) the fill/stroke path
-                        // above so they're never hidden underneath the area's own fill — same
-                        // <circle class="lumeo-chart-native-dot"> markup the Line case uses, at
-                        // the series' own top (value) edge, not the stacked bottom.
+                        var fillD = ChartPathBuilder.BuildBand(band, curve);
+                        // Fill-only: BuildBand returns a CLOSED contour (top edge
+                        // forward, bottom/baseline edge backward, "Z"). Stroking
+                        // that whole closed path — the previous behavior — draws
+                        // a visible line along the baseline AND the two vertical
+                        // seams at the run's start/end, reading as an unwanted
+                        // box around the chart (worst in dark mode, most visible
+                        // on the bottom-most series where the baseline IS the
+                        // x-axis). No engine we compare against (ECharts, ReUI)
+                        // strokes anything but the top edge, so this path carries
+                        // fill only; the top-edge stroke is a separate path below.
+                        sb.Append("<path class=\"lumeo-chart-native-area\" data-series=\"").Append(originalIndex[s]).Append("\" d=\"").Append(System.Net.WebUtility.HtmlEncode(fillD))
+                          .Append("\" fill=\"").Append(fill).Append("\" stroke=\"none\" style=\"").Append(transition).Append("\" />");
+
+                        var topPoints = run.Select(i => (CategoryPixel(i), ValuePixel(extents[i].Top, ser.YAxisIndex))).ToList();
+                        var topD = ChartPathBuilder.BuildLine(topPoints, curve);
+                        sb.Append("<path class=\"lumeo-chart-native-area-line\" data-series=\"").Append(originalIndex[s]).Append("\" d=\"").Append(System.Net.WebUtility.HtmlEncode(topD))
+                          .Append("\" fill=\"none\" stroke=\"").Append(color).Append("\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\" style=\"").Append(transition).Append("\" />");
+
+                        // Dots draw AFTER (on top of, in SVG paint order) both paths
+                        // above so they're never hidden underneath the area's own fill —
+                        // same <circle class="lumeo-chart-native-dot"> markup the Line
+                        // case uses, at the series' own top (value) edge, not the
+                        // stacked bottom.
                         if (ser.ShowDots)
                         {
                             foreach (var i in run)
@@ -452,7 +544,11 @@ else
                         if (i >= ser.Values.Count || ser.Values[i] is null) continue;
                         var (x, y, w, h) = BarRect(i, extents[i].Bottom, extents[i].Top, slot.SlotIndex, slot.SlotCount, ser.YAxisIndex);
                         var barColor = ser.PointColors is { } pc && i < pc.Count && pc[i] is not null ? pc[i] : color;
-                        var d = Horizontal || h < 1 ? "" : ChartRoundedRectPath.TopRounded(x, y, w, h, Math.Min(3, w / 2));
+                        // Radius capped at 4 (viewBox units) — a bit more than the
+                        // previous 3, closer to the library's --radius-sm scale
+                        // (used for other small filled shapes like badges) without
+                        // going full "pill" on a normal-width bar.
+                        var d = Horizontal || h < 1 ? "" : ChartRoundedRectPath.TopRounded(x, y, w, h, Math.Min(4, w / 2));
                         // data-x/y/width/height are written on BOTH the <path> (rounded-top,
                         // the normal vertical-bar case) and the <rect> variant, so a bar's exact
                         // computed geometry is always assertable the same way regardless of which
@@ -556,9 +652,12 @@ else
         await Task.CompletedTask;
     }
 
-    private Task OnIndexChangedAsync(int? index)
+    private async Task OnIndexChangedAsync(int? index)
     {
-        if (index is null) { if (_hover.Clear()) StateHasChanged(); _announcement = ""; return Task.CompletedTask; }
+        if (index is null) { if (_hover.Clear()) StateHasChanged(); _announcement = ""; return; }
+
+        // Fresh measurement per resolved index change — see RefreshScreenTransformAsync's remarks.
+        await RefreshScreenTransformAsync();
 
         var (activeSeries, originalIndex) = ActiveSeriesWithIndex(VisibleSeries());
         _tooltipSeriesCount = activeSeries.Count(s => s.IncludeInTooltip);
@@ -585,24 +684,18 @@ else
 
         _crosshairX = Horizontal ? _plot.X : CategoryPixel(index.Value);
         _crosshairMarkers = markers;
-        // NOTE (flagged, not silent): these are logical SVG viewBox coordinates,
-        // not real screen pixels — ChartTooltipHost positions with `position:fixed`
-        // using X/Y as-is. Because this host uses a fixed logical viewBox scaled
-        // to the container via CSS (no JS text/box measurement, spec §2.2's
-        // measureTextWidths deliberately not wired up this wave — see
-        // NativeChartViewport's remarks), the tooltip will visually drift from the
-        // pointer whenever the rendered SVG's actual on-screen size differs from
-        // the logical viewBox size. Data/content is unaffected; only the popup's
-        // pixel offset is approximate. A follow-up JS bounding-rect call would fix
-        // this without touching the core.
-        _pointerClientX = Horizontal ? (markers.Count > 0 ? markers[0].X : _plot.X) : CategoryPixel(index.Value);
-        _pointerClientY = Horizontal ? CategoryPixel(index.Value) : (markers.Count > 0 ? markers[0].Y : _plot.Y);
+        // Logical viewBox point for the hovered index, converted to real
+        // viewport pixels via ToScreen (see its remarks) so the tooltip lands
+        // under the cursor even when the rendered SVG box differs from the
+        // logical viewBox (e.g. a "100%"-width chart in a narrow column).
+        var logicalPointerX = Horizontal ? (markers.Count > 0 ? markers[0].X : _plot.X) : CategoryPixel(index.Value);
+        var logicalPointerY = Horizontal ? CategoryPixel(index.Value) : (markers.Count > 0 ? markers[0].Y : _plot.Y);
+        (_pointerClientX, _pointerClientY) = ToScreen(logicalPointerX, logicalPointerY);
 
         _hover.TrySet(points.Count > 0 ? points[0].SeriesIndex : (int?)null, index.Value, _pointerClientX, _pointerClientY);
         _announcement = $"{category}: " + string.Join(", ", points.Select(p => $"{p.SeriesName} {p.Value?.ToString("0.##") ?? "—"}"));
 
         StateHasChanged();
-        return Task.CompletedTask;
     }
 
     private Task OnSeriesChangedAsync(int seriesIndex) => Task.CompletedTask;

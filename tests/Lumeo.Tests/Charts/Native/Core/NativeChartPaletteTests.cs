@@ -26,7 +26,24 @@ public class NativeChartPaletteTests
     {
         Assert.Equal("var(--color-chart-1)", L.NativeChartPalette.Resolve(null, null, 0));
         Assert.Equal("var(--color-chart-5)", L.NativeChartPalette.Resolve(null, null, 4));
-        Assert.Equal("var(--color-chart-1)", L.NativeChartPalette.Resolve(null, null, 5)); // wraps
+    }
+
+    [Fact]
+    public void Beyond_Five_Series_Varies_The_Wrapped_Token_Instead_Of_Repeating_It_Exactly()
+    {
+        // Index 5 wraps back to chart-1's token, but must NOT resolve to the
+        // exact same literal string as index 0 — two unrelated series would
+        // otherwise be visually indistinguishable in the legend/tooltip.
+        var round0 = L.NativeChartPalette.Resolve(null, null, 0);
+        var round1 = L.NativeChartPalette.Resolve(null, null, 5);
+        var round2 = L.NativeChartPalette.Resolve(null, null, 10);
+
+        Assert.Equal("var(--color-chart-1)", round0);
+        Assert.NotEqual(round0, round1);
+        Assert.NotEqual(round0, round2);
+        Assert.NotEqual(round1, round2);
+        Assert.Contains("var(--color-chart-1)", round1);
+        Assert.Contains("var(--color-chart-1)", round2);
     }
 
     [Fact]

@@ -2090,6 +2090,45 @@ input[type="range"]::-moz-range-thumb {
   }
 }
 
+/* =================================================================
+ * Native Cartesian/Xy chart data-change transitions — CartesianChartHost
+ * and XyChartHost write ONLY two CSS custom properties inline per shape
+ * (--lumeo-chart-transition-duration/-easing, when AnimationDuration is
+ * set), never the `transition` property itself. That split exists so this
+ * stylesheet rule — and its prefers-reduced-motion override — can actually
+ * win: an inline `style="transition:…"` can never be overridden by a
+ * stylesheet media query (inline always wins over external rules), which
+ * would have made every data-change animation on Line/Area/Bar ignore
+ * reduced motion, unlike the EffectScatter ripple above.
+ * ============================================================= */
+.lumeo-chart-native-line,
+.lumeo-chart-native-area,
+.lumeo-chart-native-area-line,
+.lumeo-chart-native-bar {
+  transition: all var(--lumeo-chart-transition-duration, 0ms) var(--lumeo-chart-transition-easing, ease);
+}
+@media (prefers-reduced-motion: reduce) {
+  .lumeo-chart-native-line,
+  .lumeo-chart-native-area,
+  .lumeo-chart-native-area-line,
+  .lumeo-chart-native-bar {
+    transition: none !important;
+  }
+}
+
+/* Keyboard focus affordance for the native engine's pointer/keyboard-nav
+ * hit-test surfaces (ChartInteractionSurface's <rect>, and XyChartHost's
+ * own <rect class="lumeo-chart-native-kbd-surface"> for Scatter/
+ * EffectScatter) — previously relied on the browser's inconsistent default
+ * SVG focus outline. Same outline + offset the rest of the library already
+ * uses for a non-Tailwind-ring-friendly element (see
+ * .lumeo-image-compare-slider:focus-visible above). */
+.lumeo-chart-interaction-surface:focus-visible,
+.lumeo-chart-native-kbd-surface:focus-visible {
+  outline: 2px solid var(--color-ring);
+  outline-offset: 2px;
+}
+
 /* ScrollArea (#256) — cross-browser scrollbar styling + Type visibility modes.
    The global "* { scrollbar-width: thin }" rule above gives Firefox a styled
    bar; here we add the webkit thumb/track for the ScrollArea box itself and let

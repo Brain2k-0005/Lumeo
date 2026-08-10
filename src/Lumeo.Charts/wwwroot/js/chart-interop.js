@@ -70,7 +70,23 @@ export function registerPointerTrack(element, plotOriginX, plotWidth, pointCount
     if (state.pointCount <= 0) return -1;
     if (state.pointCount === 1) return 0;
     const rect = element.getBoundingClientRect();
-    const localX = clientX - rect.left;
+    if (rect.width <= 0) return 0;
+    // plotOriginX/plotWidth (from CartesianChartHost's PlotX/PlotWidth) are in
+    // LOGICAL viewBox units, but rect.left/rect.width from getBoundingClientRect
+    // are real screen pixels. The two only coincide when the chart happens to
+    // render at exactly its viewBox size (e.g. a literal "600px" width) — any
+    // other size (a "100%"-width chart, a resized container) silently resolved
+    // the WRONG category index, a real hit-testing bug, not just a cosmetic
+    // offset: a fully-passing test suite never caught it because every fixture
+    // rendered at the coincidental 1:1 size. Fixed by converting localX back
+    // into logical viewBox units via the owning <svg>'s own viewBox.baseVal
+    // before comparing it against plotOriginX/plotWidth.
+    const svg = element.ownerSVGElement;
+    const viewBoxWidth = svg && svg.viewBox && svg.viewBox.baseVal && svg.viewBox.baseVal.width > 0
+      ? svg.viewBox.baseVal.width
+      : rect.width; // no viewBox found — assume 1:1, matching the previous behavior
+    const scaleX = rect.width / viewBoxWidth;
+    const localX = (clientX - rect.left) / scaleX;
     if (state.plotWidth <= 0) return 0;
     const t = (localX - state.plotOriginX) / state.plotWidth;
     const raw = Math.round(t * (state.pointCount - 1));

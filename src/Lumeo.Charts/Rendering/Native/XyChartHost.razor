@@ -1,4 +1,5 @@
 @namespace Lumeo
+@inject IComponentInteropService Interop
 
 @* Shared rendering/interaction orchestrator for the continuous-x/y native
    Cartesian types (Scatter, EffectScatter). Deliberately NOT built on
@@ -27,7 +28,7 @@
 else
 {
     <div class="lumeo-chart-native relative inline-block w-full @Class" style="width:@Width;height:@Height;" @attributes="AdditionalAttributes">
-        <svg viewBox="@Invariant($"0 0 {Fmt(_viewW)} {Fmt(_viewH)}")" preserveAspectRatio="none" class="lumeo-chart-native-svg block w-full h-full" role="presentation" focusable="false">
+        <svg id="@_svgId" viewBox="@Invariant($"0 0 {Fmt(_viewW)} {Fmt(_viewH)}")" preserveAspectRatio="none" class="lumeo-chart-native-svg block w-full h-full" role="presentation" focusable="false">
             <ChartAxis Ticks="@_xTicks" Orientation="ChartAxisOrientation.Bottom" GridStart="@_plot.Y" GridEnd="@_plot.Bottom" AxisLinePosition="@_plot.Bottom" />
             <ChartAxis Ticks="@_yTicks" Orientation="ChartAxisOrientation.Left" GridStart="@_plot.X" GridEnd="@_plot.Right" AxisLinePosition="@_plot.X" />
 
@@ -141,6 +142,38 @@ else
     private Dictionary<(int Series, int Point), int> _flatIndexOf = new();
     private List<(int Series, int Point)> _flatOrder = new();
 
+    // See CartesianChartHost's identical block for the full rationale: the
+    // SVG is stretched (preserveAspectRatio="none") from a fixed logical
+    // viewBox to its real CSS box, so ChartTooltipHost's position:fixed
+    // coordinates need the real rendered rect, not raw viewBox coordinates,
+    // whenever the two differ (e.g. this host's own e2e demo: Width="100%"
+    // inside a narrow 280px column). Measured FRESH on every hover (not
+    // cached from first render) because getBoundingClientRect is
+    // viewport-relative and a cached value goes stale the moment the page
+    // scrolls after mount.
+    private readonly string _svgId = $"lumeo-chart-native-svg-{Guid.NewGuid():N}";
+    private double _rectX, _rectY;
+    private double _scaleX = 1, _scaleY = 1;
+
+    private async Task RefreshScreenTransformAsync()
+    {
+        try
+        {
+            var rect = await Interop.GetElementRect(_svgId);
+            if (rect is { Width: > 0, Height: > 0 } && _viewW > 0 && _viewH > 0)
+            {
+                _rectX = rect.X;
+                _rectY = rect.Y;
+                _scaleX = rect.Width / _viewW;
+                _scaleY = rect.Height / _viewH;
+            }
+        }
+        catch (Microsoft.JSInterop.JSDisconnectedException) { }
+    }
+
+    private (double X, double Y) ToScreen(double logicalX, double logicalY) =>
+        (_rectX + logicalX * _scaleX, _rectY + logicalY * _scaleY);
+
     protected override void OnParametersSet()
     {
         _viewW = NativeChartViewport.ParseViewBoxDimension(Width, NativeChartViewport.DefaultViewBoxWidth);
@@ -221,8 +254,11 @@ else
         _labelsMarkup = sb.ToString();
     }
 
-    private Task OnPointHoverAsync(int seriesIndex, int pointIndex)
+    private async Task OnPointHoverAsync(int seriesIndex, int pointIndex)
     {
+        // Fresh measurement per hover — see RefreshScreenTransformAsync's remarks.
+        await RefreshScreenTransformAsync();
+
         var ser = Series[seriesIndex];
         var (dx, dy) = ser.Points[pointIndex];
         var color = ser.Color ?? NativeChartPalette.Resolve(ColorPalette, Colors, seriesIndex);
@@ -230,11 +266,9 @@ else
         _hoverFlatIndex = _flatIndexOf[(seriesIndex, pointIndex)];
         _tooltipContext = new ChartTooltipContext(ser.Name, EChartsTypeLabel, seriesIndex, ser.Name, pointIndex, dy, color,
             new Dictionary<string, object?> { ["x"] = dx, ["y"] = dy });
-        _pointerClientX = _xScale!.Scale(dx);
-        _pointerClientY = _yScale!.Scale(dy);
+        (_pointerClientX, _pointerClientY) = ToScreen(_xScale!.Scale(dx), _yScale!.Scale(dy));
         _announcement = $"{ser.Name}: ({FormatAxisNumber(dx)}, {FormatAxisNumber(dy)})";
         StateHasChanged();
-        return Task.CompletedTask;
     }
 
     private Task OnPointLeaveAsync()
