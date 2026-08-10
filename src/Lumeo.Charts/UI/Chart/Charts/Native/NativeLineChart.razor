@@ -1,0 +1,101 @@
+@namespace Lumeo
+
+@* First-party (non-ECharts) native rendering-engine counterpart of
+   Lumeo.LineChart (UI/Chart/Charts/LineChart.razor) — that file is
+   UNTOUCHED and remains the shipping default; this is the Wave-1 native
+   replacement, staged under a distinct name/folder per the fan-out task's
+   explicit instruction not to modify the existing ECharts path (a
+   same-namespace, same-class-name file would collide with it). See the
+   delivery report for the parameter-by-parameter diff against LineChart. *@
+
+<CartesianChartHost Series="@_series" Categories="@Categories" UsePointScale="true" Horizontal="false"
+                     Width="@Width" Height="@Height" Class="@Class" AdditionalAttributes="@AdditionalAttributes"
+                     ShowLegend="@ShowLegend" ShowTooltip="@ShowTooltip" ShowDataLabels="@ShowDataLabels"
+                     LabelPosition="@LabelPosition" LabelFormat="@LabelFormat" LabelStrategy="@LabelStrategy" LabelRotate="@LabelRotate"
+                     DataZoom="@DataZoom" Colors="@Colors" ColorPalette="@ColorPalette"
+                     AnimationDuration="@AnimationDuration" AnimationEasing="@AnimationEasing" EChartsTypeLabel="line"
+                     IsLoading="@IsLoading" ShowLoadingSkeleton="@ShowLoadingSkeleton" SkeletonKind="@SkeletonKind"
+                     SkeletonStyle="@SkeletonStyle" PhantomCycleMs="@PhantomCycleMs" ShowLoadingLabel="@ShowLoadingLabel" LoadingText="@EffectiveLoadingText" />
+
+@code {
+    /// <summary>Category labels along the axis, one per data point; series values are matched to these by index.</summary>
+    [Parameter] public List<string> Categories { get; set; } = new();
+    /// <summary>The series to plot, each with a name and its list of values aligned to <see cref="Categories"/> by index.</summary>
+    [Parameter] public List<ChartSeriesData> Series { get; set; } = new();
+    /// <summary>When true, renders the line using a smoothed (curved) interpolation instead of straight segments between points.</summary>
+    [Parameter] public bool Smooth { get; set; }
+    /// <summary>When true (default), draws a marker dot at each data point on the line.</summary>
+    [Parameter] public bool ShowDots { get; set; } = true;
+    /// <summary>When true (default), renders a legend listing each series/segment name.</summary>
+    [Parameter] public bool ShowLegend { get; set; } = true;
+    /// <summary>When true (default), shows a tooltip with the value(s) under the cursor on hover.</summary>
+    [Parameter] public bool ShowTooltip { get; set; } = true;
+    /// <summary>Explicit colors, in series/segment order. Falls back to the active theme's chart palette when not set and <see cref="ColorPalette"/> is not set.</summary>
+    [Parameter] public List<string>? Colors { get; set; }
+    /// <summary>CSS width of the chart container. Defaults to <c>100%</c>.</summary>
+    [Parameter] public string Width { get; set; } = "100%";
+    /// <summary>CSS height of the chart container. Defaults to <c>350px</c>.</summary>
+    [Parameter] public string Height { get; set; } = "350px";
+    /// <summary>Additional CSS class(es) applied to the chart's root element.</summary>
+    [Parameter] public string? Class { get; set; }
+    /// <summary>Additional HTML attributes captured and forwarded to the chart's root element.</summary>
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+    /// <summary>When true, overlays a shape-aware loading skeleton on top of the chart (consumer is fetching data). Flips back to the real chart once set to false.</summary>
+    [Parameter] public bool IsLoading { get; set; }
+    /// <summary>When true (default), renders a shape-aware skeleton while the chart has not yet mounted and whenever <see cref="IsLoading"/> is true. Set to <c>false</c> to opt out.</summary>
+    [Parameter] public bool ShowLoadingSkeleton { get; set; } = true;
+    [Parameter] public ChartSkeletonKind SkeletonKind { get; set; } = ChartSkeletonKind.Line;
+    /// <summary>Accepted for API parity. The native engine always renders the Silhouette
+    /// presentation (<see cref="ChartSkeleton"/>) regardless of value — ECharts' Phantom
+    /// data-cycling relies on the imperative <c>setOption</c> merge model this engine
+    /// doesn't have; the architecture spec explicitly flags that as needing its own
+    /// re-derivation, out of scope for this delivery. <see cref="PhantomCycleMs"/> is
+    /// likewise accepted but has no effect.</summary>
+    [Parameter] public ChartSkeletonStyle SkeletonStyle { get; set; } = ChartSkeletonStyle.Phantom;
+    [Parameter] public int PhantomCycleMs { get; set; } = 1400;
+    [Parameter] public bool ShowLoadingLabel { get; set; } = true;
+    [Parameter] public string? LoadingText { get; set; } = "Loading…";
+    private string EffectiveLoadingText => LoadingText ?? "Loading…";
+
+    /// <summary>When true, renders a label with each data point's value directly on the chart.</summary>
+    [Parameter] public bool ShowDataLabels { get; set; }
+    /// <summary>Placement of the value label relative to its data point. Only <c>"top"</c> is
+    /// honored natively (points always label above); other legacy values (<c>"inside"</c>,
+    /// <c>"bottom"</c>, …) fall back to the same "above the point" placement — a real,
+    /// documented simplification versus ECharts' full label-position vocabulary.</summary>
+    [Parameter] public string LabelPosition { get; set; } = "top";
+    /// <summary>Value-label formatter template. Only the <c>{c}</c> token is honored (see
+    /// <see cref="NativeChartLabelFormat"/>) — the small subset of ECharts' formatter syntax
+    /// this codebase's own docs actually document/use.</summary>
+    [Parameter] public string? LabelFormat { get; set; }
+
+    [Parameter] public ChartLabelStrategy LabelStrategy { get; set; } = ChartLabelStrategy.Smart;
+    [Parameter] public int? LabelRotate { get; set; }
+    /// <summary>When true, adds a zoom slider (drag either handle to change the visible category window).</summary>
+    [Parameter] public bool DataZoom { get; set; }
+    [Parameter] public List<string>? ColorPalette { get; set; }
+    /// <summary>Applied as a CSS <c>transition</c> on every drawn path/shape — a native
+    /// equivalent, not a byte-for-byte port of ECharts' easing/animation system.</summary>
+    [Parameter] public int? AnimationDuration { get; set; }
+    [Parameter] public string? AnimationEasing { get; set; }
+
+    private List<NativeCartesianSeries> _series = new();
+
+    protected override void OnParametersSet()
+    {
+        _series = Series.Select(s => new NativeCartesianSeries
+        {
+            Name = s.Name,
+            Kind = NativeCartesianSeriesKind.Line,
+            Values = s.Values.Select(v => (double?)v).ToList(),
+            Smooth = Smooth,
+            ShowDots = ShowDots,
+        }).ToList();
+    }
+
+    public class ChartSeriesData
+    {
+        public string Name { get; set; } = "";
+        public List<double> Values { get; set; } = new();
+    }
+}

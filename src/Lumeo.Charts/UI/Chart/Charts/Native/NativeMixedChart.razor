@@ -1,0 +1,92 @@
+@namespace Lumeo
+
+@* First-party native counterpart of Lumeo.MixedChart (UI/Chart/Charts/MixedChart.razor,
+   untouched). See NativeLineChart.razor's header comment.
+
+   This is the type the task specifically calls out as the contract stress-test
+   ("multiple series types sharing axes, with independent y-scales"). The core's
+   CartesianCoordinateSystem is deliberately scale-agnostic (wraps caller-supplied
+   domain<->pixel delegates rather than one fixed scale), so nothing stops a caller
+   from building TWO of them sharing the same plot rect and x-mapping but different
+   y-mappings. CartesianChartHost does exactly that (ShowSecondYAxis / YAxisIndex) —
+   this is a genuine fit, not a workaround, and no core gap was hit. Reported in the
+   delivery notes. *@
+
+<CartesianChartHost Series="@_series" Categories="@Categories" UsePointScale="false" Horizontal="false"
+                     Width="@Width" Height="@Height" Class="@Class" AdditionalAttributes="@AdditionalAttributes"
+                     ShowLegend="@ShowLegend" ShowTooltip="@ShowTooltip" ShowDataLabels="@ShowDataLabels"
+                     LabelPosition="@LabelPosition" LabelFormat="@LabelFormat" LabelStrategy="@LabelStrategy" LabelRotate="@LabelRotate"
+                     DataZoom="@DataZoom" Colors="@Colors" ColorPalette="@ColorPalette"
+                     AnimationDuration="@AnimationDuration" AnimationEasing="@AnimationEasing" EChartsTypeLabel="bar"
+                     IsLoading="@IsLoading" ShowLoadingSkeleton="@ShowLoadingSkeleton" SkeletonKind="@SkeletonKind"
+                     SkeletonStyle="@SkeletonStyle" PhantomCycleMs="@PhantomCycleMs" ShowLoadingLabel="@ShowLoadingLabel" LoadingText="@EffectiveLoadingText"
+                     ShowSecondYAxis="@_hasSecondAxis" />
+
+@code {
+    [Parameter] public List<string> Categories { get; set; } = new();
+    /// <summary>The series to plot, each with a name, values, and an optional per-series
+    /// chart <c>Type</c> ("bar"/"line"/"area") so different renderers can share one chart.
+    /// <c>Type</c> defaults to "bar" when unset, matching the legacy wrapper exactly;
+    /// "area" is a new, additive option the legacy wrapper didn't support.</summary>
+    [Parameter] public List<MixedSeriesData> Series { get; set; } = new();
+    [Parameter] public bool ShowLegend { get; set; } = true;
+    [Parameter] public bool ShowTooltip { get; set; } = true;
+    [Parameter] public List<string>? Colors { get; set; }
+    [Parameter] public string Width { get; set; } = "100%";
+    [Parameter] public string Height { get; set; } = "350px";
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+    [Parameter] public bool IsLoading { get; set; }
+    [Parameter] public bool ShowLoadingSkeleton { get; set; } = true;
+    [Parameter] public ChartSkeletonKind SkeletonKind { get; set; } = ChartSkeletonKind.Line;
+    [Parameter] public ChartSkeletonStyle SkeletonStyle { get; set; } = ChartSkeletonStyle.Phantom;
+    [Parameter] public int PhantomCycleMs { get; set; } = 1400;
+    [Parameter] public bool ShowLoadingLabel { get; set; } = true;
+    [Parameter] public string? LoadingText { get; set; } = "Loading…";
+    private string EffectiveLoadingText => LoadingText ?? "Loading…";
+
+    [Parameter] public bool ShowDataLabels { get; set; }
+    [Parameter] public string LabelPosition { get; set; } = "top";
+    [Parameter] public string? LabelFormat { get; set; }
+    [Parameter] public ChartLabelStrategy LabelStrategy { get; set; } = ChartLabelStrategy.Smart;
+    [Parameter] public int? LabelRotate { get; set; }
+    [Parameter] public bool DataZoom { get; set; }
+    [Parameter] public List<string>? ColorPalette { get; set; }
+    [Parameter] public int? AnimationDuration { get; set; }
+    [Parameter] public string? AnimationEasing { get; set; }
+
+    private List<NativeCartesianSeries> _series = new();
+    private bool _hasSecondAxis;
+
+    protected override void OnParametersSet()
+    {
+        _hasSecondAxis = Series.Any(s => s.YAxisIndex == 1);
+        _series = Series.Select(s => new NativeCartesianSeries
+        {
+            Name = s.Name,
+            Kind = s.Type?.ToLowerInvariant() switch
+            {
+                "line" => NativeCartesianSeriesKind.Line,
+                "area" => NativeCartesianSeriesKind.Area,
+                _ => NativeCartesianSeriesKind.Bar,
+            },
+            Values = s.Values.Select(v => (double?)v).ToList(),
+            Smooth = s.Type == "line",
+            YAxisIndex = s.YAxisIndex,
+        }).ToList();
+    }
+
+    public class MixedSeriesData
+    {
+        public string Name { get; set; } = "";
+        public List<double> Values { get; set; } = new();
+        public string? Type { get; set; }
+
+        /// <summary>0 (default) = primary/left y-axis, 1 = secondary/right y-axis with
+        /// its own independent domain. New, additive parameter — the legacy ECharts
+        /// wrapper always used a single shared axis for every series; opting a series
+        /// into <c>YAxisIndex = 1</c> is the native engine exercising a capability the
+        /// core cleanly supports (see the file-level comment above).</summary>
+        public int YAxisIndex { get; set; }
+    }
+}

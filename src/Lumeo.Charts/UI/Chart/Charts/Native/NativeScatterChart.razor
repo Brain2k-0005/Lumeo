@@ -1,0 +1,59 @@
+@namespace Lumeo
+
+@* First-party native counterpart of Lumeo.ScatterChart (UI/Chart/Charts/ScatterChart.razor,
+   untouched). See NativeLineChart.razor's header comment.
+
+   Per spec §3.3, non-ordered point sets skip index-based hit-testing entirely —
+   XyChartHost attaches native pointer events straight to each marker instead of
+   the ChartInteractionSurface/JS-rAF-throttled path CartesianChartHost uses. *@
+
+<XyChartHost Series="@_series" Width="@Width" Height="@Height" Class="@Class" AdditionalAttributes="@AdditionalAttributes"
+             ShowLegend="@ShowLegend" ShowTooltip="@ShowTooltip" ShowDataLabels="@ShowDataLabels"
+             LabelPosition="@LabelPosition" LabelFormat="@LabelFormat" Colors="@Colors" ColorPalette="@ColorPalette"
+             EChartsTypeLabel="scatter" IsLoading="@IsLoading" ShowLoadingSkeleton="@ShowLoadingSkeleton" SkeletonKind="@SkeletonKind"
+             SkeletonStyle="@SkeletonStyle" PhantomCycleMs="@PhantomCycleMs" ShowLoadingLabel="@ShowLoadingLabel" LoadingText="@EffectiveLoadingText" />
+
+@code {
+    /// <summary>Scatter series to plot; each series has a name and a list of <c>[x, y]</c> point coordinates.</summary>
+    [Parameter] public List<ScatterSeriesData> Series { get; set; } = new();
+    [Parameter] public bool ShowLegend { get; set; } = true;
+    [Parameter] public bool ShowTooltip { get; set; } = true;
+    /// <summary>When set, applied as a fixed marker diameter (px) for every point, turning the scatter into a bubble-style chart.</summary>
+    [Parameter] public int? BubbleSize { get; set; }
+    [Parameter] public List<string>? Colors { get; set; }
+    [Parameter] public string Width { get; set; } = "100%";
+    [Parameter] public string Height { get; set; } = "350px";
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+    [Parameter] public bool IsLoading { get; set; }
+    [Parameter] public bool ShowLoadingSkeleton { get; set; } = true;
+    [Parameter] public ChartSkeletonKind SkeletonKind { get; set; } = ChartSkeletonKind.Scatter;
+    [Parameter] public ChartSkeletonStyle SkeletonStyle { get; set; } = ChartSkeletonStyle.Phantom;
+    [Parameter] public int PhantomCycleMs { get; set; } = 1400;
+    [Parameter] public bool ShowLoadingLabel { get; set; } = true;
+    [Parameter] public string? LoadingText { get; set; } = "Loading…";
+    private string EffectiveLoadingText => LoadingText ?? "Loading…";
+
+    [Parameter] public bool ShowDataLabels { get; set; }
+    [Parameter] public string LabelPosition { get; set; } = "top";
+    [Parameter] public string? LabelFormat { get; set; }
+    [Parameter] public List<string>? ColorPalette { get; set; }
+
+    private List<NativeXySeries> _series = new();
+
+    protected override void OnParametersSet()
+    {
+        _series = Series.Select(s => new NativeXySeries
+        {
+            Name = s.Name,
+            Points = s.Points.Select(p => (p.Length > 0 ? p[0] : 0, p.Length > 1 ? p[1] : 0)).ToList(),
+            SymbolSize = BubbleSize ?? 10,
+        }).ToList();
+    }
+
+    public class ScatterSeriesData
+    {
+        public string Name { get; set; } = "";
+        public List<double[]> Points { get; set; } = new();
+    }
+}

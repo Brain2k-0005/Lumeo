@@ -1,0 +1,60 @@
+@namespace Lumeo
+
+@* First-party native counterpart of Lumeo.EffectScatterChart
+   (UI/Chart/Charts/EffectScatterChart.razor, untouched). See NativeLineChart.razor's
+   header comment.
+
+   The ripple's `prefers-reduced-motion` handling lives in a plain hand-authored CSS
+   rule in lumeo.css (.lumeo-chart-native-ripple), not a Tailwind utility — see that
+   file's comment block. XyChartHost.Rippled=true is what turns the ripple on per point. *@
+
+<XyChartHost Series="@_series" Width="@Width" Height="@Height" Class="@Class" AdditionalAttributes="@AdditionalAttributes"
+             ShowLegend="@ShowLegend" ShowTooltip="@ShowTooltip" ShowDataLabels="@ShowDataLabels"
+             LabelPosition="@LabelPosition" LabelFormat="@LabelFormat" Colors="@Colors" ColorPalette="@ColorPalette"
+             EChartsTypeLabel="effectScatter" IsLoading="@IsLoading" ShowLoadingSkeleton="@ShowLoadingSkeleton" SkeletonKind="@SkeletonKind"
+             SkeletonStyle="@SkeletonStyle" PhantomCycleMs="@PhantomCycleMs" ShowLoadingLabel="@ShowLoadingLabel" LoadingText="@EffectiveLoadingText" />
+
+@code {
+    /// <summary>Scatter series with animated ripple-effect markers; each series has a name and a list of <c>[x, y]</c> point coordinates.</summary>
+    [Parameter] public List<EffectScatterSeriesData> Series { get; set; } = new();
+    [Parameter] public bool ShowLegend { get; set; } = true;
+    [Parameter] public bool ShowTooltip { get; set; } = true;
+    [Parameter] public List<string>? Colors { get; set; }
+    [Parameter] public string Width { get; set; } = "100%";
+    [Parameter] public string Height { get; set; } = "350px";
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+    [Parameter] public bool IsLoading { get; set; }
+    [Parameter] public bool ShowLoadingSkeleton { get; set; } = true;
+    [Parameter] public ChartSkeletonKind SkeletonKind { get; set; } = ChartSkeletonKind.Scatter;
+    [Parameter] public ChartSkeletonStyle SkeletonStyle { get; set; } = ChartSkeletonStyle.Phantom;
+    [Parameter] public int PhantomCycleMs { get; set; } = 1400;
+    [Parameter] public bool ShowLoadingLabel { get; set; } = true;
+    [Parameter] public string? LoadingText { get; set; } = "Loading…";
+    private string EffectiveLoadingText => LoadingText ?? "Loading…";
+
+    [Parameter] public bool ShowDataLabels { get; set; }
+    [Parameter] public string LabelPosition { get; set; } = "top";
+    [Parameter] public string? LabelFormat { get; set; }
+    [Parameter] public List<string>? ColorPalette { get; set; }
+
+    private List<NativeXySeries> _series = new();
+
+    protected override void OnParametersSet()
+    {
+        _series = Series.Select(s => new NativeXySeries
+        {
+            Name = s.Name,
+            Points = s.Points.Select(p => (p.Length > 0 ? p[0] : 0, p.Length > 1 ? p[1] : 0)).ToList(),
+            SymbolSize = s.SymbolSize ?? 20,
+            Rippled = true,
+        }).ToList();
+    }
+
+    public class EffectScatterSeriesData
+    {
+        public string Name { get; set; } = "";
+        public List<double[]> Points { get; set; } = new();
+        public int? SymbolSize { get; set; }
+    }
+}

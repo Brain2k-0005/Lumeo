@@ -1,0 +1,77 @@
+@namespace Lumeo
+
+@* First-party native counterpart of Lumeo.BarChart (UI/Chart/Charts/BarChart.razor,
+   untouched). See NativeLineChart.razor's header comment. *@
+
+<CartesianChartHost Series="@_series" Categories="@Categories" UsePointScale="false" Horizontal="@Horizontal"
+                     Width="@Width" Height="@Height" Class="@Class" AdditionalAttributes="@AdditionalAttributes"
+                     ShowLegend="@ShowLegend" ShowTooltip="@ShowTooltip" ShowDataLabels="@ShowDataLabels"
+                     LabelPosition="@LabelPosition" LabelFormat="@LabelFormat" LabelStrategy="@LabelStrategy" LabelRotate="@LabelRotate"
+                     DataZoom="@DataZoom" Colors="@Colors" ColorPalette="@ColorPalette"
+                     AnimationDuration="@AnimationDuration" AnimationEasing="@AnimationEasing" EChartsTypeLabel="bar"
+                     IsLoading="@IsLoading" ShowLoadingSkeleton="@ShowLoadingSkeleton" SkeletonKind="@SkeletonKind"
+                     SkeletonStyle="@SkeletonStyle" PhantomCycleMs="@PhantomCycleMs" ShowLoadingLabel="@ShowLoadingLabel" LoadingText="@EffectiveLoadingText" />
+
+@code {
+    [Parameter] public List<string> Categories { get; set; } = new();
+    [Parameter] public List<ChartSeriesData> Series { get; set; } = new();
+    /// <summary>When true, renders horizontal bars (categories on the Y-axis) instead of vertical columns.</summary>
+    [Parameter] public bool Horizontal { get; set; }
+    /// <summary>When true, stacks each series on top of the previous one instead of overlaying them independently.</summary>
+    [Parameter] public bool Stacked { get; set; }
+    [Parameter] public bool ShowLegend { get; set; } = true;
+    [Parameter] public bool ShowTooltip { get; set; } = true;
+    [Parameter] public List<string>? Colors { get; set; }
+    [Parameter] public string Width { get; set; } = "100%";
+    [Parameter] public string Height { get; set; } = "350px";
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+    [Parameter] public bool IsLoading { get; set; }
+    [Parameter] public bool ShowLoadingSkeleton { get; set; } = true;
+    [Parameter] public ChartSkeletonKind SkeletonKind { get; set; } = ChartSkeletonKind.Bars;
+    [Parameter] public ChartSkeletonStyle SkeletonStyle { get; set; } = ChartSkeletonStyle.Phantom;
+    [Parameter] public int PhantomCycleMs { get; set; } = 1400;
+    [Parameter] public bool ShowLoadingLabel { get; set; } = true;
+    [Parameter] public string? LoadingText { get; set; }
+    private string EffectiveLoadingText => LoadingText ?? "Loading…";
+
+    [Parameter] public bool ShowDataLabels { get; set; }
+    [Parameter] public string LabelPosition { get; set; } = "top";
+    [Parameter] public string? LabelFormat { get; set; }
+    [Parameter] public ChartLabelStrategy LabelStrategy { get; set; } = ChartLabelStrategy.Smart;
+    [Parameter] public int? LabelRotate { get; set; }
+
+    /// <summary>Back-compat alias kept for source compatibility with existing
+    /// <c>BarChart.BarLabelStrategy</c> references — matches the legacy wrapper's own
+    /// same-purpose alias.</summary>
+    public enum BarLabelStrategy
+    {
+        Smart = ChartLabelStrategy.Smart,
+        ShowAll = ChartLabelStrategy.ShowAll,
+        Auto = ChartLabelStrategy.Auto,
+    }
+
+    [Parameter] public bool DataZoom { get; set; }
+    [Parameter] public List<string>? ColorPalette { get; set; }
+    [Parameter] public int? AnimationDuration { get; set; }
+    [Parameter] public string? AnimationEasing { get; set; }
+
+    private List<NativeCartesianSeries> _series = new();
+
+    protected override void OnParametersSet()
+    {
+        _series = Series.Select(s => new NativeCartesianSeries
+        {
+            Name = s.Name,
+            Kind = NativeCartesianSeriesKind.Bar,
+            Values = s.Values.Select(v => (double?)v).ToList(),
+            Stacked = Stacked,
+        }).ToList();
+    }
+
+    public class ChartSeriesData
+    {
+        public string Name { get; set; } = "";
+        public List<double> Values { get; set; } = new();
+    }
+}

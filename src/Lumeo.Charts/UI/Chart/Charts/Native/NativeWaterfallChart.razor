@@ -1,0 +1,101 @@
+@namespace Lumeo
+
+@* First-party native counterpart of Lumeo.WaterfallChart
+   (UI/Chart/Charts/WaterfallChart.razor, untouched). See NativeLineChart.razor's
+   header comment.
+
+   Running-total math is a direct C# port of the legacy wrapper's own algorithm
+   (baseVal = value >= 0 ? running : running + value; running += value), so
+   negative steps and an eventual "total" bar (a caller-supplied final delta that
+   reconciles the running sum) behave identically to the ECharts version — the
+   legacy wrapper has no dedicated "total column" parameter of its own, so none
+   was added here either (see the delivery report). Presentation is the same
+   two-layer-stack trick the legacy wrapper uses: an invisible "floor" bar
+   (IncludeInLegend/IncludeInTooltip = false) stacked under a visible delta bar,
+   colored per point by IncreaseColor/DecreaseColor — which doubles as a real
+   exercise of CartesianChartHost's Bar-stacking code path (no special-cased
+   "waterfall mode" needed in the host). *@
+
+<CartesianChartHost Series="@_series" Categories="@Categories" UsePointScale="false" Horizontal="false"
+                     Width="@Width" Height="@Height" Class="@Class" AdditionalAttributes="@AdditionalAttributes"
+                     ShowLegend="@ShowLegend" ShowTooltip="@ShowTooltip" ShowDataLabels="@ShowDataLabels"
+                     LabelPosition="@LabelPosition" LabelFormat="@LabelFormat" LabelStrategy="@LabelStrategy" LabelRotate="@LabelRotate"
+                     DataZoom="@DataZoom" Colors="@Colors" ColorPalette="@ColorPalette"
+                     AnimationDuration="@AnimationDuration" AnimationEasing="@AnimationEasing" EChartsTypeLabel="bar"
+                     IsLoading="@IsLoading" ShowLoadingSkeleton="@ShowLoadingSkeleton" SkeletonKind="@SkeletonKind"
+                     SkeletonStyle="@SkeletonStyle" PhantomCycleMs="@PhantomCycleMs" ShowLoadingLabel="@ShowLoadingLabel" LoadingText="@EffectiveLoadingText" />
+
+@code {
+    [Parameter] public List<string> Categories { get; set; } = new();
+    /// <summary>Delta value for each entry in <see cref="Categories"/>; positive deltas are colored with <see cref="IncreaseColor"/>, negative with <see cref="DecreaseColor"/>.</summary>
+    [Parameter] public List<double> Values { get; set; } = new();
+    [Parameter] public string IncreaseColor { get; set; } = "var(--color-primary)";
+    [Parameter] public string DecreaseColor { get; set; } = "var(--color-destructive)";
+    [Parameter] public bool ShowLegend { get; set; }
+    [Parameter] public bool ShowTooltip { get; set; } = true;
+    [Parameter] public List<string>? Colors { get; set; }
+    [Parameter] public string Width { get; set; } = "100%";
+    [Parameter] public string Height { get; set; } = "350px";
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+    [Parameter] public bool IsLoading { get; set; }
+    [Parameter] public bool ShowLoadingSkeleton { get; set; } = true;
+    [Parameter] public ChartSkeletonKind SkeletonKind { get; set; } = ChartSkeletonKind.Bars;
+    [Parameter] public ChartSkeletonStyle SkeletonStyle { get; set; } = ChartSkeletonStyle.Phantom;
+    [Parameter] public int PhantomCycleMs { get; set; } = 1400;
+    [Parameter] public bool ShowLoadingLabel { get; set; } = true;
+    [Parameter] public string? LoadingText { get; set; } = "Loading…";
+    private string EffectiveLoadingText => LoadingText ?? "Loading…";
+
+    [Parameter] public bool ShowDataLabels { get; set; }
+    [Parameter] public string LabelPosition { get; set; } = "top";
+    [Parameter] public string? LabelFormat { get; set; }
+    [Parameter] public ChartLabelStrategy LabelStrategy { get; set; } = ChartLabelStrategy.Smart;
+    [Parameter] public int? LabelRotate { get; set; }
+    [Parameter] public bool DataZoom { get; set; }
+    [Parameter] public List<string>? ColorPalette { get; set; }
+    [Parameter] public int? AnimationDuration { get; set; }
+    [Parameter] public string? AnimationEasing { get; set; }
+
+    private List<NativeCartesianSeries> _series = new();
+
+    protected override void OnParametersSet()
+    {
+        var floorValues = new List<double?>(Values.Count);
+        var deltaValues = new List<double?>(Values.Count);
+        var pointColors = new List<string?>(Values.Count);
+        double running = 0;
+
+        foreach (var v in Values)
+        {
+            var baseVal = v >= 0 ? running : running + v;
+            floorValues.Add(baseVal);
+            deltaValues.Add(Math.Abs(v));
+            pointColors.Add(v >= 0 ? IncreaseColor : DecreaseColor);
+            running += v;
+        }
+
+        _series = new List<NativeCartesianSeries>
+        {
+            new()
+            {
+                Name = "__floor",
+                Kind = NativeCartesianSeriesKind.Bar,
+                Values = floorValues,
+                Color = "transparent",
+                Stacked = true,
+                IncludeInLegend = false,
+                IncludeInTooltip = false,
+            },
+            new()
+            {
+                Name = "Value",
+                Kind = NativeCartesianSeriesKind.Bar,
+                Values = deltaValues,
+                Stacked = true,
+                PointColors = pointColors,
+                DisplayValues = Values.Select(v => (double?)v).ToList(),
+            },
+        };
+    }
+}
