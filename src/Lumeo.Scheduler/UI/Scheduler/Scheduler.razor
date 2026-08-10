@@ -217,6 +217,14 @@ else
             if (_initialized && _instanceId is not null)
             {
                 await Interop.SchedulerSetLocaleAsync(_instanceId, _currentLocale);
+
+                // The toolbar's cached _title is otherwise only refreshed at init or on
+                // navigation (Prev/Next/Today/view change — see RefreshTitleAsync below).
+                // Without this, a locale-sensitive title (e.g. a localized month name)
+                // silently stays in the OLD language until the user happens to navigate.
+                // Re-fetch it now that FullCalendar has actually re-rendered with the
+                // new locale.
+                _title = await Interop.SchedulerGetTitleAsync(_instanceId);
             }
         }
 
@@ -266,6 +274,18 @@ else
         // the delta so that mid-init refresh is never silently lost.
         var initEventsHash = _lastEventsHash;
 
+        // Same problem, same fix, for the locale: OnParametersSetAsync's culture-change
+        // branch above always updates _currentLocale (it doesn't gate that on
+        // _initialized), but it only pushes the change via SchedulerSetLocaleAsync when
+        // _initialized is already true. A culture change that lands mid-handshake is
+        // therefore recorded in the field yet never reaches the live FullCalendar
+        // instance that init is about to create with the OLD (pre-change) locale
+        // snapshot below — the calendar would be stuck in that stale locale forever,
+        // since every later render sees _currentLocale already "up to date" and never
+        // re-pushes it. Snapshot what init is about to render and reconcile after,
+        // mirroring the Events reconciliation above.
+        var initLocale = _currentLocale;
+
         // Trim safety: anonymous types crossing JS interop lose their constructor
         // parameter names under a trimmed publish, and JSRuntime's reflection-based
         // serializer throws NotSupportedException("ConstructorContainsNullParameterNames")
@@ -306,6 +326,15 @@ else
                     _lastPushedEventsHash = currentHash;
                     await Interop.SchedulerSetEventsAsync(_instanceId, current.Select(ToJsEvent).Cast<object>());
                 }
+            }
+
+            // Reconcile against the latest locale: if the UI culture changed while init
+            // was in flight, _currentLocale already holds the new value (see the comment
+            // on initLocale above) but the interop push was skipped — push it now, before
+            // reading the title, so the very first title read already reflects it.
+            if (_currentLocale != initLocale)
+            {
+                await Interop.SchedulerSetLocaleAsync(_instanceId, _currentLocale);
             }
 
             // Read the real title from FullCalendar now that the view is rendered.
@@ -493,6 +522,14 @@ else
         return lang switch
         {
             "zh" => "zh-cn",
+            // Under invariant globalization (or CultureInfo.InvariantCulture explicitly),
+            // TwoLetterISOLanguageName is "iv" — not a real ISO language code, and not a
+            // locale FullCalendar ships (there is no locales/iv.js). Left unmapped, every
+            // Scheduler instance would await a guaranteed-failed import before falling
+            // back to English (and, since failed dynamic imports aren't cached, every
+            // instance would repeat that failed request). "en" is FullCalendar's actual
+            // built-in default, so map straight to it and skip the doomed request entirely.
+            "iv" => "en",
             _ => lang
         };
     }
