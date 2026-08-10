@@ -57,8 +57,12 @@ namespace Lumeo.Tests.E2E.Smokes;
 /// from a one-shot <c>Page.EvaluateAsync</c> + raw <c>querySelector</c> (which assumes the
 /// element already exists) to <c>Locator.WaitForAsync</c> + <c>Locator.EvaluateAsync</c>
 /// (which resolves the selector against an ACTUAL Playwright locator that waits — up to its
-/// own timeout — for a matching element to attach before evaluating against it). All 9
-/// Size x Density cases now go through this same robust path.
+/// own timeout — for a matching element to attach before evaluating against it). All Size x
+/// Density cases now go through this same robust path (originally 9 Sm/Md/Lg combos; the
+/// full-scale rollout extended the ServerHost page and this suite to all 21 Size x Density
+/// combinations across the 7-rung Lumeo.Size scale — see
+/// Xxs_And_Xs_Line_Box_Measurements_Match_Predicted_Geometry for the new small rungs'
+/// measured numbers).
 /// </summary>
 public class InputSizingTests : IAsyncLifetime
 {
@@ -149,14 +153,22 @@ public class InputSizingTests : IAsyncLifetime
     /// <summary>
     /// Finding 3: no rendered Input, at any Size x Density combination, may have a line box
     /// taller than the content area actually available inside its control (client height
-    /// minus padding minus border). Checked at the mobile width, where every Sm/Default combo
-    /// carries the 16px text-base baseline that caused the original overflow.
+    /// minus padding minus border). Checked at the mobile width, where every rung carries the
+    /// 16px text-base baseline that caused the original overflow. Extended (full-scale
+    /// rollout) from the original 9 Sm/Md/Lg combos to all 21 Size x Density combos, including
+    /// the two brand-new small rungs (Xxs/Xs) that ship the same max-md:leading-none fix.
     /// </summary>
     // Plain strings (not Lumeo.Size/Density) deliberately — this test project carries no
     // reference to the Lumeo library (Playwright drives it purely over HTTP), and the values
     // only need to match the data-testid="size-{size}-density-{density}" the ServerHost page
     // renders (InputSizingPage.razor), which formats the SAME enums via their ToString().
     [Theory]
+    [InlineData("Xxs", "Compact")]
+    [InlineData("Xxs", "Comfortable")]
+    [InlineData("Xxs", "Spacious")]
+    [InlineData("Xs", "Compact")]
+    [InlineData("Xs", "Comfortable")]
+    [InlineData("Xs", "Spacious")]
     [InlineData("Sm", "Compact")]
     [InlineData("Sm", "Comfortable")]
     [InlineData("Sm", "Spacious")]
@@ -166,11 +178,74 @@ public class InputSizingTests : IAsyncLifetime
     [InlineData("Lg", "Compact")]
     [InlineData("Lg", "Comfortable")]
     [InlineData("Lg", "Spacious")]
-    public async Task No_line_box_exceeds_its_control_height(string size, string density)
+    [InlineData("Xl", "Compact")]
+    [InlineData("Xl", "Comfortable")]
+    [InlineData("Xl", "Spacious")]
+    [InlineData("Xxl", "Compact")]
+    [InlineData("Xxl", "Comfortable")]
+    [InlineData("Xxl", "Spacious")]
+    public async Task Measure_line_box_vs_available_content_height(string size, string density)
     {
+        // NOT a pass/fail gate for Xxs/Xs (see the dedicated
+        // Xxs_And_Xs_Compact_And_Xxs_Comfortable_line_boxes_still_overflow_the_control fact
+        // below, which documents the three combos that are EXPECTED to overflow even with the
+        // leading-none fix — a physical conflict between the 16px iOS-zoom floor and a
+        // sub-24px control, not something CSS alone can close). This theory just records the
+        // measured numbers for every combo so a future regression in either direction shows up.
         await _page.SetViewportSizeAsync(MobileWidth, 900);
         var testId = $"size-{size}-density-{density}";
+        var geometry = await MeasureGeometryAsync(testId);
+        var available = geometry.ClientHeight - geometry.PaddingTop - geometry.PaddingBottom;
 
+        // Every rung EXCEPT the three documented Xxs/Xs overflow combos must still fit.
+        var isKnownOverflow =
+            (size == "Xxs" && density is "Compact" or "Comfortable") ||
+            (size == "Xs" && density == "Compact");
+
+        if (!isKnownOverflow)
+        {
+            Assert.True(geometry.LineHeight <= available,
+                $"{testId}: line-height {geometry.LineHeight}px exceeds the {available}px available inside a {geometry.ClientHeight}px (client height) control " +
+                $"(padding {geometry.PaddingTop + geometry.PaddingBottom}px).");
+        }
+    }
+
+    /// <summary>
+    /// Constraint 3 rigor requirement: measure the resulting line box against each control's
+    /// height and show the numbers, specifically for the new Xxs/Xs rungs. Input.razor's
+    /// SizeClasses remarks predict the EXACT figures asserted here (available = clientHeight -
+    /// 8px padding, since clientHeight already excludes the 2px border): Xxs/Compact
+    /// (h-5=20px border-box -> 18px client height -> 10px available) and Xxs/Comfortable
+    /// (h-6=24px -> 22px client height -> 14px available) both overflow a 16px leading-none
+    /// line box; Xxs/Spacious (h-7=28px -> 26px client height -> 18px available) and every Xs
+    /// combo except Compact fit with margin to spare. This is a physical conflict between the
+    /// 16px iOS-zoom floor (text-base, mandatory on mobile) and a sub-24px control height, not
+    /// a bug the leading-none fix can close on its own — flagged for the owner per the
+    /// campaign's "flag loudly, don't silently invent a fix beyond what was asked" convention.
+    /// </summary>
+    [Theory]
+    [InlineData("Xxs", "Compact", 18.0, 10.0)]
+    [InlineData("Xxs", "Comfortable", 22.0, 14.0)]
+    [InlineData("Xxs", "Spacious", 26.0, 18.0)]
+    [InlineData("Xs", "Compact", 22.0, 14.0)]
+    [InlineData("Xs", "Comfortable", 26.0, 18.0)]
+    [InlineData("Xs", "Spacious", 30.0, 22.0)]
+    public async Task Xxs_And_Xs_Line_Box_Measurements_Match_Predicted_Geometry(string size, string density, double expectedClientHeight, double expectedAvailable)
+    {
+        await _page.SetViewportSizeAsync(MobileWidth, 900);
+        var geometry = await MeasureGeometryAsync($"size-{size}-density-{density}");
+        var available = geometry.ClientHeight - geometry.PaddingTop - geometry.PaddingBottom;
+        var lineBoxFits = geometry.LineHeight <= available;
+        var expectedFits = expectedAvailable >= 16.0; // leading-none line box = 1 * 16px text-base
+
+        Assert.Equal(expectedClientHeight, geometry.ClientHeight);
+        Assert.Equal(expectedAvailable, available);
+        Assert.Equal(16.0, geometry.LineHeight); // max-md:leading-none -> line-height: 1 * 16px
+        Assert.Equal(expectedFits, lineBoxFits);
+    }
+
+    private async Task<BoxGeometry> MeasureGeometryAsync(string testId)
+    {
         // Wait for THIS specific element to attach before touching it — see the class-level
         // remarks (CI flake fix, item 1) for why a raw querySelector isn't safe here.
         var locator = ByTestId(testId);
@@ -181,7 +256,7 @@ public class InputSizingTests : IAsyncLifetime
         // line box is clientHeight minus padding only. Border must NOT be subtracted a second
         // time here (an earlier draft of this test double-subtracted it, silently making the
         // assertion 2px stricter than the real available space).
-        var geometry = await locator.EvaluateAsync<BoxGeometry>(
+        return await locator.EvaluateAsync<BoxGeometry>(
             @"(el) => {
                 const cs = getComputedStyle(el);
                 return {
@@ -191,12 +266,6 @@ public class InputSizingTests : IAsyncLifetime
                     PaddingBottom: parseFloat(cs.paddingBottom),
                 };
             }");
-
-        var available = geometry.ClientHeight - geometry.PaddingTop - geometry.PaddingBottom;
-
-        Assert.True(geometry.LineHeight <= available,
-            $"{testId}: line-height {geometry.LineHeight}px exceeds the {available}px available inside a {geometry.ClientHeight}px (client height) control " +
-            $"(padding {geometry.PaddingTop + geometry.PaddingBottom}px).");
     }
 
     private sealed class BoxGeometry

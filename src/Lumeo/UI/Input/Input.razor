@@ -144,7 +144,10 @@ else
     /// <summary>Content rendered after the text (e.g. an icon or unit). Forces the wrapped-input layout.</summary>
     [Parameter] public RenderFragment? Suffix { get; set; }
 
-    /// <summary>Controls the input's height, font size and horizontal padding. Defaults to <see cref="Lumeo.Size.Md"/>.</summary>
+    /// <summary>Controls the input's height, font size and horizontal padding. Supports all 7
+    /// <see cref="Lumeo.Size"/> values (Xxs–Xxl). Mobile text stays 16px (<c>text-base</c>) at
+    /// every rung to avoid iOS Safari's input-zoom bug; only the desktop (<c>md:</c>) size
+    /// shrinks. Default <see cref="Lumeo.Size.Md"/>.</summary>
     [Parameter] public Lumeo.Size Size { get; set; } = Lumeo.Size.Md;
 
     /// <summary>Overrides the ambient <c>DensityScope</c> for this input's vertical rhythm and accessory padding. Falls back to the cascaded density, then <see cref="Lumeo.Density.Comfortable"/>.</summary>
@@ -377,14 +380,58 @@ else
     private string SmFontClasses => HasFontSizeOverride ? "" : " text-base md:text-xs max-md:leading-none";
     private string DefaultFontClasses => HasFontSizeOverride ? "" : " text-base md:text-sm max-md:leading-none";
 
+    // Full-scale rollout (Xxs/Xs/Xl/Xxl): same HasFontSizeOverride-suppressed
+    // "text-base md:text-<n> max-md:leading-none" trio as SmFontClasses/DefaultFontClasses
+    // above, just with a different desktop token per rung. Xxs/Xs need the leading-none fix
+    // even more than the rungs it originally shipped for — see the SizeClasses remarks below
+    // for the measured line-box numbers. Applied uniformly to Xl/Xxl too (harmless there, no
+    // measured overflow) for the same "keep every mobile/desktop-split arm identical" reasoning
+    // documented on the finding-3 fix above.
+    private string XxsFontClasses => HasFontSizeOverride ? "" : " text-base md:text-[8px] max-md:leading-none";
+    private string XsFontClasses => HasFontSizeOverride ? "" : " text-base md:text-[10px] max-md:leading-none";
+    private string XlFontClasses => HasFontSizeOverride ? "" : " text-base md:text-lg max-md:leading-none";
+    private string XxlFontClasses => HasFontSizeOverride ? "" : " text-base md:text-xl max-md:leading-none";
+
+    // Full-scale rollout height/px derivation (spec 2026-08-10-lumeo-size-full-scale.md §6b):
+    // S1(Md-Sm)=4px, S2(Lg-Md)=8px per density arm (non-uniform); Xl/Xxl extrapolate outward
+    // from Lg using S2, Xxs/Xs extrapolate inward from Sm using S1. Comfortable's 52/60px land
+    // on no named Tailwind step, hence the two arbitrary h-[52px]/h-[60px] brackets.
+    //
+    // Measured line-box vs. control height at mobile width (text-base=16px, line-height 1.5=24px
+    // baseline; max-md:leading-none tightens it to 16px; available = border-box height - 8px
+    // padding (py-1 both sides) - 2px border):
+    //   Xxs/Compact:    h-5  (20px) -> available 10px < 16px leading-none line box -> OVERFLOWS by 6px
+    //   Xxs/Comfortable:h-6  (24px) -> available 14px < 16px leading-none line box -> OVERFLOWS by 2px
+    //   Xxs/Spacious:   h-7  (28px) -> available 18px >= 16px -> OK (2px to spare)
+    //   Xs/Compact:     h-6  (24px) -> available 14px < 16px leading-none line box -> OVERFLOWS by 2px
+    //   Xs/Comfortable: h-7  (28px) -> available 18px >= 16px -> OK (2px to spare)
+    //   Xs/Spacious:    h-8  (32px) -> available 22px >= 16px -> OK (6px to spare)
+    // Xxs/Compact, Xxs/Comfortable and Xs/Compact remain below the 16px iOS-zoom floor even
+    // with the leading-none fix applied — a physical conflict between the zoom guard (16px
+    // minimum focused font) and a sub-24px control height, not something leading-none alone can
+    // close. Flagged for the owner per the campaign's "flag loudly, don't fix beyond what was
+    // asked" convention; the fix is applied uniformly anyway since it's still strictly better
+    // than the unfixed 24px line-height and matches every other rung's pattern.
     private string SizeClasses => (Size, EffectiveDensity) switch
     {
+        (Lumeo.Size.Xxs, Lumeo.Density.Compact)  => $"h-5{XxsFontClasses} px-1",
+        (Lumeo.Size.Xxs, Lumeo.Density.Spacious) => $"h-7{XxsFontClasses} px-2",
+        (Lumeo.Size.Xxs, _)                      => $"h-6{XxsFontClasses} px-1.5",
+        (Lumeo.Size.Xs, Lumeo.Density.Compact)   => $"h-6{XsFontClasses} px-1.5",
+        (Lumeo.Size.Xs, Lumeo.Density.Spacious)  => $"h-8{XsFontClasses} px-2",
+        (Lumeo.Size.Xs, _)                       => $"h-7{XsFontClasses} px-2",
         (Lumeo.Size.Sm, Lumeo.Density.Compact)  => $"h-7{SmFontClasses} px-2",
         (Lumeo.Size.Sm, Lumeo.Density.Spacious) => $"h-9{SmFontClasses} px-3",
         (Lumeo.Size.Sm, _)                      => $"h-8{SmFontClasses} px-2.5",
         (Lumeo.Size.Lg, Lumeo.Density.Compact)  => "h-10 text-base px-3",
         (Lumeo.Size.Lg, Lumeo.Density.Spacious) => "h-12 text-base px-5",
         (Lumeo.Size.Lg, _)                      => "h-11 text-base px-4",
+        (Lumeo.Size.Xl, Lumeo.Density.Compact)   => $"h-12{XlFontClasses} px-3.5",
+        (Lumeo.Size.Xl, Lumeo.Density.Spacious)  => $"h-14{XlFontClasses} px-6",
+        (Lumeo.Size.Xl, _)                       => $"h-[52px]{XlFontClasses} px-5",
+        (Lumeo.Size.Xxl, Lumeo.Density.Compact)  => $"h-14{XxlFontClasses} px-4",
+        (Lumeo.Size.Xxl, Lumeo.Density.Spacious) => $"h-16{XxlFontClasses} px-7",
+        (Lumeo.Size.Xxl, _)                      => $"h-[60px]{XxlFontClasses} px-6",
         (_, Lumeo.Density.Compact)              => $"h-8{DefaultFontClasses} px-2.5",
         (_, Lumeo.Density.Spacious)             => $"h-10{DefaultFontClasses} px-4",
         _                                       => $"h-9{DefaultFontClasses} px-3"
@@ -397,12 +444,24 @@ else
     // the finding-3 max-md:leading-none line-height fix carries over.
     private string WrapperSizeClasses => (Size, EffectiveDensity) switch
     {
+        (Lumeo.Size.Xxs, Lumeo.Density.Compact)  => "h-5 text-base md:text-[8px] max-md:leading-none",
+        (Lumeo.Size.Xxs, Lumeo.Density.Spacious) => "h-7 text-base md:text-[8px] max-md:leading-none",
+        (Lumeo.Size.Xxs, _)                      => "h-6 text-base md:text-[8px] max-md:leading-none",
+        (Lumeo.Size.Xs, Lumeo.Density.Compact)   => "h-6 text-base md:text-[10px] max-md:leading-none",
+        (Lumeo.Size.Xs, Lumeo.Density.Spacious)  => "h-8 text-base md:text-[10px] max-md:leading-none",
+        (Lumeo.Size.Xs, _)                       => "h-7 text-base md:text-[10px] max-md:leading-none",
         (Lumeo.Size.Sm, Lumeo.Density.Compact)  => "h-7 text-base md:text-xs max-md:leading-none",
         (Lumeo.Size.Sm, Lumeo.Density.Spacious) => "h-9 text-base md:text-xs max-md:leading-none",
         (Lumeo.Size.Sm, _)                      => "h-8 text-base md:text-xs max-md:leading-none",
         (Lumeo.Size.Lg, Lumeo.Density.Compact)  => "h-10 text-base",
         (Lumeo.Size.Lg, Lumeo.Density.Spacious) => "h-12 text-base",
         (Lumeo.Size.Lg, _)                      => "h-11 text-base",
+        (Lumeo.Size.Xl, Lumeo.Density.Compact)   => "h-12 text-base md:text-lg max-md:leading-none",
+        (Lumeo.Size.Xl, Lumeo.Density.Spacious)  => "h-14 text-base md:text-lg max-md:leading-none",
+        (Lumeo.Size.Xl, _)                       => "h-[52px] text-base md:text-lg max-md:leading-none",
+        (Lumeo.Size.Xxl, Lumeo.Density.Compact)  => "h-14 text-base md:text-xl max-md:leading-none",
+        (Lumeo.Size.Xxl, Lumeo.Density.Spacious) => "h-16 text-base md:text-xl max-md:leading-none",
+        (Lumeo.Size.Xxl, _)                      => "h-[60px] text-base md:text-xl max-md:leading-none",
         (_, Lumeo.Density.Compact)              => "h-8 text-base md:text-sm max-md:leading-none",
         (_, Lumeo.Density.Spacious)             => "h-10 text-base md:text-sm max-md:leading-none",
         _                                       => "h-9 text-base md:text-sm max-md:leading-none"
@@ -435,12 +494,24 @@ else
     // WrapperSizeClasses puts on the ancestor div, so it must carry the same fix.
     private string WrappedInputSizeClasses => (Size, EffectiveDensity) switch
     {
+        (Lumeo.Size.Xxs, Lumeo.Density.Compact)  => "px-1 text-base md:text-[8px] max-md:leading-none",
+        (Lumeo.Size.Xxs, Lumeo.Density.Spacious) => "px-2 text-base md:text-[8px] max-md:leading-none",
+        (Lumeo.Size.Xxs, _)                      => "px-1.5 text-base md:text-[8px] max-md:leading-none",
+        (Lumeo.Size.Xs, Lumeo.Density.Compact)   => "px-1.5 text-base md:text-[10px] max-md:leading-none",
+        (Lumeo.Size.Xs, Lumeo.Density.Spacious)  => "px-2 text-base md:text-[10px] max-md:leading-none",
+        (Lumeo.Size.Xs, _)                       => "px-2 text-base md:text-[10px] max-md:leading-none",
         (Lumeo.Size.Sm, Lumeo.Density.Compact)  => "px-2 text-base md:text-xs max-md:leading-none",
         (Lumeo.Size.Sm, Lumeo.Density.Spacious) => "px-3 text-base md:text-xs max-md:leading-none",
         (Lumeo.Size.Sm, _)                      => "px-2.5 text-base md:text-xs max-md:leading-none",
         (Lumeo.Size.Lg, Lumeo.Density.Compact)  => "px-3 text-base",
         (Lumeo.Size.Lg, Lumeo.Density.Spacious) => "px-5 text-base",
         (Lumeo.Size.Lg, _)                      => "px-4 text-base",
+        (Lumeo.Size.Xl, Lumeo.Density.Compact)   => "px-3.5 text-base md:text-lg max-md:leading-none",
+        (Lumeo.Size.Xl, Lumeo.Density.Spacious)  => "px-6 text-base md:text-lg max-md:leading-none",
+        (Lumeo.Size.Xl, _)                       => "px-5 text-base md:text-lg max-md:leading-none",
+        (Lumeo.Size.Xxl, Lumeo.Density.Compact)  => "px-4 text-base md:text-xl max-md:leading-none",
+        (Lumeo.Size.Xxl, Lumeo.Density.Spacious) => "px-7 text-base md:text-xl max-md:leading-none",
+        (Lumeo.Size.Xxl, _)                      => "px-6 text-base md:text-xl max-md:leading-none",
         (_, Lumeo.Density.Compact)              => "px-2.5 text-base md:text-sm max-md:leading-none",
         (_, Lumeo.Density.Spacious)             => "px-4 text-base md:text-sm max-md:leading-none",
         _                                       => "px-3 text-base md:text-sm max-md:leading-none"
