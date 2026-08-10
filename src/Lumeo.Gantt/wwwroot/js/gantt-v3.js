@@ -121,6 +121,7 @@ export const ganttV3 = {
 
     registerSplitterDrag,
     unregisterSplitterDrag,
+    resetSplitterWidth,
 
     registerRowReorderDrag,
     unregisterRowReorderDrag,
@@ -1163,12 +1164,23 @@ function startCreateDrag(dragOptions, dragDotNet, reg, trackEl, e) {
     // calendar meaning).
     function resolveColumnDate(localX) {
         const unit = dragOptions && dragOptions.scaleUnit;
-        if (unit === 'Month' || unit === 'Year') {
+        // Bug fix (Codex review, P2 #5): Quarter (design spec Phase 3, T2 —
+        // v3-only, no v2 counterpart) is ALSO a real calendar unit of
+        // variable length (91/92/92/92 days, and a leap-year Q1 differs
+        // again) — it belongs in this branch alongside Month/Year, not the
+        // fixed-day-count fallback below. Column index -> calendar date the
+        // SAME way the Month branch does, just stepping 3 months per column
+        // instead of 1 — mirrors GanttScale.PixelToDate's own
+        // `GanttScaleUnit.Quarter => origin.AddMonths(... * 3)` branch
+        // (C# side), so drag-create snaps to the calendar-quarter start
+        // exactly like every other v3-only-scale JS/C# pair in this file
+        // already keeps in lockstep.
+        if (unit === 'Month' || unit === 'Year' || unit === 'Quarter') {
             const colW = dragOptions && dragOptions.columnWidth > 0 ? dragOptions.columnWidth : 1;
             const idx = Math.floor(localX / colW);
-            return unit === 'Month'
-                ? new Date(origin.getFullYear(), origin.getMonth() + idx, 1)
-                : new Date(origin.getFullYear() + idx, 0, 1);
+            if (unit === 'Month') return new Date(origin.getFullYear(), origin.getMonth() + idx, 1);
+            if (unit === 'Quarter') return new Date(origin.getFullYear(), origin.getMonth() + idx * 3, 1);
+            return new Date(origin.getFullYear() + idx, 0, 1);
         }
         const dayPx = dragOptions && dragOptions.pixelsPerDay > 0 ? dragOptions.pixelsPerDay : 1;
         return addDays(origin, Math.floor(localX / dayPx));
@@ -1404,6 +1416,27 @@ function unregisterSplitterDrag(handleEl) {
     for (const cleanup of Array.from(reg.activeCleanups)) cleanup();
 }
 
+// Bug fix (Codex review, P2 #9): registerSplitterDrag's own onPointerMove
+// mutates paneEl's inline width/--lumeo-gantt-tree-name-width DIRECTLY
+// during the live gesture — the pointerCANCEL path already reverts that (see
+// its own remarks: "there is no ghost to simply discard here; the real
+// element was mutated directly, so reverting it IS the discard step"), but
+// pointer-UP had no equivalent for a CONTROLLED caller that VETOES the
+// resulting CommitSplitterWidth request: if the parent keeps TreePaneWidth
+// unchanged, Blazor's next render computes the SAME style string it
+// rendered before this drag ever started, its diff sees no change, and the
+// JS-mutated (rejected) width is left in the DOM indefinitely. Called
+// UNCONDITIONALLY from GanttTree.CommitSplitterWidth right after its own
+// round trip resolves (accepted or vetoed) to force-sync the DOM back to
+// whatever the resolved, authoritative width actually is — same values,
+// same two lines, as the pointercancel revert above, just parameterized
+// for the post-commit case instead of the mid-gesture-abort one.
+function resetSplitterWidth(paneEl, totalWidth, nameWidth) {
+    if (!paneEl) return;
+    paneEl.style.width = totalWidth + 'px';
+    paneEl.style.setProperty('--lumeo-gantt-tree-name-width', nameWidth + 'px');
+}
+
 // ── Row-reorder drag (design spec Phase 3, T6) ──────────────────────────────
 //
 // A THIRD registration channel, reusing the SAME conventions registerDrag/
@@ -1526,7 +1559,6 @@ function registerRowReorderDrag(paneEl, dotNetRef) {
         let ghost = null;
         let dropLine = null;
         let lastTargetIndex = originalIndex;
-        let lastValid = true;
         const validationCache = new Map(); // targetIndex -> Promise<bool>
 
         // Every OTHER currently-rendered row sharing this drag's own bucket
@@ -1584,7 +1616,6 @@ function registerRowReorderDrag(paneEl, dotNetRef) {
             }
             promise.then((valid) => {
                 if (lastTargetIndex !== targetIndex) return; // superseded by a later hovered position already
-                lastValid = valid;
                 setRowReorderDropLineInvalid(dropLine, !valid);
             });
         }
@@ -1611,12 +1642,35 @@ function registerRowReorderDrag(paneEl, dotNetRef) {
             checkValid(target.index);
         };
 
-        const onPointerUp = (up) => {
+        const onPointerUp = async (up) => {
             if (up.pointerId !== pointerId) return;
             cleanup();
             if (!dragInitiated) return; // below threshold — no ghost residue, no call
             if (lastTargetIndex === originalIndex) return; // no-op position, no commit — mirrors registerDrag's own 0-delta no-op
-            if (!lastValid) return; // last-validated position was rejected — revert silently, no commit
+
+            // Bug fix (Codex review, P1 #2): this used to read `lastValid`
+            // (a plain closure variable, initialized `true` and only ever
+            // flipped by checkValid's fire-and-forget `.then()`) SYNCHRONOUSLY
+            // here — a release landing before the ValidateRowDrop round trip
+            // for the CURRENT lastTargetIndex resolves committed on whatever
+            // `lastValid` happened to be left at (possibly still its initial
+            // `true`), failing OPEN. Mirrors registerDrag's own onPointerUp
+            // fail-closed pattern exactly: await the SAME cached promise
+            // checkValid keys validationCache by (already in flight if this
+            // position was hovered during the move; freshly created — same
+            // fail-closed `.catch(() => false)` — if pointer-up is reached
+            // before checkValid ever got called for it, e.g. threshold
+            // crossed and released in one step).
+            let promise = validationCache.get(lastTargetIndex);
+            if (!promise) {
+                promise = dragDotNet
+                    ? dragDotNet.invokeMethodAsync('ValidateRowDrop', taskId, lastTargetIndex).catch(() => false)
+                    : Promise.resolve(true);
+                validationCache.set(lastTargetIndex, promise);
+            }
+            const valid = await promise;
+            if (!valid) return; // invalid (or unconfirmable) drop position — revert silently, no commit
+
             if (dragDotNet) dragDotNet.invokeMethodAsync('CommitRowReorder', taskId, lastTargetIndex).catch(() => {});
         };
 

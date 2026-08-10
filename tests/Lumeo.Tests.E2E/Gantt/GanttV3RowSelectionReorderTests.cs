@@ -203,6 +203,52 @@ public class GanttV3RowSelectionReorderTests : GanttParityTestBase
     }
 
     [Fact]
+    public async Task Row_Drag_Released_Before_Slow_Validation_Resolves_Never_Commits()
+    {
+        // Codex review, P1 #2 ("row-drop commits before CanDropRow validation
+        // resolves"): gantt-v3.js's row-reorder onPointerUp used to read the
+        // `lastValid` closure variable SYNCHRONOUSLY instead of awaiting the
+        // (possibly still in-flight) ValidateRowDrop promise for the FINAL
+        // hovered position — `lastValid` starts `true` and is only flipped by
+        // checkValid's fire-and-forget `.then()`, so a release landing BEFORE
+        // that round trip resolves committed on the STALE default value.
+        // Row_Drag_Veto_Path_Never_Commits above can't exercise this: it
+        // always waits for the drop-line to paint invalid before releasing,
+        // which only ever happens AFTER the round trip already landed. This
+        // uses ?vetoslow=1 (a CanDropRow that blocks ~400ms server-side
+        // before rejecting) and releases IMMEDIATELY — no wait at all — so
+        // the pointer-up genuinely races the still-in-flight validation.
+        await GotoHost("/e2e/gantt-v3-tree?reorder=1&vetoslow=1&infiniteScroll=0");
+
+        var rows = Page.Locator($"{Root} [data-row-kind='task']");
+        await rows.First.WaitForAsync(new() { Timeout = 15000 });
+        var before = await rows.AllTextContentsAsync();
+
+        var buildGrip = RowByLabel("Build Phase").Locator("[data-row-reorder-grip]");
+        await buildGrip.WaitForAsync(new() { Timeout = 15000 });
+
+        var box = await buildGrip.BoundingBoxAsync();
+        Assert.NotNull(box);
+        var startX = box!.X + box.Width / 2;
+        var startY = box.Y + box.Height / 2;
+        await Page.Mouse.MoveAsync((float)startX, (float)startY);
+        await Page.Mouse.DownAsync();
+        await Page.Mouse.MoveAsync((float)startX, (float)(startY - 90));
+        // No wait for the drop-line here (unlike Row_Drag_Veto_Path_Never_Commits)
+        // — release right away, well inside the artificial 400ms server delay.
+        await Page.Mouse.UpAsync();
+
+        // Give the slow validator's real round trip — and any incorrect
+        // commit the pre-fix race would have let through — time to land
+        // before asserting. A race this fix closes must stay closed even
+        // after waiting past the delay, not merely "not yet visible".
+        await Page.WaitForTimeoutAsync(1000);
+
+        var after = await rows.AllTextContentsAsync();
+        Assert.Equal(before, after);
+    }
+
+    [Fact]
     public async Task Row_Reorder_Is_Inert_When_Readonly()
     {
         await GotoHost("/e2e/gantt-v3-tree?reorder=1&readonly=1&infiniteScroll=0");

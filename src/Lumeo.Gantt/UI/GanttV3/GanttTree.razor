@@ -441,7 +441,15 @@
         $"width:{TotalWidth}px;--lumeo-gantt-tree-name-width:{TreePaneWidth}px;");
 
     private double TreeColumnsWidth => TreeColumns is { Count: > 0 } ? TreeColumns.Sum(c => c.Width) : 0;
-    private double TotalWidth => TreePaneWidth + TreeColumnsWidth;
+    // Bug fix (Codex review, P2 #8): reserves GanttScale.TreeHeaderMenuWidth
+    // for TreeHeaderMenu — see that constant's own remarks for why the pane
+    // must actually be wider to fit it rather than relying on shrink-0 +
+    // ms-auto to conjure room that was never allocated.
+    // Bug fix (Codex review, P2 #8): reserves GanttScale.TreeHeaderMenuWidth
+    // for TreeHeaderMenu — see that constant's own remarks for why the pane
+    // must actually be wider to fit it rather than relying on shrink-0 +
+    // ms-auto to conjure room that was never allocated.
+    private double TotalWidth => TreePaneWidth + TreeColumnsWidth + (TreeHeaderMenu is not null ? GanttScale.TreeHeaderMenuWidth : 0);
 
     private static string NameCellStyle => "width:var(--lumeo-gantt-tree-name-width);";
     private static string ColumnCellStyle(GanttTreeColumn column) => FormattableString.Invariant($"width:{column.Width}px;");
@@ -663,6 +671,10 @@
     private bool _splitterRegistered;
     private GanttSplitterOptions _lastSplitterOptions;
     private bool _reorderRegistered;
+    // Bug fix (Codex review, P2 #9) — see CommitSplitterWidth's own remarks
+    // for why this is a deferred, OnAfterRenderAsync-consumed flag rather
+    // than an immediate interop call.
+    private bool _pendingSplitterWidthReset;
 
     // Phase 3, T1's own _taskIndex idiom (GanttTimeline) — rebuilt on EVERY
     // parameter pass (OnParametersSet runs synchronously before any render,
@@ -679,6 +691,22 @@
     {
         await SyncSplitterRegistrationAsync();
         await SyncRowReorderRegistrationAsync();
+
+        // Bug fix (Codex review, P2 #9): fires exactly once per completed
+        // splitter gesture, AFTER this render has genuinely committed — see
+        // CommitSplitterWidth's own remarks for why it can't just call this
+        // directly. TotalWidth/TreePaneWidth here are therefore the
+        // resolved, authoritative values (whatever the parent actually
+        // decided, accepted or vetoed), matching exactly what RootStyle's
+        // own markup just rendered — so this call is a genuine no-op
+        // (re-applies the SAME values the DOM should already show) unless
+        // the live drag's own mid-gesture mutation is still sitting there
+        // uncorrected.
+        if (_pendingSplitterWidthReset)
+        {
+            _pendingSplitterWidthReset = false;
+            await Interop.GanttV3ResetSplitterWidthAsync(_paneRef, TotalWidth, TreePaneWidth);
+        }
     }
 
     // Design spec Phase 3, T6 — registers/unregisters gantt-v3.js's
@@ -766,15 +794,39 @@
     /// though the JS side already clamps continuously during the live drag —
     /// this is the untrusted wire boundary, the same reason CommitDrag/
     /// CommitProgress never trust their own string arguments blindly either.
-    /// No ghost/revert concept here (unlike a rejected move/resize/CanDrop
-    /// drop): a splitter resize has no "invalid position", so there is nothing
-    /// to roll back beyond the plain clamp.
+    ///
+    /// Bug fix (Codex review, P2 #9): there IS a revert concept here after
+    /// all — not an "invalid position" (correct, a splitter has none), but a
+    /// CONTROLLED caller vetoing the resulting width entirely (keeping its
+    /// own <c>TreePaneWidth</c> unchanged). registerSplitterDrag's own
+    /// onPointerMove mutated the real pane element's inline width directly
+    /// during the gesture; if Blazor's next render computes the SAME style
+    /// string it rendered before (a veto), its diff never re-touches the
+    /// DOM, leaving that JS-mutated width stuck in place. Arms
+    /// <see cref="_pendingSplitterWidthReset"/> rather than force-syncing the
+    /// DOM right here — matching v2 Gantt's own established "always re-push,
+    /// don't rely on Blazor's diff" controlled-rollback pattern
+    /// (<c>GanttControlledRollbackTests</c>), but deferred to the NEXT
+    /// <see cref="OnAfterRenderAsync"/> (see that flag's own remarks for
+    /// why: this method's own <c>OnResize.InvokeAsync</c> completing does
+    /// not guarantee the parent's resulting decision has already propagated
+    /// back down through a fresh render of THIS component yet).
     /// </summary>
     [JSInvokable]
-    public Task CommitSplitterWidth(double width)
+    public async Task CommitSplitterWidth(double width)
     {
         var clamped = Math.Clamp(width, GanttScale.MinTreePaneWidth, GanttScale.MaxTreePaneWidth);
-        return OnResize.HasDelegate ? OnResize.InvokeAsync(clamped) : Task.CompletedTask;
+        if (OnResize.HasDelegate) await OnResize.InvokeAsync(clamped);
+        // Deferred to the NEXT OnAfterRenderAsync rather than force-synced
+        // right here: OnResize.InvokeAsync's own completion does not
+        // guarantee Blazor has ALREADY propagated the parent's resulting
+        // TreePaneWidth decision back down through a fresh render of THIS
+        // component — reading TotalWidth/TreePaneWidth immediately here
+        // could still observe the PRE-round-trip values. OnAfterRenderAsync
+        // only ever runs after a genuine render has committed, guaranteeing
+        // whatever it reads is the resolved, authoritative post-decision
+        // state (accepted OR vetoed).
+        _pendingSplitterWidthReset = true;
     }
 
     // Keyboard resize (WAI-ARIA separator pattern parity with Lumeo's own

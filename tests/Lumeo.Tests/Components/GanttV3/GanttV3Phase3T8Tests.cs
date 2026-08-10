@@ -322,6 +322,46 @@ public class GanttV3Phase3T8Tests : IAsyncLifetime
         Assert.Equal("true", FindCheckboxByLabel(cut, "Summary bars").GetAttribute("aria-checked"));
     }
 
+    // Bug fix (Codex review, P2 #10): the mount-time Baseline stored the
+    // CONTROLLED OffDays parameter's own set BY REFERENCE, not a copy — a
+    // consumer mutating its own HashSet<DayOfWeek> in place (no new Blazor
+    // render, just the same object gaining/losing members) silently mutated
+    // the "mount-time" baseline right along with it, so Reset restored
+    // whatever the set held AT RESET TIME, not what it held when this menu
+    // instance actually opened.
+    [Fact]
+    public async Task Reset_Restores_Controlled_OffDays_To_A_Snapshot_Not_The_Live_Mutable_Set()
+    {
+        var ownedOffDays = new HashSet<DayOfWeek> { DayOfWeek.Friday };
+        IReadOnlySet<DayOfWeek>? notified = null;
+        var cut = _ctx.Render<L.GanttSettingsMenu>(p => p
+            .Add(c => c.OffDays, ownedOffDays)
+            .Add(c => c.OffDaysChanged, (IReadOnlySet<DayOfWeek>? v) => notified = v));
+        cut.Find("button[aria-label='Settings']").Click();
+        Assert.Equal(
+            "on",
+            OffDaysGroup(cut).QuerySelectorAll("[data-toggle-item='true']").First(b => b.GetAttribute("aria-label") == "Friday").GetAttribute("data-state"));
+
+        // Mutate the CONSUMER's own set in place — same object reference,
+        // no new Render/parameter assignment at all (simulating a real
+        // controlled caller's app-level state mutation the component never
+        // observes as a parameter change).
+        ownedOffDays.Add(DayOfWeek.Monday);
+
+        await cut.InvokeAsync(() => cut.Find("[data-testid='gantt-settings-reset']").Click());
+
+        // Expected: Reset restores the ORIGINAL mount-time snapshot, {Friday}
+        // only. Pre-fix, this was worse than "re-notifies {Friday, Monday}":
+        // _baseline.OffDays held the SAME reference as ownedOffDays, so the
+        // mutation above landed in the "baseline" too — SetOffDaysAsync's own
+        // SetEquals(EffectiveOffDays, next) then compared the live (mutated)
+        // set against the identically-mutated "baseline" via the SAME
+        // reference, found them equal, and returned before ever calling
+        // OffDaysChanged — a silent total no-op (`notified` stayed null).
+        Assert.NotNull(notified);
+        Assert.Equal(new[] { DayOfWeek.Friday }, notified!.OrderBy(d => d));
+    }
+
     // ── GanttNav.TrailingContent / Gantt3.TrailingContent passthrough ──────
 
     [Fact]

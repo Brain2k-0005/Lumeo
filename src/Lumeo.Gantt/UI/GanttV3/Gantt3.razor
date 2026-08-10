@@ -671,12 +671,23 @@
     private double TreeColumnsWidth => TreeColumns is { Count: > 0 } ? TreeColumns.Sum(c => c.Width) : 0;
 
     // The FULL physical width of the combined tree pane (name column + any
-    // extra columns) — what actually precedes the timeline's own origin inside
-    // the shared scroll container. Feeds ScrollHostLeadingOffset/BuildSnapshot;
-    // gated on EffectiveShowTreePane is unnecessary here since LeadingOffset's
-    // OWN showTreePane parameter already zeroes the offset when the pane is
-    // hidden — this stays a pure "what would the pane's width be if shown".
-    private double EffectiveTreePaneTotalWidth => EffectiveTreePaneWidth + TreeColumnsWidth;
+    // extra columns + the reserved TreeHeaderMenu slot) — what actually
+    // precedes the timeline's own origin inside the shared scroll container.
+    // Feeds ScrollHostLeadingOffset/BuildSnapshot; gated on EffectiveShowTreePane
+    // is unnecessary here since LeadingOffset's OWN showTreePane parameter
+    // already zeroes the offset when the pane is hidden — this stays a pure
+    // "what would the pane's width be if shown". Must stay in lockstep with
+    // GanttTree.TotalWidth's own identical formula (Codex review, P2 #8 —
+    // GanttScale.TreeHeaderMenuWidth's own remarks): if this component thinks
+    // the pane is narrower than what GanttTree ACTUALLY renders, LeadingPaneWidth/
+    // ScrollHostLeadingOffset under-report the tree's real on-screen footprint.
+    // Must stay in lockstep with GanttTree.TotalWidth's own identical formula
+    // (Codex review, P2 #8 — GanttScale.TreeHeaderMenuWidth's own remarks):
+    // if this component thinks the pane is narrower than what GanttTree
+    // ACTUALLY renders, LeadingPaneWidth/ScrollHostLeadingOffset under-report
+    // the tree's real on-screen footprint.
+    private double EffectiveTreePaneTotalWidth =>
+        EffectiveTreePaneWidth + TreeColumnsWidth + (TreeHeaderMenu is not null ? GanttScale.TreeHeaderMenuWidth : 0);
 
     // The ONE place a completed splitter gesture (pointer-drag release or
     // keyboard nudge — see GanttTree.OnResize's own remarks) lands. Deliberately
@@ -718,7 +729,12 @@
         // controlling value is present to defer to.
         if (TreePaneWidth is null) _internalTreePaneWidth = clamped;
 
-        var newTotal = clamped + TreeColumnsWidth;
+        // Mirrors EffectiveTreePaneTotalWidth's own formula (Codex review, P2
+        // #8) — can't just read that property here: `clamped` is the NEW
+        // width, not yet reflected in EffectiveTreePaneWidth when TreePaneWidth
+        // is controlled (its own re-render from the caller's TreePaneWidthChanged
+        // handler hasn't landed yet).
+        var newTotal = clamped + TreeColumnsWidth + (TreeHeaderMenu is not null ? GanttScale.TreeHeaderMenuWidth : 0);
         _lastSnapshot = _lastSnapshot with { TreePaneWidth = newTotal };
 
         StateHasChanged();

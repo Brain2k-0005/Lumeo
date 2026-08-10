@@ -165,4 +165,70 @@ public class GanttReorderModelTests
 
         Assert.Same(tasks, GanttReorderModel.Move(tasks, "only-child", 0));
     }
+
+    // ── Move: downward index normalization (Codex round — P1 #1) ────────────
+    //
+    // gantt-v3.js's siblingRows() excludes the MOVING row itself, so a hovered
+    // candidate's own `data-reorder-index` attribute (assigned by
+    // ComputeBucketPositions over the FULL, unfiltered bucket including the
+    // moving task) is a position in the PRE-removal, N-slot index space —
+    // "insert after candidate C" sends `C's original index + 1`. But Move's
+    // own `siblings.Insert(clamped, moving)` runs AFTER `siblings.RemoveAt(oldIndex)`,
+    // so `clamped` gets interpreted as a position in the POST-removal, (N-1)-slot
+    // list instead — a bug for any candidate positioned AFTER the moving task
+    // (clamped > oldIndex), since removing the earlier `moving` element shifts
+    // every later index down by one that the caller-supplied index never
+    // accounted for. Only matters when the moving task moves DOWNWARD past at
+    // least one former later-sibling; moving UPWARD (clamped < oldIndex) was
+    // never affected, since removal doesn't shift anything before it.
+    [Fact]
+    public void Move_Downward_Past_A_Sibling_Lands_Immediately_After_The_Hovered_Candidate()
+    {
+        // [a, b, c] — drag "a" (bucket-index 0) to just AFTER "b". siblingRows()
+        // in gantt-v3.js excludes "a" itself, so the candidate list is [b, c];
+        // "b"'s own `data-reorder-index` is still its ORIGINAL bucket position
+        // (1), and "after" hovering sends index+1 = 2 as the target.
+        var tasks = new List<GanttTask> { Task("a", groupLabel: "G"), Task("b", groupLabel: "G"), Task("c", groupLabel: "G") };
+
+        var result = GanttReorderModel.Move(tasks, "a", 2);
+
+        // Expected: "a" lands directly after "b", i.e. [b, a, c] — NOT at the
+        // very end ([b, c, a], the pre-fix off-by-one result: clamped=2 got
+        // inserted into the post-removal 2-element list [b, c] at position 2,
+        // i.e. the tail).
+        Assert.Equal(new[] { "b", "a", "c" }, result.Select(t => t.Id));
+    }
+
+    [Fact]
+    public void Move_Downward_To_Just_Before_The_Next_Sibling_Is_A_No_Op()
+    {
+        // Same [a, b, c] fixture — "a" is already immediately before "b", so
+        // hovering just BEFORE "b" (target index = b's own original index, 1)
+        // must be a no-op: "a" is already exactly there.
+        var tasks = new List<GanttTask> { Task("a", groupLabel: "G"), Task("b", groupLabel: "G"), Task("c", groupLabel: "G") };
+
+        var result = GanttReorderModel.Move(tasks, "a", 1);
+
+        // Expected: unchanged order [a, b, c] — NOT the pre-fix off-by-one
+        // result, which swapped "a" and "b" to [b, a, c] (clamped=1 inserted
+        // into the post-removal list [b, c] at position 1, i.e. after "b").
+        Assert.Equal(new[] { "a", "b", "c" }, result.Select(t => t.Id));
+    }
+
+    [Fact]
+    public void Move_Downward_Past_Every_Sibling_Appends_At_The_Very_End()
+    {
+        // Same [a, b, c] fixture — drag "a" to just AFTER "c" (the LAST
+        // sibling). "c"'s own original bucket index is 2 (the highest), so
+        // "after" hovering sends 2 + 1 = 3 == the PRE-removal bucket size —
+        // a legitimate "append" position, distinct from "insert before c"
+        // (target 2). Exercises the widened clamp upper bound (now
+        // `siblings.Count`, not `siblings.Count - 1`) alongside the same
+        // post-removal index normalization the two cases above cover.
+        var tasks = new List<GanttTask> { Task("a", groupLabel: "G"), Task("b", groupLabel: "G"), Task("c", groupLabel: "G") };
+
+        var result = GanttReorderModel.Move(tasks, "a", 3);
+
+        Assert.Equal(new[] { "b", "c", "a" }, result.Select(t => t.Id));
+    }
 }

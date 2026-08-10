@@ -799,6 +799,64 @@ public class GanttDragParityTests : GanttParityTestBase
         Assert.Equal(new DateTime(2025, 3, 1), update.Task.End);
     }
 
+    // Bug fix (Codex review, P2 #5): resolveColumnDate (gantt-v3.js) only
+    // special-cased Month/Year as real calendar units — Quarter (design spec
+    // Phase 3, T2, v3-only, no v2 counterpart) fell through to the
+    // fixed-pixelsPerDay approximation instead, the SAME class of bug the
+    // Month-mode test above already fixed for that scale. Quarter's own
+    // pixelsPerDay (GanttScale.PixelToDate's own Quarter branch: colW / 90,
+    // a 90-day-quarter APPROXIMATION) compounds error across multiple
+    // columns instead of snapping to the real (91/92-day) calendar-quarter
+    // start GanttScale.PixelToDate itself uses server-side.
+    [Fact]
+    public async Task Drag_create_in_quarter_view_maps_pixels_through_the_real_calendar_scale()
+    {
+        // SharedTasks' own mount-time Origin here is Jan 1, 2025 (Quarter
+        // padding aligns to the calendar-quarter start, PadBefore=4 quarters
+        // before fe1's earliest Feb 2026 start — that snaps to Q1 2026 =
+        // Jan 1, 2026, then 4 quarters/12 months earlier = Jan 1, 2025 — see
+        // Gantt3.ApplyPadding's own Quarter branch).
+        await GotoHost("/e2e/gantt-v3?allowCreate=1&viewMode=Quarter&infiniteScroll=0");
+        await WaitV3ReadyAsync();
+        await ResetScrollLeftAsync();
+        var track = Page.Locator($"{V3Root} [data-gantt-row-track][data-row-key='task:fe3']");
+        var box = await track.BoundingBoxAsync();
+        Assert.NotNull(box);
+
+        // Drag from the track's own left edge (Origin's own Quarter column,
+        // Q1 2025 = Jan 1, 2025) across FOUR Quarter columns (GanttScale's
+        // own Quarter ColumnWidth, 120px each = 12 calendar months) into the
+        // column that starts Jan 1, 2026. A single-column drag would land on
+        // Q2 2025 (Apr 1) regardless of the bug — Q1 2025 happens to be
+        // EXACTLY 90 days (Jan 31 + Feb 28 + Mar 31), the same constant the
+        // buggy approximation itself assumes, so it wouldn't diverge for a
+        // 1-column drag. Four columns compounds the approximation error
+        // (2025 has 365 real days, not 4*90=360) into an unambiguous 5-day
+        // difference.
+        // +1px (not +2 — the Month test's own offset): the buggy fallback's
+        // pixelsPerDay is Quarter's own ~1.33px/day (colW/90), so floor(2/1.33)
+        // already rounds up to a 1-day error even at the DRAG START, muddying
+        // which end of the drag the assertions below are actually isolating.
+        // floor(1/1.33) still floors to 0 under EITHER formula, keeping Start
+        // trivially correct (and identical) either way — the divergence this
+        // test targets is isolated entirely to End, four columns out.
+        const int quarterColumnWidth = 120;
+        var from = ((float)(box!.X + 1), (float)(box.Y + box.Height / 2));
+        var to = (from.Item1 + quarterColumnWidth * 4, from.Item2);
+
+        await DragAsync(from, to);
+        var json = await WaitForSinkChangeAsync("event-sink-taskcreate", null);
+        var update = ParseUpdate(json);
+
+        Assert.Equal("Create", update.Source);
+        Assert.Equal(new DateTime(2025, 1, 1), update.Task.Start);
+        // Expected: the REAL 4th calendar quarter boundary after Jan 1, 2025
+        // — Jan 1, 2026. Pre-fix, the 90-day-per-quarter approximation
+        // landed FIVE days short, at Dec 27, 2025 (2025 has 365 real days,
+        // not 4*90=360).
+        Assert.Equal(new DateTime(2026, 1, 1), update.Task.End);
+    }
+
     [Fact]
     public async Task Drag_create_after_panning_computes_dates_from_the_new_origin()
     {

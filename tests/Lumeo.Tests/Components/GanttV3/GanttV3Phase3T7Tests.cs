@@ -124,6 +124,49 @@ public class GanttV3Phase3T7Tests : IAsyncLifetime
         Assert.Equal(before, after);
     }
 
+    // Bug fix (Codex review, P2 #7): GanttTimeline.RowItems' own `usesHierarchy`
+    // used to be computed against the RAW `Tasks` parameter
+    // (GanttRowModel.UsesHierarchy(Tasks)) instead of the SAME
+    // FilterValidDurationTasks-filtered set BuildVisibleRows itself decides
+    // hierarchy-vs-flat against. When the only ParentId-bearing task in the
+    // list has an invalid (End < Start, non-milestone) duration and gets
+    // filtered out of rendering entirely, BuildVisibleRows correctly falls
+    // back to flat GroupLabel mode — but the stale raw-Tasks check still saw
+    // a ParentId in play and kept usesHierarchy=true, so ColorByGroup's own
+    // bucket-key resolution (GanttColorModel.ResolveGroupColorVar) used
+    // task.ParentId (null for every real root task here) instead of
+    // GroupLabel, collapsing every group onto the SAME color.
+    [Fact]
+    public void ColorByGroup_Ignores_A_ParentId_Only_On_An_Invalid_Duration_Filtered_Out_Task()
+    {
+        var tasks = new List<L.GanttTask>
+        {
+            // The ONLY task with a ParentId set — but End < Start on a
+            // non-milestone, so GanttRowModel.FilterValidDurationTasks drops
+            // it before BuildVisibleRows ever decides hierarchy vs flat.
+            new("bad", "Bad", D(2026, 3, 10), D(2026, 3, 1)) { ParentId = "nonexistent-root" },
+        };
+        tasks.AddRange(GroupedFixture());
+
+        var cut = _ctx.Render<L.Gantt3>(p => p
+            .Add(c => c.Tasks, tasks)
+            .Add(c => c.GroupBy, (L.GanttTask t) => t.GroupLabel ?? "")
+            .Add(c => c.ColorByGroup, true));
+
+        var a1 = BarColorStyle(cut, "a1");
+        var a2 = BarColorStyle(cut, "a2");
+        var b1 = BarColorStyle(cut, "b1");
+
+        Assert.NotNull(a1);
+        Assert.Equal(a1, a2); // same group ("Design") -> same colour
+        Assert.NotNull(b1);
+        // Expected: a different group is free to differ (GroupLabel-keyed,
+        // exactly like ColorByGroup_True_Assigns_The_Same_Chart_Color_To_Every_Task_In_A_Group
+        // above) — pre-fix, this incorrectly matched a1 (both fell back to
+        // the SAME null-ParentId "root" bucket under the stale hierarchy read).
+        Assert.NotEqual(a1, b1);
+    }
+
     // ── In-bar label: narrow-bar fallback + ellipsis ─────────────────────────
 
     private const string InBarLabelSelector = ".lumeo-gantt-v3-bar-label";
@@ -418,6 +461,44 @@ public class GanttV3Phase3T7Tests : IAsyncLifetime
         await cut.InvokeAsync(() => _interop.RaiseGanttV3VerticalScroll(scrollTop: 0, clientHeight: 200, scrollLeft: 0, clientWidth: nearX + nearW + 50));
 
         Assert.Empty(cut.FindAll(ChipSelector));
+    }
+
+    // Bug fix (Codex review, P2 #3): VisibleTimelineWindow's own `end` used
+    // to be `start + clientWidth` — the RAW client width of the shared
+    // scroll host, which in hosted Gantt3 (tree pane shown) also covers the
+    // area the STICKY tree pane occupies. Only `clientWidth - LeadingPaneWidth`
+    // px of that viewport is actually visible TIMELINE content; the rest is
+    // permanently covered by the pinned tree regardless of scroll position.
+    // A bar sitting in that "actually covered by the tree" band therefore
+    // read as fully inside the (too-generous) window and never got an
+    // off-screen chip, even though it wasn't really visible.
+    [Fact]
+    public async Task A_Bar_Hidden_Behind_The_Pinned_Tree_Panes_Own_Width_Still_Gets_An_Offscreen_Chip()
+    {
+        var cut = _ctx.Render<L.Gantt3>(p => p
+            .Add(c => c.Tasks, new List<L.GanttTask> { new("t1", "Task", D(2026, 1, 1), D(2026, 1, 1)) })
+            .Add(c => c.ViewMode, L.GanttViewMode.Day)
+            .Add(c => c.ShowTreePane, true) // forces LeadingPaneWidth > 0 (GanttScale.DefaultTreePaneWidth, 224px, no TreeColumns)
+            .Add(c => c.InfiniteScroll, false));
+
+        var (x, w) = BarGeometryOf(cut, "t1");
+        Assert.True(w < 124, "fixture assumption: a single Day-mode column bar must be narrower than the tree-pane-width margin this test exercises");
+
+        // scrollLeft == ScrollHostLeadingOffset (== LeadingPaneWidth here,
+        // LTR + tree pane, no extra columns — see GanttViewportReconciler.LeadingOffset)
+        // aligns the reported viewport's timeline-relative start exactly at
+        // 0. clientWidth is chosen to comfortably enclose the bar under the
+        // OLD (buggy) `start + clientWidth` end — but `x + w + 100 - 224 < x`
+        // (since w < 124), so the CORRECTED end (minus LeadingPaneWidth)
+        // falls before the bar even starts.
+        const double leadingPaneWidth = 224;
+        var clientWidth = x + w + 100;
+        await cut.InvokeAsync(() => _interop.RaiseGanttV3VerticalScroll(
+            scrollTop: 0, clientHeight: 200, scrollLeft: leadingPaneWidth, clientWidth: clientWidth));
+
+        var chips = cut.FindAll(ChipSelector);
+        Assert.Single(chips);
+        Assert.Equal("after", chips[0].GetAttribute("data-gantt-offscreen-chip"));
     }
 
     [Fact]

@@ -889,6 +889,22 @@ public class TrackingInteropService : IComponentInteropService
         _ganttV3UnregisterSplitterDragCallCount++;
         return Task.CompletedTask;
     }
+
+    // Bug fix (Codex review, P2 #9) tracking — GanttV3ResetSplitterWidthAsync
+    // call count + the last (totalWidth, nameWidth) pair it was force-applied
+    // with, so a test can confirm GanttTree.CommitSplitterWidth's own
+    // deferred reset (armed via a controlled-veto SimulateGanttV3SplitterCommit,
+    // consumed on the NEXT OnAfterRenderAsync) lands with the resolved,
+    // post-round-trip authoritative width — not the mid-gesture, JS-mutated one.
+    private int _ganttV3ResetSplitterWidthCallCount;
+    public int GanttV3ResetSplitterWidthCallCount => _ganttV3ResetSplitterWidthCallCount;
+    public (double TotalWidth, double NameWidth)? LastGanttV3ResetSplitterWidth { get; private set; }
+    public Task GanttV3ResetSplitterWidthAsync(ElementReference paneEl, double totalWidth, double nameWidth)
+    {
+        _ganttV3ResetSplitterWidthCallCount++;
+        LastGanttV3ResetSplitterWidth = (totalWidth, nameWidth);
+        return Task.CompletedTask;
+    }
     /// <summary>Simulates a JS-side splitter commit (pointerup/keyboard) by invoking the captured component's own <c>CommitSplitterWidth</c> method directly.</summary>
     public async Task<bool> SimulateGanttV3SplitterCommit(double width)
     {

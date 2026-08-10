@@ -1758,6 +1758,16 @@ public sealed class ComponentInteropService : IComponentInteropService
         catch (JSDisconnectedException) { }
     }
 
+    public async Task GanttV3ResetSplitterWidthAsync(Microsoft.AspNetCore.Components.ElementReference paneEl, double totalWidth, double nameWidth)
+    {
+        try
+        {
+            var module = await GetGanttV3ModuleAsync();
+            await module.InvokeVoidAsync("ganttV3.resetSplitterWidth", paneEl, totalWidth, nameWidth);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
     public async Task GanttV3RegisterRowReorderDragAsync<[System.Diagnostics.CodeAnalysis.DynamicallyAccessedMembers(System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicMethods)] T>(Microsoft.AspNetCore.Components.ElementReference paneEl, DotNetObjectReference<T> dotNetRef) where T : class
     {
         try

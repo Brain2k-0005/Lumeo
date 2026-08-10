@@ -514,4 +514,94 @@ public class GanttV3Phase3T9Tests : IAsyncLifetime
         Assert.Equal(expectedNewStart, timeline.Instance.RangeStart);
         Assert.Equal(oldEnd, timeline.Instance.RangeEnd);
     }
+
+    // Bug fix (Codex review, P2 #6): TryRequestRangeExtensionAsync's own
+    // `_rangeExtensionInFlight` guard used to be checked BEFORE
+    // `await Interop.GanttV3HasActiveDragAsync()` but only SET true AFTER
+    // that await resolved — so two reports arriving while that FIRST await
+    // was still in flight both passed the (still-false) guard and both
+    // proceeded, firing the range extension TWICE for a single edge
+    // encounter (confirmed by temporarily reverting the fix and rerunning
+    // this spec: it extended twice, landing one WHOLE extra page short of
+    // `expectedNewStart` below). TrackingInteropService's own
+    // GanttV3HasActiveDragGate exists specifically to suspend HERE (its doc
+    // comment already describes proving this exact guard) but was never
+    // actually wired into a test until now.
+    [Fact]
+    public async Task Two_Reports_Racing_The_HasActiveDrag_Check_Still_Extend_Only_Once()
+    {
+        var cut = await RenderChart();
+        var timeline = cut.FindComponent<L.GanttTimeline>();
+        var oldStart = timeline.Instance.RangeStart;
+        var oldEnd = timeline.Instance.RangeEnd;
+
+        var dragGate = new TaskCompletionSource<bool>();
+        _interop.GanttV3HasActiveDragGate = dragGate;
+
+        // Two near-leading-edge reports. Post-fix, the SECOND is dropped
+        // immediately by the (now correctly pre-armed) _rangeExtensionInFlight
+        // guard — it never even reaches GanttV3HasActiveDragAsync.
+        await cut.InvokeAsync(() => _interop.RaiseGanttV3VerticalScroll(scrollTop: 0, clientHeight: 200, scrollLeft: 0, clientWidth: 1000));
+        await cut.InvokeAsync(() => _interop.RaiseGanttV3VerticalScroll(scrollTop: 0, clientHeight: 200, scrollLeft: 0, clientWidth: 1000));
+
+        Assert.Equal(1, _interop.GanttV3HasActiveDragCallCount); // only the FIRST call ever reached the check
+
+        await cut.InvokeAsync(() => dragGate.SetResult(false));
+        for (var i = 0; i < 20; i++) await Task.Yield();
+        await Task.Delay(50);
+
+        var cfg = GanttScale.GetConfig(L.GanttViewMode.Day);
+        var expectedNewStart = oldStart.AddDays(-cfg.PadBefore * cfg.Step); // ONE page's worth — the correct, single-extension outcome
+
+        Assert.Equal(expectedNewStart, timeline.Instance.RangeStart);
+        Assert.Equal(oldEnd, timeline.Instance.RangeEnd);
+    }
+
+    // Bug fix (Codex review, P2 #6), TRAILING direction: HandleRangeExtensionRequestAsync's
+    // trailing (`leading: false`) branch has NO await at all inside it — it
+    // synchronously reads VisibleRange.End and commits — so it has none of
+    // the leading branch's own "capture before the await, recheck after"
+    // staleness protection (Decision 3's re-check) to incidentally catch a
+    // second overlapping request. GanttTimeline's own _rangeExtensionInFlight
+    // guard was the ONLY thing standing between two overlapping trailing
+    // reports and a genuine double-extension — and it was timing-broken the
+    // same way the leading-direction test above describes.
+    [Fact]
+    public async Task Two_Trailing_Reports_Racing_The_HasActiveDrag_Check_Extend_Only_Once()
+    {
+        var cut = await RenderChart();
+        var timeline = cut.FindComponent<L.GanttTimeline>();
+        var oldStart = timeline.Instance.RangeStart;
+        var oldEnd = timeline.Instance.RangeEnd;
+
+        var cfg = GanttScale.GetConfig(L.GanttViewMode.Day);
+        var totalWidth = GanttScale.BuildDateUnits(L.GanttViewMode.Day, oldStart, oldEnd).Count * (double)cfg.ColumnWidth;
+        const double clientWidth = 300;
+        var scrollLeft = totalWidth - clientWidth - 10; // "near the trailing edge" — mirrors Scrolling_Near_The_Trailing_Edge_... above
+
+        var dragGate = new TaskCompletionSource<bool>();
+        _interop.GanttV3HasActiveDragGate = dragGate;
+
+        await cut.InvokeAsync(() => _interop.RaiseGanttV3VerticalScroll(scrollTop: 0, clientHeight: 200, scrollLeft: scrollLeft, clientWidth: clientWidth));
+        await cut.InvokeAsync(() => _interop.RaiseGanttV3VerticalScroll(scrollTop: 0, clientHeight: 200, scrollLeft: scrollLeft, clientWidth: clientWidth));
+
+        Assert.Equal(1, _interop.GanttV3HasActiveDragCallCount); // only the FIRST call ever reached the check
+
+        await cut.InvokeAsync(() => dragGate.SetResult(false));
+        // Let any continuation still queued behind the first actually run
+        // before asserting — a fire-and-forget task's continuation isn't
+        // guaranteed to have completed the instant SetResult's own
+        // InvokeAsync returns.
+        for (var i = 0; i < 20; i++) await Task.Yield();
+        await Task.Delay(50);
+
+        var expectedNewEnd = oldEnd.AddDays(cfg.PadAfter * cfg.Step); // ONE page's worth — the correct, single-extension outcome
+
+        // Confirmed by temporarily reverting the fix and rerunning this
+        // spec: pre-fix, both overlapping calls landed unconditionally (the
+        // trailing branch never re-validates staleness), extending TWICE
+        // for one edge encounter.
+        Assert.Equal(oldStart, timeline.Instance.RangeStart);
+        Assert.Equal(expectedNewEnd, timeline.Instance.RangeEnd);
+    }
 }

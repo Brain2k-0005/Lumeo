@@ -159,11 +159,35 @@ internal static class GanttReorderModel
         var oldIndex = siblings.FindIndex(t => t.Id == taskId);
         if (oldIndex < 0) return tasks; // unreachable in practice — `moving` has valid duration, so it's always in `visible`'s sibling set
 
-        var clamped = Math.Clamp(newIndexWithinBucket, 0, siblings.Count - 1);
+        // Bug fix (Codex review, P1 #1): `newIndexWithinBucket` arrives from
+        // the caller (gantt-v3.js's siblingRows()/resolveTarget()) in the
+        // PRE-removal, full-bucket index space — siblingRows() deliberately
+        // excludes the moving row itself, but each candidate's own
+        // `data-reorder-index` attribute is still its ORIGINAL position among
+        // ALL siblings (moving task included), so "insert after candidate C"
+        // sends C's original index + 1 — which legitimately reaches
+        // `siblings.Count` (one past the last valid original index) when C is
+        // the LAST sibling, i.e. "drag to the very end". The clamp upper
+        // bound must therefore be `siblings.Count` (inclusive "append"
+        // position), not `siblings.Count - 1` — the old bound silently
+        // conflated "insert immediately before the last sibling" with
+        // "append after it" into the same clamped value, corrupting exactly
+        // the cases GanttReorderModelTests' "downward" cases now cover.
+        var clamped = Math.Clamp(newIndexWithinBucket, 0, siblings.Count);
         if (clamped == oldIndex) return tasks;
 
         siblings.RemoveAt(oldIndex);
-        siblings.Insert(clamped, moving);
+        // `siblings` has now had `moving` removed, shrinking to Count-1 —
+        // `clamped` (still in the PRE-removal, Count-slot index space) is
+        // only a valid insert position AS-IS when it sits AT OR BEFORE the
+        // moving task's old slot (nothing before it shifted). When the
+        // target sits AFTER that old slot (clamped > oldIndex), the removal
+        // already shifted every later index down by one, so the insert
+        // position must be decremented by one to land immediately after the
+        // hovered candidate (or truly at the end for the "append" case)
+        // instead of one slot too far.
+        var insertIndex = clamped > oldIndex ? clamped - 1 : clamped;
+        siblings.Insert(insertIndex, moving);
 
         var siblingIds = new HashSet<string>(siblings.Count, StringComparer.Ordinal);
         foreach (var s in siblings) siblingIds.Add(s.Id);

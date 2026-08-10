@@ -49,7 +49,32 @@
    like every other uncontrolled fixture on this page. ?veto=1 wires a
    CanDropRow that rejects every candidate position (GanttV3RowSelectionReorderTests'
    own veto-path spec) — deterministic and fixture-independent, unlike
-   pinning the rejection to one specific task id. *@
+   pinning the rejection to one specific task id.
+
+   ?vetoslow=1 (Codex review, P1 #2 - "row-drop commits before CanDropRow
+   validation resolves"): same rejects-everything predicate as ?veto=1, but
+   blocks synchronously for a few hundred ms first - deliberately simulating
+   real SignalR round-trip latency (CanDropRow's own signature is
+   synchronous, so a genuine Task.Delay isn't an option; the block happens
+   server-side, inside the JSInvokable dispatch, which is exactly where real
+   latency would show up too). Lets GanttV3RowSelectionReorderTests assert a
+   release that lands BEFORE the round trip resolves still fails closed
+   (never commits), which ?veto=1's own spec can't exercise - it always
+   waits for the drop-line to paint invalid before releasing.
+
+   ?vetoResize=1 (Codex review, P2 #9 - "vetoed controlled splitter drag is
+   not reverted in the DOM"): wires TreePaneWidth to a FIXED, never-adopted
+   value (VetoedTreePaneWidth) and TreePaneWidthChanged to a no-op - every
+   splitter drag is a controlled veto by construction. registerSplitterDrag's
+   own onPointerMove (gantt-v3.js) mutates the real pane element's inline
+   width directly during the live gesture; on release, since this route
+   never adopts the result, Blazor's next render computes the SAME style
+   string it rendered before the drag ever started, and its diff never
+   re-touches the DOM - GanttV3TreeColumnsSplitterTests' own veto-path spec
+   asserts the REAL (post-drag) DOM width reverts to VetoedTreePaneWidth,
+   not merely that Blazor's OWN model value stayed unchanged (a bUnit test
+   can only ever prove the latter - there is no real DOM/JS to mutate
+   outside Blazor's tracking there). *@
 
 <PageTitle>E2E - Gantt v3 tree</PageTitle>
 
@@ -67,8 +92,10 @@
             Readonly="@_readonly"
             ShowRowCheckboxes="@_showRowCheckboxes"
             AllowRowReorder="@_allowRowReorder"
-            CanDropRow="@(_vetoAll ? RejectEveryDrop : null)"
+            CanDropRow="@(_vetoAll ? RejectEveryDrop : (_vetoSlow ? RejectEveryDropSlow : null))"
             InfiniteScroll="@_infiniteScroll"
+            TreePaneWidth="@(_vetoResize ? (double?)VetoedTreePaneWidth : null)"
+            TreePaneWidthChanged="@(_vetoResize ? EventCallback.Factory.Create<double>(this, _ => { /* controlled + always vetoes: never adopts the new width */ }) : default)"
             data-testid="gantt-v3-tree-root" />
 </div>
 
@@ -79,6 +106,8 @@
     [SupplyParameterFromQuery] public string? Reorder { get; set; }
     [SupplyParameterFromQuery] public string? Readonly { get; set; }
     [SupplyParameterFromQuery] public string? Veto { get; set; }
+    [SupplyParameterFromQuery] public string? VetoSlow { get; set; }
+    [SupplyParameterFromQuery] public string? VetoResize { get; set; }
     // Design spec Phase 3, T9 — see GanttV3Page's own identical parameter for
     // the full remarks: InfiniteScroll defaults to true (Gantt3's own
     // default), so this query flag exists to turn it OFF for specs that
@@ -95,7 +124,16 @@
     private bool _allowRowReorder;
     private bool _readonly;
     private bool _vetoAll;
+    private bool _vetoSlow;
+    private bool _vetoResize;
     private bool _infiniteScroll = true;
+
+    // Codex review, P2 #9: a fixed, never-adopted TreePaneWidth for
+    // ?vetoResize=1 — GanttV3RowSelectionReorderTests' (row-reorder) own
+    // sibling fixture, GanttV3TreeColumnsSplitterTests' own splitter-drag
+    // spec, EXCEPT this pane never adopts a resize at all (the DOM must
+    // revert to this SAME value after every drag).
+    private const double VetoedTreePaneWidth = 224;
 
     protected override void OnInitialized()
     {
@@ -118,6 +156,8 @@
         _allowRowReorder = Reorder == "1";
         _readonly = Readonly == "1";
         _vetoAll = Veto == "1";
+        _vetoSlow = VetoSlow == "1";
+        _vetoResize = VetoResize == "1";
         if (InfiniteScrollQuery == "0") _infiniteScroll = false;
     }
 
@@ -127,6 +167,20 @@
     // (the drop-index line paints invalid, the task order is unchanged after
     // release) without pinning the rejection to one specific task/position.
     private static bool RejectEveryDrop(GanttTask task, GanttDropContext context) => false;
+
+    // ?vetoslow=1 (Codex review, P1 #2) — same verdict as RejectEveryDrop
+    // above, but blocks the calling thread for a few hundred ms first. This
+    // runs INSIDE the JSInvokable ValidateRowDrop dispatch (server-side,
+    // over the real SignalR circuit this page uses), so from gantt-v3.js's
+    // perspective it is indistinguishable from genuine network/circuit
+    // latency delaying the round trip — exactly the window
+    // Row_Drag_Released_Before_Slow_Validation_Resolves_Never_Commits needs
+    // to release the pointer INSIDE.
+    private static bool RejectEveryDropSlow(GanttTask task, GanttDropContext context)
+    {
+        Thread.Sleep(400);
+        return false;
+    }
 
     private static RenderFragment<GanttTask> DurationCellContent => task => builder =>
     {

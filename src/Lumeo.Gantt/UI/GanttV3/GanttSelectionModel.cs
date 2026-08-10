@@ -105,9 +105,25 @@ internal static class GanttSelectionModel
     {
         if (GanttRowModel.UsesHierarchy(tasks)) return ResolveHierarchyLeafIds(tasks, key);
 
+        // Bug fix (Codex review, P2 #4): a task's own Id is a free-form
+        // consumer-supplied string — nothing in GanttTask.Id's own contract
+        // reserves GanttRowModel's internal "group::" toggle-key prefix, so a
+        // leaf task legitimately named e.g. "group::sprint1" used to be
+        // misread as a synthetic group key here (TryGetGroupLabel matching
+        // on the prefix BEFORE any task lookup ran), resolving every OTHER
+        // member of a same-named group instead of just that one leaf — or
+        // an empty result if no group with that label even exists. Resolve
+        // an EXACT task id match first (same scan ResolveFlatSingleLeafId
+        // already performs); only a key that matches NO real task at all
+        // falls through to the group-label interpretation. The normal case
+        // (key is a real "group::"-prefixed key with no task sharing that
+        // literal id) is unaffected — `direct` comes back empty either way.
+        var direct = ResolveFlatSingleLeafId(tasks, key);
+        if (direct.Count > 0) return direct;
+
         return GanttRowModel.TryGetGroupLabel(key, out var label)
             ? ResolveFlatGroupLeafIds(tasks, label)
-            : ResolveFlatSingleLeafId(tasks, key);
+            : Array.Empty<string>();
     }
 
     // ── ParentId hierarchy (recursive, bottom-up, memoized — mirrors GanttRollupModel.ComputeHierarchyRollups) ──

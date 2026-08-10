@@ -445,7 +445,23 @@
         _baseline = new Baseline(
             EffectiveShowRowCheckboxes, EffectiveShowSummaryBars, EffectiveShowZoomControl, EffectiveShowOffscreenIndicators,
             EffectiveInfiniteScroll, EffectiveNowIndicator, EffectiveMarkOffDays, EffectiveReadonly, EffectiveAllowCreate, EffectiveAllowRowReorder, EffectiveColorByGroup,
-            EffectiveFirstDayOfWeek, EffectiveOffDays);
+            EffectiveFirstDayOfWeek,
+            // Bug fix (Codex review, P2 #10): every OTHER Baseline field above
+            // is a value type (bool/DayOfWeek?), copied by value automatically
+            // — but EffectiveOffDays can resolve to the CONTROLLED `OffDays`
+            // parameter, a consumer-owned `IReadOnlySet<DayOfWeek>` reference.
+            // Storing that reference directly (not a copy) meant a controlled
+            // caller mutating its OWN set in place (e.g. `myOffDays.Add(...)`,
+            // with no new Blazor render/parameter re-assignment) silently
+            // mutated this "mount-time" baseline too — Reset would then
+            // restore whatever the set currently holds, or (observed in
+            // practice — see GanttV3Phase3T8Tests' own regression test) no-op
+            // entirely: SetOffDaysAsync's own `SetEquals(EffectiveOffDays, next)`
+            // short-circuit compares the (mutated) live set against the
+            // (identically mutated, same-reference) "baseline" and finds them
+            // equal, so it never even calls OffDaysChanged. Clone it into a
+            // genuinely independent snapshot instead.
+            EffectiveOffDays is null ? null : new HashSet<DayOfWeek>(EffectiveOffDays));
     }
 
     /// <summary>

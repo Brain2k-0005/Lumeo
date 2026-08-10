@@ -1580,7 +1580,17 @@
             // render pass into O(n^2) for no reason — see BucketKey(bool,
             // GanttTask)'s own remarks for why the precomputed-bool overload
             // exists specifically for this call site.
-            var usesHierarchy = ColorByGroup && GanttRowModel.UsesHierarchy(Tasks);
+            // Bug fix (Codex review, P2 #7): must scan the SAME
+            // FilterValidDurationTasks-filtered set BuildVisibleRows itself
+            // decides hierarchy-vs-flat against — scanning the raw `Tasks`
+            // parameter directly meant a ParentId on an invalid-duration
+            // (End < Start, non-milestone) task that BuildVisibleRows had
+            // already dropped from rendering still flipped this to
+            // hierarchy mode, even though every ACTUALLY-RENDERED row was
+            // flat/GroupLabel-driven — collapsing ColorByGroup's per-group
+            // palette onto one color (every real root task shares the same
+            // null ParentId "bucket" under the wrong mode).
+            var usesHierarchy = ColorByGroup && GanttRowModel.UsesHierarchy(GanttRowModel.FilterValidDurationTasks(Tasks));
             var visibleWindow = ShowOffscreenIndicators ? VisibleTimelineWindow : null;
             var rows = new List<GanttTimelineRow>(visibleRows.Count);
             for (var i = 0; i < visibleRows.Count; i++)
@@ -2172,18 +2182,36 @@
     private async Task TryRequestRangeExtensionAsync(bool leading)
     {
         if (_rangeExtensionInFlight) return; // see its own remarks
-        // Design spec Phase 3, T9, decision 3 — the CHEAP half of the
-        // gesture-suppression gate: avoids even asking Gantt3 (which would
-        // itself do a live-scroll-center interop round trip for the leading
-        // case) while a drag is visibly active at this exact moment. See
-        // GanttV3HasActiveDragAsync's own remarks for why Gantt3 ALSO
-        // re-checks this, right before it actually commits — this call alone
-        // does not close the whole race, only the common case cheaply.
-        if (await Interop.GanttV3HasActiveDragAsync()) return;
-        if (_disposed) return;
+        // Bug fix (Codex review, P2 #6): this used to stay false across the
+        // FIRST await below (GanttV3HasActiveDragAsync) and only get set
+        // true once that resolved — under real latency, a second near-edge
+        // report arriving while that first await is still in flight passed
+        // this SAME (still-false) check, so both proceeded, both eventually
+        // set the flag, and both invoked OnRangeExtensionRequested — two
+        // overlapping extensions for one edge encounter (confirmed via
+        // GanttV3Phase3T9Tests' own two_reports-racing specs, both
+        // directions — Gantt3.HandleRangeExtensionRequestAsync's own
+        // per-request staleness re-check does NOT catch this: continuation
+        // #1 can run start-to-finish, INCLUDING clearing this flag again in
+        // its own `finally`, entirely within continuation #2's single
+        // suspended await, so #2's own fresh capture of VisibleRange never
+        // sees anything stale). Set BEFORE the first await, cleared in the
+        // SAME try/finally that now wraps the whole method, so no window
+        // exists where this instance is genuinely mid-request yet reads as
+        // available.
         _rangeExtensionInFlight = true;
         try
         {
+            // Design spec Phase 3, T9, decision 3 — the CHEAP half of the
+            // gesture-suppression gate: avoids even asking Gantt3 (which
+            // would itself do a live-scroll-center interop round trip for
+            // the leading case) while a drag is visibly active at this
+            // exact moment. See GanttV3HasActiveDragAsync's own remarks for
+            // why Gantt3 ALSO re-checks this, right before it actually
+            // commits — this call alone does not close the whole race, only
+            // the common case cheaply.
+            if (await Interop.GanttV3HasActiveDragAsync()) return;
+            if (_disposed) return;
             if (OnRangeExtensionRequested.HasDelegate)
                 await OnRangeExtensionRequested.InvokeAsync(leading);
         }
@@ -2221,7 +2249,24 @@
             // scroll at all).
             if (_lastReportedScrollLeft is not { } scrollLeft || _lastReportedClientWidth is not { } clientWidth || clientWidth <= 0) return null;
             var start = scrollLeft - ScrollHostLeadingOffset;
-            return (start, start + clientWidth);
+            // Bug fix (Codex review, P2 #3): `clientWidth` is the RAW client
+            // width of the shared scroll host — in hosted Gantt3 with a tree
+            // pane shown, that host also contains the STICKY tree pane, which
+            // permanently occupies LeadingPaneWidth px of it regardless of
+            // scroll position (sticky positioning doesn't remove an element
+            // from layout flow, so it always consumes its own column width).
+            // Only `clientWidth - LeadingPaneWidth` px are actually visible
+            // TIMELINE content. This is a SEPARATE correction from
+            // ScrollHostLeadingOffset above (which only shifts the ORIGIN,
+            // LTR-with-tree only, collapsing to 0 under RTL per its own
+            // remarks) — LeadingPaneWidth is logical and applies in BOTH
+            // directions (see its own remarks), so subtracting it here from
+            // the raw width is correct for both LTR and RTL, unlike reusing
+            // ScrollHostLeadingOffset for this. Without it, a bar sitting
+            // behind the pinned tree's own footprint read as fully inside
+            // the window and never got an off-screen indicator/never
+            // triggered infinite-scroll edge detection.
+            return (start, start + clientWidth - LeadingPaneWidth);
         }
     }
 

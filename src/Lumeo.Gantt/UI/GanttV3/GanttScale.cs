@@ -200,6 +200,28 @@ internal static class GanttScale
     internal const int MaxTreePaneWidth = 640;
 
     /// <summary>
+    /// Reserved trailing width (px) for <c>Gantt3.TreeHeaderMenu</c> (design
+    /// spec Phase 3, T5) when one is supplied — bug fix (Codex review, P2
+    /// #8): the tree pane's own total width used to be exactly <see
+    /// cref="DefaultTreePaneWidth"/>/<c>TreePaneWidth</c> plus <c>TreeColumns</c>'
+    /// widths, with NO allowance for the header menu slot at all, and every
+    /// header cell (name column, each TreeColumns cell, the menu itself) is
+    /// <c>shrink-0</c> — so the menu, pushed to the trailing edge via
+    /// <c>ms-auto</c>, simply had nowhere to fit and was clipped by the
+    /// header row's own <c>overflow-hidden</c> (present but genuinely
+    /// invisible; only reachable by a script directly scrolling the
+    /// otherwise-non-scrollbar'd container, never by a real user). 32px
+    /// comfortably fits a single icon-button trigger (this codebase's own
+    /// icon-button footprint — see e.g. <c>GanttTree</c>'s own toggle/grip
+    /// glyphs at 16px plus padding) — the documented, supported shape
+    /// (<c>GanttV3TreePage.razor</c>'s own fixture: a plain "..." trigger
+    /// button). A caller supplying meaningfully wider content may still see
+    /// clipping; that's a content-sizing concern for THEM to manage (e.g. a
+    /// narrower icon-only trigger opening a popover), not a broken default.
+    /// </summary>
+    internal const int TreeHeaderMenuWidth = 32;
+
+    /// <summary>
     /// Minimum bar pixel width (design spec Phase 3, T7) below which an
     /// in-bar task label falls back to rendering BESIDE the bar instead —
     /// same idea as <see cref="Lumeo.GanttBar"/>'s existing milestone label,

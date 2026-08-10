@@ -781,6 +781,33 @@ public interface IComponentInteropService : IAsyncDisposable, IDisposable
     Task GanttV3UnregisterSplitterDragAsync(Microsoft.AspNetCore.Components.ElementReference handleEl) => Task.CompletedTask;
 
     /// <summary>
+    /// Force-applies <paramref name="totalWidth"/>/<paramref name="nameWidth"/>
+    /// directly onto <paramref name="paneEl"/>'s inline <c>width</c> style and
+    /// its <c>--lumeo-gantt-tree-name-width</c> custom property (design spec
+    /// Phase 3, T5) — bug fix (Codex review, P2 #9): the live splitter drag
+    /// (<see cref="GanttV3RegisterSplitterDragAsync{T}"/>'s own
+    /// <c>onPointerMove</c>) mutates the REAL pane element's inline width
+    /// directly during the gesture, entirely outside Blazor's own render
+    /// tracking. If a controlled <c>TreePaneWidth</c> caller vetoes the
+    /// resulting <c>CommitSplitterWidth</c> request (keeps its own value
+    /// unchanged), the NEXT render's computed style string is IDENTICAL to
+    /// the last one Blazor actually applied — Blazor's diff sees no change
+    /// and never re-touches the DOM, leaving the rejected, JS-mutated width
+    /// in place indefinitely. <c>GanttTree.CommitSplitterWidth</c> calls this
+    /// UNCONDITIONALLY right after its own round trip resolves (accepted or
+    /// vetoed) to force the DOM back in sync with whatever the resolved,
+    /// authoritative width actually is — the same "always re-push, don't
+    /// rely on Blazor's diff" pattern already established for v2 Gantt's own
+    /// controlled-veto rollback (<c>gantt.setTasks</c> — see
+    /// <c>GanttControlledRollbackTests</c>). Idempotent/harmless when the
+    /// commit WAS accepted (Blazor's own render already applied the
+    /// identical values). Default no-op DIM so existing implementers/test
+    /// doubles keep compiling; <see cref="Lumeo.Services.ComponentInteropService"/>
+    /// overrides it with the real DOM write.
+    /// </summary>
+    Task GanttV3ResetSplitterWidthAsync(Microsoft.AspNetCore.Components.ElementReference paneEl, double totalWidth, double nameWidth) => Task.CompletedTask;
+
+    /// <summary>
     /// Registers GanttV3's tree-row reorder drag (design spec Phase 3, T6 —
     /// gantt-v3.js's <c>ganttV3.registerRowReorderDrag</c>) — a THIRD registration
     /// channel alongside <see cref="GanttV3RegisterDragAsync{T}"/>/<see

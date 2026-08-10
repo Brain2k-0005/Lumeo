@@ -233,4 +233,46 @@ public class GanttSelectionModelTests
 
         Assert.Equal(new[] { "a" }, GanttSelectionModel.ResolveLeafIds(tasks, "a"));
     }
+
+    // Bug fix (Codex review, P2 #4): a leaf task's own Id is free-form
+    // consumer-supplied text — nothing reserves GanttRowModel's internal
+    // "group::" toggle-key prefix, so a task literally named "group::sprint1"
+    // must still resolve as ITSELF (a single-task click), not be misread as
+    // a request for every member of a (here, nonexistent) "sprint1" group.
+    [Fact]
+    public void ResolveLeafIds_FlatGroup_A_Leaf_Whose_Id_Collides_With_The_Group_Key_Namespace_Resolves_As_Itself()
+    {
+        var tasks = new[]
+        {
+            Task("group::sprint1", groupLabel: "Design"), Task("b", groupLabel: "Design"), Task("c", groupLabel: "Build"),
+        };
+
+        var result = GanttSelectionModel.ResolveLeafIds(tasks, "group::sprint1");
+
+        // Expected: just the one clicked leaf. Pre-fix, TryGetGroupLabel's
+        // own prefix match ran BEFORE any task lookup, so this returned
+        // EVERY "Design" member instead (["group::sprint1", "b"]) — the
+        // clicked task's OWN group, reached via the coincidental string
+        // collision, not the deliberate single-leaf click it actually was.
+        Assert.Equal(new[] { "group::sprint1" }, result);
+    }
+
+    // Same collision, but the key ALSO happens to be a genuinely valid group
+    // toggle key for an EXISTING group ("real-group") — the exact-task-id
+    // match must still win over the group interpretation.
+    [Fact]
+    public void ResolveLeafIds_FlatGroup_An_Exact_Task_Id_Match_Wins_Over_A_Same_Named_Groups_Own_Key()
+    {
+        var collidingKey = GanttRowModel.GroupToggleKey("real-group");
+        var tasks = new[]
+        {
+            Task(collidingKey, groupLabel: "Design"), // a leaf whose own Id happens to equal GroupToggleKey("real-group")
+            Task("m1", groupLabel: "real-group"),
+            Task("m2", groupLabel: "real-group"),
+        };
+
+        var result = GanttSelectionModel.ResolveLeafIds(tasks, collidingKey);
+
+        Assert.Equal(new[] { collidingKey }, result);
+    }
 }
