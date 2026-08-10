@@ -27,7 +27,7 @@ public class GanttV3RowTrackVirtualizationTests : GanttParityTestBase
     [Fact]
     public async Task Fewer_row_track_divs_than_total_rows_materialize_for_the_tall_allow_create_fixture()
     {
-        await GotoHost("/e2e/gantt-v3?fixture=tall&viewMode=Day&allowCreate=1");
+        await GotoHost("/e2e/gantt-v3?fixture=tall&viewMode=Day&allowCreate=1&infiniteScroll=0");
 
         var scrollPane = Page.Locator("[data-testid='gantt-v3-root'] div[style*='overflow']").First;
         await scrollPane.WaitForAsync(new() { Timeout = 15000 });

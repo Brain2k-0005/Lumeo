@@ -68,6 +68,7 @@
             ShowRowCheckboxes="@_showRowCheckboxes"
             AllowRowReorder="@_allowRowReorder"
             CanDropRow="@(_vetoAll ? RejectEveryDrop : null)"
+            InfiniteScroll="@_infiniteScroll"
             data-testid="gantt-v3-tree-root" />
 </div>
 
@@ -78,6 +79,12 @@
     [SupplyParameterFromQuery] public string? Reorder { get; set; }
     [SupplyParameterFromQuery] public string? Readonly { get; set; }
     [SupplyParameterFromQuery] public string? Veto { get; set; }
+    // Design spec Phase 3, T9 — see GanttV3Page's own identical parameter for
+    // the full remarks: InfiniteScroll defaults to true (Gantt3's own
+    // default), so this query flag exists to turn it OFF for specs that
+    // predate T9 and rely on a stable, non-shifting VisibleRange/scroll
+    // position for their own precise geometry assertions.
+    [SupplyParameterFromQuery(Name = "infiniteScroll")] public string? InfiniteScrollQuery { get; set; }
 
     private List<GanttTask> _tasks = new();
     private bool _allowCreate;
@@ -88,6 +95,7 @@
     private bool _allowRowReorder;
     private bool _readonly;
     private bool _vetoAll;
+    private bool _infiniteScroll = true;
 
     protected override void OnInitialized()
     {
@@ -110,6 +118,7 @@
         _allowRowReorder = Reorder == "1";
         _readonly = Readonly == "1";
         _vetoAll = Veto == "1";
+        if (InfiniteScrollQuery == "0") _infiniteScroll = false;
     }
 
     // Design spec Phase 3, T6 — deterministic veto-path fixture (?veto=1):

@@ -127,6 +127,8 @@ export const ganttV3 = {
 
     registerBarContextMenu,
     unregisterBarContextMenu,
+
+    hasActiveDrag,
 };
 
 // Sticky-header horizontal scroll sync (Codex round 2, P1 #3 — "sticky header
@@ -568,6 +570,55 @@ const activeBarDrags = new WeakSet(); // barEl -> currently being dragged by som
 // filter this pairs with.
 const activeCreateDrags = new WeakSet(); // trackEl -> currently being create-dragged by some pointer
 
+// Design spec Phase 3, T9 — infinite scroll's own gesture-suppression signal
+// (decision 3: "suppress extension while a drag is in flight"). A plain
+// COUNTER, not a boolean: the same module comment above notes concurrent
+// drags on different bars/pointers are explicitly permitted (activeBarDrags/
+// activeCreateDrags are WeakSets precisely because MULTIPLE sessions can be
+// live at once), so a boolean flipped false by the FIRST gesture to end would
+// wrongly un-suppress extension while a SECOND, unrelated gesture is still in
+// flight. Incremented/decremented at the EXACT same two moments
+// activeBarDrags/activeCreateDrags themselves are populated/cleared (see
+// reg.onPointerDown's own `activeBarDrags.add`/cleanup's `.delete` below, and
+// startCreateDrag's identical pair) — eagerly at pointerdown, not only once
+// the drag threshold is crossed, matching those WeakSets' own timing exactly
+// (a below-threshold pointer that resolves to a plain click still counts as
+// "in flight" for the brief window it's down, which is the conservative,
+// correct choice here: better to defer one extension attempt by a frame than
+// risk one landing under a gesture that turns out to be a drag after all).
+// MODULE-LEVEL (not scoped per Gantt instance/scroll-host), same as
+// activeBarDrags/activeCreateDrags themselves already are — see
+// hasActiveDrag's own remarks for why this is a deliberate, low-risk
+// simplification rather than an oversight.
+let activeDragGestureCount = 0;
+
+// Design spec Phase 3, T9 — queried by Gantt3/GanttTimeline (via
+// ComponentInteropService.GanttV3HasActiveDragAsync, a plain pull, no element
+// argument) at exactly two points: (1) GanttTimeline's own gate before ever
+// asking Gantt3 to extend VisibleRange, and (2) Gantt3's OWN re-check
+// immediately before it actually commits an extension — closing the narrow
+// race where a NEW gesture starts DURING the one await
+// (ResolveCurrentCenterDateAsync's live-scroll-center read) that sits between
+// those two points. See Gantt3.HandleRangeExtensionRequestAsync's own remarks
+// for why only the LEADING-edge path needs the second check at all (trailing
+// extension never shifts the coordinate origin, so it has nothing for a
+// concurrent gesture's ghost math to desync against).
+//
+// MODULE-LEVEL, not scoped per scroll-host element (unlike registerDrag's own
+// per-`el` registrations): activeBarDrags/activeCreateDrags — the sets this
+// counter mirrors — are ALREADY module-level/page-global, not per-Gantt-
+// instance, so a page hosting multiple simultaneous Gantt3 charts already
+// shares drag-isolation state across all of them at the JS layer; scoping
+// JUST this counter per-instance would not remove that pre-existing sharing,
+// only make this ONE signal inconsistent with the WeakSets it mirrors. The
+// worst outcome of this simplification is a purely CONSERVATIVE one: an
+// unrelated chart's active drag can briefly defer another chart's otherwise-
+// eligible extension by a frame or two — never a wrong commit, since a
+// suppressed extension simply retries on the NEXT qualifying scroll report.
+function hasActiveDrag() {
+    return activeDragGestureCount > 0;
+}
+
 // gantt-v2.js:53-63 (parseDate) — v3 only ever receives its own "yyyy-MM-dd"
 // data-task-start/-end attributes (see GanttBar.razor), never a free-form
 // string or Date, so this is the regex branch only, trimmed accordingly.
@@ -881,6 +932,7 @@ function registerDrag(el, dotNetRef, options) {
         const pointerId = e.pointerId;
         barEl.setPointerCapture(pointerId);
         activeBarDrags.add(barEl);
+        activeDragGestureCount++; // design spec Phase 3, T9 — see its own declaration for why this is a counter, not a boolean
 
         const onPointerMove = (mv) => {
             // Codex P2 finding ("Isolate each drag to its initiating
@@ -1011,6 +1063,7 @@ function registerDrag(el, dotNetRef, options) {
             try { barEl.releasePointerCapture(pointerId); } catch (_) { /* already released */ }
             if (ghost && ghost.parentNode) ghost.parentNode.removeChild(ghost);
             activeBarDrags.delete(barEl);
+            activeDragGestureCount--; // design spec Phase 3, T9 — mirrors the activeBarDrags.add above
             // Bug fix (Codex P2 finding "Cancel active drags when
             // unregistering") — see unregisterDrag's own remarks: this
             // session no longer needs external cancellation once it has
@@ -1074,6 +1127,7 @@ function startCreateDrag(dragOptions, dragDotNet, reg, trackEl, e) {
     const pointerId = e.pointerId;
     trackEl.setPointerCapture(pointerId);
     activeCreateDrags.add(trackEl);
+    activeDragGestureCount++; // design spec Phase 3, T9 — see its own declaration for why this is a counter, not a boolean
 
     const rect = trackEl.getBoundingClientRect();
     const startLocalX = e.clientX - rect.left;
@@ -1179,6 +1233,7 @@ function startCreateDrag(dragOptions, dragDotNet, reg, trackEl, e) {
         try { trackEl.releasePointerCapture(pointerId); } catch (_) { /* already released */ }
         if (ghost && ghost.parentNode) ghost.parentNode.removeChild(ghost);
         activeCreateDrags.delete(trackEl);
+        activeDragGestureCount--; // design spec Phase 3, T9 — mirrors the activeCreateDrags.add above
         // Bug fix (Codex P2 finding "Cancel active drags when
         // unregistering") — see unregisterDrag's own remarks; identical
         // reasoning to the bar-drag closure's own reg.activeCleanups use.

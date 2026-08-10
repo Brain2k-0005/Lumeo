@@ -47,7 +47,7 @@ public class GanttV3NavTests : GanttParityTestBase
     [Fact]
     public async Task Next_and_previous_shift_the_period_label_by_exactly_one_month()
     {
-        await GotoHost("/e2e/gantt-v3?viewMode=Month");
+        await GotoHost("/e2e/gantt-v3?viewMode=Month&infiniteScroll=0");
         await PeriodLabelLocator.WaitForAsync(new() { Timeout = 15000 });
 
         var initialText = (await PeriodLabelLocator.TextContentAsync())!;
@@ -73,7 +73,7 @@ public class GanttV3NavTests : GanttParityTestBase
     [Fact]
     public async Task Today_recenters_the_current_window_on_today_preserving_its_width()
     {
-        await GotoHost("/e2e/gantt-v3?viewMode=Month");
+        await GotoHost("/e2e/gantt-v3?viewMode=Month&infiniteScroll=0");
         await PeriodLabelLocator.WaitForAsync(new() { Timeout = 15000 });
 
         // Reproduces Gantt3.ComputeInitialRange's Month branch + GanttParityFixtures.SharedTasks'
@@ -106,7 +106,7 @@ public class GanttV3NavTests : GanttParityTestBase
     [Fact]
     public async Task Today_button_scrolls_the_today_marker_into_view()
     {
-        await GotoHost("/e2e/gantt-v3?fixture=today");
+        await GotoHost("/e2e/gantt-v3?fixture=today&infiniteScroll=0");
         // Codex round 3, P2 #1: Gantt3's shared outer pane is now the scroll
         // owner (and latch target) — see GanttParityVisualTests' matching
         // update for the full reasoning.

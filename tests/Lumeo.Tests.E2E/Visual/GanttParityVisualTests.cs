@@ -228,7 +228,7 @@ public class GanttParityVisualTests : GanttParityTestBase
         // plus the header is a real fix, not a workaround for a race.
         const int chromeViewportHeight = 760;
         await Page.SetViewportSizeAsync(ViewportWidth, chromeViewportHeight);
-        await GotoHost("/e2e/gantt-v3?viewMode=Month&colorByGroup=1&showZoomControl=1&tree=0");
+        await GotoHost("/e2e/gantt-v3?viewMode=Month&colorByGroup=1&showZoomControl=1&tree=0&infiniteScroll=0");
 
         await Page.Locator("[data-testid='gantt-v3-root'] [data-task-id]").First
             .WaitForAsync(new() { State = WaitForSelectorState.Attached, Timeout = 15000 });

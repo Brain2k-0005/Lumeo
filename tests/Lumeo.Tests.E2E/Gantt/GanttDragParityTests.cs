@@ -219,7 +219,7 @@ public class GanttDragParityTests : GanttParityTestBase
         var v2Json = await WaitForSinkChangeAsync("event-sink-datechange", null);
         var v2Task = ParseTask(v2Json);
 
-        await GotoHost($"/e2e/gantt-v3?viewMode={viewMode}");
+        await GotoHost($"/e2e/gantt-v3?viewMode={viewMode}&infiniteScroll=0");
         await WaitV3ReadyAsync();
         await ResetScrollLeftAsync();
         var v3Bar = Page.Locator($"{V3Root} [data-task-id='fe3']");
@@ -252,7 +252,7 @@ public class GanttDragParityTests : GanttParityTestBase
         var v2Json = await WaitForSinkChangeAsync("event-sink-datechange", null);
         var v2Task = ParseTask(v2Json);
 
-        await GotoHost("/e2e/gantt-v3");
+        await GotoHost("/e2e/gantt-v3?infiniteScroll=0");
         await WaitV3ReadyAsync();
         var v3Bar = Page.Locator($"{V3Root} [data-task-id='fe3']");
         var v3From = await NearRightEdgeAsync(v3Bar);
@@ -277,7 +277,7 @@ public class GanttDragParityTests : GanttParityTestBase
         var expectedStart = new DateTime(2026, 3, 10); // 03-08 + 2 days
         const int dx = DayPxDay * 2;
 
-        await GotoHost("/e2e/gantt-v3");
+        await GotoHost("/e2e/gantt-v3?infiniteScroll=0");
         await WaitV3ReadyAsync();
         var bar = Page.Locator($"{V3Root} [data-task-id='fe3']");
         var from = await NearLeftEdgeAsync(bar);
@@ -310,7 +310,7 @@ public class GanttDragParityTests : GanttParityTestBase
         var v2Json = await WaitForSinkChangeAsync("event-sink-progresschange", null);
         var v2Task = ParseTask(v2Json);
 
-        await GotoHost("/e2e/gantt-v3");
+        await GotoHost("/e2e/gantt-v3?infiniteScroll=0");
         await WaitV3ReadyAsync();
         var v3Handle = Page.Locator($"{V3Root} [data-task-id='fe3'] [data-gantt-progress-handle]");
         var v3From = await CenterAsync(v3Handle);
@@ -329,7 +329,7 @@ public class GanttDragParityTests : GanttParityTestBase
     {
         // See class remarks' "Interpretation call" — the move zone's sub-threshold
         // behavior is v2/v3's documented click-vs-drag boundary, not "no click".
-        await GotoHost("/e2e/gantt-v3");
+        await GotoHost("/e2e/gantt-v3?infiniteScroll=0");
         await WaitV3ReadyAsync();
         var bar = Page.Locator($"{V3Root} [data-task-id='fe4']"); // untouched by other tests
         var center = await CenterAsync(bar);
@@ -350,7 +350,7 @@ public class GanttDragParityTests : GanttParityTestBase
     [Fact]
     public async Task Sub_threshold_interaction_on_resize_and_progress_zones_leaves_no_residue_no_commit_and_no_click()
     {
-        await GotoHost("/e2e/gantt-v3");
+        await GotoHost("/e2e/gantt-v3?infiniteScroll=0");
         await WaitV3ReadyAsync();
         var bar = Page.Locator($"{V3Root} [data-task-id='fe5']"); // untouched by other tests
 
@@ -381,7 +381,7 @@ public class GanttDragParityTests : GanttParityTestBase
     {
         const int dx = DayPxDay * 2;
 
-        await GotoHost("/e2e/gantt-v3");
+        await GotoHost("/e2e/gantt-v3?infiniteScroll=0");
         await WaitV3ReadyAsync();
         var milestone = Page.Locator($"{V3Root} [data-task-id='fe-ms'][data-milestone='true']");
         var from = await NearLeftEdgeAsync(milestone, inset: 2); // "edge" pointer-down, per pin item E
@@ -421,7 +421,7 @@ public class GanttDragParityTests : GanttParityTestBase
         Assert.True(string.IsNullOrEmpty(await ReadSinkRawAsync("event-sink-datechange")));
         Assert.Equal(v2OrigX, await v2Bar.GetAttributeAsync("x")); // no visual mutation either
 
-        await GotoHost("/e2e/gantt-v3?readonly=1");
+        await GotoHost("/e2e/gantt-v3?readonly=1&infiniteScroll=0");
         await WaitV3ReadyAsync();
         var v3Bar = Page.Locator($"{V3Root} [data-task-id='fe3']");
         var v3From = await CenterAsync(v3Bar);
@@ -468,7 +468,7 @@ public class GanttDragParityTests : GanttParityTestBase
         Assert.Equal("fe-ms", ParseTask(v2Json).Id);
         Assert.Equal("1", await ReadSinkRawAsync("event-sink-click-count"));
 
-        await GotoHost("/e2e/gantt-v3?readonly=1");
+        await GotoHost("/e2e/gantt-v3?readonly=1&infiniteScroll=0");
         await WaitV3ReadyAsync();
         var v3Milestone = Page.Locator($"{V3Root} [data-task-id='fe-ms']");
         await v3Milestone.ScrollIntoViewIfNeededAsync();
@@ -489,7 +489,7 @@ public class GanttDragParityTests : GanttParityTestBase
     [Fact]
     public async Task No_move_ghost_survives_a_completed_drag()
     {
-        await GotoHost("/e2e/gantt-v3");
+        await GotoHost("/e2e/gantt-v3?infiniteScroll=0");
         await WaitV3ReadyAsync();
         var bar = Page.Locator($"{V3Root} [data-task-id='be3']"); // untouched by other tests
         var from = await CenterAsync(bar);
@@ -507,7 +507,7 @@ public class GanttDragParityTests : GanttParityTestBase
     [Fact]
     public async Task Pointercancel_mid_drag_removes_the_ghost_and_commits_nothing()
     {
-        await GotoHost("/e2e/gantt-v3");
+        await GotoHost("/e2e/gantt-v3?infiniteScroll=0");
         await WaitV3ReadyAsync();
         var bar = Page.Locator($"{V3Root} [data-task-id='be4']"); // untouched by other tests
         var from = await CenterAsync(bar);
@@ -536,7 +536,7 @@ public class GanttDragParityTests : GanttParityTestBase
         const int dx = DayPxDay * 3;
         var origin = GanttDayModeMath.Origin(new DateTime(2026, 2, 23)); // fe1.Start
 
-        await GotoHost("/e2e/gantt-v3");
+        await GotoHost("/e2e/gantt-v3?infiniteScroll=0");
         await WaitV3ReadyAsync();
         var fe2Bar = Page.Locator($"{V3Root} [data-task-id='fe2']");
         var from = await CenterAsync(fe2Bar);
@@ -569,7 +569,7 @@ public class GanttDragParityTests : GanttParityTestBase
     [Fact]
     public async Task CanDrop_ghost_shows_invalid_over_the_blackout_window_and_clears_when_dragged_back_to_valid()
     {
-        await GotoHost("/e2e/gantt-v3?candrop=1");
+        await GotoHost("/e2e/gantt-v3?candrop=1&infiniteScroll=0");
         await WaitV3ReadyAsync();
         var bar = Page.Locator($"{V3Root} [data-task-id='fe3']");
         var start = await CenterAsync(bar);
@@ -591,7 +591,7 @@ public class GanttDragParityTests : GanttParityTestBase
     [Fact]
     public async Task CanDrop_dropping_on_an_invalid_position_reverts_silently()
     {
-        await GotoHost("/e2e/gantt-v3?candrop=1");
+        await GotoHost("/e2e/gantt-v3?candrop=1&infiniteScroll=0");
         await WaitV3ReadyAsync();
         var bar = Page.Locator($"{V3Root} [data-task-id='fe3']");
         var start = await CenterAsync(bar);
@@ -625,7 +625,7 @@ public class GanttDragParityTests : GanttParityTestBase
         // throwing) blackout rule — deliberately NOT an "obviously invalid"
         // position, so this isolates the failure-handling behavior from
         // "the position was genuinely rejected."
-        await GotoHost("/e2e/gantt-v3?candrop=1&candropthrow=1");
+        await GotoHost("/e2e/gantt-v3?candrop=1&candropthrow=1&infiniteScroll=0");
         await WaitV3ReadyAsync();
         var bar = Page.Locator($"{V3Root} [data-task-id='fe3']");
         var start = await CenterAsync(bar);
@@ -656,7 +656,7 @@ public class GanttDragParityTests : GanttParityTestBase
         // never even attempts a ValidateDrop call — proven here via the REAL
         // interop call-count sink (only populated when ?candrop=1 wires the
         // predicate at all; on THIS route it's the untouched default field, "0").
-        await GotoHost("/e2e/gantt-v3");
+        await GotoHost("/e2e/gantt-v3?infiniteScroll=0");
         await WaitV3ReadyAsync();
         var bar = Page.Locator($"{V3Root} [data-task-id='fe3']");
         var from = await CenterAsync(bar);
@@ -671,7 +671,7 @@ public class GanttDragParityTests : GanttParityTestBase
     [Fact]
     public async Task CanDrop_validates_exactly_once_per_distinct_snapped_position_under_a_jittery_drag()
     {
-        await GotoHost("/e2e/gantt-v3?candrop=1");
+        await GotoHost("/e2e/gantt-v3?candrop=1&infiniteScroll=0");
         await WaitV3ReadyAsync();
         var bar = Page.Locator($"{V3Root} [data-task-id='fe3']");
         var start = await CenterAsync(bar);
@@ -695,7 +695,7 @@ public class GanttDragParityTests : GanttParityTestBase
     [Fact]
     public async Task CanDrop_never_validates_during_a_progress_or_a_create_drag()
     {
-        await GotoHost("/e2e/gantt-v3?candrop=1");
+        await GotoHost("/e2e/gantt-v3?candrop=1&infiniteScroll=0");
         await WaitV3ReadyAsync();
         var handle = Page.Locator($"{V3Root} [data-task-id='fe3'] [data-gantt-progress-handle]");
         var from = await CenterAsync(handle);
@@ -703,7 +703,7 @@ public class GanttDragParityTests : GanttParityTestBase
         await WaitForSinkChangeAsync("event-sink-progresschange", null);
         Assert.Equal("0", await ReadSinkRawAsync("candrop-call-count"));
 
-        await GotoHost("/e2e/gantt-v3?candrop=1&allowCreate=1");
+        await GotoHost("/e2e/gantt-v3?candrop=1&allowCreate=1&infiniteScroll=0");
         await WaitV3ReadyAsync();
         await ResetScrollLeftAsync();
         var track = Page.Locator($"{V3Root} [data-gantt-row-track][data-row-key='task:fe3']");
@@ -723,7 +723,7 @@ public class GanttDragParityTests : GanttParityTestBase
     [Fact]
     public async Task Drag_create_beside_an_existing_bar_on_an_occupied_row_creates_a_snapped_task()
     {
-        await GotoHost("/e2e/gantt-v3?allowCreate=1");
+        await GotoHost("/e2e/gantt-v3?allowCreate=1&infiniteScroll=0");
         await WaitV3ReadyAsync();
         await ResetScrollLeftAsync();
         var track = Page.Locator($"{V3Root} [data-gantt-row-track][data-row-key='task:fe3']");
@@ -775,7 +775,7 @@ public class GanttDragParityTests : GanttParityTestBase
         // 28-day month (not a leap year), so the pre-fix 30-day
         // approximation is GUARANTEED wrong here, not coincidentally right
         // for this particular month.
-        await GotoHost("/e2e/gantt-v3?allowCreate=1&viewMode=Month");
+        await GotoHost("/e2e/gantt-v3?allowCreate=1&viewMode=Month&infiniteScroll=0");
         await WaitV3ReadyAsync();
         await ResetScrollLeftAsync();
         var track = Page.Locator($"{V3Root} [data-gantt-row-track][data-row-key='task:fe3']");
@@ -802,7 +802,7 @@ public class GanttDragParityTests : GanttParityTestBase
     [Fact]
     public async Task Drag_create_after_panning_computes_dates_from_the_new_origin()
     {
-        await GotoHost("/e2e/gantt-v3?allowCreate=1");
+        await GotoHost("/e2e/gantt-v3?allowCreate=1&infiniteScroll=0");
         await WaitV3ReadyAsync();
         await ResetScrollLeftAsync();
         var track = Page.Locator($"{V3Root} [data-gantt-row-track][data-row-key='task:fe3']");
@@ -821,7 +821,7 @@ public class GanttDragParityTests : GanttParityTestBase
         // on it — sidesteps any row-shift a prior create's TasksChanged append
         // could introduce into the SAME live page's row list/grouping order,
         // which is orthogonal to what this spec is proving).
-        await GotoHost("/e2e/gantt-v3?allowCreate=1");
+        await GotoHost("/e2e/gantt-v3?allowCreate=1&infiniteScroll=0");
         await WaitV3ReadyAsync();
         await ResetScrollLeftAsync();
         var periodLabel = Page.Locator($"{V3Root} span.text-sm.font-medium");
@@ -865,7 +865,7 @@ public class GanttDragParityTests : GanttParityTestBase
     [Fact]
     public async Task Row_track_divs_align_with_their_rows_for_leaf_summary_and_group_header_contexts()
     {
-        await GotoHost("/e2e/gantt-v3-tree?allowCreate=1");
+        await GotoHost("/e2e/gantt-v3-tree?allowCreate=1&infiniteScroll=0");
         await Page.Locator($"{TreeRoot} [data-row-kind='task']").First.WaitForAsync(new() { Timeout = 15000 });
 
         // Leaf: grandchild1 ("Wireframes", depth 2, no children).
@@ -878,7 +878,7 @@ public class GanttDragParityTests : GanttParityTestBase
         // adjacency: be1's row band starts exactly one RowHeight after the
         // header's own track top (a real DOM-to-DOM check, not a re-derivation
         // of GanttScale's RowHeight constant against itself).
-        await GotoHost("/e2e/gantt-v3?allowCreate=1");
+        await GotoHost("/e2e/gantt-v3?allowCreate=1&infiniteScroll=0");
         await WaitV3ReadyAsync();
         var opsHeaderTrack = Page.Locator($"{V3Root} [data-gantt-row-track][data-row-key='group::Ops']");
         var opsTop = ExtractPx((await opsHeaderTrack.GetAttributeAsync("style"))!, "top");
@@ -914,7 +914,7 @@ public class GanttDragParityTests : GanttParityTestBase
     [Fact]
     public async Task Sub_threshold_interaction_on_an_empty_track_creates_nothing()
     {
-        await GotoHost("/e2e/gantt-v3?allowCreate=1");
+        await GotoHost("/e2e/gantt-v3?allowCreate=1&infiniteScroll=0");
         await WaitV3ReadyAsync();
         await ResetScrollLeftAsync();
         var track = Page.Locator($"{V3Root} [data-gantt-row-track][data-row-key='task:fe3']");
@@ -958,7 +958,7 @@ public class GanttDragParityTests : GanttParityTestBase
         // value correct (which a double-fire can't distinguish from a single one).
         Assert.Equal("1", await ReadSinkRawAsync("event-sink-click-count"));
 
-        await GotoHost("/e2e/gantt-v3");
+        await GotoHost("/e2e/gantt-v3?infiniteScroll=0");
         await WaitV3ReadyAsync();
         var v3Bar = Page.Locator($"{V3Root} [data-task-id='be4']");
         await v3Bar.ScrollIntoViewIfNeededAsync();
@@ -973,7 +973,7 @@ public class GanttDragParityTests : GanttParityTestBase
     [Fact]
     public async Task A_completed_drag_never_also_fires_a_click_and_the_next_genuine_click_still_works()
     {
-        await GotoHost("/e2e/gantt-v3");
+        await GotoHost("/e2e/gantt-v3?infiniteScroll=0");
         await WaitV3ReadyAsync();
         var bar = Page.Locator($"{V3Root} [data-task-id='be3']"); // untouched by other tests
         var from = await CenterAsync(bar);

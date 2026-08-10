@@ -49,7 +49,7 @@ public class GanttParityTests : GanttParityTestBase
         await GotoHost("/e2e/gantt-v2");
         var v2Count = await WaitAndCountV2Bars();
 
-        await GotoHost("/e2e/gantt-v3");
+        await GotoHost("/e2e/gantt-v3?infiniteScroll=0");
         var v3Count = await WaitAndCountV3Bars();
 
         Assert.Equal(12, v2Count);
@@ -75,7 +75,7 @@ public class GanttParityTests : GanttParityTestBase
         await WaitAndCountV2Bars();
         var (v2X, v2W) = await ReadV2BarGeometry(taskId);
 
-        await GotoHost("/e2e/gantt-v3");
+        await GotoHost("/e2e/gantt-v3?infiniteScroll=0");
         await WaitAndCountV3Bars();
         var (v3X, v3W) = await ReadV3BarGeometry(taskId);
 
@@ -111,7 +111,7 @@ public class GanttParityTests : GanttParityTestBase
         // 30s timeout) instead of erroring immediately.
         var v2Label = await v2Group.Locator("text.lumeo-gantt-bar-label").TextContentAsync();
 
-        await GotoHost("/e2e/gantt-v3");
+        await GotoHost("/e2e/gantt-v3?infiniteScroll=0");
         await WaitAndCountV3Bars();
         var v3Div = Page.Locator("[data-testid='gantt-v3-root'] [data-task-id='fe-ms'][data-milestone='true']");
         var (v3X, v3Width) = ParseBarStyle(await v3Div.GetAttributeAsync("style"));
@@ -140,7 +140,7 @@ public class GanttParityTests : GanttParityTestBase
         var v2Fill = await Page.Locator($"[data-testid='gantt-v2-root'] g.lumeo-gantt-bar-wrapper[data-task-id='{taskId}'] rect.lumeo-gantt-bar-bg")
             .GetAttributeAsync("fill");
 
-        await GotoHost("/e2e/gantt-v3");
+        await GotoHost("/e2e/gantt-v3?infiniteScroll=0");
         await WaitAndCountV3Bars();
         var v3Style = await Page.Locator($"[data-testid='gantt-v3-root'] [data-task-id='{taskId}'] .lumeo-gantt-v3-bar-bg").GetAttributeAsync("style");
 
@@ -163,7 +163,7 @@ public class GanttParityTests : GanttParityTestBase
         var progressWidth = double.Parse((await group.Locator("rect.lumeo-gantt-bar-progress").GetAttributeAsync("width"))!, CultureInfo.InvariantCulture);
         var v2Ratio = bgWidth == 0 ? 0 : (progressWidth / bgWidth) * 100.0;
 
-        await GotoHost("/e2e/gantt-v3");
+        await GotoHost("/e2e/gantt-v3?infiniteScroll=0");
         await WaitAndCountV3Bars();
         var v3Style = await Page.Locator($"[data-testid='gantt-v3-root'] [data-task-id='{taskId}'] .lumeo-gantt-v3-bar-progress").GetAttributeAsync("style");
         var v3Match = Regex.Match(v3Style ?? "", @"width:(\d+(?:\.\d+)?)%");
@@ -183,7 +183,7 @@ public class GanttParityTests : GanttParityTestBase
         await WaitAndCountV2Bars();
         var v2Arrows = await Page.Locator("[data-testid='gantt-v2-root'] svg.lumeo-gantt-svg > path").CountAsync();
 
-        await GotoHost("/e2e/gantt-v3");
+        await GotoHost("/e2e/gantt-v3?infiniteScroll=0");
         await WaitAndCountV3Bars();
         var v3Arrows = await Page.Locator("[data-testid='gantt-v3-root'] path.lumeo-gantt-v3-arrow").CountAsync();
 
@@ -215,7 +215,7 @@ public class GanttParityTests : GanttParityTestBase
         // remarks for why start alone can be ambiguous).
         var v2Points = await FindMatchingV2Arrow(expectedPointsV2[0], expectedPointsV2[^1]);
 
-        await GotoHost("/e2e/gantt-v3");
+        await GotoHost("/e2e/gantt-v3?infiniteScroll=0");
         await WaitAndCountV3Bars();
         var v3D = await Page.Locator($"[data-testid='gantt-v3-root'] path.lumeo-gantt-v3-arrow[data-arrow-from='{fromId}'][data-arrow-to='{toId}']").GetAttributeAsync("d");
         Assert.NotNull(v3D);
@@ -256,7 +256,7 @@ public class GanttParityTests : GanttParityTestBase
         var v2Upper = await ReadV2HeaderTexts(isUpperRow: true);
         var v2Lower = await ReadV2HeaderTexts(isUpperRow: false);
 
-        await GotoHost($"/e2e/gantt-v3?viewMode={viewMode}");
+        await GotoHost($"/e2e/gantt-v3?viewMode={viewMode}&infiniteScroll=0");
         await WaitAndCountV3Bars();
         var v3Upper = await ReadV3UpperRunTexts();
         var v3Lower = await ReadV3LowerLabelTexts();
@@ -289,7 +289,7 @@ public class GanttParityTests : GanttParityTestBase
         var v2Lower = await ReadV2HeaderTexts(isUpperRow: false);
         Assert.All(v2Upper, t => Assert.DoesNotMatch(@"^W\d", t)); // v2: month names, never "W<n>..."
 
-        await GotoHost("/e2e/gantt-v3?viewMode=Day");
+        await GotoHost("/e2e/gantt-v3?viewMode=Day&infiniteScroll=0");
         await WaitAndCountV3Bars();
         var v3Upper = await ReadV3UpperRunTexts();
         var v3Lower = await ReadV3LowerLabelTexts();
@@ -327,7 +327,7 @@ public class GanttParityTests : GanttParityTestBase
         // v3-only mode, reachable via the SAME generic ?viewMode= query
         // mechanism the other 6 modes already use — no v2 comparison (there
         // is nothing on the v2 side to compare against).
-        await GotoHost("/e2e/gantt-v3?viewMode=Quarter");
+        await GotoHost("/e2e/gantt-v3?viewMode=Quarter&infiniteScroll=0");
         await WaitAndCountV3Bars();
         var v3Lower = await ReadV3LowerLabelTexts();
         Assert.NotEmpty(v3Lower);
@@ -352,7 +352,7 @@ public class GanttParityTests : GanttParityTestBase
         await Assertions.Expect(v2LowerCellLocator).Not.ToHaveCountAsync(v2InitialCount, new() { Timeout = 10000 });
         var v2Lower = await ReadV2HeaderTexts(isUpperRow: false);
 
-        await GotoHost("/e2e/gantt-v3");
+        await GotoHost("/e2e/gantt-v3?infiniteScroll=0");
         await WaitAndCountV3Bars();
         // Codex round 2, P1 #3: .lumeo-gantt-v3-header now wraps ONE extra
         // level (the scroll-synced _headerInnerRef div) before the upper/lower
@@ -402,7 +402,7 @@ public class GanttParityTests : GanttParityTestBase
         await v2Line.WaitForAsync(new() { State = WaitForSelectorState.Attached, Timeout = 15000 });
         var v2X = double.Parse((await v2Line.GetAttributeAsync("x1"))!, CultureInfo.InvariantCulture);
 
-        await GotoHost("/e2e/gantt-v3?fixture=today");
+        await GotoHost("/e2e/gantt-v3?fixture=today&infiniteScroll=0");
         await WaitAndCountV3Bars(expectedCountAtLeast: 1);
         // Design spec Phase 3, T2: v3's today marker is now a full-column tint
         // (.lumeo-gantt-v3-today-tint) + header dot + accent label, replacing
@@ -451,7 +451,7 @@ public class GanttParityTests : GanttParityTestBase
         var v2Bar = Page.Locator("[data-testid='gantt-v2-root'] g.lumeo-gantt-bar-wrapper").First;
         await Assertions.Expect(v2Bar).ToBeInViewportAsync(new() { Timeout = 15000 });
 
-        await GotoHost("/e2e/gantt-v3?fixture=today");
+        await GotoHost("/e2e/gantt-v3?fixture=today&infiniteScroll=0");
         await WaitAndCountV3Bars(expectedCountAtLeast: 1);
         // Cheap extra robustness (review wave round 3): this assertion already
         // polls the POSITIVE case (bar in viewport), so it's immune to the

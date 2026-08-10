@@ -296,6 +296,7 @@ internal static partial class LumeoDefaultStrings
         ["Gantt.SettingsShowSummaryBars"] = "요약 막대",
         ["Gantt.SettingsShowZoomControl"] = "확대/축소 컨트롤",
         ["Gantt.SettingsShowOffscreenIndicators"] = "화면 밖 표시기",
+        ["Gantt.SettingsInfiniteScroll"] = "무한 스크롤",
         ["Gantt.SettingsNowIndicator"] = "현재 시각 표시기",
         ["Gantt.SettingsMarkOffDays"] = "휴무일 표시",
         ["Gantt.SettingsReadonly"] = "읽기 전용",

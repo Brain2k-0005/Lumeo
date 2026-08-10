@@ -18,7 +18,7 @@ public class GanttV3SummaryRollupTests : GanttParityTestBase
 
     private async Task GotoRollupFixtureAsync()
     {
-        await GotoHost("/e2e/gantt-v3-tree?fixture=rollup");
+        await GotoHost("/e2e/gantt-v3-tree?fixture=rollup&infiniteScroll=0");
         await Page.Locator($"{Root} [data-task-id]").First
             .WaitForAsync(new() { State = WaitForSelectorState.Attached, Timeout = 15000 });
     }
@@ -60,7 +60,7 @@ public class GanttV3SummaryRollupTests : GanttParityTestBase
     {
         // The default (untouched) tree fixture never opts in — Phase-3-ledger-
         // pinned v2/REUI look-delta (ShowSummaryBars defaults false).
-        await GotoHost("/e2e/gantt-v3-tree");
+        await GotoHost("/e2e/gantt-v3-tree?infiniteScroll=0");
         await Page.Locator($"{Root} [data-task-id]").First
             .WaitForAsync(new() { State = WaitForSelectorState.Attached, Timeout = 15000 });
 

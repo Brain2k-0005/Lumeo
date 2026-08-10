@@ -107,6 +107,7 @@
                 ShowRowCheckboxes="@_showRowCheckboxes"
                 AllowRowReorder="@_allowRowReorder"
                 OffDays="@_offDays"
+                InfiniteScroll="@_infiniteScroll"
                 OnTaskClick="HandleTaskClick"
                 OnDateChange="HandleDateChange"
                 OnProgressChange="HandleProgressChange"
@@ -164,6 +165,10 @@
     // the default).
     [SupplyParameterFromQuery(Name = "showOffscreenIndicators")] public string? ShowOffscreenIndicatorsQuery { get; set; }
     [SupplyParameterFromQuery(Name = "showZoomControl")] public string? ShowZoomControlQuery { get; set; }
+    // Design spec Phase 3, T9 — InfiniteScroll defaults to true (Gantt3's own
+    // parameter default), so this query flag exists to turn it OFF for the
+    // "byte-matches v2 fixed padding" parity spec, not to turn it on.
+    [SupplyParameterFromQuery(Name = "infiniteScroll")] public string? InfiniteScrollQuery { get; set; }
     // Design spec Phase 3, T8 additions — see this file's own header remarks.
     [SupplyParameterFromQuery(Name = "settingsMenu")] public string? SettingsMenuQuery { get; set; }
     [SupplyParameterFromQuery(Name = "barContextMenu")] public string? BarContextMenuQuery { get; set; }
@@ -189,6 +194,7 @@
     private bool _showRowCheckboxes;
     private bool _allowRowReorder;
     private IReadOnlySet<DayOfWeek>? _offDays;
+    private bool _infiniteScroll = true;
 
     // Design spec Phase 3, T8 additions.
     private bool _showSettingsMenu;
@@ -239,6 +245,7 @@
         _colorByGroup = ColorByGroupQuery == "1";
         if (ShowOffscreenIndicatorsQuery == "0") _showOffscreenIndicators = false;
         _showZoomControl = ShowZoomControlQuery == "1";
+        if (InfiniteScrollQuery == "0") _infiniteScroll = false;
         _showSettingsMenu = SettingsMenuQuery == "1";
         _showBarContextMenu = BarContextMenuQuery == "1";
         _showDragGhostTemplate = DragGhostTemplateQuery == "1";
@@ -259,6 +266,7 @@
                              @bind-ShowSummaryBars="_showSummaryBars"
                              @bind-ShowZoomControl="_showZoomControl"
                              @bind-ShowOffscreenIndicators="_showOffscreenIndicators"
+                             @bind-InfiniteScroll="_infiniteScroll"
                              @bind-NowIndicator="_nowIndicator"
                              @bind-MarkOffDays="_markOffDays"
                              @bind-Readonly="_readonly"

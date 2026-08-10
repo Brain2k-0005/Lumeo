@@ -22,7 +22,7 @@ public class GanttV3ArrowVirtualizationTests : GanttParityTestBase
     [Fact]
     public async Task Fewer_arrows_than_total_dependencies_render_for_the_tall_fixture()
     {
-        await GotoHost("/e2e/gantt-v3?fixture=tall&viewMode=Day");
+        await GotoHost("/e2e/gantt-v3?fixture=tall&viewMode=Day&infiniteScroll=0");
 
         var scrollPane = Page.Locator("[data-testid='gantt-v3-root'] div[style*='overflow']").First;
         await scrollPane.WaitForAsync(new() { Timeout = 15000 });
@@ -48,7 +48,7 @@ public class GanttV3ArrowVirtualizationTests : GanttParityTestBase
     [Fact]
     public async Task Arrows_for_newly_visible_rows_appear_after_scrolling_to_a_far_window()
     {
-        await GotoHost("/e2e/gantt-v3?fixture=tall&viewMode=Day");
+        await GotoHost("/e2e/gantt-v3?fixture=tall&viewMode=Day&infiniteScroll=0");
 
         var scrollPane = Page.Locator("[data-testid='gantt-v3-root'] div[style*='overflow']").First;
         await scrollPane.WaitForAsync(new() { Timeout = 15000 });
@@ -84,7 +84,7 @@ public class GanttV3ArrowVirtualizationTests : GanttParityTestBase
         // scrolled-to-center window (plus its 10-row overscan margin)
         // excludes BOTH endpoints individually while the edge's own [5, 70]
         // span still fully brackets that window.
-        await GotoHost("/e2e/gantt-v3?fixture=crossing&viewMode=Day");
+        await GotoHost("/e2e/gantt-v3?fixture=crossing&viewMode=Day&infiniteScroll=0");
 
         var scrollPane = Page.Locator("[data-testid='gantt-v3-root'] div[style*='overflow']").First;
         await scrollPane.WaitForAsync(new() { Timeout = 15000 });
@@ -121,7 +121,7 @@ public class GanttV3ArrowVirtualizationTests : GanttParityTestBase
         // (post-dedup) report — a deterministic, Playwright-observable proxy
         // for the otherwise-invisible interop call count, matching the
         // existing data-gantt-v3-initial-scroll latch's own reasoning.
-        await GotoHost("/e2e/gantt-v3?fixture=tall&viewMode=Day");
+        await GotoHost("/e2e/gantt-v3?fixture=tall&viewMode=Day&infiniteScroll=0");
 
         var scrollPane = Page.Locator("[data-testid='gantt-v3-root'] div[style*='overflow']").First;
         await scrollPane.WaitForAsync(new() { Timeout = 15000 });
@@ -153,7 +153,7 @@ public class GanttV3ArrowVirtualizationTests : GanttParityTestBase
         // regression back to "horizontal-only = always deduped" (the
         // pre-T7 behavior) fails a test immediately instead of silently
         // reintroducing the exact bug T7's own gate found.
-        await GotoHost("/e2e/gantt-v3?fixture=tall&viewMode=Day");
+        await GotoHost("/e2e/gantt-v3?fixture=tall&viewMode=Day&infiniteScroll=0");
 
         var scrollPane = Page.Locator("[data-testid='gantt-v3-root'] div[style*='overflow']").First;
         await scrollPane.WaitForAsync(new() { Timeout = 15000 });

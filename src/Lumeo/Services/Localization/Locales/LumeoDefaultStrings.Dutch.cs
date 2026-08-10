@@ -348,6 +348,7 @@ internal static partial class LumeoDefaultStrings
         ["Gantt.SettingsShowSummaryBars"] = "Samenvattingsbalken",
         ["Gantt.SettingsShowZoomControl"] = "Zoomregeling",
         ["Gantt.SettingsShowOffscreenIndicators"] = "Indicatoren buiten beeld",
+        ["Gantt.SettingsInfiniteScroll"] = "Oneindig scrollen",
         ["Gantt.SettingsNowIndicator"] = "Nu-indicator",
         ["Gantt.SettingsMarkOffDays"] = "Vrije dagen markeren",
         ["Gantt.SettingsReadonly"] = "Alleen-lezen",

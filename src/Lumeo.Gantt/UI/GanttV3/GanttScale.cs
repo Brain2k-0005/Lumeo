@@ -225,6 +225,44 @@ internal static class GanttScale
     internal const int MinInBarLabelWidth = 40;
 
     /// <summary>
+    /// Hard ceiling on the rendered date-unit count (<see cref="BuildDateUnits"/>'s
+    /// own return list length) <c>Gantt3.HandleRangeExtensionRequestAsync</c>
+    /// (design spec Phase 3, T9) will grow <c>VisibleRange</c> to via infinite
+    /// scroll, in EITHER direction. DECISION (T9's own explicit "hard cap,
+    /// far-side trimming, or documented unbounded? say what breaks first"):
+    /// a hard cap — once reached, the affected edge simply stops extending
+    /// (identical UX to <c>InfiniteScroll=false</c>'s own v2-parity dead-end,
+    /// just reached later), never far-side trimming (trimming the OPPOSITE
+    /// edge while extending this one would itself be a SECOND coordinate-
+    /// origin shift per extension, on top of the leading-edge one this task
+    /// already has to get pixel-exact — doubling the same-frame-correction
+    /// surface for a memory saving nothing in this codebase's actual usage
+    /// pattern currently needs) and never silently-documented-unbounded.
+    ///
+    /// WHAT BREAKS FIRST, and why this specific number: <c>GanttTimeline</c>'s
+    /// own header row (its <c>@for (var i = 0; i....Units.Count; i++)</c> loops)
+    /// renders ONE DOM element PER DATE UNIT, unconditionally — UNLIKE the
+    /// row/bar canvas below it (T1's own <c>Virtualize</c>-based fix), the
+    /// header has no windowing at all, so it is the first thing to visibly
+    /// and measurably degrade under sustained one-directional scrolling, long
+    /// before <see cref="DateToPixel"/>'s own double-precision arithmetic
+    /// shows any drift (that arithmetic is exact calendar-field math per
+    /// <see cref="GanttScale"/>'s own class remarks, not iterative
+    /// floating-point accumulation — it does not degrade with range width at
+    /// all). 2000 is chosen the same way <see cref="MinInBarLabelWidth"/> was
+    /// (a concrete, defensible floor/ceiling, not a round number picked
+    /// without reasoning): comfortably generous for ordinary use (Day mode's
+    /// own 60-unit-per-extension page means roughly 33 consecutive
+    /// leading-edge extensions — many more than one continuous scroll gesture
+    /// would ever trigger — before the cap engages; Month/Year/Quarter modes
+    /// reach it far later still, since their PadBefore/PadAfter magnitudes
+    /// are smaller units-per-page), while still bounding the header to, at
+    /// most, a low-thousands DOM node count — an order of magnitude below
+    /// where unvirtualized-list rendering typically becomes perceptible.
+    /// </summary>
+    internal const int MaxInfiniteScrollRangeUnits = 2000;
+
+    /// <summary>
     /// Faithful port of gantt-v2.js's <c>VIEW_MODES</c> table (lines 29-36). Every
     /// field below is copied verbatim from the corresponding JS literal; see each
     /// <see cref="GanttScaleUnit"/>/<see cref="GanttHeaderUpperKind"/>/<see cref="GanttHeaderLowerKind"/>

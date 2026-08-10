@@ -296,6 +296,7 @@ internal static partial class LumeoDefaultStrings
         ["Gantt.SettingsShowSummaryBars"] = "Özet çubukları",
         ["Gantt.SettingsShowZoomControl"] = "Yakınlaştırma denetimi",
         ["Gantt.SettingsShowOffscreenIndicators"] = "Ekran dışı göstergeler",
+        ["Gantt.SettingsInfiniteScroll"] = "Sonsuz kaydırma",
         ["Gantt.SettingsNowIndicator"] = "Şimdi göstergesi",
         ["Gantt.SettingsMarkOffDays"] = "Tatil günlerini işaretle",
         ["Gantt.SettingsReadonly"] = "Salt okunur",

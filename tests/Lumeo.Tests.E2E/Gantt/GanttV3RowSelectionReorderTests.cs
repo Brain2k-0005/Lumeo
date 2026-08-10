@@ -32,7 +32,7 @@ public class GanttV3RowSelectionReorderTests : GanttParityTestBase
     [Fact]
     public async Task Leaf_Checkbox_Toggle_Selects_The_Task()
     {
-        await GotoHost("/e2e/gantt-v3-tree?checkboxes=1");
+        await GotoHost("/e2e/gantt-v3-tree?checkboxes=1&infiniteScroll=0");
 
         var leafCheckbox = RowByLabel("Wireframes").Locator(".lumeo-gantt-v3-tree-checkbox");
         await leafCheckbox.WaitForAsync(new() { Timeout = 15000 });
@@ -46,7 +46,7 @@ public class GanttV3RowSelectionReorderTests : GanttParityTestBase
     [Fact]
     public async Task Parent_Checkbox_Reflects_Tri_State_And_Selects_All_Descendants()
     {
-        await GotoHost("/e2e/gantt-v3-tree?checkboxes=1");
+        await GotoHost("/e2e/gantt-v3-tree?checkboxes=1&infiniteScroll=0");
 
         // child1 (Design Phase) has exactly one descendant: grandchild1 (Wireframes).
         var parentCheckbox = RowByLabel("Design Phase").Locator(".lumeo-gantt-v3-tree-checkbox");
@@ -81,7 +81,7 @@ public class GanttV3RowSelectionReorderTests : GanttParityTestBase
     [Fact]
     public async Task Checkbox_Is_Disabled_When_Readonly()
     {
-        await GotoHost("/e2e/gantt-v3-tree?checkboxes=1&readonly=1");
+        await GotoHost("/e2e/gantt-v3-tree?checkboxes=1&readonly=1&infiniteScroll=0");
 
         var leafCheckbox = RowByLabel("Wireframes").Locator(".lumeo-gantt-v3-tree-checkbox");
         await leafCheckbox.WaitForAsync(new() { Timeout = 15000 });
@@ -112,7 +112,7 @@ public class GanttV3RowSelectionReorderTests : GanttParityTestBase
     [Fact]
     public async Task Row_Drag_Reorders_Siblings_And_Commits_The_New_Order()
     {
-        await GotoHost("/e2e/gantt-v3-tree?reorder=1");
+        await GotoHost("/e2e/gantt-v3-tree?reorder=1&infiniteScroll=0");
 
         var rows = Page.Locator($"{Root} [data-row-kind='task']");
         await rows.First.WaitForAsync(new() { Timeout = 15000 });
@@ -166,7 +166,7 @@ public class GanttV3RowSelectionReorderTests : GanttParityTestBase
     [Fact]
     public async Task Row_Drag_Veto_Path_Never_Commits()
     {
-        await GotoHost("/e2e/gantt-v3-tree?reorder=1&veto=1");
+        await GotoHost("/e2e/gantt-v3-tree?reorder=1&veto=1&infiniteScroll=0");
 
         var rows = Page.Locator($"{Root} [data-row-kind='task']");
         await rows.First.WaitForAsync(new() { Timeout = 15000 });
@@ -205,7 +205,7 @@ public class GanttV3RowSelectionReorderTests : GanttParityTestBase
     [Fact]
     public async Task Row_Reorder_Is_Inert_When_Readonly()
     {
-        await GotoHost("/e2e/gantt-v3-tree?reorder=1&readonly=1");
+        await GotoHost("/e2e/gantt-v3-tree?reorder=1&readonly=1&infiniteScroll=0");
 
         var rows = Page.Locator($"{Root} [data-row-kind='task']");
         await rows.First.WaitForAsync(new() { Timeout = 15000 });

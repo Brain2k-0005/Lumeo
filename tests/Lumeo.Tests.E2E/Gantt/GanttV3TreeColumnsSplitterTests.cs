@@ -30,7 +30,7 @@ public class GanttV3TreeColumnsSplitterTests : GanttParityTestBase
     [Fact]
     public async Task TreeColumns_Render_A_Duration_Cell_Per_Row_Aligned_With_The_Timeline_Bar()
     {
-        await GotoHost("/e2e/gantt-v3-tree?fixture=columns");
+        await GotoHost("/e2e/gantt-v3-tree?fixture=columns&infiniteScroll=0");
 
         var headerCell = Page.Locator($"{Root} .lumeo-gantt-v3-tree-header-cell");
         await headerCell.First.WaitForAsync(new() { Timeout = 15000 });
@@ -65,7 +65,7 @@ public class GanttV3TreeColumnsSplitterTests : GanttParityTestBase
     [Fact]
     public async Task TreeHeaderMenu_Slot_Renders_And_Is_Clickable()
     {
-        await GotoHost("/e2e/gantt-v3-tree?fixture=columns");
+        await GotoHost("/e2e/gantt-v3-tree?fixture=columns&infiniteScroll=0");
 
         var menuButton = Page.Locator($"{Root} .gantt-e2e-tree-header-menu");
         await menuButton.WaitForAsync(new() { Timeout = 15000 });
@@ -77,7 +77,7 @@ public class GanttV3TreeColumnsSplitterTests : GanttParityTestBase
     [Fact]
     public async Task RowTemplate_Renders_Custom_Content_And_The_Toggle_Chevron_Still_Works()
     {
-        await GotoHost("/e2e/gantt-v3-tree?fixture=columns");
+        await GotoHost("/e2e/gantt-v3-tree?fixture=columns&infiniteScroll=0");
 
         var customLabel = Page.Locator($"{Root} .gantt-e2e-row-template", new() { HasTextString = "Program Kickoff" });
         await customLabel.WaitForAsync(new() { Timeout = 15000 });
@@ -105,7 +105,7 @@ public class GanttV3TreeColumnsSplitterTests : GanttParityTestBase
     [Fact]
     public async Task Splitter_Pointer_Drag_Resizes_The_Tree_Pane_And_Columns_Move_With_It()
     {
-        await GotoHost("/e2e/gantt-v3-tree?fixture=columns");
+        await GotoHost("/e2e/gantt-v3-tree?fixture=columns&infiniteScroll=0");
 
         var pane = Page.Locator($"{Root} .lumeo-gantt-v3-tree-splitter").Locator("xpath=..");
         var splitter = Page.Locator($"{Root} .lumeo-gantt-v3-tree-splitter");
@@ -152,7 +152,7 @@ public class GanttV3TreeColumnsSplitterTests : GanttParityTestBase
     [Fact]
     public async Task Splitter_Keyboard_ArrowRight_Grows_The_Pane_And_Updates_AriaValuenow()
     {
-        await GotoHost("/e2e/gantt-v3-tree?fixture=columns");
+        await GotoHost("/e2e/gantt-v3-tree?fixture=columns&infiniteScroll=0");
 
         var splitter = Page.Locator($"{Root} .lumeo-gantt-v3-tree-splitter");
         await splitter.WaitForAsync(new() { Timeout = 15000 });

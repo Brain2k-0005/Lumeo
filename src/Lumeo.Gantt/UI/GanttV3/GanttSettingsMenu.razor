@@ -100,23 +100,17 @@
                 <Checkbox Label="@L["Gantt.SettingsShowSummaryBars"]" Checked="@EffectiveShowSummaryBars" CheckedChanged="@(v => SetShowSummaryBarsAsync(v))" />
                 <Checkbox Label="@L["Gantt.SettingsShowZoomControl"]" Checked="@EffectiveShowZoomControl" CheckedChanged="@(v => SetShowZoomControlAsync(v))" />
                 <Checkbox Label="@L["Gantt.SettingsShowOffscreenIndicators"]" Checked="@EffectiveShowOffscreenIndicators" CheckedChanged="@(v => SetShowOffscreenIndicatorsAsync(v))" />
-                @* T9 wiring point (design spec Phase 3, T8 — "infinite-scroll
-                   toggle only if T9 lands before/with it — otherwise hidden
-                   entry, wired in T9"): T9 has NOT landed as of this task, so
-                   this entry is deliberately ABSENT (not rendered at all,
-                   not a disabled placeholder — a permanently-disabled toggle
-                   for a feature that does not exist yet would be confusing
-                   UI, not a real affordance). Add, immediately below
-                   ShowOffscreenIndicators above (matching the plan's own
-                   Display-group ordering "checkboxes/summary/zoom/off-screen
-                   chips/infinite scroll/now/off-days"), once T9 ships:
-                     <Checkbox Label="@L["Gantt.SettingsInfiniteScroll"]"
-                               Checked="@EffectiveInfiniteScroll"
-                               CheckedChanged="@(v => SetInfiniteScrollAsync(v))" />
-                   plus the matching InfiniteScroll/InfiniteScrollChanged
-                   parameter pair (bool, HasDelegate-gated controlled-ness —
-                   same idiom as every other bool setting here) and a new
-                   localization key in all 14 locales. *@
+                @* T9 wiring point filled (design spec Phase 3, T9): matches
+                   the plan's own Display-group ordering "checkboxes/summary/
+                   zoom/off-screen chips/infinite scroll/now/off-days" —
+                   immediately below ShowOffscreenIndicators, above
+                   NowIndicator. Default true — mirrors Gantt3.InfiniteScroll's
+                   OWN default-true (same "this menu's uncontrolled fallback
+                   matches Gantt3's real default deliberately" precedent
+                   ShowOffscreenIndicators above already established), so a
+                   menu rendered before any user interaction reflects reality
+                   even when unbound. *@
+                <Checkbox Label="@L["Gantt.SettingsInfiniteScroll"]" Checked="@EffectiveInfiniteScroll" CheckedChanged="@(v => SetInfiniteScrollAsync(v))" />
                 <Checkbox Label="@L["Gantt.SettingsNowIndicator"]" Checked="@EffectiveNowIndicator" CheckedChanged="@(v => SetNowIndicatorAsync(v))" />
                 <Checkbox Label="@L["Gantt.SettingsMarkOffDays"]" Checked="@EffectiveMarkOffDays" CheckedChanged="@(v => SetMarkOffDaysAsync(v))" />
             </div>
@@ -189,6 +183,17 @@
     /// </summary>
     [Parameter] public bool ShowOffscreenIndicators { get; set; } = true;
     [Parameter] public EventCallback<bool> ShowOffscreenIndicatorsChanged { get; set; }
+
+    /// <summary>
+    /// Two-way bindable — mirrors <see cref="Gantt3.InfiniteScroll"/>, INCLUDING
+    /// its default-<c>true</c> (design spec Phase 3, T9 — same "this menu's
+    /// uncontrolled fallback matches Gantt3's real default deliberately"
+    /// precedent <see cref="ShowOffscreenIndicators"/> above already
+    /// established), so a menu rendered before any user interaction reflects
+    /// reality even when unbound.
+    /// </summary>
+    [Parameter] public bool InfiniteScroll { get; set; } = true;
+    [Parameter] public EventCallback<bool> InfiniteScrollChanged { get; set; }
 
     /// <summary>Two-way bindable — mirrors <see cref="Gantt3.NowIndicator"/>. Uncontrolled default <c>false</c>.</summary>
     [Parameter] public bool NowIndicator { get; set; }
@@ -272,6 +277,7 @@
     private bool _internalShowSummaryBars;
     private bool _internalShowZoomControl;
     private bool _internalShowOffscreenIndicators = true;
+    private bool _internalInfiniteScroll = true;
     private bool _internalNowIndicator;
     private bool _internalMarkOffDays;
     private bool _internalReadonly;
@@ -285,6 +291,7 @@
     private bool EffectiveShowSummaryBars => ShowSummaryBarsChanged.HasDelegate ? ShowSummaryBars : _internalShowSummaryBars;
     private bool EffectiveShowZoomControl => ShowZoomControlChanged.HasDelegate ? ShowZoomControl : _internalShowZoomControl;
     private bool EffectiveShowOffscreenIndicators => ShowOffscreenIndicatorsChanged.HasDelegate ? ShowOffscreenIndicators : _internalShowOffscreenIndicators;
+    private bool EffectiveInfiniteScroll => InfiniteScrollChanged.HasDelegate ? InfiniteScroll : _internalInfiniteScroll;
     private bool EffectiveNowIndicator => NowIndicatorChanged.HasDelegate ? NowIndicator : _internalNowIndicator;
     private bool EffectiveMarkOffDays => MarkOffDaysChanged.HasDelegate ? MarkOffDays : _internalMarkOffDays;
     private bool EffectiveReadonly => ReadonlyChanged.HasDelegate ? Readonly : _internalReadonly;
@@ -365,6 +372,7 @@
     private Task SetShowSummaryBarsAsync(bool v) => SetBoolAsync(EffectiveShowSummaryBars, v, x => _internalShowSummaryBars = x, ShowSummaryBarsChanged);
     private Task SetShowZoomControlAsync(bool v) => SetBoolAsync(EffectiveShowZoomControl, v, x => _internalShowZoomControl = x, ShowZoomControlChanged);
     private Task SetShowOffscreenIndicatorsAsync(bool v) => SetBoolAsync(EffectiveShowOffscreenIndicators, v, x => _internalShowOffscreenIndicators = x, ShowOffscreenIndicatorsChanged);
+    private Task SetInfiniteScrollAsync(bool v) => SetBoolAsync(EffectiveInfiniteScroll, v, x => _internalInfiniteScroll = x, InfiniteScrollChanged);
     private Task SetNowIndicatorAsync(bool v) => SetBoolAsync(EffectiveNowIndicator, v, x => _internalNowIndicator = x, NowIndicatorChanged);
     private Task SetMarkOffDaysAsync(bool v) => SetBoolAsync(EffectiveMarkOffDays, v, x => _internalMarkOffDays = x, MarkOffDaysChanged);
     private Task SetReadonlyAsync(bool v) => SetBoolAsync(EffectiveReadonly, v, x => _internalReadonly = x, ReadonlyChanged);
@@ -427,7 +435,7 @@
     // those coincide in the uncontrolled case).
     private readonly record struct Baseline(
         bool ShowRowCheckboxes, bool ShowSummaryBars, bool ShowZoomControl, bool ShowOffscreenIndicators,
-        bool NowIndicator, bool MarkOffDays, bool Readonly, bool AllowCreate, bool AllowRowReorder, bool ColorByGroup,
+        bool InfiniteScroll, bool NowIndicator, bool MarkOffDays, bool Readonly, bool AllowCreate, bool AllowRowReorder, bool ColorByGroup,
         DayOfWeek? FirstDayOfWeek, IReadOnlySet<DayOfWeek>? OffDays);
 
     private Baseline _baseline;
@@ -436,7 +444,7 @@
     {
         _baseline = new Baseline(
             EffectiveShowRowCheckboxes, EffectiveShowSummaryBars, EffectiveShowZoomControl, EffectiveShowOffscreenIndicators,
-            EffectiveNowIndicator, EffectiveMarkOffDays, EffectiveReadonly, EffectiveAllowCreate, EffectiveAllowRowReorder, EffectiveColorByGroup,
+            EffectiveInfiniteScroll, EffectiveNowIndicator, EffectiveMarkOffDays, EffectiveReadonly, EffectiveAllowCreate, EffectiveAllowRowReorder, EffectiveColorByGroup,
             EffectiveFirstDayOfWeek, EffectiveOffDays);
     }
 
@@ -455,6 +463,7 @@
         await SetShowSummaryBarsAsync(_baseline.ShowSummaryBars);
         await SetShowZoomControlAsync(_baseline.ShowZoomControl);
         await SetShowOffscreenIndicatorsAsync(_baseline.ShowOffscreenIndicators);
+        await SetInfiniteScrollAsync(_baseline.InfiniteScroll);
         await SetNowIndicatorAsync(_baseline.NowIndicator);
         await SetMarkOffDaysAsync(_baseline.MarkOffDays);
         await SetReadonlyAsync(_baseline.Readonly);

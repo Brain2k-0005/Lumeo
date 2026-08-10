@@ -28,7 +28,7 @@ public class GanttV3SettingsMenuTests : GanttParityTestBase
         // ShowZoomControl defaults to false on this fixture (no ?showZoomControl=1),
         // and the settings menu's OWN uncontrolled default matches it — so the
         // floating zoom control starts absent.
-        await GotoHost("/e2e/gantt-v3?tree=0&settingsMenu=1");
+        await GotoHost("/e2e/gantt-v3?tree=0&settingsMenu=1&infiniteScroll=0");
         await Bar("fe1").WaitForAsync(new() { State = WaitForSelectorState.Visible, Timeout = 15000 });
 
         var zoomControl = Page.Locator("[data-testid='gantt-v3-root'] .lumeo-gantt-v3-zoom-control");
@@ -51,7 +51,7 @@ public class GanttV3SettingsMenuTests : GanttParityTestBase
     [Fact]
     public async Task Right_Click_A_Bar_Opens_The_Context_Menu_For_The_Correct_Task()
     {
-        await GotoHost("/e2e/gantt-v3?tree=0&barContextMenu=1");
+        await GotoHost("/e2e/gantt-v3?tree=0&barContextMenu=1&infiniteScroll=0");
         var bar = Bar("fe4");
         await bar.WaitForAsync(new() { State = WaitForSelectorState.Visible, Timeout = 15000 });
 
@@ -71,7 +71,7 @@ public class GanttV3SettingsMenuTests : GanttParityTestBase
     [Fact]
     public async Task Right_Click_A_Bar_Then_Escape_Closes_The_Menu_Without_Selecting()
     {
-        await GotoHost("/e2e/gantt-v3?tree=0&barContextMenu=1");
+        await GotoHost("/e2e/gantt-v3?tree=0&barContextMenu=1&infiniteScroll=0");
         var bar = Bar("fe4");
         await bar.WaitForAsync(new() { State = WaitForSelectorState.Visible, Timeout = 15000 });
 
@@ -106,7 +106,7 @@ public class GanttV3SettingsMenuTests : GanttParityTestBase
     [Fact]
     public async Task A_ContextMenu_Never_Opens_While_A_Real_Drag_Is_In_Flight_On_The_Same_Bar()
     {
-        await GotoHost("/e2e/gantt-v3?tree=0&barContextMenu=1");
+        await GotoHost("/e2e/gantt-v3?tree=0&barContextMenu=1&infiniteScroll=0");
         var bar = Bar("fe4");
         await bar.WaitForAsync(new() { State = WaitForSelectorState.Visible, Timeout = 15000 });
         // See Custom_DragGhostTemplate_Is_Visible_During_A_Live_Drag's own
@@ -159,7 +159,7 @@ public class GanttV3SettingsMenuTests : GanttParityTestBase
     [Fact]
     public async Task Custom_DragGhostTemplate_Is_Visible_During_A_Live_Drag()
     {
-        await GotoHost("/e2e/gantt-v3?tree=0&dragGhostTemplate=1");
+        await GotoHost("/e2e/gantt-v3?tree=0&dragGhostTemplate=1&infiniteScroll=0");
         var bar = Bar("fe4");
         await bar.WaitForAsync(new() { State = WaitForSelectorState.Visible, Timeout = 15000 });
         // "fe4" (March 2026) sits far outside the initial auto-scroll target

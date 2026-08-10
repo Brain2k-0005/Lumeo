@@ -22,7 +22,7 @@ public class GanttV3ScrollCenteringTests : GanttParityTestBase
         // a raw, un-offset TodayX landed the DOM's actual scroll short by
         // exactly the tree's width. See GanttTimeline.ScrollHostLeadingOffset's
         // own remarks for the fix.
-        await GotoHost("/e2e/gantt-v3?fixture=today");
+        await GotoHost("/e2e/gantt-v3?fixture=today&infiniteScroll=0");
 
         var scrollPane = Page.Locator("[data-testid='gantt-v3-root'] div[style*='overflow']").First;
         await scrollPane.WaitForAsync(new() { Timeout = 15000 });
@@ -48,7 +48,7 @@ public class GanttV3ScrollCenteringTests : GanttParityTestBase
         // GanttV3Page.razor's own remarks) — regression guard: the fix must
         // not OVER-correct and break the no-tree case (ScrollHostLeadingOffset
         // defaults to 0 there).
-        await GotoHost("/e2e/gantt-v3?fixture=today&tree=0");
+        await GotoHost("/e2e/gantt-v3?fixture=today&tree=0&infiniteScroll=0");
 
         var scrollPane = Page.Locator("[data-testid='gantt-v3-root'] div[style*='overflow']").First;
         await scrollPane.WaitForAsync(new() { Timeout = 15000 });
@@ -80,7 +80,7 @@ public class GanttV3ScrollCenteringTests : GanttParityTestBase
         // captures the CURRENT range's midpoint before switching and recenters
         // the new mode's window around that same date, then requests a scroll
         // (see Gantt3.HandleViewModeChangedAsync's own remarks).
-        await GotoHost("/e2e/gantt-v3?viewMode=Day"); // no ?fixture= -> GanttV3Page's default branch -> GanttParityFixtures.SharedTasks()
+        await GotoHost("/e2e/gantt-v3?viewMode=Day&infiniteScroll=0"); // no ?fixture= -> GanttV3Page's default branch -> GanttParityFixtures.SharedTasks()
 
         var scrollPane = Page.Locator("[data-testid='gantt-v3-root'] div[style*='overflow']").First;
         await scrollPane.WaitForAsync(new() { Timeout = 15000 });
@@ -129,7 +129,7 @@ public class GanttV3ScrollCenteringTests : GanttParityTestBase
         // scroll center via a new interop round-trip before recomputing the
         // range, so a manual pan survives a mode switch too, not just a
         // Today-click-driven one.
-        await GotoHost("/e2e/gantt-v3?viewMode=Day"); // no ?fixture= -> GanttV3Page's default branch -> GanttParityFixtures.SharedTasks
+        await GotoHost("/e2e/gantt-v3?viewMode=Day&infiniteScroll=0"); // no ?fixture= -> GanttV3Page's default branch -> GanttParityFixtures.SharedTasks
 
         var scrollPane = Page.Locator("[data-testid='gantt-v3-root'] div[style*='overflow']").First;
         await scrollPane.WaitForAsync(new() { Timeout = 15000 });
