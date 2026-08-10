@@ -88,11 +88,18 @@
     private string ShapeClasses => Shape switch
     {
         AvatarShape.Square => "rounded-md",
-        // *4 keeps Themed a full circle at stock radii for every size up to Xxl
-        // (4 x 0.75rem = 48px >= h-20's 40px half-height); sharp themes square it.
-        // (Was *3 = 36px, which covered only up to Xl's 32px half-height and broke
-        // at Xxl's 40px half-height — bumped when the Xxl rung was added.)
-        AvatarShape.Themed => "rounded-[calc(var(--radius)*4)]",
+        // *5 keeps Themed a full circle at every shipped radius base, for every
+        // size up to Xxl. The binding constraint is the tightest shipped base —
+        // .style-new-york's 0.5rem (8px) — against the largest rung — Xxl's h-20,
+        // 40px half-height: 5 x 8px = 40px, exactly equal (CSS clamps
+        // border-radius at 50%, so "exactly equal" still renders a full circle).
+        // At the default 0.75rem (12px) base that's 5 x 12px = 60px, comfortably
+        // over every size's half-height.
+        // History: *3 (24px at the tight base) broke Xl (32px half-height) under
+        // .style-new-york. *4 (32px at the tight base) exactly covered Xl but not
+        // Xxl's 40px half-height once the Xxl rung was added — bumped to *5 so
+        // both the tight radius base AND the largest rung are covered together.
+        AvatarShape.Themed => "rounded-[calc(var(--radius)*5)]",
         _ => "rounded-full"
     };
 

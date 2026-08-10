@@ -43,6 +43,19 @@ public class SidebarMenuButtonTooltipTests : IAsyncLifetime
         });
 
     [Fact]
+    public void Menu_Button_Uses_Rounded_Md_Not_Rounded_Lg()
+    {
+        // shadcn parity (wave 0, C.7): the sidebar menu button rounds at rounded-md,
+        // matching shadcn's own SidebarMenuButton — not the larger rounded-lg Lumeo
+        // shipped before this fix.
+        var cut = RenderButton(collapsed: false, tooltip: null);
+
+        var cls = cut.Find("a").GetAttribute("class") ?? "";
+        Assert.Contains("rounded-md", cls);
+        Assert.DoesNotContain("rounded-lg", cls);
+    }
+
+    [Fact]
     public void Collapsed_With_Tooltip_Wraps_The_Link_In_Lumeo_Tooltip_Not_Native_Title()
     {
         var cut = RenderButton(collapsed: true, tooltip: "Dashboard");

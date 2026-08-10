@@ -8,7 +8,7 @@
         disabled="@Disabled"
         @attributes="AdditionalAttributes"
         @onclick="OnClick">
-    <span class="relative z-10 inline-flex items-center justify-center gap-2">
+    <span class="@InnerContentClass">
         @ChildContent
     </span>
 </button>
@@ -63,13 +63,63 @@
         _ => ""
     };
 
+    // Deliberately EXHAUSTIVE (no `_ => ...` fallback): Button.ButtonSize is a public
+    // enum this switch mirrors arm-by-arm. Every CURRENT member is listed, so a
+    // future ButtonSize addition left unhandled here trips CS8509 under
+    // `-warnaserror` instead of the button silently rendering with
+    // `SizeClasses == ""` (no height/padding at all) — the same class of bug that
+    // shipped this PR's Xs-arm miss and Lg px-8 drift (Codex #386 review, round 3).
+    //
+    // The `#pragma` below suppresses ONLY CS8524 — a SEPARATE diagnostic that fires
+    // even when every NAMED member is covered, because an enum's underlying value
+    // isn't restricted to its named members. Verified empirically against
+    // UploadTrigger.razor's identical mirror: building with all arms present but no
+    // fallback and no pragma already emitted CS8524, i.e. deleting the fallback
+    // outright breaks the build immediately, not just "on a future ButtonSize
+    // addition" as hoped. Scoping the pragma to CS8524 specifically (never CS8509)
+    // keeps the actually-useful guard live.
+    //
+    // Gap between icon/spinner and label is intentionally NOT set here — it lives on
+    // InnerGapClass / the inner <span>, the actual flex container with multiple
+    // children (see finding 3 below). A gap-* class on THIS outer switch would be
+    // inert (the <button> has a single child, this span) and, worse, would sit
+    // alongside BaseClasses' own `gap-2` as two conflicting utility classes joined by
+    // plain string concatenation (this CssClass build is NOT Cx.Merge) — undefined
+    // which one wins in the compiled CSS.
+#pragma warning disable CS8524
     private string SizeClasses => Size switch
     {
         Button.ButtonSize.Default => "h-9 px-4 py-2",
-        Button.ButtonSize.Sm => "h-8 rounded-md px-3 text-xs",
-        Button.ButtonSize.Lg => "h-10 rounded-md px-8",
+        Button.ButtonSize.Sm => "h-8 rounded-md px-3",
+        // Button moved Lg's Comfortable padding to px-6 in this PR (px-8 -> px-6);
+        // this mirror had drifted and still rendered a large ShimmerButton 16px wider
+        // than the matching regular Button (Codex #386 P2 finding, round 3).
+        Button.ButtonSize.Lg => "h-10 rounded-md px-6",
         Button.ButtonSize.Icon => "h-9 w-9",
-        _ => ""
+        // Matches Button's Comfortable-density Xs geometry (h-6 px-2 text-xs); the
+        // gap-1 override lives on InnerGapClass instead (see above).
+        Button.ButtonSize.Xs => "h-6 px-2 text-xs",
+    };
+#pragma warning restore CS8524
+
+    // The actual flex container laying out [icon/spinner] + [label] + [right icon] —
+    // unlike the outer <button>, which wraps this single span and so cannot visibly
+    // apply a gap-* utility at all. Codex #386 P2 finding 3 (round 3): the Xs arm's
+    // gap-1 was applied to the outer button, so the rendered icon-to-label spacing
+    // stayed at the inner span's hardcoded gap-2 (8px) instead of the intended 4px,
+    // even though the class-string assertion passed.
+    private string InnerContentClass => Cx.Join("relative z-10 inline-flex items-center justify-center", InnerGapClass);
+
+    // Mirrors Button's own SizeOverrideClass: only Xs/Sm tighten the gap below
+    // BaseClasses' default gap-2; Default/Lg/Icon keep gap-2 (shadcn's own
+    // default/lg sizes don't override gap either). Not required to be exhaustive —
+    // an unmatched future size falling back to gap-2 is the same safe default
+    // Button.SizeOverrideClass itself uses (`_ => null`).
+    private string InnerGapClass => Size switch
+    {
+        Button.ButtonSize.Xs => "gap-1",
+        Button.ButtonSize.Sm => "gap-1.5",
+        _ => "gap-2"
     };
 
     private string? PressEffectClass => PressEffect switch

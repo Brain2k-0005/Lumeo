@@ -224,8 +224,14 @@
                         ? Cx.Join(slidingUnderlineOwnsIndicator ? "border-transparent" : "border-primary", "text-foreground")
                         : "border-transparent text-muted-foreground hover:text-foreground hover:border-border/60"),
                 _ => IsActive
-                    ? "bg-background text-foreground shadow"
-                    : ""
+                    // dark:bg-input/30 mirrors shadcn: the light-mode shadow-plus-white-pill
+                    // reads as a raised chip in dark mode without a bg swap (a light drop
+                    // shadow riding on a dark surface with no contrast from the track).
+                    ? "bg-background text-foreground shadow dark:bg-input/30"
+                    // shadcn parity: inactive tabs get a hover affordance too (Lumeo's own
+                    // Segmented.razor already does this for its inactive segments) — Default
+                    // previously had none at all.
+                    : "hover:text-foreground"
             };
 
             var reorderState = Context.Reorder;
@@ -250,12 +256,43 @@
         }
     }
 
-    // Trigger padding tracks the ambient DensityScope; Comfortable reproduces
-    // the historical `px-3 py-1.5`.
-    private string PadClass => Density switch
+    // Trigger padding tracks the ambient DensityScope. Comfortable Default is
+    // `px-3 py-1` (was `py-1.5`, wave-0 C2 fix): text-sm's 20px line-height +
+    // the old py-1.5 (12px) needed 32px, inside the TabsList Default track's
+    // h-9 p-1, whose content box is only 28px — the pill overflowed its own
+    // track and the declared 4px muted band collapsed to ~2px per side. py-1
+    // (4px) drops the intrinsic pill height to 24px, comfortably inside the
+    // 28px content box with no overflow — matching shadcn's own `py-1` for
+    // this size.
+    //
+    // That overflow argument is specific to Default's `h-9 p-1` track — Card/
+    // Pill/Underline all render inside TabsList's `h-10` track instead (see
+    // TabsList.razor's CssClass), which carries NO `p-1` padding at all
+    // (Card/Underline are `items-end` against a border, Pill is
+    // `items-center`), so their triggers have a full 40px of headroom and were
+    // never at overflow risk. The py-1 fix originally applied to every variant
+    // via this shared switch, silently shrinking Card/Pill/Underline's
+    // Comfortable trigger from 32px to 28px with no matching justification
+    // (Codex #386 P2 finding 2) — scoped back to Default only here.
+    //
+    // Second leak (Codex #386 round-3 finding 5): the Default-only scoping above
+    // still applied py-1 regardless of ORIENTATION. The h-9/28px-content-box
+    // overflow argument only exists for the HORIZONTAL Default track (TabsList's
+    // `h-9 p-1` row) — the vertical Default track is `flex flex-col h-auto w-auto
+    // ... p-1` (verified in TabsList.razor's CssClass: the vertical arm has no
+    // fixed height at all), so a vertical Default trigger has unbounded headroom
+    // and was never at overflow risk either. Gate the tighter padding on
+    // Orientation too, so only Default+Horizontal+Comfortable gets py-1; every
+    // other (variant, orientation) combination at Comfortable keeps the original
+    // py-1.5. This is deliberately the FULL matrix (Variant x Orientation x
+    // Density), pinned exhaustively by TabsTriggerPaddingTests, so a third variant
+    // of this same leak (round 1: unscoped by variant, round 2: unscoped by
+    // orientation) can't recur unnoticed a third time.
+    private string PadClass => (CurrentVariant, Context.Orientation, Density) switch
     {
-        Lumeo.Density.Compact => "px-2 py-1",
-        Lumeo.Density.Spacious => "px-4 py-2",
+        (_, _, Lumeo.Density.Compact) => "px-2 py-1",
+        (_, _, Lumeo.Density.Spacious) => "px-4 py-2",
+        (Tabs.TabsVariant.Default, Lumeo.Orientation.Horizontal, _) => "px-3 py-1",
         _ => "px-3 py-1.5"
     };
 

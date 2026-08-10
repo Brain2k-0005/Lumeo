@@ -12,6 +12,46 @@ namespace Lumeo.Internal;
 /// </summary>
 internal static class TailwindMerge
 {
+    /// <summary>
+    /// True when <paramref name="classAttribute"/> contains an UNPREFIXED (no
+    /// responsive/state variant such as <c>md:</c> or <c>hover:</c>) Tailwind
+    /// font-size utility token. Reuses the exact same classification
+    /// <see cref="Resolve"/> itself uses (<see cref="IsTextSize"/> via the
+    /// <c>"text"</c> body handling in <see cref="GroupFor"/>) so callers deciding
+    /// "does this caller-supplied Class fight one of my own unprefixed font-size
+    /// classes in the SAME Cx.Merge conflict group" never drift from what Cx.Merge
+    /// itself would actually do — a hand-rolled regex duplicating this logic is
+    /// exactly what produced Codex #386's finding that <c>text-lg/6</c> (the
+    /// line-height-modifier form) wasn't recognised even though Cx.Merge already
+    /// classified it correctly. Recognises every documented Tailwind font-size
+    /// form: named sizes (<c>text-lg</c>), arbitrary values (<c>text-[17px]</c>),
+    /// the line-height slash modifier (<c>text-lg/6</c>), and arbitrary value +
+    /// slash modifier together (<c>text-[17px]/6</c>) — all handled by the shared
+    /// <see cref="IsTextSize"/>/<see cref="TopLevelSlash"/> helpers.
+    /// </summary>
+    internal static bool HasUnprefixedFontSizeClass(string? classAttribute)
+    {
+        if (string.IsNullOrWhiteSpace(classAttribute)) return false;
+
+        foreach (var token in classAttribute.Split(' ', StringSplitOptions.RemoveEmptyEntries))
+        {
+            // Unprefixed means no variant chain at all (no `md:`, `hover:`, ...) —
+            // a token WITH a variant lives in a different Cx.Merge conflict group
+            // ("md:\0font-size" vs "\0font-size") and can't be what fights the
+            // caller's own plain override.
+            if (FindVariantBoundary(token) != 0) continue;
+
+            var body = token;
+            if (body.StartsWith('!')) body = body[1..];
+            if (body.EndsWith('!')) body = body[..^1];
+
+            if (!Is(body, "text")) continue;
+            if (IsTextSize(ValueOf(body, "text"))) return true;
+        }
+
+        return false;
+    }
+
     internal static string Resolve(List<string> tokens)
     {
         // For each token compute the set of conflict-group ids it occupies plus

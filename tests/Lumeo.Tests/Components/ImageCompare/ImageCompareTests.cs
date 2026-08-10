@@ -56,6 +56,29 @@ public class ImageCompareTests : IAsyncLifetime
     }
 
     [Fact]
+    public void Before_And_After_Badges_Use_Token_Radius_Not_Inline_Style()
+    {
+        // Wave-0 fix (C4): the badges hardcoded style="border-radius: 4px" instead
+        // of the token-driven rounded-sm class. --radius-sm is 6px at Lumeo's
+        // stock radius (calc(0.75rem * 0.5)), matching shadcn's own rounded-sm —
+        // so this is a small, deliberate 4px -> 6px visible bump onto the token
+        // system, not a pixel-identical swap.
+        var cut = _ctx.Render<L.ImageCompare>(p => p
+            .Add(c => c.BeforeSrc, "/b.jpg")
+            .Add(c => c.AfterSrc, "/a.jpg")
+            .Add(c => c.BeforeLabel, "Before")
+            .Add(c => c.AfterLabel, "After"));
+
+        var badges = cut.FindAll("span").Where(s => s.TextContent.Trim() is "Before" or "After").ToList();
+        Assert.Equal(2, badges.Count);
+        foreach (var badge in badges)
+        {
+            Assert.Contains("rounded-sm", badge.ClassList);
+            Assert.DoesNotContain("border-radius", badge.GetAttribute("style") ?? "");
+        }
+    }
+
+    [Fact]
     public void Renders_vertical_orientation_slider()
     {
         var cut = _ctx.Render<L.ImageCompare>(p => p

@@ -843,4 +843,37 @@ public class CxMergeTests
     [Fact]
     public void Merge_BgArbitraryVar_IsColor()
         => Assert.Equal("bg-[var(--c)]", Cx.Merge("bg-red-500", "bg-[var(--c)]"));
+
+    // --- HasUnprefixedFontSizeClass: shared classification consumed by
+    // Input.razor's HasFontSizeOverride (Codex #386 round-3 finding — a duplicate
+    // hand-rolled regex there missed the text-lg/6 line-height-modifier form even
+    // though this classification already recognised it). Every case here mirrors a
+    // form IsTextSize (used inside Resolve's own font-size grouping) recognises. ---
+
+    [Theory]
+    [InlineData("text-xs")]
+    [InlineData("text-sm")]
+    [InlineData("text-base")]
+    [InlineData("text-lg")]
+    [InlineData("text-xl")]
+    [InlineData("text-2xl")]
+    [InlineData("text-lg/6")]
+    [InlineData("text-sm/5")]
+    [InlineData("text-[17px]")]
+    [InlineData("text-[17px]/6")]
+    [InlineData("flex text-lg items-center")] // token embedded among others
+    public void HasUnprefixedFontSizeClass_RecognisesEveryDocumentedForm(string classAttribute)
+        => Assert.True(TailwindMerge.HasUnprefixedFontSizeClass(classAttribute));
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("  ")]
+    [InlineData("uppercase tracking-wide")] // contains "text"-adjacent but no text-* token
+    [InlineData("md:text-lg")] // prefixed — different Cx.Merge conflict group
+    [InlineData("hover:text-sm")] // prefixed
+    [InlineData("text-primary")] // text-* but a COLOR, not a font-size
+    [InlineData("text-left")] // text-* but ALIGNMENT, not a font-size
+    public void HasUnprefixedFontSizeClass_RejectsNonFontSizeOrPrefixedTokens(string? classAttribute)
+        => Assert.False(TailwindMerge.HasUnprefixedFontSizeClass(classAttribute));
 }

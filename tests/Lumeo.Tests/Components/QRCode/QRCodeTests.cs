@@ -148,6 +148,23 @@ public class QRCodeTests : IAsyncLifetime
     }
 
     [Fact]
+    public void Logo_Image_Has_No_Dead_Border_Radius_Style()
+    {
+        // Wave-0 fix (C4): the <image> element carried an inline
+        // style="border-radius: 4px" that has never had any visual effect —
+        // border-radius does not apply to SVG graphics elements without a
+        // backing clipPath, which this element never had. Deleting it is a
+        // no-op; this pins that the (previously inert) declaration is gone.
+        var cut = _ctx.Render<L.QRCode>(p => p
+            .Add(c => c.Value, "https://example.com")
+            .Add(c => c.ImageSrc, "logo.png"));
+
+        var image = cut.Find("image");
+        var style = image.GetAttribute("style") ?? "";
+        Assert.DoesNotContain("border-radius", style);
+    }
+
+    [Fact]
     public void Custom_AriaLabel_Is_Still_Honored()
     {
         // Guard: a genuine AriaLabel must still override the default.
