@@ -365,11 +365,14 @@ else
     // with the caller's class at any breakpoint — restoring the pre-wave0 "caller's class
     // simply replaces ours" contract. A caller who deliberately picks a size below 16px is
     // opting out of the iOS-zoom guard, exactly as it worked before wave0.
-    private static readonly System.Text.RegularExpressions.Regex FontSizeOverridePattern = new(
-        @"(?:^|\s)text-(?:xs|sm|base|lg|xl|[2-9]xl|\[[^\]\s]*(?:px|r?em|%)[^\]\s]*\])(?=\s|$)",
-        System.Text.RegularExpressions.RegexOptions.Compiled);
-
-    private bool HasFontSizeOverride => !string.IsNullOrWhiteSpace(Class) && FontSizeOverridePattern.IsMatch(Class);
+    //
+    // Codex round-3 finding: a hand-rolled regex here (the original implementation) missed
+    // Tailwind's line-height-modifier form (`text-lg/6`) even though Cx.Merge ITSELF already
+    // classifies that form as a font-size conflict via TailwindMerge's IsTextSize — two
+    // independent "is this a font-size class?" implementations drifting apart is exactly what
+    // produced the bug. Reuses TailwindMerge's own classification instead of maintaining a
+    // second one, so this can never again recognise a narrower set of forms than Cx.Merge does.
+    private bool HasFontSizeOverride => Lumeo.Internal.TailwindMerge.HasUnprefixedFontSizeClass(Class);
 
     private string SmFontClasses => HasFontSizeOverride ? "" : " text-base md:text-xs max-md:leading-none";
     private string DefaultFontClasses => HasFontSizeOverride ? "" : " text-base md:text-sm max-md:leading-none";

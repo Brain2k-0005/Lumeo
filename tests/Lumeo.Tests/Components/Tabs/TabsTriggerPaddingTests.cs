@@ -7,13 +7,21 @@ using L = Lumeo;
 namespace Lumeo.Tests.Components.Tabs;
 
 /// <summary>
-/// PadClass's Comfortable-density row is variant-scoped: Default needs `py-1` to fit
-/// inside TabsList's `h-9 p-1` track (28px content box — the wave-0 C2 overflow fix),
-/// but Card/Pill/Underline render inside a `h-10` track with NO `p-1` padding at all
-/// (see TabsList.razor CssClass), so they were never at overflow risk and must keep the
-/// original `py-1.5`. Codex #386 P2 finding 2: the py-1 fix originally applied to every
-/// variant via one shared switch, silently shrinking Card/Pill/Underline's Comfortable
-/// trigger from 32px to 28px with no matching justification.
+/// PadClass's Comfortable-density row is variant- AND orientation-scoped: only the
+/// HORIZONTAL Default trigger needs `py-1` to fit inside TabsList's `h-9 p-1` track
+/// (28px content box — the wave-0 C2 overflow fix); every other (variant, orientation)
+/// combination at Comfortable keeps the original `py-1.5`. Two rounds of Codex findings
+/// on this exact line each caught a leak the previous round's scoping missed:
+///   Round 2 (#386 P2 finding 2): py-1 applied to every VARIANT, not just Default —
+///     Card/Pill/Underline render inside a `h-10` track with no `p-1` at all (see
+///     TabsList.razor CssClass), so they were never at overflow risk.
+///   Round 3 (#386 P2 finding 5): even scoped to Default, py-1 still applied to both
+///     ORIENTATIONS — TabsList's vertical Default track is `flex flex-col h-auto w-auto
+///     ... p-1` (no fixed height at all, verified in TabsList.razor CssClass), so a
+///     vertical Default trigger has unbounded headroom and was never at overflow risk
+///     either.
+/// This suite pins the FULL matrix (4 variants x 2 orientations x 3 densities = 24
+/// combinations) so a third leak along some other dimension can't land unnoticed.
 /// </summary>
 public class TabsTriggerPaddingTests : IAsyncLifetime
 {
@@ -22,39 +30,104 @@ public class TabsTriggerPaddingTests : IAsyncLifetime
     public Task InitializeAsync() => Task.CompletedTask;
     public async Task DisposeAsync() => await _ctx.DisposeAsync();
 
-    private IRenderedComponent<IComponent> RenderTabs(L.Tabs.TabsVariant variant)
+    private IRenderedComponent<IComponent> RenderTabs(
+        L.Tabs.TabsVariant variant,
+        L.Orientation orientation = L.Orientation.Horizontal,
+        L.Density density = L.Density.Comfortable)
         => _ctx.Render(builder =>
         {
-            builder.OpenComponent<L.Tabs>(0);
-            builder.AddAttribute(1, "ActiveValue", "one");
-            builder.AddAttribute(2, "Variant", variant);
-            builder.AddAttribute(3, "ChildContent", (RenderFragment)(b =>
+            builder.OpenComponent<L.DensityScope>(0);
+            builder.AddAttribute(1, "Value", density);
+            builder.AddAttribute(2, "ChildContent", (RenderFragment)(scope =>
             {
-                b.OpenComponent<L.TabsList>(0);
-                b.AddAttribute(1, "ChildContent", (RenderFragment)(inner =>
+                scope.OpenComponent<L.Tabs>(0);
+                scope.AddAttribute(1, "ActiveValue", "one");
+                scope.AddAttribute(2, "Variant", variant);
+                scope.AddAttribute(3, "Orientation", orientation);
+                scope.AddAttribute(4, "ChildContent", (RenderFragment)(b =>
                 {
-                    inner.OpenComponent<L.TabsTrigger>(0);
-                    inner.AddAttribute(1, "Value", "one");
-                    inner.AddAttribute(2, "ChildContent", (RenderFragment)(t => t.AddContent(0, "First")));
-                    inner.CloseComponent();
+                    b.OpenComponent<L.TabsList>(0);
+                    b.AddAttribute(1, "ChildContent", (RenderFragment)(inner =>
+                    {
+                        inner.OpenComponent<L.TabsTrigger>(0);
+                        inner.AddAttribute(1, "Value", "one");
+                        inner.AddAttribute(2, "ChildContent", (RenderFragment)(t => t.AddContent(0, "First")));
+                        inner.CloseComponent();
+                    }));
+                    b.CloseComponent();
                 }));
-                b.CloseComponent();
+                scope.CloseComponent();
             }));
             builder.CloseComponent();
         });
 
-    [Fact]
-    public void Default_Variant_Comfortable_Renders_Py1_Not_Py1Point5()
+    // Exact-token assertion, not Assert.Contains: "py-1.5" itself contains the
+    // substring "py-1", so a plain Contains("py-1") check would pass even when the
+    // rendered class is actually "py-1.5" — exactly the kind of class-string-only
+    // assertion this PR's escaped bugs have repeatedly slipped past.
+    private static void AssertExactPadding(string cls, string expectedPad, string expectedPy)
     {
-        // Predicted-vs-actual (disable check): reverting PadClass to the pre-fix
-        // unscoped switch (`_ => "px-3 py-1"` for every variant, no CurrentVariant
-        // branch) still renders py-1 here — Default is unaffected either way, this
-        // just pins the value stays correct after the variant-scoping fix.
-        var cut = RenderTabs(L.Tabs.TabsVariant.Default);
+        var tokens = cls.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        Assert.Contains(expectedPad, tokens);
+        Assert.Contains(expectedPy, tokens);
+    }
+
+    public static IEnumerable<object[]> Matrix()
+    {
+        foreach (var variant in new[] { L.Tabs.TabsVariant.Default, L.Tabs.TabsVariant.Card, L.Tabs.TabsVariant.Pill, L.Tabs.TabsVariant.Underline })
+        foreach (var orientation in new[] { L.Orientation.Horizontal, L.Orientation.Vertical })
+        foreach (var density in new[] { L.Density.Compact, L.Density.Comfortable, L.Density.Spacious })
+        {
+            var (pad, py) = density switch
+            {
+                L.Density.Compact => ("px-2", "py-1"),
+                L.Density.Spacious => ("px-4", "py-2"),
+                // Comfortable: only Default+Horizontal gets the tighter py-1;
+                // every other variant/orientation combination keeps py-1.5.
+                _ when variant == L.Tabs.TabsVariant.Default && orientation == L.Orientation.Horizontal
+                    => ("px-3", "py-1"),
+                _ => ("px-3", "py-1.5"),
+            };
+            yield return new object[] { variant, orientation, density, pad, py };
+        }
+    }
+
+    [Theory]
+    [MemberData(nameof(Matrix))]
+    public void PadClass_Matches_Variant_Orientation_Density_Matrix(
+        L.Tabs.TabsVariant variant, L.Orientation orientation, L.Density density, string expectedPad, string expectedPy)
+    {
+        var cut = RenderTabs(variant, orientation, density);
 
         var cls = cut.Find("button[role='tab']").GetAttribute("class") ?? "";
-        Assert.Contains("py-1", cls);
-        Assert.DoesNotContain("py-1.5", cls);
+        AssertExactPadding(cls, expectedPad, expectedPy);
+    }
+
+    [Fact]
+    public void Default_Horizontal_Comfortable_Renders_Py1_Not_Py1Point5()
+    {
+        // Predicted-vs-actual (disable check): reverting PadClass to the round-2 fix
+        // (Default-only, no orientation gate) still renders py-1 here — Default +
+        // Horizontal is unaffected either way, this just pins the value stays correct
+        // after the orientation-scoping fix.
+        var cut = RenderTabs(L.Tabs.TabsVariant.Default, L.Orientation.Horizontal);
+
+        var cls = cut.Find("button[role='tab']").GetAttribute("class") ?? "";
+        AssertExactPadding(cls, "px-3", "py-1");
+    }
+
+    [Fact]
+    public void Default_Vertical_Comfortable_Keeps_Py1Point5()
+    {
+        // This is the exact regression this test class closes: predicted WRONG value
+        // under the pre-fix (Default-only, no orientation gate) code is "py-1" (28px
+        // trigger) because that code's (Tabs.TabsVariant.Default, _) arm matches
+        // vertical too; the correct/expected value is "py-1.5" (32px trigger), since
+        // TabsList's vertical Default track is h-auto and was never overflow-constrained.
+        var cut = RenderTabs(L.Tabs.TabsVariant.Default, L.Orientation.Vertical);
+
+        var cls = cut.Find("button[role='tab']").GetAttribute("class") ?? "";
+        AssertExactPadding(cls, "px-3", "py-1.5");
     }
 
     [Theory]
@@ -66,6 +139,6 @@ public class TabsTriggerPaddingTests : IAsyncLifetime
         var cut = RenderTabs(variant);
 
         var cls = cut.Find("button[role='tab']").GetAttribute("class") ?? "";
-        Assert.Contains("py-1.5", cls);
+        AssertExactPadding(cls, "px-3", "py-1.5");
     }
 }

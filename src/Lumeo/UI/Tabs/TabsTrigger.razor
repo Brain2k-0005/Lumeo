@@ -274,11 +274,25 @@
     // via this shared switch, silently shrinking Card/Pill/Underline's
     // Comfortable trigger from 32px to 28px with no matching justification
     // (Codex #386 P2 finding 2) — scoped back to Default only here.
-    private string PadClass => (CurrentVariant, Density) switch
+    //
+    // Second leak (Codex #386 round-3 finding 5): the Default-only scoping above
+    // still applied py-1 regardless of ORIENTATION. The h-9/28px-content-box
+    // overflow argument only exists for the HORIZONTAL Default track (TabsList's
+    // `h-9 p-1` row) — the vertical Default track is `flex flex-col h-auto w-auto
+    // ... p-1` (verified in TabsList.razor's CssClass: the vertical arm has no
+    // fixed height at all), so a vertical Default trigger has unbounded headroom
+    // and was never at overflow risk either. Gate the tighter padding on
+    // Orientation too, so only Default+Horizontal+Comfortable gets py-1; every
+    // other (variant, orientation) combination at Comfortable keeps the original
+    // py-1.5. This is deliberately the FULL matrix (Variant x Orientation x
+    // Density), pinned exhaustively by TabsTriggerPaddingTests, so a third variant
+    // of this same leak (round 1: unscoped by variant, round 2: unscoped by
+    // orientation) can't recur unnoticed a third time.
+    private string PadClass => (CurrentVariant, Context.Orientation, Density) switch
     {
-        (_, Lumeo.Density.Compact) => "px-2 py-1",
-        (_, Lumeo.Density.Spacious) => "px-4 py-2",
-        (Tabs.TabsVariant.Default, _) => "px-3 py-1",
+        (_, _, Lumeo.Density.Compact) => "px-2 py-1",
+        (_, _, Lumeo.Density.Spacious) => "px-4 py-2",
+        (Tabs.TabsVariant.Default, Lumeo.Orientation.Horizontal, _) => "px-3 py-1",
         _ => "px-3 py-1.5"
     };
 

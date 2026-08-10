@@ -277,6 +277,31 @@ public class InputTests : IAsyncLifetime
         Assert.Contains("md:text-sm", cls);
     }
 
+    [Theory]
+    [InlineData("text-lg/6")]   // named size + line-height slash modifier
+    [InlineData("text-[17px]")] // arbitrary value, no modifier
+    [InlineData("text-[17px]/6")] // arbitrary value + line-height slash modifier together
+    public void Class_With_LineHeight_Or_Arbitrary_FontSize_Forms_Suppresses_The_Zoom_Guard(string className)
+    {
+        // Codex round-3 finding: the ORIGINAL hand-rolled regex here recognised named
+        // sizes and arbitrary values but not the `text-lg/6` line-height-modifier form —
+        // even though Cx.Merge itself already classified that form as a font-size
+        // conflict (TailwindMerge.IsTextSize strips the slash before matching). The fix
+        // reuses TailwindMerge's own classification (HasUnprefixedFontSizeClass) instead
+        // of maintaining a second regex, so every form Cx.Merge recognises is covered
+        // here by construction, not by enumeration. Predicted WRONG value under the old
+        // regex for "text-lg/6" specifically: md:text-sm SURVIVES (regex doesn't match,
+        // suppression never fires) — i.e. this assertion (DoesNotContain) is exactly the
+        // one that used to fail for that case.
+        var cut = _ctx.Render<Lumeo.Input>(p => p
+            .Add(b => b.Class, className));
+
+        var cls = cut.Find("input").GetAttribute("class") ?? "";
+        Assert.Contains(className, cls);
+        Assert.DoesNotContain("md:text-sm", cls);
+        Assert.DoesNotContain("text-base", cls);
+    }
+
     [Fact]
     public void Class_With_A_Responsive_FontSize_Token_Does_Not_Suppress_The_Zoom_Guard()
     {
