@@ -408,4 +408,111 @@ public class GanttV3Phase3T2Tests : IAsyncLifetime
 
         Assert.True(_interop.GanttV3GetLocalDateTimeCallCount >= 1);
     }
+
+    // Codex review (phase-3 fix round), P2 — "browser time is stale when
+    // NowIndicator is enabled after mount". Two distinct failure modes, one
+    // test each; see Gantt3.razor's own _lastNowIndicator/RefreshBrowserNowAsync
+    // remarks for the fix. A single-task fixture pins ComputeInitialRange's
+    // padded window deterministically (QuarterDay: task min/max date +/- 6
+    // days — see ApplyPadding's Hour branch), independent of GroupBy/today.
+
+    [Fact]
+    public async Task NowIndicator_Enabled_After_Mount_Resolves_Browser_Now_Not_The_Servers_Clock()
+    {
+        // Failure mode 1: RefreshBrowserNowAsync's own guard makes the
+        // firstRender call a no-op while NowIndicator starts false, so
+        // _browserNow is never seeded. Without the OnParametersSetAsync
+        // false->true edge trigger, turning the option on later leaves
+        // _browserNow null forever (nothing else re-queries it), and
+        // GanttTimeline's `Now ?? DateTime.Now` fallback renders the SERVER's
+        // real wall-clock time instead.
+        //
+        // Task dates are pinned to year 2000 specifically so the predicted
+        // failure is unambiguous regardless of which real-world date this
+        // suite happens to run on: the visible window becomes a ~13-day band
+        // around 2000-01-15, and DateTime.Now (today, decades later) cannot
+        // land inside it by construction — so the broken behavior is not
+        // merely "the wrong pixel", it is "no now-line renders at all"
+        // (NowInRange's own TotalWidth bounds check fails), while the fixed
+        // behavior renders the line at the EXACT interop-provided pixel.
+        var tasks = new List<L.GanttTask> { new("t1", "Design", D(2000, 1, 15), D(2000, 1, 16)) };
+        _interop.GanttV3LocalDateTimeToReturn = "2000-01-15T08:00:00";
+
+        var cut = _ctx.Render<L.Gantt3>(p => p
+            .Add(c => c.Tasks, tasks)
+            .Add(c => c.ViewMode, L.GanttViewMode.QuarterDay)
+            .Add(c => c.NowIndicator, false));
+        await cut.InvokeAsync(() => { });
+        Assert.Equal(0, _interop.GanttV3GetLocalDateTimeCallCount); // sanity: disabled at mount pays no interop cost
+
+        // Enable post-mount — the false->true transition this fix reacts to.
+        cut.Render(p => p
+            .Add(c => c.Tasks, tasks)
+            .Add(c => c.ViewMode, L.GanttViewMode.QuarterDay)
+            .Add(c => c.NowIndicator, true));
+        await cut.InvokeAsync(() => { });
+
+        var rangeStart = D(2000, 1, 9);
+        var rangeEnd = D(2000, 1, 22);
+        var origin = GanttScale.BuildDateUnits(L.GanttViewMode.QuarterDay, rangeStart, rangeEnd)[0];
+        var expectedX = GanttScale.DateToPixel(L.GanttViewMode.QuarterDay, origin, new DateTime(2000, 1, 15, 8, 0, 0));
+
+        var line = cut.Find(".lumeo-gantt-v3-now-line"); // throws if absent — exactly the broken-code prediction above
+        Assert.Contains($"left:{expectedX.ToString(CultureInfo.InvariantCulture)}px", line.GetAttribute("style"));
+    }
+
+    [Fact]
+    public async Task NowIndicator_Reenabled_After_Disable_Refreshes_Browser_Now_Instead_Of_Reusing_The_Stale_Value()
+    {
+        // Failure mode 2: toggling NowIndicator off then back on is not
+        // itself a refresh trigger, so a re-enable can redisplay whatever
+        // _browserNow an earlier enable left behind — a long-mounted chart
+        // can show an hours-old "now" line the instant it's turned back on.
+        //
+        // Fully deterministic, no real-wall-clock dependency: both the FIRST
+        // (T1) and SECOND (T2) browser times are supplied by the interop
+        // mock, 8 hours apart on the same day — a several-hour offset that
+        // makes a wrong-value failure unambiguous either way.
+        var tasks = new List<L.GanttTask> { new("t1", "Design", D(2026, 1, 15), D(2026, 1, 16)) };
+        var t1 = new DateTime(2026, 1, 15, 6, 0, 0);
+        var t2 = new DateTime(2026, 1, 15, 14, 0, 0); // 8h after t1
+
+        _interop.GanttV3LocalDateTimeToReturn = t1.ToString("yyyy-MM-ddTHH:mm:ss", CultureInfo.InvariantCulture);
+        var cut = _ctx.Render<L.Gantt3>(p => p
+            .Add(c => c.Tasks, tasks)
+            .Add(c => c.ViewMode, L.GanttViewMode.QuarterDay)
+            .Add(c => c.NowIndicator, true));
+        await cut.InvokeAsync(() => { });
+
+        var rangeStart = D(2026, 1, 9);
+        var rangeEnd = D(2026, 1, 22);
+        var origin = GanttScale.BuildDateUnits(L.GanttViewMode.QuarterDay, rangeStart, rangeEnd)[0];
+        var expectedX1 = GanttScale.DateToPixel(L.GanttViewMode.QuarterDay, origin, t1);
+        Assert.Contains($"left:{expectedX1.ToString(CultureInfo.InvariantCulture)}px", cut.Find(".lumeo-gantt-v3-now-line").GetAttribute("style"));
+
+        // Disable — _browserNow stays at t1's value, simply unused while off.
+        cut.Render(p => p
+            .Add(c => c.Tasks, tasks)
+            .Add(c => c.ViewMode, L.GanttViewMode.QuarterDay)
+            .Add(c => c.NowIndicator, false));
+        await cut.InvokeAsync(() => { });
+        Assert.Empty(cut.FindAll(".lumeo-gantt-v3-now-line")); // the disable-check alone is NOT the point of this test — see below
+
+        // The browser's clock has since moved on 8 hours (t2). Re-enable.
+        _interop.GanttV3LocalDateTimeToReturn = t2.ToString("yyyy-MM-ddTHH:mm:ss", CultureInfo.InvariantCulture);
+        cut.Render(p => p
+            .Add(c => c.Tasks, tasks)
+            .Add(c => c.ViewMode, L.GanttViewMode.QuarterDay)
+            .Add(c => c.NowIndicator, true));
+        await cut.InvokeAsync(() => { });
+
+        var expectedX2 = GanttScale.DateToPixel(L.GanttViewMode.QuarterDay, origin, t2);
+        Assert.NotEqual(expectedX1, expectedX2); // sanity: the two candidate positions are genuinely distinct
+
+        // Concretely predicted: fixed code re-queries on re-enable and renders
+        // at t2's pixel; broken code never re-queries on re-enable and keeps
+        // rendering at t1's (stale) pixel instead.
+        var line = cut.Find(".lumeo-gantt-v3-now-line");
+        Assert.Contains($"left:{expectedX2.ToString(CultureInfo.InvariantCulture)}px", line.GetAttribute("style"));
+    }
 }

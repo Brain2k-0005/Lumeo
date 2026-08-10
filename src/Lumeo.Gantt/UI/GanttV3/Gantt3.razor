@@ -1477,6 +1477,12 @@
         // again every OnParametersSetAsync pass below) is the whole contract —
         // see HandleRowSelectionChangeAsync's own remarks for the write side.
         if (SelectedIds is not null) _state.SetSelectedIds(SelectedIds);
+        // Seeds the false->true edge-detector at the MOUNT value (see
+        // _lastNowIndicator's own remarks) — a chart mounted with the option
+        // already on needs no synthetic "transition" here at all, since
+        // OnAfterRenderAsync's firstRender below already resolves _browserNow
+        // unconditionally for that case.
+        _lastNowIndicator = NowIndicator;
         _lastParentTasksHash = _lastPushedTasksHash = ComputeTasksHash(rawTasks);
         _tasksVersion = 1;
         _state.SetVisibleRange(ComputeInitialRange(_state.ViewMode, _state.Tasks, EffectiveToday));
@@ -1803,7 +1809,36 @@
     // of this same interop foundation, not a T2 requirement). Guarded on
     // NowIndicator itself so a chart that never enables the feature pays zero
     // extra interop cost.
+    //
+    // Codex review (phase-3 fix round), P2: those three points alone leave two
+    // gaps around a NowIndicator that is off at mount and gets flipped on
+    // later (a controlled `NowIndicator` parameter, or any caller re-rendering
+    // this component after toggling it): (1) RefreshBrowserNowAsync's own
+    // guard above makes the FIRST call (firstRender) a no-op while the option
+    // is still false, so _browserNow never gets seeded — GanttTimeline's
+    // `Now ?? DateTime.Now` fallback then renders the SERVER's clock instead
+    // of the browser's until one of the three existing trigger points happens
+    // to run again with the option now true; on a cross-timezone Blazor
+    // Server circuit that can be off by hours. (2) toggling off then back on
+    // is not itself a trigger either, so a re-enable can just as easily
+    // redisplay whatever _browserNow was left holding from hours earlier.
+    // OnParametersSetAsync below now treats a false->true transition of the
+    // NowIndicator PARAMETER as a fourth trigger, closing both: it fires on
+    // the very first pass that turns the option on (mount-with-it-already-on
+    // is unaffected — OnAfterRenderAsync's firstRender already covers that
+    // case), and it fires again every time a prior disable is followed by a
+    // re-enable, so neither gap can reuse a stale value.
     private DateTime? _browserNow;
+
+    // Mirrors the NowIndicator PARAMETER as observed by the last completed
+    // OnParametersSetAsync pass (seeded from the mount value in OnInitialized,
+    // since the very first pass is a no-op — see its own early return below).
+    // Compared against the CURRENT parameter value each subsequent pass purely
+    // to detect a false->true edge; this is intentionally a raw edge-detector,
+    // not another "controlled vs uncontrolled" discriminator like the
+    // Tasks/ViewMode ones above — NowIndicator has no *Changed callback and no
+    // uncontrolled-edit state to protect.
+    private bool _lastNowIndicator;
 
     private async Task RefreshBrowserNowAsync()
     {
@@ -1828,6 +1863,22 @@
             _initialized = true;
             return;
         }
+
+        // Codex review (phase-3 fix round), P2 — see _lastNowIndicator's own
+        // remarks. A false->true edge on the NowIndicator PARAMETER since the
+        // last pass is a fourth trigger for _browserNow, alongside mount, the
+        // once-per-server-day check, and Today: catches both a chart mounted
+        // with the option off that gets turned on later (RefreshBrowserNowAsync's
+        // own guard made the firstRender call above a no-op, so _browserNow was
+        // never seeded) and a disable-then-re-enable, which would otherwise
+        // silently redisplay whatever _browserNow a much earlier enable left
+        // behind. Read BEFORE the edge-detector is updated below, and awaited
+        // here (not fire-and-forget) so the very same pass that turns the
+        // option on already renders the freshly-resolved browser time rather
+        // than one paint of the stale/default value followed by a correction.
+        var nowIndicatorEnabled = NowIndicator && !_lastNowIndicator;
+        _lastNowIndicator = NowIndicator;
+        if (nowIndicatorEnabled) await RefreshBrowserNowAsync();
 
         // Design spec Phase 3, T6 — push a CONTROLLED SelectedIds parameter
         // into _state on every subsequent pass too (see OnInitialized's own
