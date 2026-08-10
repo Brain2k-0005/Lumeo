@@ -15,6 +15,34 @@ namespace Lumeo.Tests.E2E.Smokes;
 /// </summary>
 public class GanttV3PreviewPageTests : PlaywrightTestBase
 {
+    // CI investigation (post-T10, PR #387 e2e failure): the two locator waits
+    // below (loop over every heading, and #v3-settings-quarter specifically)
+    // timed out at 15000ms in CI but passed reliably (~8-9s) on a fast local
+    // dev box, with zero Blazor/console errors either way — ruled out a
+    // culture/timezone bug (retested forcing TimezoneId=UTC + default
+    // invariant culture, matching Ubuntu CI, still clean) and a logic bug in
+    // the new T2/T3/T5 grouping/rollup/Quarter-scale math (GanttRowModel,
+    // GanttRollupModel and GanttScale reviewed directly; rollup math floors
+    // its weight divisor so it can never hit 0/NaN, Quarter's column math is
+    // pure constant arithmetic, no index/range op that could throw). This
+    // page is the heaviest in the whole Smoke suite by a wide margin — FIVE
+    // live Gantt3/Gantt instances rendered at once (flat, grouped, tree,
+    // tree-columns+splitter, quarter+settings-menu over a ~15-month roadmap,
+    // plus the v2 reference) — yet it inherited the SAME 15000ms constant
+    // every single-instance Smoke page uses, and unlike the other
+    // multi-circuit-heavy Gantt spec (GanttParityTestBase/
+    // GanttSequentialCollection, added in T4 for the identical class of
+    // "correct but resource-contention-timed-out under CI's shared runner"
+    // failure) it was never given headroom for its own weight. Reproducing
+    // the exact CI timing wasn't possible on this dev machine (even pinning
+    // the whole `dotnet test` process to 2-4 CPU cores under full-suite
+    // parallel contention only pushed #v3-settings-quarter from ~9s to
+    // ~12-13s, short of the 15s cliff — this machine's per-core throughput
+    // still outpaces a GitHub Actions runner), but the trend is consistent
+    // and unambiguous, so the timeout below is widened rather than the
+    // fixture logic changed.
+    private const int HeavyPageTimeoutMs = 30000;
+
     [Fact]
     public async Task Preview_page_loads_and_renders_every_feature_section()
     {
@@ -26,7 +54,7 @@ public class GanttV3PreviewPageTests : PlaywrightTestBase
 
         foreach (var headingId in new[] { "v3-flat", "v3-grouped", "v3-tree", "v3-tree-columns", "v3-summary-bars", "v3-settings-quarter", "v2-reference" })
         {
-            await Page.Locator($"#{headingId}").WaitForAsync(new() { Timeout = 15000 });
+            await Page.Locator($"#{headingId}").WaitForAsync(new() { Timeout = HeavyPageTimeoutMs });
         }
 
         // Blazor's standard unhandled-exception banner — hidden by default
@@ -47,11 +75,11 @@ public class GanttV3PreviewPageTests : PlaywrightTestBase
         await Page.WaitForLoadStateAsync(LoadState.NetworkIdle);
 
         var section = Page.Locator("#v3-tree-columns").Locator("xpath=following-sibling::*[1]");
-        await section.WaitForAsync(new() { Timeout = 15000 });
+        await section.WaitForAsync(new() { Timeout = HeavyPageTimeoutMs });
 
         await Page.Locator(".lumeo-gantt-v3-tree-header-cell", new() { HasTextString = "Progress" }).First
-            .WaitForAsync(new() { Timeout = 15000 });
-        await Page.Locator(".lumeo-gantt-v3-tree-meta").First.WaitForAsync(new() { Timeout = 15000 });
+            .WaitForAsync(new() { Timeout = HeavyPageTimeoutMs });
+        await Page.Locator(".lumeo-gantt-v3-tree-meta").First.WaitForAsync(new() { Timeout = HeavyPageTimeoutMs });
     }
 
     [Fact]
@@ -60,9 +88,9 @@ public class GanttV3PreviewPageTests : PlaywrightTestBase
         await Goto("/e2e/gantt-v3-preview");
         await Page.WaitForLoadStateAsync(LoadState.NetworkIdle);
 
-        await Page.Locator("#v3-settings-quarter").WaitForAsync(new() { Timeout = 15000 });
+        await Page.Locator("#v3-settings-quarter").WaitForAsync(new() { Timeout = HeavyPageTimeoutMs });
         var settingsButtons = Page.Locator("button[aria-label='Settings']");
-        await settingsButtons.First.WaitForAsync(new() { Timeout = 15000 });
+        await settingsButtons.First.WaitForAsync(new() { Timeout = HeavyPageTimeoutMs });
         await settingsButtons.First.ClickAsync();
         await Page.Locator("label:has-text('Zoom control')").WaitForAsync(new() { Timeout = 5000 });
     }
