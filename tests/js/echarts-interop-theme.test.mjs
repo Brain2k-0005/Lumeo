@@ -207,6 +207,16 @@ test('glow: brand-accent (--color-primary) tinted, not per-series — line gets 
     assert.equal(theme.heatmap.emphasis.itemStyle.shadowColor, 'rgba(255, 0, 255, 0.5)');
 });
 
+test('charts-design form pass: line emphasis enlarges the hovered marker (scale), not just the stroke', async () => {
+    // "thicken the stroke or enlarge the marker" from the design-pass brief — both,
+    // not colour alone, carry the hover state for line series.
+    const { __testing } = await importInterop();
+    const theme = __testing.buildLumeoTheme(fakeCssVar, false);
+    assert.equal(theme.line.emphasis.scale, 1.5);
+    // Strictly larger than the resting (unscaled) marker.
+    assert.ok(theme.line.emphasis.scale > 1);
+});
+
 test('bar gradient: itemStyle.color is a callback that builds a top-lightened vertical gradient from params.color', async () => {
     const { __testing } = await importInterop();
     const theme = __testing.buildLumeoTheme(fakeCssVar, false);

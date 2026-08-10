@@ -153,6 +153,20 @@
                 s.ItemStyle = new EChartItemStyle { BorderRadiusCorners = new[] { 0, r, r, 0 } };
         }
 
+        // Per-series decal — a grouped or stacked multi-series bar chart is exactly the
+        // "categorical bars" case decal earns its place for (see ChartHelper.GetDecal):
+        // each series already gets its own colour, and the decal gives it a second,
+        // colour-independent way to read apart. Skipped for a single-series chart
+        // (nothing to differentiate against) and beyond ChartHelper.MaxDecalItems
+        // series (the cardinality problem a previous pass declined decal over).
+        for (var i = 0; i < seriesList.Count; i++)
+        {
+            var decal = ChartHelper.GetDecal(i, seriesList.Count);
+            if (decal is null) continue;
+            seriesList[i].ItemStyle ??= new EChartItemStyle();
+            seriesList[i].ItemStyle!.Decal = decal;
+        }
+
         if (ShowDataLabels)
             foreach (var s in seriesList)
                 s.Label = new EChartLabel { Show = true, Position = LabelPosition, Formatter = LabelFormat };

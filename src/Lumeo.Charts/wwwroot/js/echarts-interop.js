@@ -461,6 +461,11 @@ function buildLumeoTheme(cssVar, reducedMotion) {
             label: labelNoStroke,
             emphasis: {
                 focus: 'series',
+                // Enlarge the hovered point's marker (scale is ECharts' built-in symbol-
+                // size multiplier for line/scatter series) alongside the stroke thickening
+                // above — "thicken the stroke or enlarge the marker" from the design-pass
+                // brief, both at once rather than colour carrying the hover state alone.
+                scale: 1.5,
                 lineStyle: { width: 3, shadowBlur: 14, shadowColor: withAlpha(glowColor, 0.34) }
             },
             blur: seriesHover.blur,
