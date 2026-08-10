@@ -1,0 +1,41 @@
+@page "/e2e/input-sizing"
+
+@* Codex review of PR #386 (shadcn-wave0), findings 3 + 4 — a real-browser harness for the
+   two Input.razor iOS-zoom-guard regressions, since neither is observable from bUnit (bUnit
+   never applies CSS, so it can't see computed font-size / line-height / rendered heights):
+
+   Finding 3 (line-height overflow): text-base's bundled line-height (24px) can exceed the
+   available content-box height of the smallest Size/Density combos. This page renders every
+   Size x Density combination with a stable data-testid so the E2E spec can measure computed
+   line-height against computed client height minus padding/border for ALL nine, not just the
+   worst case.
+
+   Finding 4 (Class override defeated at >=768px): default-input carries no Class override
+   and must land on the 16px iOS-zoom-guard floor on mobile; override-lg-input/override-xs-input
+   carry explicit unprefixed font-size classes and must win at EVERY breakpoint, per the
+   Cx.Merge conflict-group fix in Input.razor's SmFontClasses/DefaultFontClasses. *@
+
+<PageTitle>E2E - Input sizing</PageTitle>
+
+<div class="p-8 flex flex-col gap-4" style="max-width: 480px;">
+    <h1 data-testid="input-sizing-e2e-title">Input sizing (Codex PR #386 findings 3 + 4)</h1>
+
+    <Input data-testid="default-input" placeholder="Default, no override" />
+    <Input data-testid="override-lg-input" Class="text-lg" placeholder="Class=text-lg" />
+    <Input data-testid="override-xs-input" Class="text-xs" placeholder="Class=text-xs" />
+
+    @* Input.razor's SizeClasses only differentiates Sm/Lg from everything else (which falls
+       through to the Default/"Md" arm) — restrict the grid to the three buckets that actually
+       produce distinct CSS rather than repeating the same Default-arm markup 4 extra times
+       for Xs/Xl/Xxl/Xxs. *@
+    @foreach (var size in new[] { Lumeo.Size.Sm, Lumeo.Size.Md, Lumeo.Size.Lg })
+    {
+        @foreach (var density in Enum.GetValues<Density>())
+        {
+            <Input data-testid="@($"size-{size}-density-{density}")"
+                   Size="size"
+                   Density="density"
+                   placeholder="@($"{size} / {density}")" />
+        }
+    }
+</div>

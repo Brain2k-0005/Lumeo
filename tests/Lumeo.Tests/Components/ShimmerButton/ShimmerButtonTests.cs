@@ -136,6 +136,26 @@ public class ShimmerButtonTests : IAsyncLifetime
     }
 
     [Fact]
+    public void Size_Xs_Applies_ExtraSmall_Classes()
+    {
+        // Codex review of PR #386, finding 2: Button.ButtonSize.Xs went public but
+        // ShimmerButton's SizeClasses switch (a hand-copied mirror of Button's own,
+        // predating Xs) had no Xs arm, so it fell through to the `_ => ""` default —
+        // no height, no padding, no text-size override at all. h-6/px-2 match Button's
+        // Comfortable-density Xs geometry (Button.razor's SizeClasses); gap-1/text-xs
+        // match Button's SizeOverrideClass, folded in directly since ShimmerButton has
+        // no separate override slot to merge one in.
+        var cut = _ctx.Render<Lumeo.ShimmerButton>(p => p
+            .Add(b => b.Size, Lumeo.Button.ButtonSize.Xs)
+            .AddChildContent("X"));
+
+        var cls = cut.Find("button").GetAttribute("class") ?? "";
+        Assert.Contains("h-6", cls);
+        Assert.Contains("px-2", cls);
+        Assert.Contains("text-xs", cls);
+    }
+
+    [Fact]
     public void Additional_Attributes_Forward()
     {
         var cut = _ctx.Render<Lumeo.ShimmerButton>(p => p

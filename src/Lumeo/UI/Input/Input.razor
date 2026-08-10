@@ -341,30 +341,68 @@ else
     // restores the tighter desktop look). Lg was already text-base at every breakpoint, so
     // it never had the bug and is left untouched — shrinking it on desktop would be a pure
     // style change, not a bug fix.
+    //
+    // Codex finding 3 (line-height overflow): text-base's bundled line-height is 24px
+    // (--text-base--line-height: calc(1.5/1)). With py-1 (8px) + the 1px/side border (2px)
+    // fixed across every size/density, the CONTENT box available for that line is
+    // (h-* - 10px). Measured against the actual heights below: Sm/Compact h-7=28px -> 18px
+    // available (6px overflow); Sm/Comfortable h-8=32px -> 22px available (2px overflow);
+    // Default/Compact h-8=32px -> 22px available (2px overflow, same control). Every other
+    // combo (Sm/Spacious 26px avail, Default/Comfortable 26px, Default/Spacious 30px, all of
+    // Lg 30-38px) already has >=24px available and never overflowed. Fix: `max-md:leading-none`
+    // (line-height: 1 -> 16px) tightens ONLY the sub-768 text-base state — it leaves the
+    // desktop md:text-sm/md:text-xs line-height (already fine) untouched — and is applied
+    // uniformly to Sm/Default rather than only the 3 overflowing combos, since a tighter
+    // single-line input line-height is harmless everywhere and keeps the arms simple.
+    //
+    // Codex finding 4 (Class override defeated at >=768px): Cx.Merge (tailwind-merge
+    // semantics) correctly keys conflict groups by variant chain, so a caller's unprefixed
+    // `Class="text-lg"` only replaces THIS class's unprefixed text-base (same "\0font-size"
+    // group) — the separate `md:text-sm`/`md:text-xs` token lives in a DIFFERENT group
+    // ("md:\0font-size") and survives untouched, silently winning back at >=768px. When the
+    // caller supplies their own unprefixed font-size utility via Class, SmFontClasses /
+    // DefaultFontClasses are suppressed entirely (HasFontSizeOverride) so nothing competes
+    // with the caller's class at any breakpoint — restoring the pre-wave0 "caller's class
+    // simply replaces ours" contract. A caller who deliberately picks a size below 16px is
+    // opting out of the iOS-zoom guard, exactly as it worked before wave0.
+    private static readonly System.Text.RegularExpressions.Regex FontSizeOverridePattern = new(
+        @"(?:^|\s)text-(?:xs|sm|base|lg|xl|[2-9]xl|\[[^\]\s]*(?:px|r?em|%)[^\]\s]*\])(?=\s|$)",
+        System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    private bool HasFontSizeOverride => !string.IsNullOrWhiteSpace(Class) && FontSizeOverridePattern.IsMatch(Class);
+
+    private string SmFontClasses => HasFontSizeOverride ? "" : " text-base md:text-xs max-md:leading-none";
+    private string DefaultFontClasses => HasFontSizeOverride ? "" : " text-base md:text-sm max-md:leading-none";
+
     private string SizeClasses => (Size, EffectiveDensity) switch
     {
-        (Lumeo.Size.Sm, Lumeo.Density.Compact)  => "h-7 text-base md:text-xs px-2",
-        (Lumeo.Size.Sm, Lumeo.Density.Spacious) => "h-9 text-base md:text-xs px-3",
-        (Lumeo.Size.Sm, _)                      => "h-8 text-base md:text-xs px-2.5",
+        (Lumeo.Size.Sm, Lumeo.Density.Compact)  => $"h-7{SmFontClasses} px-2",
+        (Lumeo.Size.Sm, Lumeo.Density.Spacious) => $"h-9{SmFontClasses} px-3",
+        (Lumeo.Size.Sm, _)                      => $"h-8{SmFontClasses} px-2.5",
         (Lumeo.Size.Lg, Lumeo.Density.Compact)  => "h-10 text-base px-3",
         (Lumeo.Size.Lg, Lumeo.Density.Spacious) => "h-12 text-base px-5",
         (Lumeo.Size.Lg, _)                      => "h-11 text-base px-4",
-        (_, Lumeo.Density.Compact)              => "h-8 text-base md:text-sm px-2.5",
-        (_, Lumeo.Density.Spacious)             => "h-10 text-base md:text-sm px-4",
-        _                                       => "h-9 text-base md:text-sm px-3"
+        (_, Lumeo.Density.Compact)              => $"h-8{DefaultFontClasses} px-2.5",
+        (_, Lumeo.Density.Spacious)             => $"h-10{DefaultFontClasses} px-4",
+        _                                       => $"h-9{DefaultFontClasses} px-3"
     };
 
+    // Wrapper/wrapped-input paths (Prefix/Suffix/Search/Clearable/number-stepper branch):
+    // Class merges onto the WRAPPER div here (see the Class parameter doc), never onto the
+    // inner <input> — so HasFontSizeOverride suppression doesn't apply (there is nothing of
+    // the caller's for the responsive pair to fight on the actual focusable element). Only
+    // the finding-3 max-md:leading-none line-height fix carries over.
     private string WrapperSizeClasses => (Size, EffectiveDensity) switch
     {
-        (Lumeo.Size.Sm, Lumeo.Density.Compact)  => "h-7 text-base md:text-xs",
-        (Lumeo.Size.Sm, Lumeo.Density.Spacious) => "h-9 text-base md:text-xs",
-        (Lumeo.Size.Sm, _)                      => "h-8 text-base md:text-xs",
+        (Lumeo.Size.Sm, Lumeo.Density.Compact)  => "h-7 text-base md:text-xs max-md:leading-none",
+        (Lumeo.Size.Sm, Lumeo.Density.Spacious) => "h-9 text-base md:text-xs max-md:leading-none",
+        (Lumeo.Size.Sm, _)                      => "h-8 text-base md:text-xs max-md:leading-none",
         (Lumeo.Size.Lg, Lumeo.Density.Compact)  => "h-10 text-base",
         (Lumeo.Size.Lg, Lumeo.Density.Spacious) => "h-12 text-base",
         (Lumeo.Size.Lg, _)                      => "h-11 text-base",
-        (_, Lumeo.Density.Compact)              => "h-8 text-base md:text-sm",
-        (_, Lumeo.Density.Spacious)             => "h-10 text-base md:text-sm",
-        _                                       => "h-9 text-base md:text-sm"
+        (_, Lumeo.Density.Compact)              => "h-8 text-base md:text-sm max-md:leading-none",
+        (_, Lumeo.Density.Spacious)             => "h-10 text-base md:text-sm max-md:leading-none",
+        _                                       => "h-9 text-base md:text-sm max-md:leading-none"
     };
 
     // Accessory edge padding tracks density so prefix/suffix/search-icon/clear
@@ -394,15 +432,15 @@ else
     // WrapperSizeClasses puts on the ancestor div, so it must carry the same fix.
     private string WrappedInputSizeClasses => (Size, EffectiveDensity) switch
     {
-        (Lumeo.Size.Sm, Lumeo.Density.Compact)  => "px-2 text-base md:text-xs",
-        (Lumeo.Size.Sm, Lumeo.Density.Spacious) => "px-3 text-base md:text-xs",
-        (Lumeo.Size.Sm, _)                      => "px-2.5 text-base md:text-xs",
+        (Lumeo.Size.Sm, Lumeo.Density.Compact)  => "px-2 text-base md:text-xs max-md:leading-none",
+        (Lumeo.Size.Sm, Lumeo.Density.Spacious) => "px-3 text-base md:text-xs max-md:leading-none",
+        (Lumeo.Size.Sm, _)                      => "px-2.5 text-base md:text-xs max-md:leading-none",
         (Lumeo.Size.Lg, Lumeo.Density.Compact)  => "px-3 text-base",
         (Lumeo.Size.Lg, Lumeo.Density.Spacious) => "px-5 text-base",
         (Lumeo.Size.Lg, _)                      => "px-4 text-base",
-        (_, Lumeo.Density.Compact)              => "px-2.5 text-base md:text-sm",
-        (_, Lumeo.Density.Spacious)             => "px-4 text-base md:text-sm",
-        _                                       => "px-3 text-base md:text-sm"
+        (_, Lumeo.Density.Compact)              => "px-2.5 text-base md:text-sm max-md:leading-none",
+        (_, Lumeo.Density.Spacious)             => "px-4 text-base md:text-sm max-md:leading-none",
+        _                                       => "px-3 text-base md:text-sm max-md:leading-none"
     };
 
     private string CssClass => Cx.Merge("flex", SizeClasses, "w-full rounded-md border", (EffectiveInvalid ? "border-destructive" : "border-input"), "bg-transparent py-1 shadow-xs transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-[1.5px]", (EffectiveInvalid ? "focus-visible:ring-destructive/20" : "focus-visible:ring-ring"), "disabled:cursor-not-allowed disabled:opacity-50", Class);

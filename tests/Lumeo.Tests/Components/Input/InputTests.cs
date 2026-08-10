@@ -225,6 +225,125 @@ public class InputTests : IAsyncLifetime
         Assert.Contains("md:text-sm", cls);
     }
 
+    // --- Codex review of PR #386, finding 4: Class font-size override must win at every
+    // breakpoint, not just the unprefixed one. These are class-string-level regression
+    // guards; the load-bearing assertion (the actual COMPUTED font-size at both
+    // breakpoints, not the class string) lives in
+    // Lumeo.Tests.E2E.Smokes.InputSizingTests.Class_font_size_override_wins_at_every_breakpoint
+    // — bUnit never applies real CSS, so it cannot observe which of two same-specificity
+    // classes the browser actually renders. ---
+
+    [Fact]
+    public void Class_TextLg_Override_Suppresses_The_Components_Own_Responsive_Pair()
+    {
+        // Before this fix, Cx.Merge correctly replaced Input's unprefixed text-base with
+        // the caller's text-lg (same conflict group) but left the SEPARATE md:text-sm
+        // token untouched (a different group, keyed by variant chain) — silently winning
+        // back at >=768px. The fix drops the component's own text-base/md:text-sm/
+        // max-md:leading-none trio entirely once an explicit override is detected.
+        var cut = _ctx.Render<Lumeo.Input>(p => p
+            .Add(b => b.Class, "text-lg"));
+
+        var cls = cut.Find("input").GetAttribute("class") ?? "";
+        Assert.Contains("text-lg", cls);
+        Assert.DoesNotContain("md:text-sm", cls);
+        Assert.DoesNotContain("text-base", cls);
+        Assert.DoesNotContain("max-md:leading-none", cls);
+    }
+
+    [Fact]
+    public void Class_TextXs_Override_Suppresses_The_Components_Own_Responsive_Pair()
+    {
+        var cut = _ctx.Render<Lumeo.Input>(p => p
+            .Add(b => b.Class, "text-xs"));
+
+        var cls = cut.Find("input").GetAttribute("class") ?? "";
+        Assert.Contains("text-xs", cls);
+        Assert.DoesNotContain("md:text-sm", cls);
+        Assert.DoesNotContain("text-base", cls);
+    }
+
+    [Fact]
+    public void Class_Without_A_Font_Size_Token_Does_Not_Suppress_The_Zoom_Guard()
+    {
+        // Regression guard for the override-detection regex: a Class that merely
+        // contains the SUBSTRING "text" (uppercase utility, unrelated to font-size)
+        // must not be mistaken for a font-size override.
+        var cut = _ctx.Render<Lumeo.Input>(p => p
+            .Add(b => b.Class, "uppercase tracking-wide"));
+
+        var cls = cut.Find("input").GetAttribute("class") ?? "";
+        Assert.Contains("text-base", cls);
+        Assert.Contains("md:text-sm", cls);
+    }
+
+    [Fact]
+    public void Class_With_A_Responsive_FontSize_Token_Does_Not_Suppress_The_Zoom_Guard()
+    {
+        // A caller-supplied `md:text-lg` (already breakpoint-scoped) is a DIFFERENT
+        // conflict group than the component's own unprefixed text-base — Cx.Merge
+        // already resolves this correctly (same-group `md:` conflicts merge; different
+        // groups coexist), so the override-suppression path — which only targets
+        // UNPREFIXED font-size tokens — must not fire here.
+        var cut = _ctx.Render<Lumeo.Input>(p => p
+            .Add(b => b.Class, "md:text-lg"));
+
+        var cls = cut.Find("input").GetAttribute("class") ?? "";
+        Assert.Contains("text-base", cls);
+        Assert.Contains("md:text-lg", cls);
+        Assert.DoesNotContain("md:text-sm", cls);
+    }
+
+    // --- Codex review of PR #386, finding 3: text-base's bundled 24px line-height can
+    // exceed the smallest controls' available content-box height. max-md:leading-none
+    // tightens ONLY the sub-768px state, leaving desktop's md:text-sm/md:text-xs
+    // line-height untouched. The load-bearing assertion (line-height vs. actual rendered
+    // client height/padding, not the class string) lives in
+    // Lumeo.Tests.E2E.Smokes.InputSizingTests.No_line_box_exceeds_its_control_height. ---
+
+    [Fact]
+    public void Default_No_Override_Renders_MaxMd_Leading_None()
+    {
+        var cut = _ctx.Render<Lumeo.Input>();
+
+        Assert.Contains("max-md:leading-none", cut.Find("input").GetAttribute("class") ?? "");
+    }
+
+    [Fact]
+    public void Sm_No_Override_Renders_MaxMd_Leading_None()
+    {
+        var cut = _ctx.Render<Lumeo.Input>(p => p
+            .Add(b => b.Size, Lumeo.Size.Sm));
+
+        Assert.Contains("max-md:leading-none", cut.Find("input").GetAttribute("class") ?? "");
+    }
+
+    [Fact]
+    public void Lg_Never_Needed_MaxMd_Leading_None()
+    {
+        // Lg's control heights always had >=24px of available content-box height at
+        // text-base's default line-height (measured: 30-38px available vs. 24px needed),
+        // so it never overflowed and gets no leading override — adding one would be an
+        // unrelated style change, not a bug fix.
+        var cut = _ctx.Render<Lumeo.Input>(p => p
+            .Add(b => b.Size, Lumeo.Size.Lg));
+
+        Assert.DoesNotContain("leading-none", cut.Find("input").GetAttribute("class") ?? "");
+    }
+
+    [Fact]
+    public void Wrapped_Input_Branch_Also_Renders_MaxMd_Leading_None()
+    {
+        // The Clearable/Prefix/Suffix/Search/number-stepper branch's <input> font-size
+        // comes from WrappedInputSizeClasses, not SizeClasses — must carry the same
+        // line-height fix as the plain branch.
+        var cut = _ctx.Render<Lumeo.Input>(p => p
+            .Add(b => b.Clearable, true)
+            .Add(b => b.Value, "x"));
+
+        Assert.Contains("max-md:leading-none", cut.Find("div input").GetAttribute("class") ?? "");
+    }
+
     // --- shadow-xs ---
 
     [Fact]
