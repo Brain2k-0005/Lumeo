@@ -51,8 +51,12 @@ public sealed class ThemeBuilder
     public ThemeBuilder WithDestructive(string color) => Set("--color-destructive", color);
 
     /// <summary>Override the global border-radius scale. Accepts a rem value
-    /// — Lumeo uses <c>0.5</c> by default. Components derive from
-    /// <c>calc(var(--radius) - 2px)</c> / <c>calc(var(--radius) + 4px)</c>.</summary>
+    /// — Lumeo uses <c>0.75</c> by default. The other rungs derive
+    /// multiplicatively from this value: <c>--radius-sm</c> is
+    /// <c>calc(var(--radius) * 0.5)</c>, <c>--radius-md</c> is
+    /// <c>var(--radius)</c> itself, up through <c>--radius-xl</c> at
+    /// <c>calc(var(--radius) * 1.5)</c> — not shadcn's subtractive/additive
+    /// offsets.</summary>
     public ThemeBuilder WithBorderRadius(double rem) => Set("--radius", rem.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture) + "rem");
 
     /// <summary>Override the root font family. Pass the full CSS

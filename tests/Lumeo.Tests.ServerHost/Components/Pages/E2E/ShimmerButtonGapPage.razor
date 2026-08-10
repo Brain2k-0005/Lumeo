@@ -1,0 +1,27 @@
+@page "/e2e/shimmer-button-gap"
+
+@* Codex review of PR #386 (shadcn-wave0), round 3, finding 3 on ShimmerButton.razor —
+   not observable from bUnit, which never applies real CSS and so can't see the
+   COMPUTED `gap` CSS property on the actual flex container. Before the fix, the
+   Xs size's gap-1 override landed on the OUTER <button> (which has a single child —
+   the inner content <span> — so gap there is inert), while the inner span kept a
+   hardcoded gap-2; the class-string assertion passed even though the rendered
+   icon-to-label spacing never changed. This page renders each ShimmerButton size with
+   two visible children (icon + label) inside ChildContent so the inner span actually
+   has multiple flex items to apply a gap between, with a stable data-testid so the
+   Playwright spec can read getComputedStyle(...).columnGap on the real layout
+   container (the inner <span>, not the outer <button>). *@
+
+<PageTitle>E2E - ShimmerButton gap</PageTitle>
+
+<div class="p-8 flex flex-col gap-4">
+    <h1 data-testid="shimmer-gap-e2e-title">ShimmerButton gap (Codex PR #386 round-3 finding 3)</h1>
+
+    @foreach (var size in new[] { Lumeo.Button.ButtonSize.Xs, Lumeo.Button.ButtonSize.Sm, Lumeo.Button.ButtonSize.Default, Lumeo.Button.ButtonSize.Lg })
+    {
+        <Lumeo.ShimmerButton data-testid="@($"shimmer-{size}")" Size="size" Shimmer="false">
+            <span data-testid="@($"shimmer-{size}-icon")">I</span>
+            <span data-testid="@($"shimmer-{size}-label")">Label</span>
+        </Lumeo.ShimmerButton>
+    }
+</div>
