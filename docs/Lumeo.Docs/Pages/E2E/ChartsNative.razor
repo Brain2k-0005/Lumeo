@@ -1,0 +1,452 @@
+@page "/e2e/charts-native"
+
+@* Work-in-progress side-by-side comparison of the first-party native chart
+   rendering engine (PR #392) against its shipping ECharts counterpart.
+   Deliberately NOT linked in navigation and NOT part of the component
+   registry (same convention as /e2e/gantt-v3-preview). Every pair below is
+   fed from the SAME source data (the raw arrays declared once in @code and
+   materialized into each engine's own parameter shape) so any visible
+   difference is a real rendering difference, not a fixture artefact.
+   Remove this page (or fold it into the Charts docs) once the native engine
+   ships as the default renderer. *@
+
+<PageTitle>Native charts preview — Lumeo</PageTitle>
+
+<PageHeader Title="Native charts (work in progress)"
+            Description="Side-by-side preview of the first-party native chart engine against the shipping ECharts renderer. Same data, two engines, both themes. Not a public API yet." />
+
+<Alert Variant="Alert.AlertVariant.Warning" ShowIcon="true" Class="mt-6">
+    <ChildContent>
+        <strong>Unreleased working-name API.</strong> The <code>Native*Chart</code> components on
+        this page are not part of the public docs/registry yet. Known, deliberate simplifications
+        versus the ECharts path:
+        <ul class="list-disc pl-5 mt-2 space-y-1">
+            <li><code>Theme</code>, <code>Toolbox</code>, <code>OptionOverride</code>, and
+                <code>MarkLine</code>/<code>MarkPoint</code>/<code>MarkArea</code> are not
+                implemented natively — every native instance below simply omits them rather than
+                faking the behavior.</li>
+            <li>Tooltip positioning uses logical SVG-viewBox coordinates and can drift from the
+                cursor when the rendered CSS size differs from the viewBox. See the
+                <a href="#chart-scatter" class="underline">Scatter</a> pair below, deliberately
+                rendered inside a narrow column.</li>
+            <li><code>SkeletonStyle.Phantom</code> falls back to the Silhouette skeleton on the
+                native engine — see <a href="#loading-state" class="underline">Loading state</a>.</li>
+        </ul>
+    </ChildContent>
+</Alert>
+
+<Stack Gap="10" Class="mt-8">
+
+    <div class="space-y-3">
+        <Heading Id="chart-line" Level="2" Class="scroll-mt-20">Line</Heading>
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <ChartPairPanel Title="Native">
+                <NativeLineChart Categories="_monthCats" Series="_lineNative" id="chart-native-line" />
+            </ChartPairPanel>
+            <ChartPairPanel Title="ECharts (legacy)">
+                <LineChart Categories="_monthCats" Series="_lineLegacy" id="chart-legacy-line" />
+            </ChartPairPanel>
+        </div>
+    </div>
+
+    <div class="space-y-3">
+        <Heading Id="chart-area" Level="2" Class="scroll-mt-20">Area (stacked)</Heading>
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <ChartPairPanel Title="Native">
+                <NativeAreaChart Categories="_monthCats" Series="_areaNative" Stacked="true" id="chart-native-area" />
+            </ChartPairPanel>
+            <ChartPairPanel Title="ECharts (legacy)">
+                <AreaChart Categories="_monthCats" Series="_areaLegacy" Stacked="true" id="chart-legacy-area" />
+            </ChartPairPanel>
+        </div>
+    </div>
+
+    <div class="space-y-3">
+        <Heading Id="chart-bar" Level="2" Class="scroll-mt-20">Bar (grouped)</Heading>
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <ChartPairPanel Title="Native">
+                <NativeBarChart Categories="_quarterCats" Series="_barNative" id="chart-native-bar" />
+            </ChartPairPanel>
+            <ChartPairPanel Title="ECharts (legacy)">
+                <BarChart Categories="_quarterCats" Series="_barLegacy" id="chart-legacy-bar" />
+            </ChartPairPanel>
+        </div>
+    </div>
+
+    <div class="space-y-3">
+        <Heading Id="chart-mixed" Level="2" Class="scroll-mt-20">Mixed (bar + line)</Heading>
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <ChartPairPanel Title="Native">
+                <NativeMixedChart Categories="_monthCats" Series="_mixedNative" id="chart-native-mixed" />
+            </ChartPairPanel>
+            <ChartPairPanel Title="ECharts (legacy)">
+                <MixedChart Categories="_monthCats" Series="_mixedLegacy" id="chart-legacy-mixed" />
+            </ChartPairPanel>
+        </div>
+    </div>
+
+    <div class="space-y-3">
+        <Heading Id="chart-scatter" Level="2" Class="scroll-mt-20">Scatter</Heading>
+        <p class="text-sm text-muted-foreground">
+            Deliberately rendered at <code>Width="100%"</code> inside a narrow (280px) column — the
+            native SVG viewBox falls back to its 600×350 default because <code>"100%"</code> isn't a
+            pixel literal, while the actual rendered box is far narrower. Hover a point in the native
+            panel and compare where the tooltip lands versus the cursor to check for drift.
+        </p>
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <ChartPairPanel Title="Native">
+                <div style="max-width:280px;">
+                    <NativeScatterChart Series="_scatterNative" id="chart-native-scatter" />
+                </div>
+            </ChartPairPanel>
+            <ChartPairPanel Title="ECharts (legacy)">
+                <div style="max-width:280px;">
+                    <ScatterChart Series="_scatterLegacy" id="chart-legacy-scatter" />
+                </div>
+            </ChartPairPanel>
+        </div>
+    </div>
+
+    <div class="space-y-3">
+        <Heading Id="chart-effect-scatter" Level="2" Class="scroll-mt-20">Effect scatter</Heading>
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <ChartPairPanel Title="Native">
+                <NativeEffectScatterChart Series="_effectScatterNative" id="chart-native-effect-scatter" />
+            </ChartPairPanel>
+            <ChartPairPanel Title="ECharts (legacy)">
+                <EffectScatterChart Series="_effectScatterLegacy" id="chart-legacy-effect-scatter" />
+            </ChartPairPanel>
+        </div>
+    </div>
+
+    <div class="space-y-3">
+        <Heading Id="chart-waterfall" Level="2" Class="scroll-mt-20">Waterfall</Heading>
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <ChartPairPanel Title="Native">
+                <NativeWaterfallChart Categories="_waterfallCats" Values="_waterfallValues" id="chart-native-waterfall" />
+            </ChartPairPanel>
+            <ChartPairPanel Title="ECharts (legacy)">
+                <WaterfallChart Categories="_waterfallCats" Values="_waterfallValues" id="chart-legacy-waterfall" />
+            </ChartPairPanel>
+        </div>
+    </div>
+
+    <div class="space-y-3">
+        <Heading Id="chart-pie" Level="2" Class="scroll-mt-20">Pie</Heading>
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <ChartPairPanel Title="Native">
+                <NativePieChart Data="_pieNative" id="chart-native-pie" />
+            </ChartPairPanel>
+            <ChartPairPanel Title="ECharts (legacy)">
+                <PieChart Data="_pieLegacy" id="chart-legacy-pie" />
+            </ChartPairPanel>
+        </div>
+    </div>
+
+    <div class="space-y-3">
+        <Heading Id="chart-donut" Level="2" Class="scroll-mt-20">Donut</Heading>
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <ChartPairPanel Title="Native">
+                <NativeDonutChart Data="_donutNative" CenterLabel="100%" id="chart-native-donut" />
+            </ChartPairPanel>
+            <ChartPairPanel Title="ECharts (legacy)">
+                <DonutChart Data="_donutLegacy" CenterLabel="100%" id="chart-legacy-donut" />
+            </ChartPairPanel>
+        </div>
+    </div>
+
+    <div class="space-y-3">
+        <Heading Id="chart-nightingale" Level="2" Class="scroll-mt-20">Nightingale</Heading>
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <ChartPairPanel Title="Native">
+                <NativeNightingaleChart Data="_nightingaleNative" id="chart-native-nightingale" />
+            </ChartPairPanel>
+            <ChartPairPanel Title="ECharts (legacy)">
+                <NightingaleChart Data="_nightingaleLegacy" id="chart-legacy-nightingale" />
+            </ChartPairPanel>
+        </div>
+    </div>
+
+    <div class="space-y-3">
+        <Heading Id="chart-radar" Level="2" Class="scroll-mt-20">Radar</Heading>
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <ChartPairPanel Title="Native">
+                <NativeRadarChart Indicators="_radarIndicatorsNative" Series="_radarSeriesNative" id="chart-native-radar" />
+            </ChartPairPanel>
+            <ChartPairPanel Title="ECharts (legacy)">
+                <RadarChart Indicators="_radarIndicatorsLegacy" Series="_radarSeriesLegacy" id="chart-legacy-radar" />
+            </ChartPairPanel>
+        </div>
+    </div>
+
+    <div class="space-y-3">
+        <Heading Id="chart-heatmap" Level="2" Class="scroll-mt-20">Heatmap</Heading>
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <ChartPairPanel Title="Native">
+                <NativeHeatmapChart XCategories="_heatXCats" YCategories="_heatYCats" Data="_heatData" id="chart-native-heatmap" />
+            </ChartPairPanel>
+            <ChartPairPanel Title="ECharts (legacy)">
+                <HeatmapChart XCategories="_heatXCats" YCategories="_heatYCats" Data="_heatData" id="chart-legacy-heatmap" />
+            </ChartPairPanel>
+        </div>
+    </div>
+
+    <div class="space-y-3">
+        <Heading Id="chart-heatmap-large" Level="2" Class="scroll-mt-20">Heatmap — large-data (SVG/Canvas budget)</Heading>
+        <p class="text-sm text-muted-foreground">
+            The native heatmap renders individual SVG shapes below
+            <code>ChartRenderStrategy.DiscreteShapeBudget</code> (currently a reasoned, never
+            browser-measured constant of <strong>8,000</strong> cells) and switches to a Canvas +
+            spatial-grid hit-test above it. Drag the slider to vary the grid side length and watch
+            the cell count cross the threshold; this page is what makes measuring the real
+            SVG-vs-Canvas cost crossover in a browser possible.
+        </p>
+        <div class="flex items-center gap-3 flex-wrap">
+            <label for="heatmap-side-slider" class="text-sm text-muted-foreground">Grid side: @_heatmapLargeSide × @_heatmapLargeSide</label>
+            <input id="heatmap-side-slider" type="range" min="20" max="140" step="5"
+                   @bind-value="_heatmapLargeSide" @bind-value:event="oninput" class="w-48 accent-primary" />
+            <Badge id="heatmap-cell-count" Variant="@(_heatmapLargeCellCount > 8000 ? Badge.BadgeVariant.Warning : Badge.BadgeVariant.Secondary)">
+                @_heatmapLargeCellCount.ToString("N0") cells — @(_heatmapLargeCellCount > 8000 ? "above" : "at/below") the 8,000 budget
+            </Badge>
+        </div>
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <ChartPairPanel Title="Native">
+                <NativeHeatmapChart XCategories="_heatmapLargeXCats" YCategories="_heatmapLargeYCats" Data="_heatmapLargeData"
+                                     ShowDataLabels="false" ShowLegend="false" id="chart-native-heatmap-large" />
+            </ChartPairPanel>
+            <ChartPairPanel Title="ECharts (legacy)">
+                <HeatmapChart XCategories="_heatmapLargeXCats" YCategories="_heatmapLargeYCats" Data="_heatmapLargeData"
+                              ShowDataLabels="false" ShowLegend="false" id="chart-legacy-heatmap-large" />
+            </ChartPairPanel>
+        </div>
+    </div>
+
+    <div class="space-y-3">
+        <Heading Id="chart-boxplot" Level="2" Class="scroll-mt-20">Box plot</Heading>
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <ChartPairPanel Title="Native">
+                <NativeBoxPlotChart Categories="_boxplotCats" Data="_boxplotData" id="chart-native-boxplot" />
+            </ChartPairPanel>
+            <ChartPairPanel Title="ECharts (legacy)">
+                <BoxPlotChart Categories="_boxplotCats" Data="_boxplotData" id="chart-legacy-boxplot" />
+            </ChartPairPanel>
+        </div>
+    </div>
+
+    <div class="space-y-3">
+        <Heading Id="chart-candlestick" Level="2" Class="scroll-mt-20">Candlestick</Heading>
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <ChartPairPanel Title="Native">
+                <NativeCandlestickChart Categories="_candleCats" Data="_candleData" id="chart-native-candlestick" />
+            </ChartPairPanel>
+            <ChartPairPanel Title="ECharts (legacy)">
+                <CandlestickChart Categories="_candleCats" Data="_candleData" id="chart-legacy-candlestick" />
+            </ChartPairPanel>
+        </div>
+    </div>
+
+    <div class="space-y-3">
+        <Heading Id="loading-state" Level="2" Class="scroll-mt-20">Loading state — Phantom → Silhouette fallback</Heading>
+        <p class="text-sm text-muted-foreground">
+            Both panels below are pinned in the loading state with <code>SkeletonStyle="Phantom"</code>.
+            The legacy ECharts renderer cycles fabricated placeholder data (its real Phantom
+            behavior); the native engine accepts the same parameter but always falls back to the
+            static Silhouette presentation — a documented, not silent, gap.
+        </p>
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <ChartPairPanel Title="Native">
+                <NativeLineChart Categories="_monthCats" Series="_lineNative" IsLoading="true"
+                                  SkeletonStyle="ChartSkeletonStyle.Phantom" id="chart-native-loading" />
+            </ChartPairPanel>
+            <ChartPairPanel Title="ECharts (legacy)">
+                <LineChart Categories="_monthCats" Series="_lineLegacy" IsLoading="true"
+                           SkeletonStyle="ChartSkeletonStyle.Phantom" id="chart-legacy-loading" />
+            </ChartPairPanel>
+        </div>
+    </div>
+
+</Stack>
+
+@code {
+    // ---- shared raw data — single source of truth for every pair below.
+    // Each pair materializes the SAME primitives into its own engine's
+    // parameter shape (native and legacy declare distinct, same-shaped
+    // nested types, so they can't share list instances directly) so any
+    // visible difference between panels is a real rendering difference.
+    private static readonly List<string> _monthCats = new() { "Jan", "Feb", "Mar", "Apr", "May", "Jun" };
+    private static readonly List<string> _quarterCats = new() { "Q1", "Q2", "Q3", "Q4" };
+
+    // Line
+    private static readonly (string Name, double[] Values)[] _lineRaw =
+    {
+        ("Revenue", new double[] { 42, 55, 49, 63, 71, 68 }),
+        ("Cost", new double[] { 30, 34, 31, 38, 42, 40 }),
+    };
+    private List<NativeLineChart.ChartSeriesData> _lineNative =>
+        _lineRaw.Select(s => new NativeLineChart.ChartSeriesData { Name = s.Name, Values = s.Values.ToList() }).ToList();
+    private List<LineChart.ChartSeriesData> _lineLegacy =>
+        _lineRaw.Select(s => new LineChart.ChartSeriesData { Name = s.Name, Values = s.Values.ToList() }).ToList();
+
+    // Area
+    private static readonly (string Name, double[] Values)[] _areaRaw =
+    {
+        ("Users", new double[] { 120, 150, 135, 180, 210, 205 }),
+        ("Sessions", new double[] { 80, 95, 88, 110, 130, 128 }),
+    };
+    private List<NativeAreaChart.ChartSeriesData> _areaNative =>
+        _areaRaw.Select(s => new NativeAreaChart.ChartSeriesData { Name = s.Name, Values = s.Values.ToList() }).ToList();
+    private List<AreaChart.ChartSeriesData> _areaLegacy =>
+        _areaRaw.Select(s => new AreaChart.ChartSeriesData { Name = s.Name, Values = s.Values.ToList() }).ToList();
+
+    // Bar
+    private static readonly (string Name, double[] Values)[] _barRaw =
+    {
+        ("North", new double[] { 45, 52, 48, 60 }),
+        ("South", new double[] { 38, 41, 44, 50 }),
+    };
+    private List<NativeBarChart.ChartSeriesData> _barNative =>
+        _barRaw.Select(s => new NativeBarChart.ChartSeriesData { Name = s.Name, Values = s.Values.ToList() }).ToList();
+    private List<BarChart.ChartSeriesData> _barLegacy =>
+        _barRaw.Select(s => new BarChart.ChartSeriesData { Name = s.Name, Values = s.Values.ToList() }).ToList();
+
+    // Mixed (bar + line)
+    private static readonly (string Name, double[] Values, string? Type)[] _mixedRaw =
+    {
+        ("Revenue", new double[] { 42, 55, 49, 63, 71, 68 }, null),
+        ("Growth %", new double[] { 8, 12, 9, 15, 18, 16 }, "line"),
+    };
+    private List<NativeMixedChart.MixedSeriesData> _mixedNative =>
+        _mixedRaw.Select(s => new NativeMixedChart.MixedSeriesData { Name = s.Name, Values = s.Values.ToList(), Type = s.Type }).ToList();
+    private List<MixedChart.MixedSeriesData> _mixedLegacy =>
+        _mixedRaw.Select(s => new MixedChart.MixedSeriesData { Name = s.Name, Values = s.Values.ToList(), Type = s.Type }).ToList();
+
+    // Scatter
+    private static readonly (string Name, double[][] Points)[] _scatterRaw =
+    {
+        ("Cohort A", new[] { new double[] { 10, 20 }, new double[] { 15, 35 }, new double[] { 22, 28 }, new double[] { 30, 45 }, new double[] { 38, 32 } }),
+        ("Cohort B", new[] { new double[] { 12, 40 }, new double[] { 20, 55 }, new double[] { 28, 48 }, new double[] { 34, 62 }, new double[] { 42, 58 } }),
+    };
+    private List<NativeScatterChart.ScatterSeriesData> _scatterNative =>
+        _scatterRaw.Select(s => new NativeScatterChart.ScatterSeriesData { Name = s.Name, Points = s.Points.ToList() }).ToList();
+    private List<ScatterChart.ScatterSeriesData> _scatterLegacy =>
+        _scatterRaw.Select(s => new ScatterChart.ScatterSeriesData { Name = s.Name, Points = s.Points.ToList() }).ToList();
+
+    // Effect scatter
+    private static readonly (string Name, double[][] Points, int? SymbolSize)[] _effectScatterRaw =
+    {
+        ("Alerts", new[] { new double[] { 8, 18 }, new double[] { 16, 30 }, new double[] { 24, 22 }, new double[] { 33, 40 } }, 14),
+    };
+    private List<NativeEffectScatterChart.EffectScatterSeriesData> _effectScatterNative =>
+        _effectScatterRaw.Select(s => new NativeEffectScatterChart.EffectScatterSeriesData { Name = s.Name, Points = s.Points.ToList(), SymbolSize = s.SymbolSize }).ToList();
+    private List<EffectScatterChart.EffectScatterSeriesData> _effectScatterLegacy =>
+        _effectScatterRaw.Select(s => new EffectScatterChart.EffectScatterSeriesData { Name = s.Name, Points = s.Points.ToList(), SymbolSize = s.SymbolSize }).ToList();
+
+    // Waterfall (income statement)
+    private static readonly List<string> _waterfallCats = new() { "Revenue", "COGS", "Gross Profit", "R&D", "Sales & Mktg", "G&A", "Operating Income" };
+    private static readonly List<double> _waterfallValues = new() { 12400, -4800, 7600, -1200, -2100, -800, 3500 };
+
+    // Pie (browser market share)
+    private static readonly (string Name, double Value)[] _pieRaw =
+    {
+        ("Chrome", 61.9), ("Safari", 18.2), ("Edge", 5.1), ("Firefox", 3.2), ("Other", 11.6),
+    };
+    private List<NativePieChart.PieChartData> _pieNative =>
+        _pieRaw.Select(d => new NativePieChart.PieChartData { Name = d.Name, Value = d.Value }).ToList();
+    private List<PieChart.PieChartData> _pieLegacy =>
+        _pieRaw.Select(d => new PieChart.PieChartData { Name = d.Name, Value = d.Value }).ToList();
+
+    // Donut (device mix)
+    private static readonly (string Name, double Value)[] _donutRaw =
+    {
+        ("Desktop", 58), ("Mobile", 35), ("Tablet", 7),
+    };
+    private List<NativeDonutChart.DonutChartData> _donutNative =>
+        _donutRaw.Select(d => new NativeDonutChart.DonutChartData { Name = d.Name, Value = d.Value }).ToList();
+    private List<DonutChart.DonutChartData> _donutLegacy =>
+        _donutRaw.Select(d => new DonutChart.DonutChartData { Name = d.Name, Value = d.Value }).ToList();
+
+    // Nightingale (team headcount)
+    private static readonly (string Name, double Value)[] _nightingaleRaw =
+    {
+        ("Engineering", 140), ("Marketing", 120), ("Sales", 98), ("Support", 76), ("Product", 65),
+    };
+    private List<NativeNightingaleChart.NightingaleData> _nightingaleNative =>
+        _nightingaleRaw.Select(d => new NativeNightingaleChart.NightingaleData { Name = d.Name, Value = d.Value }).ToList();
+    private List<NightingaleChart.NightingaleData> _nightingaleLegacy =>
+        _nightingaleRaw.Select(d => new NightingaleChart.NightingaleData { Name = d.Name, Value = d.Value }).ToList();
+
+    // Radar (model comparison)
+    private static readonly (string Name, double Max)[] _radarIndicatorsRaw =
+    {
+        ("Speed", 100), ("Reliability", 100), ("Comfort", 100), ("Safety", 100), ("Efficiency", 100),
+    };
+    private static readonly (string Name, double[] Values)[] _radarSeriesRaw =
+    {
+        ("Model A", new double[] { 80, 90, 70, 85, 75 }),
+        ("Model B", new double[] { 70, 75, 85, 80, 90 }),
+    };
+    private List<NativeRadarChart.RadarIndicator> _radarIndicatorsNative =>
+        _radarIndicatorsRaw.Select(i => new NativeRadarChart.RadarIndicator { Name = i.Name, Max = i.Max }).ToList();
+    private List<RadarChart.RadarIndicator> _radarIndicatorsLegacy =>
+        _radarIndicatorsRaw.Select(i => new RadarChart.RadarIndicator { Name = i.Name, Max = i.Max }).ToList();
+    private List<NativeRadarChart.RadarSeriesData> _radarSeriesNative =>
+        _radarSeriesRaw.Select(s => new NativeRadarChart.RadarSeriesData { Name = s.Name, Values = s.Values.ToList() }).ToList();
+    private List<RadarChart.RadarSeriesData> _radarSeriesLegacy =>
+        _radarSeriesRaw.Select(s => new RadarChart.RadarSeriesData { Name = s.Name, Values = s.Values.ToList() }).ToList();
+
+    // Heatmap (support ticket volume — day x time-of-day)
+    private static readonly List<string> _heatXCats = new() { "Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun" };
+    private static readonly List<string> _heatYCats = new() { "Morning", "Afternoon", "Evening" };
+    private static readonly List<double[]> _heatData = new()
+    {
+        new double[] { 0, 0, 42 }, new double[] { 1, 0, 68 }, new double[] { 2, 0, 55 }, new double[] { 3, 0, 73 }, new double[] { 4, 0, 61 }, new double[] { 5, 0, 29 }, new double[] { 6, 0, 18 },
+        new double[] { 0, 1, 87 }, new double[] { 1, 1, 94 }, new double[] { 2, 1, 91 }, new double[] { 3, 1, 88 }, new double[] { 4, 1, 95 }, new double[] { 5, 1, 72 }, new double[] { 6, 1, 48 },
+        new double[] { 0, 2, 31 }, new double[] { 1, 2, 56 }, new double[] { 2, 2, 63 }, new double[] { 3, 2, 47 }, new double[] { 4, 2, 79 }, new double[] { 5, 2, 84 }, new double[] { 6, 2, 67 },
+    };
+
+    // Heatmap large-data — slider-controlled N×N grid, deterministic values
+    // (no RNG so the smoke test and any recapture stay reproducible).
+    private int _heatmapLargeSide = 95; // 95*95 = 9,025 cells — crosses the 8,000 DiscreteShapeBudget by default.
+    private int _heatmapLargeCellCount => _heatmapLargeSide * _heatmapLargeSide;
+    private List<string> _heatmapLargeXCats => Enumerable.Range(0, _heatmapLargeSide).Select(i => $"X{i}").ToList();
+    private List<string> _heatmapLargeYCats => Enumerable.Range(0, _heatmapLargeSide).Select(i => $"Y{i}").ToList();
+    private List<double[]> _heatmapLargeData
+    {
+        get
+        {
+            var side = _heatmapLargeSide;
+            var data = new List<double[]>(side * side);
+            for (var x = 0; x < side; x++)
+            {
+                for (var y = 0; y < side; y++)
+                {
+                    data.Add(new double[] { x, y, (x * 7 + y * 13) % 100 });
+                }
+            }
+            return data;
+        }
+    }
+
+    // Box plot (quarterly deal-size distribution)
+    private static readonly List<string> _boxplotCats = new() { "Q1 2025", "Q2 2025", "Q3 2025", "Q4 2025" };
+    private static readonly List<double[]> _boxplotData = new()
+    {
+        new[] { 18200.0, 22400, 25800, 29100, 34600 },
+        new[] { 24100.0, 28700, 32400, 36800, 42100 },
+        new[] { 21500.0, 26300, 30100, 34200, 39700 },
+        new[] { 27400.0, 33100, 38600, 43900, 51200 },
+    };
+
+    // Candlestick (7-day OHLC)
+    private static readonly List<string> _candleCats = new() { "Feb 17", "Feb 18", "Feb 19", "Feb 20", "Feb 21", "Feb 24", "Feb 25" };
+    private static readonly List<double[]> _candleData = new()
+    {
+        new[] { 142.30, 148.50, 140.80, 149.20 },
+        new[] { 148.00, 145.30, 143.60, 150.10 },
+        new[] { 145.50, 151.80, 144.90, 153.40 },
+        new[] { 151.20, 147.60, 145.30, 152.70 },
+        new[] { 147.80, 153.20, 147.10, 154.80 },
+        new[] { 153.00, 149.40, 148.20, 155.30 },
+        new[] { 149.50, 156.10, 149.00, 157.20 },
+    };
+}
