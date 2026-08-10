@@ -193,6 +193,7 @@ public class P2LocalizationSweepTests : IAsyncLifetime
         // L["Gantt.NewTask"], but it shipped in only en/de — extended here
         // per this test's own "extend it instead of duplicating" intent.
         "Gantt.NewTask",
+
         // Design spec Phase 3, T5 — the tree/timeline splitter handle's
         // aria-label, extended here per this test's own "extend, don't
         // duplicate" precedent (same as every other Gantt.* key above).
@@ -227,6 +228,15 @@ public class P2LocalizationSweepTests : IAsyncLifetime
         // "extend, don't duplicate" precedent (same as every other Gantt.*
         // key above).
         "Gantt.SettingsInfiniteScroll",
+        // Scheduler wave 0 (i18n bug fixes): the Scheduler's 9 keys previously
+        // existed in only 7 of 14 locale files — en/de had all 9, ar/zh/ko/ru/tr
+        // had 6 of 9 (missing Previous/Next/ResourceLegend), and nl/fr/it/ja/pl/
+        // pt/es had none at all. Backfilled across all 12 non-en/de locale files
+        // and added to this completeness guard so the next locale added — or the
+        // next new Scheduler key — cannot quietly ship incomplete the same way.
+        "Scheduler.Previous", "Scheduler.Next", "Scheduler.ResourceLegend",
+        "Scheduler.Day", "Scheduler.Week", "Scheduler.Month", "Scheduler.List",
+        "Scheduler.Today", "Scheduler.WeekOf",
     };
 
     [Theory]

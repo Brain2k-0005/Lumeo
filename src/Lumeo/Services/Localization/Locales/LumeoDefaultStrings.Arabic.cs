@@ -259,6 +259,9 @@ internal static partial class LumeoDefaultStrings
         ["Chart.Loading"] = "جارٍ التحميل…",
 
         // Scheduler
+        ["Scheduler.Previous"] = "السابق",
+        ["Scheduler.Next"] = "التالي",
+        ["Scheduler.ResourceLegend"] = "مفتاح الموارد",
         ["Scheduler.Today"] = "اليوم",
         ["Scheduler.Month"] = "شهر",
         ["Scheduler.Week"] = "أسبوع",

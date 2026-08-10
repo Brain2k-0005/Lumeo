@@ -567,6 +567,12 @@ public interface IComponentInteropService : IAsyncDisposable, IDisposable
     Task SchedulerPrevAsync(string id);
     Task SchedulerNextAsync(string id);
     Task SchedulerTodayAsync(string id);
+    /// <summary>Pushes an updated locale onto an already-live FullCalendar instance
+    /// (wave-0 i18n fix — locale is now also threaded through the init options).
+    /// Default no-op so pre-existing external implementers of this interface aren't
+    /// broken by the addition (see <c>ComponentInteropServiceInterfaceCompatTests</c>'s
+    /// additive-evolution convention).</summary>
+    Task SchedulerSetLocaleAsync(string id, string locale) => Task.CompletedTask;
     Task<string> SchedulerGetTitleAsync(string id);
     Task SchedulerDestroyAsync(string id);
 
