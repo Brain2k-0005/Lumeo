@@ -22,13 +22,13 @@ public class GanttV3ScrollCenteringTests : GanttParityTestBase
         // a raw, un-offset TodayX landed the DOM's actual scroll short by
         // exactly the tree's width. See GanttTimeline.ScrollHostLeadingOffset's
         // own remarks for the fix.
-        await GotoHost("/e2e/gantt-v3?fixture=today");
+        await GotoHost("/e2e/gantt-v3?fixture=today&infiniteScroll=0");
 
         var scrollPane = Page.Locator("[data-testid='gantt-v3-root'] div[style*='overflow']").First;
         await scrollPane.WaitForAsync(new() { Timeout = 15000 });
         await Assertions.Expect(scrollPane).ToHaveAttributeAsync("data-gantt-v3-initial-scroll", "done", new() { Timeout = 15000 });
 
-        var todayLine = Page.Locator("[data-testid='gantt-v3-root'] .lumeo-gantt-v3-today-line");
+        var todayLine = Page.Locator("[data-testid='gantt-v3-root'] .lumeo-gantt-v3-today-tint");
         await todayLine.WaitForAsync(new() { Timeout = 15000 });
 
         var lineBox = await todayLine.BoundingBoxAsync();
@@ -48,13 +48,13 @@ public class GanttV3ScrollCenteringTests : GanttParityTestBase
         // GanttV3Page.razor's own remarks) — regression guard: the fix must
         // not OVER-correct and break the no-tree case (ScrollHostLeadingOffset
         // defaults to 0 there).
-        await GotoHost("/e2e/gantt-v3?fixture=today&tree=0");
+        await GotoHost("/e2e/gantt-v3?fixture=today&tree=0&infiniteScroll=0");
 
         var scrollPane = Page.Locator("[data-testid='gantt-v3-root'] div[style*='overflow']").First;
         await scrollPane.WaitForAsync(new() { Timeout = 15000 });
         await Assertions.Expect(scrollPane).ToHaveAttributeAsync("data-gantt-v3-initial-scroll", "done", new() { Timeout = 15000 });
 
-        var todayLine = Page.Locator("[data-testid='gantt-v3-root'] .lumeo-gantt-v3-today-line");
+        var todayLine = Page.Locator("[data-testid='gantt-v3-root'] .lumeo-gantt-v3-today-tint");
         await todayLine.WaitForAsync(new() { Timeout = 15000 });
 
         var treeRowCount = await Page.Locator("[data-testid='gantt-v3-root'] [data-row-kind]").CountAsync();
@@ -80,7 +80,7 @@ public class GanttV3ScrollCenteringTests : GanttParityTestBase
         // captures the CURRENT range's midpoint before switching and recenters
         // the new mode's window around that same date, then requests a scroll
         // (see Gantt3.HandleViewModeChangedAsync's own remarks).
-        await GotoHost("/e2e/gantt-v3?viewMode=Day"); // no ?fixture= -> GanttV3Page's default branch -> GanttParityFixtures.SharedTasks()
+        await GotoHost("/e2e/gantt-v3?viewMode=Day&infiniteScroll=0"); // no ?fixture= -> GanttV3Page's default branch -> GanttParityFixtures.SharedTasks()
 
         var scrollPane = Page.Locator("[data-testid='gantt-v3-root'] div[style*='overflow']").First;
         await scrollPane.WaitForAsync(new() { Timeout = 15000 });
@@ -93,7 +93,12 @@ public class GanttV3ScrollCenteringTests : GanttParityTestBase
         var centeredBar = Page.Locator("[data-testid='gantt-v3-root'] [data-task-id='fe3']"); // "Integration", mid-range
         await centeredBar.WaitForAsync(new() { Timeout = 15000 });
 
-        var monthToggle = Page.GetByRole(AriaRole.Button, new() { Name = "Month", Exact = true });
+        // G1 (2026-08-10 shadcn alignment): GanttNav's zoom switcher swapped
+        // ToggleGroup -> Segmented, whose items render role="radio" (not
+        // "button") inside a role="radiogroup" track — the accessible role
+        // Playwright resolves changed, even though the underlying element is
+        // still a <button> tag.
+        var monthToggle = Page.GetByRole(AriaRole.Radio, new() { Name = "Month", Exact = true });
         await monthToggle.ClickAsync();
 
         // The mode switch re-renders the whole canvas at a new column width —
@@ -129,7 +134,7 @@ public class GanttV3ScrollCenteringTests : GanttParityTestBase
         // scroll center via a new interop round-trip before recomputing the
         // range, so a manual pan survives a mode switch too, not just a
         // Today-click-driven one.
-        await GotoHost("/e2e/gantt-v3?viewMode=Day"); // no ?fixture= -> GanttV3Page's default branch -> GanttParityFixtures.SharedTasks
+        await GotoHost("/e2e/gantt-v3?viewMode=Day&infiniteScroll=0"); // no ?fixture= -> GanttV3Page's default branch -> GanttParityFixtures.SharedTasks
 
         var scrollPane = Page.Locator("[data-testid='gantt-v3-root'] div[style*='overflow']").First;
         await scrollPane.WaitForAsync(new() { Timeout = 15000 });
@@ -149,7 +154,12 @@ public class GanttV3ScrollCenteringTests : GanttParityTestBase
         await pannedToBar.ScrollIntoViewIfNeededAsync();
         await Assertions.Expect(pannedToBar).ToBeInViewportAsync(new() { Timeout = 10000 });
 
-        var monthToggle = Page.GetByRole(AriaRole.Button, new() { Name = "Month", Exact = true });
+        // G1 (2026-08-10 shadcn alignment): GanttNav's zoom switcher swapped
+        // ToggleGroup -> Segmented, whose items render role="radio" (not
+        // "button") inside a role="radiogroup" track — the accessible role
+        // Playwright resolves changed, even though the underlying element is
+        // still a <button> tag.
+        var monthToggle = Page.GetByRole(AriaRole.Radio, new() { Name = "Month", Exact = true });
         await monthToggle.ClickAsync();
 
         await Assertions.Expect(scrollPane).ToHaveAttributeAsync("data-gantt-v3-initial-scroll", "done", new() { Timeout = 15000 });

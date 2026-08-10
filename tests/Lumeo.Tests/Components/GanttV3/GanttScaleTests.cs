@@ -73,9 +73,17 @@ public class GanttScaleTests : IDisposable
     public void GetConfig_HalfDay_Matches_The_V2_VIEW_MODES_Table() =>
         AssertConfig(GanttViewMode.HalfDay, 38, GanttScaleUnit.Hour, 12, 24, 24, GanttHeaderUpperKind.Day, GanttHeaderLowerKind.Time12h);
 
+    // Design spec Phase 3, T2 — deliberate, PINNED v2 delta: v2's own
+    // headerFmt.upper for Day is 'month' (gantt-v2.js:31); v3's is now
+    // GanttHeaderUpperKind.Week (ISO week bands — see GanttScale.ViewModes'
+    // own remarks on that specific table entry). Every OTHER field (column
+    // width/unit/step/padding/lower kind) is still an exact v2 port —
+    // renamed from "...Matches_The_V2_VIEW_MODES_Table" (no longer
+    // technically true for HeaderUpper) to make that explicit rather than a
+    // silently-updated assertion.
     [Fact]
-    public void GetConfig_Day_Matches_The_V2_VIEW_MODES_Table() =>
-        AssertConfig(GanttViewMode.Day, 38, GanttScaleUnit.Day, 1, 60, 60, GanttHeaderUpperKind.Month, GanttHeaderLowerKind.DayNum);
+    public void GetConfig_Day_Matches_V2_Except_The_Deliberately_Upgraded_HeaderUpper() =>
+        AssertConfig(GanttViewMode.Day, 38, GanttScaleUnit.Day, 1, 60, 60, GanttHeaderUpperKind.Week, GanttHeaderLowerKind.DayNum);
 
     [Fact]
     public void GetConfig_Week_Matches_The_V2_VIEW_MODES_Table() =>
@@ -203,14 +211,18 @@ public class GanttScaleTests : IDisposable
         try
         {
             CultureInfo.CurrentCulture = CultureInfo.GetCultureInfo("de-DE");
-            var units = GanttScale.BuildDateUnits(GanttViewMode.Day, Utc(2026, 1, 30), Utc(2026, 2, 2));
+            // Design spec Phase 3, T2: Day mode's own upper kind is now
+            // GanttHeaderUpperKind.Week (ISO week bands), not Month — this
+            // test's ORIGINAL subject (Week mode, still Month-upper-kind
+            // throughout) proves the exact same "genuinely culture-aware, not
+            // hardcoded English by coincidence" property Day mode used to
+            // demonstrate here; Day mode's OWN culture-awareness (the week
+            // band's month-name portion) gets its own dedicated coverage in
+            // WeekBandLabel_Honors_CurrentCulture_Month_Names below instead.
+            var units = GanttScale.BuildDateUnits(GanttViewMode.Week, Utc(2026, 1, 5), Utc(2026, 1, 26));
 
-            var upper = GanttScale.UpperRuns(GanttViewMode.Day, units);
-            Assert.Equal(new[]
-            {
-                new GanttHeaderRun(0, 2, "Januar"),
-                new GanttHeaderRun(2, 2, "Februar"),
-            }, upper);
+            var upper = GanttScale.UpperRuns(GanttViewMode.Week, units);
+            Assert.Equal(new[] { new GanttHeaderRun(0, 4, "Januar") }, upper);
 
             var monthUnits = GanttScale.BuildDateUnits(GanttViewMode.Month, Utc(2026, 1, 1), Utc(2026, 1, 1));
             Assert.Equal(new[] { "Jan" }, GanttScale.LowerLabels(GanttViewMode.Month, monthUnits));
@@ -223,8 +235,15 @@ public class GanttScaleTests : IDisposable
 
     // ── Header segmentation — all 6 modes ───────────────────────────────────
 
+    // Design spec Phase 3, T2 — renamed from "..._Upper_Month_Runs" (Day's own
+    // upper kind is no longer Month — see GetConfig_Day_Matches_V2_Except_...
+    // and GanttHeaderUpperKind.Week's own remarks). Same date range as
+    // before, still under the class's en-US pin (Sunday-first weeks):
+    // Jan 30 (Fri)/31 (Sat) fall in the Jan 25-31 band; Feb 1 (Sun)/2 (Mon)
+    // start a NEW band, Feb 1-7 — same 2-run/2-run SHAPE the old month-based
+    // assertion had, letting this test double as run-collapsing coverage too.
     [Fact]
-    public void Day_Header_Segments_Lower_DayNum_And_Upper_Month_Runs()
+    public void Day_Header_Segments_Lower_DayNum_And_Upper_ISO_Week_Bands()
     {
         var units = GanttScale.BuildDateUnits(GanttViewMode.Day, Utc(2026, 1, 30), Utc(2026, 2, 2));
         Assert.Equal(new[] { Utc(2026, 1, 30), Utc(2026, 1, 31), Utc(2026, 2, 1), Utc(2026, 2, 2) }, units);
@@ -235,9 +254,175 @@ public class GanttScaleTests : IDisposable
         var upper = GanttScale.UpperRuns(GanttViewMode.Day, units);
         Assert.Equal(new[]
         {
-            new GanttHeaderRun(0, 2, "January"),
-            new GanttHeaderRun(2, 2, "February"),
+            new GanttHeaderRun(0, 2, "W5 Jan 25 – 31"),
+            new GanttHeaderRun(2, 2, "W6 Feb 1 – 7"),
         }, upper);
+    }
+
+    // ── ISO week bands (design spec Phase 3, T2) ─────────────────────────────
+
+    [Fact]
+    public void WeekBand_Defaults_To_CurrentCulture_FirstDayOfWeek_When_Not_Overridden()
+    {
+        // en-US (this class's pin) is Sunday-first — Jan 30/31 2026 (Fri/Sat)
+        // band with the SUNDAY on/before them (Jan 25), not the ISO Monday
+        // (Jan 26) — proves the null/default path genuinely reads
+        // CultureInfo.CurrentCulture.DateTimeFormat.FirstDayOfWeek rather than
+        // silently defaulting to Monday regardless.
+        var units = GanttScale.BuildDateUnits(GanttViewMode.Day, Utc(2026, 1, 30), Utc(2026, 1, 31));
+        var upper = GanttScale.UpperRuns(GanttViewMode.Day, units);
+        Assert.Equal(new[] { new GanttHeaderRun(0, 2, "W5 Jan 25 – 31") }, upper);
+    }
+
+    [Fact]
+    public void WeekBand_Explicit_FirstDayOfWeek_Overrides_The_Culture_Default()
+    {
+        // Same units as the default-culture test above, but an EXPLICIT
+        // Monday override shifts the band boundary despite en-US's own
+        // Sunday-first default — Jan 30/31 2026 (Fri/Sat) now band with the
+        // MONDAY on/before them (Jan 26), an entirely different 7-day window
+        // (through Feb 1) than the Sunday-anchored one above.
+        var units = GanttScale.BuildDateUnits(GanttViewMode.Day, Utc(2026, 1, 30), Utc(2026, 1, 31));
+        var upper = GanttScale.UpperRuns(GanttViewMode.Day, units, DayOfWeek.Monday);
+        Assert.Equal(new[] { new GanttHeaderRun(0, 2, "W5 Jan 26 – Feb 1") }, upper);
+    }
+
+    [Fact]
+    public void WeekBand_Monday_First_Culture_Bands_On_Monday()
+    {
+        // de-DE: CalendarWeekRule.FirstFourDayWeek + DayOfWeek.Monday — the
+        // exact combination that routes GetWeekNumber through ISOWeek
+        // (see its own remarks) AND the band boundary itself: Jan 30 2026 is
+        // a Friday, so the Monday on/before it is Jan 26.
+        var original = CultureInfo.CurrentCulture;
+        try
+        {
+            CultureInfo.CurrentCulture = CultureInfo.GetCultureInfo("de-DE");
+            var units = GanttScale.BuildDateUnits(GanttViewMode.Day, Utc(2026, 1, 30), Utc(2026, 1, 31));
+            var upper = GanttScale.UpperRuns(GanttViewMode.Day, units);
+            // "Jan." (with the period) is de-DE's own CurrentCulture "MMM"
+            // abbreviation (verified against the live .NET runtime, not
+            // hand-guessed) — see WeekBandLabel_Honors_CurrentCulture_Month_Names.
+            Assert.Equal(new[] { new GanttHeaderRun(0, 2, "W5 Jan. 26 – Feb. 1") }, upper);
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = original;
+        }
+    }
+
+    [Fact]
+    public void WeekBand_Sunday_First_Culture_Bands_On_Sunday()
+    {
+        // en-US: CalendarWeekRule.FirstDay + DayOfWeek.Sunday — the SAME
+        // culture this whole test class is pinned to, made explicit here as
+        // its own dedicated "Sunday-first culture" case (distinct from the
+        // "defaults to culture" test above, which happens to ALSO be en-US
+        // but is testing a different property — the null-parameter fallback,
+        // not the Sunday-specific banding itself).
+        var units = GanttScale.BuildDateUnits(GanttViewMode.Day, Utc(2026, 1, 30), Utc(2026, 1, 31));
+        var upper = GanttScale.UpperRuns(GanttViewMode.Day, units);
+        Assert.Equal(new[] { new GanttHeaderRun(0, 2, "W5 Jan 25 – 31") }, upper);
+    }
+
+    [Fact]
+    public void WeekBand_Spanning_A_Month_Boundary_Shows_Both_Months()
+    {
+        // Monday-first: the week of Jul 27 - Aug 2, 2026 straddles Jul/Aug.
+        // Jul 27 2026 is a Monday (band start); the band's own anchor
+        // (bandStart+3 = Jul 30) determines the week number.
+        var units = GanttScale.BuildDateUnits(GanttViewMode.Day, Utc(2026, 7, 27), Utc(2026, 7, 28));
+        var upper = GanttScale.UpperRuns(GanttViewMode.Day, units, DayOfWeek.Monday);
+        Assert.Equal(new[] { new GanttHeaderRun(0, 2, "W31 Jul 27 – Aug 2") }, upper);
+    }
+
+    [Fact]
+    public void WeekBand_ISO_Week_1_Starting_In_The_Previous_December_Is_Numbered_Correctly()
+    {
+        // Jan 1, 2025 is a WEDNESDAY — ISO week 1 of 2025 is therefore the
+        // week containing the first Thursday of January (Jan 2), which STARTS
+        // on Monday Dec 30, 2024 and ends Sunday Jan 5, 2025. A date late in
+        // December 2024 (Dec 31) must report week 1 (of 2025), NOT week 53/1
+        // of 2024 — exactly the class of date System.Globalization.Calendar.
+        // GetWeekOfYear(..., FirstFourDayWeek, Monday) is documented to get
+        // wrong, and System.Globalization.ISOWeek exists to get right (see
+        // GetWeekNumber's own remarks). Monday-first culture (de-DE) so the
+        // band boundary itself also lands exactly on the ISO week's own
+        // Monday start, independently confirming the band (Dec 30 – Jan 5)
+        // and the week number (1) agree.
+        var original = CultureInfo.CurrentCulture;
+        try
+        {
+            CultureInfo.CurrentCulture = CultureInfo.GetCultureInfo("de-DE");
+            var units = GanttScale.BuildDateUnits(GanttViewMode.Day, Utc(2024, 12, 30), Utc(2025, 1, 2));
+            var upper = GanttScale.UpperRuns(GanttViewMode.Day, units);
+            // "Dez."/"Jan." — de-DE's own month abbreviations (verified
+            // against the live .NET runtime), not "Dec"/"Jan".
+            Assert.Equal(new[] { new GanttHeaderRun(0, 4, "W1 Dez. 30 – Jan. 5") }, upper);
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = original;
+        }
+    }
+
+    [Fact]
+    public void WeekBand_Week_Number_Uses_ISOWeek_Not_The_Buggy_Calendar_GetWeekOfYear_At_The_Exact_Boundary()
+    {
+        // Disable-check finding (verified against the live .NET runtime while
+        // implementing this task, not assumed): the divergence between
+        // ISOWeek.GetWeekOfYear and Calendar.GetWeekOfYear(FirstFourDayWeek,
+        // Monday) is REAL on this SDK, but ONLY on the exact boundary days —
+        // scanned 1990-2040: Calendar.GetWeekOfYear(2024-12-30) = 53,
+        // ISOWeek.GetWeekOfYear(2024-12-30) = 1 (the correct ISO answer —
+        // Dec 30 2024 is a Monday inside week 1 of 2025, per the SAME
+        // "contains the first Thursday" rule the previous test documents).
+        // The PREVIOUS test's own anchor (bandStart+3 with a Monday-first
+        // culture) always lands on a Thursday, which this scan confirmed
+        // never diverges — so THAT test alone cannot distinguish "routes
+        // through ISOWeek" from "always uses Calendar.GetWeekOfYear" (both
+        // agree at a Thursday anchor). This test closes that gap: an
+        // EXPLICIT FirstDayOfWeek.Friday override shifts the band boundary
+        // (not the numbering culture — still de-DE) so the anchor
+        // (bandStart+3) lands exactly on the divergent date, Dec 30 2024
+        // itself.
+        var original = CultureInfo.CurrentCulture;
+        try
+        {
+            CultureInfo.CurrentCulture = CultureInfo.GetCultureInfo("de-DE");
+            var units = GanttScale.BuildDateUnits(GanttViewMode.Day, Utc(2024, 12, 27), Utc(2025, 1, 2));
+            var upper = GanttScale.UpperRuns(GanttViewMode.Day, units, DayOfWeek.Friday);
+            // Band = Dec 27 2024 (Fri) .. Jan 2 2025 (Thu); anchor = Dec 30
+            // (the divergent date) -> ISOWeek says 1 (correct), the buggy
+            // Calendar path would say 53.
+            Assert.Equal(new[] { new GanttHeaderRun(0, 7, "W1 Dez. 27 – Jan. 2") }, upper);
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = original;
+        }
+    }
+
+    [Fact]
+    public void WeekBandLabel_Honors_CurrentCulture_Month_Names()
+    {
+        // Day mode's own culture-awareness (see Month_Names_Follow_
+        // CurrentCulture_Not_Hardcoded_English's remarks on why THAT test now
+        // exercises Week mode instead of Day) — the week band's month
+        // abbreviation follows CultureInfo.CurrentCulture exactly like every
+        // other MMM-formatted label in this file.
+        var original = CultureInfo.CurrentCulture;
+        try
+        {
+            CultureInfo.CurrentCulture = CultureInfo.GetCultureInfo("de-DE");
+            var units = GanttScale.BuildDateUnits(GanttViewMode.Day, Utc(2026, 1, 30), Utc(2026, 1, 31));
+            var upper = GanttScale.UpperRuns(GanttViewMode.Day, units);
+            Assert.Equal(new[] { new GanttHeaderRun(0, 2, "W5 Jan. 26 – Feb. 1") }, upper);
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = original;
+        }
     }
 
     [Fact]
@@ -313,6 +498,121 @@ public class GanttScaleTests : IDisposable
         }, upper);
     }
 
+    // ── Quarter mode (design spec Phase 3, T2 — v3-only, no v2 counterpart) ──
+
+    [Fact]
+    public void GetConfig_Quarter_Is_The_Chosen_V3_Only_Config()
+    {
+        AssertConfig(GanttViewMode.Quarter, 120, GanttScaleUnit.Quarter, 1, 4, 4, GanttHeaderUpperKind.Year, GanttHeaderLowerKind.QuarterNum);
+    }
+
+    [Fact]
+    public void Quarter_BuildDateUnits_Produces_One_Column_Per_Calendar_Quarter()
+    {
+        var units = GanttScale.BuildDateUnits(GanttViewMode.Quarter, Utc(2026, 1, 1), Utc(2026, 10, 1));
+        Assert.Equal(new[] { Utc(2026, 1, 1), Utc(2026, 4, 1), Utc(2026, 7, 1), Utc(2026, 10, 1) }, units);
+    }
+
+    [Fact]
+    public void Quarter_Header_Segments_Lower_QuarterNum_And_Upper_Year_Runs()
+    {
+        var units = GanttScale.BuildDateUnits(GanttViewMode.Quarter, Utc(2025, 10, 1), Utc(2026, 7, 1));
+        Assert.Equal(4, units.Count);
+
+        var lower = GanttScale.LowerLabels(GanttViewMode.Quarter, units);
+        Assert.Equal(new[] { "Q4", "Q1", "Q2", "Q3" }, lower);
+
+        var upper = GanttScale.UpperRuns(GanttViewMode.Quarter, units);
+        Assert.Equal(new[]
+        {
+            new GanttHeaderRun(0, 1, "2025"),
+            new GanttHeaderRun(1, 3, "2026"),
+        }, upper);
+    }
+
+    [Fact]
+    public void Quarter_DateToPixel_Is_The_Month_Formula_Divided_By_Three()
+    {
+        var origin = Utc(2026, 1, 1);
+        var date = Utc(2026, 4, 1); // exactly 1 quarter after origin
+        var colW = GanttScale.GetConfig(GanttViewMode.Quarter).ColumnWidth;
+
+        var quarterPx = GanttScale.DateToPixel(GanttViewMode.Quarter, origin, date, colW);
+        var monthPx = GanttScale.DateToPixel(GanttViewMode.Month, origin, date, colW);
+
+        Assert.Equal(colW, quarterPx, precision: 6); // exactly 1 quarter-column
+        Assert.Equal(monthPx / 3.0, quarterPx, precision: 6);
+    }
+
+    [Fact]
+    public void Quarter_AlignToUnitStart_Snaps_To_The_Calendar_Quarter_Start()
+    {
+        Assert.Equal(Utc(2026, 4, 1), GanttScale.AlignToUnitStart(GanttViewMode.Quarter, Utc(2026, 5, 15)));
+        Assert.Equal(Utc(2026, 1, 1), GanttScale.AlignToUnitStart(GanttViewMode.Quarter, Utc(2026, 1, 1)));
+        Assert.Equal(Utc(2026, 10, 1), GanttScale.AlignToUnitStart(GanttViewMode.Quarter, Utc(2026, 12, 31)));
+    }
+
+    [Fact]
+    public void Quarter_PixelsPerDay_Is_The_Month_Value_Divided_By_Three()
+    {
+        var colW = GanttScale.GetConfig(GanttViewMode.Quarter).ColumnWidth;
+        Assert.Equal(GanttScale.PixelsPerDay(GanttViewMode.Month, colW) / 3.0, GanttScale.PixelsPerDay(GanttViewMode.Quarter, colW), precision: 10);
+    }
+
+    // ── Off-day derivation (design spec Phase 3, T2 — region-aware, CLDR-sourced) ──
+
+    [Theory]
+    [InlineData("en-US")]
+    [InlineData("de-DE")]
+    public void DefaultOffDays_Falls_Back_To_Saturday_Sunday_For_Unlisted_Regions(string culture)
+    {
+        var offDays = GanttScale.DefaultOffDays(CultureInfo.GetCultureInfo(culture));
+        Assert.Equal(new HashSet<DayOfWeek> { DayOfWeek.Saturday, DayOfWeek.Sunday }, offDays);
+    }
+
+    [Fact]
+    public void DefaultOffDays_Israel_Is_Friday_Saturday()
+    {
+        var offDays = GanttScale.DefaultOffDays(CultureInfo.GetCultureInfo("he-IL"));
+        Assert.Equal(new HashSet<DayOfWeek> { DayOfWeek.Friday, DayOfWeek.Saturday }, offDays);
+    }
+
+    [Fact]
+    public void DefaultOffDays_Iran_Is_Friday_Only()
+    {
+        var offDays = GanttScale.DefaultOffDays(CultureInfo.GetCultureInfo("fa-IR"));
+        Assert.Equal(new HashSet<DayOfWeek> { DayOfWeek.Friday }, offDays);
+    }
+
+    [Fact]
+    public void DefaultOffDays_Afghanistan_Is_Thursday_Friday()
+    {
+        var offDays = GanttScale.DefaultOffDays(CultureInfo.GetCultureInfo("fa-AF"));
+        Assert.Equal(new HashSet<DayOfWeek> { DayOfWeek.Thursday, DayOfWeek.Friday }, offDays);
+    }
+
+    [Fact]
+    public void DefaultOffDays_India_Is_Sunday_Only()
+    {
+        var offDays = GanttScale.DefaultOffDays(CultureInfo.GetCultureInfo("hi-IN"));
+        Assert.Equal(new HashSet<DayOfWeek> { DayOfWeek.Sunday }, offDays);
+    }
+
+    [Fact]
+    public void DefaultOffDays_Neutral_Culture_Falls_Back_To_The_Global_Default()
+    {
+        // "ja" (neutral Japanese, no region subtag) is one of the few
+        // 2-letter neutral culture codes that does NOT also collide with a
+        // real ISO region code (verified against the live runtime — "de"/
+        // "fr"/"es"/etc. all happen to double as their own country's region
+        // code, e.g. RegionInfo("de") resolves to Germany, which would make
+        // THIS test accidentally pass for the wrong reason): `new
+        // RegionInfo("ja")` genuinely throws ArgumentException, exercising
+        // DefaultOffDays' own catch clause, not just its region switch.
+        var offDays = GanttScale.DefaultOffDays(CultureInfo.GetCultureInfo("ja"));
+        Assert.Equal(new HashSet<DayOfWeek> { DayOfWeek.Saturday, DayOfWeek.Sunday }, offDays);
+    }
+
     // ── px <-> date roundtrips ───────────────────────────────────────────────
 
     [Theory]
@@ -322,6 +622,7 @@ public class GanttScaleTests : IDisposable
     [InlineData(GanttViewMode.HalfDay)]
     [InlineData(GanttViewMode.Month)]
     [InlineData(GanttViewMode.Year)]
+    [InlineData(GanttViewMode.Quarter)]
     public void DateToPixel_Then_PixelToDate_Roundtrips_On_A_Step_Aligned_Offset(GanttViewMode mode)
     {
         var cfg = GanttScale.GetConfig(mode);
@@ -332,6 +633,7 @@ public class GanttScaleTests : IDisposable
             GanttScaleUnit.Day => origin.AddDays(cfg.Step * 5),
             GanttScaleUnit.Month => origin.AddMonths(cfg.Step * 5),
             GanttScaleUnit.Year => origin.AddYears(cfg.Step * 5),
+            GanttScaleUnit.Quarter => origin.AddMonths(cfg.Step * 5 * 3), // 5 quarters = 15 months
             _ => origin,
         };
 
@@ -346,6 +648,7 @@ public class GanttScaleTests : IDisposable
     [Theory]
     [InlineData(GanttViewMode.Month)]
     [InlineData(GanttViewMode.Year)]
+    [InlineData(GanttViewMode.Quarter)]
     public void PixelToDateContinuous_Then_DateToPixel_Roundtrips_Within_Tolerance_For_A_MidUnit_Offset(GanttViewMode mode)
     {
         // A deliberately non-unit-aligned pixel offset (mid-month / mid-year) —
