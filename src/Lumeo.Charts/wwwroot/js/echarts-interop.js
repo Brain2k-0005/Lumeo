@@ -221,6 +221,50 @@ function rgbToHex(r, g, b) {
     return '#' + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
 }
 
+// --- Design-pass colour helpers (pure, no DOM) -----------------------------
+// The gradients/glows below are always DERIVED at build/render time from an
+// already-resolved CSS-variable colour (a `#rrggbb` string produced by
+// getCssVar/colorToHex, or — for the per-series bar/pie gradient callbacks —
+// from ECharts' own `params.color`, which by the time that callback runs is
+// always the resolved palette hex too). Nothing here is a hardcoded hex; see
+// the "CSS variables only" constraint in the design-pass brief.
+
+// Parses a `#rrggbb`/`#rgb` string into {r,g,b}. Returns null for anything
+// else (already-rgba(), unparseable) so callers can fail safe to a flat
+// colour instead of producing "rgba(NaN, NaN, NaN, ...)".
+function hexToRgb(hex) {
+    if (typeof hex !== 'string') return null;
+    let h = hex.trim();
+    if (h[0] !== '#') return null;
+    h = h.slice(1);
+    if (h.length === 3) h = h.split('').map((c) => c + c).join('');
+    if (h.length !== 6) return null;
+    const n = parseInt(h, 16);
+    if (Number.isNaN(n)) return null;
+    return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 };
+}
+
+// `color` at the given alpha (0-1) as an rgba() string. Falls back to the
+// original value unchanged when it isn't a hex colour we can parse — a safe
+// degrade to a flat colour rather than a broken paint.
+function withAlpha(color, alpha) {
+    const rgb = hexToRgb(color);
+    if (!rgb) return color;
+    return `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${alpha})`;
+}
+
+// Lightens a resolved hex colour toward white by `amount` (0-1). Used for the
+// near/top stop of the bar and pie gradients — a "lit from above" tint
+// derived from the series' OWN resolved colour (never a second hardcoded
+// hue), so it tracks whatever palette (theme tokens or a consumer's own
+// Colors/ColorPalette) is actually in play.
+function lighten(color, amount) {
+    const rgb = hexToRgb(color);
+    if (!rgb) return color;
+    const mix = (c) => Math.round(c + (255 - c) * amount);
+    return `rgb(${mix(rgb.r)}, ${mix(rgb.g)}, ${mix(rgb.b)})`;
+}
+
 /**
  * Builds the Lumeo ECharts theme object from a CSS-variable getter (`cssVar`,
  * normally {@link getCssVar}) and the current reduced-motion preference.
@@ -269,6 +313,19 @@ function buildLumeoTheme(cssVar, reducedMotion) {
     const chart3 = cssVar('--color-chart-3') || '#2d4f5c';
     const chart4 = cssVar('--color-chart-4') || '#d4a843';
     const chart5 = cssVar('--color-chart-5') || '#e08844';
+
+    // Glow tint: deliberately the BRAND accent (--color-primary), not a
+    // per-series colour. Verified empirically (see PR description) that
+    // ECharts invokes a callback function for `itemStyle.color` — so the
+    // bar/pie gradients below CAN be per-series — but never for
+    // `shadowColor` on any style block, on any series type, itemStyle
+    // included. A theme-level shadowColor is necessarily ONE literal value
+    // shared by every series of that type, so tinting it per-series isn't
+    // technically possible from this shared seam. Using the brand accent
+    // instead of a neutral black/grey turns that constraint into a
+    // consistent, opinionated identity — every glow across every chart
+    // reads as "this app", not as an ad-hoc drop-shadow.
+    const glowColor = cssVar('--color-primary') || chart1;
 
     const radiusRaw = cssVar('--radius') || '0.75rem';
     const radiusPx = parseFloat(radiusRaw) * (radiusRaw.includes('rem') ? 16 : 1);
@@ -392,23 +449,99 @@ function buildLumeoTheme(cssVar, reducedMotion) {
         line: {
             smooth: true,
             symbolSize: 0,
-            lineStyle: { width: 2 },
+            // Stroke stays a SOLID token colour, never a gradient — a line's
+            // legend swatch and its stroke need to read as the same colour at
+            // a glance, and (per the callback finding above) a per-series
+            // gradient isn't reliably achievable at this shared seam anyway.
+            // What lifts the line instead is a glow: a soft, brand-tinted
+            // halo at rest (barely-there ambient lift) that intensifies on
+            // hover — "lit rather than drawn" without fighting legibility of
+            // multiple overlapping series.
+            lineStyle: { width: 2, shadowBlur: 6, shadowColor: withAlpha(glowColor, 0.16) },
             label: labelNoStroke,
-            emphasis: { focus: 'series', lineStyle: { width: 3 } },
-            blur: seriesHover.blur
+            emphasis: {
+                focus: 'series',
+                lineStyle: { width: 3, shadowBlur: 14, shadowColor: withAlpha(glowColor, 0.34) }
+            },
+            blur: seriesHover.blur,
+            // Line/area's own entrance reveal is ECharts' native left-to-right
+            // clip-path draw (built into the 'line' series renderer — no
+            // per-point animationDelay needed or effective here, since the
+            // stroke/area is ONE continuous shape, not per-datum elements).
+            // What we control is its PACE: a longer, more deliberate entrance
+            // than bar/pie/scatter reads as "the line is drawing itself in"
+            // rather than "the chart is popping up" — a distinct rhythm per
+            // family, not one duration reused everywhere.
+            ...(reducedMotion ? {} : { animationDuration: 900, animationEasing: 'cubicOut' })
         },
         bar: {
             barMaxWidth: 32,
-            itemStyle: { borderRadius: barRadius },
+            itemStyle: {
+                borderRadius: barRadius,
+                // Vertical gradient per bar, built from a callback (confirmed
+                // via a live ECharts probe that `itemStyle.color` DOES invoke
+                // a (params) => Color function at the theme level, unlike
+                // lineStyle/areaStyle/shadowColor — see PR description).
+                // params.color is ECharts' own already-resolved palette
+                // colour for that series, so this tracks the theme palette
+                // AND any consumer-supplied Colors/ColorPalette automatically.
+                // Top stop lightened toward white (never a second hardcoded
+                // hue) for a "lit from above, grounded at the base" read —
+                // deliberately NOT fading to transparent the way area fills
+                // do; a bar sitting on a card needs a solid foot, not a
+                // vanishing one.
+                color: function (params) {
+                    const base = (params && params.color) || '#888888';
+                    return {
+                        type: 'linear', x: 0, y: 0, x2: 0, y2: 1,
+                        colorStops: [
+                            { offset: 0, color: lighten(base, 0.32) },
+                            { offset: 1, color: base }
+                        ]
+                    };
+                }
+            },
             label: labelNoStroke,
-            emphasis: { focus: 'series', itemStyle: { shadowBlur: 8, shadowColor: 'rgba(0,0,0,0.18)' } },
-            blur: { itemStyle: blurOpacity, label: { opacity: 0.32 } }
+            emphasis: { focus: 'series', itemStyle: { shadowBlur: 10, shadowColor: withAlpha(glowColor, 0.4) } },
+            blur: { itemStyle: blurOpacity, label: { opacity: 0.32 } },
+            // Cascading reveal: each subsequent bar starts a beat after the
+            // last instead of every bar growing from the baseline at once.
+            // Capped at 700ms of total spread so a wide category axis (30+
+            // bars) still finishes revealing in well under a second — an
+            // uncapped `idx * 45` would make a busy chart take seconds to
+            // finish drawing. Omitted entirely under reduced motion so no
+            // stray delay function lingers once animation is force-disabled
+            // (matches the animationDuration/-Easing omission below).
+            ...(reducedMotion ? {} : { animationDelay: (idx) => Math.min((idx || 0) * 45, 700) })
         },
         pie: {
-            itemStyle: { borderColor: card, borderWidth: 2 },
+            itemStyle: {
+                borderColor: card, borderWidth: 2,
+                // Same callback mechanism as bar (confirmed working for pie
+                // too), but RADIAL rather than linear — a per-slice "glassy"
+                // pop with the lightened tint near the centre fading to the
+                // full resolved colour at the slice's outer edge. Radial
+                // coordinates are relative to each slice's own bounding box
+                // (ECharts default), so every slice gets its own consistent
+                // centre-to-edge gradient regardless of its angle/size.
+                color: function (params) {
+                    const base = (params && params.color) || '#888888';
+                    return {
+                        type: 'radial', x: 0.5, y: 0.5, r: 0.7,
+                        colorStops: [
+                            { offset: 0, color: lighten(base, 0.28) },
+                            { offset: 1, color: base }
+                        ]
+                    };
+                }
+            },
             label: labelNoStroke,
-            emphasis: { scale: true, scaleSize: 6, itemStyle: { shadowBlur: 14, shadowColor: 'rgba(0,0,0,0.22)' } },
-            blur: { itemStyle: blurOpacity, label: { opacity: 0.32 } }
+            emphasis: { scale: true, scaleSize: 6, itemStyle: { shadowBlur: 16, shadowColor: withAlpha(glowColor, 0.45) } },
+            blur: { itemStyle: blurOpacity, label: { opacity: 0.32 } },
+            // Sweep reveal: slices begin their entrance in order around the
+            // circle instead of every slice expanding together. Capped at
+            // 500ms of spread for the same reason as the bar cascade above.
+            ...(reducedMotion ? {} : { animationDelay: (idx) => Math.min((idx || 0) * 90, 500) })
         },
         radar: {
             axisName: { color: mutedFg, fontSize: 11 },
@@ -421,10 +554,17 @@ function buildLumeoTheme(cssVar, reducedMotion) {
         },
         scatter: {
             symbolSize: 8,
-            itemStyle: { opacity: 0.75 },
+            // Scatter points are sparse individual marks (not a dense fill or
+            // a busy multi-bar chart), so — unlike bar/pie — a light glow AT
+            // REST earns its place here rather than reading as noise; it
+            // still steps up materially on hover.
+            itemStyle: { opacity: 0.75, shadowBlur: 4, shadowColor: withAlpha(glowColor, 0.18) },
             label: labelNoStroke,
-            emphasis: { focus: 'series', scale: 1.25, itemStyle: { opacity: 1, shadowBlur: 10, shadowColor: 'rgba(0,0,0,0.2)' } },
-            blur: { itemStyle: { opacity: 0.25 } }
+            emphasis: { focus: 'series', scale: 1.25, itemStyle: { opacity: 1, shadowBlur: 12, shadowColor: withAlpha(glowColor, 0.4) } },
+            blur: { itemStyle: { opacity: 0.25 } },
+            // Fast cascading pop-in, capped so a dense scatter (hundreds of
+            // points) still fully reveals in well under half a second.
+            ...(reducedMotion ? {} : { animationDelay: (idx) => Math.min((idx || 0) * 10, 400) })
         },
         graph: {
             lineStyle: { color: border, opacity: 0.6 },
@@ -462,7 +602,7 @@ function buildLumeoTheme(cssVar, reducedMotion) {
         },
         heatmap: {
             label: labelNoStroke,
-            emphasis: { itemStyle: { shadowBlur: 10, shadowColor: 'rgba(0,0,0,0.25)' } }
+            emphasis: { itemStyle: { shadowBlur: 12, shadowColor: withAlpha(glowColor, 0.5) } }
         },
         boxplot: {
             label: labelNoStroke,
@@ -931,4 +1071,4 @@ export async function registerMap(mapName, geoJson) {
 // plain Node test asserting real computed values — see
 // tests/js/echarts-interop-theme.test.mjs. Not part of the public interop
 // surface; Blazor's JS interop only ever calls the named exports above.
-export const __testing = { buildLumeoTheme, prefersReducedMotion, applyReducedMotion };
+export const __testing = { buildLumeoTheme, prefersReducedMotion, applyReducedMotion, hexToRgb, withAlpha, lighten };

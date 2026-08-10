@@ -10,9 +10,14 @@ namespace Lumeo.Tests.Components.Chart;
 /// Regression tests for the AreaChart real-gradient fill. Historically
 /// <c>Gradient</c> only changed the area <c>opacity</c> (0.3 vs 0.7); there was no
 /// way to get a true brand-colour gradient. <c>GradientFill</c> / <c>GradientStops</c>
-/// now map to an ECharts <c>areaStyle.color</c> linear-gradient object. These tests
-/// pin (a) the default stays opacity-only so existing charts are unchanged, and
-/// (b) the opt-in produces a top→transparent vertical gradient.
+/// map to an ECharts <c>areaStyle.color</c> linear-gradient object.
+///
+/// The charts-design pass ("EvilCharts level") made the DEFAULT (<c>Gradient=true</c>,
+/// <c>GradientFill=false</c>) route through the SAME gradient builder too — scaled to a
+/// moderate 0.45 top opacity via <c>AreaStyle.Opacity</c>, distinct from the bolder,
+/// full-opacity-top look <c>GradientFill</c> opts into. <c>Gradient=false</c> is the one
+/// remaining "existing charts are unchanged" escape hatch: flat 0.7 opacity, no gradient
+/// object at all — see <see cref="Default_Gradient_False_Is_Opacity_Only_No_Gradient"/>.
 /// </summary>
 public class AreaChartGradientTests : IAsyncLifetime
 {
@@ -46,18 +51,40 @@ public class AreaChartGradientTests : IAsyncLifetime
     }
 
     [Fact]
-    public void Default_AreaStyle_Is_Opacity_Only_No_Gradient()
+    public void Default_Fill_Is_A_Moderate_Gradient_To_Transparent()
     {
-        // No GradientFill → legacy opacity-only fill. This is the "existing charts
-        // don't change" guarantee: no `color` gradient object must be emitted.
+        // charts-design pass: the DEFAULT (Gradient=true, GradientFill=false) now
+        // emits the SAME per-series vertical gradient as the explicit GradientFill
+        // opt-in, scaled down to a moderate 0.45 top opacity via AreaStyle.Opacity —
+        // the restrained everyday look instead of the old flat 0.3-opacity rectangle.
         var cut = _ctx.Render<L.AreaChart>(p => p
             .Add(c => c.Categories, new List<string> { "a", "b", "c" })
             .Add(c => c.Series, OneSeries()));
 
         var areaStyle = FirstAreaStyle(cut);
         Assert.True(areaStyle.TryGetProperty("opacity", out var opacity));
-        Assert.Equal(0.3, opacity.GetDouble()); // Gradient defaults true → 0.3
-        Assert.False(areaStyle.TryGetProperty("color", out _), "Default fill must not emit a gradient color object");
+        Assert.Equal(0.45, opacity.GetDouble());
+        Assert.True(areaStyle.TryGetProperty("color", out var color), "Default fill must emit a gradient color object");
+        Assert.Equal("linear", color.GetProperty("type").GetString());
+        var stops = color.GetProperty("colorStops");
+        Assert.Equal("var(--color-chart-1)", stops[0].GetProperty("color").GetString());
+        Assert.Equal("transparent", stops[1].GetProperty("color").GetString());
+    }
+
+    [Fact]
+    public void Default_Gradient_False_Is_Opacity_Only_No_Gradient()
+    {
+        // Gradient=false is the explicit "solid, no gradient" alternative — the one
+        // remaining flat translucent fill, unchanged by the charts-design pass.
+        var cut = _ctx.Render<L.AreaChart>(p => p
+            .Add(c => c.Categories, new List<string> { "a", "b", "c" })
+            .Add(c => c.Series, OneSeries())
+            .Add(c => c.Gradient, false));
+
+        var areaStyle = FirstAreaStyle(cut);
+        Assert.True(areaStyle.TryGetProperty("opacity", out var opacity));
+        Assert.Equal(0.7, opacity.GetDouble());
+        Assert.False(areaStyle.TryGetProperty("color", out _), "Gradient=false fill must not emit a gradient color object");
     }
 
     [Fact]

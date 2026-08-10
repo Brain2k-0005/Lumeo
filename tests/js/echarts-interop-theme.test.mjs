@@ -160,3 +160,129 @@ test('prefersReducedMotion is false in this Node environment (no window) — san
     const { __testing } = await importInterop();
     assert.equal(__testing.prefersReducedMotion(), false);
 });
+
+// --- charts-design "EvilCharts level" pass: gradients, glows, reveals ------
+// The bar/pie gradients and the shadow-based glows are all DERIVED at build
+// time (glow) or render time (gradient, via a callback) from an already-
+// resolved hex colour — never a hardcoded hex. These tests assert the exact
+// computed output of the pure helpers and of buildLumeoTheme's callbacks, not
+// just that a key is present.
+
+test('colour helpers: hexToRgb/withAlpha/lighten produce exact computed values, and fail safe on unparseable input', async () => {
+    const { __testing } = await importInterop();
+    assert.deepEqual(__testing.hexToRgb('#aa0000'), { r: 170, g: 0, b: 0 });
+    assert.deepEqual(__testing.hexToRgb('#f00'), { r: 255, g: 0, b: 0 }); // 3-digit shorthand
+    assert.equal(__testing.hexToRgb('rgba(1,2,3,0.5)'), null); // not a hex string — fail safe
+    assert.equal(__testing.hexToRgb('not-a-color'), null);
+
+    assert.equal(__testing.withAlpha('#aa0000', 0.16), 'rgba(170, 0, 0, 0.16)');
+    // Unparseable input passes through unchanged rather than producing "rgba(NaN,...)"
+    assert.equal(__testing.withAlpha('rgba(1,2,3,0.5)', 0.16), 'rgba(1,2,3,0.5)');
+
+    // lighten mixes toward white by the given amount — exact rounded RGB math,
+    // not "some other colour came out".
+    assert.equal(__testing.lighten('#aa0000', 0.32), 'rgb(197, 82, 82)');
+    assert.equal(__testing.lighten('#000000', 1), 'rgb(255, 255, 255)');
+    assert.equal(__testing.lighten('#000000', 0), 'rgb(0, 0, 0)');
+});
+
+test('glow: brand-accent (--color-primary) tinted, not per-series — line gets a rest glow that intensifies on emphasis', async () => {
+    const { __testing } = await importInterop();
+    const theme = __testing.buildLumeoTheme(fakeCssVar, false);
+    // --color-primary in the fixture is #ff00ff, deliberately different from
+    // every --color-chart-N so a regression that tints the glow off some
+    // OTHER token is caught immediately.
+    assert.equal(theme.line.lineStyle.shadowBlur, 6);
+    assert.equal(theme.line.lineStyle.shadowColor, 'rgba(255, 0, 255, 0.16)');
+    assert.equal(theme.line.emphasis.lineStyle.shadowBlur, 14);
+    assert.equal(theme.line.emphasis.lineStyle.shadowColor, 'rgba(255, 0, 255, 0.34)');
+    // Emphasis strictly stronger than rest — "subtle at rest, stronger on
+    // emphasis", not a constant halo.
+    assert.ok(theme.line.emphasis.lineStyle.shadowBlur > theme.line.lineStyle.shadowBlur);
+
+    assert.equal(theme.bar.emphasis.itemStyle.shadowColor, 'rgba(255, 0, 255, 0.4)');
+    assert.equal(theme.pie.emphasis.itemStyle.shadowColor, 'rgba(255, 0, 255, 0.45)');
+    assert.equal(theme.scatter.itemStyle.shadowColor, 'rgba(255, 0, 255, 0.18)'); // scatter DOES glow at rest
+    assert.equal(theme.scatter.emphasis.itemStyle.shadowColor, 'rgba(255, 0, 255, 0.4)');
+    assert.equal(theme.heatmap.emphasis.itemStyle.shadowColor, 'rgba(255, 0, 255, 0.5)');
+});
+
+test('bar gradient: itemStyle.color is a callback that builds a top-lightened vertical gradient from params.color', async () => {
+    const { __testing } = await importInterop();
+    const theme = __testing.buildLumeoTheme(fakeCssVar, false);
+    assert.equal(typeof theme.bar.itemStyle.color, 'function');
+
+    const gradient = theme.bar.itemStyle.color({ color: '#aa0000' });
+    assert.equal(gradient.type, 'linear');
+    // Top-to-bottom (x=0,y=0 -> x2=0,y2=1), relative coordinates (no `global`).
+    assert.deepEqual({ x: gradient.x, y: gradient.y, x2: gradient.x2, y2: gradient.y2 }, { x: 0, y: 0, x2: 0, y2: 1 });
+    assert.equal(gradient.colorStops[0].offset, 0);
+    assert.equal(gradient.colorStops[0].color, 'rgb(197, 82, 82)'); // lighten('#aa0000', 0.32)
+    assert.equal(gradient.colorStops[1].offset, 1);
+    // Bottom stop is the FULL resolved series colour, not transparent — bars
+    // get a solid foot, unlike area fills.
+    assert.equal(gradient.colorStops[1].color, '#aa0000');
+
+    // Fails safe to a grey base instead of throwing when ECharts calls it
+    // without a resolvable params.color (defensive — should not happen via
+    // the normal Chart.razor path, but the callback must not crash the chart).
+    assert.doesNotThrow(() => theme.bar.itemStyle.color({}));
+});
+
+test('pie gradient: itemStyle.color is a callback that builds a centre-lightened RADIAL gradient from params.color', async () => {
+    const { __testing } = await importInterop();
+    const theme = __testing.buildLumeoTheme(fakeCssVar, false);
+    assert.equal(typeof theme.pie.itemStyle.color, 'function');
+
+    const gradient = theme.pie.itemStyle.color({ color: '#00bb00' });
+    assert.equal(gradient.type, 'radial');
+    assert.deepEqual({ x: gradient.x, y: gradient.y, r: gradient.r }, { x: 0.5, y: 0.5, r: 0.7 });
+    assert.equal(gradient.colorStops[0].color, __testing.lighten('#00bb00', 0.28));
+    assert.equal(gradient.colorStops[1].color, '#00bb00');
+});
+
+test('reveal: bar/pie/scatter get a capped, staggered animationDelay; line relies on its native draw-in instead', async () => {
+    const { __testing } = await importInterop();
+    const theme = __testing.buildLumeoTheme(fakeCssVar, false);
+
+    assert.equal(typeof theme.bar.animationDelay, 'function');
+    assert.equal(theme.bar.animationDelay(0), 0);
+    assert.equal(theme.bar.animationDelay(5), 225); // 5 * 45, under the cap
+    assert.equal(theme.bar.animationDelay(100), 700); // capped, not 4500
+
+    assert.equal(typeof theme.pie.animationDelay, 'function');
+    assert.equal(theme.pie.animationDelay(2), 180); // 2 * 90
+    assert.equal(theme.pie.animationDelay(50), 500); // capped
+
+    assert.equal(typeof theme.scatter.animationDelay, 'function');
+    assert.equal(theme.scatter.animationDelay(3), 30); // 3 * 10
+    assert.equal(theme.scatter.animationDelay(1000), 400); // capped
+
+    // Line/area has no per-point animationDelay (the shape is one continuous
+    // path, not per-datum elements) — it instead gets a distinct, longer
+    // entrance duration/easing than the shared 700ms default.
+    assert.equal(theme.bar.animationDelay === theme.line.animationDelay, false);
+    assert.equal('animationDelay' in theme.line, false);
+    assert.equal(theme.line.animationDuration, 900);
+    assert.equal(theme.line.animationEasing, 'cubicOut');
+    assert.notEqual(theme.line.animationDuration, theme.animationDuration); // distinct from the shared 700ms default
+});
+
+test('reduced motion: reveal animationDelay functions and the line-specific duration are OMITTED, not just inert', async () => {
+    const { __testing } = await importInterop();
+    // Predicted WRONG value first: if this regressed to always adding the
+    // delay/duration regardless of reducedMotion, these keys would be
+    // present here too — confirm they are genuinely absent, not merely
+    // harmless under the top-level animation:false override.
+    const theme = __testing.buildLumeoTheme(fakeCssVar, true);
+    assert.equal('animationDelay' in theme.bar, false);
+    assert.equal('animationDelay' in theme.pie, false);
+    assert.equal('animationDelay' in theme.scatter, false);
+    assert.equal('animationDuration' in theme.line, false);
+    assert.equal('animationEasing' in theme.line, false);
+    // The glow/gradient callbacks are presentational colour, not motion — they
+    // stay present under reduced motion (a static glow/gradient isn't
+    // animation and prefers-reduced-motion has no opinion on it).
+    assert.equal(typeof theme.bar.itemStyle.color, 'function');
+    assert.equal(theme.line.lineStyle.shadowBlur, 6);
+});
