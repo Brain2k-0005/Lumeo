@@ -1534,6 +1534,16 @@ public sealed class ComponentInteropService : IComponentInteropService
         catch (JSDisconnectedException) { }
     }
 
+    public async Task SchedulerSetLocaleAsync(string id, string locale)
+    {
+        try
+        {
+            var module = await GetSchedulerModuleAsync();
+            await module.InvokeVoidAsync("scheduler.setLocale", id, locale);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
     public async Task<string> SchedulerGetTitleAsync(string id)
     {
         try

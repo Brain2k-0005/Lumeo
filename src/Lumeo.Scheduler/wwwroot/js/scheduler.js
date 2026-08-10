@@ -46,6 +46,30 @@ const FC_TIMEGRID = _fcUrl('timegrid', 'https://esm.sh/@fullcalendar/timegrid@6'
 const FC_LIST = _fcUrl('list', 'https://esm.sh/@fullcalendar/list@6');
 const FC_INTERACTION = _fcUrl('interaction', 'https://esm.sh/@fullcalendar/interaction@6');
 
+// FullCalendar locale packs ship as files inside @fullcalendar/core itself
+// (core/locales/{code}.js) rather than as a separate npm package, so this reuses
+// the same fullCalendarBase self-host override as FC_CORE instead of needing its
+// own cdn-deps.json entry. "en" is FullCalendar's own built-in default and needs
+// no extra file/import at all.
+const localeModules = new Map();
+function _fcLocaleUrl(code) {
+    const base = _cdn('fullCalendarBase', null);
+    return base ? `${base.replace(/\/$/, '')}/locales/${code}.js` : `https://esm.sh/@fullcalendar/core@6/locales/${code}.js`;
+}
+async function loadLocale(code) {
+    if (!code || code === 'en') return null;
+    if (localeModules.has(code)) return localeModules.get(code);
+    try {
+        const mod = await import(/* @vite-ignore */ _fcLocaleUrl(code));
+        const localeObj = mod.default || null;
+        localeModules.set(code, localeObj);
+        return localeObj;
+    } catch (e) {
+        console.error('[Lumeo Scheduler] Failed to load locale pack "' + code + '": ' + e.message);
+        return null;
+    }
+}
+
 function injectLumeoSchedulerOverrides() {
     if (document.querySelector('[data-lumeo-scheduler-overrides]')) return;
     const link = document.createElement('link');
@@ -180,6 +204,14 @@ export const scheduler = {
         const opts = options || {};
         const events = Array.isArray(opts.events) ? opts.events.map(normalizeEvent) : [];
 
+        // Bug fix: previously no locale was ever passed to FullCalendar at all, so even
+        // fully-translated Lumeo locales had zero effect on FullCalendar's own rendered
+        // chrome (day/month names, its internal button text). Load the matching locale
+        // pack (if any — "en" needs none) before constructing the Calendar so it boots
+        // already localized instead of flashing English first.
+        const localeCode = opts.locale || 'en';
+        const localeObj = await loadLocale(localeCode);
+
         const calOpts = {
             plugins: [dayGridPlugin, timeGridPlugin, listPlugin, interactionPlugin],
             initialView: mapView(opts.view),
@@ -194,6 +226,8 @@ export const scheduler = {
             headerToolbar: false, // Lumeo supplies its own toolbar
             // ── New: time-grid display options ──────────────────────────────
             nowIndicator: opts.nowIndicator !== false, // default true
+            locale: localeCode,
+            locales: localeObj ? [localeObj] : [],
             events: events,
             eventClick(info) {
                 info.jsEvent?.preventDefault?.();
@@ -272,6 +306,24 @@ export const scheduler = {
         const inst = instances.get(id);
         if (!inst) return;
         inst.calendar.today();
+    },
+
+    // Bug fix companion to init()'s locale wiring: pushes an UPDATED locale onto an
+    // already-live Calendar instance so a runtime UI-culture change (host app flips
+    // CurrentUICulture and re-renders) actually reaches FullCalendar's chrome instead
+    // of the locale only ever being read once at init.
+    async setLocale(id, locale) {
+        const inst = instances.get(id);
+        if (!inst) return;
+        const code = locale || 'en';
+        const localeObj = await loadLocale(code);
+        if (localeObj) {
+            const existing = inst.calendar.getOption('locales') || [];
+            if (!existing.some(l => l && l.code === localeObj.code)) {
+                inst.calendar.setOption('locales', [...existing, localeObj]);
+            }
+        }
+        inst.calendar.setOption('locale', code);
     },
 
     getTitle(id) {

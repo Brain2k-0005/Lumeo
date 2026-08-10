@@ -254,6 +254,9 @@ internal static partial class LumeoDefaultStrings
         ["Chart.Loading"] = "불러오는 중…",
 
         // Scheduler
+        ["Scheduler.Previous"] = "이전",
+        ["Scheduler.Next"] = "다음",
+        ["Scheduler.ResourceLegend"] = "리소스 범례",
         ["Scheduler.Today"] = "오늘",
         ["Scheduler.Month"] = "월",
         ["Scheduler.Week"] = "주",

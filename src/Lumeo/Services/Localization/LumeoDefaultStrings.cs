@@ -473,7 +473,7 @@ internal static partial class LumeoDefaultStrings
         ["Scheduler.Month"] = "Month",
         ["Scheduler.List"] = "List",
         ["Scheduler.Today"] = "Today",
-        ["Scheduler.WeekOf"] = "Week of",
+        ["Scheduler.WeekOf"] = "Week of {0}",
 
         // ── Gantt ───────────────────────────────────────────────────
         ["Gantt.Day"] = "Day",
@@ -1007,7 +1007,7 @@ internal static partial class LumeoDefaultStrings
         ["Scheduler.Month"] = "Monat",
         ["Scheduler.List"] = "Liste",
         ["Scheduler.Today"] = "Heute",
-        ["Scheduler.WeekOf"] = "Woche vom",
+        ["Scheduler.WeekOf"] = "Woche vom {0}",
 
         // ── Gantt ───────────────────────────────────────────────────
         ["Gantt.Day"] = "Tag",

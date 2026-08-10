@@ -254,6 +254,9 @@ internal static partial class LumeoDefaultStrings
         ["Chart.Loading"] = "加载中…",
 
         // Scheduler
+        ["Scheduler.Previous"] = "上一页",
+        ["Scheduler.Next"] = "下一页",
+        ["Scheduler.ResourceLegend"] = "资源图例",
         ["Scheduler.Today"] = "今天",
         ["Scheduler.Month"] = "月",
         ["Scheduler.Week"] = "周",

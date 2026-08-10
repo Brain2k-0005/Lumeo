@@ -166,6 +166,12 @@ else
     private string _currentViewValue => _currentView.ToString();
     private string _title = "";
 
+    // The FullCalendar locale code most recently computed from CultureInfo.CurrentUICulture.
+    // Recomputed every OnParametersSetAsync (not just once at init) so a culture change that
+    // triggers a re-render (e.g. the host app flips CurrentUICulture and calls StateHasChanged)
+    // is pushed to the live FullCalendar instance instead of only ever being read once.
+    private string _currentLocale = "en";
+
     // Snapshot of the most recent events set — used by eventChange to build the
     // updated collection without reaching back into `Events` (which may have
     // been replaced by the parent since init).
@@ -190,6 +196,7 @@ else
         _lastEventsHash = ComputeEventsHash(_events);
         _lastPushedEventsHash = _lastEventsHash;
         _title = ComputeTitle(InitialDate ?? DateTime.Today, _currentView);
+        _currentLocale = ResolveFullCalendarLocale(System.Globalization.CultureInfo.CurrentUICulture);
         RebuildResourceLookup();
     }
 
@@ -197,6 +204,21 @@ else
     {
         // Rebuild the resource lookup whenever the Resources param changes.
         RebuildResourceLookup();
+
+        // Re-resolve the locale on every parameter-set cycle (i.e. every render, not just at
+        // init) so a UI-culture change that reaches this component via a normal re-render is
+        // actually reflected in FullCalendar's own chrome (day/month names, button labels) —
+        // this is the fix for "no locale is ever passed to FullCalendar, and even the one
+        // computed at init would never update again."
+        var resolvedLocale = ResolveFullCalendarLocale(System.Globalization.CultureInfo.CurrentUICulture);
+        if (resolvedLocale != _currentLocale)
+        {
+            _currentLocale = resolvedLocale;
+            if (_initialized && _instanceId is not null)
+            {
+                await Interop.SchedulerSetLocaleAsync(_instanceId, _currentLocale);
+            }
+        }
 
         if (_initialized && Events is not null)
         {
@@ -259,6 +281,7 @@ else
             ["businessHours"] = BusinessHours,
             ["height"] = Height,
             ["firstDay"] = FirstDayOfWeek,
+            ["locale"] = _currentLocale,
             ["nowIndicator"] = NowIndicator,
             ["slotMinTime"] = SlotMinTime.HasValue ? SlotMinTime.Value.ToString("HH:mm:ss") : (string?)null,
             ["slotMaxTime"] = SlotMaxTime.HasValue ? SlotMaxTime.Value.ToString("HH:mm:ss") : (string?)null,
@@ -456,6 +479,22 @@ else
         var first = (DayOfWeek)FirstDayOfWeek;
         var diff = (7 + (date.DayOfWeek - first)) % 7;
         return date.AddDays(-diff).Date;
+    }
+
+    // Maps the ambient UI culture to a FullCalendar locale code. FullCalendar ships one
+    // locale-pack file per code (loaded lazily in scheduler.js, mirroring the same
+    // CDN-override mechanism the core/plugin bundles already use) — "en" needs no extra
+    // file since it's FullCalendar's own built-in default. Two of Lumeo's 14 shipped
+    // locales don't map onto their plain ISO two-letter code 1:1 in FullCalendar's own
+    // locale-file naming (simplified Chinese ships as "zh-cn", not "zh").
+    private static string ResolveFullCalendarLocale(System.Globalization.CultureInfo culture)
+    {
+        var lang = culture.TwoLetterISOLanguageName.ToLowerInvariant();
+        return lang switch
+        {
+            "zh" => "zh-cn",
+            _ => lang
+        };
     }
 
     private async Task PrevAsync()
