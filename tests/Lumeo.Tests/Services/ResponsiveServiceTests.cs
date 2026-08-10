@@ -228,6 +228,7 @@ public class ResponsiveServiceTests
         public Task SchedulerPrevAsync(string id) => Task.CompletedTask;
         public Task SchedulerNextAsync(string id) => Task.CompletedTask;
         public Task SchedulerTodayAsync(string id) => Task.CompletedTask;
+        public Task SchedulerSetLocaleAsync(string id, string locale) => Task.CompletedTask;
         public Task<string> SchedulerGetTitleAsync(string id) => Task.FromResult(string.Empty);
         public Task SchedulerDestroyAsync(string id) => Task.CompletedTask;
         public Task<string> GanttInitAsync(ElementReference el, object dotNetRef, object options) => Task.FromResult(string.Empty);

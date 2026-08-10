@@ -46,6 +46,53 @@ const FC_TIMEGRID = _fcUrl('timegrid', 'https://esm.sh/@fullcalendar/timegrid@6'
 const FC_LIST = _fcUrl('list', 'https://esm.sh/@fullcalendar/list@6');
 const FC_INTERACTION = _fcUrl('interaction', 'https://esm.sh/@fullcalendar/interaction@6');
 
+// FullCalendar locale packs ship as files inside @fullcalendar/core itself
+// (core/locales/{code}.js) rather than as a separate npm package. Registering one
+// cdn-deps.json key per locale (FullCalendar ships ~150) would be pure manifest
+// bloat for files that are already reachable through the ONE key that exists for
+// core — `fullCalendarCore` (see tools/Lumeo.RegistryGen/CdnDeps.cs, "the only
+// Scheduler keys that exist"). So instead of a new registered key, locale packs
+// are resolved RELATIVE TO wherever FC_CORE itself resolved to — honouring both
+// the `fullCalendarBase` convenience override and an individual `fullCalendarCore`
+// override, exactly like every other Scheduler module URL above.
+//
+// Previously this only ever checked `fullCalendarBase` directly and otherwise fell
+// straight through to the public esm.sh URL — so a deployment that self-hosted
+// FullCalendar via the registered `fullCalendarCore` key (without ALSO setting the
+// separate `fullCalendarBase` convenience key) still leaked a public request for
+// every locale pack on a strict-CSP/offline deployment, and silently fell back to
+// English when that request was blocked. "en" is FullCalendar's own built-in
+// default and needs no extra file/import at all.
+const localeModules = new Map();
+function _fcLocaleUrl(code) {
+    // FC_CORE is already the fully-resolved core URL (fullCalendarBase, then the
+    // registered fullCalendarCore override, then the public esm.sh default — see
+    // _fcUrl above). Two shapes to resolve relative to it:
+    //  - A concrete self-hosted file (e.g. ".../core.js"): locale packs sit next to
+    //    it, so take its directory and append locales/{code}.js as a sibling file.
+    //  - A bare ESM package specifier (the public esm.sh default, e.g.
+    //    ".../@fullcalendar/core@6" — note the version pin can itself contain dots,
+    //    e.g. "@6.1.10", so this is NOT simply "has a dot"): esm.sh serves package
+    //    sub-paths directly off that specifier, so append locales/{code}.js as-is.
+    const lastSegment = FC_CORE.slice(FC_CORE.lastIndexOf('/') + 1);
+    const isConcreteFile = /\.(m?js|cjs)$/i.test(lastSegment);
+    const base = isConcreteFile ? FC_CORE.slice(0, FC_CORE.lastIndexOf('/')) : FC_CORE;
+    return `${base}/locales/${code}.js`;
+}
+async function loadLocale(code) {
+    if (!code || code === 'en') return null;
+    if (localeModules.has(code)) return localeModules.get(code);
+    try {
+        const mod = await import(/* @vite-ignore */ _fcLocaleUrl(code));
+        const localeObj = mod.default || null;
+        localeModules.set(code, localeObj);
+        return localeObj;
+    } catch (e) {
+        console.error('[Lumeo Scheduler] Failed to load locale pack "' + code + '": ' + e.message);
+        return null;
+    }
+}
+
 function injectLumeoSchedulerOverrides() {
     if (document.querySelector('[data-lumeo-scheduler-overrides]')) return;
     const link = document.createElement('link');
@@ -180,6 +227,14 @@ export const scheduler = {
         const opts = options || {};
         const events = Array.isArray(opts.events) ? opts.events.map(normalizeEvent) : [];
 
+        // Bug fix: previously no locale was ever passed to FullCalendar at all, so even
+        // fully-translated Lumeo locales had zero effect on FullCalendar's own rendered
+        // chrome (day/month names, its internal button text). Load the matching locale
+        // pack (if any — "en" needs none) before constructing the Calendar so it boots
+        // already localized instead of flashing English first.
+        const localeCode = opts.locale || 'en';
+        const localeObj = await loadLocale(localeCode);
+
         const calOpts = {
             plugins: [dayGridPlugin, timeGridPlugin, listPlugin, interactionPlugin],
             initialView: mapView(opts.view),
@@ -194,6 +249,8 @@ export const scheduler = {
             headerToolbar: false, // Lumeo supplies its own toolbar
             // ── New: time-grid display options ──────────────────────────────
             nowIndicator: opts.nowIndicator !== false, // default true
+            locale: localeCode,
+            locales: localeObj ? [localeObj] : [],
             events: events,
             eventClick(info) {
                 info.jsEvent?.preventDefault?.();
@@ -274,6 +331,24 @@ export const scheduler = {
         inst.calendar.today();
     },
 
+    // Bug fix companion to init()'s locale wiring: pushes an UPDATED locale onto an
+    // already-live Calendar instance so a runtime UI-culture change (host app flips
+    // CurrentUICulture and re-renders) actually reaches FullCalendar's chrome instead
+    // of the locale only ever being read once at init.
+    async setLocale(id, locale) {
+        const inst = instances.get(id);
+        if (!inst) return;
+        const code = locale || 'en';
+        const localeObj = await loadLocale(code);
+        if (localeObj) {
+            const existing = inst.calendar.getOption('locales') || [];
+            if (!existing.some(l => l && l.code === localeObj.code)) {
+                inst.calendar.setOption('locales', [...existing, localeObj]);
+            }
+        }
+        inst.calendar.setOption('locale', code);
+    },
+
     getTitle(id) {
         const inst = instances.get(id);
         if (!inst) return '';
@@ -290,3 +365,10 @@ export const scheduler = {
 
 // Named exports also accessible as `scheduler.*` for simpler interop.
 export default scheduler;
+
+// Test-only seam: the repo has no JS unit-test harness for wwwroot interop files
+// (bUnit tests mock the whole module instead of executing it), so the CDN-override
+// URL builder — pure logic with no DOM/FullCalendar dependency — is exposed here
+// for a standalone `node --test` script (tests/js/scheduler-locale-url.test.mjs) to
+// call directly. Not part of the Blazor interop surface.
+export const __testing = { fcLocaleUrl: _fcLocaleUrl };

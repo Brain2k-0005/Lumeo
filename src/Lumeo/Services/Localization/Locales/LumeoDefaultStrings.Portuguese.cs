@@ -314,6 +314,17 @@ internal static partial class LumeoDefaultStrings
         ["Theme.Color"] = "Cor",
         ["Theme.Mode"] = "Modo",
 
+        // Scheduler (backfilled — previously only en/de/ar/zh/ko/ru/tr had any Scheduler.* keys)
+        ["Scheduler.Previous"] = "Anterior",
+        ["Scheduler.Next"] = "Seguinte",
+        ["Scheduler.ResourceLegend"] = "Legenda de recursos",
+        ["Scheduler.Day"] = "Dia",
+        ["Scheduler.Week"] = "Semana",
+        ["Scheduler.Month"] = "Mês",
+        ["Scheduler.List"] = "Lista",
+        ["Scheduler.Today"] = "Hoje",
+        ["Scheduler.WeekOf"] = "Semana de {0}",
+
         // Gantt (Codex round 4, P2 #6 — locale completeness: previously only en/de had any Gantt.* keys)
         ["Gantt.Day"] = "Dia",
         ["Gantt.Week"] = "Semana",
