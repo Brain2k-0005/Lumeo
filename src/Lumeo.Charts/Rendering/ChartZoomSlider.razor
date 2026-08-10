@@ -1,0 +1,81 @@
+@namespace Lumeo
+@inject IComponentInteropService Interop
+
+<div class="lumeo-chart-zoom-slider relative select-none @Class" style="width:@(Fmt(Width))px;height:@(Fmt(Height))px;" @attributes="AdditionalAttributes">
+    <div class="lumeo-chart-zoom-track absolute inset-x-0 top-1/2 h-1.5 -translate-y-1/2 rounded-full" style="background:var(--color-muted);"></div>
+    <div class="lumeo-chart-zoom-window absolute top-1/2 h-1.5 -translate-y-1/2 rounded-full" style="left:@(Fmt(WindowLeft))px; width:@(Fmt(WindowWidth))px; background:var(--color-primary); opacity:0.35;"></div>
+
+    <div id="@_startHandleId" class="lumeo-chart-zoom-handle absolute top-1/2 h-3.5 w-3.5 -translate-y-1/2 -translate-x-1/2 cursor-ew-resize rounded-full border-2"
+         style="left:@(Fmt(WindowLeft))px; background:var(--color-card); border-color:var(--color-primary);"
+         @onpointerdown="@(e => OnHandlePointerDownAsync(e, isStart: true))"
+         @onpointermove="@(e => OnHandlePointerMoveAsync(e, isStart: true))"
+         @onpointerup="@(e => OnHandlePointerUpAsync(e, isStart: true))"></div>
+
+    <div id="@_endHandleId" class="lumeo-chart-zoom-handle absolute top-1/2 h-3.5 w-3.5 -translate-y-1/2 -translate-x-1/2 cursor-ew-resize rounded-full border-2"
+         style="left:@(Fmt(WindowLeft + WindowWidth))px; background:var(--color-card); border-color:var(--color-primary);"
+         @onpointerdown="@(e => OnHandlePointerDownAsync(e, isStart: false))"
+         @onpointermove="@(e => OnHandlePointerMoveAsync(e, isStart: false))"
+         @onpointerup="@(e => OnHandlePointerUpAsync(e, isStart: false))"></div>
+</div>
+
+@code {
+    // Two draggable handles mapped to axis-domain fractions (spec §3.4) — pure
+    // Blazor UI + C# domain recompute (ChartZoomState). Drag uses ONLY the
+    // existing pointer-capture interop (SetPointerCaptureOnElement /
+    // ReleasePointerCaptureOnElement), per spec's explicit "not a bespoke new
+    // mechanism" instruction — no chart-specific JS call for this at all.
+
+    /// <summary>Custom CSS classes appended to the root <c>&lt;div&gt;</c>.</summary>
+    [Parameter] public string? Class { get; set; }
+
+    [Parameter(CaptureUnmatchedValues = true)]
+    public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    [Parameter] public double Width { get; set; } = 200;
+    [Parameter] public double Height { get; set; } = 20;
+
+    /// <summary>Current window start, as a fraction (0..1) of the full domain.</summary>
+    [Parameter] public double Start { get; set; }
+
+    /// <summary>Current window end, as a fraction (0..1) of the full domain.</summary>
+    [Parameter] public double End { get; set; } = 1;
+
+    /// <summary>Fires with the new (start,end) fraction pair while dragging.</summary>
+    [Parameter] public EventCallback<(double Start, double End)> OnRangeChanged { get; set; }
+
+    private readonly string _startHandleId = $"lumeo-chart-zoom-start-{Guid.NewGuid():N}";
+    private readonly string _endHandleId = $"lumeo-chart-zoom-end-{Guid.NewGuid():N}";
+    private bool _draggingStart;
+    private bool _draggingEnd;
+
+    private double WindowLeft => Start * Width;
+    private double WindowWidth => Math.Max(0, (End - Start) * Width);
+
+    private async Task OnHandlePointerDownAsync(PointerEventArgs e, bool isStart)
+    {
+        if (isStart) _draggingStart = true; else _draggingEnd = true;
+        await Interop.SetPointerCaptureOnElement(isStart ? _startHandleId : _endHandleId, (long)e.PointerId);
+    }
+
+    private async Task OnHandlePointerMoveAsync(PointerEventArgs e, bool isStart)
+    {
+        if (isStart && !_draggingStart) return;
+        if (!isStart && !_draggingEnd) return;
+
+        // OffsetX is relative to the small handle div itself, not the slider
+        // track — WindowLeft anchors it back to slider-relative space. This is
+        // an approximation good enough for a handle a few px wide; a follow-up
+        // could measure the track's own rect for pixel-perfect dragging.
+        var fraction = Math.Clamp((WindowLeft + e.OffsetX) / Math.Max(1, Width), 0, 1);
+        var (newStart, newEnd) = isStart ? (Math.Min(fraction, End), End) : (Start, Math.Max(fraction, Start));
+        await OnRangeChanged.InvokeAsync((newStart, newEnd));
+    }
+
+    private async Task OnHandlePointerUpAsync(PointerEventArgs e, bool isStart)
+    {
+        if (isStart) _draggingStart = false; else _draggingEnd = false;
+        await Interop.ReleasePointerCaptureOnElement(isStart ? _startHandleId : _endHandleId, (long)e.PointerId);
+    }
+
+    private static string Fmt(double v) => v.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture);
+}

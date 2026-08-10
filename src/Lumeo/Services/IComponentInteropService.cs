@@ -728,6 +728,68 @@ public interface IComponentInteropService : IAsyncDisposable, IDisposable
     // need to change. ComponentInteropService overrides it with the real setAttribute interop.
     ValueTask RichTextSetAriaAttributesAsync(string id, bool ariaInvalid, string? ariaDescribedBy) => ValueTask.CompletedTask;
 
+    // Charts (first-party native rendering engine) — the four narrow JS calls
+    // the engine's C#/JS boundary is deliberately reduced to (batched text
+    // metrics, rAF-throttled pointer index forwarding, Canvas fallback paint
+    // execution, export-time theme color resolution). Default no-op/zero-value
+    // DIMs so existing implementers/test doubles keep compiling; only
+    // <see cref="ComponentInteropService"/> overrides them with real behavior
+    // via its own lazily-loaded chart-interop.js module.
+
+    /// <summary>
+    /// Batched text-pixel-width measurement via an offscreen canvas
+    /// <c>measureText</c> — the ONE JS call every cartesian chart type needs
+    /// for auto-margin layout (font metrics are a browser/OS fact, not
+    /// something pure C# can compute). Returns one width per request, in the
+    /// same order. Default implementation returns all-zero widths so
+    /// prerender / test-double callers degrade to a zero-margin layout instead
+    /// of throwing.
+    /// </summary>
+    ValueTask<double[]> ChartMeasureTextWidths(IReadOnlyList<ChartTextMeasureRequest> requests) =>
+        ValueTask.FromResult(new double[requests.Count]);
+
+    /// <summary>
+    /// Registers a rAF-throttled pointermove listener on <paramref name="element"/>
+    /// that resolves the pointer's fractional position across
+    /// <paramref name="plotOriginX"/>/<paramref name="plotWidth"/> into a data
+    /// index (0..<paramref name="pointCount"/>-1) and invokes
+    /// <c>OnChartPointerIndex(int)</c> on <paramref name="dotNetRef"/> ONLY when
+    /// that index changes — never once per animation frame — mirroring the
+    /// dedup pattern already proven in the legacy ECharts tooltip bridge.
+    /// Invokes <c>OnChartPointerLeave()</c> when the pointer leaves the plot
+    /// area. Default no-op DIM so existing implementers/test doubles keep
+    /// compiling.
+    /// </summary>
+    Task ChartRegisterPointerTrack<[System.Diagnostics.CodeAnalysis.DynamicallyAccessedMembers(System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicMethods)] T>(
+        Microsoft.AspNetCore.Components.ElementReference element,
+        double plotOriginX, double plotWidth, int pointCount,
+        DotNetObjectReference<T> dotNetRef) where T : class
+        => Task.CompletedTask;
+
+    /// <summary>Tears down the listener registered by <see cref="ChartRegisterPointerTrack{T}"/>.</summary>
+    Task ChartUnregisterPointerTrack(Microsoft.AspNetCore.Components.ElementReference element) => Task.CompletedTask;
+
+    /// <summary>
+    /// Executes a pre-computed list of Canvas 2D draw commands (JSON-serialized
+    /// <c>ChartCanvasCommand</c> list) against the canvas identified by
+    /// <paramref name="elementId"/> — the Canvas-fallback paint path (spec
+    /// §2.4 point 3). C# has already computed 100% of the geometry; this call
+    /// makes zero decisions, it only executes. Default no-op DIM.
+    /// </summary>
+    ValueTask ChartCanvasDraw(string elementId, string commandsJson) => ValueTask.CompletedTask;
+
+    /// <summary>
+    /// Resolves each of <paramref name="tokens"/> (CSS custom property names,
+    /// e.g. <c>"--color-chart-1"</c>) to its current concrete computed value —
+    /// used ONLY at export time (PNG/standalone-SVG download), matching spec
+    /// §2.5's policy that live on-screen rendering never resolves CSS
+    /// variables at all (SVG consumes <c>var(--x)</c> natively). Default
+    /// returns an empty map so a test double / prerender export falls back to
+    /// whatever the caller does when a token is missing.
+    /// </summary>
+    ValueTask<IReadOnlyDictionary<string, string>> ChartResolveThemeColors(IReadOnlyList<string> tokens) =>
+        ValueTask.FromResult<IReadOnlyDictionary<string, string>>(new Dictionary<string, string>());
+
     // SignaturePad — canvas-based handwritten signature capture (3.1.0).
     // Ships its own tiny JS module (signature-pad.js) loaded lazily on first
     // use so apps that never render a SignaturePad don't pay the import cost.

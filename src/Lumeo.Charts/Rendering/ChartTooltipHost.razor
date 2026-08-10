@@ -1,0 +1,48 @@
+@namespace Lumeo
+
+@if (Active && ChildContent is not null)
+{
+    <div class="lumeo-chart-tooltip-host fixed z-50 pointer-events-none @Class"
+         style="left:@(Fmt(X + OffsetX))px; top:@(Fmt(Y + OffsetY))px;"
+         @attributes="AdditionalAttributes">
+        @ChildContent(Context)
+    </div>
+}
+
+@code {
+    // No JS portal/innerHTML indirection needed here (unlike the legacy
+    // ECharts formatter-callback bridge): C# owns hit-testing directly, so it
+    // can set component state on a normal Blazor render and position this
+    // host next to the last known pointer coordinates (spec §3.2).
+
+    /// <summary>Custom CSS classes appended to the root <c>&lt;div&gt;</c>.</summary>
+    [Parameter] public string? Class { get; set; }
+
+    [Parameter(CaptureUnmatchedValues = true)]
+    public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    /// <summary>Whether a hover is active (nothing renders otherwise).</summary>
+    [Parameter] public bool Active { get; set; }
+
+    /// <summary>Last known pointer viewport X.</summary>
+    [Parameter] public double X { get; set; }
+
+    /// <summary>Last known pointer viewport Y.</summary>
+    [Parameter] public double Y { get; set; }
+
+    /// <summary>Horizontal offset from the pointer (px).</summary>
+    [Parameter] public double OffsetX { get; set; } = 14;
+
+    /// <summary>Vertical offset from the pointer (px).</summary>
+    [Parameter] public double OffsetY { get; set; } = 14;
+
+    /// <summary>The hovered point's data, handed to <see cref="ChildContent"/>.</summary>
+    [Parameter, EditorRequired] public ChartTooltipContext Context { get; set; } = ChartTooltipContext.Empty;
+
+    /// <summary>Consumer-supplied tooltip body — the same
+    /// <c>RenderFragment&lt;ChartTooltipContext&gt;</c> shape as the legacy
+    /// <see cref="ChartTooltip"/> slot, per spec §3.2's "keep the concept, simplify the plumbing".</summary>
+    [Parameter] public RenderFragment<ChartTooltipContext>? ChildContent { get; set; }
+
+    private static string Fmt(double v) => v.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture);
+}

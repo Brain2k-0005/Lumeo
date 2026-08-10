@@ -1,0 +1,125 @@
+@namespace Lumeo
+
+<g class="lumeo-chart-axis @Class" @attributes="AdditionalAttributes">
+    @if (ShowGridLines)
+    {
+        foreach (var t in Ticks)
+        {
+            @if (IsHorizontal)
+            {
+                <line x1="@Fmt(t.Position)" x2="@Fmt(t.Position)" y1="@Fmt(GridStart)" y2="@Fmt(GridEnd)"
+                      stroke="var(--color-border)" stroke-width="1" opacity="0.55" />
+            }
+            else
+            {
+                <line x1="@Fmt(GridStart)" x2="@Fmt(GridEnd)" y1="@Fmt(t.Position)" y2="@Fmt(t.Position)"
+                      stroke="var(--color-border)" stroke-width="1" opacity="0.55" />
+            }
+        }
+    }
+    @if (ShowAxisLine)
+    {
+        @if (IsHorizontal)
+        {
+            <line x1="@Fmt(GridStart)" x2="@Fmt(GridEnd)" y1="@Fmt(AxisLinePosition)" y2="@Fmt(AxisLinePosition)"
+                  stroke="var(--color-border)" stroke-width="1" />
+        }
+        else
+        {
+            <line x1="@Fmt(AxisLinePosition)" x2="@Fmt(AxisLinePosition)" y1="@Fmt(GridStart)" y2="@Fmt(GridEnd)"
+                  stroke="var(--color-border)" stroke-width="1" />
+        }
+    }
+    @* SVG <text> cannot be written as a normal Razor element inside a @foreach —
+       the bare tag name "text" collides with Razor's own markup-transition
+       pseudo-element (RZ1023: "text"/"/text" tags cannot contain attributes),
+       the same conflict this codebase already documents/works around in
+       Barcode.razor and Watermark.razor. Building the label markup as an
+       escaped raw string is the established fix. *@
+    @((MarkupString)_labelsMarkup)
+</g>
+
+@code {
+    /// <summary>Custom CSS classes appended to the root <c>&lt;g&gt;</c>.</summary>
+    [Parameter] public string? Class { get; set; }
+
+    [Parameter(CaptureUnmatchedValues = true)]
+    public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    /// <summary>Precomputed tick positions/labels. The component performs no
+    /// scale math of its own — callers derive these from a scale plus
+    /// <see cref="NiceTicks"/>/<see cref="TimeTicks"/>.</summary>
+    [Parameter, EditorRequired]
+    public IReadOnlyList<ChartAxisTick> Ticks { get; set; } = Array.Empty<ChartAxisTick>();
+
+    /// <summary>Which side of the plot this axis renders along.</summary>
+    [Parameter] public ChartAxisOrientation Orientation { get; set; } = ChartAxisOrientation.Bottom;
+
+    /// <summary>Draws a gridline per tick, spanning <see cref="GridStart"/>–<see cref="GridEnd"/>.</summary>
+    [Parameter] public bool ShowGridLines { get; set; } = true;
+
+    /// <summary>Draws the axis baseline itself.</summary>
+    [Parameter] public bool ShowAxisLine { get; set; } = true;
+
+    /// <summary>Gridline extent start (plot top for a vertical axis, plot left
+    /// for a horizontal one).</summary>
+    [Parameter] public double GridStart { get; set; }
+
+    /// <summary>Gridline extent end (plot bottom / plot right).</summary>
+    [Parameter] public double GridEnd { get; set; }
+
+    /// <summary>Where the axis baseline sits — plot bottom Y for a Bottom
+    /// axis, plot left X for a Left axis, etc.</summary>
+    [Parameter] public double AxisLinePosition { get; set; }
+
+    /// <summary>Gap (px) between the axis line and its tick labels.</summary>
+    [Parameter] public double LabelOffset { get; set; } = 8;
+
+    private bool IsHorizontal => Orientation is ChartAxisOrientation.Bottom or ChartAxisOrientation.Top;
+
+    private string TextAnchor => Orientation switch
+    {
+        ChartAxisOrientation.Left => "end",
+        ChartAxisOrientation.Right => "start",
+        _ => "middle",
+    };
+
+    private string DominantBaseline => Orientation switch
+    {
+        ChartAxisOrientation.Bottom => "hanging",
+        ChartAxisOrientation.Top => "auto",
+        _ => "middle",
+    };
+
+    private double LabelX(ChartAxisTick t) => Orientation switch
+    {
+        ChartAxisOrientation.Left => AxisLinePosition - LabelOffset,
+        ChartAxisOrientation.Right => AxisLinePosition + LabelOffset,
+        _ => t.Position,
+    };
+
+    private double LabelY(ChartAxisTick t) => Orientation switch
+    {
+        ChartAxisOrientation.Bottom => AxisLinePosition + LabelOffset,
+        ChartAxisOrientation.Top => AxisLinePosition - LabelOffset,
+        _ => t.Position,
+    };
+
+    private string _labelsMarkup => BuildLabelsMarkup();
+
+    private string BuildLabelsMarkup()
+    {
+        if (Ticks.Count == 0) return string.Empty;
+        var sb = new System.Text.StringBuilder();
+        foreach (var t in Ticks)
+        {
+            sb.Append("<text x=\"").Append(Fmt(LabelX(t))).Append("\" y=\"").Append(Fmt(LabelY(t)))
+              .Append("\" fill=\"var(--color-muted-foreground)\" font-size=\"11\" text-anchor=\"")
+              .Append(TextAnchor).Append("\" dominant-baseline=\"").Append(DominantBaseline).Append("\">")
+              .Append(System.Net.WebUtility.HtmlEncode(t.Label)).Append("</text>");
+        }
+        return sb.ToString();
+    }
+
+    private static string Fmt(double v) => v.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture);
+}

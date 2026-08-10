@@ -1791,6 +1791,78 @@ public sealed class ComponentInteropService : IComponentInteropService
     public ValueTask RichTextSetAriaAttributesAsync(string id, bool ariaInvalid, string? ariaDescribedBy)
         => _richText.SetAriaAttributesAsync(_jsRuntime, id, ariaInvalid, ariaDescribedBy);
 
+    // --- Charts (first-party native rendering engine) ---
+    // Lumeo.Charts ships its own tiny JS module (chart-interop.js) — the four
+    // narrow calls the engine's C#/JS boundary is deliberately reduced to.
+    // Loaded lazily so apps that never render a native chart don't pay the
+    // import cost. No cache-bust query string: like Scheduler/Gantt, this
+    // module lives in a SATELLITE package (Lumeo.Charts), not core Lumeo, so
+    // it isn't tied to core's own _jsModuleVersion release cadence.
+
+    private IJSObjectReference? _chartModule;
+
+    private async Task<IJSObjectReference> GetChartModuleAsync()
+    {
+        _chartModule ??= await _jsRuntime.InvokeAsync<IJSObjectReference>(
+            "import", "./_content/Lumeo.Charts/js/chart-interop.js");
+        return _chartModule;
+    }
+
+    public async ValueTask<double[]> ChartMeasureTextWidths(IReadOnlyList<ChartTextMeasureRequest> requests)
+    {
+        if (requests.Count == 0) return Array.Empty<double>();
+        try
+        {
+            var module = await GetChartModuleAsync();
+            return await module.InvokeAsync<double[]>("measureTextWidths", requests);
+        }
+        catch (JSDisconnectedException) { return new double[requests.Count]; }
+    }
+
+    public async Task ChartRegisterPointerTrack<[System.Diagnostics.CodeAnalysis.DynamicallyAccessedMembers(System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicMethods)] T>(
+        Microsoft.AspNetCore.Components.ElementReference element,
+        double plotOriginX, double plotWidth, int pointCount,
+        DotNetObjectReference<T> dotNetRef) where T : class
+    {
+        try
+        {
+            var module = await GetChartModuleAsync();
+            await module.InvokeVoidAsync("registerPointerTrack", element, plotOriginX, plotWidth, pointCount, dotNetRef);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
+    public async Task ChartUnregisterPointerTrack(Microsoft.AspNetCore.Components.ElementReference element)
+    {
+        try
+        {
+            if (_chartModule is null) return;
+            await _chartModule.InvokeVoidAsync("unregisterPointerTrack", element);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
+    public async ValueTask ChartCanvasDraw(string elementId, string commandsJson)
+    {
+        try
+        {
+            var module = await GetChartModuleAsync();
+            await module.InvokeVoidAsync("canvasDraw", elementId, commandsJson);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
+    public async ValueTask<IReadOnlyDictionary<string, string>> ChartResolveThemeColors(IReadOnlyList<string> tokens)
+    {
+        if (tokens.Count == 0) return new Dictionary<string, string>();
+        try
+        {
+            var module = await GetChartModuleAsync();
+            return await module.InvokeAsync<Dictionary<string, string>>("resolveThemeColors", tokens);
+        }
+        catch (JSDisconnectedException) { return new Dictionary<string, string>(); }
+    }
+
     // --- SignaturePad ---
     // SignaturePad ships its own tiny JS module (signature-pad.js) that wires
     // pointer events to a canvas. Loaded lazily so apps that never sign a

@@ -1,0 +1,129 @@
+@namespace Lumeo
+@implements IAsyncDisposable
+@inject IComponentInteropService Interop
+
+<rect @ref="_element" x="@Fmt(PlotX)" y="@Fmt(PlotY)" width="@Fmt(PlotWidth)" height="@Fmt(PlotHeight)"
+      class="lumeo-chart-interaction-surface @Class" fill="transparent"
+      tabindex="0" role="img" aria-label="@AriaLabel"
+      @onkeydown="OnKeyDownAsync"
+      @attributes="AdditionalAttributes" />
+
+@code {
+    // The hit-testing/keyboard-nav overlay (spec §3.3/§3.6). Pointer tracking is
+    // rAF-throttled + index-deduped ENTIRELY in JS (chart-interop.js's
+    // registerPointerTrack) so a 60fps pointermove never round-trips into .NET
+    // more than once per resolved index change; keyboard nav is pure C# index
+    // arithmetic (ChartKeyboardNav), triggered by a normal Blazor onkeydown —
+    // no JS needed for that half at all.
+
+    /// <summary>Custom CSS classes appended to the overlay <c>&lt;rect&gt;</c>.</summary>
+    [Parameter] public string? Class { get; set; }
+
+    [Parameter(CaptureUnmatchedValues = true)]
+    public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    [Parameter] public double PlotX { get; set; }
+    [Parameter] public double PlotY { get; set; }
+    [Parameter] public double PlotWidth { get; set; }
+    [Parameter] public double PlotHeight { get; set; }
+
+    /// <summary>Number of points in the ORIGINAL (non-downsampled) series —
+    /// hit-testing and keyboard nav both index into this, not the LTTB-reduced
+    /// draw path.</summary>
+    [Parameter] public int PointCount { get; set; }
+
+    /// <summary>Series count, for ArrowUp/ArrowDown series switching on a
+    /// multi-series chart (spec §3.6 tier 2). 1 disables series switching.</summary>
+    [Parameter] public int SeriesCount { get; set; } = 1;
+
+    /// <summary>Focusable-host summary announced to screen readers.</summary>
+    [Parameter] public string? AriaLabel { get; set; }
+
+    /// <summary>Fires with the resolved data index, or <c>null</c> when the
+    /// pointer leaves the plot / no index is active.</summary>
+    [Parameter] public EventCallback<int?> OnIndexChanged { get; set; }
+
+    /// <summary>Fires with the newly-active series index (keyboard series switch only).</summary>
+    [Parameter] public EventCallback<int> OnSeriesChanged { get; set; }
+
+    private ElementReference _element;
+    private DotNetObjectReference<ChartInteractionSurface>? _selfRef;
+    private bool _registered;
+    private int? _currentIndex;
+    private int _currentSeries;
+    private double _registeredPlotX;
+    private double _registeredPlotWidth;
+    private int _registeredPointCount;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (PointCount <= 0) return;
+        if (_registered
+            && _registeredPlotX == PlotX
+            && _registeredPlotWidth == PlotWidth
+            && _registeredPointCount == PointCount)
+        {
+            return;
+        }
+
+        _selfRef ??= DotNetObjectReference.Create(this);
+        await Interop.ChartRegisterPointerTrack(_element, PlotX, PlotWidth, PointCount, _selfRef);
+        _registered = true;
+        _registeredPlotX = PlotX;
+        _registeredPlotWidth = PlotWidth;
+        _registeredPointCount = PointCount;
+    }
+
+    [JSInvokable]
+    public Task OnChartPointerIndex(int index)
+    {
+        _currentIndex = index;
+        return OnIndexChanged.InvokeAsync(index);
+    }
+
+    [JSInvokable]
+    public Task OnChartPointerLeave()
+    {
+        _currentIndex = null;
+        return OnIndexChanged.InvokeAsync(null);
+    }
+
+    private Task OnKeyDownAsync(KeyboardEventArgs e)
+    {
+        var next = e.Key switch
+        {
+            "ArrowLeft" => ChartKeyboardNav.MoveIndex(_currentIndex, PointCount, -1),
+            "ArrowRight" => ChartKeyboardNav.MoveIndex(_currentIndex, PointCount, 1),
+            "Home" => (int?)ChartKeyboardNav.First(),
+            "End" => (int?)ChartKeyboardNav.Last(PointCount),
+            _ => null,
+        };
+
+        if (next is not null && next != _currentIndex)
+        {
+            _currentIndex = next;
+            return OnIndexChanged.InvokeAsync(next);
+        }
+
+        if (SeriesCount > 1 && e.Key is "ArrowUp" or "ArrowDown")
+        {
+            var delta = e.Key == "ArrowUp" ? -1 : 1;
+            _currentSeries = ChartKeyboardNav.MoveSeries(_currentSeries, SeriesCount, delta);
+            return OnSeriesChanged.InvokeAsync(_currentSeries);
+        }
+
+        return Task.CompletedTask;
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        try
+        {
+            if (_registered) await Interop.ChartUnregisterPointerTrack(_element);
+        }
+        catch (JSDisconnectedException) { }
+        _selfRef?.Dispose();
+    }
+
+    private static string Fmt(double v) => v.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture);
+}
