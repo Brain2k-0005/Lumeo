@@ -49,7 +49,17 @@
        registerHeaderScrollSync mirrors the canvas's scrollLeft onto it via
        a transform so the two stay column-aligned. *@
     <div class="lumeo-gantt-v3-header sticky top-0 z-10 overflow-hidden border-b border-border/60 bg-card" style="@HeaderOuterStyle">
-        <div @ref="_headerInnerRef" style="@HeaderInnerStyle">
+        @* class="relative" on the headerInner (not the upper-row div below) is
+           the today-dot's OWN positioning context — see the dot's own remarks
+           near the bottom of this block for why it is a SIBLING of, not
+           nested inside, the upper-row div: E2E's ReadV3UpperRunTexts locator
+           (`.lumeo-gantt-v3-header > div > div:nth-child(1) > div`) reads
+           EVERY direct child of the upper-row div as an upper-run label —
+           nesting the dot there polluted that read with an extra
+           empty-text-content entry (real bug, caught live: Header_label_runs_
+           match_between_v2_and_v3(Year) expected zero upper runs, actual
+           [""]). *@
+        <div @ref="_headerInnerRef" class="relative" style="@HeaderInnerStyle">
             <div class="relative" style="height:20px;">
                 @foreach (var run in UpperRuns)
                 {
@@ -77,9 +87,32 @@
                 @for (var i = 0; i < Units.Count; i++)
                 {
                     var label = LowerLabels[i];
-                    <div class="shrink-0 text-center text-xs text-muted-foreground" style="@ColumnCellStyle">@label</div>
+                    @* Today column accent label (design spec Phase 3, T2) —
+                       IsTodayColumn(i) gates only the CSS class, same column
+                       cell markup otherwise. *@
+                    <div class="@ColumnCellClass(i)" style="@ColumnCellStyle">@label</div>
                 }
             </div>
+
+            @* Today header dot (design spec Phase 3, T2 — "accent header
+               label + dot + full-column tint, replacing the line-only
+               look"; see TodayColumnStyle's own remarks for the shared
+               column-boundary math this and the row-canvas tint below
+               both use). A SIBLING of the upper/lower-row divs (not nested in
+               either — see the headerInner's own remarks above for why),
+               positioned absolutely against headerInner's own new
+               "relative" context. *@
+            @if (TodayHighlight && TodayInRange)
+            {
+                @* Theme-token status-dot rounding (the calc(var(--radius)*N)
+                   form), same convention as Badge.razor's own dot and
+                   ToolCallCard's h-1.5/w-1.5 status dots — RadiusTokenGuardTests
+                   pins the OTHER (hardcoded-circle) utility to an audited
+                   semantic allowlist; a small status dot is thematic
+                   roundness, not the Spinner/Avatar-class "circle IS the
+                   semantic" exception. *@
+                <div class="lumeo-gantt-v3-today-dot pointer-events-none absolute h-1.5 w-1.5 rounded-[calc(var(--radius)*2)] bg-primary" style="@TodayDotStyle"></div>
+            }
         </div>
     </div>
 
@@ -93,6 +126,25 @@
        their previous "+GanttScale.HeaderHeight" terms accordingly. *@
     <div class="@CanvasScrollClass" @ref="_scrollHostRef">
         <div class="relative" style="@CanvasStyle">
+            @* Off-day column tint (design spec Phase 3, T2 — "Mark off days").
+               Rendered BEHIND the grid lines/bars (background fill, painted
+               first in DOM order = bottom of the stacking context here — none
+               of these siblings set z-index, so paint order follows DOM
+               order). Only rendered for day-granularity view modes — see
+               SupportsOffDayMarking's own remarks for why coarser modes
+               (Week/Month/Quarter/Year, whose OWN grid columns already span
+               far more than a single day) are excluded. *@
+            @if (MarkOffDays && SupportsOffDayMarking)
+            {
+                @for (var i = 0; i < Units.Count; i++)
+                {
+                    if (IsOffDayColumn(i))
+                    {
+                        <div class="lumeo-gantt-v3-off-day pointer-events-none absolute inset-y-0 bg-muted/40" style="@OffDayColumnStyle(i)"></div>
+                    }
+                }
+            }
+
             @* Vertical grid lines, spanning the full row canvas height. *@
             <div class="pointer-events-none absolute inset-x-0" style="@GridLinesContainerStyle">
                 @for (var i = 0; i <= Units.Count; i++)
@@ -101,9 +153,56 @@
                 }
             </div>
 
-            @if (TodayInRange)
+            @* Today column treatment (design spec Phase 3, T2 — "accent header
+               label + dot + full-column tint (params: keep TodayHighlight as
+               master switch), replacing the line-only look"). REPLACES the
+               prior line-only `.lumeo-gantt-v3-today-line` — see
+               TodayColumnStyle's own remarks for why this tint's left edge is
+               STILL the exact same pixel this codebase's own ground-truth math
+               (GanttDayModeMath) and v2's own today-line already agree on for
+               every mode whose columns are exactly 1 day wide (Day/QuarterDay/
+               HalfDay) — the parity/E2E position assertion this replaces did
+               not need to weaken, only re-target its DOM selector.
+
+               G8 (2026-08-10 shadcn alignment): the FULL-COLUMN tint is only
+               meaningful when a rendered column IS a single day — the SAME
+               "category error" SupportsOffDayMarking/IsDayGranularityMode
+               already gates off-day shading against (a Week/Month/Quarter/Year
+               column spans many days; tinting the WHOLE thing as "today" is
+               precisely as wrong as tinting it "off day"). Day-granularity
+               modes keep the exact tint above; coarser modes fall back to a
+               precise 2px line at Today's own exact pixel (TodayX, not the
+               floored TodayColumnLeft) — restoring v2's own line-only
+               precision for exactly the modes where a whole-column band would
+               mislead, while day-granularity modes keep the T2 upgrade
+               unchanged (TodayColumnLeft == TodayX there anyway — see
+               TodayColumnLeft's own remarks — so this is not a second,
+               independently-drifting position formula, just a second RENDER
+               of the same value pinned by GanttDayModeMath). *@
+            @if (TodayHighlight && TodayInRange)
             {
-                <div class="lumeo-gantt-v3-today-line pointer-events-none absolute inset-y-0 border-s border-primary opacity-60" style="@TodayLineStyle"></div>
+                @if (IsDayGranularityMode)
+                {
+                    <div class="lumeo-gantt-v3-today-tint pointer-events-none absolute inset-y-0 bg-primary/10" style="@TodayColumnStyle"></div>
+                }
+                else
+                {
+                    <div class="lumeo-gantt-v3-today-line pointer-events-none absolute inset-y-0 border-s-2 border-primary" style="@TodayLineStyle"></div>
+                }
+            }
+
+            @* Now indicator (design spec Phase 3, T2 — precise current-TIME
+               line, DISTINCT from the today column above: only meaningful in
+               sub-day (Hour-unit) modes, where a day itself spans many
+               columns and "the exact current minute" is a real, renderable
+               position — Day/Week/Month/Quarter/Year's columns are already
+               coarser than "right now" could distinguish. Uses --color-info
+               (existing Lumeo token) rather than --color-primary specifically
+               so it reads as visually DISTINCT from the today column's own
+               accent — no new CSS token needed. *@
+            @if (NowInRange)
+            {
+                <div class="lumeo-gantt-v3-now-line pointer-events-none absolute inset-y-0 border-s border-info opacity-80" style="@NowLineStyle"></div>
             }
 
             @* Empty state (Codex round 3, P2 #4): v2 renders a centered "No
@@ -122,32 +221,6 @@
 
             @* Row canvas. *@
             <div class="relative" style="@RowsContainerStyle">
-                @* Phase 2, T3 — empty-track drag-create hit targets. One per row,
-                   rendered BEFORE the Virtualize block below so a bar (rendered
-                   after, hence painted on top in this shared stacking context)
-                   always wins the hit-test over its own row's track when the two
-                   overlap — gantt-v3.js's onPointerDown only ever falls through to
-                   '[data-gantt-row-track]' when e.target.closest('[data-task-id]')
-                   found nothing. Only rendered at all when AllowCreate is on AND
-                   not Readonly (Readonly wins unconditionally — see AllowCreate's
-                   own remarks) so the opt-in feature costs nothing (no extra DOM,
-                   no extra hit-test surface) for every existing v3 chart that
-                   never turns it on. Deliberately NOT virtualized (unlike the bars
-                   below) — a plain per-row div with no children is cheap, and
-                   keeping it simple here avoids reconciling two different
-                   Virtualize row-index spaces; worth revisiting if a future v3
-                   chart with thousands of rows ever turns AllowCreate on. *@
-                @if (AllowCreate && !Readonly)
-                {
-                    @foreach (var track in RowTrackItems)
-                    {
-                        @* touch-pan-y — see GanttBar.WrapperClass's own remarks on the
-                           identical fix ("Opt touch drag targets out of native
-                           horizontal panning"); unconditional here since this whole
-                           block is already gated on AllowCreate && !Readonly. *@
-                        <div class="absolute touch-pan-y" data-gantt-row-track="true" data-row-key="@track.Key" style="@RowTrackStyle(track.RowIndex)"></div>
-                    }
-                }
                 <Virtualize Items="@RowItems" Context="row" ItemSize="@((float)GanttScale.RowHeight)">
                     @* Bug fix (Codex round 10 review, P2 #1): every item template
                        below renders ONLY absolutely-positioned content (GanttBar's
@@ -199,13 +272,141 @@
                        Id and a group label in GanttState.Collapsed's shared
                        key set (see its own remarks: "a distinct namespace so a
                        task id can never collide with a group key"). *@
-                    <div class="lumeo-gantt-v3-row-item" @key="@(row.Task is not null ? "t:" + row.Task.Id : $"g:{row.RowIndex}")" style="height:@(GanttScale.RowHeight)px;">
+                    @* "hover:bg-accent/10 transition-colors" (design spec Phase 3,
+                       T7 — "row hover states"): this wrapper is the ONLY
+                       element that ALWAYS renders once per row regardless of
+                       AllowCreate/ShowSummaryBars/etc (round-10's own remarks
+                       above: it establishes no positioning context, but IS a
+                       normal in-flow block box, so it already spans this
+                       row's full rendered width by default block-level
+                       sizing) — reusing it for row hover costs zero new DOM,
+                       matching GanttTree.RowClass's own identical treatment
+                       on the sibling pane. *@
+                    @* G3 (2026-08-10 shadcn alignment): the canvas previously drew ONLY
+                       vertical day grid lines (see GridLineStyle above); a multi-row chart
+                       read as an unruled block past the row labels since GanttTree already
+                       draws horizontal row separators (RowClass below) but the timeline
+                       pane where the bars actually live did not. Reusing this SAME
+                       always-rendered, in-flow row wrapper (round-10's own remarks above)
+                       costs zero new DOM — border-b paints the separator at the row's own
+                       bottom edge, unioned with the pointer-events-none vertical grid lines
+                       already in this stacking context (paint order irrelevant since
+                       neither sets z-index and they never overlap the SAME edge pixel
+                       except at intersections, same as GanttTree's own row lines). Left at
+                       border-border/50 to match the demo's row rule opacity; unifies with
+                       GanttTree.RowClass's own /30 → /50 change below. *@
+                    <div class="lumeo-gantt-v3-row-item hover:bg-accent/10 transition-colors border-b border-border/50" @key="@(row.Task is not null ? "t:" + row.Task.Id : $"g:{row.RowIndex}")" style="height:@(GanttScale.RowHeight)px;">
                         @if (row.Task is not null)
                         {
+                            @* Phase 3, T1 — empty-track drag-create hit target
+                               (Phase 2, T3's own feature), now rendered INSIDE
+                               THIS SAME virtualized item instead of a separate
+                               @foreach loop that used to render one such div
+                               per EffectiveRows entry BEFORE this Virtualize
+                               block regardless of scroll position — the bars
+                               beside it were already virtualized (Codex round
+                               3, P2 #1, pulled forward from Phase 3 T1; see
+                               GanttV3StickyHeaderTests' own remarks), but this
+                               track div was not, so a tall AllowCreate chart
+                               still materialized all N of these on every
+                               render. Only rendered at all when AllowCreate is
+                               on AND not Readonly (Readonly wins
+                               unconditionally — see AllowCreate's own remarks)
+                               so the opt-in feature costs nothing (no extra
+                               DOM, no extra hit-test surface) for every
+                               existing v3 chart that never turns it on.
+                               Rendered BEFORE GanttBar below — paint order
+                               (later DOM wins, same stacking context —
+                               RowsContainerStyle's own `.relative` ancestor;
+                               this wrapper establishes no positioning context
+                               of its own, per the round-10 remarks above) is
+                               unchanged from the old sibling-loop's ordering,
+                               so the bar still wins the hit-test over its own
+                               row's track when the two overlap —
+                               gantt-v3.js's onPointerDown only ever falls
+                               through to '[data-gantt-row-track]' when
+                               e.target.closest('[data-task-id]') found
+                               nothing. "task:" + row.Task.Id mirrors RowKey's
+                               own Task branch (see RowKey's remarks) —
+                               GroupHeader rows never reach this branch (Task
+                               is null there), so there is no risk of
+                               duplicating the pair the group-header stripe
+                               below already carries for its own row. *@
+                            @if (AllowCreate && !Readonly)
+                            {
+                                @* touch-pan-y — see GanttBar.WrapperClass's own remarks on the
+                                   identical fix ("Opt touch drag targets out of native
+                                   horizontal panning"); unconditional here since this whole
+                                   block is already gated on AllowCreate && !Readonly. *@
+                                <div class="absolute touch-pan-y" data-gantt-row-track="true" data-row-key="@("task:" + row.Task.Id)" style="@RowTrackStyle(row.RowIndex)"></div>
+                            }
                             <GanttBar Task="row.Task" X="row.X" Width="row.Width" RowIndex="row.RowIndex"
                                       BarHeight="EffectiveBarHeight" Color="@row.Color" BarTemplate="BarTemplate"
+                                      DragGhostTemplate="DragGhostTemplate"
                                       Readonly="@Readonly" OnTaskClick="OnTaskClick"
                                       SuppressPointerClick="@_dragConfirmed" />
+                            @* Design spec Phase 3, T3 — a hierarchy-parent Task row (HasChildren)
+                               renders BOTH its own GanttBar above (the task's own dates) AND this
+                               envelope strip (its children's rolled-up dates) — see
+                               GanttSummaryBar's own remarks for why the two never visually
+                               collide (flush-bottom vs row-centered). row.Rollup is null for
+                               every leaf row, so this simply doesn't render there. *@
+                            @if (row.Rollup is { } taskRollup)
+                            {
+                                <GanttSummaryBar Rollup="taskRollup" X="row.SummaryX" Width="row.SummaryWidth"
+                                                  RowIndex="row.RowIndex" SummaryTemplate="SummaryTemplate" />
+                            }
+                            @* Off-screen indicator chip (design spec Phase 3, T7). The
+                               OUTER div is a plain position:absolute box spanning this
+                               ROW's own full pixel extent (RowTrackStyle — same helper
+                               the AllowCreate track div above already uses) purely to
+                               give the INNER button's own position:sticky something to
+                               stay CONSTRAINED within (sticky never escapes its nearest
+                               block-level ancestor's box) — h-full + flex centering
+                               replaces GanttScale.BarTop's usual top-math (which
+                               position:sticky can't combine with a top offset the same
+                               way position:absolute does) for vertical centering within
+                               the row. The BUTTON is what's actually sticky — pinned to
+                               the visible scroll edge PURELY VIA CSS, no per-frame JS or
+                               Blazor work: only WHETHER it renders at all (row.Offscreen)
+                               is driven by the rAF-throttled scroll report (see
+                               VisibleTimelineWindow's own remarks), at the SAME
+                               once-per-render cost class RowItems already pays for every
+                               other per-row computed value. z-20 (matching the header's
+                               z-10/the splitter's z-30) keeps it above bars/grid-lines
+                               regardless of DOM order. *@
+                            @if (row.Offscreen != GanttOffscreenDirection.None)
+                            {
+                                @* Bug fix (found empirically, live Chromium — position:sticky's
+                                   "hold in place while scrolling toward it" behavior only
+                                   engages when the element's own UNSTUCK flow position sits
+                                   NEAR THE EDGE it sticks to: a sticky-end child whose natural
+                                   flow position is at the row's own START (this flex wrapper's
+                                   default justify-start) never approaches the end edge as the
+                                   pane scrolls, so it never "catches" there — verified by
+                                   reading the LIVE BoundingBoxAsync() of a rendered "after"
+                                   chip, which landed at the row's START, not the viewport's end,
+                                   despite computed style correctly showing position:sticky and a
+                                   resolved inset-inline-end value. justify-end for the After
+                                   direction gives it a natural position AT the row's own end
+                                   (the far side of a TotalWidth-wide row), matching the "before"
+                                   direction's own already-correct default (justify-start, natural
+                                   position already at the row's start — the "before" chip never
+                                   exhibited this bug because its sticky/natural edges already
+                                   coincided by default). *@
+                                <div class="pointer-events-none absolute inset-y-0 z-20 flex h-full items-center" style="@RowTrackStyle(row.RowIndex)">
+                                    <div class="@(row.Offscreen == GanttOffscreenDirection.After ? "flex w-full justify-end" : "contents")">
+                                        <button type="button"
+                                                class="@OffscreenChipClass(row.Offscreen)"
+                                                style="@OffscreenChipStyle(row.Offscreen)"
+                                                data-gantt-offscreen-chip="@(row.Offscreen == GanttOffscreenDirection.Before ? "before" : "after")"
+                                                aria-label="@(row.Offscreen == GanttOffscreenDirection.Before ? L["Gantt.ScrollToEarlierTask", row.Task.Name] : L["Gantt.ScrollToLaterTask", row.Task.Name])"
+                                                @onclick="() => ScrollToBarAsync(row)">
+                                            <SvgGlyph Svg="@(row.Offscreen == GanttOffscreenDirection.Before ? LumeoIcons.ChevronLeft : LumeoIcons.ChevronRight)" class="h-3 w-3" />
+                                        </button>
+                                    </div>
+                                </div>
+                            }
                         }
                         else
                         {
@@ -228,27 +429,30 @@
 
                                Bug fix (Codex P2 finding, "Make group-header
                                tracks hittable"): a plain per-row
-                               [data-gantt-row-track] div (the loop above)
-                               painted BELOW this stripe — gantt-v3.js's
-                               onPointerDown hit-tests via
+                               [data-gantt-row-track] div (rendered inside the
+                               TASK branch above, for a Task row — see its own
+                               remarks) would paint BELOW this stripe if a
+                               GroupHeader row ever rendered one too —
+                               gantt-v3.js's onPointerDown hit-tests via
                                e.target.closest('[data-gantt-row-track]'),
-                               which a click on the (fully covered, hence
-                               unreachable) div below could never satisfy, so
+                               which a click on a fully-covered, hence
+                               unreachable, div below could never satisfy, so
                                AllowCreate's drag-create path was unreachable
                                for any grouped row. Fixed by carrying the SAME
                                data-* pair directly on the stripe (gated on the
                                identical AllowCreate/Readonly condition the
-                               track-div loop uses, so a chart with the feature
-                               off still emits neither attribute) — see
-                               GanttTimelineRow.GroupRowKey's own remarks for
-                               where the key comes from.
+                               task branch's own track div uses, so a chart
+                               with the feature off still emits neither
+                               attribute) — see GanttTimelineRow.GroupRowKey's
+                               own remarks for where the key comes from.
                                Follow-up bug fix (E2E strict-mode violation —
                                two elements answering
                                '[data-gantt-row-track][data-row-key=...]' for
-                               the SAME group row): RowTrackItems now EXCLUDES
-                               GroupHeader rows outright (see its own remarks),
-                               so this stripe is the row's ONLY element
-                               carrying the pair — not a sibling duplicating
+                               the SAME group row): a GroupHeader row's Task is
+                               always null, so it never reaches the task
+                               branch's own track div at all (see its remarks)
+                               — this stripe is the row's ONLY element
+                               carrying the pair, never a sibling duplicating
                                it. *@
                             @* touch-pan-y (Codex P2 finding "Opt touch drag targets out of
                                native horizontal panning" — see GanttBar.WrapperClass's own
@@ -260,6 +464,14 @@
                                  style="@GroupHeaderStyle(row.RowIndex)"
                                  data-gantt-row-track="@(AllowCreate && !Readonly ? "true" : null)"
                                  data-row-key="@(AllowCreate && !Readonly ? row.GroupRowKey : null)">@row.Label</div>
+                            @* Design spec Phase 3, T3 — a GroupHeader row never has its own
+                               GanttBar (Task is always null), so this is the row's ONLY bar-like
+                               content besides the label stripe above. *@
+                            @if (row.Rollup is { } groupRollup)
+                            {
+                                <GanttSummaryBar Rollup="groupRollup" X="row.SummaryX" Width="row.SummaryWidth"
+                                                  RowIndex="row.RowIndex" SummaryTemplate="SummaryTemplate" />
+                            }
                         }
                     </div>
                 </Virtualize>
@@ -271,9 +483,76 @@
             <GanttArrowLayer Rows="@EffectiveRows" ViewMode="@ViewMode" Origin="@Origin"
                              ColumnWidth="@EffectiveColumnWidth" BarHeight="@EffectiveBarHeight"
                              Width="@TotalWidth" Height="@CanvasHeight" VisibleRowRange="@_visibleRowRange" />
+
+            @* Floating zoom control (design spec Phase 3, T7 — "+/- overlay in
+               the canvas corner"). The OUTER div is a plain position:absolute
+               box spanning the FULL canvas (inset-0 — a genuine, sized
+               containing block for the sticky child, same reasoning as the
+               off-screen chip's own outer wrapper above).
+
+               flex justify-end items-end (bug fix, found empirically in live
+               Chromium — see the off-screen chip's own identical remarks
+               above for the full mechanism): position:sticky only "holds an
+               element in place while scrolling toward it" when the
+               element's UNSTUCK/natural flow position already sits near the
+               edge it sticks to (exactly how the header's existing "sticky
+               top-0" already works — the header's own unstuck position IS
+               the top of a tall scrolling container, so top-sticky has
+               something to catch onto). A sticky bottom-end child whose
+               default (unstyled) flow position is the wrapper's own
+               top-start corner never approaches the bottom-end edge as the
+               canvas scrolls, so it never engages — confirmed by reading
+               the LIVE BoundingBoxAsync() of a bare sticky child here,
+               which landed at the wrapper's own top-start corner regardless
+               of a correctly-resolved computed inset-inline-end/bottom
+               value. justify-end/items-end gives the child a natural
+               position AT the wrapper's own bottom-end corner instead
+               (the wrapper spans the full TotalWidth/CanvasHeight canvas),
+               so sticky now has a genuine "edge to hold onto" on both axes.
+
+               pointer-events-none on the outer wrapper (never a click
+               target itself) + pointer-events-auto on GanttZoomControl's
+               own root (via Class) restores real clicks to the control
+               alone. *@
+            @if (ShowZoomControl)
+            {
+                <div class="pointer-events-none absolute inset-0 flex justify-end items-end">
+                    <GanttZoomControl Class="pointer-events-auto sticky bottom-2 end-2 z-20" ViewMode="@ViewMode"
+                                      ViewModeChanged="ViewModeChanged" ZoomLevels="@ZoomLevels" />
+                </div>
+            }
         </div>
     </div>
 </div>
+
+@* Design spec Phase 3, T8 — bar context menu (right-click a bar opens a Lumeo
+   ContextMenu at the pointer). Deliberately NOT composed from
+   <ContextMenu>/<ContextMenuTrigger> — those render an extra "relative
+   inline-block" wrapper div around whatever they enclose; wrapping the
+   row-canvas markup above in one would insert a NEW positioned ancestor
+   between the bars/arrows and the containing block they resolve their own
+   position:absolute against today, exactly the "split coordinate space" bug
+   class the Phase-2 ledger watch-list warns about. Composed directly from a
+   plain <see cref="ContextMenu.ContextMenuContext"/> CascadingValue (no
+   wrapper element at all) + the reusable <c>ContextMenuContent</c> building
+   block instead — a SIBLING of the root div above, not nested inside it, so
+   it can never affect that div's own layout/positioning context either.
+   Right-click DETECTION lives entirely in gantt-v3.js's own delegated
+   'contextmenu' listener (see GanttV3RegisterBarContextMenuAsync's own
+   remarks) — never a Blazor-bound @@oncontextmenu on any individual
+   (virtualized) bar, which would cost one extra event binding per rendered
+   bar for a feature most charts never opt into. *@
+@if (BarContextMenu is not null)
+{
+    <CascadingValue Value="@_barContextMenuContext" IsFixed="false">
+        <ContextMenuContent>
+            @if (_barContextMenuTask is not null)
+            {
+                @BarContextMenu(_barContextMenuTask)
+            }
+        </ContextMenuContent>
+    </CascadingValue>
+}
 
 @code {
     /// <summary>The tasks (and milestones) rendered as bars, in display order. Ignored when <see cref="Rows"/> is set.</summary>
@@ -294,6 +573,21 @@
     /// <summary>The active zoom level — determines column width/unit/header format via <see cref="GanttScale"/>.</summary>
     [Parameter] public GanttViewMode ViewMode { get; set; } = GanttViewMode.Day;
 
+    /// <summary>
+    /// Raised when <see cref="Lumeo.GanttZoomControl"/>'s floating +/- stepper
+    /// (design spec Phase 3, T7 — <see cref="ShowZoomControl"/>) picks a new
+    /// zoom level. Same idea as <c>GanttNav.ViewModeChanged</c> — this
+    /// component has no <c>GanttState</c> reference of its own (see the class
+    /// remarks), so <c>Gantt3</c> wires BOTH <c>GanttNav.ViewModeChanged</c>
+    /// and this to the SAME <c>HandleViewModeChangedAsync</c> method (the
+    /// identical claim/reconcile/settle pipeline every view-mode change
+    /// already routes through — <c>GanttState.SetViewMode</c>'s own T4
+    /// remarks establish the precedent of one shared method, multiple
+    /// callers) rather than inventing a second mutation path for a second
+    /// UI surface.
+    /// </summary>
+    [Parameter] public EventCallback<GanttViewMode> ViewModeChanged { get; set; }
+
     /// <summary>The materialized date window's start (inclusive).</summary>
     [Parameter] public DateTime RangeStart { get; set; }
 
@@ -306,8 +600,58 @@
     /// <summary>Override the pixel width of each date column for the current view mode.</summary>
     [Parameter] public int? ColumnWidth { get; set; }
 
-    /// <summary>Highlight today with a vertical marker line. Default true.</summary>
+    /// <summary>
+    /// Highlight today with an accent header label, header dot, and full-column
+    /// tint. Default true. Master switch (design spec Phase 3, T2) — the SAME
+    /// parameter that gated the old line-only look now gates the whole upgraded
+    /// treatment; nothing else needs a separate opt-in.
+    /// </summary>
     [Parameter] public bool TodayHighlight { get; set; } = true;
+
+    /// <summary>
+    /// Explicit first-day-of-week override for the <see cref="GanttViewMode.Day"/>
+    /// ISO week-band upper header (design spec Phase 3, T2 — see
+    /// <see cref="GanttScale.UpperRuns"/>'s own <c>firstDayOfWeek</c> parameter).
+    /// Null (the default) derives it from <see cref="CultureInfo.CurrentCulture"/>.
+    /// Ignored by every OTHER view mode.
+    /// </summary>
+    [Parameter] public DayOfWeek? FirstDayOfWeek { get; set; }
+
+    /// <summary>
+    /// The week days treated as "off" for <see cref="MarkOffDays"/>'s column
+    /// tint (design spec Phase 3, T2). Null (the default) derives a
+    /// region-appropriate set from <see cref="CultureInfo.CurrentCulture"/> via
+    /// <see cref="GanttScale.DefaultOffDays"/> — see its own remarks for the
+    /// CLDR-sourced weekend table (NOT hardcoded Saturday/Sunday).
+    /// </summary>
+    [Parameter] public IReadOnlySet<DayOfWeek>? OffDays { get; set; }
+
+    /// <summary>
+    /// Tints <see cref="OffDays"/> columns (design spec Phase 3, T2 — "Mark off
+    /// days"). Default <c>false</c> — no v2 equivalent, opt-in like every other
+    /// REUI-parity addition with no v2 precedent. Only rendered for
+    /// day-granularity view modes — see <see cref="SupportsOffDayMarking"/>.
+    /// </summary>
+    [Parameter] public bool MarkOffDays { get; set; }
+
+    /// <summary>
+    /// Renders a precise current-TIME line in sub-day view modes (design spec
+    /// Phase 3, T2 — distinct from <see cref="TodayHighlight"/>'s whole-DAY
+    /// column treatment). Default <c>false</c> (opt-in). Only rendered for
+    /// Hour-unit view modes (QuarterDay/HalfDay) — see
+    /// <see cref="SupportsNowIndicator"/>.
+    /// </summary>
+    [Parameter] public bool NowIndicator { get; set; }
+
+    /// <summary>
+    /// The browser-resolved current date+time backing <see cref="NowIndicator"/>
+    /// (design spec Phase 3, T2 — same "caller resolves via JS, this component
+    /// just renders the resolved value" pattern <see cref="Today"/> already
+    /// uses). Null (the default) falls back to <see cref="DateTime.Now"/> (the
+    /// SERVER's local time) — the same standalone-usage fallback <see cref="Today"/>
+    /// gives when no <c>Gantt3</c> wraps this component.
+    /// </summary>
+    [Parameter] public DateTime? Now { get; set; }
 
     /// <summary>Per-task bar colour override — see <c>Lumeo.Gantt</c>'s v2 <c>Gantt.BarColor</c> for the contract.</summary>
     [Parameter] public Func<GanttTask, string?>? BarColor { get; set; }
@@ -355,10 +699,47 @@
     /// by <c>Gantt3</c> specifically when recentering after a view-mode switch
     /// (Codex round 4, P2 #8) — the user's previously-centered date, not
     /// necessarily today. <see cref="Today"/> itself still drives the MARKER's
-    /// own position (<see cref="TodayInRange"/>/<see cref="TodayLineStyle"/>) —
+    /// own position (<see cref="TodayInRange"/>/<see cref="TodayColumnStyle"/>) —
     /// this only redirects where the DOM actually scrolls to.
     /// </summary>
     [Parameter] public DateTime? ScrollTargetDate { get; set; }
+
+    /// <summary>
+    /// Design spec Phase 3, T9 — a PIXEL-precise override for
+    /// <see cref="ResolveScrollTargetX"/>, timeline-origin-relative (the SAME
+    /// space that method's own <c>GanttScale.DateToPixel</c> return value
+    /// already lives in). When set (and while the SAME intent this render's
+    /// <see cref="ScrollTargetDate"/> pairs with is still pending), takes
+    /// priority over deriving the target from <see cref="ScrollTargetDate"/>.
+    ///
+    /// Exists for exactly one caller today: <c>Gantt3.HandleRangeExtensionRequestAsync</c>'s
+    /// leading-edge recenter. Every OTHER scroll intent in this codebase
+    /// (view-mode switches, Today, Previous/Next, an off-screen-chip click,
+    /// <c>GanttState.ScrollToDateAsync</c>) is perfectly well served by a
+    /// captured DATE re-projected through <c>GanttScale.DateToPixel</c> under
+    /// the new geometry — accurate to within a fraction of a column, which is
+    /// why those paths' own E2E coverage uses a several-pixel tolerance. A
+    /// leading-edge extension is different: this task's own explicit ±1px
+    /// proof requirement cannot be met that way, because <c>DateToPixel</c>'s
+    /// Day/Month/Year branches all read <c>DateTime.Date</c> — a date
+    /// captured via <c>PixelToDateContinuous</c> (which DOES preserve a
+    /// sub-unit fraction, e.g. a fractional day) LOSES that fraction the
+    /// moment it is re-projected back through <c>DateToPixel</c>, up to
+    /// nearly one whole column's worth of pixels (confirmed empirically via
+    /// this task's own local E2E gate: an 11px drift on a 38px Day-mode
+    /// column). Bypassing the DateTime round trip entirely — read the LIVE
+    /// logical scroll center as a raw pixel value, add the ANALYTICALLY
+    /// exact origin-shift delta (<c>GanttScale.DateToPixel</c>'s own
+    /// provable origin-linearity — see that method's remarks), done — has no
+    /// such loss, because no DateTime intermediary is ever involved. Still
+    /// exactly zero new interop surface and zero new <c>GanttScale</c> math:
+    /// both the read (<c>GanttV3GetScrollCenterXAsync</c>) and the
+    /// eventual write (<c>GanttV3ScrollToXAsync</c>, via this component's own
+    /// existing <see cref="ScrollToCenterAsync"/>) are the SAME calls every
+    /// other recenter already uses; this parameter only changes which VALUE
+    /// gets handed to the write.
+    /// </summary>
+    [Parameter] public double? ScrollTargetXOverride { get; set; }
 
     /// <summary>
     /// Pixels of the <see cref="ScrollHost"/>'s own content that precede this
@@ -374,15 +755,44 @@
     /// <remarks>
     /// Bug fix (Codex round 4, P2 #2): before this fix, <c>EffectiveScrollHost</c>
     /// (Gantt3's outer pane) scrolled based on ITS OWN content's absolute
-    /// position — which, with a tree pane shown, starts with
-    /// <see cref="GanttScale.TreePaneWidth"/> pixels of tree BEFORE this
-    /// timeline even begins — while every X this component computes
+    /// position — which, with a tree pane shown, starts with the tree pane's
+    /// own width (then a fixed <see cref="GanttScale.DefaultTreePaneWidth"/>
+    /// constant — design spec Phase 3, T5 made it resizable) pixels of tree
+    /// BEFORE this timeline even begins — while every X this component computes
     /// (<see cref="TodayX"/> included) is relative to ITS OWN origin (x=0 at
     /// the first date column, i.e. immediately after the tree). Centering on
     /// a raw, un-offset TodayX therefore landed the DOM's actual scroll
     /// position short by exactly the tree's width in LTR-with-tree layouts.
     /// </remarks>
     [Parameter] public double ScrollHostLeadingOffset { get; set; }
+
+    /// <summary>
+    /// Width (px) of a sibling tree pane, when <c>Gantt3</c> renders one —
+    /// design spec Phase 3, T7. Real bug found via this campaign's own E2E
+    /// gate: the "before" off-screen indicator chip's <c>position:sticky</c>
+    /// pins to this timeline's own LOGICAL-start edge — the SAME logical
+    /// edge <c>GanttTree</c>'s own root pins to (<c>sticky start-0</c>) —
+    /// so without an explicit offset the two land in the EXACT SAME
+    /// on-screen spot (confirmed live: a "before" chip's own
+    /// <c>getBoundingClientRect()</c> matched a tree-row grip's pixel-for-
+    /// pixel), silently swallowing every pointer event meant for the tree
+    /// pane underneath it — including, in the E2E suite, row-reorder drags.
+    ///
+    /// Deliberately a SEPARATE parameter from <see cref="ScrollHostLeadingOffset"/>,
+    /// not a reuse of it: that one is PHYSICAL and LTR-only by design (0
+    /// under RTL, because the shared pane's own flex row already reverses
+    /// there — see its own remarks). <c>GanttTree.RootClass</c>'s
+    /// <c>start-0</c> is LOGICAL, so it pins to the SAME logical edge
+    /// (physical-right under RTL) regardless of the flex reversal — meaning
+    /// the tree pane's own footprint on the "before"/start-anchored chip is
+    /// present in BOTH directions, which <see cref="ScrollHostLeadingOffset"/>
+    /// alone cannot express (it collapses to 0 in exactly the case — RTL —
+    /// where this value must NOT). Only ever added to the "before" chip's
+    /// own inline-start offset; nothing pins to the opposite (end) edge, so
+    /// an "after" chip needs no equivalent adjustment. Defaults to 0
+    /// (standalone mode, or no tree pane shown).
+    /// </summary>
+    [Parameter] public double LeadingPaneWidth { get; set; }
 
     /// <summary>
     /// The element that owns horizontal (and vertical) scrolling for this
@@ -457,8 +867,9 @@
     /// <c>false</c>, which keeps a v3 chart's interaction surface strict v2 parity
     /// until a caller explicitly opts in). When <c>true</c> (and not
     /// <see cref="Readonly"/>), a pointer-down on a row's empty track background
-    /// (never a bar — see <see cref="RowTrackItems"/>'s remarks on hit-test
-    /// ordering) followed by a horizontal drag paints a create-ghost spanning the
+    /// (never a bar — see the row canvas markup's own per-task-row
+    /// <c>data-gantt-row-track</c> div, in <see cref="RowItems"/>'s Virtualize
+    /// item template, for the hit-test ordering) followed by a horizontal drag paints a create-ghost spanning the
     /// snapped range, committing via <see cref="CommitCreate"/> on release.
     /// <see cref="Readonly"/> WINS over this unconditionally: when readonly, NO
     /// listeners are ever registered at all (see <see cref="SyncDragRegistrationAsync"/>),
@@ -467,6 +878,170 @@
     /// established for move/resize.
     /// </summary>
     [Parameter] public bool AllowCreate { get; set; }
+
+    /// <summary>
+    /// Renders a duration-weighted REUI-style envelope strip on every
+    /// hierarchy-parent or flat-group row (design spec Phase 3, T3 — "Summary
+    /// rollup bars, duration-weighted"). Default <c>false</c>: a deliberate
+    /// v3-look delta from REUI (which defaults its own <c>summaryBars</c>
+    /// prop to true) — see the Phase-3 ledger entry for the full reasoning.
+    /// Turning this off entirely skips <see cref="GanttRollupModel.ComputeRollups"/>
+    /// (see <see cref="Rollups"/>), so an existing chart with hierarchy/GroupBy
+    /// already in use pays nothing for the feature until it opts in.
+    /// </summary>
+    [Parameter] public bool ShowSummaryBars { get; set; }
+
+    /// <summary>
+    /// Overrides the default duration-weighted rollup math (design spec Phase
+    /// 3, T3 — "Overridable rollup math"; the REUI <c>getSummaryProgress</c>
+    /// analog). Invoked once per eligible parent/group row with that row's
+    /// DIRECT children — see <see cref="GanttRollupModel"/>'s own remarks for
+    /// exactly what "direct children" means for a nested hierarchy parent
+    /// (transitivity via substitution, not a flattened descendant list) and
+    /// for the defensive contract a throwing or out-of-range-returning
+    /// override gets wrapped in regardless (<c>GanttRollupModel.SafeInvokeRollupMath</c>)
+    /// — a broken override degrades to the default math for that one row, it
+    /// never takes the rest of the chart down. <c>null</c> (the default) uses
+    /// <see cref="GanttRollupModel.DefaultRollupMath"/> for every row.
+    /// </summary>
+    [Parameter] public Func<IReadOnlyList<GanttTask>, GanttRollup>? RollupMath { get; set; }
+
+    /// <summary>
+    /// Replaces a summary strip's default (bg + fill + % label) content when
+    /// set (design spec Phase 3, T3 — the REUI <c>renderSummary</c> analog).
+    /// <c>null</c> (the default) uses <see cref="GanttSummaryBar"/>'s own
+    /// built-in rendering.
+    /// </summary>
+    [Parameter] public RenderFragment<GanttRollup>? SummaryTemplate { get; set; }
+
+    /// <summary>
+    /// Assigns each task a stable per-group <c>var(--color-chart-1..5)</c> bar
+    /// colour when <see cref="BarColor"/> is null (design spec Phase 3, T7 —
+    /// "default palette assigns stable per-group colors ... when BarColor is
+    /// null"). Default <c>false</c> — see the Phase-3 ledger entry for the
+    /// full "opt-in like every other REUI-parity addition with no v2
+    /// precedent" reasoning (<see cref="ShowSummaryBars"/> above already
+    /// established the identical default posture for the same reason). The
+    /// "group" is the task's own reorder bucket — see
+    /// <see cref="GanttColorModel.ResolveGroupColorVar"/> for the exact key
+    /// and its cross-reorder/cross-render stability proof.
+    /// </summary>
+    [Parameter] public bool ColorByGroup { get; set; }
+
+    /// <summary>
+    /// Renders a small directional chip at a row's edge when that row's bar
+    /// is entirely outside the current horizontal scroll viewport, clicking
+    /// it scrolls the bar back into view (design spec Phase 3, T7 —
+    /// "Off-screen indicator chips ... direction arrow + click scrolls the
+    /// bar into view"). Default <c>true</c> — DELIBERATELY the one exception
+    /// to this campaign's "new look-changing REUI-parity features default
+    /// off" precedent (<see cref="ShowSummaryBars"/>/<see cref="NowIndicator"/>/
+    /// <see cref="MarkOffDays"/> all opt-in): the plan text explicitly pins
+    /// this one to REUI's own default-true, and unlike those three, an
+    /// off-screen chip is a NAVIGATION AID whose absence is a silent
+    /// discoverability regression (a bar scrolled out of view with no
+    /// affordance to find it again), not a purely cosmetic surface a
+    /// consumer's existing visual-snapshot baseline could be surprised by —
+    /// the chip only ever appears in direct response to the VIEWER's own
+    /// scroll action, never as part of a chart's initial/at-rest look, so
+    /// there is no "chart looked different on upgrade with no code change"
+    /// risk the opt-in precedent exists to prevent in the first place. See
+    /// the Phase-3 ledger entry for the full reasoning.
+    /// </summary>
+    [Parameter] public bool ShowOffscreenIndicators { get; set; } = true;
+
+    /// <summary>
+    /// Renders a floating +/- zoom control in the canvas corner, stepping
+    /// through <see cref="ZoomLevels"/> (design spec Phase 3, T7 — "Floating
+    /// zoom control ... in addition to the toolbar switcher"). Default
+    /// <c>false</c> — an ADDITIONAL, purely decorative UI surface (unlike
+    /// <see cref="ShowOffscreenIndicators"/>'s navigation-aid argument above,
+    /// a toolbar zoom switcher already exists via <c>GanttNav</c> in every
+    /// existing v3 chart) that changes a chart's at-rest visual footprint the
+    /// moment it renders — the standard opt-in posture applies here exactly
+    /// as it did for <see cref="ShowSummaryBars"/>.
+    /// </summary>
+    [Parameter] public bool ShowZoomControl { get; set; }
+
+    /// <summary>
+    /// Restricts which zoom levels <see cref="Lumeo.GanttZoomControl"/> steps
+    /// through when <see cref="ShowZoomControl"/> is on — same contract
+    /// (including the default full Day/Week/Month/Year set and the
+    /// Quarter-must-be-explicitly-opted-in rule) as <c>GanttNav.ZoomLevels</c>,
+    /// which this deliberately mirrors rather than reimplements (see
+    /// <see cref="Lumeo.GanttZoomControl"/>'s own remarks).
+    /// </summary>
+    [Parameter] public IReadOnlyList<GanttViewMode>? ZoomLevels { get; set; }
+
+    /// <summary>
+    /// Overrides the drag ghost's rendered content for every bar (design spec Phase
+    /// 3, T8). Passed straight through to <see cref="Lumeo.GanttBar.DragGhostTemplate"/>
+    /// — see its own remarks for the full coordinate-space contract.
+    /// </summary>
+    [Parameter] public RenderFragment<GanttTask>? DragGhostTemplate { get; set; }
+
+    /// <summary>
+    /// Renders a Lumeo <c>ContextMenu</c> at the pointer when a bar is right-clicked
+    /// (design spec Phase 3, T8). Null (the default) leaves right-click on a bar
+    /// alone — the browser's native context menu shows, exactly as before this
+    /// parameter existed. Deliberately independent of <see cref="Readonly"/> — a
+    /// context menu is a VIEW action, not an edit; see
+    /// <see cref="NotifyBarContextMenu"/>'s own remarks for the full reasoning and
+    /// the drag-isolation contract (a right-click landing on a bar mid-gesture is
+    /// swallowed entirely, never opens a menu).
+    /// </summary>
+    [Parameter] public RenderFragment<GanttTask>? BarContextMenu { get; set; }
+
+    /// <summary>
+    /// Nearing either horizontal edge of the currently-rendered range extends
+    /// it by another page instead of dead-ending (design spec Phase 3, T9 —
+    /// "horizontal infinite scroll ... replaces v2's fixed pad-before/after").
+    /// Default <c>true</c> (see the Phase-3 ledger entry, decision 1, for the
+    /// full "what does an existing Phase-1 consumer actually notice" reasoning
+    /// — the short version: nothing, until they scroll far enough to reach the
+    /// ORIGINAL padded edge, at which point the timeline now keeps going
+    /// instead of dead-ending). <c>false</c> restores exactly v2's own fixed
+    /// pad-before/after — <see cref="Lumeo.Gantt3"/>'s own
+    /// <c>ComputeInitialRange</c>/<c>ApplyPadding</c> are COMPLETELY unchanged
+    /// by this parameter; it only gates whether <see cref="OnGanttV3VerticalScroll"/>
+    /// ever asks for MORE range once the user scrolls near what those already
+    /// computed.
+    /// </summary>
+    [Parameter] public bool InfiniteScroll { get; set; } = true;
+
+    /// <summary>
+    /// Bubbles a "the user scrolled near an edge, please extend VisibleRange"
+    /// request up to <see cref="Lumeo.Gantt3"/> (design spec Phase 3, T9) — this
+    /// component never owns <c>VisibleRange</c> itself (it only ever RECEIVES
+    /// <see cref="RangeStart"/>/<see cref="RangeEnd"/> as plain parameters, the
+    /// same "Gantt3 is the only place that touches GanttState" discipline every
+    /// other bubbled edit in this file already follows — see
+    /// <see cref="OnTaskUpdate"/>'s own remarks), so it can only ask, never
+    /// commit. <c>true</c> = the LEADING (earlier-dates) edge — the coordinate
+    /// origin shifts, so the caller must recenter; <c>false</c> = TRAILING
+    /// (later-dates) — a pure append, origin unchanged, no recenter needed. Not
+    /// part of any consumer-facing contract (this component is only public
+    /// because the Razor compiler forces it — see this file's own class
+    /// remarks); wired internally by <c>Gantt3</c> only.
+    /// </summary>
+    [Parameter] public EventCallback<bool> OnRangeExtensionRequested { get; set; }
+
+    // Design spec Phase 3, T9 — re-entrancy guard: a second near-edge report
+    // arriving while a PREVIOUS extension request is still awaiting Gantt3's
+    // own async pipeline (live-center capture, drag-gesture re-check) is
+    // dropped rather than queued or overlapped — the request is LEVEL-
+    // triggered, not edge-triggered (VisibleTimelineWindow is re-evaluated
+    // fresh on every report), so as long as the user is STILL near the edge
+    // once this one resolves, the very next report re-requests it.
+    private bool _rangeExtensionInFlight;
+
+    // Design spec Phase 3, T9 — see ScrollToCenterAsync's own remarks. Armed
+    // by EVERY programmatic recenter, consumed by the very next
+    // OnGanttV3VerticalScroll report regardless of what that report's own
+    // scrollLeft/clientWidth actually are — a recenter's own resulting
+    // native 'scroll' event must never itself be misread as "the user wants
+    // more range."
+    private bool _suppressNextExtensionReport;
 
     private ElementReference _scrollHostRef;
     private ElementReference _headerInnerRef;
@@ -522,9 +1097,26 @@
     private double? _lastReportedClientHeight;
     private int _lastCulledRowCount = -1;
 
+    // Design spec Phase 3, T7 — off-screen indicators. Extends the SAME
+    // report payload above (not a new/fourth registration channel — "extend
+    // the existing interop family" is the identical precedent T2's
+    // NowIndicator already established for GanttV3GetLocalDateAsync; see
+    // OnGanttV3VerticalScroll's own remarks for the full reasoning) with the
+    // shared scroll pane's LOGICAL scrollLeft (gantt-v3.js's own
+    // fromNativeScrollLeft — already RTL-normalized into the same
+    // never-mirrored coordinate space GanttScale.DateToPixel/GanttBar.X live
+    // in, so no further conversion is needed here) and clientWidth. Null
+    // until the first report arrives — VisibleTimelineWindow treats that as
+    // "unknown viewport", so no chip renders (never a WRONG chip) rather
+    // than guessing during the brief JS-round-trip gap after mount.
+    private double? _lastReportedScrollLeft;
+    private double? _lastReportedClientWidth;
+
     // Phase 2, T1 — drag-registration bookkeeping (see SyncDragRegistrationAsync).
+    // Phase 3, T1 — GanttInteropOptions (a record) replaced a plain int hash;
+    // see SyncDragRegistrationAsync's own remarks and GanttInteropOptions'.
     private bool _dragRegistered;
-    private int _lastDragOptionsHash;
+    private GanttInteropOptions _lastDragOptions;
 
     // Bug fix (Codex P2 finding "Keep pointer clicks when drag interop is
     // unavailable") — see SyncDragRegistrationAsync's own remarks and
@@ -535,6 +1127,44 @@
     // "confirmed." This one flips true only once the register call has
     // actually RETURNED without throwing.
     private bool _dragConfirmed;
+
+    // Design spec Phase 3, T8 — bar context-menu bookkeeping (see
+    // SyncBarContextMenuRegistrationAsync/NotifyBarContextMenu). Deliberately
+    // its OWN registration flag, not folded into _dragRegistered — this
+    // channel's registration is independent of Readonly (see BarContextMenu's
+    // own remarks), so it cannot share _dragRegistered's Readonly-gated
+    // lifecycle.
+    private bool _barContextMenuRegistered;
+    private bool _barContextMenuOpen;
+    private GanttTask? _barContextMenuTask;
+    private double _barContextMenuX;
+    private double _barContextMenuY;
+
+    // Built fresh each render from the four fields above — ContextMenuContent
+    // (the reusable building block this renders into) only ever READS this
+    // record's fields; SetPosition is wired for interface symmetry with
+    // ContextMenu.razor's own context (ContextMenuContent never actually
+    // calls it — only ContextMenuTrigger does, and this component uses no
+    // ContextMenuTrigger — see BarContextMenu's markup remarks), SetOpen is
+    // the real close path (Escape / click-outside).
+    private ContextMenu.ContextMenuContext _barContextMenuContext =>
+        new(_barContextMenuOpen, _barContextMenuX, _barContextMenuY,
+            EventCallback.Factory.Create<bool>(this, SetBarContextMenuOpen),
+            EventCallback.Factory.Create<(double, double)>(this, SetBarContextMenuPosition));
+
+    private Task SetBarContextMenuOpen(bool open)
+    {
+        _barContextMenuOpen = open;
+        StateHasChanged();
+        return Task.CompletedTask;
+    }
+
+    private Task SetBarContextMenuPosition((double X, double Y) pos)
+    {
+        _barContextMenuX = pos.X;
+        _barContextMenuY = pos.Y;
+        return Task.CompletedTask;
+    }
 
     // Codex round 2, P1 #3: this root no longer establishes any scroll
     // container itself at all — the header (sticky) and the row-canvas
@@ -648,8 +1278,14 @@
     // matching "+HeaderHeight" term for the same reason.
     private double CanvasHeight => Math.Max(1, EffectiveRows.Count) * GanttScale.RowHeight;
 
-    private IReadOnlyList<GanttHeaderRun> UpperRuns => GanttScale.UpperRuns(ViewMode, Units);
+    // Design spec Phase 3, T2 — see GanttScale.UpperRuns' own firstDayOfWeek
+    // remarks; ignored by every HeaderUpper kind except Week (GanttViewMode.Day).
+    private IReadOnlyList<GanttHeaderRun> UpperRuns => GanttScale.UpperRuns(ViewMode, Units, EffectiveFirstDayOfWeek);
     private IReadOnlyList<string> LowerLabels => GanttScale.LowerLabels(ViewMode, Units);
+
+    private DayOfWeek EffectiveFirstDayOfWeek => FirstDayOfWeek ?? CultureInfo.CurrentCulture.DateTimeFormat.FirstDayOfWeek;
+    private IReadOnlySet<DayOfWeek> EffectiveOffDays => OffDays ?? GanttScale.DefaultOffDays(CultureInfo.CurrentCulture);
+    private DateTime EffectiveNow => Now ?? DateTime.Now;
 
     // Bug fix (Codex review wave): must pass EffectiveColumnWidth explicitly —
     // DateToPixel defaults to the mode's own config width when no override is
@@ -658,6 +1294,72 @@
     // directly rather than through DateToPixel, were already correct).
     private double TodayX => GanttScale.DateToPixel(ViewMode, Origin, Today, EffectiveColumnWidth);
     private bool TodayInRange => TodayHighlight && Units.Count > 0 && TodayX >= 0 && TodayX <= TotalWidth;
+
+    // Design spec Phase 3, T2 — Today column upgrade. DateToPixel's output is a
+    // continuous "column-space" coordinate for EVERY unit (Day/Week/Month/
+    // Year/Quarter alike: each formula is `(wholeUnits + fractionWithinUnit) *
+    // colW` — see GanttScale.DateToPixel's own per-unit remarks), so flooring
+    // TodayX to the nearest whole EffectiveColumnWidth multiple gives the LEFT
+    // EDGE of the column containing Today, mode-agnostically — no per-mode
+    // switch needed here. For Day/QuarterDay/HalfDay (this codebase's only
+    // "1 column = 1 day-or-finer" modes), Today's own DateToPixel value is
+    // ALREADY exactly on a column boundary (its date/hour is truncated to the
+    // unit before the pixel math runs), so this floor is a no-op there and
+    // TodayColumnLeft == TodayX exactly — the E2E parity spec this feeds
+    // still reads the identical pixel value the old line-only marker did.
+    private double TodayColumnLeft => Math.Floor(TodayX / EffectiveColumnWidth) * EffectiveColumnWidth;
+    private int? TodayColumnIndex => TodayInRange ? (int)Math.Floor(TodayX / EffectiveColumnWidth) : null;
+    private bool IsTodayColumn(int index) => TodayColumnIndex == index;
+
+    // G7 (2026-08-10 shadcn alignment): the off-day column tint (below) used to
+    // start BELOW the sticky header — the header's own cells had no off-day
+    // branch at all, so a weekend's date label stayed full-strength and the
+    // muted band visibly broke at the header/canvas seam instead of reading as
+    // ONE continuous band (the demo tints both: `.g-subcell.we` gets a
+    // muted/.5 bg + muted-foreground/.7 label). Same MarkOffDays &&
+    // SupportsOffDayMarking gate as the canvas tint below — a header cell for
+    // a mode that doesn't support off-day marking never evaluates
+    // IsOffDayColumn at all, matching the canvas branch's own short-circuit.
+    // Today wins the TEXT colour when a column is both today and an off day
+    // (a Saturday "today" should still read as accented, not muted) — the
+    // background tint still applies underneath either way, exactly like the
+    // canvas's own independently-layered today-tint/off-day-tint divs.
+    private string ColumnCellClass(int index)
+    {
+        var isOffDay = MarkOffDays && SupportsOffDayMarking && IsOffDayColumn(index);
+        var textColor = IsTodayColumn(index)
+            ? "font-bold text-primary"
+            : isOffDay ? "text-muted-foreground/70" : "text-muted-foreground";
+        return Cx.Merge("shrink-0 text-center text-xs", textColor, isOffDay ? "bg-muted/50" : null);
+    }
+
+    // Design spec Phase 3, T2 — "Mark off days". Column tinting only makes
+    // visual sense when a single rendered column IS a single calendar day (or
+    // finer) — Week/Month/Quarter/Year's own columns each already span many
+    // days, so "this whole [week/month/quarter/year] column is a weekend"
+    // would be a category error, not a useful highlight. Day mode (Unit=Day,
+    // Step=1) and the two Hour-unit modes (QuarterDay/HalfDay, several columns
+    // PER day) both qualify; Week (Unit=Day, Step=7 — one column per WEEK) is
+    // deliberately excluded despite sharing Day's own GanttScaleUnit.
+    //
+    // G8 (2026-08-10 shadcn alignment): the identical "column IS a single day"
+    // test also gates the today marker's full-column tint (see the markup's
+    // own remarks) — extracted so off-day marking and today-marker precision
+    // can never silently diverge on what counts as day granularity.
+    // SupportsOffDayMarking is kept as its own name (the off-day feature's own
+    // established public-facing vocabulary in this file's comments/tests)
+    // aliasing the shared test, rather than renaming call sites wholesale.
+    private bool IsDayGranularityMode => Cfg.Unit == GanttScaleUnit.Hour || (Cfg.Unit == GanttScaleUnit.Day && Cfg.Step == 1);
+    private bool SupportsOffDayMarking => IsDayGranularityMode;
+    private bool IsOffDayColumn(int index) => EffectiveOffDays.Contains(Units[index].DayOfWeek);
+
+    // Design spec Phase 3, T2 — "Now indicator ... in sub-day modes". Only the
+    // two Hour-unit modes render multiple columns within a single day, the
+    // only granularity where "the exact current minute" is a meaningfully
+    // distinct position from "today's column" above.
+    private bool SupportsNowIndicator => Cfg.Unit == GanttScaleUnit.Hour;
+    private double NowX => GanttScale.DateToPixel(ViewMode, Origin, EffectiveNow, EffectiveColumnWidth);
+    private bool NowInRange => NowIndicator && SupportsNowIndicator && Units.Count > 0 && NowX >= 0 && NowX <= TotalWidth;
 
     // Codex round 4, P2 #8: the pixel the scroll-to-center mechanism targets —
     // ScrollTargetDate when the caller (Gantt3, after a recenter) supplies one,
@@ -672,8 +1374,16 @@
     // letting a consumed preserved-center intent expire instead of re-applying
     // it forever. A standalone timeline leaves ScrollTargetDate null, so this is
     // always Today there, unchanged.
+    // Design spec Phase 3, T9 — ScrollTargetXOverride's own priority: only
+    // while intentPending (the SAME "is this intent still live" gate
+    // ScrollTargetDate already respects, immediately above), and ONLY takes
+    // over the resolution entirely — never blended with the date-derived
+    // value — see ScrollTargetXOverride's own remarks for why a leading-edge
+    // extension needs pixel-exact precision the date path cannot provide.
     private double ResolveScrollTargetX(bool intentPending) =>
-        GanttScale.DateToPixel(ViewMode, Origin, (intentPending ? ScrollTargetDate : null) ?? Today, EffectiveColumnWidth);
+        intentPending && ScrollTargetXOverride is { } pixelOverride
+            ? pixelOverride
+            : GanttScale.DateToPixel(ViewMode, Origin, (intentPending ? ScrollTargetDate : null) ?? Today, EffectiveColumnWidth);
 
     // v2 parity (Codex round 2, P2 #8): v2's scroll-to-today gate is
     // `todayPx > 0` (gantt-v2.js:684) — deliberately LOOSER than the
@@ -748,11 +1458,44 @@
     private string GridLineStyle(int columnIndex) =>
         FormattableString.Invariant($"left:{columnIndex * EffectiveColumnWidth}px;");
 
-    // Codex round 2, P1 #3: top:-4px (was HeaderHeight-4) — the same 4px
-    // decorative overhang above row 0's own top, just relative to THIS
-    // canvas's new (header-less) origin instead of the header's old bottom edge.
+    // Design spec Phase 3, T2 — off-day column tint. Same left/width shape as
+    // OffDayColumnStyle's caller passes columnIndex directly (Units[i]'s own
+    // index), so no separate pixel-to-column lookup is needed the way
+    // TodayColumnStyle below needs one (Today is an arbitrary DateTime, not
+    // already an index into Units).
+    private string OffDayColumnStyle(int index) =>
+        FormattableString.Invariant($"left:{index * EffectiveColumnWidth}px;width:{EffectiveColumnWidth}px;");
+
+    // Design spec Phase 3, T2 — replaces the old line-only TodayLineStyle.
+    // TodayColumnLeft (see its own remarks) is already the containing
+    // column's left edge, mode-agnostically.
+    private string TodayColumnStyle =>
+        FormattableString.Invariant($"left:{TodayColumnLeft}px;width:{EffectiveColumnWidth}px;");
+
+    // G8 (2026-08-10 shadcn alignment) — coarse-mode (non-day-granularity)
+    // fallback for the today marker: TodayX (Today's own exact, unfloored
+    // pixel — NOT TodayColumnLeft, which floors to the whole containing
+    // column's edge) at the SAME "-4px decorative overhang above row 0's own
+    // top" shape NowLineStyle already uses, so the two precise-line markers
+    // (today/now) read as one visual family. Only ever rendered when
+    // !IsDayGranularityMode (see the markup's own remarks) — a day-granularity
+    // chart keeps the wide TodayColumnStyle tint unchanged.
     private string TodayLineStyle =>
         FormattableString.Invariant($"left:{TodayX}px;top:-4px;");
+
+    // Header dot, centered horizontally over the today column, vertically
+    // centered within the 20px-tall upper header row (see the markup's own
+    // placement remarks) — 3px = half of the dot's own h-1.5/w-1.5 (6px) size.
+    private string TodayDotStyle =>
+        FormattableString.Invariant($"left:{TodayColumnLeft + EffectiveColumnWidth / 2.0 - 3}px;top:7px;");
+
+    // Design spec Phase 3, T2 — Now indicator. Same "-4px decorative overhang
+    // above row 0's own top" shape the old TodayLineStyle used (Codex round 2,
+    // P1 #3's own header-height removal note) — NowIndicator is a thin,
+    // PRECISE line (unlike Today's now-wide column tint), so it keeps that
+    // line-marker shape.
+    private string NowLineStyle =>
+        FormattableString.Invariant($"left:{NowX}px;top:-4px;");
 
     // Positions a GanttRowKind.GroupHeader slot's full-width stripe (Codex round
     // 2, P2 #7) — mirrors GanttBar's own RowIndex*RowHeight top math (see its
@@ -782,16 +1525,42 @@
     // (see the @if (row.Task is not null) guard in the markup above).
     //
     // GroupRowKey (Codex P2 finding, "Make group-header tracks hittable"):
-    // only ever set for a GroupHeader slot (Task is null) — the SAME RowKey
-    // RowTrackItems would otherwise compute for this row index, threaded
-    // here instead so the markup's group-header stripe can carry the
-    // data-gantt-row-track/data-row-key pair ITSELF. Without this, a pointer
-    // on that stripe hit-tests the stripe, e.target.closest('[data-gantt-row-track]')
-    // finds nothing, and gantt-v3.js's drag-create path can never start for a
-    // grouped row. RowTrackItems now excludes GroupHeader rows outright (see
-    // its own remarks) — this stripe is the row's ONLY carrier of the pair,
-    // not a second one layered over a sibling div that duplicated it.
-    internal sealed record GanttTimelineRow(GanttTask? Task, double X, double Width, int RowIndex, string? Color, string? Label, string? GroupRowKey = null);
+    // only ever set for a GroupHeader slot (Task is null) — the SAME RowKey a
+    // Task row's own inline track div (see the markup's Task branch) computes
+    // for itself, threaded here instead so the markup's group-header stripe
+    // can carry the data-gantt-row-track/data-row-key pair ITSELF. Without
+    // this, a pointer on that stripe hit-tests the stripe,
+    // e.target.closest('[data-gantt-row-track]') finds nothing, and
+    // gantt-v3.js's drag-create path can never start for a grouped row. A
+    // GroupHeader row's Task is always null, so it never reaches the Task
+    // branch's own track div at all — this stripe is the row's ONLY carrier
+    // of the pair, never a second one layered over a sibling div.
+    /// <summary>
+    /// Design spec Phase 3, T7 — which edge (if any) a row's bar is entirely
+    /// beyond the current horizontal viewport (see <see cref="ResolveOffscreenDirection"/>).
+    /// Internal — this never crosses a public parameter boundary (unlike
+    /// <see cref="GanttRowKind"/>/<see cref="GanttVisibleRow"/>, which are
+    /// forced public by CS0053 because <c>GanttTree</c>/<c>GanttTimeline</c>'s
+    /// <c>Rows</c> parameters expose them — <see cref="GanttTimelineRow"/>,
+    /// which carries this, is itself already internal, so no such forcing
+    /// applies here).
+    /// </summary>
+    internal enum GanttOffscreenDirection
+    {
+        /// <summary>The bar is at least partly visible (or the current viewport isn't known yet).</summary>
+        None,
+
+        /// <summary>The bar is entirely EARLIER than the visible window — the chip points toward the start.</summary>
+        Before,
+
+        /// <summary>The bar is entirely LATER than the visible window — the chip points toward the end.</summary>
+        After,
+    }
+
+    internal sealed record GanttTimelineRow(
+        GanttTask? Task, double X, double Width, int RowIndex, string? Color, string? Label,
+        string? GroupRowKey = null, GanttRollup? Rollup = null, double SummaryX = 0, double SummaryWidth = 0,
+        GanttOffscreenDirection Offscreen = GanttOffscreenDirection.None);
 
     // Virtualize<TItem>.Items requires ICollection<TItem> (IReadOnlyList doesn't
     // implement it) — List<T> both satisfies that and matches the pattern
@@ -801,68 +1570,169 @@
         get
         {
             var visibleRows = EffectiveRows;
+            var rollups = Rollups; // one dictionary build for the whole row list (see Rollups' own remarks)
+            // Design spec Phase 3, T7 — ColorByGroup. Computed ONCE for the
+            // whole render (matches Rollups' own "one dictionary build, not
+            // per row" discipline immediately above): GanttReorderModel.
+            // BucketKey's tasks-taking overload internally re-runs
+            // GanttRowModel.UsesHierarchy's own O(n) scan on EVERY call, so
+            // calling THAT overload once per row here would turn an O(n)
+            // render pass into O(n^2) for no reason — see BucketKey(bool,
+            // GanttTask)'s own remarks for why the precomputed-bool overload
+            // exists specifically for this call site.
+            // Bug fix (Codex review, P2 #7): must scan the SAME
+            // FilterValidDurationTasks-filtered set BuildVisibleRows itself
+            // decides hierarchy-vs-flat against — scanning the raw `Tasks`
+            // parameter directly meant a ParentId on an invalid-duration
+            // (End < Start, non-milestone) task that BuildVisibleRows had
+            // already dropped from rendering still flipped this to
+            // hierarchy mode, even though every ACTUALLY-RENDERED row was
+            // flat/GroupLabel-driven — collapsing ColorByGroup's per-group
+            // palette onto one color (every real root task shares the same
+            // null ParentId "bucket" under the wrong mode).
+            var usesHierarchy = ColorByGroup && GanttRowModel.UsesHierarchy(GanttRowModel.FilterValidDurationTasks(Tasks));
+            var visibleWindow = ShowOffscreenIndicators ? VisibleTimelineWindow : null;
             var rows = new List<GanttTimelineRow>(visibleRows.Count);
             for (var i = 0; i < visibleRows.Count; i++)
             {
-                var task = visibleRows[i].Task;
+                var row = visibleRows[i];
+                var rollup = RowRollup(row, rollups);
+                var (summaryX, summaryWidth) = rollup is { } r ? SummaryGeometry(r) : (0, 0);
+
+                var task = row.Task;
                 if (task is null)
                 {
                     // Group-header slot: still occupies row index i (matching v2's
                     // rowSlot, which advances for header rows too) — Label carries
                     // the group's own name (Codex round 2, P2 #7) so the markup's
                     // else-branch above can render v2's section-header stripe here.
-                    // GroupRowKey mirrors RowTrackItems' own RowKey(visibleRows[i])
-                    // call for this SAME row — see GanttTimelineRow's own remarks.
-                    rows.Add(new GanttTimelineRow(null, 0, 0, i, null, visibleRows[i].Label, RowKey(visibleRows[i])));
+                    // GroupRowKey calls RowKey(visibleRows[i]) for this SAME row —
+                    // see GanttTimelineRow's own remarks.
+                    rows.Add(new GanttTimelineRow(null, 0, 0, i, null, row.Label, RowKey(row), rollup, summaryX, summaryWidth));
                     continue;
                 }
-                var color = BarColor?.Invoke(task);
+                // Design spec Phase 3, T7 — ColorByGroup is the FALLBACK the
+                // plan describes ("assigns stable per-group colors ... when
+                // BarColor is null"): an explicit BarColor delegate result
+                // always wins, exactly like the null-coalescing already did
+                // before this feature existed.
+                var color = BarColor?.Invoke(task) ?? (ColorByGroup ? GanttColorModel.ResolveGroupColorVar(usesHierarchy, task) : null);
                 var (x, width) = GanttScale.BarGeometry(task, ViewMode, Origin, EffectiveColumnWidth, EffectiveBarHeight);
-                rows.Add(new GanttTimelineRow(task, x, width, i, color, null));
+                var offscreen = visibleWindow is { } w ? ResolveOffscreenDirection(x, width, w) : GanttOffscreenDirection.None;
+                rows.Add(new GanttTimelineRow(task, x, width, i, color, null, null, rollup, summaryX, summaryWidth, offscreen));
             }
             return rows;
         }
     }
 
-    // Phase 2, T3 — one (Key, RowIndex) pair per EffectiveRows entry, feeding the
-    // AllowCreate row-track markup above. Kept separate from RowItems (rather than
-    // adding a Key field there too) since RowItems' GanttTimelineRow is a hot,
-    // per-render-recomputed record already consumed by the (always-on) Virtualize
-    // block — this list only exists at all when AllowCreate is on.
-    //
-    // Bug fix (E2E follow-up to the "Make group-header tracks hittable" P2
-    // finding): a GanttRowKind.GroupHeader row is EXCLUDED here — its own
-    // group-header stripe (the markup's `else` branch below) now carries the
-    // identical data-gantt-row-track/data-row-key pair itself (see
-    // GanttTimelineRow.GroupRowKey's remarks) and paints ON TOP of, covering
-    // the EXACT SAME rectangle as, the blind div this loop would otherwise add
-    // for that row. That div was never reachable by a pointer for a group row
-    // even before this fix — closest('[data-gantt-row-track]') walks up from
-    // the click target, and the stripe (rendered later, hence higher paint
-    // order, at the SAME position) always intercepts first — so keeping BOTH
-    // produced no hit-test coverage the stripe didn't already provide, only
-    // TWO elements answering `[data-gantt-row-track][data-row-key='group::X']`
-    // (a Playwright strict-mode violation, and an ambiguous DOM contract for
-    // any other consumer of that pair). A Task row has no such duplicate —
-    // GanttBar renders no data-gantt-row-track attribute of its own — so this
-    // loop remains its ONLY source and stays unconditional for it.
-    private List<(string Key, int RowIndex)> RowTrackItems
+    // Design spec Phase 3, T7 — "outside the horizontal viewport" means
+    // fully outside; a bar that merely OVERLAPS the visible window (even by
+    // a single pixel) is already at least partly on screen and gets no chip.
+    private static GanttOffscreenDirection ResolveOffscreenDirection(double x, double width, (double Start, double End) visibleWindow)
     {
-        get
-        {
-            var visibleRows = EffectiveRows;
-            var items = new List<(string, int)>(visibleRows.Count);
-            for (var i = 0; i < visibleRows.Count; i++)
-            {
-                if (visibleRows[i].Kind == GanttRowKind.GroupHeader) continue;
-                items.Add((RowKey(visibleRows[i]), i));
-            }
-            return items;
-        }
+        if (x + width < visibleWindow.Start) return GanttOffscreenDirection.Before;
+        if (x > visibleWindow.End) return GanttOffscreenDirection.After;
+        return GanttOffscreenDirection.None;
     }
 
+    // Design spec Phase 3, T3 — every eligible parent/group row's rollup,
+    // computed ONCE per render (not per row — see GanttRollupModel's own
+    // complexity remarks) and looked up per row below via its ToggleKey. Empty
+    // (and GanttRollupModel never invoked at all) when ShowSummaryBars is off,
+    // so an existing chart that doesn't opt in pays nothing for this.
+    private static readonly IReadOnlyDictionary<string, GanttRollup> EmptyRollups = new Dictionary<string, GanttRollup>();
+
+    private IReadOnlyDictionary<string, GanttRollup> Rollups => ShowSummaryBars
+        ? GanttRollupModel.ComputeRollups(GanttRowModel.FilterValidDurationTasks(Tasks), RollupMath)
+        : EmptyRollups;
+
+    // A row has a rollup exactly when it's collapsible (HasChildren) AND the
+    // Rollups dictionary actually has an entry for its ToggleKey — the second
+    // check is what makes this correctly return null for, e.g., a leaf task
+    // row (HasChildren is always false there, ToggleKey is always null) without
+    // a separate GanttRowKind switch.
+    private static GanttRollup? RowRollup(GanttVisibleRow row, IReadOnlyDictionary<string, GanttRollup> rollups) =>
+        row.HasChildren && row.ToggleKey is not null && rollups.TryGetValue(row.ToggleKey, out var rollup) ? rollup : null;
+
+    // Same geometry formula as GanttScale.BarGeometry's own non-milestone
+    // branch (date-truncated Start/End, End's own +1-day inclusive-end
+    // convention, an 8px minimum width). GanttRollupModel's OWN default math
+    // already truncates to .Date, but a CUSTOM RollupMath override is under no
+    // such obligation — truncated again HERE (same defensive "truncate at
+    // render time, never trust the caller" precedent BarGeometry's own remarks
+    // describe for GanttTask.Start/End) rather than assumed. Not hoisted into
+    // GanttScale itself (unlike BarGeometry): nothing outside this component
+    // needs a rollup's geometry — GanttArrowLayer never draws dependency
+    // arrows to/from a synthetic summary strip.
+    private (double X, double Width) SummaryGeometry(GanttRollup rollup)
+    {
+        var x1 = GanttScale.DateToPixel(ViewMode, Origin, rollup.Start.Date, EffectiveColumnWidth);
+        var x2 = GanttScale.DateToPixel(ViewMode, Origin, rollup.End.Date.AddDays(1), EffectiveColumnWidth);
+        return (x1, Math.Max(8, x2 - x1));
+    }
+
+    // Phase 3, T1 — the per-row AllowCreate track div's own style (see the
+    // markup's Task branch above): the row-track markup itself now lives
+    // INSIDE RowItems' Virtualize item template (one div per rendered Task
+    // row, virtualized in lockstep with its own bar — was a separate,
+    // un-virtualized RowTrackItems list rendered before the Virtualize block
+    // entirely; see GanttV3StickyHeaderTests' remarks on the matching bar/tree
+    // fix this mirrors), so only the pure style-string helper remains here.
     private string RowTrackStyle(int rowIndex) =>
         FormattableString.Invariant($"left:0px;top:{rowIndex * GanttScale.RowHeight}px;height:{GanttScale.RowHeight}px;width:{TotalWidth}px;");
+
+    // Design spec Phase 3, T7 — off-screen indicator chip. "sticky" (not
+    // "absolute") is the load-bearing class here — see the markup's own
+    // remarks for why. "start-2"/"end-2" (logical, RTL-safe — matches every
+    // other edge offset in this file, e.g. GanttBar's own "start-full")
+    // decide WHICH viewport edge the chip clings to; a "Before" (earlier)
+    // bar's chip sits at the viewport's OWN start edge pointing further
+    // toward start (ChevronLeft in the markup — un-mirrored, same "v3's date
+    // axis is never mirrored for RTL" convention gantt-v3.js's own remarks
+    // establish for bar geometry), an "After" (later) bar's chip sits at the
+    // end edge pointing further toward end. rounded-[calc(var(--radius)*2)]
+    // (the theme-radius-mapped circle utility, deliberately NOT the fully-
+    // hardcoded-circle one — see RadiusTokenGuardTests' own remarks; this
+    // file is not on its audited allowlist, and that guard scans raw
+    // .razor file text, so even a comment spelling out the hardcoded
+    // utility's literal name would itself fail it) is the SAME thematic-
+    // rounding idiom the today-dot three members below already uses.
+    private static string OffscreenChipClass(GanttOffscreenDirection direction) => Cx.Merge(
+        "pointer-events-auto sticky inline-flex h-6 w-6 items-center justify-center rounded-[calc(var(--radius)*2)] border border-border/60 bg-card text-muted-foreground shadow-sm transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring",
+        direction == GanttOffscreenDirection.Before ? "start-2" : "end-2");
+
+    // Real bug found via this campaign's own E2E gate — see
+    // LeadingPaneWidth's own remarks for the full mechanism: a "before" chip
+    // needs its inline-start offset pushed PAST the pinned tree pane (when
+    // shown), or it lands exactly where the tree pane's own rows/grips are.
+    // Only the "before" direction is affected — nothing else pins to the
+    // opposite (end) edge, so "after" needs no equivalent adjustment. Inline
+    // style (not a class) because the offset is a runtime pixel value, not
+    // one of Tailwind's fixed spacing steps — matches every other
+    // interop-driven geometry value in this file (e.g. WrapperStyle).
+    private string? OffscreenChipStyle(GanttOffscreenDirection direction) =>
+        direction == GanttOffscreenDirection.Before && LeadingPaneWidth > 0
+            ? FormattableString.Invariant($"inset-inline-start:{LeadingPaneWidth + 8}px;")
+            : null;
+
+    // Design spec Phase 3, T7 — the off-screen chip's click "routes through
+    // this existing scroll interop, not a new channel" (per the dispatch):
+    // reuses ScrollToCenterAsync (below) — the SAME private helper
+    // Today-centering already calls, itself a thin wrapper over the ONE
+    // GanttV3ScrollToXAsync interop call every scroll-to-X path in this
+    // component funnels through — rather than bubbling an event up to
+    // Gantt3/GanttState.ScrollToTaskAsync. GanttTimeline must keep working
+    // fully standalone (no Gantt3/GanttState wrapping it — an established,
+    // repeatedly-tested contract throughout this campaign), so routing the
+    // chip's click THROUGH GanttState first isn't viable for that case; this
+    // way the chip works identically whether Gantt3 hosts this timeline or
+    // not, and GanttState.ScrollToTaskAsync (when a caller DOES go through
+    // it) bottoms out in this exact same interop call anyway — see
+    // GanttState's own T4 remarks. Centers on the bar's own pixel midpoint —
+    // the SAME "midpoint of the span" convention T4's ScrollToTaskAsync
+    // already established (there: a task's DATE span; here: the identical
+    // idea applied to this bar's own already-resolved pixel span).
+    private Task ScrollToBarAsync(GanttTimelineRow row) => ScrollToCenterAsync(row.X + row.Width / 2);
 
     // A stable identity for a GanttVisibleRow, independent of its list position
     // (so a row reorder/collapse between pointerdown and the eventual CommitCreate
@@ -916,6 +1786,12 @@
             // calls (each keyed off its own independent Map in gantt-v3.js), so
             // reordering only this call is safe.
             await SyncDragRegistrationAsync();
+            // Design spec Phase 3, T8 — a SEPARATE channel from the drag engine
+            // above (see BarContextMenu's own remarks for why); registering it
+            // here too, in the SAME first-render block, keeps both delegated
+            // listeners attached before the first real pointer/mouse event a
+            // Playwright spec could possibly fire.
+            await SyncBarContextMenuRegistrationAsync();
 
             // Codex round 3, P2 #1: the JS scroll-sync transform exists ONLY to
             // work around an intervening overflow-x:auto ancestor hijacking the
@@ -1090,6 +1966,11 @@
         }
 
         await SyncDragRegistrationAsync();
+        // Design spec Phase 3, T8 — checked on EVERY render too (not just
+        // firstRender), same "a runtime flip re-syncs immediately" contract as
+        // SyncDragRegistrationAsync's own remarks: a caller wiring/un-wiring
+        // BarContextMenu after mount takes effect on the very next render.
+        await SyncBarContextMenuRegistrationAsync();
     }
 
     // Codex round 4, P2 #3. Idempotent per EffectiveScrollHost value — the JS
@@ -1182,17 +2063,211 @@
 
     /// <summary>
     /// Reports the shared scroll pane's current scrollTop/clientHeight (Codex
-    /// round 4, P2 #3) — invoked from JS via <c>registerVerticalScrollTracking</c>'s
-    /// rAF-throttled listener, on a native 'scroll' event OR (Codex round 6,
-    /// P1 #2) a ResizeObserver firing for a pane-size change. Public because
+    /// round 4, P2 #3) AND — design spec Phase 3, T7 — its logical
+    /// scrollLeft/clientWidth (off-screen indicators' own viewport signal).
+    /// Invoked from JS via <c>registerVerticalScrollTracking</c>'s rAF-throttled
+    /// listener, on a native 'scroll' event OR (Codex round 6, P1 #2) a
+    /// ResizeObserver firing for a pane-size change. Public because
     /// <c>[JSInvokable]</c> requires it — not meant for direct C# callers.
+    ///
+    /// T7 extended this SAME payload/channel rather than registering a new
+    /// one: the identical native 'scroll' event this listener already reacts
+    /// to fires for horizontal panning too (there is only one 'scroll' event
+    /// per element — see this method's OWN pre-existing round-5 dedup remarks
+    /// two methods below), so gantt-v3.js's report() already had everything
+    /// it needed to also read el.scrollLeft/el.clientWidth at zero extra
+    /// event-listener cost — the same "extend the existing interop family,
+    /// no separate channel" precedent T2's NowIndicator established for
+    /// GanttV3GetLocalDateAsync. The method/registration NAMES still say
+    /// "Vertical" (a deliberate, considered choice, not an oversight — see
+    /// the Phase-3 ledger entry): renaming would ripple through the JS
+    /// module's exports, IComponentInteropService's default-interface method
+    /// signatures, and every existing test referencing this specific channel
+    /// by name, for a purely cosmetic gain with no functional upside: this
+    /// XML doc comment is the discoverable "also carries horizontal scroll
+    /// extent now" pointer instead.
     /// </summary>
     [JSInvokable]
-    public void OnGanttV3VerticalScroll(double scrollTop, double clientHeight)
+    public void OnGanttV3VerticalScroll(double scrollTop, double clientHeight, double scrollLeft, double clientWidth)
     {
+        // Real bug found via the E2E gate (bUnit's own coverage never
+        // exercised a SECOND report against an already-populated
+        // _visibleRowRange, so it never caught this): RecomputeVisibleRowRange
+        // below only calls StateHasChanged when the VERTICAL culling range
+        // actually changes (its own "no-op: avoid a redundant re-render"
+        // guard — a deliberate, correct optimization for a horizontal-only
+        // pan BEFORE off-screen indicators existed, since nothing arrow-
+        // culling-relevant changes then). T7 added a SECOND consumer of this
+        // same report (VisibleTimelineWindow) that DOES care about a
+        // horizontal-only change — a pure horizontal pan with the vertical
+        // range unchanged (the common case: scrolling to browse dates
+        // without also scrolling rows) silently never re-rendered the
+        // off-screen chips at all, since RecomputeVisibleRowRange's own gate
+        // has no idea a second, horizontal-only consumer exists. Detected
+        // BEFORE committing to the render decision (comparing against the
+        // OLD field values, not the ones being overwritten right below).
+        var horizontalChanged = ShowOffscreenIndicators &&
+            (_lastReportedScrollLeft != scrollLeft || _lastReportedClientWidth != clientWidth);
         _lastReportedScrollTop = scrollTop;
         _lastReportedClientHeight = clientHeight;
+        _lastReportedScrollLeft = scrollLeft;
+        _lastReportedClientWidth = clientWidth;
         RecomputeVisibleRowRange(scrollTop, clientHeight);
+        // Idempotent to call alongside RecomputeVisibleRowRange's own
+        // (conditional) call above — Blazor coalesces multiple StateHasChanged
+        // calls within one synchronous handler into a single render.
+        if (horizontalChanged) StateHasChanged();
+
+        // Design spec Phase 3, T9 — infinite scroll's own edge-detection half.
+        // Threshold math lives HERE (C#), not in gantt-v3.js's report(),
+        // deliberately: VisibleTimelineWindow/TotalWidth below are ALREADY
+        // leading-offset- AND RTL-normalized (see VisibleTimelineWindow's own
+        // remarks) — a sibling tree pane's width (LTR-only) is folded OUT of
+        // the reported scrollLeft before either value is ever compared, which
+        // gantt-v3.js's report() has no way to do on its own (ScrollHostLeadingOffset
+        // is a Gantt3/GanttTimeline-only concept, never pushed to JS). Reusing
+        // these ALREADY-hardened, already-RTL-correct C# values for the
+        // threshold check is "reuse GanttScale origin math, no second
+        // implementation" applied to the EDGE-DETECTION half of T9, not only
+        // the recenter half (see HandleRangeExtensionRequestAsync's own
+        // remarks in Gantt3.razor for that half) — a deliberate departure from
+        // the plan's own literal "JS detects threshold" wording once research
+        // showed JS lacks the one input (leading offset) that math needs to be
+        // correct under a visible tree pane (same "research can replace the
+        // plan's literal wording when it doesn't hold up against the actual
+        // code" precedent T7's own decision 5 already established).
+        // Design spec Phase 3, T9 — consumes ScrollToCenterAsync's own
+        // suppression flag (see its remarks) UNCONDITIONALLY, before the
+        // InfiniteScroll/VisibleTimelineWindow gate below — a programmatic
+        // recenter that happens to fire while InfiniteScroll is false, or
+        // before the pane has been measured yet, must still clear the flag
+        // rather than leave it armed to wrongly suppress a LATER, genuine
+        // near-edge report once those conditions change.
+        var suppressThisReport = _suppressNextExtensionReport;
+        _suppressNextExtensionReport = false;
+
+        if (!suppressThisReport && InfiniteScroll && VisibleTimelineWindow is { } window)
+        {
+            // "Nearing an edge" = within one viewport-width of it — the SAME
+            // "a page" language the plan uses for how much MORE range an
+            // extension adds (see Gantt3.PadBoundaryBefore/After's own
+            // remarks), reused here as the TRIGGER distance too: fewer than
+            // one more full screenful of already-rendered range remains.
+            var thresholdPx = clientWidth;
+            var nearLeading = window.Start < thresholdPx;
+            var nearTrailing = (TotalWidth - window.End) < thresholdPx;
+            // Leading checked first, not both independently — extending
+            // EITHER edge moves the threshold for the other one too; a range
+            // narrower than 2 viewport-widths (both near at once) still gets
+            // the OTHER edge's own request on the very next report instead of
+            // firing two overlapping requests from this single one.
+            if (nearLeading) _ = TryRequestRangeExtensionAsync(leading: true);
+            else if (nearTrailing) _ = TryRequestRangeExtensionAsync(leading: false);
+        }
+    }
+
+    /// <summary>
+    /// The JS-report-to-Gantt3 request pipeline's OWN half (design spec Phase
+    /// 3, T9) — see <see cref="OnRangeExtensionRequested"/>'s own remarks for
+    /// why this component only ever ASKS, never commits <c>VisibleRange</c>
+    /// itself. Fire-and-forget from <see cref="OnGanttV3VerticalScroll"/>'s own
+    /// synchronous body (<c>_ = TryRequestRangeExtensionAsync(...)</c>): this
+    /// method is genuinely async (one interop round-trip here, then
+    /// <c>Gantt3</c>'s own longer async pipeline behind the EventCallback),
+    /// which a <c>[JSInvokable] void</c> method cannot itself await without
+    /// changing its signature — see that method's own remarks on why its
+    /// signature stays untouched (a heavily-referenced existing channel, not
+    /// worth widening for this one new caller).
+    /// </summary>
+    private async Task TryRequestRangeExtensionAsync(bool leading)
+    {
+        if (_rangeExtensionInFlight) return; // see its own remarks
+        // Bug fix (Codex review, P2 #6): this used to stay false across the
+        // FIRST await below (GanttV3HasActiveDragAsync) and only get set
+        // true once that resolved — under real latency, a second near-edge
+        // report arriving while that first await is still in flight passed
+        // this SAME (still-false) check, so both proceeded, both eventually
+        // set the flag, and both invoked OnRangeExtensionRequested — two
+        // overlapping extensions for one edge encounter (confirmed via
+        // GanttV3Phase3T9Tests' own two_reports-racing specs, both
+        // directions — Gantt3.HandleRangeExtensionRequestAsync's own
+        // per-request staleness re-check does NOT catch this: continuation
+        // #1 can run start-to-finish, INCLUDING clearing this flag again in
+        // its own `finally`, entirely within continuation #2's single
+        // suspended await, so #2's own fresh capture of VisibleRange never
+        // sees anything stale). Set BEFORE the first await, cleared in the
+        // SAME try/finally that now wraps the whole method, so no window
+        // exists where this instance is genuinely mid-request yet reads as
+        // available.
+        _rangeExtensionInFlight = true;
+        try
+        {
+            // Design spec Phase 3, T9, decision 3 — the CHEAP half of the
+            // gesture-suppression gate: avoids even asking Gantt3 (which
+            // would itself do a live-scroll-center interop round trip for
+            // the leading case) while a drag is visibly active at this
+            // exact moment. See GanttV3HasActiveDragAsync's own remarks for
+            // why Gantt3 ALSO re-checks this, right before it actually
+            // commits — this call alone does not close the whole race, only
+            // the common case cheaply.
+            if (await Interop.GanttV3HasActiveDragAsync()) return;
+            if (_disposed) return;
+            if (OnRangeExtensionRequested.HasDelegate)
+                await OnRangeExtensionRequested.InvokeAsync(leading);
+        }
+        finally
+        {
+            _rangeExtensionInFlight = false;
+        }
+    }
+
+    // Design spec Phase 3, T7 — the current horizontal scroll viewport, in
+    // the SAME timeline-origin-relative pixel space GanttBar.X/Width already
+    // live in (0 = ViewMode's earliest rendered date) — i.e. WITH
+    // ScrollHostLeadingOffset (a sibling tree pane's width, LTR-with-tree
+    // only) subtracted back out, since the reported scrollLeft is relative to
+    // the shared scroll pane's own content origin, which starts at the TREE
+    // pane's edge in hosted mode, not the timeline's (see ScrollToCenterAsync's
+    // own remarks — it ADDS this same offset going the other direction, for
+    // exactly the inverse reason). Null until the first report arrives, OR
+    // when clientWidth hasn't been reported yet — RowItems treats null as
+    // "don't compute any row's off-screen status" (see its own remarks),
+    // matching _visibleRowRange's identical null-means-unknown convention two
+    // members up.
+    private (double Start, double End)? VisibleTimelineWindow
+    {
+        get
+        {
+            // clientWidth <= 0 is treated as "not yet measured" — the SAME
+            // convention RecomputeVisibleRowRange already uses for
+            // clientHeight (see its own "if (... || clientHeight <= 0)
+            // return" guard) — a real browser viewport never reports a
+            // zero/negative width, so this doubles as the test-helper
+            // backward-compat path (TrackingInteropService.RaiseGanttV3VerticalScroll's
+            // scrollLeft/clientWidth default to 0 for every EXISTING call
+            // site that predates T7 and never meant to simulate horizontal
+            // scroll at all).
+            if (_lastReportedScrollLeft is not { } scrollLeft || _lastReportedClientWidth is not { } clientWidth || clientWidth <= 0) return null;
+            var start = scrollLeft - ScrollHostLeadingOffset;
+            // Bug fix (Codex review, P2 #3): `clientWidth` is the RAW client
+            // width of the shared scroll host — in hosted Gantt3 with a tree
+            // pane shown, that host also contains the STICKY tree pane, which
+            // permanently occupies LeadingPaneWidth px of it regardless of
+            // scroll position (sticky positioning doesn't remove an element
+            // from layout flow, so it always consumes its own column width).
+            // Only `clientWidth - LeadingPaneWidth` px are actually visible
+            // TIMELINE content. This is a SEPARATE correction from
+            // ScrollHostLeadingOffset above (which only shifts the ORIGIN,
+            // LTR-with-tree only, collapsing to 0 under RTL per its own
+            // remarks) — LeadingPaneWidth is logical and applies in BOTH
+            // directions (see its own remarks), so subtracting it here from
+            // the raw width is correct for both LTR and RTL, unlike reusing
+            // ScrollHostLeadingOffset for this. Without it, a bar sitting
+            // behind the pinned tree's own footprint read as fully inside
+            // the window and never got an off-screen indicator/never
+            // triggered infinite-scroll edge detection.
+            return (start, start + clientWidth - LeadingPaneWidth);
+        }
     }
 
     // Codex round 6, P1 #2: extracted so a rows-count change (empty->populated,
@@ -1252,7 +2327,32 @@
     // caller-supplied override) — the offset defaults to 0, so this reduces to
     // exactly the previous "Interop.GanttV3ScrollToXAsync(EffectiveScrollHost,
     // TodayX)" call for a standalone timeline.
-    private Task ScrollToCenterAsync(double targetX) => Interop.GanttV3ScrollToXAsync(EffectiveScrollHost, ScrollHostLeadingOffset + targetX);
+    //
+    // Design spec Phase 3, T9 — the ONE shared choke point EVERY programmatic
+    // recenter already funnels through (Today/Prev/Next, a view-mode switch,
+    // GanttState.ScrollToDateAsync/ScrollToTaskAsync, an off-screen-chip
+    // click) is exactly where infinite scroll's own gesture-suppression-
+    // adjacent problem needs its fix: a DELIBERATE recenter can legitimately
+    // land the viewport within one page of VisibleRange's own edge whenever
+    // the rendered range isn't drastically wider than the viewport (e.g. a
+    // freshly Today-recentered Month-mode window, ~2x a typical viewport
+    // wide) — that is NOT the user "running out of room while exploring," it
+    // is the SYSTEM placing them there on purpose, and immediately
+    // auto-extending underneath them would silently re-shift the very view
+    // they just asked for (a real bug this task's own local E2E gate caught:
+    // GanttV3NavTests' Today/Next-Previous specs shifted VisibleRange.Start
+    // by an EXTRA Month-mode PadBefore, 12 months, immediately after the
+    // recenter they were asserting on). Setting this flag here — BEFORE the
+    // interop call, so it is armed even if the awaited call itself is what
+    // triggers the resulting native 'scroll' event synchronously — and
+    // consuming it on the very NEXT OnGanttV3VerticalScroll report (see its
+    // own remarks) treats exactly one post-recenter report as "this is the
+    // scroll settling," not "the user wants more."
+    private Task ScrollToCenterAsync(double targetX)
+    {
+        _suppressNextExtensionReport = true;
+        return Interop.GanttV3ScrollToXAsync(EffectiveScrollHost, ScrollHostLeadingOffset + targetX);
+    }
 
     // Phase 2, T1 — (un)registers gantt-v3.js's pointer drag engine against
     // _scrollHostRef (the row-canvas element — where bars/tracks actually
@@ -1278,7 +2378,7 @@
             return;
         }
 
-        // Phase 2, T2 — CanDrop's null-ness is folded into the hash too: a
+        // Phase 2, T2 — CanDrop's null-ness is folded into the options too: a
         // runtime CanDrop change (null <-> non-null) must re-push
         // BuildDragOptions' hasCanDrop flag to JS even when ColumnWidth/
         // PixelsPerDay are unchanged, or a caller that starts/stops validating
@@ -1292,12 +2392,21 @@
         // EffectiveColumnWidth/PixelsPerDay, so panning via GanttNav's
         // Previous/Next (which moves RangeStart without touching ColumnWidth)
         // would otherwise leave JS computing create dates off a stale origin.
-        var optionsHash = HashCode.Combine(EffectiveColumnWidth, PixelsPerDay, CanDrop is not null, AllowCreate, Origin);
-        if (_dragRegistered && optionsHash == _lastDragOptionsHash) return;
+        //
+        // Phase 3, T1 — GanttInteropOptions (a record) replaces a plain
+        // HashCode.Combine of these same 5 fields: `==` on a record is exact
+        // structural equality (no collision risk, no HashCode.Combine 8-arg
+        // ceiling to run into as the Phase-3 watch-list adds more candidate
+        // fields) — see GanttInteropOptions' own remarks for why this is a
+        // pure representation swap, not a behavior change (same 5 fields,
+        // same gate, same drag-safety story: gantt-v3.js snapshots options at
+        // pointerdown regardless of when/whether a re-registration lands).
+        var options = new GanttInteropOptions(EffectiveColumnWidth, PixelsPerDay, CanDrop is not null, AllowCreate, Origin);
+        if (_dragRegistered && options == _lastDragOptions) return;
 
         _selfRef ??= DotNetObjectReference.Create(this);
         _dragRegistered = true;
-        _lastDragOptionsHash = optionsHash;
+        _lastDragOptions = options;
 
         // Bug fix (Codex P2 finding, "Keep pointer clicks when drag interop
         // is unavailable"): every existing IComponentInteropService consumer
@@ -1324,7 +2433,7 @@
         // fix closes.
         try
         {
-            await Interop.GanttV3RegisterDragAsync(_scrollHostRef, _selfRef, BuildDragOptions());
+            await Interop.GanttV3RegisterDragAsync(_scrollHostRef, _selfRef, BuildDragOptions(options));
             if (!_dragConfirmed)
             {
                 _dragConfirmed = true;
@@ -1369,6 +2478,59 @@
         }
     }
 
+    // Design spec Phase 3, T8 — (un)registers gantt-v3.js's bar context-menu
+    // channel against _scrollHostRef (the SAME delegation target
+    // SyncDragRegistrationAsync uses — bars/tracks live there). Checked on
+    // EVERY render (see both OnAfterRenderAsync call sites' own remarks), so a
+    // runtime BarContextMenu wire/un-wire re-syncs immediately.
+    //
+    // Deliberately INDEPENDENT of Readonly — see BarContextMenu's own remarks
+    // for why a context menu is a view action, not an edit, and must not
+    // share the drag engine's "no listeners at all when Readonly" contract.
+    // Idempotent per gantt-v3.js's own registerBarContextMenu (re-registering
+    // just swaps the stored dotNetRef in place), so this only needs to gate
+    // on "has BarContextMenu ever been set", not track any options equality
+    // the way SyncDragRegistrationAsync's GanttInteropOptions does — there is
+    // no options bag for this channel at all (bucket/task identity is read
+    // straight off data-task-id, same as every other bar-scoped interaction).
+    private async Task SyncBarContextMenuRegistrationAsync()
+    {
+        if (BarContextMenu is null)
+        {
+            if (_barContextMenuRegistered)
+            {
+                _barContextMenuRegistered = false;
+                await Interop.GanttV3UnregisterBarContextMenuAsync(_scrollHostRef);
+            }
+            return;
+        }
+
+        if (_barContextMenuRegistered) return;
+
+        _selfRef ??= DotNetObjectReference.Create(this);
+        _barContextMenuRegistered = true;
+        try
+        {
+            await Interop.GanttV3RegisterBarContextMenuAsync(_scrollHostRef, _selfRef);
+        }
+        catch (Exception)
+        {
+            // Same "degrade, don't take the render down" reasoning as
+            // SyncDragRegistrationAsync's own catch — a custom
+            // IComponentInteropService that never overrides this method, or a
+            // register call that genuinely throws, should leave the chart
+            // showing the browser's native context menu on right-click rather
+            // than faulting.
+            _barContextMenuRegistered = false;
+        }
+
+        if (_disposed)
+        {
+            try { await Interop.GanttV3UnregisterBarContextMenuAsync(_scrollHostRef); }
+            catch (JSDisconnectedException) { }
+        }
+    }
+
     // gantt-v2.js's pixelsPerDay(viewMode) (lines 727-734) ported to C# as
     // GanttScale.PixelsPerDay — "JS never re-derives" the snap config (Global
     // constraints), so this number is computed HERE and handed to JS as a
@@ -1379,10 +2541,16 @@
     // a Dictionary (not an anonymous type) so the option bag survives a
     // trimmed publish (JSRuntime's reflection-based serializer otherwise
     // throws ConstructorContainsNullParameterNames for an anonymous type).
-    private object BuildDragOptions() => new Dictionary<string, object?>
+    //
+    // Phase 3, T1 — takes the SAME GanttInteropOptions instance
+    // SyncDragRegistrationAsync just compared for equality (not a fresh
+    // read of EffectiveColumnWidth/PixelsPerDay/etc.), so the wire payload
+    // and the re-registration gate can never observe two different values
+    // for the same field within one call.
+    private object BuildDragOptions(GanttInteropOptions options) => new Dictionary<string, object?>
     {
-        ["columnWidth"] = EffectiveColumnWidth,
-        ["pixelsPerDay"] = PixelsPerDay,
+        ["columnWidth"] = options.ColumnWidth,
+        ["pixelsPerDay"] = options.PixelsPerDay,
         ["resizeHandlePx"] = 6,
         // Phase 2, T2 — tells gantt-v3.js whether to bother calling ValidateDrop
         // AT ALL during a move/resize drag. A plain "CanDrop is null on the C#
@@ -1391,14 +2559,14 @@
         // is exactly the "NO ValidateDrop calls happen at all" the plan rules out
         // when no validator is configured — so the gate lives on the JS side,
         // driven by this flag, not merely as a permissive .NET return value.
-        ["hasCanDrop"] = CanDrop is not null,
+        ["hasCanDrop"] = options.HasCanDrop,
         // Phase 2, T3 — gates whether gantt-v3.js's onPointerDown even LOOKS for
         // a [data-gantt-row-track] hit when no bar was hit. The row-track
         // elements themselves are also only rendered at all when this is true
         // (see the markup's own @if (AllowCreate && !Readonly) guard) — this
         // flag is defense-in-depth on top of "the elements don't even exist",
         // not the only thing stopping a stray create-drag.
-        ["allowCreate"] = AllowCreate,
+        ["allowCreate"] = options.AllowCreate,
         // Phase 2, T3 — the row-canvas-space date origin (Origin below), needed
         // ONLY for drag-create: unlike move/resize/progress (which always have
         // an EXISTING bar's data-task-start/-end to anchor from), a brand-new
@@ -1406,7 +2574,7 @@
         // date to convert a snapped day-COLUMN index back into a real calendar
         // date. "JS never re-derives" (Global constraints) — Origin is computed
         // here from GanttScale.BuildDateUnits, never recalculated in JS.
-        ["originIso"] = Origin.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+        ["originIso"] = options.Origin.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
         // Bug fix (Codex P2 finding "Map drag-create pixels through the
         // active calendar scale"): drag-create used pixelsPerDay's own
         // columnWidth/30-or-/365 APPROXIMATION (see PixelsPerDay's remarks —
@@ -1646,6 +2814,42 @@
     }
 
     /// <summary>
+    /// JS -&gt; .NET bar right-click notification (design spec Phase 3, T8). Called
+    /// by gantt-v3.js's own delegated <c>contextmenu</c> listener (<c>ganttV3.
+    /// registerBarContextMenu</c>) — see its own remarks for the FULL drag-isolation
+    /// contract: it never even reaches here for a bar with an active drag/pending
+    /// gesture (the JS side swallows that case itself, <c>preventDefault</c> and no
+    /// invocation at all), and it never competes with a drag STARTING either — a real
+    /// drag only ever begins from a LEFT-button pointerdown (<c>registerDrag</c>'s own
+    /// unconditional <c>e.button !== 0</c> gate), unrelated to this channel's native
+    /// 'contextmenu' event entirely.
+    ///
+    /// Deliberately does NOT check <see cref="Readonly"/> — see <see
+    /// cref="BarContextMenu"/>'s own remarks: a context menu is a view action, not an
+    /// edit, and stays available on a Readonly chart by design (the caller's own menu
+    /// content decides what actions to offer there, exactly like <see
+    /// cref="GanttBar"/>'s tooltip/keyboard focus already do). Guards only on <see
+    /// cref="BarContextMenu"/> itself being set — a defensive, "public surface, don't
+    /// trust it blindly" check mirroring every other JSInvokable in this class, for the
+    /// case where a caller un-wires the parameter between this channel's registration
+    /// and a JS call already in flight.
+    /// </summary>
+    [JSInvokable]
+    public void NotifyBarContextMenu(string taskId, double clientX, double clientY)
+    {
+        if (BarContextMenu is null) return;
+
+        var task = FindTask(taskId);
+        if (task is null) return;
+
+        _barContextMenuTask = task;
+        _barContextMenuX = clientX;
+        _barContextMenuY = clientY;
+        _barContextMenuOpen = true;
+        StateHasChanged();
+    }
+
+    /// <summary>
     /// JS -&gt; .NET live scheduling drop validation (design spec Phase 2, T2 —
     /// the REUI <c>canDropEvent</c> analog). Called by gantt-v3.js at most once
     /// per SNAPPED position during a move/resize drag (never for a progress drag)
@@ -1698,8 +2902,50 @@
     // Shared by CommitDrag/CommitProgress/NotifyTaskClick/ValidateDrop — resolves
     // against EffectiveRows (not the raw Tasks parameter), see CommitDrag's own
     // remarks for why that's correct for a hierarchy-filtered/collapsed caller.
+    //
+    // Phase 3, T1 — O(1) dictionary lookup (was an O(rows) Select+FirstOrDefault
+    // LINQ scan, re-walked from scratch on EVERY one of these 4 JSInvokable
+    // calls). _taskIndex is rebuilt once per parameter pass (OnParametersSet,
+    // below) — "alongside Rows", i.e. from the exact same EffectiveRows a
+    // render just committed — rather than lazily on first use, since a
+    // JSInvokable can arrive at any time BETWEEN renders (a drag commit, a
+    // click) and must resolve against whatever was last actually rendered, the
+    // same snapshot-timing CommitDrag's own remarks already rely on ("any task
+    // with an active drag is, by definition, currently rendered").
     private GanttTask? FindTask(string taskId) =>
-        EffectiveRows.Select(r => r.Task).FirstOrDefault(t => t is not null && t.Id == taskId);
+        _taskIndex.TryGetValue(taskId, out var task) ? task : null;
+
+    // Phase 3, T1 — the task-index dictionary itself (see FindTask's remarks).
+    // Starts as a shared empty instance so FindTask is always safe to call even
+    // before the first OnParametersSet has run (unreachable in practice — no JS
+    // listener exists yet at that point — but costs nothing to make provably
+    // safe rather than relying on that being true).
+    private Dictionary<string, GanttTask> _taskIndex = new();
+
+    // Rebuilds _taskIndex from EffectiveRows — called once per parameter pass
+    // (OnParametersSet), so it always reflects whatever Rows/Tasks a render
+    // just committed, in lockstep with every other EffectiveRows-derived
+    // markup this component renders (RowItems, the per-row drag-create track).
+    // GroupHeader rows (Task null) are skipped, same population FindTask's old
+    // LINQ scan implicitly filtered via `t is not null`.
+    private void RebuildTaskIndex()
+    {
+        var rows = EffectiveRows;
+        var index = new Dictionary<string, GanttTask>(rows.Count);
+        foreach (var row in rows)
+        {
+            if (row.Task is not null) index[row.Task.Id] = row.Task;
+        }
+        _taskIndex = index;
+    }
+
+    // Phase 3, T1 — the one place _taskIndex is kept in sync with Rows/Tasks:
+    // OnParametersSet runs synchronously on EVERY parameter-driven render pass
+    // (including the very first, before OnInitialized's own first render), so
+    // by the time any JSInvokable below could possibly be reachable (a JS
+    // listener only attaches after OnAfterRenderAsync's own first pass), the
+    // index already reflects the just-set parameters.
+    protected override void OnParametersSet() => RebuildTaskIndex();
 
     public async ValueTask DisposeAsync()
     {
@@ -1712,6 +2958,15 @@
         if (_dragRegistered)
         {
             try { await Interop.GanttV3UnregisterDragAsync(_scrollHostRef); }
+            catch (JSDisconnectedException) { }
+        }
+
+        // Design spec Phase 3, T8 — tear down the bar context-menu channel too
+        // (a separate registration from the drag listener above — see its own
+        // remarks).
+        if (_barContextMenuRegistered)
+        {
+            try { await Interop.GanttV3UnregisterBarContextMenuAsync(_scrollHostRef); }
             catch (JSDisconnectedException) { }
         }
 

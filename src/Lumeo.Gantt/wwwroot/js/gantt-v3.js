@@ -65,6 +65,23 @@ export const ganttV3 = {
         return `${y}-${m}-${day}`;
     },
 
+    // Browser-local "now" as yyyy-MM-ddTHH:mm:ss (design spec Phase 3, T2 —
+    // NowIndicator's precise current-TIME line in sub-day view modes). Extends
+    // the SAME browser-clock family getLocalDateIso above already established
+    // rather than a parallel channel — see GanttV3GetLocalDateTimeAsync's own
+    // remarks. Same local-field construction (never toISOString) as
+    // getLocalDateIso, for the same UTC-conversion-would-roll-the-day reason.
+    getLocalDateTimeIso() {
+        const d = new Date();
+        const y = d.getFullYear();
+        const m = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        const h = String(d.getHours()).padStart(2, '0');
+        const min = String(d.getMinutes()).padStart(2, '0');
+        const s = String(d.getSeconds()).padStart(2, '0');
+        return `${y}-${m}-${day}T${h}:${min}:${s}`;
+    },
+
     // Reads el's CURRENT logical horizontal center (Codex round 5, P2 #5) —
     // the same "logical" coordinate space (0 = the scrollable content's own
     // physical-left origin, RTL-normalized via fromNativeScrollLeft) that
@@ -101,6 +118,18 @@ export const ganttV3 = {
 
     registerDrag,
     unregisterDrag,
+
+    registerSplitterDrag,
+    unregisterSplitterDrag,
+    resetSplitterWidth,
+
+    registerRowReorderDrag,
+    unregisterRowReorderDrag,
+
+    registerBarContextMenu,
+    unregisterBarContextMenu,
+
+    hasActiveDrag,
 };
 
 // Sticky-header horizontal scroll sync (Codex round 2, P1 #3 — "sticky header
@@ -164,12 +193,21 @@ function unregisterHeaderScrollSync(canvasEl) {
 // precisely the mode where this virtualization actually matters at scale),
 // rAF-throttled so a fast scroll/drag doesn't flood Blazor with an
 // invokeMethodAsync round-trip per native 'scroll' event.
-const verticalScrollTrackers = new Map(); // el -> { dotNetRef, onScroll, pendingFrame, lastScrollTop, lastClientHeight, resizeObserver }
+const verticalScrollTrackers = new Map(); // el -> { dotNetRef, onScroll, pendingFrame, lastScrollTop, lastClientHeight, lastScrollLeft, lastClientWidth, resizeObserver }
 
 function registerVerticalScrollTracking(el, dotNetRef) {
     if (!el || verticalScrollTrackers.has(el)) return;
     const report = () => {
         tracker.pendingFrame = null;
+        // Design spec Phase 3, T7 — off-screen indicators need the shared
+        // pane's HORIZONTAL extent too; fromNativeScrollLeft (this file's own
+        // RTL-normalization helper, already used by registerHeaderScrollSync
+        // for the identical "live native 'scroll' event -> logical offset"
+        // conversion) un-mirrors it into the SAME never-mirrored coordinate
+        // space GanttScale.DateToPixel/every bar's own X already live in, so
+        // the .NET side needs no further conversion.
+        const scrollLeft = fromNativeScrollLeft(el, el.scrollLeft);
+        const clientWidth = el.clientWidth;
         // Bug fix (Codex round 5, P2 #8): a horizontal-only pan (scrolling the
         // SAME shared pane sideways to browse dates) fires the identical
         // native 'scroll' event this listener reacts to — there is only one
@@ -189,9 +227,20 @@ function registerVerticalScrollTracking(el, dotNetRef) {
         // position) was silently swallowed by this SAME check, even though
         // clientHeight is the other half of the culling window's own inputs.
         // Now requires BOTH to be unchanged before skipping.
-        if (el.scrollTop === tracker.lastScrollTop && el.clientHeight === tracker.lastClientHeight) return;
+        //
+        // Design spec Phase 3, T7: scrollLeft/clientWidth joined the SAME
+        // dedup — critically, this is what makes a PURE horizontal pan (the
+        // exact scenario off-screen indicators exist for) actually report at
+        // all: before T7, scrollTop/clientHeight alone would have kept
+        // matching their cached values throughout a horizontal-only drag,
+        // silently swallowing every such report the same class of bug the
+        // round-6 clientHeight fix already closed for resize.
+        if (el.scrollTop === tracker.lastScrollTop && el.clientHeight === tracker.lastClientHeight &&
+            scrollLeft === tracker.lastScrollLeft && clientWidth === tracker.lastClientWidth) return;
         tracker.lastScrollTop = el.scrollTop;
         tracker.lastClientHeight = el.clientHeight;
+        tracker.lastScrollLeft = scrollLeft;
+        tracker.lastClientWidth = clientWidth;
         // Debug/test-observability counter (Codex round 5, P2 #8): the
         // invokeMethodAsync call below crosses a Blazor Server SignalR
         // round-trip with no console/network signal an E2E test could
@@ -200,13 +249,13 @@ function registerVerticalScrollTracking(el, dotNetRef) {
         // to assert "no report fired" against, matching the existing
         // data-gantt-v3-initial-scroll latch's own reasoning (centerOn's remarks).
         el.dataset.ganttV3VerticalReportCount = String((Number(el.dataset.ganttV3VerticalReportCount) || 0) + 1);
-        dotNetRef.invokeMethodAsync('OnGanttV3VerticalScroll', el.scrollTop, el.clientHeight);
+        dotNetRef.invokeMethodAsync('OnGanttV3VerticalScroll', el.scrollTop, el.clientHeight, scrollLeft, clientWidth);
     };
     const onScroll = () => {
         if (tracker.pendingFrame) return; // already scheduled for this frame
         tracker.pendingFrame = requestAnimationFrame(report);
     };
-    const tracker = { dotNetRef, onScroll, pendingFrame: null, lastScrollTop: null, lastClientHeight: null, resizeObserver: null };
+    const tracker = { dotNetRef, onScroll, pendingFrame: null, lastScrollTop: null, lastClientHeight: null, lastScrollLeft: null, lastClientWidth: null, resizeObserver: null };
     el.addEventListener('scroll', onScroll, { passive: true });
     // Bug fix (Codex round 6, P1 #2): a rows-count change never fires this
     // native 'scroll' event at all (nothing about the SCROLL POSITION
@@ -522,6 +571,55 @@ const activeBarDrags = new WeakSet(); // barEl -> currently being dragged by som
 // filter this pairs with.
 const activeCreateDrags = new WeakSet(); // trackEl -> currently being create-dragged by some pointer
 
+// Design spec Phase 3, T9 — infinite scroll's own gesture-suppression signal
+// (decision 3: "suppress extension while a drag is in flight"). A plain
+// COUNTER, not a boolean: the same module comment above notes concurrent
+// drags on different bars/pointers are explicitly permitted (activeBarDrags/
+// activeCreateDrags are WeakSets precisely because MULTIPLE sessions can be
+// live at once), so a boolean flipped false by the FIRST gesture to end would
+// wrongly un-suppress extension while a SECOND, unrelated gesture is still in
+// flight. Incremented/decremented at the EXACT same two moments
+// activeBarDrags/activeCreateDrags themselves are populated/cleared (see
+// reg.onPointerDown's own `activeBarDrags.add`/cleanup's `.delete` below, and
+// startCreateDrag's identical pair) — eagerly at pointerdown, not only once
+// the drag threshold is crossed, matching those WeakSets' own timing exactly
+// (a below-threshold pointer that resolves to a plain click still counts as
+// "in flight" for the brief window it's down, which is the conservative,
+// correct choice here: better to defer one extension attempt by a frame than
+// risk one landing under a gesture that turns out to be a drag after all).
+// MODULE-LEVEL (not scoped per Gantt instance/scroll-host), same as
+// activeBarDrags/activeCreateDrags themselves already are — see
+// hasActiveDrag's own remarks for why this is a deliberate, low-risk
+// simplification rather than an oversight.
+let activeDragGestureCount = 0;
+
+// Design spec Phase 3, T9 — queried by Gantt3/GanttTimeline (via
+// ComponentInteropService.GanttV3HasActiveDragAsync, a plain pull, no element
+// argument) at exactly two points: (1) GanttTimeline's own gate before ever
+// asking Gantt3 to extend VisibleRange, and (2) Gantt3's OWN re-check
+// immediately before it actually commits an extension — closing the narrow
+// race where a NEW gesture starts DURING the one await
+// (ResolveCurrentCenterDateAsync's live-scroll-center read) that sits between
+// those two points. See Gantt3.HandleRangeExtensionRequestAsync's own remarks
+// for why only the LEADING-edge path needs the second check at all (trailing
+// extension never shifts the coordinate origin, so it has nothing for a
+// concurrent gesture's ghost math to desync against).
+//
+// MODULE-LEVEL, not scoped per scroll-host element (unlike registerDrag's own
+// per-`el` registrations): activeBarDrags/activeCreateDrags — the sets this
+// counter mirrors — are ALREADY module-level/page-global, not per-Gantt-
+// instance, so a page hosting multiple simultaneous Gantt3 charts already
+// shares drag-isolation state across all of them at the JS layer; scoping
+// JUST this counter per-instance would not remove that pre-existing sharing,
+// only make this ONE signal inconsistent with the WeakSets it mirrors. The
+// worst outcome of this simplification is a purely CONSERVATIVE one: an
+// unrelated chart's active drag can briefly defer another chart's otherwise-
+// eligible extension by a frame or two — never a wrong commit, since a
+// suppressed extension simply retries on the NEXT qualifying scroll report.
+function hasActiveDrag() {
+    return activeDragGestureCount > 0;
+}
+
 // gantt-v2.js:53-63 (parseDate) — v3 only ever receives its own "yyyy-MM-dd"
 // data-task-start/-end attributes (see GanttBar.razor), never a free-form
 // string or Date, so this is the regex branch only, trimmed accordingly.
@@ -642,10 +740,37 @@ function resolveHitMode(barEl, clientX, isMilestone) {
 // bar div is never mutated by JS (only re-rendered once by .NET after
 // CommitDrag), so there is nothing for Blazor's diff to fight or leave stale
 // on an aborted/failed drag.
+//
+// Design spec Phase 3, T8 — DragGhostTemplate: when GanttBar.razor rendered a
+// custom ghost template for THIS task (see GanttBar's own remarks — a HIDDEN
+// sibling div, `[data-gantt-ghost-template]`, positioned with the EXACT SAME
+// --lumeo-gantt-bar-x/-w/-row + left/top/width/height WrapperStyle the real
+// bar itself carries, since both come from the same X/Width/RowIndex/BarHeight
+// props on the same GanttBar instance), clone THAT node instead of barEl —
+// same coordinate space (a sibling of barEl inside the SAME row-canvas parent,
+// per the pinned Phase-2 "bars are nested, arrows are outer-canvas" coordinate
+// rule — nothing here changes WHICH element the ghost is appended to, only
+// WHICH element supplies its cloned content), so the ghost's initial position
+// is byte-identical to cloning the bar itself. The move/resize/progress preview
+// logic below only ever WRITES ghost.style.left/width/etc — it never reads
+// them back off the clone — and its own delta math (dx, geo) is always derived
+// from barEl's OWN readBarGeometry/data-task-* attributes, never from the
+// template — so which element was cloned cannot skew any drag math, only the
+// ghost's visual content. A progress-drag preview specifically looks for
+// `.lumeo-gantt-v3-bar-progress` inside the ghost (see onPointerMove's own
+// progress branch) — a custom template that doesn't include one simply skips
+// that live repaint (guarded by `if (fill)` there already); the ghost still
+// tracks position/size correctly either way.
 function makeGhost(barEl) {
-    const ghost = barEl.cloneNode(true);
+    const templateEl = barEl.parentElement
+        ? barEl.parentElement.querySelector('[data-gantt-ghost-template]')
+        : null;
+    const ghost = (templateEl || barEl).cloneNode(true);
     ghost.classList.add('lumeo-gantt-v3-drag-ghost');
     ghost.removeAttribute('data-task-id'); // never itself a hit-test target for a second, nested pointerdown
+    ghost.removeAttribute('data-gantt-ghost-template');
+    ghost.classList.remove('hidden');
+    ghost.style.display = ''; // clear the template's own inline display:none (see GanttBar.razor's remarks) — the class above already handles Tailwind's `hidden` utility; this covers a template whose visibility came from the inline style instead
     ghost.style.opacity = '0.6';
     ghost.style.pointerEvents = 'none';
     ghost.style.zIndex = '50';
@@ -808,6 +933,7 @@ function registerDrag(el, dotNetRef, options) {
         const pointerId = e.pointerId;
         barEl.setPointerCapture(pointerId);
         activeBarDrags.add(barEl);
+        activeDragGestureCount++; // design spec Phase 3, T9 — see its own declaration for why this is a counter, not a boolean
 
         const onPointerMove = (mv) => {
             // Codex P2 finding ("Isolate each drag to its initiating
@@ -938,6 +1064,7 @@ function registerDrag(el, dotNetRef, options) {
             try { barEl.releasePointerCapture(pointerId); } catch (_) { /* already released */ }
             if (ghost && ghost.parentNode) ghost.parentNode.removeChild(ghost);
             activeBarDrags.delete(barEl);
+            activeDragGestureCount--; // design spec Phase 3, T9 — mirrors the activeBarDrags.add above
             // Bug fix (Codex P2 finding "Cancel active drags when
             // unregistering") — see unregisterDrag's own remarks: this
             // session no longer needs external cancellation once it has
@@ -1001,6 +1128,7 @@ function startCreateDrag(dragOptions, dragDotNet, reg, trackEl, e) {
     const pointerId = e.pointerId;
     trackEl.setPointerCapture(pointerId);
     activeCreateDrags.add(trackEl);
+    activeDragGestureCount++; // design spec Phase 3, T9 — see its own declaration for why this is a counter, not a boolean
 
     const rect = trackEl.getBoundingClientRect();
     const startLocalX = e.clientX - rect.left;
@@ -1036,12 +1164,23 @@ function startCreateDrag(dragOptions, dragDotNet, reg, trackEl, e) {
     // calendar meaning).
     function resolveColumnDate(localX) {
         const unit = dragOptions && dragOptions.scaleUnit;
-        if (unit === 'Month' || unit === 'Year') {
+        // Bug fix (Codex review, P2 #5): Quarter (design spec Phase 3, T2 —
+        // v3-only, no v2 counterpart) is ALSO a real calendar unit of
+        // variable length (91/92/92/92 days, and a leap-year Q1 differs
+        // again) — it belongs in this branch alongside Month/Year, not the
+        // fixed-day-count fallback below. Column index -> calendar date the
+        // SAME way the Month branch does, just stepping 3 months per column
+        // instead of 1 — mirrors GanttScale.PixelToDate's own
+        // `GanttScaleUnit.Quarter => origin.AddMonths(... * 3)` branch
+        // (C# side), so drag-create snaps to the calendar-quarter start
+        // exactly like every other v3-only-scale JS/C# pair in this file
+        // already keeps in lockstep.
+        if (unit === 'Month' || unit === 'Year' || unit === 'Quarter') {
             const colW = dragOptions && dragOptions.columnWidth > 0 ? dragOptions.columnWidth : 1;
             const idx = Math.floor(localX / colW);
-            return unit === 'Month'
-                ? new Date(origin.getFullYear(), origin.getMonth() + idx, 1)
-                : new Date(origin.getFullYear() + idx, 0, 1);
+            if (unit === 'Month') return new Date(origin.getFullYear(), origin.getMonth() + idx, 1);
+            if (unit === 'Quarter') return new Date(origin.getFullYear(), origin.getMonth() + idx * 3, 1);
+            return new Date(origin.getFullYear() + idx, 0, 1);
         }
         const dayPx = dragOptions && dragOptions.pixelsPerDay > 0 ? dragOptions.pixelsPerDay : 1;
         return addDays(origin, Math.floor(localX / dayPx));
@@ -1106,6 +1245,7 @@ function startCreateDrag(dragOptions, dragDotNet, reg, trackEl, e) {
         try { trackEl.releasePointerCapture(pointerId); } catch (_) { /* already released */ }
         if (ghost && ghost.parentNode) ghost.parentNode.removeChild(ghost);
         activeCreateDrags.delete(trackEl);
+        activeDragGestureCount--; // design spec Phase 3, T9 — mirrors the activeCreateDrags.add above
         // Bug fix (Codex P2 finding "Cancel active drags when
         // unregistering") — see unregisterDrag's own remarks; identical
         // reasoning to the bar-drag closure's own reg.activeCleanups use.
@@ -1144,6 +1284,515 @@ function unregisterDrag(el) {
     // the set first since each cleanup() call mutates it (deletes itself)
     // while this loop is still iterating.
     for (const cleanup of Array.from(reg.activeCleanups)) cleanup();
+}
+
+// ── Splitter drag (design spec Phase 3, T5) ─────────────────────────────────
+//
+// The tree/timeline splitter — a SEPARATE registration channel from
+// registerDrag above (different element shape: ONE dedicated handle rather
+// than a delegated listener over many recycled bars), but the SAME conventions
+// throughout, per the T5 dispatch's explicit "introduce no second drag idiom":
+// pointer capture on the handle at pointerdown, a per-gesture options snapshot
+// taken at that same moment (dragOptions/dragPaneEl below — reg.options/
+// reg.paneEl are mutated in place by a later idempotent re-registration, same
+// hazard registerDrag's own "Snapshot drag options at pointerdown" fix
+// documents), pointer-id isolation on every subsequent event, and every
+// gesture's cleanup() tracked in reg.activeCleanups so unregisterSplitterDrag
+// can cancel an in-flight drag exactly like unregisterDrag already does for a
+// bar drag.
+//
+// Live visual: DIRECT DOM mutation of dragPaneEl's own `width` inline style
+// plus the --lumeo-gantt-tree-name-width custom property (inherited by every
+// name-cell — see GanttTree.razor's own remarks), never a per-pointermove
+// Blazor round-trip. The ONE JSInvokable call (CommitSplitterWidth) fires
+// exactly once, at pointerup, mirroring registerDrag's own bar-drag commit
+// discipline (ghost/live-visual during the gesture, one commit at the end) —
+// there is no ghost element here because, unlike a bar move/resize, a
+// splitter resize has no rejectable/invalid position to visually preview
+// separately from the real element.
+const splitterRegistrations = new Map(); // handleEl -> { dotNetRef, options, paneEl, onPointerDown, activeCleanups }
+
+function registerSplitterDrag(handleEl, paneEl, dotNetRef, options) {
+    if (!handleEl || !paneEl) return;
+    const existing = splitterRegistrations.get(handleEl);
+    if (existing) {
+        // Idempotent re-registration (a controlled TreePaneWidth push, or this
+        // component's own prior commit landing back through Gantt3) — swap the
+        // stored dotNetRef/options/paneEl in place, same as registerDrag's own
+        // idempotent branch.
+        existing.dotNetRef = dotNetRef;
+        existing.options = options;
+        existing.paneEl = paneEl;
+        return;
+    }
+
+    const reg = { dotNetRef, options, paneEl, onPointerDown: null, activeCleanups: new Set() };
+
+    reg.onPointerDown = (e) => {
+        if (e.button !== 0) return; // left mouse / primary touch-pen contact only
+
+        // Snapshot at pointerdown (registerDrag's own "Snapshot drag options at
+        // pointerdown" fix, applied here identically) — a later idempotent
+        // re-registration mutates reg.* in place and must not reach an
+        // already-running gesture.
+        const dragOptions = reg.options;
+        const dragDotNet = reg.dotNetRef;
+        const dragPaneEl = reg.paneEl;
+
+        e.preventDefault();
+        const pointerId = e.pointerId;
+        handleEl.setPointerCapture(pointerId);
+
+        const startClientX = e.clientX;
+        const startNameWidth = dragOptions && typeof dragOptions.width === 'number' ? dragOptions.width : 0;
+        const startTotalWidth = dragPaneEl.getBoundingClientRect().width;
+        const minWidth = dragOptions && dragOptions.minWidth > 0 ? dragOptions.minWidth : 0;
+        const maxWidth = dragOptions && dragOptions.maxWidth > 0 ? dragOptions.maxWidth : Infinity;
+        // Same RTL sign-flip convention as the progress-handle's own `isRtl`
+        // (see registerDrag's own remarks) — under RTL this pane's free
+        // (resizable) edge is physically LEFT, so growing it means moving the
+        // pointer LEFT, not right.
+        const isRtl = getComputedStyle(dragPaneEl).direction === 'rtl';
+        let nameWidth = startNameWidth;
+
+        const onPointerMove = (mv) => {
+            if (mv.pointerId !== pointerId) return;
+            const rawDx = mv.clientX - startClientX;
+            const dx = isRtl ? -rawDx : rawDx;
+            nameWidth = Math.min(maxWidth, Math.max(minWidth, startNameWidth + dx));
+            // The extra (fixed-width) TreeColumns move 1:1 with the CLAMPED
+            // name-width delta — once nameWidth hits a bound, the applied
+            // delta (and so the total width) stops growing too.
+            const totalWidth = startTotalWidth + (nameWidth - startNameWidth);
+            dragPaneEl.style.width = totalWidth + 'px';
+            dragPaneEl.style.setProperty('--lumeo-gantt-tree-name-width', nameWidth + 'px');
+        };
+
+        const onPointerUp = (up) => {
+            if (up.pointerId !== pointerId) return;
+            cleanup();
+            if (Math.abs(nameWidth - startNameWidth) < 0.5) return; // no-op, no commit — mirrors registerDrag's own 0-delta no-op
+            if (dragDotNet) dragDotNet.invokeMethodAsync('CommitSplitterWidth', nameWidth).catch(() => {});
+        };
+
+        const onPointerCancel = (cn) => {
+            if (cn.pointerId !== pointerId) return;
+            cleanup();
+            // No commit happened — the DOM must not be left showing a width
+            // .NET never adopted (there is no ghost to simply discard here;
+            // the real element was mutated directly, so reverting it IS the
+            // "discard the aborted gesture" step).
+            dragPaneEl.style.width = startTotalWidth + 'px';
+            dragPaneEl.style.setProperty('--lumeo-gantt-tree-name-width', startNameWidth + 'px');
+        };
+
+        function cleanup() {
+            handleEl.removeEventListener('pointermove', onPointerMove);
+            handleEl.removeEventListener('pointerup', onPointerUp);
+            handleEl.removeEventListener('pointercancel', onPointerCancel);
+            try { handleEl.releasePointerCapture(pointerId); } catch (_) { /* already released */ }
+            reg.activeCleanups.delete(cleanup);
+        }
+
+        reg.activeCleanups.add(cleanup);
+        handleEl.addEventListener('pointermove', onPointerMove);
+        handleEl.addEventListener('pointerup', onPointerUp);
+        handleEl.addEventListener('pointercancel', onPointerCancel);
+    };
+
+    handleEl.addEventListener('pointerdown', reg.onPointerDown);
+    splitterRegistrations.set(handleEl, reg);
+}
+
+function unregisterSplitterDrag(handleEl) {
+    if (!handleEl) return;
+    const reg = splitterRegistrations.get(handleEl);
+    if (!reg) return;
+    handleEl.removeEventListener('pointerdown', reg.onPointerDown);
+    splitterRegistrations.delete(handleEl);
+    // Cancel (never commit) any drag still in flight — same reasoning as
+    // unregisterDrag's own identical loop (a Dispose/re-render racing a live
+    // gesture must not let it reach CommitSplitterWidth afterward).
+    for (const cleanup of Array.from(reg.activeCleanups)) cleanup();
+}
+
+// Bug fix (Codex review, P2 #9): registerSplitterDrag's own onPointerMove
+// mutates paneEl's inline width/--lumeo-gantt-tree-name-width DIRECTLY
+// during the live gesture — the pointerCANCEL path already reverts that (see
+// its own remarks: "there is no ghost to simply discard here; the real
+// element was mutated directly, so reverting it IS the discard step"), but
+// pointer-UP had no equivalent for a CONTROLLED caller that VETOES the
+// resulting CommitSplitterWidth request: if the parent keeps TreePaneWidth
+// unchanged, Blazor's next render computes the SAME style string it
+// rendered before this drag ever started, its diff sees no change, and the
+// JS-mutated (rejected) width is left in the DOM indefinitely. Called
+// UNCONDITIONALLY from GanttTree.CommitSplitterWidth right after its own
+// round trip resolves (accepted or vetoed) to force-sync the DOM back to
+// whatever the resolved, authoritative width actually is — same values,
+// same two lines, as the pointercancel revert above, just parameterized
+// for the post-commit case instead of the mid-gesture-abort one.
+function resetSplitterWidth(paneEl, totalWidth, nameWidth) {
+    if (!paneEl) return;
+    paneEl.style.width = totalWidth + 'px';
+    paneEl.style.setProperty('--lumeo-gantt-tree-name-width', nameWidth + 'px');
+}
+
+// ── Row-reorder drag (design spec Phase 3, T6) ──────────────────────────────
+//
+// A THIRD registration channel, reusing the SAME conventions registerDrag/
+// registerSplitterDrag already established (pointer capture at pointerdown,
+// a per-gesture snapshot of reg.dotNetRef taken at that same moment, pointer-
+// id isolation, every gesture's cleanup() tracked in reg.activeCleanups so
+// unregisterRowReorderDrag can cancel an in-flight drag exactly like the
+// other two channels' own unregister functions do). Shape-wise it sits
+// between the two: a DELEGATED pointerdown listener (like registerDrag — GanttTree's
+// rows are Virtualize-recycled, so a listener per row would need constant
+// re-attachment), but filtered to a dedicated grip element per row (like
+// registerSplitterDrag's dedicated handle, NOT registerDrag's whole-bar hit
+// area — a tree row's whole surface is a click target for its OWN
+// toggle/checkbox/RowTemplate content, so the grip is the only unambiguous
+// drag initiator, same reasoning Lumeo.DataGrid's own row-reorder grip
+// documents).
+//
+// No options bag: unlike registerDrag/registerSplitterDrag (which need .NET
+// to push live config — columnWidth/pixelsPerDay, min/max), a candidate row's
+// bucket/index identity is read directly off its OWN `data-reorder-bucket`/
+// `data-reorder-index` DOM attributes — GanttTree re-renders those fresh
+// every pass, so there is nothing to snapshot or go stale.
+//
+// Ghost + drop-index line (design spec Phase 3, T6 — "drag-engine JS family:
+// ghost row, drop-index line"): the ghost is a translucent clone of the
+// dragged row (mirrors makeGhost's bar-ghost idiom, vertically-only —
+// "drag tree rows vertically"); the drop-index line is a thin horizontal
+// indicator positioned at the boundary between two candidate sibling rows,
+// re-validated continuously against ValidateRowDrop exactly like
+// registerDrag's own checkCanDrop (cached per candidate index, repainted
+// invalid via the SAME CSS-var-only convention setGhostInvalid already
+// established — see setDropLineInvalid).
+const rowReorderRegistrations = new Map(); // paneEl -> { dotNetRef, onPointerDown, activeCleanups }
+const activeRowReorderDrags = new WeakSet(); // gripEl -> currently being dragged by some pointer
+
+function makeRowReorderGhost(rowEl, paneEl) {
+    const rect = rowEl.getBoundingClientRect();
+    const ghost = rowEl.cloneNode(true);
+    ghost.classList.add('lumeo-gantt-v3-drag-ghost', 'lumeo-gantt-v3-row-reorder-ghost');
+    ghost.removeAttribute('data-task-id'); // never itself a hit-test target for a second, nested pointerdown
+    ghost.removeAttribute('data-reorder-bucket');
+    ghost.removeAttribute('data-reorder-index');
+    ghost.style.position = 'absolute';
+    ghost.style.left = '0px';
+    ghost.style.width = rect.width + 'px';
+    ghost.style.opacity = '0.85';
+    ghost.style.pointerEvents = 'none';
+    ghost.style.zIndex = '60';
+    ghost.style.boxShadow = '0 2px 8px rgba(0, 0, 0, 0.15)';
+    paneEl.appendChild(ghost);
+    return ghost;
+}
+
+function makeRowReorderDropLine(paneEl) {
+    const line = document.createElement('div');
+    line.className = 'lumeo-gantt-v3-row-reorder-drop-line';
+    line.setAttribute('data-row-reorder-drop-line', 'true');
+    line.style.position = 'absolute';
+    line.style.left = '0px';
+    line.style.right = '0px';
+    line.style.height = '2px';
+    line.style.backgroundColor = 'var(--color-primary)';
+    line.style.pointerEvents = 'none';
+    line.style.zIndex = '55';
+    line.style.display = 'none';
+    paneEl.appendChild(line);
+    return line;
+}
+
+// CSS-vars-only invalid-drop paint (house rules) — same idiom as
+// setGhostInvalid, applied to the drop-index line rather than a bar ghost:
+// the line itself is the affordance that reads as "you can drop HERE", so a
+// rejected candidate position repaints the LINE, not the ghost (the ghost
+// represents the dragged content, unaffected by whether ITS CURRENT target
+// is valid).
+function setRowReorderDropLineInvalid(line, invalid) {
+    if (!line) return;
+    line.style.backgroundColor = invalid ? 'var(--color-destructive)' : 'var(--color-primary)';
+}
+
+function registerRowReorderDrag(paneEl, dotNetRef) {
+    if (!paneEl) return;
+    const existing = rowReorderRegistrations.get(paneEl);
+    if (existing) {
+        // Idempotent re-registration — swap the stored dotNetRef in place,
+        // same as registerDrag/registerSplitterDrag's own idempotent branch.
+        existing.dotNetRef = dotNetRef;
+        return;
+    }
+
+    const reg = { dotNetRef, onPointerDown: null, activeCleanups: new Set() };
+
+    reg.onPointerDown = (e) => {
+        if (e.button !== 0) return; // left mouse / primary touch-pen contact only
+
+        const gripEl = e.target.closest('[data-row-reorder-grip]');
+        if (!gripEl || !paneEl.contains(gripEl)) return;
+        if (activeRowReorderDrags.has(gripEl)) return; // isolate to the initiating pointer, mirrors activeBarDrags
+
+        const rowEl = gripEl.closest('[data-task-id]');
+        if (!rowEl || !paneEl.contains(rowEl)) return;
+        const taskId = rowEl.getAttribute('data-task-id');
+        const bucket = rowEl.getAttribute('data-reorder-bucket');
+        const originalIndex = parseInt(rowEl.getAttribute('data-reorder-index'), 10);
+        if (!taskId || bucket === null || Number.isNaN(originalIndex)) return;
+
+        // Snapshot at pointerdown (registerDrag's own "Snapshot drag options
+        // at pointerdown" fix, applied identically here) — a later idempotent
+        // re-registration mutates reg.dotNetRef in place and must not reach
+        // an already-running gesture.
+        const dragDotNet = reg.dotNetRef;
+
+        e.preventDefault();
+        const pointerId = e.pointerId;
+        gripEl.setPointerCapture(pointerId);
+        activeRowReorderDrags.add(gripEl);
+
+        const startClientY = e.clientY;
+        let dragInitiated = false;
+        let ghost = null;
+        let dropLine = null;
+        let lastTargetIndex = originalIndex;
+        const validationCache = new Map(); // targetIndex -> Promise<bool>
+
+        // Every OTHER currently-rendered row sharing this drag's own bucket
+        // (equality on the raw attribute string — never a CSS selector built
+        // from it, so an arbitrary consumer-supplied task id/GroupLabel can
+        // never need escaping). Recomputed live each move — Virtualize can
+        // recycle rows mid-scroll-drag, so a cached element list would go stale.
+        function siblingRows() {
+            const all = paneEl.querySelectorAll('[data-reorder-bucket]');
+            const result = [];
+            for (const el of all) {
+                if (el !== rowEl && el.getAttribute('data-reorder-bucket') === bucket) result.push(el);
+            }
+            return result;
+        }
+
+        // Nearest-candidate hit test: the sibling whose vertical CENTER is
+        // closest to the pointer wins; above its center = insert BEFORE it
+        // (target index = its own current index), below = insert AFTER
+        // (index + 1). edgeY is where the drop-line paints (that candidate's
+        // own top or bottom edge, whichever half of it was measured closest).
+        function resolveTarget(clientY) {
+            const candidates = siblingRows();
+            if (candidates.length === 0) {
+                const rect = rowEl.getBoundingClientRect();
+                return { index: 0, edgeY: rect.top + rect.height / 2 };
+            }
+            let best = null;
+            let bestDist = Infinity;
+            for (const el of candidates) {
+                const rect = el.getBoundingClientRect();
+                const centerY = rect.top + rect.height / 2;
+                const dist = Math.abs(clientY - centerY);
+                if (dist < bestDist) {
+                    bestDist = dist;
+                    const idx = parseInt(el.getAttribute('data-reorder-index'), 10);
+                    const after = clientY > centerY;
+                    best = { index: after ? idx + 1 : idx, edgeY: after ? rect.bottom : rect.top };
+                }
+            }
+            return best;
+        }
+
+        function checkValid(targetIndex) {
+            let promise = validationCache.get(targetIndex);
+            if (!promise) {
+                // Fail closed on a rejected invocation — same reasoning as
+                // registerDrag's own checkCanDrop ("Fail closed when CanDrop
+                // invocation rejects"): a thrown consumer predicate or a
+                // transient interop failure must not silently permit the drop.
+                promise = dragDotNet
+                    ? dragDotNet.invokeMethodAsync('ValidateRowDrop', taskId, targetIndex).catch(() => false)
+                    : Promise.resolve(true);
+                validationCache.set(targetIndex, promise);
+            }
+            promise.then((valid) => {
+                if (lastTargetIndex !== targetIndex) return; // superseded by a later hovered position already
+                setRowReorderDropLineInvalid(dropLine, !valid);
+            });
+        }
+
+        const onPointerMove = (mv) => {
+            if (mv.pointerId !== pointerId) return;
+            const dy = mv.clientY - startClientY;
+            if (!dragInitiated) {
+                if (Math.abs(dy) < DRAG_THRESHOLD_PX) return;
+                dragInitiated = true;
+                ghost = makeRowReorderGhost(rowEl, paneEl);
+                dropLine = makeRowReorderDropLine(paneEl);
+                rowEl.style.opacity = '0.3'; // dim the real row while its ghost follows the pointer — same "one visible representation" intent as the bar-drag ghost
+            }
+
+            const paneRect = paneEl.getBoundingClientRect();
+            const rowRect = rowEl.getBoundingClientRect();
+            ghost.style.top = (rowRect.top - paneRect.top + dy) + 'px';
+
+            const target = resolveTarget(mv.clientY);
+            lastTargetIndex = target.index;
+            dropLine.style.top = (target.edgeY - paneRect.top) + 'px';
+            dropLine.style.display = 'block';
+            checkValid(target.index);
+        };
+
+        const onPointerUp = async (up) => {
+            if (up.pointerId !== pointerId) return;
+            cleanup();
+            if (!dragInitiated) return; // below threshold — no ghost residue, no call
+            if (lastTargetIndex === originalIndex) return; // no-op position, no commit — mirrors registerDrag's own 0-delta no-op
+
+            // Bug fix (Codex review, P1 #2): this used to read `lastValid`
+            // (a plain closure variable, initialized `true` and only ever
+            // flipped by checkValid's fire-and-forget `.then()`) SYNCHRONOUSLY
+            // here — a release landing before the ValidateRowDrop round trip
+            // for the CURRENT lastTargetIndex resolves committed on whatever
+            // `lastValid` happened to be left at (possibly still its initial
+            // `true`), failing OPEN. Mirrors registerDrag's own onPointerUp
+            // fail-closed pattern exactly: await the SAME cached promise
+            // checkValid keys validationCache by (already in flight if this
+            // position was hovered during the move; freshly created — same
+            // fail-closed `.catch(() => false)` — if pointer-up is reached
+            // before checkValid ever got called for it, e.g. threshold
+            // crossed and released in one step).
+            let promise = validationCache.get(lastTargetIndex);
+            if (!promise) {
+                promise = dragDotNet
+                    ? dragDotNet.invokeMethodAsync('ValidateRowDrop', taskId, lastTargetIndex).catch(() => false)
+                    : Promise.resolve(true);
+                validationCache.set(lastTargetIndex, promise);
+            }
+            const valid = await promise;
+            if (!valid) return; // invalid (or unconfirmable) drop position — revert silently, no commit
+
+            if (dragDotNet) dragDotNet.invokeMethodAsync('CommitRowReorder', taskId, lastTargetIndex).catch(() => {});
+        };
+
+        const onPointerCancel = (cn) => {
+            if (cn.pointerId !== pointerId) return;
+            cleanup();
+        };
+
+        function cleanup() {
+            gripEl.removeEventListener('pointermove', onPointerMove);
+            gripEl.removeEventListener('pointerup', onPointerUp);
+            gripEl.removeEventListener('pointercancel', onPointerCancel);
+            try { gripEl.releasePointerCapture(pointerId); } catch (_) { /* already released */ }
+            if (ghost && ghost.parentNode) ghost.parentNode.removeChild(ghost);
+            if (dropLine && dropLine.parentNode) dropLine.parentNode.removeChild(dropLine);
+            rowEl.style.opacity = '';
+            activeRowReorderDrags.delete(gripEl);
+            reg.activeCleanups.delete(cleanup);
+        }
+
+        reg.activeCleanups.add(cleanup);
+        gripEl.addEventListener('pointermove', onPointerMove);
+        gripEl.addEventListener('pointerup', onPointerUp);
+        gripEl.addEventListener('pointercancel', onPointerCancel);
+    };
+
+    paneEl.addEventListener('pointerdown', reg.onPointerDown);
+    rowReorderRegistrations.set(paneEl, reg);
+}
+
+function unregisterRowReorderDrag(paneEl) {
+    if (!paneEl) return;
+    const reg = rowReorderRegistrations.get(paneEl);
+    if (!reg) return;
+    paneEl.removeEventListener('pointerdown', reg.onPointerDown);
+    rowReorderRegistrations.delete(paneEl);
+    // Cancel (never commit) any drag still in flight — same reasoning as
+    // unregisterDrag/unregisterSplitterDrag's own identical loops (a
+    // Dispose/re-render racing a live gesture must not let it reach
+    // CommitRowReorder afterward).
+    for (const cleanup of Array.from(reg.activeCleanups)) cleanup();
+}
+
+// ── Bar context menu (design spec Phase 3, T8) ──────────────────────────────
+//
+// A FOURTH, SEPARATE registration channel alongside registerDrag/
+// registerSplitterDrag/registerRowReorderDrag — deliberately NOT folded into
+// registerDrag's own registration object, for one concrete reason:
+// registerDrag is torn down ENTIRELY whenever Readonly is true
+// (SyncDragRegistrationAsync's own "no listeners at all when Readonly"
+// contract), but BarContextMenu is a VIEW action (right-click -> caller-
+// supplied menu content), not an edit — it must stay available on a Readonly
+// chart (a consumer's own menu content can still offer non-mutating actions
+// like "view details"/"copy" there, exactly the same way GanttBar's tooltip
+// and keyboard focus stay available when Readonly). Sharing registerDrag's
+// registration would tie this feature's lifecycle to Readonly for no reason.
+//
+// Delegated on the SAME scroll-host element registerDrag uses (bars/tracks
+// live there) — a native 'contextmenu' event, not a pointer event, so it
+// needs no pointer-capture/pointer-id isolation of its own; the isolation
+// this needs is from a CONCURRENT bar drag, not from a second contextmenu
+// gesture (there is only ever one contextmenu event per right-click).
+//
+// Drag isolation (design spec Phase 3, T8, decision 4): checks the SAME
+// module-level `activeBarDrags` WeakSet registerDrag's own onPointerDown
+// populates/clears — true for exactly the span of a real, currently-in-flight
+// pointer session on that bar (from pointerdown, whether or not the
+// DRAG_THRESHOLD_PX has been crossed yet, through pointerup/pointercancel's
+// own synchronous cleanup() — see registerDrag's remarks). A right-click
+// landing on a bar mid-session is swallowed entirely (preventDefault, no
+// NotifyBarContextMenu call, no native menu either) rather than opening a
+// menu that could then race a still-in-flight move/resize commit. This is
+// symmetric with the OTHER direction (a real drag never starts from a
+// right-button pointerdown at all — registerDrag's own `if (e.button !== 0)
+// return;` gate, unconditional and unrelated to this channel).
+const barContextMenuRegistrations = new Map(); // el -> { dotNetRef, onContextMenu }
+
+function registerBarContextMenu(el, dotNetRef) {
+    if (!el) return;
+    const existing = barContextMenuRegistrations.get(el);
+    if (existing) {
+        // Idempotent re-registration — mirrors registerDrag's own dotNetRef-swap-
+        // in-place precedent (a re-render handing a fresh DotNetObjectReference
+        // must not attach a second listener).
+        existing.dotNetRef = dotNetRef;
+        return;
+    }
+
+    const onContextMenu = (e) => {
+        const barEl = e.target.closest('[data-task-id]');
+        if (!barEl || !el.contains(barEl)) return; // not a bar — leave the native/default context menu alone
+        if (activeBarDrags.has(barEl)) {
+            e.preventDefault(); // a real drag/pending gesture already owns this bar — swallow, no menu, no native fallback either
+            return;
+        }
+        e.preventDefault();
+        const reg = barContextMenuRegistrations.get(el);
+        if (!reg || !reg.dotNetRef) return;
+        const taskId = barEl.getAttribute('data-task-id');
+        // Keyboard-invoked contextmenu (Shift+F10 / the Menu key, with focus on
+        // the bar) reports (0, 0) in most engines — fall back to the bar's own
+        // bottom-left corner, the same convention Lumeo's own
+        // ContextMenuTrigger.HandleKeyDown already uses for its keyboard path.
+        let x = e.clientX;
+        let y = e.clientY;
+        if (x === 0 && y === 0) {
+            const rect = barEl.getBoundingClientRect();
+            x = rect.left;
+            y = rect.bottom;
+        }
+        reg.dotNetRef.invokeMethodAsync('NotifyBarContextMenu', taskId, x, y).catch(() => {});
+    };
+    el.addEventListener('contextmenu', onContextMenu);
+    barContextMenuRegistrations.set(el, { dotNetRef, onContextMenu });
+}
+
+function unregisterBarContextMenu(el) {
+    if (!el) return;
+    const reg = barContextMenuRegistrations.get(el);
+    if (!reg) return;
+    el.removeEventListener('contextmenu', reg.onContextMenu);
+    barContextMenuRegistrations.delete(el);
 }
 
 export default ganttV3;

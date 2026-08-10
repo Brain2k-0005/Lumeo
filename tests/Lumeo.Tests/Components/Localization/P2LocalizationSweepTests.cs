@@ -172,6 +172,10 @@ public class P2LocalizationSweepTests : IAsyncLifetime
         // else was missing entirely) — extended here rather than a new test
         // file, per this test's own "extend it instead of duplicating" intent.
         "Gantt.Day", "Gantt.Week", "Gantt.Month", "Gantt.Year",
+        // Design spec Phase 3, T2 — GanttViewMode.Quarter's toolbar label, added
+        // straight to this completeness guard per its own "extend, don't
+        // duplicate" precedent (see the round-4/round-5 notes above).
+        "Gantt.Quarter",
         "Gantt.Today", "Gantt.PreviousPeriod", "Gantt.NextPeriod",
         "Gantt.ExpandRow", "Gantt.CollapseRow", "Gantt.NoTasksToDisplay",
         "Gantt.TaskAriaLabel",
@@ -180,11 +184,49 @@ public class P2LocalizationSweepTests : IAsyncLifetime
         // above rather than a new key list, matching round 4's own "extend,
         // don't duplicate" precedent.
         "Gantt.PercentComplete",
+        // Design spec Phase 3, T3 — GanttSummaryBar's compact "N%" rollup
+        // label, extended here per this test's own "extend, don't duplicate"
+        // precedent (same as every other Gantt.* key above).
+        "Gantt.SummaryProgress",
         // Codex P2 finding ("Translate the new task label in every supported
         // locale"): GanttTimeline.CommitCreate names a drag-created task via
         // L["Gantt.NewTask"], but it shipped in only en/de — extended here
         // per this test's own "extend it instead of duplicating" intent.
         "Gantt.NewTask",
+        // Design spec Phase 3, T5 — the tree/timeline splitter handle's
+        // aria-label, extended here per this test's own "extend, don't
+        // duplicate" precedent (same as every other Gantt.* key above).
+        "Gantt.ResizeTreePane",
+        // Design spec Phase 3, T6 — leaf/parent-group checkbox aria-labels
+        // (ShowRowCheckboxes) and the row-reorder grip's aria-label/title +
+        // its Readonly-inert counterpart (AllowRowReorder), extended here
+        // per this test's own "extend, don't duplicate" precedent (same as
+        // every other Gantt.* key above).
+        "Gantt.SelectRow", "Gantt.SelectRowGroup",
+        "Gantt.DragToReorderRow", "Gantt.RowReorderUnavailable",
+        // Design spec Phase 3, T7 — the floating zoom control's +/- aria-labels
+        // and the off-screen indicator chip's per-direction aria-labels,
+        // extended here per this test's own "extend, don't duplicate"
+        // precedent (same as every other Gantt.* key above).
+        "Gantt.ZoomIn", "Gantt.ZoomOut",
+        "Gantt.ScrollToEarlierTask", "Gantt.ScrollToLaterTask",
+        // Design spec Phase 3, T8 — GanttSettingsMenu's trigger, group
+        // headings, toggle labels, and "Reset to defaults" button, extended
+        // here per this test's own "extend, don't duplicate" precedent (same
+        // as every other Gantt.* key above).
+        "Gantt.Settings", "Gantt.SettingsDisplay", "Gantt.SettingsBehavior",
+        "Gantt.SettingsRegion", "Gantt.SettingsStyle",
+        "Gantt.SettingsShowRowCheckboxes", "Gantt.SettingsShowSummaryBars",
+        "Gantt.SettingsShowZoomControl", "Gantt.SettingsShowOffscreenIndicators",
+        "Gantt.SettingsNowIndicator", "Gantt.SettingsMarkOffDays",
+        "Gantt.SettingsReadonly", "Gantt.SettingsAllowCreate", "Gantt.SettingsAllowRowReorder",
+        "Gantt.SettingsFirstDayOfWeek", "Gantt.SettingsOffDays",
+        "Gantt.SettingsColorByGroup", "Gantt.SettingsReset",
+        // Design spec Phase 3, T9 — the GanttSettingsMenu Display-group
+        // toggle for InfiniteScroll, extended here per this test's own
+        // "extend, don't duplicate" precedent (same as every other Gantt.*
+        // key above).
+        "Gantt.SettingsInfiniteScroll",
     };
 
     [Theory]

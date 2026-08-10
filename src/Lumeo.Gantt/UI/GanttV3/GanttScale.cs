@@ -13,6 +13,22 @@ internal enum GanttScaleUnit
     Day,
     Month,
     Year,
+
+    /// <summary>
+    /// 3-calendar-month columns, aligned to real quarter boundaries
+    /// (Jan/Apr/Jul/Oct 1) — backs <see cref="GanttViewMode.Quarter"/> (design
+    /// spec Phase 3, T2). Deliberately a SEPARATE unit from <see cref="Month"/>
+    /// rather than reusing it with <c>Step=3</c>: <see cref="GanttScale.DateToPixel"/>'s
+    /// Month formula has no <c>/cfg.Step</c> division (unlike <see cref="Day"/>'s),
+    /// since every mode that has ever used the Month unit (only <see cref="GanttViewMode.Month"/>
+    /// itself) has Step=1 — introducing a Step-aware division there purely to
+    /// support Quarter would be an unverified, blast-radius-widening change to
+    /// already-shipped Month-mode pixel math. A dedicated unit keeps every
+    /// Month-mode formula untouched and lets Quarter's own math simply divide
+    /// the (already-existing) Month formula's result by 3 — see each method's
+    /// own Quarter branch below.
+    /// </summary>
+    Quarter,
 }
 
 /// <summary>
@@ -33,6 +49,19 @@ internal enum GanttHeaderUpperKind
     Year,
     /// <summary>"{month} {day}", e.g. "January 5" (v2 <c>'day'</c> -&gt; <c>`${fmtMonth(d)} ${d.getDate()}`</c>).</summary>
     Day,
+
+    /// <summary>
+    /// ISO-8601 week band, e.g. "W29 Jul 12 – 18" (design spec Phase 3, T2 —
+    /// "Upper header week bands with ISO week numbers"). v3-ONLY: v2 has no
+    /// equivalent format string anywhere in <c>gantt-v2.js</c>'s <c>VIEW_MODES</c>
+    /// table. Replaces <see cref="Month"/> as <see cref="GanttViewMode.Day"/>'s
+    /// own upper-header kind (a deliberate, pinned v2-look-delta — see
+    /// <see cref="GanttScale.ViewModes"/>'s remarks on that specific entry);
+    /// every OTHER mode's upper kind is unchanged. See
+    /// <see cref="GanttScale.UpperRuns"/>'s own remarks for the band-boundary/
+    /// week-number computation.
+    /// </summary>
+    Week,
 }
 
 /// <summary>
@@ -54,6 +83,9 @@ internal enum GanttHeaderLowerKind
     Time6h,
     /// <summary>"{hour}:00", 12-hour columns (v2 <c>time12h</c> — same rendering as <see cref="Time6h"/>).</summary>
     Time12h,
+
+    /// <summary>"Q1".."Q4" (design spec Phase 3, T2 — <see cref="GanttViewMode.Quarter"/>'s own lower-row kind). v3-ONLY, no v2 equivalent.</summary>
+    QuarterNum,
 }
 
 /// <summary>
@@ -118,18 +150,139 @@ internal static class GanttScale
     internal const int HeaderHeight = 56;
 
     /// <summary>
-    /// GanttTree's fixed pane width in pixels (Codex round 4, P2 #2) — the
-    /// SINGLE source of truth for both GanttTree's own rendered width (a
-    /// Tailwind utility class can't be parameterized from C#, so GanttTree
-    /// uses an inline style built from this constant instead of a fixed
-    /// `w-56` class) and Gantt3's <c>GanttTimeline.ScrollHostLeadingOffset</c>
-    /// calculation — before this constant existed, the tree's width (224px,
-    /// Tailwind's `w-56`) was a magic number baked into GanttTree's markup
-    /// with nothing else in the codebase able to reference it, which is
-    /// exactly how the P2 #2 bug (scroll centering ignoring the tree's width)
-    /// went unnoticed: there was no shared value to even offset by.
+    /// Height in pixels of a summary-rollup envelope strip (design spec Phase
+    /// 3, T3 — "thin bar spanning children range"; no v2 equivalent, v2 has no
+    /// hierarchy at all). Deliberately much thinner than <see cref="DefaultBarHeight"/>
+    /// (22px) — it renders flush against the row's OWN bottom edge (see
+    /// <c>GanttTimeline.SummaryTop</c>) so it never visually competes with a
+    /// hierarchy-parent row's own, independently-dated <c>GanttBar</c>, which
+    /// stays centered in the row exactly as before.
     /// </summary>
-    internal const int TreePaneWidth = 224;
+    internal const int SummaryBarHeight = 8;
+
+    /// <summary>
+    /// GanttTree's DEFAULT pane width in pixels (Codex round 4, P2 #2) — the
+    /// starting value for the pinned name column before design spec Phase 3,
+    /// T5 made it resizable via <c>Gantt3.TreePaneWidth</c>/the tree/timeline
+    /// splitter (see <see cref="MinTreePaneWidth"/>/<see cref="MaxTreePaneWidth"/>
+    /// for the drag clamps). Renamed from the former fixed `TreePaneWidth`
+    /// constant name now that the width genuinely varies at runtime — every
+    /// call site that used to read the constant directly now reads the LIVE
+    /// effective width instead (see <c>Gantt3.EffectiveTreePaneWidth</c>),
+    /// falling back to this default only when uncontrolled and never resized.
+    /// </summary>
+    internal const int DefaultTreePaneWidth = 224;
+
+    /// <summary>
+    /// Floor for the tree pane's pinned name column (design spec Phase 3, T5
+    /// — "min/max clamps... justify"). 160px is the smallest width that still
+    /// comfortably fits the deepest indent this codebase renders in practice
+    /// (a few hierarchy levels * 16px/level — see <c>GanttTree.IndentStyle</c>)
+    /// plus the 16px expander/toggle glyph plus a genuinely readable (not
+    /// single-character) truncated task name — chosen empirically against
+    /// <c>GanttParityFixtures.TreeTasks</c>'s own 3-level hierarchy (depth-2
+    /// rows: 32px indent + 16px toggle + name), not an arbitrary round number.
+    /// </summary>
+    internal const int MinTreePaneWidth = 160;
+
+    /// <summary>
+    /// Ceiling for the tree pane's pinned name column (design spec Phase 3,
+    /// T5). 640px (roughly 3x the 224px default) is generous enough for a
+    /// long task name plus a couple of extra <see cref="Lumeo.GanttV3.GanttTreeColumn"/>
+    /// cells' worth of visual breathing room, while still guaranteeing the
+    /// timeline pane is never squeezed out of a typical viewport: the shared
+    /// scroll pane itself has no hard width ceiling (it scrolls horizontally
+    /// without bound), so this cap exists purely to stop a user from dragging
+    /// the name column wide enough to push the ENTIRE visible timeline
+    /// off-screen on an ordinary (&gt;640px-wide) viewport — a resizable-panel
+    /// UX guard, not a layout-correctness requirement.
+    /// </summary>
+    internal const int MaxTreePaneWidth = 640;
+
+    /// <summary>
+    /// Reserved trailing width (px) for <c>Gantt3.TreeHeaderMenu</c> (design
+    /// spec Phase 3, T5) when one is supplied — bug fix (Codex review, P2
+    /// #8): the tree pane's own total width used to be exactly <see
+    /// cref="DefaultTreePaneWidth"/>/<c>TreePaneWidth</c> plus <c>TreeColumns</c>'
+    /// widths, with NO allowance for the header menu slot at all, and every
+    /// header cell (name column, each TreeColumns cell, the menu itself) is
+    /// <c>shrink-0</c> — so the menu, pushed to the trailing edge via
+    /// <c>ms-auto</c>, simply had nowhere to fit and was clipped by the
+    /// header row's own <c>overflow-hidden</c> (present but genuinely
+    /// invisible; only reachable by a script directly scrolling the
+    /// otherwise-non-scrollbar'd container, never by a real user). 32px
+    /// comfortably fits a single icon-button trigger (this codebase's own
+    /// icon-button footprint — see e.g. <c>GanttTree</c>'s own toggle/grip
+    /// glyphs at 16px plus padding) — the documented, supported shape
+    /// (<c>GanttV3TreePage.razor</c>'s own fixture: a plain "..." trigger
+    /// button). A caller supplying meaningfully wider content may still see
+    /// clipping; that's a content-sizing concern for THEM to manage (e.g. a
+    /// narrower icon-only trigger opening a popover), not a broken default.
+    /// </summary>
+    internal const int TreeHeaderMenuWidth = 32;
+
+    /// <summary>
+    /// Minimum bar pixel width (design spec Phase 3, T7) below which an
+    /// in-bar task label falls back to rendering BESIDE the bar instead —
+    /// same idea as <see cref="Lumeo.GanttBar"/>'s existing milestone label,
+    /// which always renders outside its (small, fixed-size) diamond. v2
+    /// (gantt-v2.js) has NO equivalent narrow-bar threshold to port for
+    /// parity: its own regular-bar label (gantt-v2.js lines 540-550) is an
+    /// unconditional SVG &lt;text&gt; node at a fixed x1+PADDING_X offset —
+    /// no width comparison, no clipping, no outside-fallback branch anywhere
+    /// in that file (verified by a full-file search for "big"/"outside"/
+    /// "clip"/"getBBox"/"measureText" — zero matches; the milestone-only
+    /// outside-label branch, gantt-v2.js lines 486-495, is unconditional too,
+    /// never width-gated). v2's own label is simply left to visually overflow
+    /// a too-narrow bar with nothing protecting it — not a behavior worth
+    /// porting for "parity" (parity doctrine: v2 asserts only apply where v2
+    /// actually HAS the feature; this is v3-only, REUI-referenced only in
+    /// spirit, no REUI pixel spec available). 40px is roughly what's needed
+    /// to show 2-3 characters plus an ellipsis at the label's own 12px
+    /// (text-xs) font size, given the label's existing 8px-per-side (px-2)
+    /// padding — empirically chosen the same way <see cref="MinTreePaneWidth"/>
+    /// was (a concrete minimum-readable-content floor), not an arbitrary
+    /// round number picked without reasoning.
+    /// </summary>
+    internal const int MinInBarLabelWidth = 40;
+
+    /// <summary>
+    /// Hard ceiling on the rendered date-unit count (<see cref="BuildDateUnits"/>'s
+    /// own return list length) <c>Gantt3.HandleRangeExtensionRequestAsync</c>
+    /// (design spec Phase 3, T9) will grow <c>VisibleRange</c> to via infinite
+    /// scroll, in EITHER direction. DECISION (T9's own explicit "hard cap,
+    /// far-side trimming, or documented unbounded? say what breaks first"):
+    /// a hard cap — once reached, the affected edge simply stops extending
+    /// (identical UX to <c>InfiniteScroll=false</c>'s own v2-parity dead-end,
+    /// just reached later), never far-side trimming (trimming the OPPOSITE
+    /// edge while extending this one would itself be a SECOND coordinate-
+    /// origin shift per extension, on top of the leading-edge one this task
+    /// already has to get pixel-exact — doubling the same-frame-correction
+    /// surface for a memory saving nothing in this codebase's actual usage
+    /// pattern currently needs) and never silently-documented-unbounded.
+    ///
+    /// WHAT BREAKS FIRST, and why this specific number: <c>GanttTimeline</c>'s
+    /// own header row (its <c>@for (var i = 0; i....Units.Count; i++)</c> loops)
+    /// renders ONE DOM element PER DATE UNIT, unconditionally — UNLIKE the
+    /// row/bar canvas below it (T1's own <c>Virtualize</c>-based fix), the
+    /// header has no windowing at all, so it is the first thing to visibly
+    /// and measurably degrade under sustained one-directional scrolling, long
+    /// before <see cref="DateToPixel"/>'s own double-precision arithmetic
+    /// shows any drift (that arithmetic is exact calendar-field math per
+    /// <see cref="GanttScale"/>'s own class remarks, not iterative
+    /// floating-point accumulation — it does not degrade with range width at
+    /// all). 2000 is chosen the same way <see cref="MinInBarLabelWidth"/> was
+    /// (a concrete, defensible floor/ceiling, not a round number picked
+    /// without reasoning): comfortably generous for ordinary use (Day mode's
+    /// own 60-unit-per-extension page means roughly 33 consecutive
+    /// leading-edge extensions — many more than one continuous scroll gesture
+    /// would ever trigger — before the cap engages; Month/Year/Quarter modes
+    /// reach it far later still, since their PadBefore/PadAfter magnitudes
+    /// are smaller units-per-page), while still bounding the header to, at
+    /// most, a low-thousands DOM node count — an order of magnitude below
+    /// where unvirtualized-list rendering typically becomes perceptible.
+    /// </summary>
+    internal const int MaxInfiniteScrollRangeUnits = 2000;
 
     /// <summary>
     /// Faithful port of gantt-v2.js's <c>VIEW_MODES</c> table (lines 29-36). Every
@@ -144,14 +297,40 @@ internal static class GanttScale
             [GanttViewMode.QuarterDay] = new GanttScaleConfig(38, GanttScaleUnit.Hour, 6, 24, 24, GanttHeaderUpperKind.Day, GanttHeaderLowerKind.Time6h),
             // HalfDay:    { columnWidth: 38, unit: 'hour', step: 12, padBefore: 24, padAfter: 24, headerFmt: { upper: 'day',   lower: 'time12h' } },
             [GanttViewMode.HalfDay] = new GanttScaleConfig(38, GanttScaleUnit.Hour, 12, 24, 24, GanttHeaderUpperKind.Day, GanttHeaderLowerKind.Time12h),
-            // Day:        { columnWidth: 38, unit: 'day',  step: 1,  padBefore: 60, padAfter: 60, headerFmt: { upper: 'month', lower: 'dayNum' } },
-            [GanttViewMode.Day] = new GanttScaleConfig(38, GanttScaleUnit.Day, 1, 60, 60, GanttHeaderUpperKind.Month, GanttHeaderLowerKind.DayNum),
+            // Day: columnWidth/unit/step/pad are still the exact v2 port (38, day,
+            // 1, 60, 60) — ONLY headerFmt.upper deviates from v2's own 'month'.
+            // DELIBERATE, PINNED v2 delta (design spec Phase 3, T2 "Look &
+            // configurability audit" — "Upper header week bands... in day-level
+            // modes"; see gantt-v3-ledger.md): v2's Day-mode upper row groups
+            // columns by MONTH ("January" spanning every day column in January);
+            // v3's now groups them by ISO-8601 WEEK BAND ("W29 Jul 12 – 18" —
+            // see GanttHeaderUpperKind.Week's own remarks and GanttScale.UpperRuns'
+            // week-band computation). QuarterDay/HalfDay above are UNCHANGED
+            // (still Day-kind, "January 5" per-day upper grouping) — this delta
+            // is Day-mode-only, matching the design spec's literal wording.
+            [GanttViewMode.Day] = new GanttScaleConfig(38, GanttScaleUnit.Day, 1, 60, 60, GanttHeaderUpperKind.Week, GanttHeaderLowerKind.DayNum),
             // Week:       { columnWidth: 140, unit: 'day', step: 7,  padBefore: 16, padAfter: 16, headerFmt: { upper: 'month', lower: 'weekRange' } },
             [GanttViewMode.Week] = new GanttScaleConfig(140, GanttScaleUnit.Day, 7, 16, 16, GanttHeaderUpperKind.Month, GanttHeaderLowerKind.WeekRange),
             // Month:      { columnWidth: 120, unit: 'month', step: 1, padBefore: 12, padAfter: 12, headerFmt: { upper: 'year', lower: 'monthName' } },
             [GanttViewMode.Month] = new GanttScaleConfig(120, GanttScaleUnit.Month, 1, 12, 12, GanttHeaderUpperKind.Year, GanttHeaderLowerKind.MonthName),
             // Year:       { columnWidth: 120, unit: 'year', step: 1, padBefore: 4,  padAfter: 6,  headerFmt: { upper: '',     lower: 'yearNum' } },
             [GanttViewMode.Year] = new GanttScaleConfig(120, GanttScaleUnit.Year, 1, 4, 6, GanttHeaderUpperKind.None, GanttHeaderLowerKind.YearNum),
+            // Quarter (design spec Phase 3, T2 — v3-ONLY, no v2 counterpart, so
+            // no "faithful port" comment applies here). Column width/pad chosen
+            // to mirror this codebase's own Month/Year convention rather than an
+            // external reference: ColumnWidth=120 matches Month/Year's own value
+            // (both already settled on 120px as "enough room for a short label at
+            // this zoom tier" — Quarter's own lower label, "Q1".."Q4", is even
+            // shorter than a month/year number, so 120px is comfortably enough,
+            // not a new magic number). PadBefore/PadAfter=4 quarters (1 calendar
+            // year) each side — deliberately SYMMETRIC (unlike Year's own 4/6):
+            // Year's asymmetry has no documented rationale in this codebase
+            // either, and a symmetric one-year window each side is the simplest
+            // defensible default for a mode with no v2 precedent to match.
+            // Snap unit: Step=1 "quarter" (GanttScaleUnit.Quarter's own
+            // 3-calendar-month stride — see its remarks for why this is a
+            // dedicated unit instead of Month+Step=3).
+            [GanttViewMode.Quarter] = new GanttScaleConfig(120, GanttScaleUnit.Quarter, 1, 4, 4, GanttHeaderUpperKind.Year, GanttHeaderLowerKind.QuarterNum),
         };
 
     /// <summary>Looks up the <see cref="GanttScaleConfig"/> for a view mode.</summary>
@@ -212,6 +391,20 @@ internal static class GanttScale
                     units.Add(rangeStart.AddHours(i));
                 break;
             }
+            case GanttScaleUnit.Quarter:
+            {
+                // No v2 counterpart (Quarter is v3-only — see GanttScaleUnit.Quarter's
+                // own remarks). Same "walk by whole units, cfg.Step at a time" shape
+                // as the Month branch above, just striding 3*cfg.Step months (one
+                // quarter per step) instead of cfg.Step months. rangeStart is
+                // assumed quarter-aligned (Jan/Apr/Jul/Oct 1) by the same
+                // aligned-origin invariant every other unit-column mode relies on
+                // (see AlignToUnitStart's own remarks) — callers construct
+                // GanttDateRange accordingly (Gantt3.ApplyPadding's Quarter branch).
+                for (var d = rangeStart; d <= rangeEnd; d = d.AddMonths(3 * cfg.Step))
+                    units.Add(d);
+                break;
+            }
         }
 
         return units;
@@ -246,6 +439,14 @@ internal static class GanttScale
             GanttScaleUnit.Year => ((date.Year - origin.Year) + ((date.Month - 1) * 30 + date.Day) / 365.0) * colW,
             // if (cfg.unit === 'hour') { hours = (d - dateUnits[0]) / 3_600_000; return (hours / cfg.step) * colW; }
             GanttScaleUnit.Hour => ((date - origin).TotalHours / cfg.Step) * colW,
+            // No v2 counterpart. Exactly the Month branch's own formula (monthsDiff
+            // + dayFraction, in MONTH units) divided by 3 to convert to QUARTER
+            // units — a quarter is 3 months, so 3 whole months of offset is
+            // exactly 1 quarter-column of pixel distance. Kept as an explicit
+            // division of the Month formula (not a separately-derived one) so a
+            // future change to Month's own approximation (the /30.0 day-fraction
+            // term) can never silently diverge between the two.
+            GanttScaleUnit.Quarter => ((((date.Year - origin.Year) * 12 + (date.Month - origin.Month)) + (date.Day - 1) / 30.0) / 3.0) * colW,
             _ => 0,
         };
     }
@@ -275,6 +476,10 @@ internal static class GanttScale
             GanttScaleUnit.Year => new DateTime(origin.Year + RoundToInt(pixel / colW), 1, 1, 0, 0, 0, origin.Kind),
             // if (cfg.unit === 'hour') { hours = Math.round((x/colW)*step); d.setHours(d.getHours()+hours); return d; }
             GanttScaleUnit.Hour => origin.AddHours(RoundToInt((pixel / colW) * cfg.Step)),
+            // No v2 counterpart. Rounds to the nearest WHOLE quarter (mirrors the
+            // Month branch's "round to nearest whole month" snapping), then
+            // converts quarters -> months (*3) for AddMonths.
+            GanttScaleUnit.Quarter => origin.AddMonths(RoundToInt(pixel / colW) * 3),
             _ => origin,
         };
     }
@@ -312,6 +517,12 @@ internal static class GanttScale
             GanttScaleUnit.Month => AddContinuousMonths(origin, pixel / colW),
             GanttScaleUnit.Year => AddContinuousYears(origin, pixel / colW),
             GanttScaleUnit.Hour => origin.AddHours((pixel / colW) * cfg.Step),
+            // No v2 counterpart. Reuses AddContinuousMonths (its own bijective,
+            // never-collapsing fix from cx6b/cx7 — see its remarks) by converting
+            // "pixel/colW" QUARTERS into MONTHS (*3) before delegating — the
+            // exact same "divide/multiply by 3" relationship DateToPixel's own
+            // Quarter branch above uses, so this stays a genuine inverse of it.
+            GanttScaleUnit.Quarter => AddContinuousMonths(origin, (pixel / colW) * 3.0),
             _ => origin,
         };
     }
@@ -444,6 +655,10 @@ internal static class GanttScale
             // the Month/Year branches' own "snap down to the unit's own
             // boundary" semantics.
             GanttScaleUnit.Hour => new DateTime(date.Year, date.Month, date.Day, (date.Hour / cfg.Step) * cfg.Step, 0, 0, date.Kind),
+            // Snaps to the start of the date's CALENDAR quarter (Jan/Apr/Jul/Oct
+            // 1) — the quarter-granularity analog of the Month branch's "snap to
+            // day 1" above. No v2 counterpart.
+            GanttScaleUnit.Quarter => new DateTime(date.Year, ((date.Month - 1) / 3) * 3 + 1, 1, 0, 0, 0, date.Kind),
             _ => date,
         };
     }
@@ -465,6 +680,11 @@ internal static class GanttScale
             GanttScaleUnit.Hour => (colW * 24.0) / cfg.Step,
             GanttScaleUnit.Month => colW / 30.0,
             GanttScaleUnit.Year => colW / 365.0,
+            // Same fixed 30-day-per-month approximation the Month branch above
+            // uses (kept internally self-consistent with DateToPixel's own
+            // Quarter formula, which is exactly the Month formula / 3 — see its
+            // remarks), times 3 months per quarter-column. No v2 counterpart.
+            GanttScaleUnit.Quarter => colW / (30.0 * 3),
             _ => colW,
         };
     }
@@ -584,6 +804,10 @@ internal static class GanttScale
         GanttHeaderLowerKind.YearNum => d.Year.ToString(CultureInfo.InvariantCulture),
         // case 'time6h': case 'time12h': lowerText = `${d.getHours()}:00`; — plain digits.
         GanttHeaderLowerKind.Time6h or GanttHeaderLowerKind.Time12h => $"{d.Hour}:00",
+        // "Q1".."Q4" — no v2 counterpart (Quarter is v3-only). Locale-independent
+        // (a literal "Q" + digit, same precedent as YearNum/DayNum above — no
+        // locale renders quarter numbers differently).
+        GanttHeaderLowerKind.QuarterNum => $"Q{(d.Month - 1) / 3 + 1}",
         _ => string.Empty,
     };
 
@@ -595,17 +819,28 @@ internal static class GanttScale
     /// <c>if (upperText &amp;&amp; upperText !== lastUpperLabel)</c> guard (gantt-v2.js
     /// lines 386-404) — an empty string is falsy in JS and is never emitted.
     /// </summary>
-    internal static IReadOnlyList<GanttHeaderRun> UpperRuns(GanttViewMode mode, IReadOnlyList<DateTime> units)
+    /// <param name="firstDayOfWeek">
+    /// Design spec Phase 3, T2 — the day a <see cref="GanttHeaderUpperKind.Week"/>
+    /// band starts on (only <see cref="GanttViewMode.Day"/> uses that kind today).
+    /// Null (the default) derives it from <see cref="CultureInfo.CurrentCulture"/>'s
+    /// own <c>DateTimeFormat.FirstDayOfWeek</c> — same "culture unless the caller
+    /// overrides" precedent as every other culture-derived default in this
+    /// codebase (e.g. <c>GanttTimeline.Today</c>'s doc remarks). Ignored entirely
+    /// by every OTHER <see cref="GanttHeaderUpperKind"/> — it only ever reaches
+    /// <see cref="WeekBandLabel"/>.
+    /// </param>
+    internal static IReadOnlyList<GanttHeaderRun> UpperRuns(GanttViewMode mode, IReadOnlyList<DateTime> units, DayOfWeek? firstDayOfWeek = null)
     {
         var cfg = GetConfig(mode);
         var runs = new List<GanttHeaderRun>();
         if (cfg.HeaderUpper == GanttHeaderUpperKind.None) return runs;
 
+        var effectiveFirstDayOfWeek = firstDayOfWeek ?? CultureInfo.CurrentCulture.DateTimeFormat.FirstDayOfWeek;
         var runStart = -1;
         string? runLabel = null;
         for (var i = 0; i < units.Count; i++)
         {
-            var label = UpperLabel(cfg.HeaderUpper, units[i]);
+            var label = UpperLabel(cfg.HeaderUpper, units[i], effectiveFirstDayOfWeek);
             if (label != runLabel)
             {
                 if (runStart >= 0) runs.Add(new GanttHeaderRun(runStart, i - runStart, runLabel!));
@@ -617,7 +852,7 @@ internal static class GanttScale
         return runs;
     }
 
-    private static string UpperLabel(GanttHeaderUpperKind kind, DateTime d) => kind switch
+    private static string UpperLabel(GanttHeaderUpperKind kind, DateTime d, DayOfWeek firstDayOfWeek) => kind switch
     {
         // case 'month': upperText = fmtMonth(d); -> d.toLocaleString(undefined, { month: 'long' })
         // Bug fix (Codex round 2, P2 #4) — same v2-parity fix as LowerLabel's
@@ -629,6 +864,153 @@ internal static class GanttScale
         GanttHeaderUpperKind.Year => d.Year.ToString(CultureInfo.InvariantCulture),
         // case 'day': upperText = `${fmtMonth(d)} ${d.getDate()}`;
         GanttHeaderUpperKind.Day => $"{d.ToString("MMMM", CultureInfo.CurrentCulture)} {d.Day}",
+        // No v2 counterpart — see WeekBandLabel's own remarks.
+        GanttHeaderUpperKind.Week => WeekBandLabel(d, firstDayOfWeek),
         _ => string.Empty,
     };
+
+    /// <summary>
+    /// Builds one ISO-8601-numbered week-band label, e.g. "W29 Jul 12 – 18" (or
+    /// "W1 Dec 29 – Jan 4" when the band spans a month boundary — see below).
+    /// Design spec Phase 3, T2 — no v2 counterpart.
+    ///
+    /// <b>Band boundaries</b> are computed purely from <paramref name="firstDayOfWeek"/>
+    /// (the caller's explicit override, or the culture default — see
+    /// <see cref="UpperRuns"/>'s own remarks): <paramref name="d"/> is walked back
+    /// to the most recent <paramref name="firstDayOfWeek"/> to get the band's
+    /// start; the band always spans exactly 7 days. Every date within the SAME
+    /// band produces the IDENTICAL label string (both endpoints and the week
+    /// number below are derived from the band's own fixed start, never from
+    /// <paramref name="d"/> itself beyond locating that start) — required for
+    /// <see cref="UpperRuns"/>' consecutive-equal-label merge to collapse an
+    /// entire week's worth of Day-mode columns into one run, the same way it
+    /// already collapses a month's worth of columns under
+    /// <see cref="GanttHeaderUpperKind.Month"/>.
+    ///
+    /// <b>Week NUMBER</b> is a SEPARATE decision from the band boundary (design
+    /// spec constraint: "use the ISO rule ... unless the culture explicitly
+    /// overrides it, and make FirstDayOfWeek actually shift the band
+    /// boundaries" — two independent knobs). See <see cref="GetWeekNumber"/>.
+    /// </summary>
+    private static string WeekBandLabel(DateTime d, DayOfWeek firstDayOfWeek)
+    {
+        var diff = ((int)d.DayOfWeek - (int)firstDayOfWeek + 7) % 7;
+        var bandStart = d.Date.AddDays(-diff);
+        var bandEnd = bandStart.AddDays(6);
+
+        // The week-NUMBER anchor: day 4 of the 7-day band (bandStart+3) — a
+        // generalization of ISO 8601's own "a week belongs to the year/week
+        // containing its Thursday" rule (Thursday IS day 4 of an ISO week,
+        // which always starts on Monday) to a band that may start on a
+        // DIFFERENT day when firstDayOfWeek is overridden. Using a single,
+        // fixed offset from bandStart (rather than d itself) keeps the
+        // computed number IDENTICAL for every date inside the same band, per
+        // this method's own "one label per band" contract above.
+        var week = GetWeekNumber(bandStart.AddDays(3));
+
+        var range = bandStart.Month == bandEnd.Month
+            // Band stays within one month: "Jul 12 – 18" (no need to repeat the
+            // month name — this is the common case for a 7-day band).
+            ? $"{bandStart.ToString("MMM", CultureInfo.CurrentCulture)} {bandStart.Day} – {bandEnd.Day}"
+            // Band crosses a month (or year) boundary: show both endpoints'
+            // own month, e.g. "Dec 29 – Jan 4" — omitting the second month
+            // here would silently read as "Dec 29 – 4", implying Dec 4 (before
+            // Dec 29), which is wrong.
+            : $"{bandStart.ToString("MMM d", CultureInfo.CurrentCulture)} – {bandEnd.ToString("MMM d", CultureInfo.CurrentCulture)}";
+
+        return $"W{week} {range}";
+    }
+
+    /// <summary>
+    /// ISO-8601 week-of-year for <paramref name="date"/> — design spec constraint:
+    /// "ISO-8601 week numbers are not <c>Calendar.GetWeekOfYear</c> with default
+    /// rules. Use the ISO rule (first week containing the first Thursday) unless
+    /// the culture explicitly overrides it."
+    ///
+    /// When <see cref="CultureInfo.CurrentCulture"/>'s own <c>DateTimeFormat</c>
+    /// ALREADY specifies the ISO convention (<see cref="CalendarWeekRule.FirstFourDayWeek"/>
+    /// + <see cref="DayOfWeek.Monday"/> — the combination that DEFINES "first
+    /// week containing the first Thursday"), this routes through
+    /// <see cref="System.Globalization.ISOWeek"/> specifically rather than
+    /// <c>Calendar.GetWeekOfYear(date, CalendarWeekRule.FirstFourDayWeek, DayOfWeek.Monday)</c>
+    /// directly: .NET's own <c>Calendar.GetWeekOfYear</c> has a documented,
+    /// long-standing bug with <see cref="CalendarWeekRule.FirstFourDayWeek"/> for
+    /// dates whose ISO week belongs to the ADJACENT calendar year (e.g. Jan 1st
+    /// landing in the previous year's week 52/53, or Dec 29th-31st landing in
+    /// the next year's week 1) — exactly the "ISO week 1 starts in the previous
+    /// December" scenario this task's own test list calls out.
+    /// <see cref="System.Globalization.ISOWeek"/> exists specifically to give a
+    /// correct answer for that case and is the documented, recommended
+    /// replacement.
+    ///
+    /// Otherwise, the culture has EXPLICITLY chosen a different, non-ISO
+    /// week-numbering convention (e.g. <c>en-US</c>: <see cref="CalendarWeekRule.FirstDay"/>
+    /// + <see cref="DayOfWeek.Sunday"/>) — honored via the framework's own
+    /// <c>Calendar.GetWeekOfYear</c> using THAT culture's own rule/first-day,
+    /// matching how a browser rendering that locale would number weeks.
+    /// </summary>
+    private static int GetWeekNumber(DateTime date)
+    {
+        var dtfi = CultureInfo.CurrentCulture.DateTimeFormat;
+        if (dtfi.CalendarWeekRule == CalendarWeekRule.FirstFourDayWeek && dtfi.FirstDayOfWeek == DayOfWeek.Monday)
+            return System.Globalization.ISOWeek.GetWeekOfYear(date);
+        return dtfi.Calendar.GetWeekOfYear(date, dtfi.CalendarWeekRule, dtfi.FirstDayOfWeek);
+    }
+
+    /// <summary>
+    /// The culture-appropriate weekend day set — design spec Phase 3, T2's
+    /// <c>OffDays</c> parameter default ("region-aware set of off days,
+    /// default Sat/Sun by culture"). Constraint: "Off days are region-aware:
+    /// default = the culture's weekend, not hardcoded Sat+Sun. If
+    /// <see cref="CultureInfo"/> cannot express it directly, derive sensibly and
+    /// document the rule" — .NET's <see cref="CultureInfo"/>/<see cref="RegionInfo"/>
+    /// have NO "weekend days" API at all (unlike ICU's own <c>getWeekendData</c>),
+    /// so this table is sourced directly from Unicode CLDR's own
+    /// <c>common/supplemental/supplementalData.xml</c> <c>&lt;weekData&gt;</c>
+    /// element (the same reference ICU's <c>getWeekendData</c> draws from) —
+    /// fetched from the CLDR repository (unicode-org/cldr, <c>main</c> branch)
+    /// while implementing this task:
+    /// <code>
+    /// weekendStart day="thu" territories="AF"
+    /// weekendStart day="fri" territories="BH DZ EG IL IQ IR JO KW LY OM QA SA SD SY YE"
+    /// weekendStart day="sat" territories="001"                    (global default)
+    /// weekendStart day="sun" territories="IN UG"
+    /// weekendEnd   day="fri" territories="AF IR"
+    /// weekendEnd   day="sat" territories="BH DZ EG IL IQ JO KW LY OM QA SA SD SY YE"
+    /// weekendEnd   day="sun" territories="001"                    (global default)
+    /// </code>
+    /// Cross-referencing start/end per territory: IR (Iran) = Friday only;
+    /// AF (Afghanistan) = Thursday+Friday; BH/DZ/EG/IL/IQ/JO/KW/LY/OM/QA/SA/SD/SY/YE
+    /// (Bahrain, Algeria, Egypt, Israel, Iraq, Jordan, Kuwait, Libya, Oman,
+    /// Qatar, Saudi Arabia, Sudan, Syria, Yemen) = Friday+Saturday;
+    /// IN/UG (India, Uganda) = Sunday only; every other territory (including
+    /// UAE, which moved OFF the Friday/Saturday list in a 2022 CLDR update
+    /// when it switched to a Sat/Sun week) falls through to the "001" global
+    /// default, Saturday+Sunday. The REGION subtag (not the language) is what
+    /// determines this — <c>ar-EG</c> and <c>ar-MA</c> share a language but
+    /// have DIFFERENT weekends — so this reads <paramref name="culture"/>'s
+    /// region via <see cref="RegionInfo"/>, not its language.
+    /// </summary>
+    internal static IReadOnlySet<DayOfWeek> DefaultOffDays(CultureInfo culture)
+    {
+        string? region = null;
+        try { region = new RegionInfo(culture.Name).TwoLetterISORegionName; }
+        catch (ArgumentException)
+        {
+            // A neutral culture (e.g. "ar", no region subtag) has no
+            // RegionInfo — falls through to the global default below, same
+            // as any OTHER unlisted region.
+        }
+
+        return region switch
+        {
+            "IR" => new HashSet<DayOfWeek> { DayOfWeek.Friday },
+            "AF" => new HashSet<DayOfWeek> { DayOfWeek.Thursday, DayOfWeek.Friday },
+            "BH" or "DZ" or "EG" or "IL" or "IQ" or "JO" or "KW" or "LY" or "OM"
+                or "QA" or "SA" or "SD" or "SY" or "YE" =>
+                new HashSet<DayOfWeek> { DayOfWeek.Friday, DayOfWeek.Saturday },
+            "IN" or "UG" => new HashSet<DayOfWeek> { DayOfWeek.Sunday },
+            _ => new HashSet<DayOfWeek> { DayOfWeek.Saturday, DayOfWeek.Sunday },
+        };
+    }
 }
