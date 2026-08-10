@@ -25,8 +25,17 @@ internal sealed class RadarCoordinateSystem
         StartAngle = startAngle;
     }
 
-    /// <summary>Angle (radians) of the Nth axis, evenly spaced around the circle.</summary>
-    public double AngleForAxis(int index) => StartAngle + index * (2 * Math.PI / AxisCount);
+    /// <summary>
+    /// Angle (radians) of the Nth axis, evenly spaced around the circle. Indices
+    /// advance CLOCKWISE from <see cref="StartAngle"/> (default: straight up) —
+    /// matching the legacy ECharts RadarChart's convention (ECharts' polar/radar
+    /// coordinate system walks indicator order clockwise from its startAngle).
+    /// Screen Y grows downward, so subtracting the per-axis increment from the
+    /// angle (rather than adding it) is what produces clockwise motion here; a
+    /// `+` would mirror every series across the vertical axis versus ECharts for
+    /// the exact same indicator order and data.
+    /// </summary>
+    public double AngleForAxis(int index) => StartAngle - index * (2 * Math.PI / AxisCount);
 
     /// <summary>
     /// Pixel position for a value on axis <paramref name="axisIndex"/>, where

@@ -80,7 +80,12 @@ public class NativeHeatmapChartTests : IAsyncLifetime
     public void Min_And_Max_Value_Cells_Resolve_To_The_Two_Endpoint_Stop_Colors_Literally()
     {
         // ChartColorScale.Resolve returns a stop's color LITERALLY (no color-mix()
-        // wrapper) when the value lands exactly on that stop.
+        // wrapper) when the value lands exactly on that stop. Default gradient
+        // tokens are --color-muted (low) -> --color-primary (high), NOT
+        // --color-chart-1 -> --color-primary: --color-chart-1 is defined equal to
+        // --color-primary in every shipped theme (light AND dark), which collapsed
+        // the whole gradient into one solid color — see NativeHeatmapChart's own
+        // comment on the Colors/ColorPalette fallback.
         var data = new List<double[]> { new double[] { 0, 0, 0 }, new double[] { 1, 0, 10 } };
         var cut = _ctx.Render<L.NativeHeatmapChart>(p => p
             .Add(b => b.XCategories, new List<string> { "a", "b" })
@@ -88,8 +93,57 @@ public class NativeHeatmapChartTests : IAsyncLifetime
             .Add(b => b.Data, data));
 
         var rects = cut.FindAll("svg rect.lumeo-native-heatmap-cell").ToList();
-        Assert.Contains(rects, r => r.GetAttribute("fill") == "var(--color-chart-1)");
+        Assert.Contains(rects, r => r.GetAttribute("fill") == "var(--color-muted)");
         Assert.Contains(rects, r => r.GetAttribute("fill") == "var(--color-primary)");
+    }
+
+    [Fact]
+    public void Default_Gradient_Tokens_Are_Not_Aliases_Of_Each_Other_In_Any_Shipped_Theme()
+    {
+        // The actual bug this regression guards: --color-chart-1 is defined
+        // LITERALLY EQUAL to --color-primary in the default theme AND all 7 named
+        // themes (lumeo.css + themes/*.css), both light and dark — using that pair
+        // as the heatmap's default gradient collapsed every cell to one solid
+        // color (black in light mode, near-uniform off-white in dark). This test
+        // can't inspect CSS custom-property VALUES from bUnit (no browser), so it
+        // instead pins the two DECLARED CSS variable tokens the default gradient
+        // must resolve to — the one thing that's directly assertable here — and is
+        // paired with the browser-level oklch pixel measurement in the PR
+        // description / manual verification for the actual color values.
+        var data = new List<double[]> { new double[] { 0, 0, 0 }, new double[] { 1, 0, 10 } };
+        var cut = _ctx.Render<L.NativeHeatmapChart>(p => p
+            .Add(b => b.XCategories, new List<string> { "a", "b" })
+            .Add(b => b.YCategories, new List<string> { "row" })
+            .Add(b => b.Data, data));
+
+        var fills = cut.FindAll("svg rect.lumeo-native-heatmap-cell").Select(r => r.GetAttribute("fill")).ToList();
+        Assert.DoesNotContain("var(--color-chart-1)", fills);
+    }
+
+    [Fact]
+    public void Twenty_One_Distinct_Values_Produce_Twenty_One_Distinct_Color_Mix_Expressions()
+    {
+        // The rigor bar for "the picture is right", not just "a fill exists": a
+        // heatmap where N distinct values collapse to fewer than N distinct
+        // fill expressions is non-functional as a heatmap even if every cell has
+        // SOME fill attribute (which is exactly what the old assertion-by-
+        // presence tests would have missed). Mirrors the /e2e/charts-native
+        // support-ticket-volume fixture's value range (18-95, 21 cells).
+        var data = new List<double[]>();
+        var value = 18;
+        for (var x = 0; x < 7; x++)
+        for (var y = 0; y < 3; y++)
+        {
+            data.Add(new double[] { x, y, value });
+            value += 3; // 21 strictly increasing, distinct values: 18, 21, ..., 78
+        }
+        var cut = _ctx.Render<L.NativeHeatmapChart>(p => p
+            .Add(b => b.XCategories, new List<string> { "0", "1", "2", "3", "4", "5", "6" })
+            .Add(b => b.YCategories, new List<string> { "0", "1", "2" })
+            .Add(b => b.Data, data));
+
+        var fills = cut.FindAll("svg rect.lumeo-native-heatmap-cell").Select(r => r.GetAttribute("fill")).ToHashSet();
+        Assert.Equal(21, fills.Count);
     }
 
     [Fact]

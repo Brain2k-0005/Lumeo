@@ -2063,6 +2063,15 @@ input[type="range"]::-moz-range-thumb {
  * Respects `prefers-reduced-motion`: the ripple freezes to a single
  * static ring instead of looping, matching every other animated
  * chart affordance in this file.
+ *
+ * The ring starts at scale(1) — exactly the marker's own radius — not
+ * smaller. It previously started at scale(0.6): since the ripple paints
+ * UNDER the solid marker (z-order), a sub-1 starting scale put its
+ * highest-opacity moment (0.9 at 0%) entirely BEHIND the opaque marker,
+ * hidden. By the time it grew past the marker's edge (~17% into the
+ * cycle) opacity had already faded to ~0.7 and kept dropping, so in
+ * practice the pulse read as invisible. Starting at scale(1) makes the
+ * ring visible from frame one.
  * ============================================================= */
 .lumeo-chart-native-ripple {
   animation: lumeo-chart-native-ripple 1.8s cubic-bezier(0, 0, 0.2, 1) infinite;
@@ -2070,8 +2079,8 @@ input[type="range"]::-moz-range-thumb {
   transform-box: fill-box;
 }
 @keyframes lumeo-chart-native-ripple {
-  0%           { opacity: 0.9; transform: scale(0.6); }
-  75%, 100%    { opacity: 0;   transform: scale(2.4); }
+  0%           { opacity: 0.85; transform: scale(1); }
+  75%, 100%    { opacity: 0;    transform: scale(2.4); }
 }
 @media (prefers-reduced-motion: reduce) {
   .lumeo-chart-native-ripple {

@@ -136,4 +136,35 @@ public class NativeBoxPlotChartTests : IAsyncLifetime
         var headers = cut.FindAll("table.sr-only thead th").Select(h => h.TextContent).ToList();
         Assert.Equal(new[] { "Category", "Min", "Q1", "Median", "Q3", "Max" }, headers);
     }
+
+    /// <summary>
+    /// Axis-scaling consistency judgment call: box plots are a distribution/range
+    /// type (like Candlestick), not a zero-anchored magnitude type (like
+    /// Line/Bar/Area) — the Y-axis should tight-fit the data, NOT force zero into
+    /// the domain. Before this fix, <c>NiceTicks.Compute(Math.Min(0, lo), hi, 5)</c>
+    /// always included zero, so a distribution sitting well above zero (e.g. deal
+    /// sizes in the 18k-51k range) rendered boxes squashed into a thin band at the
+    /// top of the axis — the exact failure mode Candlestick's own tight fit exists
+    /// to avoid. This asserts the actual rendered tick VALUES (not just their
+    /// count/presence): with data entirely in [18200, 51200], "0" must not appear
+    /// as a tick, and the lowest tick must be well above zero.
+    /// </summary>
+    [Fact]
+    public void YAxis_Tight_Fits_The_Data_Range_Instead_Of_Forcing_A_Zero_Baseline()
+    {
+        var cut = _ctx.Render<L.NativeBoxPlotChart>(p => p
+            .Add(b => b.Categories, new List<string> { "Q1" })
+            .Add(b => b.Data, new List<double[]> { new[] { 18200.0, 22400, 25800, 29100, 34600 } }));
+
+        var yTicks = cut.FindAll("svg g.lumeo-chart-axis text").Select(t => t.TextContent).ToList();
+        Assert.DoesNotContain(yTicks, t => t.Trim() == "0");
+
+        var numericTicks = yTicks
+            .Select(t => double.TryParse(t.Replace(",", ""), System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var v) ? (double?)v : null)
+            .Where(v => v is not null)
+            .Select(v => v!.Value)
+            .ToList();
+        Assert.NotEmpty(numericTicks);
+        Assert.True(numericTicks.Min() > 10000, $"Expected the lowest Y tick to tight-fit well above zero (>10000); got {numericTicks.Min()}.");
+    }
 }

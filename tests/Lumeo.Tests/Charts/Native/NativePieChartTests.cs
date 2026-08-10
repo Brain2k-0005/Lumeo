@@ -143,4 +143,28 @@ public class NativePieChartTests
 
         Assert.Empty(cut.FindAll(".lumeo-chart-legend"));
     }
+
+    /// <summary>
+    /// The actual defect: <c>&lt;ChartLegend ... HoveredKey="_legend.HoveredKey" /&gt;</c>
+    /// (missing the leading <c>@</c>) bound the LITERAL STRING "_legend.HoveredKey" to
+    /// the <c>string?</c> parameter instead of the field's value (Blazor only treats a
+    /// bare, non-<c>@</c> attribute as a C# expression for non-string parameter types;
+    /// for <c>string</c> it's literal text). Since that literal never equals a real
+    /// legend key, every item's <c>isDimmed</c> check evaluated true PERMANENTLY,
+    /// rendering every swatch at 0.45 opacity even with nothing hovered — which,
+    /// blended against a white background, is exactly what read as "desaturated"
+    /// (e.g. a saturated teal rgb(42,157,144) blends to a washed-out
+    /// rgb(159,211,205) at 0.45 opacity). The swatch's declared CSS color token was
+    /// never wrong; the opacity compositing was. This asserts the actual rendered
+    /// opacity — the property that was wrong — not just that a swatch element exists.
+    /// </summary>
+    [Fact]
+    public void Legend_Items_Are_Not_Permanently_Dimmed_When_Nothing_Is_Hovered()
+    {
+        var cut = _ctx.Render<L.NativePieChart>(p => p.Add(b => b.Data, TwoSlices()));
+
+        var items = cut.FindAll(".lumeo-chart-legend-item");
+        Assert.NotEmpty(items);
+        Assert.All(items, item => Assert.Equal("opacity:1", item.GetAttribute("style")));
+    }
 }

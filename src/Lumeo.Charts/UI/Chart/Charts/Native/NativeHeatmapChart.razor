@@ -206,7 +206,15 @@
         var xScale = new BandScale(_visibleXCategories.Count, _plot.X, _plot.Right, paddingInner: 0.06, paddingOuter: 0);
         var yScale = new BandScale(YCategories.Count, _plot.Y, _plot.Bottom, paddingInner: 0.06, paddingOuter: 0);
 
-        var tokens = ColorPalette is { Count: > 0 } ? ColorPalette : Colors is { Count: > 0 } ? Colors : new List<string> { "var(--color-chart-1)", "var(--color-primary)" };
+        // Default low->high gradient tokens: --color-muted (pale/dark neutral) -> --color-primary
+        // (ink). Deliberately NOT --color-chart-1 -> --color-primary: every shipped theme (the
+        // default theme and all 7 named themes, both light and dark) defines --color-chart-1 as
+        // LITERALLY EQUAL to --color-primary (chart-1 is the brand hue), which collapsed the
+        // gradient into a single solid color — a heatmap with no distinguishable value->color
+        // mapping. --color-muted and --color-primary are guaranteed distinct, high-contrast
+        // opposites in every theme (verified against lumeo.css + all 7 themes/*.css), giving a
+        // real monochrome intensity ramp that stays theme-aware without ever resolving to a hex.
+        var tokens = ColorPalette is { Count: > 0 } ? ColorPalette : Colors is { Count: > 0 } ? Colors : new List<string> { "var(--color-muted)", "var(--color-primary)" };
         var values = Data.Where(d => d.Length > 2).Select(d => d[2]).ToList();
         var min = values.Count > 0 ? values.Min() : 0;
         var max = values.Count > 0 ? values.Max() : 1;

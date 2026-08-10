@@ -50,7 +50,7 @@
     </div>
     @if (ShowLegend && _legendItems.Count > 0)
     {
-        <ChartLegend Items="_legendItems" HiddenKeys="_legend.HiddenKeys" HoveredKey="_legend.HoveredKey"
+        <ChartLegend Items="@_legendItems" HiddenKeys="@_legend.HiddenKeys" HoveredKey="@_legend.HoveredKey"
                      Class="justify-center"
                      OnToggle="@(EventCallback.Factory.Create<string>(this, OnLegendToggle))"
                      OnHover="@(EventCallback.Factory.Create<string?>(this, OnLegendHover))" />
@@ -123,7 +123,12 @@
     private const double ViewW = 420, ViewH = 280;
     private double CenterX => ViewW / 2;
     private double CenterY => ViewH / 2;
-    private const double MaxRadius = 92;
+    // See NativeDonutChart's MaxRadius comment: ECharts resolves a rose/nightingale
+    // chart's radius percentages (legacy default outer "70%") against the full
+    // available plot radius, not a pre-shrunk one — its default outer edge lands
+    // close to ~98px in this same 420x280 box, visibly larger than this engine's
+    // previous fixed 92px ceiling combined with the petal gap/stroke rendering.
+    private const double MaxRadius = 98;
     private const double InnerRadiusPx = 16;
     private int EntryDurationMs => AnimationDuration ?? 500;
     private bool ShouldShowSkeleton => IsLoading && ShowLoadingSkeleton;

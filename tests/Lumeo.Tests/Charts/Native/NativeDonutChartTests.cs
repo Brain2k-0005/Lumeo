@@ -16,12 +16,14 @@ public class NativeDonutChartTests
     [Fact]
     public void Default_Inner_Outer_Radius_Percentages_Produce_A_Ring_Not_A_Solid_Wedge()
     {
-        // MaxRadius = 92 (matches the type's private constant); default InnerRadius
-        // "50%" / OuterRadius "70%" => inner = 46, outer = 64.4.
+        // MaxRadius = 130 (matches the type's private constant — bumped from 92 so
+        // the default 70% outer radius lands close to Pie's own fixed 92px full
+        // circle instead of a visibly smaller 64.4px ring; see MaxRadius' own XML
+        // comment). Default InnerRadius "50%" / OuterRadius "70%" => inner = 65, outer = 91.
         var cut = _ctx.Render<L.NativeDonutChart>(p => p.Add(b => b.Data, OneSlice()));
 
         const double cx = 210, cy = 140;
-        var expected = L.ChartArcPath.Build(cx, cy, 46, 64.4, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 - 0.0001);
+        var expected = L.ChartArcPath.Build(cx, cy, 65, 91, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 - 0.0001);
 
         var path = cut.Find("svg path");
         Assert.Equal(expected, path.GetAttribute("d"));
@@ -36,8 +38,8 @@ public class NativeDonutChartTests
             .Add(b => b.OuterRadius, "100%"));
 
         const double cx = 210, cy = 140;
-        // 25% of 92 = 23, 100% of 92 = 92.
-        var expected = L.ChartArcPath.Build(cx, cy, 23, 92, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 - 0.0001);
+        // 25% of 130 = 32.5, 100% of 130 = 130.
+        var expected = L.ChartArcPath.Build(cx, cy, 32.5, 130, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 - 0.0001);
 
         var path = cut.Find("svg path");
         Assert.Equal(expected, path.GetAttribute("d"));
@@ -72,10 +74,22 @@ public class NativeDonutChartTests
             .Add(b => b.InnerRadius, "not-a-percent"));
 
         const double cx = 210, cy = 140;
-        // Falls back to the documented default of 50% => inner = 46.
-        var expected = L.ChartArcPath.Build(cx, cy, 46, 64.4, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 - 0.0001);
+        // Falls back to the documented default of 50% => inner = 65 (of MaxRadius 130).
+        var expected = L.ChartArcPath.Build(cx, cy, 65, 91, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 - 0.0001);
 
         var path = cut.Find("svg path");
         Assert.Equal(expected, path.GetAttribute("d"));
+    }
+
+    /// <summary>See <c>NativePieChartTests.Legend_Items_Are_Not_Permanently_Dimmed_When_Nothing_Is_Hovered</c>
+    /// — the same missing-<c>@</c> <c>HoveredKey</c> binding bug, same fix, same component family.</summary>
+    [Fact]
+    public void Legend_Items_Are_Not_Permanently_Dimmed_When_Nothing_Is_Hovered()
+    {
+        var cut = _ctx.Render<L.NativeDonutChart>(p => p.Add(b => b.Data, OneSlice()));
+
+        var items = cut.FindAll(".lumeo-chart-legend-item");
+        Assert.NotEmpty(items);
+        Assert.All(items, item => Assert.Equal("opacity:1", item.GetAttribute("style")));
     }
 }

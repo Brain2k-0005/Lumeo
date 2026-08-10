@@ -207,9 +207,19 @@
         var lo = allStats.Count > 0 ? allStats.Min(s => Math.Min(s.WhiskerLow, s.Outliers.Count > 0 ? s.Outliers.Min() : s.WhiskerLow)) : 0;
         var hi = allStats.Count > 0 ? allStats.Max(s => Math.Max(s.WhiskerHigh, s.Outliers.Count > 0 ? s.Outliers.Max() : s.WhiskerHigh)) : 10;
         if (hi <= lo) hi = lo + 1;
-        var ticks = NiceTicks.Compute(Math.Min(0, lo), hi, 5);
+        // Tight-fit, NOT zero-forced — same convention as Candlestick's Y-axis
+        // (NativeCandlestickChart.razor), and for the same reason: box plots are a
+        // distribution/range type, not a zero-anchored magnitude type (unlike
+        // Line/Bar/Area, where a filled shape's LENGTH visually encodes the value
+        // and forcing zero into the domain is required to avoid a misleading
+        // encoding). Forcing zero here squashed boxes into a thin band at the top
+        // of the axis whenever the data range sat well above zero (e.g. deal sizes
+        // in the 18k-51k range) — the exact failure mode Candlestick's own tight
+        // fit was written to avoid.
+        var pad = (hi - lo) * 0.08;
+        var ticks = NiceTicks.Compute(lo - pad, hi + pad, 5);
         var yScale = new LinearScale(ticks[0], ticks[^1], _plot.Bottom, _plot.Y);
-        _yTicks = ticks.Select(t => new ChartAxisTick(yScale.Scale(t), NativeChartShared.FmtValue(t))).ToList();
+        _yTicks = ticks.Select(t => new ChartAxisTick(yScale.Scale(t), NativeChartShared.FormatAxisNumber(t))).ToList();
 
         _boxes = new List<BoxRender>();
         _legendItems = new List<ChartLegendItem>();

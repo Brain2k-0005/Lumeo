@@ -338,7 +338,7 @@ else
         _categoryLabelsMarkup = sb.ToString();
     }
 
-    private static string FormatAxisNumber(double v) => v.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
+    private static string FormatAxisNumber(double v) => NativeChartShared.FormatAxisNumber(v);
 
     private double CategoryPixel(int i) => _bandScale is not null ? _bandScale.Center(i) : _pointScale!.Position(i);
 
@@ -428,6 +428,19 @@ else
                         var d = ChartPathBuilder.BuildBand(band, curve);
                         sb.Append("<path class=\"lumeo-chart-native-area\" data-series=\"").Append(originalIndex[s]).Append("\" d=\"").Append(System.Net.WebUtility.HtmlEncode(d))
                           .Append("\" fill=\"").Append(fill).Append("\" stroke=\"").Append(color).Append("\" stroke-width=\"1.75\" style=\"").Append(transition).Append("\" />");
+                        // Dots draw AFTER (on top of, in SVG paint order) the fill/stroke path
+                        // above so they're never hidden underneath the area's own fill — same
+                        // <circle class="lumeo-chart-native-dot"> markup the Line case uses, at
+                        // the series' own top (value) edge, not the stacked bottom.
+                        if (ser.ShowDots)
+                        {
+                            foreach (var i in run)
+                            {
+                                var (x, y) = (CategoryPixel(i), ValuePixel(extents[i].Top, ser.YAxisIndex));
+                                sb.Append("<circle class=\"lumeo-chart-native-dot\" data-series=\"").Append(originalIndex[s]).Append("\" data-index=\"").Append(i)
+                                  .Append("\" cx=\"").Append(Fmt(x)).Append("\" cy=\"").Append(Fmt(y)).Append("\" r=\"3\" fill=\"").Append(color).Append("\" />");
+                            }
+                        }
                     }
                     break;
                 }

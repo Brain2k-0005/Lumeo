@@ -29,7 +29,10 @@ public class NativeRadarChartTests
         var radar = new[] { (1.0, 0), (0.5, 1), (0.0, 2), (0.75, 3) };
         var expectedPoints = string.Join(' ', radar.Select(v =>
         {
-            var angle = -Math.PI / 2 + v.Item2 * (Math.PI * 2 / 4);
+            // Axis index advances CLOCKWISE from the top (matching ECharts'
+            // RadarChart convention) — RadarCoordinateSystem.AngleForAxis
+            // SUBTRACTS the per-axis increment, not adds it.
+            var angle = -Math.PI / 2 - v.Item2 * (Math.PI * 2 / 4);
             var x = cx + r * v.Item1 * Math.Cos(angle);
             var y = cy + r * v.Item1 * Math.Sin(angle);
             return $"{x:0.###},{y:0.###}";
@@ -86,5 +89,23 @@ public class NativeRadarChartTests
         var status = cut.Find("[role='status']");
         Assert.Contains("Bundle", status.TextContent);
         Assert.Contains("2", status.TextContent);
+    }
+
+    /// <summary>See <c>NativePieChartTests.Legend_Items_Are_Not_Permanently_Dimmed_When_Nothing_Is_Hovered</c>
+    /// — the same missing-<c>@</c> <c>HoveredKey</c> binding bug, same fix, same component family
+    /// (Radar has its own legend too, via the identical <c>ChartLegend</c> host pattern).</summary>
+    [Fact]
+    public void Legend_Items_Are_Not_Permanently_Dimmed_When_Nothing_Is_Hovered()
+    {
+        var series = new List<L.NativeRadarChart.RadarSeriesData>
+        {
+            new() { Name = "First", Values = new List<double> { 1, 2, 3, 4 } },
+            new() { Name = "Second", Values = new List<double> { 5, 6, 7, 8 } },
+        };
+        var cut = _ctx.Render<L.NativeRadarChart>(p => p.Add(b => b.Indicators, FourAxes()).Add(b => b.Series, series));
+
+        var items = cut.FindAll(".lumeo-chart-legend-item");
+        Assert.NotEmpty(items);
+        Assert.All(items, item => Assert.Equal("opacity:1", item.GetAttribute("style")));
     }
 }

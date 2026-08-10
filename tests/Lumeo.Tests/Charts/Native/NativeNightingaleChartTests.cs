@@ -23,7 +23,7 @@ public class NativeNightingaleChartTests
         };
         var cut = _ctx.Render<L.NativeNightingaleChart>(p => p.Add(b => b.Data, data));
 
-        const double cx = 210, cy = 140, innerR = 16, maxR = 92;
+        const double cx = 210, cy = 140, innerR = 16, maxR = 98; // MaxRadius bumped 92 -> 98, see the type's own comment
         var gap = 0.06;
         var step = Math.PI * 2 / 3;
         var halfGap = gap / 2;
@@ -55,7 +55,7 @@ public class NativeNightingaleChartTests
         };
         var cut = _ctx.Render<L.NativeNightingaleChart>(p => p.Add(b => b.Data, data));
 
-        const double cx = 210, cy = 140, innerR = 16, maxR = 92;
+        const double cx = 210, cy = 140, innerR = 16, maxR = 98; // MaxRadius bumped 92 -> 98, see the type's own comment
         var step = Math.PI * 2 / 3;
         var halfGap = 0.03;
         var b0 = -Math.PI / 2 + step + halfGap;
@@ -93,5 +93,22 @@ public class NativeNightingaleChartTests
 
         var caption = cut.Find("table.sr-only caption");
         Assert.Contains("1 data point", caption.TextContent);
+    }
+
+    /// <summary>See <c>NativePieChartTests.Legend_Items_Are_Not_Permanently_Dimmed_When_Nothing_Is_Hovered</c>
+    /// — the same missing-<c>@</c> <c>HoveredKey</c> binding bug, same fix, same component family.</summary>
+    [Fact]
+    public void Legend_Items_Are_Not_Permanently_Dimmed_When_Nothing_Is_Hovered()
+    {
+        var data = new List<L.NativeNightingaleChart.NightingaleData>
+        {
+            new() { Name = "A", Value = 10 },
+            new() { Name = "B", Value = 20 },
+        };
+        var cut = _ctx.Render<L.NativeNightingaleChart>(p => p.Add(b => b.Data, data));
+
+        var items = cut.FindAll(".lumeo-chart-legend-item");
+        Assert.NotEmpty(items);
+        Assert.All(items, item => Assert.Equal("opacity:1", item.GetAttribute("style")));
     }
 }

@@ -38,6 +38,20 @@ internal static class NativeChartShared
     public static string FmtValue(double v) => v.ToString("0.##", CultureInfo.InvariantCulture);
 
     /// <summary>
+    /// Formats a Y/X axis TICK label — the one place on the native engine that
+    /// intentionally uses <see cref="CultureInfo.CurrentCulture"/> (not Invariant)
+    /// plus a grouping separator (<c>#,##0.##</c>), so a value like 12345.6 reads
+    /// as "12,345.6" in en-US, "12.345,6" in de-DE, "12 345,6" in fr-FR, etc. — the
+    /// library ships 14 locales, so this can't be hardcoded to one convention.
+    /// Every other <c>Fmt*</c> helper here stays Invariant on purpose (SVG
+    /// coordinates/geometry must always use "." regardless of locale); this is the
+    /// one axis-facing exception, matching the rest of the library's existing
+    /// <c>CultureInfo.CurrentCulture</c> convention (see LumeoLocalizer, Calendar,
+    /// DatePicker).
+    /// </summary>
+    public static string FormatAxisNumber(double v) => v.ToString("#,##0.##", CultureInfo.CurrentCulture);
+
+    /// <summary>
     /// Expands a legacy ECharts-style label formatter template's three most
     /// common tokens — <c>{b}</c> (name), <c>{c}</c> (value), <c>{d}</c>
     /// (percent, already formatted, caller appends a literal <c>%</c> if wanted)

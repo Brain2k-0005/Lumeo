@@ -50,7 +50,7 @@
     </div>
     @if (ShowLegend && _legendItems.Count > 0)
     {
-        <ChartLegend Items="_legendItems" HiddenKeys="_legend.HiddenKeys" HoveredKey="_legend.HoveredKey"
+        <ChartLegend Items="@_legendItems" HiddenKeys="@_legend.HiddenKeys" HoveredKey="@_legend.HoveredKey"
                      Class="justify-center"
                      OnToggle="@(EventCallback.Factory.Create<string>(this, OnLegendToggle))"
                      OnHover="@(EventCallback.Factory.Create<string?>(this, OnLegendHover))" />
@@ -129,7 +129,15 @@
     private const double ViewW = 420, ViewH = 280;
     private double CenterX => ViewW / 2;
     private double CenterY => ViewH / 2;
-    private const double MaxRadius = 92;
+    // 130, not Pie's 92: Pie's OuterRadius is a hardcoded, non-percent "100%" (92px).
+    // Donut's OuterRadius/InnerRadius are percent-of-MaxRadius, and its default
+    // ("70%" outer) must land at roughly Pie's own 92px to visually match ECharts —
+    // where donut radius percentages resolve against the chart's full available
+    // plot radius, not a pre-shrunk one, so a default 70% donut renders nearly as
+    // large as a full pie. Using 92 as MaxRadius here made the default donut render
+    // at 92*0.70=64.4px — a visibly smaller ring than both Pie and the ECharts
+    // donut in the same box. 130*0.70=91 restores that parity.
+    private const double MaxRadius = 130;
     private double OuterRadiusPx => ParsePercent(OuterRadius, 70) / 100 * MaxRadius;
     private double InnerRadiusPx => ParsePercent(InnerRadius, 50) / 100 * MaxRadius;
     private int EntryDurationMs => AnimationDuration ?? 500;
