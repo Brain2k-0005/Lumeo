@@ -226,8 +226,9 @@
     /// used automatically so screen readers announce the switch's purpose.
     /// </summary>
     [Parameter] public string? AriaLabel { get; set; }
-    /// <summary>Switch size. Supports <see cref="Lumeo.Size.Sm"/>,
-    /// <see cref="Lumeo.Size.Md"/> (default), <see cref="Lumeo.Size.Lg"/>.</summary>
+    /// <summary>Switch size. Supports all 7 <see cref="Lumeo.Size"/> values (Xxs–Xxl). Note: Xxs
+    /// and Xs render well below the 24px touch-target minimum — not recommended for touch-primary
+    /// UIs. Default <see cref="Lumeo.Size.Md"/>.</summary>
     [Parameter] public Lumeo.Size Size { get; set; } = Lumeo.Size.Md;
 
     /// <summary>
@@ -258,31 +259,57 @@
     // so even consumers who don't set AriaLabel get a reasonable screen-reader announcement.
     private string? AriaLabelValue => AriaLabel ?? CurrentOnOffLabel ?? Label;
 
+    // Xl/Xxl track widths (52px/60px) have no named Tailwind step between w-12(48)
+    // and w-14(56) — arbitrary brackets, per spec §15b. Requires a CSS bundle
+    // rebuild before they render styled (not run in this batch — see report).
     private string TrackSizeClasses => Size switch
     {
+        Lumeo.Size.Xxs => "h-2 w-3",
+        Lumeo.Size.Xs => "h-3 w-5",
         Lumeo.Size.Sm => "h-4 w-7",
         Lumeo.Size.Lg => "h-6 w-11",
+        Lumeo.Size.Xl => "h-7 w-[52px]",
+        Lumeo.Size.Xxl => "h-8 w-[60px]",
         _ => "h-5 w-9"
     };
 
     private string ThumbSizeClasses => Size switch
     {
+        Lumeo.Size.Xxs => "h-1 w-1",
+        Lumeo.Size.Xs => "h-2 w-2",
         Lumeo.Size.Sm => "h-3 w-3",
         Lumeo.Size.Lg => "h-5 w-5",
+        Lumeo.Size.Xl => "h-6 w-6",
+        Lumeo.Size.Xxl => "h-7 w-7",
         _ => "h-4 w-4"
     };
 
+    // Formula-derived (not linearly extrapolated), per methodology §0.8:
+    // translate = trackW − thumbW − 4px (2×2px border). Worked per rung:
+    // Xxs 12−4−4=4=translate-x-1; Xs 20−8−4=8=translate-x-2;
+    // Xl 52−24−4=24=translate-x-6; Xxl 60−28−4=28=translate-x-7.
     private string ThumbTranslateClass => Size switch
     {
+        Lumeo.Size.Xxs => _checked ? "translate-x-1" : "translate-x-0",
+        Lumeo.Size.Xs => _checked ? "translate-x-2" : "translate-x-0",
         Lumeo.Size.Sm => _checked ? "translate-x-3" : "translate-x-0",
         Lumeo.Size.Lg => _checked ? "translate-x-5" : "translate-x-0",
+        Lumeo.Size.Xl => _checked ? "translate-x-6" : "translate-x-0",
+        Lumeo.Size.Xxl => _checked ? "translate-x-7" : "translate-x-0",
         _ => _checked ? "translate-x-4" : "translate-x-0"
     };
 
+    // Xxs's formula value floors to 0 (thumb(4)−4=0); floored to !h-1 !w-1,
+    // tying Xs — spec §15b flags this as a functional (not just cosmetic)
+    // concern since the Loading spinner is barely visible at that size.
     private string ThumbSpinnerClass => Size switch
     {
+        Lumeo.Size.Xxs => "!h-1 !w-1",
+        Lumeo.Size.Xs => "!h-1 !w-1",
         Lumeo.Size.Sm => "!h-2 !w-2",
         Lumeo.Size.Lg => "!h-3.5 !w-3.5",
+        Lumeo.Size.Xl => "!h-5 !w-5",
+        Lumeo.Size.Xxl => "!h-6 !w-6",
         _ => "!h-3 !w-3"
     };
 
