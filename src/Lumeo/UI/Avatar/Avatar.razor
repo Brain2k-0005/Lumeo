@@ -21,9 +21,7 @@
 
     /// <summary>The avatar's content — typically an <see cref="AvatarImage"/> and a fallback <see cref="AvatarFallback"/> (initials), rendered inside the shape-clipped inner wrapper.</summary>
     [Parameter] public RenderFragment? ChildContent { get; set; }
-    /// <summary>Avatar size. Supported values: <see cref="Lumeo.Size.Sm"/>,
-    /// <see cref="Lumeo.Size.Md"/> (default), <see cref="Lumeo.Size.Lg"/>,
-    /// <see cref="Lumeo.Size.Xl"/>. Other values fall through to <c>Md</c>.</summary>
+    /// <summary>Avatar size. Supports all 7 <see cref="Lumeo.Size"/> values (Xxs–Xxl). Default <see cref="Lumeo.Size.Md"/>.</summary>
     [Parameter] public Lumeo.Size Size { get; set; } = Lumeo.Size.Md;
     /// <summary>Avatar outline. <c>Circle</c> (default) and <c>Square</c> are literal
     /// contracts — a Circle avatar stays a circle in every theme. <c>Themed</c> follows
@@ -90,18 +88,25 @@
     private string ShapeClasses => Shape switch
     {
         AvatarShape.Square => "rounded-md",
-        // *3 keeps Themed a full circle at stock radii for every size up to Xl
-        // (3 x 0.75rem = 36px >= h-16's 32px half-height); sharp themes square it.
-        AvatarShape.Themed => "rounded-[calc(var(--radius)*3)]",
+        // *4 keeps Themed a full circle at stock radii for every size up to Xxl
+        // (4 x 0.75rem = 48px >= h-20's 40px half-height); sharp themes square it.
+        // (Was *3 = 36px, which covered only up to Xl's 32px half-height and broke
+        // at Xxl's 40px half-height — bumped when the Xxl rung was added.)
+        AvatarShape.Themed => "rounded-[calc(var(--radius)*4)]",
         _ => "rounded-full"
     };
 
     private string SizeClasses => Size switch
     {
         Lumeo.Size.Xxs => "h-5 w-5 text-[10px]",
+        // Own rung as of the full-scale rollout — previously fell through to the
+        // Md catch-all (40px), rendering LARGER than Sm (32px). Deliberate visual
+        // change: consumers relying on Size.Xs will see the avatar shrink to 24px.
+        Lumeo.Size.Xs => "h-6 w-6",
         Lumeo.Size.Sm => "h-8 w-8",
         Lumeo.Size.Lg => "h-12 w-12",
         Lumeo.Size.Xl => "h-16 w-16",
+        Lumeo.Size.Xxl => "h-20 w-20",
         _ => "h-10 w-10"
     };
 

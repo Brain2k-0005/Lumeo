@@ -44,7 +44,7 @@
         "name": "Size",
         "type": "Lumeo.Size",
         "default": "Lumeo.Size.Md",
-        "description": "Size of the badge. Defaults to Md.",
+        "description": "Size of the badge. Supports all 7 Size values (Xxs–Xxl). Defaults to Md.",
         "isCascading": false,
         "captureUnmatched": false,
         "isEditorRequired": false
@@ -109,14 +109,14 @@
   },
   "testCoverage": {
     "tier": 3,
-    "files": 1,
-    "tests": 9,
+    "files": 2,
+    "tests": 11,
     "relatedFiles": 0,
     "render": true,
     "behavior": false,
     "a11y": true,
     "keyboard": true,
-    "scale": false,
+    "scale": true,
     "e2e": false,
     "e2eFiles": [],
     "contract": "smoke"
@@ -133,7 +133,7 @@
   "source": [
     {
       "path": "UI/Kbd/Kbd.razor",
-      "content": "@namespace Lumeo\n\n<kbd class=\"@CssClass\" @attributes=\"AdditionalAttributes\">@ChildContent</kbd>\n\n@code {\n    /// <summary>The key or shortcut label (e.g. <c>\"⌘\"</c>, <c>\"Ctrl\"</c>, <c>\"Esc\"</c>).</summary>\n    [Parameter] public RenderFragment? ChildContent { get; set; }\n\n    /// <summary>Size of the badge. Defaults to <see cref=\"Lumeo.Size.Md\"/>.</summary>\n    [Parameter] public Lumeo.Size Size { get; set; } = Lumeo.Size.Md;\n\n    /// <summary>Additional CSS classes merged onto the root <c>kbd</c> element.</summary>\n    [Parameter] public string? Class { get; set; }\n\n    /// <summary>Unmatched attributes are splatted onto the root <c>kbd</c> element.</summary>\n    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }\n\n    private string CssClass => Cx.Merge(\"pointer-events-none inline-flex select-none items-center gap-1 rounded border border-border/50 bg-muted font-mono font-medium text-muted-foreground\", SizeClasses, Class);\n\n    private string SizeClasses => Size switch\n    {\n        Lumeo.Size.Sm => \"h-5 px-1 text-[10px]\",\n        Lumeo.Size.Lg => \"h-6 px-2 text-xs\",\n        _ => \"h-5 px-1.5 text-[11px]\"\n    };\n}\n"
+      "content": "@namespace Lumeo\n\n<kbd class=\"@CssClass\" @attributes=\"AdditionalAttributes\">@ChildContent</kbd>\n\n@code {\n    /// <summary>The key or shortcut label (e.g. <c>\"⌘\"</c>, <c>\"Ctrl\"</c>, <c>\"Esc\"</c>).</summary>\n    [Parameter] public RenderFragment? ChildContent { get; set; }\n\n    /// <summary>Size of the badge. Supports all 7 <see cref=\"Lumeo.Size\"/> values (Xxs–Xxl).\n    /// Defaults to <see cref=\"Lumeo.Size.Md\"/>.</summary>\n    [Parameter] public Lumeo.Size Size { get; set; } = Lumeo.Size.Md;\n\n    /// <summary>Additional CSS classes merged onto the root <c>kbd</c> element.</summary>\n    [Parameter] public string? Class { get; set; }\n\n    /// <summary>Unmatched attributes are splatted onto the root <c>kbd</c> element.</summary>\n    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }\n\n    private string CssClass => Cx.Merge(\"pointer-events-none inline-flex select-none items-center gap-1 rounded border border-border/50 bg-muted font-mono font-medium text-muted-foreground\", SizeClasses, Class);\n\n    private string SizeClasses => Size switch\n    {\n        // Height's Sm->Md step is 0 (they tie at h-5), so a flat 1-step Tailwind\n        // decrement is used for Xxs/Xs instead of mechanical extrapolation — see spec.\n        Lumeo.Size.Xxs => \"h-3.5 px-0 text-[8px]\",\n        Lumeo.Size.Xs => \"h-4 px-0.5 text-[9px]\",\n        Lumeo.Size.Sm => \"h-5 px-1 text-[10px]\",\n        Lumeo.Size.Lg => \"h-6 px-2 text-xs\",\n        Lumeo.Size.Xl => \"h-7 px-2.5 text-[13px]\",\n        Lumeo.Size.Xxl => \"h-8 px-3 text-sm\",\n        _ => \"h-5 px-1.5 text-[11px]\"\n    };\n}\n"
     }
   ],
   "slots": [
@@ -149,7 +149,8 @@
   "relatedComponents": [],
   "keyboardInteractions": [],
   "tests": [
+    "tests/Lumeo.Tests/Components/Kbd/KbdSizeScaleTests.cs",
     "tests/Lumeo.Tests/Components/Kbd/KbdTests.cs"
   ],
-  "mdSummary": "# Kbd\n\nKeyboard shortcut glyph — renders \\<kbd\\> with styling.\n\n**Package:** `Lumeo` · **Category:** Utility\n**Docs:** https://lumeo.nativ.sh/components/kbd\n\n## Parameters\n| Owner | Name | Type | Default | Description |\n|---|---|---|---|---|\n| Kbd | ChildContent | `RenderFragment?` | `` | The key or shortcut label (e.g. \"⌘\", \"Ctrl\", \"Esc\"). |\n| Kbd | Size | `Lumeo.Size` | `Lumeo.Size.Md` | Size of the badge. Defaults to Md. |\n| Kbd | Class | `string?` | `` | Additional CSS classes merged onto the root kbd element. |\n| Kbd | AdditionalAttributes | `Dictionary<string, object>?` | `` | Unmatched attributes are splatted onto the root kbd element. |\n\n## Slots\n- `ChildContent` (Kbd) — The key or shortcut label (e.g. \"⌘\", \"Ctrl\", \"Esc\").\n\n## Events\n- (none)\n\n## Sub-components\n- (none)\n\n## Cascading values it expects\n- (none)\n\n## Services it injects\n- (none)\n\n## Keyboard\n—\n\n## Example\n```razor\n<Kbd />\n```\n\n## CSS variables\n`--color-border`, `--color-muted`, `--color-muted-foreground`, `--radius`\n\n## Files\n- `UI/Kbd/Kbd.razor`\n"
+  "mdSummary": "# Kbd\n\nKeyboard shortcut glyph — renders \\<kbd\\> with styling.\n\n**Package:** `Lumeo` · **Category:** Utility\n**Docs:** https://lumeo.nativ.sh/components/kbd\n\n## Parameters\n| Owner | Name | Type | Default | Description |\n|---|---|---|---|---|\n| Kbd | ChildContent | `RenderFragment?` | `` | The key or shortcut label (e.g. \"⌘\", \"Ctrl\", \"Esc\"). |\n| Kbd | Size | `Lumeo.Size` | `Lumeo.Size.Md` | Size of the badge. Supports all 7 Size values (Xxs–Xxl). Defaults to Md. |\n| Kbd | Class | `string?` | `` | Additional CSS classes merged onto the root kbd element. |\n| Kbd | AdditionalAttributes | `Dictionary<string, object>?` | `` | Unmatched attributes are splatted onto the root kbd element. |\n\n## Slots\n- `ChildContent` (Kbd) — The key or shortcut label (e.g. \"⌘\", \"Ctrl\", \"Esc\").\n\n## Events\n- (none)\n\n## Sub-components\n- (none)\n\n## Cascading values it expects\n- (none)\n\n## Services it injects\n- (none)\n\n## Keyboard\n—\n\n## Example\n```razor\n<Kbd />\n```\n\n## CSS variables\n`--color-border`, `--color-muted`, `--color-muted-foreground`, `--radius`\n\n## Files\n- `UI/Kbd/Kbd.razor`\n"
 }

@@ -8,8 +8,11 @@ namespace Lumeo.Tests.Components.Avatar;
 /// AvatarShape.Themed (radius-token wave): Circle/Square stay LITERAL contracts —
 /// a consumer who asked for a circle keeps a circle in every theme. The new Themed
 /// option follows the theme radius instead: identical to Circle at stock radii
-/// (rounded-[calc(var(--radius)*3)] clamps to a full circle for every size up to Xl)
-/// and squares off with the rest of the UI in sharp themes.
+/// (rounded-[calc(var(--radius)*4)] clamps to a full circle for every size up to
+/// Xxl) and squares off with the rest of the UI in sharp themes.
+/// Multiplier bumped 3 -> 4 when the Xxl (80px) rung was added: *3 (36px) only
+/// covered up to Xl's 32px half-height and broke at Xxl's 40px half-height;
+/// *4 (48px) covers Xxl too.
 /// </summary>
 public class AvatarThemedShapeTests : IAsyncLifetime
 {
@@ -31,8 +34,22 @@ public class AvatarThemedShapeTests : IAsyncLifetime
     {
         var cut = _ctx.Render<Lumeo.Avatar>(p => p.Add(a => a.Shape, Lumeo.Avatar.AvatarShape.Themed));
         var root = cut.Find("div");
-        Assert.Contains("rounded-[calc(var(--radius)*3)]", root.ClassList);
+        Assert.Contains("rounded-[calc(var(--radius)*4)]", root.ClassList);
         Assert.DoesNotContain("rounded-full", root.ClassList);
+    }
+
+    [Fact]
+    public void Themed_Radius_Multiplier_Covers_Xxl_Half_Height()
+    {
+        // At Xxl (h-20 = 80px, half-height 40px) the radius must reach >= 40px at
+        // the default --radius (0.75rem = 12px) for the corner to clamp to a full
+        // circle. *4 => 12*4 = 48px >= 40px. Regression guard for the *3->*4 fix
+        // (*3 = 36px would have left Xxl visibly squared).
+        var cut = _ctx.Render<Lumeo.Avatar>(p => p
+            .Add(a => a.Shape, Lumeo.Avatar.AvatarShape.Themed)
+            .Add(a => a.Size, Lumeo.Size.Xxl));
+        var root = cut.Find("div");
+        Assert.Contains("rounded-[calc(var(--radius)*4)]", root.ClassList);
     }
 
     [Fact]
