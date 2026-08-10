@@ -33,8 +33,8 @@ public class FileUploadSizeScaleTests : IAsyncLifetime
     [InlineData(Lumeo.Size.Sm, "h-8", "px-3", "text-xs")]
     [InlineData(Lumeo.Size.Md, "h-9", "px-4", "text-sm")]
     [InlineData(Lumeo.Size.Lg, "h-10", "px-8", "text-sm")]
-    [InlineData(Lumeo.Size.Xl, "h-11", "px-5", "text-base")]
-    [InlineData(Lumeo.Size.Xxl, "h-12", "px-6", "text-lg")]
+    [InlineData(Lumeo.Size.Xl, "h-11", "px-9", "text-base")]
+    [InlineData(Lumeo.Size.Xxl, "h-12", "px-10", "text-lg")]
     public void Button_Variant_Size_Per_Rung(Lumeo.Size size, string h, string px, string text)
     {
         var cut = _ctx.Render<Lumeo.FileUpload>(p => p

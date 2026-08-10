@@ -117,6 +117,28 @@ public class AlertSizeScaleTests : IAsyncLifetime
         AssertHasClass(cls, textClass);
     }
 
+    // Scale-ordering test finding: Description ties Md and Lg at text-sm/14px,
+    // unlike TitleClass which steps Lg up to text-base/16px. Confirmed via
+    // `git show origin/master:...Alert.razor` that Lg="text-sm" is a PRE-EXISTING
+    // rung (shipped before this PR/campaign; only Xxs/Xs/Xl/Xxl were added here),
+    // so per the "never change an already-implemented rung" rule it stays as-is
+    // rather than being bumped to match Title's progression. Documented explicitly
+    // (not just tolerated by a >= check) so a future accidental change shows up
+    // here. The full sequence (8/10/12/14/14/16/18px) is still monotonically
+    // non-decreasing.
+    [Fact]
+    public void Description_Text_Size_Md_And_Lg_Deliberately_Tie_At_TextSm_PreExisting()
+    {
+        var md = _ctx.Render<L.Alert>(p => p.Add(a => a.Size, L.Size.Md).Add(a => a.Description, "x"));
+        var lg = _ctx.Render<L.Alert>(p => p.Add(a => a.Size, L.Size.Lg).Add(a => a.Description, "x"));
+
+        var mdCls = md.Find("div.flex-1 > div").GetAttribute("class");
+        var lgCls = lg.Find("div.flex-1 > div").GetAttribute("class");
+
+        AssertHasClass(mdCls, "text-sm");
+        AssertHasClass(lgCls, "text-sm");
+    }
+
     [Fact]
     public void Existing_Sm_Md_Lg_Rungs_Unchanged_At_Compact_Density()
     {

@@ -56,6 +56,28 @@ public class ReasoningDisplaySizeScaleTests : IAsyncLifetime
         Assert.Contains(expectedText, cls);
     }
 
+    // Codex PR #388 finding 1 follow-up (wrapper-vs-inner sweep): the chevron's
+    // wrapper span AND its nested <Icon> both hardcoded their own size
+    // (h-3.5 w-3.5 / Size="Sm") regardless of ReasoningDisplay's own Size, so
+    // the chevron never scaled at all — predicted wrong value pre-fix is a
+    // constant "h-3.5 w-3.5" svg at every rung. Reuses Icon's own Xxs..Xxl
+    // scale (matches Alert's icon scale).
+    [Theory]
+    [InlineData(L.Size.Xxs, "h-2.5", "w-2.5")] // predicted wrong (pre-fix): h-3.5 w-3.5
+    [InlineData(L.Size.Xs, "h-3", "w-3")]      // predicted wrong (pre-fix): h-3.5 w-3.5
+    [InlineData(L.Size.Sm, "h-3.5", "w-3.5")]  // pre-fix already correct (coincidence)
+    [InlineData(L.Size.Md, "h-4", "w-4")]      // predicted wrong (pre-fix): h-3.5 w-3.5
+    [InlineData(L.Size.Lg, "h-5", "w-5")]      // predicted wrong (pre-fix): h-3.5 w-3.5
+    [InlineData(L.Size.Xl, "h-6", "w-6")]      // predicted wrong (pre-fix): h-3.5 w-3.5
+    [InlineData(L.Size.Xxl, "h-7", "w-7")]     // predicted wrong (pre-fix): h-3.5 w-3.5
+    public void Chevron_Icon_Renders_Correct_Size_Classes(L.Size size, string heightClass, string widthClass)
+    {
+        var cut = _ctx.Render<Lumeo.ReasoningDisplay>(p => p.Add(r => r.Size, size));
+        var cls = cut.Find("summary svg").GetAttribute("class")!.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        Assert.Contains(heightClass, cls);
+        Assert.Contains(widthClass, cls);
+    }
+
     [Fact]
     public void BodyClass_Py_Xxs_And_Xs_Legitimately_Tie_At_Py0()
     {

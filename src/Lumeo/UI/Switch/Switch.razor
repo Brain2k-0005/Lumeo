@@ -35,7 +35,7 @@
                 @* aria-hidden so the spinner's own role=status / aria-label="Loading"
                    doesn't leak into the switch button's accessible name; aria-busy on
                    the button already announces the in-flight state to AT. *@
-                <Spinner Size="Lumeo.Size.Sm" Class="@ThumbSpinnerClass" aria-hidden="true" />
+                <Spinner Size="@SpinnerSizeForThumb" aria-hidden="true" />
             }
         </span>
     </button>
@@ -226,9 +226,13 @@
     /// used automatically so screen readers announce the switch's purpose.
     /// </summary>
     [Parameter] public string? AriaLabel { get; set; }
-    /// <summary>Switch size. Supports all 7 <see cref="Lumeo.Size"/> values (Xxs–Xxl). Note: Xxs
-    /// and Xs render well below the 24px touch-target minimum — not recommended for touch-primary
-    /// UIs. Default <see cref="Lumeo.Size.Md"/>.</summary>
+    /// <summary>Switch size. Supports all 7 <see cref="Lumeo.Size"/> values (Xxs–Xxl). Sm and Md
+    /// get an invisible touch-target extension up to the 24px minimum (the visible track is
+    /// pixel-identical to before — only the click/touch-catching zone around it grows).
+    /// <b>Xxs and Xs are a deliberate exception</b>: their 8px/12px track stays below the 24px
+    /// minimum on purpose — an app that opts into <c>Xxs</c>/<c>Xs</c> is explicitly asking for
+    /// a dense, non-touch-primary control, so no hit-area extension is added there. Lg/Xl/Xxl
+    /// already clear 24px without any change. Default <see cref="Lumeo.Size.Md"/>.</summary>
     [Parameter] public Lumeo.Size Size { get; set; } = Lumeo.Size.Md;
 
     /// <summary>
@@ -299,18 +303,35 @@
         _ => _checked ? "translate-x-4" : "translate-x-0"
     };
 
-    // Xxs's formula value floors to 0 (thumb(4)−4=0); floored to !h-1 !w-1,
-    // tying Xs — spec §15b flags this as a functional (not just cosmetic)
-    // concern since the Loading spinner is barely visible at that size.
-    private string ThumbSpinnerClass => Size switch
+    // Codex PR #388 finding: the Loading spinner used to take a fixed
+    // Size="Sm" (16px ring) and rely on a wrapper Class="!h-X !w-X" override.
+    // Spinner puts those size classes on its OWN inner <svg> (RingCssClass),
+    // never on the wrapper div its Class parameter merges into — so the
+    // override never reached the visible ring. Result: the ring stayed a
+    // constant 16px at every Switch size (overflowing the 4-8px Xxs/Xs
+    // thumbs, and never growing past Sm for Xl/Xxl). Fixed by mapping to
+    // Spinner's own Size parameter instead, so the real <svg> resizes.
+    //
+    // Spinner only has 7 discrete rungs (8/12/16/24/32/40/48px) that don't
+    // line up 1:1 with the thumb's continuous-ish sizes (4/8/12/16/20/24/28px):
+    //   Xxs thumb  4px -> Spinner Xxs  8px (Spinner's floor; unavoidable overflow)
+    //   Xs  thumb  8px -> Spinner Xxs  8px (exact)
+    //   Sm  thumb 12px -> Spinner Xs  12px (exact)
+    //   Md  thumb 16px -> Spinner Sm  16px (exact)
+    //   Lg  thumb 20px -> Spinner Sm  16px (4px under — no 20px rung)
+    //   Xl  thumb 24px -> Spinner Md  24px (exact)
+    //   Xxl thumb 28px -> Spinner Lg  32px (4px over — no 28px rung)
+    // Lg rounds down and Xxl rounds up so the ring still strictly grows
+    // through the top of the scale instead of tying at a fixed size.
+    private Lumeo.Size SpinnerSizeForThumb => Size switch
     {
-        Lumeo.Size.Xxs => "!h-1 !w-1",
-        Lumeo.Size.Xs => "!h-1 !w-1",
-        Lumeo.Size.Sm => "!h-2 !w-2",
-        Lumeo.Size.Lg => "!h-3.5 !w-3.5",
-        Lumeo.Size.Xl => "!h-5 !w-5",
-        Lumeo.Size.Xxl => "!h-6 !w-6",
-        _ => "!h-3 !w-3"
+        Lumeo.Size.Xxs => Lumeo.Size.Xxs,
+        Lumeo.Size.Xs => Lumeo.Size.Xxs,
+        Lumeo.Size.Sm => Lumeo.Size.Xs,
+        Lumeo.Size.Lg => Lumeo.Size.Sm,
+        Lumeo.Size.Xl => Lumeo.Size.Md,
+        Lumeo.Size.Xxl => Lumeo.Size.Lg,
+        _ => Lumeo.Size.Sm // Md
     };
 
     // rounded-[calc(var(--radius)*2)] instead of a hardcoded full pill: the theme's
@@ -323,10 +344,39 @@
     // Note: stock shadcn keeps its Switch a hard pill regardless of radius — this is a
     // deliberate divergence in favor of theme consistency. The *2 factor (not the *1.5 of
     // --radius-xl) is what keeps the 0.5rem-radius case a true pill on the Lg track.
+    // Touch-target fix (owner decision, PR #388 follow-up): the track IS the
+    // painted button — its background/border live on this same <button>, not a
+    // separate inner element — so real padding here would visibly enlarge the
+    // pill, not just its hit box (unlike Rating, where the icon is a child of
+    // an unstyled button). Measured track heights: Sm 16px, Md 20px both sit
+    // below the 24px touch-target minimum; Lg (24px)/Xl (28px)/Xxl (32px)
+    // already clear it (width already clears 24px at every rung, Sm's own
+    // w-7/28px included, so only height needs extending). Owner chose to patch
+    // ONLY Sm and Md — the two rungs reached without an explicit dense-size
+    // opt-in (Md is the default) — leaving Xxs/Xs deliberately tiny.
+    //
+    // Implemented as an invisible ::before hit-zone (mirrors Chip's close
+    // button: `before:absolute before:-inset-2`) instead of padding, so the
+    // rendered track is pixel-identical to before — only an invisible,
+    // non-participating-in-layout click/touch-catcher grows around it.
+    // -inset-y only (not -inset-x): width already clears 24px, so only
+    // vertical reach needs extending. Math: Sm 16px + 2×4px (-inset-y-1) =
+    // 24px exact. Md 20px + 2×2px (-inset-y-0.5) = 24px exact. Side effect:
+    // the invisible zone extends 4px (Sm) / 2px (Md) above and below the
+    // visible track and can overlap tightly-stacked neighboring content —
+    // see report.
+    private string HitAreaClass => Size switch
+    {
+        Lumeo.Size.Sm => "relative before:absolute before:content-[''] before:inset-x-0 before:-inset-y-1",
+        Lumeo.Size.Md => "relative before:absolute before:content-[''] before:inset-x-0 before:-inset-y-0.5",
+        _ => ""
+    };
+
     private string CssClass => Cx.Merge(
         "peer inline-flex",
         TrackSizeClasses,
         "shrink-0 cursor-pointer items-center rounded-[calc(var(--radius)*2)] border-2 border-transparent shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50",
+        HitAreaClass,
         _checked ? "bg-primary" : "bg-input",
         Cx.When(EffectiveInvalid, "ring-2 ring-destructive/20 focus-visible:ring-destructive"),
         Cx.When(Loading, "pointer-events-none opacity-70"),
