@@ -276,6 +276,13 @@ public class EChartSplitLine
 
 public class EChartAxisLabel
 {
+    /// <summary>When explicitly set to <c>false</c>, hides the axis's value labels entirely
+    /// (e.g. a bar chart's value axis when gridlines alone carry the reading — see
+    /// BarChart.razor). Left null everywhere else so ECharts' default (<c>true</c>) applies
+    /// unchanged.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public bool? Show { get; set; }
+
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? Color { get; set; }
 
@@ -635,9 +642,15 @@ public class EChartItemStyle
     /// Per-corner border radius as [top-left, top-right, bottom-right, bottom-left].
     /// Takes precedence over <see cref="BorderRadius"/> when set. Useful for
     /// stacked bar charts where only the outermost segment should be rounded.
+    /// Elements are typically <c>int</c> (a flat corner, e.g. <c>0</c>) or a
+    /// <c>"var(--radius)"</c> string — the chart interop's <c>resolveCssVars</c> pass
+    /// resolves the latter to the live computed pixel value (see
+    /// <c>resolveCssVarValue</c>'s length-to-px conversion in echarts-interop.js), so a
+    /// corner radius set this way tracks <c>--radius</c> exactly like the shared theme's
+    /// own default bar rounding, instead of a hardcoded literal disconnected from it.
     /// </summary>
     [JsonIgnore]
-    public int[]? BorderRadiusCorners { get; set; }
+    public object[]? BorderRadiusCorners { get; set; }
 
     // ECharts accepts either a number or a 4-element array for `borderRadius`.
     // We expose two strongly-typed setters and pick the right one at serialization time.

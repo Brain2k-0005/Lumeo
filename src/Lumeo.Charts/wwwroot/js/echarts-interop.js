@@ -133,7 +133,21 @@ function resolveCssVarValue(str) {
     const match = str.match(/^var\(\s*(--[^,)]+)\s*(?:,\s*(.+))?\s*\)$/);
     if (!match) return str;
     const resolved = getCssVar(match[1]);
-    return resolved || match[2] || str;
+    const value = resolved || match[2] || str;
+    // A var() reference sitting inside a numeric option (e.g. a bar corner-radius
+    // array built from "var(--radius)" — see BarChart.razor / EChartItemStyle.
+    // BorderRadiusCorners) resolves to a raw CSS length string ("0.75rem", "12px"),
+    // not a colour — getCssVar only hex-converts colour-looking values, so a length
+    // passes through untouched. ECharts' canvas properties (borderRadius, etc.) want
+    // a plain NUMBER of px, so convert here rather than leaving every call site to
+    // re-derive it (this mirrors buildLumeoTheme's own radiusPx computation for the
+    // theme-level default, so a per-series override tracks the exact same value).
+    const lengthMatch = typeof value === 'string' && value.match(/^(-?[\d.]+)(rem|px)$/);
+    if (lengthMatch) {
+        const n = parseFloat(lengthMatch[1]);
+        return lengthMatch[2] === 'rem' ? n * 16 : n;
+    }
+    return value;
 }
 
 function getCssVar(name) {
@@ -335,7 +349,12 @@ function buildLumeoTheme(cssVar, reducedMotion) {
     const tooltipRadiusPx = radiusPx;
 
     const noStroke = { textBorderWidth: 0, textBorderColor: 'transparent', textShadowBlur: 0, textShadowColor: 'transparent' };
-    const labelNoStroke = { ...noStroke, color: mutedFg, fontSize: 11 };
+    // 12 — Lumeo's --text-xs (0.75rem). The theme previously hardcoded 11px here (and
+    // on every axisLabel/legend.textStyle/radar.axisName below) — a size that doesn't
+    // exist anywhere on Lumeo's type scale (12/text-xs, 14/text-sm, ...). An off-scale
+    // size is exactly the kind of detail that reads as "not quite part of the library";
+    // see the charts-design-2 PR description for the full audit.
+    const labelNoStroke = { ...noStroke, color: mutedFg, fontSize: 12 };
 
     // Entrance vs update get different rhythms — a longer, gentler entrance read
     // as "the chart is arriving"; a snappier update reads as "the data changed"
@@ -389,7 +408,8 @@ function buildLumeoTheme(cssVar, reducedMotion) {
             // (several anchor the legend to the bottom via `Bottom:"0%"`; setting
             // a theme-level `top` here would fight that and squash the legend).
             left: 'center',
-            textStyle: { color: mutedFg, fontSize: 11, ...noStroke },
+            // 12 — --text-xs, same audit as labelNoStroke above (was 11, off-scale).
+            textStyle: { color: mutedFg, fontSize: 12, ...noStroke },
             icon: radiusPx > 0 ? 'roundRect' : 'rect',
             itemWidth: 12,
             itemHeight: 8,
@@ -400,10 +420,18 @@ function buildLumeoTheme(cssVar, reducedMotion) {
         },
         tooltip: {
             backgroundColor: card,
-            borderColor: border,
+            // border-border/60 — PopoverContent's exact border treatment
+            // (`rounded-md border border-border/60 bg-popover ... shadow-lg`), not a
+            // full-opacity border. See src/Lumeo/UI/Popover/PopoverContent.razor.
+            borderColor: withAlpha(border, 0.6),
             borderWidth: 1,
-            padding: [8, 12],
-            textStyle: { color: popoverFg, fontSize: 12 },
+            // PopoverContent uses `p-4` (16px, uniform) — the tooltip previously used
+            // an asymmetric [8,12] ECharts default instead of matching that padding.
+            padding: 16,
+            // 14 — --text-sm, matching the body-copy size Lumeo's own popover-family
+            // surfaces use for their content (DropdownMenuItem/SelectItem are both
+            // `text-sm`), not the smaller --text-xs used for ambient axis/legend labels.
+            textStyle: { color: popoverFg, fontSize: 14 },
             // enterable:false + confine:true keep the tooltip from becoming a
             // second interactive surface and from drifting outside the chart
             // bounds on charts pinned near a viewport edge.
@@ -416,7 +444,7 @@ function buildLumeoTheme(cssVar, reducedMotion) {
                 lineStyle: { color: border, width: 1 },
                 crossStyle: { color: border, width: 1 },
                 shadowStyle: { color: 'rgba(148,163,184,0.14)' },
-                label: { backgroundColor: card, color: popoverFg, borderColor: border, borderWidth: 1 }
+                label: { backgroundColor: card, color: popoverFg, borderColor: withAlpha(border, 0.6), borderWidth: 1 }
             },
             // The popover surface, reproduced 1:1: rounded-md, border, shadow-lg,
             // bg-popover/text-popover-foreground. box-shadow/border-radius reference
@@ -428,22 +456,26 @@ function buildLumeoTheme(cssVar, reducedMotion) {
         categoryAxis: {
             axisLine: { show: false },
             axisTick: { show: false },
-            axisLabel: { color: mutedFg, fontSize: 11, ...noStroke },
+            // 12 — --text-xs, same audit as labelNoStroke above (was 11, off-scale).
+            axisLabel: { color: mutedFg, fontSize: 12, ...noStroke },
             splitLine: { show: false }
         },
         valueAxis: {
             axisLine: { show: false },
             axisTick: { show: false },
-            axisLabel: { color: mutedFg, fontSize: 11, ...noStroke },
+            // 12 — --text-xs, same audit as labelNoStroke above (was 11, off-scale).
+            axisLabel: { color: mutedFg, fontSize: 12, ...noStroke },
+            // A single faint dashed gridline system — nothing else in Lumeo (Table,
+            // Card) layers a second, finer grid of sub-lines behind its primary
+            // divider, so the minorTick/minorSplitLine pair a previous pass added
+            // here (see the removed comment/tests) read as ECharts chrome rather
+            // than a Lumeo surface. Removed; the one splitLine below now carries
+            // "which gridline am I reading" alone, matching how the EvilCharts
+            // reference and every other Lumeo divider render.
             splitLine: {
                 show: true,
-                lineStyle: { color: border, type: 'dashed', opacity: 0.5 }
-            },
-            // Finer tick density without touching a single chart wrapper: a minor
-            // tick + a faint minor gridline between each major split. Off by
-            // default in ECharts; this is the one place that turns it on.
-            minorTick: { show: true, splitNumber: 5 },
-            minorSplitLine: { show: true, lineStyle: { color: border, opacity: 0.2 } }
+                lineStyle: { color: border, type: 'dashed', opacity: 0.4 }
+            }
         },
         label: labelNoStroke,
         line: {
@@ -481,30 +513,17 @@ function buildLumeoTheme(cssVar, reducedMotion) {
         },
         bar: {
             barMaxWidth: 32,
+            // No itemStyle.color here — a previous pass built a top-lightened vertical
+            // gradient from a callback (confirmed working: ECharts DOES invoke a
+            // (params) => Color function for itemStyle.color at the theme level, unlike
+            // lineStyle/areaStyle/shadowColor). Removed: nothing else in Lumeo — Button,
+            // Badge, Card — fills a solid shape with a gradient; a bar is a flat, solid
+            // colour block the same way those are, and the reference this pass is
+            // matching is explicit ("solid, no visible gradient"). Leaving itemStyle.color
+            // unset lets ECharts' own resolved palette colour (the `color` array above, or
+            // a consumer's Colors/ColorPalette) paint the bar directly.
             itemStyle: {
-                borderRadius: barRadius,
-                // Vertical gradient per bar, built from a callback (confirmed
-                // via a live ECharts probe that `itemStyle.color` DOES invoke
-                // a (params) => Color function at the theme level, unlike
-                // lineStyle/areaStyle/shadowColor — see PR description).
-                // params.color is ECharts' own already-resolved palette
-                // colour for that series, so this tracks the theme palette
-                // AND any consumer-supplied Colors/ColorPalette automatically.
-                // Top stop lightened toward white (never a second hardcoded
-                // hue) for a "lit from above, grounded at the base" read —
-                // deliberately NOT fading to transparent the way area fills
-                // do; a bar sitting on a card needs a solid foot, not a
-                // vanishing one.
-                color: function (params) {
-                    const base = (params && params.color) || '#888888';
-                    return {
-                        type: 'linear', x: 0, y: 0, x2: 0, y2: 1,
-                        colorStops: [
-                            { offset: 0, color: lighten(base, 0.32) },
-                            { offset: 1, color: base }
-                        ]
-                    };
-                }
+                borderRadius: barRadius
             },
             label: labelNoStroke,
             emphasis: { focus: 'series', itemStyle: { shadowBlur: 10, shadowColor: withAlpha(glowColor, 0.4) } },
@@ -549,7 +568,8 @@ function buildLumeoTheme(cssVar, reducedMotion) {
             ...(reducedMotion ? {} : { animationDelay: (idx) => Math.min((idx || 0) * 90, 500) })
         },
         radar: {
-            axisName: { color: mutedFg, fontSize: 11 },
+            // 12 — --text-xs, same audit as labelNoStroke above (was 11, off-scale).
+            axisName: { color: mutedFg, fontSize: 12 },
             splitLine: { lineStyle: { color: border, opacity: 0.4 } },
             splitArea: { areaStyle: { color: ['transparent', 'transparent'] } },
             axisLine: { lineStyle: { color: border, opacity: 0.3 } },

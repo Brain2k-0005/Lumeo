@@ -45,6 +45,21 @@ const FAKE_VARS = {
 };
 const fakeCssVar = (name) => FAKE_VARS[name] || '';
 
+test('type scale: axis/legend/data-label/radar text sizes are 12 (--text-xs), not the off-scale 11 a previous pass hardcoded', async () => {
+    // Lumeo's type scale is 12 (text-xs) / 14 (text-sm) / ... — there is no 11.
+    // charts-design-2 audit: every one of these hardcoded fontSize:11.
+    const { __testing } = await importInterop();
+    const theme = __testing.buildLumeoTheme(fakeCssVar, false);
+    assert.equal(theme.categoryAxis.axisLabel.fontSize, 12);
+    assert.equal(theme.valueAxis.axisLabel.fontSize, 12);
+    assert.equal(theme.legend.textStyle.fontSize, 12);
+    assert.equal(theme.label.fontSize, 12); // labelNoStroke, shared by bar/pie/line/etc. data labels
+    assert.equal(theme.radar.axisName.fontSize, 12);
+    // Unchanged — already on-scale: top-level textStyle (12/text-xs), title (14/text-sm).
+    assert.equal(theme.textStyle.fontSize, 12);
+    assert.equal(theme.title.textStyle.fontSize, 14);
+});
+
 test('legend is centred — the one shared decision that reaches all 22 legend-using wrappers via theme merge', async () => {
     const { __testing } = await importInterop();
     const theme = __testing.buildLumeoTheme(fakeCssVar, false);
@@ -55,12 +70,18 @@ test('legend is centred — the one shared decision that reaches all 22 legend-u
     assert.equal(theme.legend.top, undefined);
 });
 
-test('value axis gets a minor tick + minor split line for finer density, off by default in ECharts', async () => {
+test('value axis has ONE gridline system — no minor tick / minor split line chrome', async () => {
+    // charts-design-2: a previous pass added a minor tick + finer minor gridline
+    // between each major split, "genuinely finer tick density". Removed — nothing
+    // else in Lumeo (Table, Card) layers a second, fainter grid of sub-lines behind
+    // its primary divider, and the EvilCharts-aligned reference this pass matches
+    // shows exactly one faint dashed gridline system, nothing finer underneath it.
     const { __testing } = await importInterop();
     const theme = __testing.buildLumeoTheme(fakeCssVar, false);
-    assert.equal(theme.valueAxis.minorTick.show, true);
-    assert.equal(theme.valueAxis.minorTick.splitNumber, 5);
-    assert.equal(theme.valueAxis.minorSplitLine.show, true);
+    assert.equal('minorTick' in theme.valueAxis, false);
+    assert.equal('minorSplitLine' in theme.valueAxis, false);
+    assert.equal(theme.valueAxis.splitLine.show, true);
+    assert.equal(theme.valueAxis.splitLine.lineStyle.type, 'dashed');
 });
 
 test('tooltip surface mirrors the Lumeo popover token-for-token, not a re-derived colour', async () => {
@@ -68,8 +89,14 @@ test('tooltip surface mirrors the Lumeo popover token-for-token, not a re-derive
     const theme = __testing.buildLumeoTheme(fakeCssVar, false);
     assert.equal(theme.tooltip.backgroundColor, '#f9f9f9'); // --color-popover, not --color-card
     assert.equal(theme.tooltip.textStyle.color, '#0a0a0a'); // --color-popover-foreground
-    assert.equal(theme.tooltip.borderColor, '#dddddd');
+    // border-border/60 — PopoverContent's exact border (not full-opacity).
+    assert.equal(theme.tooltip.borderColor, 'rgba(221, 221, 221, 0.6)');
     assert.equal(theme.tooltip.borderWidth, 1);
+    // padding: PopoverContent uses p-4 (16px, uniform), not ECharts' [8,12] default.
+    assert.equal(theme.tooltip.padding, 16);
+    // type: 14 (--text-sm) — matching Lumeo's own popover-family body-copy size
+    // (DropdownMenuItem/SelectItem are both text-sm), not the smaller --text-xs.
+    assert.equal(theme.tooltip.textStyle.fontSize, 14);
     // radius: --radius is 0.5rem == 8px in this fixture.
     assert.match(theme.tooltip.extraCssText, /border-radius: var\(--radius-md, 8px\)/);
     assert.match(theme.tooltip.extraCssText, /box-shadow: var\(--shadow-lg,/);
@@ -217,26 +244,18 @@ test('charts-design form pass: line emphasis enlarges the hovered marker (scale)
     assert.ok(theme.line.emphasis.scale > 1);
 });
 
-test('bar gradient: itemStyle.color is a callback that builds a top-lightened vertical gradient from params.color', async () => {
+test('bar: no gradient — itemStyle has no colour callback, only the token-driven borderRadius', async () => {
+    // charts-design-2: removed the top-lightened vertical gradient a previous pass
+    // built via an itemStyle.color callback. Nothing else in Lumeo (Button, Badge,
+    // Card) fills a solid shape with a gradient, and the EvilCharts-aligned
+    // reference this pass matches is explicit: "solid, no visible gradient". Bars
+    // now render with ECharts' own resolved palette colour, untouched.
     const { __testing } = await importInterop();
     const theme = __testing.buildLumeoTheme(fakeCssVar, false);
-    assert.equal(typeof theme.bar.itemStyle.color, 'function');
-
-    const gradient = theme.bar.itemStyle.color({ color: '#aa0000' });
-    assert.equal(gradient.type, 'linear');
-    // Top-to-bottom (x=0,y=0 -> x2=0,y2=1), relative coordinates (no `global`).
-    assert.deepEqual({ x: gradient.x, y: gradient.y, x2: gradient.x2, y2: gradient.y2 }, { x: 0, y: 0, x2: 0, y2: 1 });
-    assert.equal(gradient.colorStops[0].offset, 0);
-    assert.equal(gradient.colorStops[0].color, 'rgb(197, 82, 82)'); // lighten('#aa0000', 0.32)
-    assert.equal(gradient.colorStops[1].offset, 1);
-    // Bottom stop is the FULL resolved series colour, not transparent — bars
-    // get a solid foot, unlike area fills.
-    assert.equal(gradient.colorStops[1].color, '#aa0000');
-
-    // Fails safe to a grey base instead of throwing when ECharts calls it
-    // without a resolvable params.color (defensive — should not happen via
-    // the normal Chart.razor path, but the callback must not crash the chart).
-    assert.doesNotThrow(() => theme.bar.itemStyle.color({}));
+    assert.equal('color' in theme.bar.itemStyle, false);
+    // radius: --radius is 0.5rem == 8px in this fixture — same value flows into the
+    // theme-level default bar rounding.
+    assert.deepEqual(theme.bar.itemStyle.borderRadius, [8, 8, 0, 0]);
 });
 
 test('pie gradient: itemStyle.color is a callback that builds a centre-lightened RADIAL gradient from params.color', async () => {
@@ -290,9 +309,9 @@ test('reduced motion: reveal animationDelay functions and the line-specific dura
     assert.equal('animationDelay' in theme.scatter, false);
     assert.equal('animationDuration' in theme.line, false);
     assert.equal('animationEasing' in theme.line, false);
-    // The glow/gradient callbacks are presentational colour, not motion — they
-    // stay present under reduced motion (a static glow/gradient isn't
-    // animation and prefers-reduced-motion has no opinion on it).
-    assert.equal(typeof theme.bar.itemStyle.color, 'function');
+    // Presentational colour (the line's rest glow) is not motion — it stays
+    // present under reduced motion (a static glow isn't animation and
+    // prefers-reduced-motion has no opinion on it). Bar no longer has a
+    // colour callback at all (gradient removed — see the "no gradient" test).
     assert.equal(theme.line.lineStyle.shadowBlur, 6);
 });

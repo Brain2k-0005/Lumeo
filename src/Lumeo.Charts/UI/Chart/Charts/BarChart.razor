@@ -102,7 +102,13 @@
     {
         var categoryAxis = new EChartAxis { Type = "category", Data = Categories };
         ChartLabelHelper.ApplyTo(categoryAxis, LabelStrategy, Categories.Count, LabelRotate);
-        var valueAxis = new EChartAxis { Type = "value" };
+        // Bar-only: no axis line, no ticks (the shared theme already turns those off for
+        // every value axis) AND no value-number labels either — the reference this pass
+        // matches ("clean like EvilCharts") carries the reading entirely on the faint
+        // dashed gridlines, with no Y axis at all. Scoped to BarChart's own axis instance
+        // rather than the shared theme's valueAxis block, so a value-heavy chart type
+        // (e.g. a KPI trend AreaChart) that still needs its numbers keeps them.
+        var valueAxis = new EChartAxis { Type = "value", AxisLabel = new EChartAxisLabel { Show = false } };
 
         var seriesList = Series.Select(s => new EChartSeries
         {
@@ -120,16 +126,20 @@
         //   Vertical stacked   → last series (top) rounds top corners
         //   Horizontal stacked → last series (right) rounds right corners
         //
-        // Radius is derived from --radius (fallback 6 px if unavailable
-        // from the CSS side since we're in C#). Consumers who want a
-        // different value can override via OptionOverride on the series.
+        // Radius is "var(--radius)" — the SAME token-driven value the shared theme's
+        // own default bar rounding uses (see buildLumeoTheme's barRadius in
+        // echarts-interop.js), not a disconnected literal. The chart interop's
+        // resolveCssVars pass resolves the var() reference to the live computed pixel
+        // value at render time (see resolveCssVarValue's length-to-px conversion) — a
+        // previous pass hardcoded `const int r = 6` here, which silently ignored
+        // whatever --radius the active theme/style actually set. Consumers who want a
+        // different value can still override via OptionOverride on the series.
         if (Stacked && seriesList.Count > 0)
         {
-            const int r = 6;
-            int[] outerCorners = Horizontal
-                ? new[] { 0, r, r, 0 }   // round right side
-                : new[] { r, r, 0, 0 };  // round top side
-            int[] flat = { 0, 0, 0, 0 };
+            object[] outerCorners = Horizontal
+                ? new object[] { 0, "var(--radius)", "var(--radius)", 0 }   // round right side
+                : new object[] { "var(--radius)", "var(--radius)", 0, 0 };  // round top side
+            object[] flat = { 0, 0, 0, 0 };
 
             // Use the array form everywhere — ECharts merges theme + series
             // itemStyle and a scalar `borderRadius: 0` doesn't reliably replace
@@ -148,25 +158,17 @@
             // Non-stacked horizontal: theme default `[r, r, 0, 0]` rounds the
             // TOP edge (rectangle corners), which looks wrong for a horizontal
             // bar. Override so every bar's right end is rounded instead.
-            const int r = 6;
             foreach (var s in seriesList)
-                s.ItemStyle = new EChartItemStyle { BorderRadiusCorners = new[] { 0, r, r, 0 } };
+                s.ItemStyle = new EChartItemStyle { BorderRadiusCorners = new object[] { 0, "var(--radius)", "var(--radius)", 0 } };
         }
 
-        // Per-series decal — a grouped or stacked multi-series bar chart is exactly the
-        // "categorical bars" case decal earns its place for (see ChartHelper.GetDecal):
-        // each series already gets its own colour, and the decal gives it a second,
-        // colour-independent way to read apart. Skipped for a single-series chart
-        // (nothing to differentiate against) and beyond ChartHelper.MaxDecalItems
-        // series (the cardinality problem a previous pass declined decal over).
-        for (var i = 0; i < seriesList.Count; i++)
-        {
-            var decal = ChartHelper.GetDecal(i, seriesList.Count);
-            if (decal is null) continue;
-            seriesList[i].ItemStyle ??= new EChartItemStyle();
-            seriesList[i].ItemStyle!.Decal = decal;
-        }
-
+        // No per-series decal (pattern fill) here anymore — a previous pass added one
+        // for grouped/stacked multi-series bars (see ChartHelper.GetDecal, still used by
+        // Pie/Donut). Removed for bar specifically: the reference this pass matches is
+        // explicit ("no pattern"), and nothing else in Lumeo — Button, Badge, Card —
+        // textures a solid fill; each series' own palette colour plus the legend swatch
+        // is the same "which series is which" signal every other Lumeo surface relies on
+        // (a table row doesn't get a hatch pattern to read apart from the row above it).
         if (ShowDataLabels)
             foreach (var s in seriesList)
                 s.Label = new EChartLabel { Show = true, Position = LabelPosition, Formatter = LabelFormat };
@@ -183,10 +185,16 @@
             XAxis = new List<EChartAxis> { Horizontal ? valueAxis : categoryAxis },
             YAxis = new List<EChartAxis> { Horizontal ? categoryAxis : valueAxis },
             Series = seriesList,
+            // Left tightened from the previous 3% now that the value axis carries no
+            // number labels — ContainLabel still reserves exactly the space the visible
+            // category labels need, so this is reclaimed whitespace, not a clipped axis.
+            // Top comes down with it: a small top-right legend (below) needs far less
+            // vertical band than the old centred one, matching the reference's "generous
+            // whitespace... the chart breathes" read instead of ECharts' cramped defaults.
             Grid = new EChartGrid
             {
-                Left = "3%", Right = "4%",
-                Top = ShowLegend ? "14%" : "5%",
+                Left = "0.5%", Right = "1%",
+                Top = ShowLegend ? "10%" : "3%",
                 Bottom = DataZoom ? "15%" : "3%",
                 ContainLabel = true
             },
@@ -196,8 +204,11 @@
         if (ShowTooltip)
             _option.Tooltip = new EChartTooltip { Trigger = "axis", AxisPointer = new EChartAxisPointer { Type = "shadow" } };
 
+        // Bar-only: top-right, matching the reference ("small, top-right, tiny square
+        // swatches") rather than the shared theme's centred default (left: every other
+        // chart wrapper still gets that centred legend unchanged).
         if (ShowLegend && Series.Count > 0)
-            _option.Legend = new EChartLegend { Data = Series.Select(s => s.Name).ToList() };
+            _option.Legend = new EChartLegend { Data = Series.Select(s => s.Name).ToList(), Left = "right", Top = "0%" };
 
         if (DataZoom)
             _option.DataZoom = new List<EChartDataZoom> { new() { Type = "slider", Show = true }, new() { Type = "inside" } };

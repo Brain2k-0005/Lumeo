@@ -40,12 +40,19 @@ public class ChartFormDifferentiationTests : IAsyncLifetime
         return doc.RootElement.GetProperty("series").Clone();
     }
 
-    // --- BarChart: per-series decal, scoped to multi-series ------------------------
+    // --- BarChart: no decal (charts-design-2 pass removed it — see BarChart.razor) --
+    //
+    // The original charts-design pass (PR #394) added a per-series decal to grouped/
+    // stacked bar series; the charts-design-2 pass removed it for bar specifically
+    // (kept for Pie/Donut, tested below) because the EvilCharts-aligned reference this
+    // pass matches is explicit that bars are solid, pattern-free. The tests below
+    // replace the old "decal appears/is skipped at the right count" assertions with
+    // "decal never appears, at any count" — locking in the new behaviour rather than
+    // just deleting coverage.
 
     [Fact]
     public void BarChart_Single_Series_Has_No_Decal()
     {
-        // Nothing to differentiate against — decal must not appear at all.
         var cut = _ctx.Render<L.BarChart>(p => p
             .Add(c => c.Categories, new List<string> { "a", "b", "c" })
             .Add(c => c.Series, new List<L.BarChart.ChartSeriesData>
@@ -61,8 +68,11 @@ public class ChartFormDifferentiationTests : IAsyncLifetime
     }
 
     [Fact]
-    public void BarChart_Grouped_Multi_Series_Gets_Distinct_Decal_Per_Series()
+    public void BarChart_Grouped_Multi_Series_Never_Gets_Decal()
     {
+        // Was: "gets a distinct decal per series". Bar no longer emits decal at all —
+        // series read apart by palette colour + legend swatch alone, same as every
+        // other Lumeo surface that distinguishes rows/segments by colour.
         var cut = _ctx.Render<L.BarChart>(p => p
             .Add(c => c.Categories, new List<string> { "a", "b", "c" })
             .Add(c => c.Series, new List<L.BarChart.ChartSeriesData>
@@ -74,30 +84,17 @@ public class ChartFormDifferentiationTests : IAsyncLifetime
 
         var series = SeriesArray(cut);
         Assert.Equal(3, series.GetArrayLength());
-
-        var decal0 = series[0].GetProperty("itemStyle").GetProperty("decal");
-        var decal1 = series[1].GetProperty("itemStyle").GetProperty("decal");
-        var decal2 = series[2].GetProperty("itemStyle").GetProperty("decal");
-
-        // Every decal derives colour from a token, never a raw hex (project rule).
-        Assert.Equal("var(--color-border)", decal0.GetProperty("color").GetString());
-        Assert.Equal("var(--color-border)", decal1.GetProperty("color").GetString());
-        Assert.Equal("var(--color-border)", decal2.GetProperty("color").GetString());
-
-        // Exact recipe cycle: index 0 = diagonal stripes (rect), index 1 = dots (circle),
-        // index 2 = fine grid (rect, but a different dash cadence than index 0 — still a
-        // genuinely different rendered pattern, see ChartHelper.DecalRecipes).
-        Assert.Equal("rect", decal0.GetProperty("symbol").GetString());
-        Assert.Equal("circle", decal1.GetProperty("symbol").GetString());
-        Assert.Equal("rect", decal2.GetProperty("symbol").GetString());
-        Assert.NotEqual(decal0.GetProperty("dashArrayY").GetRawText(), decal2.GetProperty("dashArrayY").GetRawText());
+        for (var i = 0; i < 3; i++)
+        {
+            var hasItemStyle = series[i].TryGetProperty("itemStyle", out var style);
+            var hasDecal = hasItemStyle && style.ValueKind == JsonValueKind.Object && style.TryGetProperty("decal", out _);
+            Assert.False(hasDecal, $"Series {i} of 3 must not have a decal — bar no longer applies one.");
+        }
     }
 
     [Fact]
     public void BarChart_Beyond_MaxDecalItems_Series_Gets_No_Decal()
     {
-        // 9 series exceeds ChartHelper.MaxDecalItems (8) — decal must be skipped
-        // entirely rather than silently repeating the 5-recipe cycle.
         var series9 = Enumerable.Range(0, 9)
             .Select(i => new L.BarChart.ChartSeriesData { Name = $"S{i}", Values = new() { i, i + 1 } })
             .ToList();
@@ -116,9 +113,10 @@ public class ChartFormDifferentiationTests : IAsyncLifetime
     }
 
     [Fact]
-    public void BarChart_Two_Series_Boundary_Gets_Decal()
+    public void BarChart_Two_Series_Boundary_Never_Gets_Decal()
     {
-        // 2 is the smallest count with something to differentiate — must get decal.
+        // Was: "2 is the smallest count with something to differentiate — must get
+        // decal." Bar no longer applies decal at any count, including this boundary.
         var cut = _ctx.Render<L.BarChart>(p => p
             .Add(c => c.Categories, new List<string> { "a", "b" })
             .Add(c => c.Series, new List<L.BarChart.ChartSeriesData>
@@ -128,15 +126,19 @@ public class ChartFormDifferentiationTests : IAsyncLifetime
             }));
 
         var series = SeriesArray(cut);
-        Assert.True(series[0].GetProperty("itemStyle").TryGetProperty("decal", out _));
-        Assert.True(series[1].GetProperty("itemStyle").TryGetProperty("decal", out _));
+        var itemStyle0 = series[0].TryGetProperty("itemStyle", out var style0) ? style0 : default;
+        var itemStyle1 = series[1].TryGetProperty("itemStyle", out var style1) ? style1 : default;
+        Assert.False(itemStyle0.ValueKind == JsonValueKind.Object && itemStyle0.TryGetProperty("decal", out _));
+        Assert.False(itemStyle1.ValueKind == JsonValueKind.Object && itemStyle1.TryGetProperty("decal", out _));
     }
 
     [Fact]
-    public void BarChart_Stacked_Preserves_BorderRadius_And_Adds_Decal()
+    public void BarChart_Stacked_Outer_Segment_Gets_Token_Driven_BorderRadius_No_Decal()
     {
-        // Regression guard: the stacked branch already sets ItemStyle.BorderRadiusCorners
-        // per series — decal must layer ON TOP via ??=, not replace that ItemStyle object.
+        // Regression guard: the stacked branch sets ItemStyle.BorderRadiusCorners per
+        // series (outer segment rounded, inner segments flat) — that must still work,
+        // now via "var(--radius)" tokens (see BarChart.razor) instead of a hardcoded
+        // literal, and no decal is layered on top anymore.
         var cut = _ctx.Render<L.BarChart>(p => p
             .Add(c => c.Categories, new List<string> { "a", "b" })
             .Add(c => c.Stacked, true)
@@ -147,9 +149,25 @@ public class ChartFormDifferentiationTests : IAsyncLifetime
             }));
 
         var series = SeriesArray(cut);
-        var itemStyle1 = series[1].GetProperty("itemStyle"); // outer (top) segment
-        Assert.True(itemStyle1.TryGetProperty("borderRadius", out _), "Stacked outer segment must still get rounded corners.");
-        Assert.True(itemStyle1.TryGetProperty("decal", out _), "Stacked series must still get a decal.");
+        var itemStyle0 = series[0].GetProperty("itemStyle"); // inner (bottom) segment — flat
+        var itemStyle1 = series[1].GetProperty("itemStyle"); // outer (top) segment — rounded
+
+        var flatCorners = itemStyle0.GetProperty("borderRadius");
+        Assert.Equal(4, flatCorners.GetArrayLength());
+        foreach (var corner in flatCorners.EnumerateArray())
+            Assert.Equal(0, corner.GetInt32());
+
+        var outerCorners = itemStyle1.GetProperty("borderRadius");
+        Assert.Equal(4, outerCorners.GetArrayLength());
+        // Top-left/top-right carry the "var(--radius)" token (resolved client-side by
+        // the chart interop's resolveCssVars pass, not baked into the option JSON at
+        // this layer) — bottom-left/bottom-right stay flat.
+        Assert.Equal("var(--radius)", outerCorners[0].GetString());
+        Assert.Equal("var(--radius)", outerCorners[1].GetString());
+        Assert.Equal(0, outerCorners[2].GetInt32());
+        Assert.Equal(0, outerCorners[3].GetInt32());
+
+        Assert.False(itemStyle1.TryGetProperty("decal", out _), "Stacked bar must not get a decal anymore.");
     }
 
     // --- PieChart / DonutChart: per-slice decal, scoped to slice count -------------
