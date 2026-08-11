@@ -160,4 +160,61 @@ public class ChartTokenGuardTests
 
         Assert.NotEqual(lightPrimary, lightChart1);
     }
+
+    /// <summary>
+    /// 2026-08 chart-independence wave (owner directive: "die Charts sollten
+    /// unabhängig eingefärbt werden können von der Primary-Farbe"): the 7 named
+    /// themes (amber/blue/green/orange/rose/teal/violet) used to set
+    /// <c>chart-1 = --primary</c> literally, then rotate chart-2..5 by 72 deg
+    /// around it — so switching a consumer's brand/accent colour silently
+    /// repainted every chart's first data series (and the Gantt's default bar
+    /// fill, which falls back to <c>--color-chart-1</c>). This generalizes
+    /// <see cref="BaseTheme_Chart1_No_Longer_Equals_Primary_In_Light_Mode"/>
+    /// (base theme, chart-1, light only) to EVERY palette file, EVERY chart
+    /// token (chart-1..5, not just chart-1 — a future edit could easily leave
+    /// chart-1 decoupled while accidentally re-anchoring chart-2..5), and BOTH
+    /// modes: no chart token may resolve to the exact same oklch triple as
+    /// that same file/mode's --color-primary. This is the test that would have
+    /// caught the amber/blue/green/orange/rose/teal/violet coupling this wave
+    /// fixed — <see cref="BaseTheme_Chart1_No_Longer_Equals_Primary_In_Light_Mode"/>
+    /// never scanned the theme files at all.
+    /// </summary>
+    [Theory]
+    [MemberData(nameof(PaletteFileNames))]
+    public void No_Chart_Token_Equals_Primary_In_Any_Theme_Or_Mode(string relativeFile)
+    {
+        var root = RepoRoot();
+        var text = File.ReadAllText(Path.Combine(root, relativeFile.Replace('/', Path.DirectorySeparatorChar)));
+
+        var chartTokens = ExtractChartTokens(text);
+        var primaryTokens = ExtractPrimaryTokens(text);
+
+        Assert.True(chartTokens.Count == 10,
+            $"{relativeFile}: expected exactly 10 chart tokens (5 light + 5 dark), found {chartTokens.Count}.");
+        Assert.True(primaryTokens.Count == 2,
+            $"{relativeFile}: expected exactly 2 --color-primary tokens (light + dark), found {primaryTokens.Count}.");
+
+        var lightPrimary = primaryTokens[0];
+        var darkPrimary = primaryTokens[1];
+        var lightCharts = chartTokens.Take(5).ToList();
+        var darkCharts = chartTokens.Skip(5).Take(5).ToList();
+
+        var lightCollisions = lightCharts
+            .Select((t, i) => (idx: i + 1, t))
+            .Where(x => x.t == lightPrimary)
+            .Select(x => $"chart-{x.idx}")
+            .ToList();
+        Assert.True(lightCollisions.Count == 0,
+            $"{relativeFile} [light]: chart token(s) equal --color-primary ({lightPrimary}): " +
+            string.Join(", ", lightCollisions));
+
+        var darkCollisions = darkCharts
+            .Select((t, i) => (idx: i + 1, t))
+            .Where(x => x.t == darkPrimary)
+            .Select(x => $"chart-{x.idx}")
+            .ToList();
+        Assert.True(darkCollisions.Count == 0,
+            $"{relativeFile} [dark]: chart token(s) equal --color-primary ({darkPrimary}): " +
+            string.Join(", ", darkCollisions));
+    }
 }
