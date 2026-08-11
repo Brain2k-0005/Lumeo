@@ -118,27 +118,41 @@
             Stack = Stacked ? "total" : null
         }).ToList();
 
-        // When stacked, the theme's rounded corners on every segment make
-        // the stack look like floating pills (each segment rounds its own
-        // 4 corners, so adjacent segments meet at the arc). We flatten
-        // the inner segments and round only the outermost end of the stack:
-        //
-        //   Vertical stacked   → last series (top) rounds top corners
-        //   Horizontal stacked → last series (right) rounds right corners
-        //
-        // Radius is "var(--radius)" — the SAME token-driven value the shared theme's
-        // own default bar rounding uses (see buildLumeoTheme's barRadius in
-        // echarts-interop.js), not a disconnected literal. The chart interop's
-        // resolveCssVars pass resolves the var() reference to the live computed pixel
-        // value at render time (see resolveCssVarValue's length-to-px conversion) — a
-        // previous pass hardcoded `const int r = 6` here, which silently ignored
-        // whatever --radius the active theme/style actually set. Consumers who want a
-        // different value can still override via OptionOverride on the series.
+        // Radius is "var(--radius-sm)" — HALF of --radius (lumeo.css:
+        // `--radius-sm: calc(var(--radius) * 0.5)`), the same smaller step the
+        // shared theme's own default bar rounding now uses (see buildLumeoTheme's
+        // barRadius in echarts-interop.js), not the full --radius token cards/
+        // buttons/the tooltip use. --radius applied literally to a bar COLUMN (even
+        // at the theme's generous barMaxWidth, 24-40px wide) reads as an oversized
+        // pill cap rather than the reference's crisp, modest rounded top — confirmed
+        // empirically on the library's own 12-category demo before this change (a
+        // 12px radius on a ~13px-wide bar rendered as a near-full semicircle). The
+        // chart interop's resolveCssVars pass resolves the var() reference to the
+        // live computed pixel value at render time; a previous pass hardcoded
+        // `const int r = 6` here, which silently ignored whatever --radius the
+        // active theme/style actually set. Consumers who want a different value can
+        // still override via OptionOverride on the series.
+        const string radiusVar = "var(--radius-sm)";
+        object[] verticalForwardCorners = { radiusVar, radiusVar, 0, 0 };     // rounds the top (positive value grows up)
+        object[] horizontalForwardCorners = { 0, radiusVar, radiusVar, 0 };   // rounds the right/leading end (positive value grows right)
+
         if (Stacked && seriesList.Count > 0)
         {
-            object[] outerCorners = Horizontal
-                ? new object[] { 0, "var(--radius)", "var(--radius)", 0 }   // round right side
-                : new object[] { "var(--radius)", "var(--radius)", 0, 0 };  // round top side
+            // When stacked, the theme's rounded corners on every segment make
+            // the stack look like floating pills (each segment rounds its own
+            // 4 corners, so adjacent segments meet at the arc). We flatten
+            // the inner segments and round only the outermost end of the stack:
+            //
+            //   Vertical stacked   → last series (top) rounds top corners
+            //   Horizontal stacked → last series (right) rounds right corners
+            //
+            // Sign-aware per-point rounding (see ChartHelper.BuildBarData) is NOT
+            // applied here — identifying the "outermost of its own sign's stack"
+            // datapoint varies per category when a stack mixes positive and
+            // negative values, which is a materially harder problem than this
+            // pass's brief covers. Stacked bars keep today's series-index-based
+            // outer/inner split.
+            object[] outerCorners = Horizontal ? horizontalForwardCorners : verticalForwardCorners;
             object[] flat = { 0, 0, 0, 0 };
 
             // Use the array form everywhere — ECharts merges theme + series
@@ -157,9 +171,31 @@
         {
             // Non-stacked horizontal: theme default `[r, r, 0, 0]` rounds the
             // TOP edge (rectangle corners), which looks wrong for a horizontal
-            // bar. Override so every bar's right end is rounded instead.
-            foreach (var s in seriesList)
-                s.ItemStyle = new EChartItemStyle { BorderRadiusCorners = new object[] { 0, "var(--radius)", "var(--radius)", 0 } };
+            // bar. Override so every bar's right end is rounded instead — and, per
+            // datapoint, flip to the LEFT end for a negative value (see
+            // ChartHelper.BarCorners): a negative horizontal bar extends left from
+            // the zero baseline, so its own far tip is the left edge, not the right.
+            foreach (var (s, orig) in seriesList.Zip(Series))
+            {
+                s.ItemStyle = new EChartItemStyle { BorderRadiusCorners = horizontalForwardCorners };
+                s.Data = ChartHelper.BuildBarData(orig.Values, horizontalForwardCorners);
+            }
+        }
+        else
+        {
+            // The common case: grouped (or single-series) vertical bars, not
+            // stacked. Explicit now rather than relying on the shared theme's
+            // default `bar.itemStyle.borderRadius` falling through unset —
+            // matches the SAME value the theme would apply anyway for an
+            // all-non-negative series, but being explicit here is what lets a
+            // negative value flip to rounding its bottom instead of its top (see
+            // ChartHelper.BarCorners) — a per-series theme default can't do that,
+            // it has no idea which category's value is negative.
+            foreach (var (s, orig) in seriesList.Zip(Series))
+            {
+                s.ItemStyle = new EChartItemStyle { BorderRadiusCorners = verticalForwardCorners };
+                s.Data = ChartHelper.BuildBarData(orig.Values, verticalForwardCorners);
+            }
         }
 
         // No per-series decal (pattern fill) here anymore — a previous pass added one

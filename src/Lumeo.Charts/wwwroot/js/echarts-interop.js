@@ -132,22 +132,35 @@ function isColorProperty(key) {
 function resolveCssVarValue(str) {
     const match = str.match(/^var\(\s*(--[^,)]+)\s*(?:,\s*(.+))?\s*\)$/);
     if (!match) return str;
-    const resolved = getCssVar(match[1]);
-    const value = resolved || match[2] || str;
+    const varName = match[1];
+    const resolved = getCssVar(varName);
     // A var() reference sitting inside a numeric option (e.g. a bar corner-radius
-    // array built from "var(--radius)" — see BarChart.razor / EChartItemStyle.
+    // array built from "var(--radius-sm)" — see BarChart.razor / EChartItemStyle.
     // BorderRadiusCorners) resolves to a raw CSS length string ("0.75rem", "12px"),
     // not a colour — getCssVar only hex-converts colour-looking values, so a length
     // passes through untouched. ECharts' canvas properties (borderRadius, etc.) want
     // a plain NUMBER of px, so convert here rather than leaving every call site to
-    // re-derive it (this mirrors buildLumeoTheme's own radiusPx computation for the
+    // re-derive it (this mirrors buildLumeoTheme's own radius computation for the
     // theme-level default, so a per-series override tracks the exact same value).
-    const lengthMatch = typeof value === 'string' && value.match(/^(-?[\d.]+)(rem|px)$/);
+    const lengthMatch = typeof resolved === 'string' && resolved.match(/^(-?[\d.]+)(rem|px)$/);
     if (lengthMatch) {
         const n = parseFloat(lengthMatch[1]);
         return lengthMatch[2] === 'rem' ? n * 16 : n;
     }
-    return value;
+    // `resolved` didn't parse as a plain rem/px length — this is the calc()-token
+    // case (e.g. --radius-sm: calc(var(--radius) * 0.5) in lumeo.css). getPropertyValue()
+    // on a custom property returns its SPECIFIED value verbatim ("calc(0.75rem * 0.5)"),
+    // never resolved — browsers only resolve a var()/calc() chain when it's actually
+    // APPLIED to a real CSS property. Fall back to the DOM-probe resolver, which does
+    // exactly that (same technique colorToHex already uses for oklch/color() colours).
+    const probed = resolveLengthPxViaProbe(varName);
+    if (probed !== null) return probed;
+    const fallbackRaw = match[2];
+    if (fallbackRaw) {
+        const n = parseFloat(fallbackRaw);
+        if (!Number.isNaN(n)) return n;
+    }
+    return resolved || str;
 }
 
 function getCssVar(name) {
@@ -160,6 +173,35 @@ function getCssVar(name) {
         return colorToHex(raw);
     }
     return raw;
+}
+
+// Resolves a CSS custom property that holds a LENGTH to a plain px number, even
+// when it's defined via calc()/nested var() (e.g. lumeo.css's
+// `--radius-sm: calc(var(--radius) * 0.5)`). getComputedStyle(...).getPropertyValue()
+// on a custom property returns the SPECIFIED value as authored text, not the
+// resolved one — confirmed live: --radius-sm reads back as the literal string
+// "calc(0.75rem * 0.5)", which parseFloat() turns into NaN, not 6. The fix is the
+// same one colorToHex already relies on for oklch()/color() colours: apply the
+// var() reference to an actual CSS property on a real (offscreen) element and let
+// the browser's own cascade do the calc() math, then read the COMPUTED result back.
+// Returns null (never NaN) on failure so callers can fall back explicitly.
+function resolveLengthPxViaProbe(varName) {
+    if (typeof document === 'undefined') return null;
+    try {
+        const probe = document.createElement('div');
+        probe.style.position = 'absolute';
+        probe.style.visibility = 'hidden';
+        probe.style.pointerEvents = 'none';
+        probe.style.left = '-9999px';
+        probe.style.width = `var(${varName})`;
+        document.body.appendChild(probe);
+        const computed = getComputedStyle(probe).width; // always resolves to a plain "Npx"
+        document.body.removeChild(probe);
+        const n = parseFloat(computed);
+        return Number.isFinite(n) ? n : null;
+    } catch {
+        return null;
+    }
 }
 
 function colorToHex(color) {
@@ -341,12 +383,40 @@ function buildLumeoTheme(cssVar, reducedMotion) {
     // reads as "this app", not as an ad-hoc drop-shadow.
     const glowColor = cssVar('--color-primary') || chart1;
 
+    // rem/px CSS length -> a plain px number. Shared by every radius token read
+    // below so --radius, --radius-sm, etc. all go through the same conversion
+    // (mirrors resolveCssVarValue's length handling for the var() references
+    // BarChart.razor sends straight through to ECharts options).
+    const toPx = (raw) => parseFloat(raw) * (String(raw).includes('rem') ? 16 : 1);
+
     const radiusRaw = cssVar('--radius') || '0.75rem';
-    const radiusPx = parseFloat(radiusRaw) * (radiusRaw.includes('rem') ? 16 : 1);
-    const barRadius = [radiusPx, radiusPx, 0, 0];
+    const radiusPx = toPx(radiusRaw);
     // Popover uses `rounded-md` (--radius-md == --radius by default) — tooltip
     // matches it exactly rather than re-deriving its own scale.
     const tooltipRadiusPx = radiusPx;
+
+    // Bar-family corner radius is HALF of --radius — the same ratio lumeo.css's own
+    // `--radius-sm: calc(var(--radius) * 0.5)` token defines — not the full --radius
+    // token tooltip/popover use above. --radius is calibrated for large surfaces
+    // (cards, buttons, the tooltip); applied literally to a bar COLUMN — which even
+    // at this theme's generous barMaxWidth tops out around 24-40px wide — it reads as
+    // an oversized pill cap rather than the reference's crisp, modest rounded top.
+    // Confirmed empirically: at the previous (dense-demo) 12px-radius-on-a-13px-wide
+    // bar ratio, ECharts' own corner-radius clamping (a rect can't have a corner
+    // radius bigger than half its own side) turned the "rounded top" into a near-full
+    // semicircle. Computed by halving the already-resolved radiusPx (rather than
+    // re-reading `--radius-sm` here) deliberately: getComputedStyle().getPropertyValue()
+    // on a custom property returns its SPECIFIED value verbatim, and --radius-sm is
+    // defined via calc() — reading it back gives the literal text
+    // "calc(0.75rem * 0.5)", not a resolved px number (confirmed live; parseFloat()
+    // on that string is NaN). resolveCssVarValue (used for the var(--radius-sm)
+    // STRINGS BarChart.razor sends through the option JSON) works around this with a
+    // DOM-probe resolver; buildLumeoTheme stays a pure function of `cssVar` (no
+    // `document` access, so it can't probe) and doesn't need to — halving the value
+    // it already has is the same number --radius-sm resolves to, without the
+    // calc()-read pitfall.
+    const barRadiusPx = radiusPx * 0.5;
+    const barRadius = [barRadiusPx, barRadiusPx, 0, 0];
 
     const noStroke = { textBorderWidth: 0, textBorderColor: 'transparent', textShadowBlur: 0, textShadowColor: 'transparent' };
     // 12 — Lumeo's --text-xs (0.75rem). The theme previously hardcoded 11px here (and
@@ -512,7 +582,22 @@ function buildLumeoTheme(cssVar, reducedMotion) {
             ...(reducedMotion ? {} : { animationDuration: 900, animationEasing: 'cubicOut' })
         },
         bar: {
-            barMaxWidth: 32,
+            barMaxWidth: 40,
+            // Chunky-bar pass: ECharts' own defaults (barCategoryGap: '20%',
+            // barGap: '30%') read as "narrow strips with large gaps" once a chart
+            // has more than a handful of categories — confirmed by measuring the
+            // library's own 12-category/2-series demo BEFORE this change: 480px
+            // chart width / 12 categories -> a ~39px band per category, and the
+            // default gap ratios left only ~13px of that for each bar (barely a
+            // third of the band actually painted). Tightening both ratios gives
+            // the bars back a materially larger share of their band — same
+            // category count, chunkier confident columns instead of thin strips
+            // — without touching barMaxWidth's role as the ceiling for sparser
+            // axes (a 4-category chart was already hitting that ceiling before
+            // this change and still does; what changes there is the now-smaller
+            // gap BETWEEN groups, not the bar width itself).
+            barCategoryGap: '10%',
+            barGap: '8%',
             // No itemStyle.color here — a previous pass built a top-lightened vertical
             // gradient from a callback (confirmed working: ECharts DOES invoke a
             // (params) => Color function for itemStyle.color at the theme level, unlike
@@ -661,6 +746,144 @@ function registerLumeoTheme() {
     lumeoThemeRegistered = true;
 }
 
+// General axis concern (not bar-specific): reaches every cartesian chart type that
+// routes through initChart/updateChart (Bar, Line, Area, Candlestick, BoxPlot,
+// Waterfall, PictorialBar, Mixed, ...).
+//
+// ChartLabelHelper's C# "Smart" strategy (see ChartLabelHelper.cs) decides whether to
+// rotate category labels using ONLY the category COUNT (>10 -> -30°, >16 -> -60°,
+// >24 -> -75°) — it has no way to know the actual rendered pixel width, so it can't
+// tell "12 long labels that truly won't fit" from "12 three-letter month abbreviations
+// that fit horizontally with room to spare" (confirmed live: the docs' 12-category
+// "Jan"…"Dec" bar demo was rotating -30° purely from the category count, even though
+// the labels are short enough to sit flat). Pixel geometry only exists in the browser
+// at render time, so the correction belongs here, not in the C# heuristic.
+//
+// Runs AFTER resolveCssVars/applyReducedMotion but BEFORE the caller's own
+// chart.setOption(options) — it does one throwaway measurement render (so
+// grid.containLabel's reserved space and the axis' real pixel extent are genuine,
+// not guessed), measures each candidate axis' longest label against its actual
+// per-category slot width via canvas measureText, and MUTATES `options` in place so
+// the caller's subsequent real setOption() renders the corrected result. Two synchronous
+// setOption calls with no `await` between them never produce a visible in-between frame.
+//
+// Only ever SOFTENS an already-nonzero rotate (Smart's computed -30/-60/-75, or a
+// consumer's manual LabelRotate) — never touches an axis ECharts/Lumeo left
+// unrotated (LabelStrategy.Auto, or Smart/ShowAll at a category count that needs no
+// rotation), so LabelStrategy.ShowAll's "force every label, no rotation" contract and
+// LabelStrategy.Auto's native ECharts thinning are both left completely alone. When
+// rotation genuinely doesn't fit even after thinning, the originally-requested
+// rotation is kept untouched — this is a "never rotate more than asked, only ever
+// less" pass, not a full replacement of the C# heuristic.
+function autoFitCategoryAxisLabels(chart, options) {
+    if (!options || typeof options !== 'object') return;
+
+    const xCandidates = Array.isArray(options.xAxis)
+        ? options.xAxis
+            .map((axis, idx) => ({ axis, idx }))
+            .filter(({ axis }) => axis && axis.type === 'category' && Array.isArray(axis.data) && axis.data.length > 1
+                && axis.axisLabel && typeof axis.axisLabel.rotate === 'number' && axis.axisLabel.rotate !== 0)
+        : [];
+    // Y-dimension category axes (horizontal bar/area orientation) — rotating a
+    // vertical list of row labels is basically never the right call (they already
+    // read top-to-bottom, one per row; tilting them diagonally fights that instead
+    // of helping), and ChartLabelHelper applies the SAME Smart heuristic to
+    // whichever axis ends up carrying the categories, X or Y (see BarChart.razor's
+    // shared `categoryAxis` construction) — so a Horizontal chart with >10
+    // categories was inheriting an X-axis-shaped rotation on its Y axis. Cleared
+    // outright when there's comfortably more than one line of vertical room per
+    // row; no interval-thinning ladder needed here (row height, unlike a fixed
+    // chart width divided across many columns, isn't the usual crowding vector).
+    const yCandidates = Array.isArray(options.yAxis)
+        ? options.yAxis
+            .map((axis, idx) => ({ axis, idx }))
+            .filter(({ axis }) => axis && axis.type === 'category' && Array.isArray(axis.data) && axis.data.length > 1
+                && axis.axisLabel && typeof axis.axisLabel.rotate === 'number' && axis.axisLabel.rotate !== 0)
+        : [];
+
+    if (xCandidates.length === 0 && yCandidates.length === 0) return;
+
+    // Throwaway measurement render — see function comment for why this can't be
+    // estimated from options.grid alone (containLabel's reserved space depends on
+    // the CURRENT rotation, which is exactly what we're about to evaluate).
+    // Deliberately NOT lazyUpdate: that defers the coordinate-system build (the
+    // `axis` object getExtent() below reads from) to the next frame, so querying
+    // it synchronously right after setOption() would see nothing yet built
+    // (confirmed live — axisModel.axis was undefined immediately after a
+    // lazyUpdate:true setOption). A normal (synchronous) setOption is required so
+    // the measurement below reflects a REAL, already-built layout.
+    try {
+        chart.setOption(options);
+    } catch (_) {
+        return;
+    }
+
+    let model;
+    try {
+        model = chart.getModel();
+    } catch (_) {
+        return;
+    }
+    if (!model) return;
+
+    const fontFamily = (typeof document !== 'undefined' && getComputedStyle(document.body).fontFamily) || 'system-ui, sans-serif';
+    const measureCanvas = document.createElement('canvas');
+    const ctx = measureCanvas.getContext('2d');
+    const PAD = 8; // breathing room so adjacent labels don't visually kiss
+
+    for (const { axis, idx } of xCandidates) {
+        let axisModel;
+        try { axisModel = model.getComponent('xAxis', idx); } catch (_) { continue; }
+        if (!axisModel || !axisModel.axis || typeof axisModel.axis.getExtent !== 'function') continue;
+
+        const fontSize = (axis.axisLabel && axis.axisLabel.fontSize) || 12;
+        ctx.font = `${fontSize}px ${fontFamily}`;
+
+        const extent = axisModel.axis.getExtent();
+        const plotWidth = Math.abs(extent[1] - extent[0]);
+        const count = axis.data.length;
+        const slotWidth = plotWidth / count;
+        const maxLabelWidth = axis.data.reduce((max, d) => Math.max(max, ctx.measureText(String(d)).width), 0);
+
+        const fitsAt = (interval) => maxLabelWidth + PAD <= slotWidth * (interval + 1);
+
+        // Degrade WIDTH first — thin the label set — before ever tilting anything,
+        // per the design brief: rotation is the LAST resort, not the first response
+        // to density. Capped at "show every 4th" so a fit search never thins a
+        // chart down to an unreadable handful just to dodge a small tilt.
+        let bestInterval = null;
+        for (let interval = 0; interval <= 3; interval++) {
+            if (fitsAt(interval)) { bestInterval = interval; break; }
+        }
+
+        if (bestInterval !== null) {
+            axis.axisLabel = { ...axis.axisLabel, rotate: 0, interval: bestInterval };
+        }
+        // else: genuinely doesn't fit even thinned to every 4th label — leave the
+        // originally-requested rotation; it's the intended last-resort degrade,
+        // not something this pass invents from scratch.
+    }
+
+    for (const { axis, idx } of yCandidates) {
+        let axisModel;
+        try { axisModel = model.getComponent('yAxis', idx); } catch (_) { continue; }
+        if (!axisModel || !axisModel.axis || typeof axisModel.axis.getExtent !== 'function') continue;
+
+        const fontSize = (axis.axisLabel && axis.axisLabel.fontSize) || 12;
+        const extent = axisModel.axis.getExtent();
+        const plotHeight = Math.abs(extent[1] - extent[0]);
+        const rowHeight = plotHeight / axis.data.length;
+        const lineHeight = fontSize * 1.4; // ECharts' own default axisLabel line-height ratio
+
+        if (rowHeight >= lineHeight + PAD) {
+            axis.axisLabel = { ...axis.axisLabel, rotate: 0 };
+        }
+        // else: rows are genuinely too tight for one horizontal line each — keep
+        // the requested rotation (rare; a Y category axis needs a LOT of rows
+        // before this triggers).
+    }
+}
+
 export async function initChart(elementId, optionsJson, theme, echartsSource) {
     await loadECharts(echartsSource);
 
@@ -706,6 +929,9 @@ export async function initChart(elementId, optionsJson, theme, echartsSource) {
     // Hard override: reduced motion wins even over a consumer's own
     // AnimationDuration/AnimationEasing parameter — see applyReducedMotion.
     applyReducedMotion(options, prefersReducedMotion());
+    // Pixel-aware category-label rotation correction — see function comment.
+    // Mutates `options` in place; the setOption below renders the corrected result.
+    autoFitCategoryAxisLabels(chart, options);
 
     try {
         chart.setOption(options);
@@ -740,6 +966,7 @@ export function updateChart(elementId, optionsJson, notMerge, replaceMergeJson) 
     const options = JSON.parse(optionsJson);
     resolveCssVars(options);
     applyReducedMotion(options, prefersReducedMotion());
+    autoFitCategoryAxisLabels(chart, options);
     const opts = { notMerge: notMerge || false };
     if (replaceMergeJson) {
         try {
@@ -829,6 +1056,7 @@ export function refreshAllCharts() {
         const savedTooltip = chart._lumeoTooltip || null;
         chart.dispose();
         const newChart = window.echarts.init(el, themeName, { renderer: 'canvas' });
+        autoFitCategoryAxisLabels(newChart, opts);
         newChart.setOption(opts);
         newChart._lumeoRawJson = chart._lumeoRawJson;
         newChart._lumeoTheme = themeName;

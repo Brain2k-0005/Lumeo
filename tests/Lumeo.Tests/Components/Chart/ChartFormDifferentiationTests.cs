@@ -137,8 +137,8 @@ public class ChartFormDifferentiationTests : IAsyncLifetime
     {
         // Regression guard: the stacked branch sets ItemStyle.BorderRadiusCorners per
         // series (outer segment rounded, inner segments flat) — that must still work,
-        // now via "var(--radius)" tokens (see BarChart.razor) instead of a hardcoded
-        // literal, and no decal is layered on top anymore.
+        // now via "var(--radius-sm)" tokens (see BarChart.razor) — HALF of --radius,
+        // not the full token — and no decal is layered on top anymore.
         var cut = _ctx.Render<L.BarChart>(p => p
             .Add(c => c.Categories, new List<string> { "a", "b" })
             .Add(c => c.Stacked, true)
@@ -159,15 +159,154 @@ public class ChartFormDifferentiationTests : IAsyncLifetime
 
         var outerCorners = itemStyle1.GetProperty("borderRadius");
         Assert.Equal(4, outerCorners.GetArrayLength());
-        // Top-left/top-right carry the "var(--radius)" token (resolved client-side by
-        // the chart interop's resolveCssVars pass, not baked into the option JSON at
-        // this layer) — bottom-left/bottom-right stay flat.
-        Assert.Equal("var(--radius)", outerCorners[0].GetString());
-        Assert.Equal("var(--radius)", outerCorners[1].GetString());
+        // Top-left/top-right carry the "var(--radius-sm)" token (resolved client-side
+        // by the chart interop's resolveCssVars pass, not baked into the option JSON
+        // at this layer) — bottom-left/bottom-right stay flat.
+        Assert.Equal("var(--radius-sm)", outerCorners[0].GetString());
+        Assert.Equal("var(--radius-sm)", outerCorners[1].GetString());
         Assert.Equal(0, outerCorners[2].GetInt32());
         Assert.Equal(0, outerCorners[3].GetInt32());
 
         Assert.False(itemStyle1.TryGetProperty("decal", out _), "Stacked bar must not get a decal anymore.");
+    }
+
+    [Fact]
+    public void BarChart_Grouped_Vertical_Common_Case_Gets_Explicit_Token_Driven_TopRadius()
+    {
+        // Geometry-gap pass: the common case (grouped/single-series vertical, not
+        // stacked, not horizontal) previously emitted NO series-level ItemStyle at
+        // all, relying entirely on the shared theme's default bar.itemStyle.borderRadius
+        // falling through — which worked for rendering, but made it impossible to flip
+        // the rounded end for a negative value (see the negative-value tests below).
+        // Now explicit, same var(--radius-sm) token as every other bar-family corner.
+        var cut = _ctx.Render<L.BarChart>(p => p
+            .Add(c => c.Categories, new List<string> { "a", "b", "c" })
+            .Add(c => c.Series, new List<L.BarChart.ChartSeriesData>
+            {
+                new() { Name = "This year", Values = new() { 1, 2, 3 } },
+                new() { Name = "Last year", Values = new() { 2, 3, 4 } },
+            }));
+
+        var series = SeriesArray(cut);
+        foreach (var s in series.EnumerateArray())
+        {
+            var corners = s.GetProperty("itemStyle").GetProperty("borderRadius");
+            Assert.Equal(4, corners.GetArrayLength());
+            Assert.Equal("var(--radius-sm)", corners[0].GetString());
+            Assert.Equal("var(--radius-sm)", corners[1].GetString());
+            Assert.Equal(0, corners[2].GetInt32());
+            Assert.Equal(0, corners[3].GetInt32());
+            // Plain array-of-numbers data — no negative values, so no per-point
+            // itemStyle wrapping (see the negative-value test below).
+            var data = s.GetProperty("data");
+            Assert.Equal(JsonValueKind.Number, data[0].ValueKind);
+        }
+    }
+
+    [Fact]
+    public void BarChart_Horizontal_NonStacked_Gets_Token_Driven_RightRadius()
+    {
+        var cut = _ctx.Render<L.BarChart>(p => p
+            .Add(c => c.Categories, new List<string> { "a", "b" })
+            .Add(c => c.Horizontal, true)
+            .Add(c => c.Series, new List<L.BarChart.ChartSeriesData>
+            {
+                new() { Name = "Only", Values = new() { 1, 2 } },
+            }));
+
+        var series = SeriesArray(cut);
+        var corners = series[0].GetProperty("itemStyle").GetProperty("borderRadius");
+        Assert.Equal(4, corners.GetArrayLength());
+        Assert.Equal(0, corners[0].GetInt32());
+        Assert.Equal("var(--radius-sm)", corners[1].GetString());
+        Assert.Equal("var(--radius-sm)", corners[2].GetString());
+        Assert.Equal(0, corners[3].GetInt32());
+    }
+
+    // --- Negative-value corner flip (ChartHelper.BarCorners / BuildBarData) --------
+
+    [Fact]
+    public void BarChart_Vertical_Negative_Value_Rounds_Bottom_Not_Top()
+    {
+        // A negative bar hangs BELOW the zero baseline — its own far tip is the
+        // bottom, so the rounded corners must flip there instead of staying at the
+        // top (which would round the end touching the baseline/axis instead of the
+        // bar's own tip).
+        var cut = _ctx.Render<L.BarChart>(p => p
+            .Add(c => c.Categories, new List<string> { "profit", "loss" })
+            .Add(c => c.Series, new List<L.BarChart.ChartSeriesData>
+            {
+                new() { Name = "Net", Values = new() { 5, -3 } },
+            }));
+
+        var series = SeriesArray(cut);
+        var data = series[0].GetProperty("data");
+        Assert.Equal(2, data.GetArrayLength());
+
+        // Positive point: still a plain object with the forward (top-rounded) corners.
+        var positive = data[0];
+        Assert.Equal(5, positive.GetProperty("value").GetDouble());
+        var positiveCorners = positive.GetProperty("itemStyle").GetProperty("borderRadius");
+        Assert.Equal("var(--radius-sm)", positiveCorners[0].GetString());
+        Assert.Equal("var(--radius-sm)", positiveCorners[1].GetString());
+        Assert.Equal(0, positiveCorners[2].GetInt32());
+        Assert.Equal(0, positiveCorners[3].GetInt32());
+
+        // Negative point: corners rotated 180° — bottom rounds, top stays flat.
+        var negative = data[1];
+        Assert.Equal(-3, negative.GetProperty("value").GetDouble());
+        var negativeCorners = negative.GetProperty("itemStyle").GetProperty("borderRadius");
+        Assert.Equal(0, negativeCorners[0].GetInt32());
+        Assert.Equal(0, negativeCorners[1].GetInt32());
+        Assert.Equal("var(--radius-sm)", negativeCorners[2].GetString());
+        Assert.Equal("var(--radius-sm)", negativeCorners[3].GetString());
+    }
+
+    [Fact]
+    public void BarChart_Horizontal_Negative_Value_Rounds_Left_Not_Right()
+    {
+        var cut = _ctx.Render<L.BarChart>(p => p
+            .Add(c => c.Categories, new List<string> { "in", "out" })
+            .Add(c => c.Horizontal, true)
+            .Add(c => c.Series, new List<L.BarChart.ChartSeriesData>
+            {
+                new() { Name = "Flow", Values = new() { 4, -6 } },
+            }));
+
+        var series = SeriesArray(cut);
+        var data = series[0].GetProperty("data");
+
+        var positiveCorners = data[0].GetProperty("itemStyle").GetProperty("borderRadius");
+        Assert.Equal(0, positiveCorners[0].GetInt32());
+        Assert.Equal("var(--radius-sm)", positiveCorners[1].GetString());
+        Assert.Equal("var(--radius-sm)", positiveCorners[2].GetString());
+        Assert.Equal(0, positiveCorners[3].GetInt32());
+
+        var negativeCorners = data[1].GetProperty("itemStyle").GetProperty("borderRadius");
+        Assert.Equal("var(--radius-sm)", negativeCorners[0].GetString());
+        Assert.Equal(0, negativeCorners[1].GetInt32());
+        Assert.Equal(0, negativeCorners[2].GetInt32());
+        Assert.Equal("var(--radius-sm)", negativeCorners[3].GetString());
+    }
+
+    [Fact]
+    public void BarChart_AllPositive_Series_Keeps_Plain_Numeric_Data_Array()
+    {
+        // No negative values anywhere -> Data stays the flat List<double> wire shape
+        // (no per-point itemStyle wrapping needed or emitted) — zero behaviour change
+        // for the overwhelmingly common all-positive dataset.
+        var cut = _ctx.Render<L.BarChart>(p => p
+            .Add(c => c.Categories, new List<string> { "a", "b", "c" })
+            .Add(c => c.Series, new List<L.BarChart.ChartSeriesData>
+            {
+                new() { Name = "Only", Values = new() { 0, 2, 3 } }, // 0 counts as non-negative
+            }));
+
+        var series = SeriesArray(cut);
+        var data = series[0].GetProperty("data");
+        Assert.Equal(JsonValueKind.Array, data.ValueKind);
+        foreach (var point in data.EnumerateArray())
+            Assert.Equal(JsonValueKind.Number, point.ValueKind);
     }
 
     // --- PieChart / DonutChart: per-slice decal, scoped to slice count -------------

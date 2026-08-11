@@ -253,9 +253,30 @@ test('bar: no gradient — itemStyle has no colour callback, only the token-driv
     const { __testing } = await importInterop();
     const theme = __testing.buildLumeoTheme(fakeCssVar, false);
     assert.equal('color' in theme.bar.itemStyle, false);
-    // radius: --radius is 0.5rem == 8px in this fixture — same value flows into the
-    // theme-level default bar rounding.
-    assert.deepEqual(theme.bar.itemStyle.borderRadius, [8, 8, 0, 0]);
+    // radius: --radius is 0.5rem == 8px in this fixture; bar corners use HALF of
+    // that (--radius-sm's own ratio: calc(var(--radius) * 0.5)) -> 4px, not the
+    // full 8px. Geometry-gap pass: the full --radius token (tuned for cards/
+    // buttons) rendered as an oversized pill cap on a bar column — confirmed
+    // live at the library's own 12px-radius-on-a-13px-wide-bar ratio, where it
+    // rounded into a near-full semicircle. Computed by halving the already-
+    // resolved --radius here (not by re-reading --radius-sm) because
+    // getComputedStyle().getPropertyValue() on a calc()-based custom property
+    // returns its unresolved specified value, not a usable px number — see
+    // buildLumeoTheme's barRadiusPx comment and resolveLengthPxViaProbe.
+    assert.deepEqual(theme.bar.itemStyle.borderRadius, [4, 4, 0, 0]);
+});
+
+test('bar: geometry-gap pass — tighter barCategoryGap/barGap and a raised barMaxWidth, shared with every bar-family chart type', async () => {
+    // Before this pass: ECharts' own defaults (barCategoryGap: '20%', barGap: '30%',
+    // barMaxWidth: 32) measured out to ~13px bars in the library's own 12-category/
+    // 2-series demo (480px chart width) — "narrow strips with large gaps". These are
+    // theme-level (not bar-only C#), so PictorialBarChart/PolarBarChart/WaterfallChart/
+    // MixedChart's bar series all inherit the same chunkier ratio through theme merge.
+    const { __testing } = await importInterop();
+    const theme = __testing.buildLumeoTheme(fakeCssVar, false);
+    assert.equal(theme.bar.barCategoryGap, '10%');
+    assert.equal(theme.bar.barGap, '8%');
+    assert.equal(theme.bar.barMaxWidth, 40);
 });
 
 test('pie gradient: itemStyle.color is a callback that builds a centre-lightened RADIAL gradient from params.color', async () => {
