@@ -20,17 +20,28 @@ namespace Lumeo.Tests.E2E.Smokes;
 /// half-renders can still look fine at a glance — this asserts EVERY section
 /// actually reaches the DOM, not just that the page responded.
 ///
-/// Timeout budget: this page hosts 14 live GanttChart instances (vs. 5 on the
-/// heaviest page in the rest of this suite, <c>/e2e/gantt-v3-preview</c>,
-/// which needed its own 30000ms bump over the usual 15000ms). Measured
-/// locally (warm dev server, 3 runs): the LAST demo's first task bar reaching
-/// the DOM took 16.3s-16.9s end to end. Scaling by the same
-/// local-to-CI headroom that page's own comment documents (~2.5-3x), this
-/// uses 45000ms.
+/// Perf fix (Gantt lag/lazy-mount investigation): this page used to mount all
+/// 14 GanttChart instances EAGERLY on first render — every one of them paid
+/// GanttTimeline.OnAfterRenderAsync's own ~5 sequential awaited interop round
+/// trips (drag registration, context-menu registration, header-scroll-sync,
+/// vertical-scroll-tracking, scroll-to-today) at once, which is what made the
+/// LAST demo's first task bar take 16.3s-16.9s to reach the DOM (see the
+/// superseded comment this replaces, and the investigation's own measured
+/// numbers). Each demo's <c>&lt;GanttChart&gt;</c> is now wrapped in
+/// <c>LazyRender</c> (the same IntersectionObserver-based deferred-mount
+/// helper already used on every Map demo on <c>/components/map</c>) — a chart
+/// only mounts once its section scrolls within 200px of the viewport, so a
+/// visitor who never scrolls past the first demo never pays for the other 13
+/// at all. This test now scrolls to each section BEFORE asserting its bar is
+/// present (Playwright's plain WaitForAsync does not auto-scroll — only
+/// action methods like ClickAsync do), matching that new mount trigger; the
+/// timeout budget shrinks accordingly since a single already-visible chart's
+/// own mount is fast (measured ~1-3s locally), not 16+ seconds for the whole
+/// page.
 /// </summary>
 public class GanttChartPageDemosTests : PlaywrightTestBase
 {
-    private const int HeavyPageTimeoutMs = 45000;
+    private const int HeavyPageTimeoutMs = 10000;
 
     private static readonly string[] DemoSectionIds =
     [
@@ -64,6 +75,12 @@ public class GanttChartPageDemosTests : PlaywrightTestBase
             var section = Page.Locator($"#{id}");
             await section.WaitForAsync(new() { Timeout = HeavyPageTimeoutMs });
 
+            // LazyRender only mounts a demo's GanttChart once its placeholder
+            // scrolls within 200px of the viewport (see the class remarks) —
+            // a plain WaitForAsync never scrolls anything, so without this the
+            // loop would time out on every section past the first screenful.
+            await section.ScrollIntoViewIfNeededAsync();
+
             // Per-section presence, not just that the page responded: assert THIS
             // section's own GanttChart actually rendered at least one task bar
             // (a render exception on an earlier section would otherwise still
@@ -92,6 +109,7 @@ public class GanttChartPageDemosTests : PlaywrightTestBase
 
         var section = Page.Locator("#row-reorder-drag-tree-rows");
         await section.WaitForAsync(new() { Timeout = HeavyPageTimeoutMs });
+        await section.ScrollIntoViewIfNeededAsync(); // LazyRender mount trigger — see class remarks
 
         var nameCells = section.Locator(".lumeo-gantt-v3-tree-name-cell");
         await nameCells.First.WaitForAsync(new() { Timeout = HeavyPageTimeoutMs });
@@ -106,6 +124,7 @@ public class GanttChartPageDemosTests : PlaywrightTestBase
 
         var section = Page.Locator("#row-selection-leaf-checkboxes");
         await section.WaitForAsync(new() { Timeout = HeavyPageTimeoutMs });
+        await section.ScrollIntoViewIfNeededAsync(); // LazyRender mount trigger — see class remarks
 
         var nothingSelected = section.GetByText("Nothing selected.");
         await nothingSelected.WaitForAsync(new() { Timeout = HeavyPageTimeoutMs });
@@ -129,6 +148,7 @@ public class GanttChartPageDemosTests : PlaywrightTestBase
 
         var section = Page.Locator("#settings-menu-every-reui-parity-toggle-two-way-bound");
         await section.WaitForAsync(new() { Timeout = HeavyPageTimeoutMs });
+        await section.ScrollIntoViewIfNeededAsync(); // LazyRender mount trigger — see class remarks
 
         var settingsButton = section.Locator("button[aria-label='Settings']");
         await settingsButton.WaitForAsync(new() { Timeout = HeavyPageTimeoutMs });
@@ -144,11 +164,56 @@ public class GanttChartPageDemosTests : PlaywrightTestBase
 
         var section = Page.Locator("#today-marker-off-day-shading");
         await section.WaitForAsync(new() { Timeout = HeavyPageTimeoutMs });
+        await section.ScrollIntoViewIfNeededAsync(); // LazyRender mount trigger — see class remarks
 
         // NowIndicator's precise time-line only renders at sub-day granularity —
         // this demo deliberately starts in HalfDay zoom so it's visible without
         // any interaction (see the demo's own caption/code comment).
         await section.Locator(".lumeo-gantt-v3-now-line").WaitForAsync(new() { Timeout = HeavyPageTimeoutMs });
         await section.Locator(".lumeo-gantt-v3-off-day").First.WaitForAsync(new() { Timeout = HeavyPageTimeoutMs });
+    }
+
+    // Regression guard for the lazy-mount perf fix itself. Predicted values:
+    // against the PRE-FIX code (every GanttChart mounted eagerly on first
+    // render, which is what produced the 16.3s-16.9s page-ready time this
+    // fix addresses), the last demo's [data-task-id] count would already be
+    // > 0 immediately after load, before any scroll — Virtualize renders an
+    // initial batch for every mounted instance regardless of scroll position,
+    // and ALL 14 instances mounted immediately. Against the FIXED code, that
+    // same count must be EXACTLY 0 before scrolling (LazyRender is still
+    // showing its skeleton placeholder, nothing has mounted below the fold
+    // yet) and only becomes > 0 once the section is scrolled into view. A
+    // fixture bug that left the demo eagerly mounted (LazyRender never
+    // applied, or its IntersectionObserver never wired up) would make the
+    // "before" assertion fail with a concrete wrong value (count > 0, not 0).
+    [Fact]
+    public async Task Below_The_Fold_Demo_Charts_Do_Not_Mount_Until_Scrolled_Near()
+    {
+        await Goto("/components/gantt-chart");
+        await Page.WaitForLoadStateAsync(LoadState.NetworkIdle);
+
+        // The LAST demo is far below the fold on any normal viewport height —
+        // check it FIRST, before anything else in this test scrolls the page
+        // (a scroll anywhere is exactly the trigger being asserted against).
+        var lastSection = Page.Locator("#custom-row-content-rowtemplate");
+        await lastSection.WaitForAsync(new() { Timeout = HeavyPageTimeoutMs });
+        var barsBeforeScroll = await lastSection.Locator("[data-task-id]").CountAsync();
+        Assert.Equal(0, barsBeforeScroll);
+
+        // Control: prove this test isn't just catching "nothing ever mounts" —
+        // the FIRST demo mounts once actually scrolled to, same as every other
+        // section (PageHeader/InstallUsage/Alert/"When to Use" above it are
+        // tall enough that even the first demo sits outside a typical test
+        // viewport's initial 200px LazyRender margin without an explicit
+        // scroll — see the passing Page_loads_and_renders_every_demo_section
+        // test's own identical per-section ScrollIntoViewIfNeededAsync call).
+        var firstSection = Page.Locator("#a-realistic-project-plan-hierarchy-dependencies-milestones");
+        await firstSection.ScrollIntoViewIfNeededAsync();
+        await firstSection.Locator("[data-task-id]").First.WaitForAsync(new() { Timeout = HeavyPageTimeoutMs });
+
+        await lastSection.ScrollIntoViewIfNeededAsync();
+        await lastSection.Locator("[data-task-id]").First.WaitForAsync(new() { Timeout = HeavyPageTimeoutMs });
+        var barsAfterScroll = await lastSection.Locator("[data-task-id]").CountAsync();
+        Assert.True(barsAfterScroll > 0, "expected the last demo's GanttChart to mount once scrolled into view");
     }
 }
