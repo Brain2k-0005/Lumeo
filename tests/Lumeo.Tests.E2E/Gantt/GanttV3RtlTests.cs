@@ -91,7 +91,7 @@ public class GanttV3RtlTests : GanttParityTestBase
         // spec confirms live) even though DOM order stays [Tree, Timeline] —
         // so Timeline's own box lands FIRST physically (at the scrollable
         // content's own physical-left origin) under RTL, with Tree occupying
-        // the TRAILING (physically rightmost) chunk instead. Gantt3's round-4
+        // the TRAILING (physically rightmost) chunk instead. GanttChart's round-4
         // fix (ScrollHostLeadingOffset) added the tree's width unconditionally
         // whenever a tree pane is shown, which overshot the target under RTL
         // by exactly that width — this fixture (?rtl=1 always shows the tree

@@ -5,14 +5,14 @@
 @using Lumeo.Services
 
 @* Gantt v2/v3 parity harness (feat/gantt-v3, T4) — v3 counterpart of
-   GanttV2Page.razor. Renders the working-name Gantt3 against the IDENTICAL
+   GanttV2Page.razor. Renders the working-name GanttChart against the IDENTICAL
    fixture + params (Height/GroupBy/BarColor) so every DOM measurement taken
    here has a like-for-like v2 baseline. See GanttV2Page.razor's remarks for
    the ?fixture / ?viewMode query params.
 
    Phase 2, T4 (drag parity suite) additions:
-   - ?readonly=1 -> Gantt3.Readonly (shared with v2's ?readonly=1).
-   - ?allowCreate=1 -> Gantt3.AllowCreate (v3-only; REUI parity, no v2 equivalent).
+   - ?readonly=1 -> GanttChart.Readonly (shared with v2's ?readonly=1).
+   - ?allowCreate=1 -> GanttChart.AllowCreate (v3-only; REUI parity, no v2 equivalent).
    - ?candrop=1 -> wires a CanDrop predicate that rejects any proposed drag/resize
      landing with Start earlier than GanttParityFixtures.CanDropBlackoutBefore
      (see that field's remarks for why 2026-03-05 against fixture task "fe3" is a
@@ -24,30 +24,30 @@
      could already assert without a real browser).
    - Event sinks (click/dateChange/progressChange/taskUpdate/taskCreate) mirror
      GanttV2Page.razor's — same rationale, same hidden <pre> convention. Also
-     TasksChanged is bound (making this route "controlled" in Gantt3's
+     TasksChanged is bound (making this route "controlled" in GanttChart's
      controlled/uncontrolled discriminator sense) purely as a pass-through
-     (always accepts what Gantt3 pushes) so a created task's ids are observable
+     (always accepts what GanttChart pushes) so a created task's ids are observable
      in their own sink without ever vetoing/reverting an edit.
 
    Design spec Phase 3, T8 additions:
-   - ?settingsMenu=1 -> renders a real GanttSettingsMenu in Gantt3.TrailingContent,
-     two-way bound to the SAME fields already backing this page's own Gantt3
+   - ?settingsMenu=1 -> renders a real GanttSettingsMenu in GanttChart.TrailingContent,
+     two-way bound to the SAME fields already backing this page's own GanttChart
      parameters (settings-menu toggles are observable through the SAME live
      chart this page already renders, not a second/parallel instance) — lets an
      E2E spec drive a real settings-menu checkbox click and assert a live
      chart feature (e.g. ShowZoomControl's own ".lumeo-gantt-v3-zoom-control")
      actually flips.
-   - ?barContextMenu=1 -> wires Gantt3.BarContextMenu to a minimal test menu
+   - ?barContextMenu=1 -> wires GanttChart.BarContextMenu to a minimal test menu
      (one item, data-testid="gantt-v3-context-menu-item", clicking it writes
      the right-clicked task's id into a sink) so an E2E spec can right-click a
      bar and assert the menu opens/positions/closes, and stays isolated from
      an in-flight drag (design spec Phase 3, T8, decision 4).
-   - ?dragGhostTemplate=1 -> wires Gantt3.DragGhostTemplate to a distinctly
+   - ?dragGhostTemplate=1 -> wires GanttChart.DragGhostTemplate to a distinctly
      testid'd/styled fragment (data-testid="gantt-v3-custom-ghost") so an E2E
      spec can assert the CUSTOM ghost (not the default bar clone) is what's
      actually visible during a live drag.
 
-   ?rtl=1 (Codex round 3, P2 #7): wraps Gantt3 in Lumeo's own DirectionProvider
+   ?rtl=1 (Codex round 3, P2 #7): wraps GanttChart in Lumeo's own DirectionProvider
    (the standard idiom every RTL-aware Lumeo component relies on — see
    DirectionProvider.razor's own remarks — sets dir="rtl" on a wrapping div,
    which every logical-CSS utility and gantt-v3.js's own RTL scrollLeft
@@ -62,7 +62,7 @@
    by default. The P2 #2 regression spec needs a like-for-like "without tree"
    comparison case (does scroll-centering math still land correctly when
    there's no tree-width offset to add at all), so this explicitly overrides
-   Gantt3's ShowTreePane parameter to false when present.
+   GanttChart's ShowTreePane parameter to false when present.
 
    OnTaskClick sink (Codex round 5 review, Minor): the round-5 click-
    composition fix (P1 #1) only had bUnit coverage, which can't prove real
@@ -73,7 +73,7 @@
    fired, closing that gap.
 
    data-testid="gantt-v3-toggle-direction" (Codex round 7 review, P2 #4):
-   always wraps Gantt3 in ONE DirectionProvider whose Direction is a mutable
+   always wraps GanttChart in ONE DirectionProvider whose Direction is a mutable
    field (seeded from ?rtl=1, same as before) instead of only conditionally
    wrapping it — lets a spec flip direction on an ALREADY-MOUNTED chart via a
    real Blazor re-render (the same path a live DirectionProvider ancestor
@@ -86,7 +86,7 @@
     <h1 data-testid="gantt-e2e-title">Gantt v3 (parity fixture)</h1>
     <div data-testid="gantt-v3-last-clicked">@_lastClickedTaskId</div>
     <DirectionProvider Direction="@_direction">
-        <Gantt3 Tasks="@_tasks"
+        <GanttChart Tasks="@_tasks"
                 TasksChanged="HandleTasksChanged"
                 ViewMode="@_viewMode"
                 ViewModeChanged="@(m => _viewMode = m)"
@@ -160,7 +160,7 @@
     [SupplyParameterFromQuery(Name = "firstDayOfWeek")] public string? FirstDayOfWeekQuery { get; set; }
     // Design spec Phase 3, T7 additions.
     [SupplyParameterFromQuery(Name = "colorByGroup")] public string? ColorByGroupQuery { get; set; }
-    // ShowOffscreenIndicators defaults to true (Gantt3's own parameter
+    // ShowOffscreenIndicators defaults to true (GanttChart's own parameter
     // default) — this query flag exists to turn it OFF for the "no chip even
     // though a bar is offscreen" comparison spec, not to turn it on (already
     // the default).
@@ -168,7 +168,7 @@
     [SupplyParameterFromQuery(Name = "showZoomControl")] public string? ShowZoomControlQuery { get; set; }
     // 2026-08-10 shadcn alignment, G6 — tree row meta line ("date-range · N%").
     [SupplyParameterFromQuery(Name = "showTaskMeta")] public string? ShowTaskMetaQuery { get; set; }
-    // Design spec Phase 3, T9 — InfiniteScroll defaults to true (Gantt3's own
+    // Design spec Phase 3, T9 — InfiniteScroll defaults to true (GanttChart's own
     // parameter default), so this query flag exists to turn it OFF for the
     // "byte-matches v2 fixed padding" parity spec, not to turn it on.
     [SupplyParameterFromQuery(Name = "infiniteScroll")] public string? InfiniteScrollQuery { get; set; }
@@ -257,11 +257,11 @@
     }
 
     // Design spec Phase 3, T8 — the real GanttSettingsMenu, two-way bound to
-    // the SAME fields already backing this page's own <Gantt3> parameters
+    // the SAME fields already backing this page's own <GanttChart> parameters
     // above (see this file's own header remarks) — a settings-menu toggle
     // click is observable through the identical live chart, not a second
     // instance. A plain attribute (not the <TrailingContent> child-content-
-    // tag syntax) on <Gantt3> above, specifically so the ternary can still
+    // tag syntax) on <GanttChart> above, specifically so the ternary can still
     // supply a genuine null (no wrapper div at all on GanttNav's own side —
     // see GanttNav.razor's own "@if (TrailingContent is not null)" gate) when
     // ?settingsMenu=1 is absent, keeping every pre-T8 spec on this page
@@ -329,10 +329,10 @@
         return Task.CompletedTask;
     }
 
-    private Task HandleTaskUpdate(GanttTaskUpdate u)
+    private GanttUpdateResult HandleTaskUpdate(GanttTaskUpdate u)
     {
         _lastTaskUpdateJson = JsonSerializer.Serialize(new { u.Task, Source = u.Source.ToString() });
-        return Task.CompletedTask;
+        return true;
     }
 
     private Task HandleTaskCreate(GanttTaskUpdate u)

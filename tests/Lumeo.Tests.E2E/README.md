@@ -64,7 +64,7 @@ Blazor Server host, real SignalR circuit, no WASM boot) instead of the docs
 WASM site, via `/e2e/gantt-v2`, `/e2e/gantt-v3`, and `/e2e/gantt-v3-tree` — new
 pages added to that project specifically for this harness, rendering the same
 deterministic fixture (`tests/Lumeo.Tests.ServerHost/E2E/GanttParityFixtures.cs`)
-through v2's `Gantt` (JS/SVG) and the working-name v3 `Gantt3` (plain Razor) so
+through v2's `Gantt` (JS/SVG) and the working-name v3 `GanttChart` (plain Razor) so
 their DOM output can be asserted for render-equivalence.
 
 Because the base URL differs, these specs do NOT use `PlaywrightTestBase.Goto`/

@@ -1,0 +1,543 @@
+@page "/components/gantt"
+@page "/components/gantt-chart"
+@using Lumeo.GanttV3
+
+@* Two routes, one page (Blazor supports multiple @page directives on a single
+   component): "/components/gantt" is the URL every existing link/bookmark
+   already points at — this promotion's whole point is that visiting it shows
+   the actively developed engine, not a redirect notice. "/components/gantt-chart"
+   is the canonical slug-derived URL the registry/search-index tooling expects
+   for the "gantt-chart" component entry (RegistryGen derives both the
+   registry key AND docs-parity's expected page filename from the UI folder
+   name, GanttChart) — both resolve to this exact page, no duplication. *@
+
+<PageTitle>Gantt — Lumeo</PageTitle>
+
+<PageHeader Title="Gantt"
+            Description="A project timeline with draggable task bars, dependencies, milestones, hierarchy, and a real commit gate. Renders with a Razor-first engine — no third-party charting library." />
+
+<InstallUsage Component="GanttChart" Package="Lumeo.Gantt" />
+
+<Alert Variant="Alert.AlertVariant.Info" ShowIcon="true" Class="mt-6">
+    <ChildContent>
+        <strong>Dependencies &amp; licensing — fully MIT, no third-party deps.</strong>
+        <code>GanttChart</code> is a from-scratch Razor + minimal-JS engine shipping in <code>Lumeo.Gantt</code>.
+        Zero JS charting dependencies, zero CDN downloads, zero theming surprises. All MIT.
+        The original SVG-based <code>Gantt</code> component is still shipped for existing consumers —
+        see <a href="/components/gantt-legacy" class="text-primary hover:underline">Legacy: Gantt (v2)</a>.
+    </ChildContent>
+</Alert>
+
+<div class="mt-10 space-y-3">
+    <Heading Id="when-to-use" Level="2" Class="scroll-mt-20">When to Use</Heading>
+    <ul class="list-disc list-inside space-y-1 text-muted-foreground text-sm">
+        <li>Planning a project with ordered phases, cross-task dependencies, and milestones.</li>
+        <li>Grouping work by swim-lane, or modeling real parent/child hierarchy with a tree pane.</li>
+        <li>Letting stakeholders see "what blocks what" at a glance, drag to reschedule, and drag the progress handle to mark completion.</li>
+        <li>Enforcing your own scheduling rules — reject an invalid drag, or silently snap it to a grid — via the <code>OnTaskUpdate</code> commit gate.</li>
+    </ul>
+</div>
+
+<Stack Gap="8" Class="mt-8">
+    <ComponentDemo Title="Basic project plan — dependencies &amp; milestones" Code="@_basicCode">
+        <GanttChart Tasks="_basicTasks" ViewMode="GanttViewMode.Day" Height="380px" />
+    </ComponentDemo>
+
+    <ComponentDemo Title="Drag to reschedule — with a real commit gate" Code="@_gateCode">
+        <Stack Gap="3">
+            <Lumeo.Text Size="sm" Color="muted">
+                <code>OnTaskUpdate</code> is a gate, not a notification: it can <strong>reject</strong> a drag
+                (<code>false</code>), <strong>accept</strong> it as proposed (<code>true</code>), or
+                <strong>accept it with an adjustment</strong> (<code>GanttUpdateResult.AcceptWith(...)</code>) that
+                snaps the committed Start/End to different values. Try dragging a bar here — this demo rejects
+                anything that would start before today, and snaps every other drop onto the nearest Monday.
+            </Lumeo.Text>
+            <GanttChart @bind-Tasks="_gateTasks"
+                        ViewMode="GanttViewMode.Day"
+                        Height="380px"
+                        OnTaskUpdate="HandleGateTaskUpdate" />
+            <div class="rounded-md border border-border/60 bg-muted/40 p-3 text-sm">
+                <div class="font-medium mb-2">Gate log (most recent first)</div>
+                @if (_gateLog.Count == 0)
+                {
+                    <span class="text-muted-foreground">Drag a bar to see the gate's verdict here.</span>
+                }
+                else
+                {
+                    <ul class="space-y-1 font-mono text-xs">
+                        @foreach (var line in _gateLog)
+                        {
+                            <li>@line</li>
+                        }
+                    </ul>
+                }
+            </div>
+        </Stack>
+    </ComponentDemo>
+
+    <ComponentDemo Title="Progress drag" Code="@_progressCode">
+        <Stack Gap="3">
+            <Lumeo.Text Size="sm" Color="muted">
+                Drag the progress handle at the base of a bar to change completion. <code>OnProgressChange</code>
+                fires the v2-parity notification; <code>OnTaskUpdate</code> (Source=<code>Progress</code>) gates the
+                same edit like every other gesture.
+            </Lumeo.Text>
+            <GanttChart @bind-Tasks="_progressTasks" ViewMode="GanttViewMode.Day" Height="340px" OnProgressChange="HandleProgressChange" />
+            <div class="rounded-md border border-border/60 bg-muted/40 p-3 text-sm">
+                <div class="font-medium mb-2">Last progress change</div>
+                @if (_lastProgress is null)
+                {
+                    <span class="text-muted-foreground">Drag a progress handle to see it here.</span>
+                }
+                else
+                {
+                    <span class="font-mono text-xs">@_lastProgress.Name — @_lastProgress.Progress%</span>
+                }
+            </div>
+        </Stack>
+    </ComponentDemo>
+
+    <ComponentDemo Title="View modes &amp; zoom control" Code="@_viewModesCode">
+        <Stack Gap="3">
+            <Lumeo.Text Size="sm" Color="muted">
+                Use the built-in toolbar to switch between 7 zoom levels — <code>QuarterDay</code>, <code>HalfDay</code>,
+                <code>Day</code>, <code>Week</code>, <code>Month</code>, <code>Quarter</code>, and <code>Year</code>.
+                <code>ShowZoomControl</code> renders the segmented switcher shown here.
+            </Lumeo.Text>
+            <GanttChart Tasks="_roadmapTasks" ViewMode="GanttViewMode.Quarter" Height="380px" ShowZoomControl="true" />
+        </Stack>
+    </ComponentDemo>
+
+    <ComponentDemo Title="Grouping / swim-lanes" Code="@_groupCode">
+        <Stack Gap="3">
+            <Lumeo.Text Size="sm" Color="muted">
+                Pass a <code>GroupBy</code> function and/or set <code>GroupLabel</code> on each <code>GanttTask</code>.
+                Tasks are sorted by group and a section-header row is injected before the first task of each group.
+            </Lumeo.Text>
+            <GanttChart Tasks="_groupedTasks" ViewMode="GanttViewMode.Day" Height="380px" GroupBy="@(t => t.GroupLabel ?? "")" />
+        </Stack>
+    </ComponentDemo>
+
+    <ComponentDemo Title="Hierarchy — tree pane, multi-column, resizable splitter" Code="@_treeCode">
+        <Stack Gap="3">
+            <Lumeo.Text Size="sm" Color="muted">
+                Set <code>GanttTask.ParentId</code> to build real parent/child hierarchy. The tree pane shows the
+                task-name column plus any extra <code>GanttTreeColumn</code>s you supply (here, a typed "Progress"
+                column) — drag the divider at the pane's trailing edge to resize it.
+            </Lumeo.Text>
+            <GanttChart Tasks="_treeTasks" ViewMode="GanttViewMode.Day" Height="380px" TreeColumns="_treeColumns" ShowTaskMeta="true" ShowSummaryBars="true" />
+        </Stack>
+    </ComponentDemo>
+
+    <ComponentDemo Title="Settings menu — every REUI-parity toggle, two-way bound">
+        <Stack Gap="3">
+            <Lumeo.Text Size="sm" Color="muted">
+                The gear icon in the toolbar opens <code>GanttSettingsMenu</code> — Display/Behavior/Region/Style
+                groups covering row checkboxes, summary bars, off-screen indicators, infinite scroll, the now
+                indicator, off-day shading, read-only, drag-create, row reorder, first day of week, off days, and
+                per-group colouring. Off-screen indicators (chips at the scroll edges) appear once you scroll a task
+                out of view — try Month/Year zoom on the wide roadmap above, or scroll this chart horizontally.
+            </Lumeo.Text>
+            <GanttChart Tasks="_roadmapTasks" ViewMode="GanttViewMode.Month" Height="380px"
+                        ShowRowCheckboxes="@_showRowCheckboxes" ShowSummaryBars="@_showSummaryBars" ShowZoomControl="@_showZoomControl"
+                        ShowOffscreenIndicators="@_showOffscreenIndicators" InfiniteScroll="@_infiniteScroll" NowIndicator="@_nowIndicator"
+                        MarkOffDays="@_markOffDays" Readonly="@_readonly" AllowCreate="@_allowCreate" AllowRowReorder="@_allowRowReorder"
+                        ColorByGroup="@_colorByGroup" GroupBy="@(t => t.GroupLabel ?? "")">
+                <TrailingContent>
+                    <GanttSettingsMenu @bind-ShowRowCheckboxes="_showRowCheckboxes"
+                                       @bind-ShowSummaryBars="_showSummaryBars"
+                                       @bind-ShowZoomControl="_showZoomControl"
+                                       @bind-ShowOffscreenIndicators="_showOffscreenIndicators"
+                                       @bind-InfiniteScroll="_infiniteScroll"
+                                       @bind-NowIndicator="_nowIndicator"
+                                       @bind-MarkOffDays="_markOffDays"
+                                       @bind-Readonly="_readonly"
+                                       @bind-AllowCreate="_allowCreate"
+                                       @bind-AllowRowReorder="_allowRowReorder"
+                                       @bind-ColorByGroup="_colorByGroup" />
+                </TrailingContent>
+            </GanttChart>
+        </Stack>
+    </ComponentDemo>
+
+    <ComponentDemo Title="Read-only">
+        <Stack Gap="3">
+            <Lumeo.Text Size="sm" Color="muted">Set <code>Readonly="true"</code> to lock the chart — bars can't be dragged, resized, or created.</Lumeo.Text>
+            <GanttChart Tasks="_basicTasks" ViewMode="GanttViewMode.Day" Height="300px" Readonly="true" />
+        </Stack>
+    </ComponentDemo>
+
+    <ComponentDemo Title="Per-task bar colour" Code="@_barColorCode">
+        <Stack Gap="3">
+            <Lumeo.Text Size="sm" Color="muted">
+                Use the <code>BarColor</code> delegate to return any CSS colour (hex, rgb, or a CSS variable like
+                <code>var(--color-destructive)</code>) per task — or set <code>ColorByGroup="true"</code> (shown in the
+                settings-menu demo above) for automatic per-group palette colouring.
+            </Lumeo.Text>
+            <GanttChart Tasks="_colorTasks" ViewMode="GanttViewMode.Day" Height="260px" BarColor="@GetBarColor" />
+        </Stack>
+    </ComponentDemo>
+
+    <ComponentDemo Title="Toolbar trailing content">
+        <GanttChart Tasks="_basicTasks" ViewMode="GanttViewMode.Day" Height="300px">
+            <TrailingContent>
+                <Button Size="Button.ButtonSize.Sm" Variant="Button.ButtonVariant.Outline">
+                    <DynamicIcon Name="Plus" Class="h-4 w-4 me-1" /> Add task
+                </Button>
+            </TrailingContent>
+        </GanttChart>
+    </ComponentDemo>
+</Stack>
+
+<div class="mt-16">
+    <Heading Id="api-reference" Level="2" Class="scroll-mt-20">API Reference</Heading>
+
+    <Heading Id="ganttchart" Level="3" Class="mt-8 scroll-mt-20">GanttChart</Heading>
+    <div class="mt-4">
+        <PropsTable Slug="gantt-chart" />
+    </div>
+
+    <Heading Id="gantt-task" Level="3" Class="mt-8 scroll-mt-20">GanttTask</Heading>
+    <div class="overflow-x-auto mt-4">
+        <Table>
+            <TableHeader>
+                <TableRow>
+                    <TableHead Class="w-[200px]">Field</TableHead>
+                    <TableHead Class="w-[220px]">Type</TableHead>
+                    <TableHead>Description</TableHead>
+                </TableRow>
+            </TableHeader>
+            <TableBody>
+                <TableRow><TableCell Class="font-mono text-xs">Id</TableCell><TableCell Class="font-mono text-xs">string</TableCell><TableCell>Stable identifier used to reconcile drag edits back into the caller's collection.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">Name</TableCell><TableCell Class="font-mono text-xs">string</TableCell><TableCell>The label rendered on the task bar and in the tree pane's name column.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">Start</TableCell><TableCell Class="font-mono text-xs">DateTime</TableCell><TableCell>Start date (inclusive).</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">End</TableCell><TableCell Class="font-mono text-xs">DateTime</TableCell><TableCell>End date.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">Progress</TableCell><TableCell Class="font-mono text-xs">int</TableCell><TableCell>Completion percentage, 0–100. Drives the progress fill and the progress-handle drag.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">Dependencies</TableCell><TableCell Class="font-mono text-xs">string[]?</TableCell><TableCell>Ids of tasks this task depends on. Rendered as routed arrows between bars.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">CustomClass</TableCell><TableCell Class="font-mono text-xs">string?</TableCell><TableCell>Extra CSS class applied to the bar — use to colour-code milestones or delayed work.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">IsMilestone</TableCell><TableCell Class="font-mono text-xs">bool</TableCell><TableCell>When true, renders as a diamond at the Start date. End is clamped to Start.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">GroupLabel</TableCell><TableCell Class="font-mono text-xs">string?</TableCell><TableCell>Optional swim-lane label — cluster with <code>GroupBy</code>.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">ParentId</TableCell><TableCell Class="font-mono text-xs">string?</TableCell><TableCell><code>GanttChart</code>-only: set to another task's Id to build real parent/child hierarchy and enable the tree pane by default.</TableCell></TableRow>
+            </TableBody>
+        </Table>
+    </div>
+
+    <Heading Id="gantt-update-result" Level="3" Class="mt-8 scroll-mt-20">GanttUpdateResult / GanttUpdateAdjustment</Heading>
+    <p class="mt-4 text-sm text-muted-foreground">The verdict <code>OnTaskUpdate</code> returns for every drag/resize/progress/create commit.</p>
+    <div class="overflow-x-auto mt-4">
+        <Table>
+            <TableHeader>
+                <TableRow>
+                    <TableHead Class="w-[260px]">Value</TableHead>
+                    <TableHead>Effect</TableHead>
+                </TableRow>
+            </TableHeader>
+            <TableBody>
+                <TableRow><TableCell class="font-mono text-xs">false / GanttUpdateResult.Reject</TableCell><TableCell>Rejects the edit outright — nothing commits, no callback fires, no <code>TasksChanged</code>.</TableCell></TableRow>
+                <TableRow><TableCell class="font-mono text-xs">true / GanttUpdateResult.Accept</TableCell><TableCell>Commits exactly the proposed Start/End/Progress.</TableCell></TableRow>
+                <TableRow><TableCell class="font-mono text-xs">GanttUpdateResult.AcceptWith(adjustment)</TableCell><TableCell>Commits <code>adjustment</code>'s Start/End/Progress instead of the raw proposal (any left <code>null</code> keeps the proposed value).</TableCell></TableRow>
+            </TableBody>
+        </Table>
+    </div>
+
+    <Heading Id="gantt-view-mode" Level="3" Class="mt-8 scroll-mt-20">GanttViewMode</Heading>
+    <div class="overflow-x-auto mt-4">
+        <Table>
+            <TableHeader>
+                <TableRow>
+                    <TableHead Class="w-[200px]">Value</TableHead>
+                    <TableHead>Description</TableHead>
+                </TableRow>
+            </TableHeader>
+            <TableBody>
+                <TableRow><TableCell Class="font-mono text-xs">QuarterDay</TableCell><TableCell>6-hour columns — useful for hour-scale shift scheduling.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">HalfDay</TableCell><TableCell>12-hour columns.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">Day</TableCell><TableCell>One column per day — the default.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">Week</TableCell><TableCell>One column per week.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">Month</TableCell><TableCell>One column per month — best for multi-quarter plans.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">Quarter</TableCell><TableCell>One column per 3-month quarter — <code>GanttChart</code>-only.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">Year</TableCell><TableCell>One column per year — best for roadmap-style views.</TableCell></TableRow>
+            </TableBody>
+        </Table>
+    </div>
+</div>
+
+<div class="mt-12">
+    <Heading Id="related" Level="2" Class="scroll-mt-20">Related Components</Heading>
+    <ul class="mt-4 space-y-2 text-sm">
+        <li><a href="/components/scheduler" class="text-primary hover:underline">Scheduler</a> — calendar-style event grid when you care about time-of-day rather than project phases.</li>
+        <li><a href="/components/datagrid" class="text-primary hover:underline">Data Grid</a> — tabular view of the same task data when a timeline isn't needed.</li>
+        <li><a href="/components/gantt-legacy" class="text-primary hover:underline">Gantt (Legacy)</a> — the original SVG-based engine, kept for backward compatibility.</li>
+    </ul>
+</div>
+
+@code {
+    // ── Basic demo — dependencies + milestones ───────────────────────────
+    private List<GanttTask> _basicTasks = BuildBasicTasks();
+
+    private static List<GanttTask> BuildBasicTasks()
+    {
+        var d = DateTime.Today;
+        return new List<GanttTask>
+        {
+            new("research",    "Research",     d,              d.AddDays(5)),
+            new("design",      "Design",       d.AddDays(5),   d.AddDays(12), Dependencies: new[] { "research" }),
+            new("m-design",    "Design signed off", d.AddDays(12), d.AddDays(12), IsMilestone: true, Dependencies: new[] { "design" }),
+            new("development", "Development",  d.AddDays(12),  d.AddDays(25), Dependencies: new[] { "m-design" }),
+            new("testing",     "Testing",      d.AddDays(22),  d.AddDays(30), Dependencies: new[] { "development" }),
+            new("launch",      "Launch",       d.AddDays(30),  d.AddDays(30), IsMilestone: true, Dependencies: new[] { "testing" }),
+        };
+    }
+
+    // ── Commit-gate demo ─────────────────────────────────────────────────
+    private IEnumerable<GanttTask> _gateTasks = BuildBasicTasks();
+    private readonly List<string> _gateLog = new();
+
+    private GanttUpdateResult HandleGateTaskUpdate(GanttTaskUpdate update)
+    {
+        GanttUpdateResult result;
+        if (update.Task.Start < DateTime.Today)
+        {
+            _gateLog.Insert(0, $"Rejected — \"{update.Task.Name}\" can't start before today.");
+            result = false;
+        }
+        else if (update.Task.Start.DayOfWeek != DayOfWeek.Monday)
+        {
+            var offset = ((int)update.Task.Start.DayOfWeek + 6) % 7;
+            var snappedStart = update.Task.Start.AddDays(-offset);
+            var snappedEnd = update.Task.End.AddDays(-offset);
+            _gateLog.Insert(0, $"Adjusted — snapped \"{update.Task.Name}\" onto Monday {snappedStart:d}.");
+            result = GanttUpdateResult.AcceptWith(new GanttUpdateAdjustment(Start: snappedStart, End: snappedEnd));
+        }
+        else
+        {
+            _gateLog.Insert(0, $"Accepted — \"{update.Task.Name}\" is now {update.Task.Start:d} → {update.Task.End:d}.");
+            result = true;
+        }
+
+        if (_gateLog.Count > 5) _gateLog.RemoveRange(5, _gateLog.Count - 5);
+        StateHasChanged();
+        return result;
+    }
+
+    // ── Progress demo ────────────────────────────────────────────────────
+    private IEnumerable<GanttTask> _progressTasks = BuildProgressTasks();
+    private GanttTask? _lastProgress;
+
+    private static List<GanttTask> BuildProgressTasks()
+    {
+        var d = DateTime.Today;
+        return new List<GanttTask>
+        {
+            new("research",    "Research",    d,             d.AddDays(5),  Progress: 100),
+            new("design",      "Design",      d.AddDays(5),  d.AddDays(12), Progress: 60,  Dependencies: new[] { "research" }),
+            new("development", "Development", d.AddDays(12), d.AddDays(25), Progress: 30,  Dependencies: new[] { "design" }),
+            new("testing",     "Testing",     d.AddDays(22), d.AddDays(30), Progress: 0,   Dependencies: new[] { "development" }),
+        };
+    }
+
+    private Task HandleProgressChange(GanttTask t)
+    {
+        _lastProgress = t;
+        StateHasChanged();
+        return Task.CompletedTask;
+    }
+
+    // ── View modes / roadmap demo — wide enough for Quarter/Year zoom ───
+    private readonly List<GanttTask> _roadmapTasks = BuildRoadmapTasks();
+
+    private static List<GanttTask> BuildRoadmapTasks()
+    {
+        var d = DateTime.Today;
+        return new List<GanttTask>
+        {
+            new("discovery",     "Discovery",             d.AddMonths(-4), d.AddMonths(-3), Progress: 100, GroupLabel: "Foundation"),
+            new("architecture",  "Architecture",           d.AddMonths(-3), d.AddMonths(-1), Progress: 100, Dependencies: new[] { "discovery" }, GroupLabel: "Foundation"),
+            new("beta",          "Beta launch",            d.AddMonths(-1), d.AddMonths(-1), Progress: 100, IsMilestone: true, Dependencies: new[] { "architecture" }, GroupLabel: "Foundation"),
+            new("coreBuild",     "Core build-out",         d.AddMonths(-1), d.AddMonths(3),  Progress: 55,  Dependencies: new[] { "beta" }, GroupLabel: "Growth"),
+            new("integrations",  "Partner integrations",   d.AddMonths(1),  d.AddMonths(5),  Progress: 20,  GroupLabel: "Growth"),
+            new("ga",            "General availability",   d.AddMonths(6),  d.AddMonths(6),  IsMilestone: true, Dependencies: new[] { "coreBuild", "integrations" }, GroupLabel: "Growth"),
+            new("scale",         "Scale + hardening",      d.AddMonths(6),  d.AddMonths(11), GroupLabel: "Maturity"),
+        };
+    }
+
+    // ── Grouping demo ────────────────────────────────────────────────────
+    private List<GanttTask> _groupedTasks = BuildGroupedTasks();
+
+    private static List<GanttTask> BuildGroupedTasks()
+    {
+        var d = DateTime.Today;
+        return new List<GanttTask>
+        {
+            new("fe1",  "UI Design",    d,               d.AddDays(6),  GroupLabel: "Frontend"),
+            new("fe2",  "Components",   d.AddDays(6),    d.AddDays(14), GroupLabel: "Frontend",  Dependencies: new[] { "fe1" }),
+            new("be1",  "API Design",   d,               d.AddDays(5),  GroupLabel: "Backend"),
+            new("be2",  "REST Impl",    d.AddDays(5),    d.AddDays(15), GroupLabel: "Backend",   Dependencies: new[] { "be1" }),
+            new("qa1",  "Test Plan",    d.AddDays(10),   d.AddDays(14), GroupLabel: "QA"),
+            new("qa2",  "E2E Tests",    d.AddDays(14),   d.AddDays(20), GroupLabel: "QA",        Dependencies: new[] { "qa1" }),
+        };
+    }
+
+    // ── Hierarchy / tree-pane demo ───────────────────────────────────────
+    private readonly List<GanttTask> _treeTasks = BuildTreeTasks();
+
+    private static List<GanttTask> BuildTreeTasks()
+    {
+        var d = DateTime.Today;
+        return new List<GanttTask>
+        {
+            new("platform", "Platform", d.AddDays(-4), d.AddDays(6), Progress: 45),
+            new("api",      "API",      d.AddDays(-4), d.AddDays(1), Progress: 80) { ParentId = "platform" },
+            new("ui",       "UI",       d.AddDays(-1), d.AddDays(6), Progress: 30) { ParentId = "platform" },
+            new("uiTheme",  "Theming",  d.AddDays(2),  d.AddDays(6), Progress: 10, Dependencies: new[] { "api" }) { ParentId = "ui" },
+            new("qa",       "QA",       d.AddDays(4),  d.AddDays(8)),
+        };
+    }
+
+    private readonly List<GanttTreeColumn> _treeColumns = new()
+    {
+        new("Progress", 90, ProgressCellContent),
+    };
+
+    private static RenderFragment<GanttTask> ProgressCellContent => task => builder =>
+    {
+        builder.OpenElement(0, "span");
+        builder.AddAttribute(1, "class", "text-xs text-muted-foreground");
+        builder.AddContent(2, $"{task.Progress}%");
+        builder.CloseElement();
+    };
+
+    // ── Settings-menu demo state (two-way bound to GanttSettingsMenu) ───
+    private bool _showRowCheckboxes;
+    private bool _showSummaryBars;
+    private bool _showZoomControl = true;
+    private bool _showOffscreenIndicators = true;
+    private bool _infiniteScroll = true;
+    private bool _nowIndicator;
+    private bool _markOffDays;
+    private bool _readonly;
+    private bool _allowCreate;
+    private bool _allowRowReorder;
+    private bool _colorByGroup = true;
+
+    // ── Bar colour demo ──────────────────────────────────────────────────
+    private List<GanttTask> _colorTasks = BuildColorTasks();
+
+    private static List<GanttTask> BuildColorTasks()
+    {
+        var d = DateTime.Today;
+        return new List<GanttTask>
+        {
+            new("t1", "On Track", d,             d.AddDays(5)),
+            new("t2", "At Risk",  d.AddDays(5),   d.AddDays(12)),
+            new("t3", "Delayed",  d.AddDays(12),  d.AddDays(20)),
+        };
+    }
+
+    private static string? GetBarColor(GanttTask t) => t.Name switch
+    {
+        "On Track" => "var(--color-success, #22c55e)",
+        "At Risk"  => "var(--color-warning, #f59e0b)",
+        "Delayed"  => "var(--color-destructive)",
+        _ => null,
+    };
+
+    // ── Code snippets ────────────────────────────────────────────────────
+    private string _basicCode = @"<GanttChart Tasks=""_tasks"" ViewMode=""GanttViewMode.Day"" Height=""380px"" />
+
+@code {
+    private List<GanttTask> _tasks = new() {
+        new(""research"",    ""Research"",    DateTime.Today,              DateTime.Today.AddDays(5)),
+        new(""design"",      ""Design"",      DateTime.Today.AddDays(5),   DateTime.Today.AddDays(12), Dependencies: new[] { ""research"" }),
+        new(""m-design"",    ""Design signed off"", DateTime.Today.AddDays(12), DateTime.Today.AddDays(12), IsMilestone: true, Dependencies: new[] { ""design"" }),
+        new(""development"", ""Development"", DateTime.Today.AddDays(12),  DateTime.Today.AddDays(25), Dependencies: new[] { ""m-design"" }),
+        // ...
+    };
+}";
+
+    private string _gateCode = @"<GanttChart @bind-Tasks=""_tasks""
+            ViewMode=""GanttViewMode.Day""
+            OnTaskUpdate=""HandleTaskUpdate"" />
+
+@code {
+    private IEnumerable<GanttTask> _tasks = new List<GanttTask> { /* ... */ };
+
+    // OnTaskUpdate is a GATE, not a notification — it runs BEFORE the edit
+    // commits and returns a GanttUpdateResult:
+    //   false                                -> reject, nothing commits
+    //   true                                 -> accept exactly as proposed
+    //   GanttUpdateResult.AcceptWith(adjust)  -> accept, but snap Start/End/Progress
+    private GanttUpdateResult HandleTaskUpdate(GanttTaskUpdate update)
+    {
+        if (update.Task.Start < DateTime.Today)
+            return false; // reject — can't schedule into the past
+
+        if (update.Task.Start.DayOfWeek != DayOfWeek.Monday)
+        {
+            var offset = ((int)update.Task.Start.DayOfWeek + 6) % 7;
+            return GanttUpdateResult.AcceptWith(new GanttUpdateAdjustment(
+                Start: update.Task.Start.AddDays(-offset),
+                End: update.Task.End.AddDays(-offset)));
+        }
+
+        return true; // accept as proposed
+    }
+}";
+
+    private string _progressCode = @"<GanttChart @bind-Tasks=""_tasks"" ViewMode=""GanttViewMode.Day""
+            OnProgressChange=""HandleProgressChange"" />
+
+@code {
+    private IEnumerable<GanttTask> _tasks = new List<GanttTask> { /* ... */ };
+    private GanttTask? _last;
+
+    Task HandleProgressChange(GanttTask t) { _last = t; StateHasChanged(); return Task.CompletedTask; }
+}";
+
+    private string _viewModesCode = @"<GanttChart Tasks=""_tasks"" ViewMode=""GanttViewMode.Quarter"" Height=""380px"" ShowZoomControl=""true"" />";
+
+    private string _groupCode = @"<GanttChart Tasks=""_tasks"" ViewMode=""GanttViewMode.Day"" Height=""380px""
+            GroupBy=""@(t => t.GroupLabel ?? """")""  />
+
+@code {
+    // Set GroupLabel on each task; pass GroupBy to cluster + show headers.
+    private List<GanttTask> _tasks = new()
+    {
+        new(""fe1"", ""UI Design"",  d,           d.AddDays(6),  GroupLabel: ""Frontend""),
+        new(""fe2"", ""Components"", d.AddDays(6),d.AddDays(14), GroupLabel: ""Frontend""),
+        new(""be1"", ""API Design"", d,           d.AddDays(5),  GroupLabel: ""Backend""),
+        new(""be2"", ""REST Impl"",  d.AddDays(5),d.AddDays(15), GroupLabel: ""Backend""),
+    };
+}";
+
+    private string _treeCode = @"<GanttChart Tasks=""_tasks"" ViewMode=""GanttViewMode.Day"" Height=""380px""
+            TreeColumns=""_treeColumns"" ShowTaskMeta=""true"" ShowSummaryBars=""true"" />
+
+@code {
+    // ParentId builds real hierarchy — the tree pane turns on automatically.
+    private List<GanttTask> _tasks = new()
+    {
+        new(""platform"", ""Platform"", d.AddDays(-4), d.AddDays(6), Progress: 45),
+        new(""api"", ""API"", d.AddDays(-4), d.AddDays(1), Progress: 80) { ParentId = ""platform"" },
+        new(""ui"",  ""UI"",  d.AddDays(-1), d.AddDays(6), Progress: 30) { ParentId = ""platform"" },
+    };
+
+    private List<GanttTreeColumn> _treeColumns = new()
+    {
+        new(""Progress"", 90, task => builder => builder.AddContent(0, $""{task.Progress}%"")),
+    };
+}";
+
+    private string _barColorCode = @"<GanttChart Tasks=""_tasks"" ViewMode=""GanttViewMode.Day"" Height=""260px""
+            BarColor=""@GetBarColor"" />
+
+@code {
+    private static string? GetBarColor(GanttTask t) => t.Name switch
+    {
+        ""On Track"" => ""var(--color-success, #22c55e)"",
+        ""At Risk""  => ""var(--color-warning, #f59e0b)"",
+        ""Delayed""  => ""var(--color-destructive)"",
+        _ => null,
+    };
+}";
+}

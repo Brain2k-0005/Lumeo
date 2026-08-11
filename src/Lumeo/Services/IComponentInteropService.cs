@@ -599,7 +599,7 @@ public interface IComponentInteropService : IAsyncDisposable, IDisposable
     /// scroll slice (gantt-v3.js), used to mirror v2's init-time
     /// center-on-today behavior (gantt-v2.js's <c>tryScroll</c>) so the initial
     /// viewport shows task data instead of the empty padding columns
-    /// <c>Gantt3.ComputeInitialRange</c> adds before the first task. Default no-op so
+    /// <c>GanttChart.ComputeInitialRange</c> adds before the first task. Default no-op so
     /// existing implementers / test doubles keep compiling.
     /// </summary>
     Task GanttV3ScrollToXAsync(Microsoft.AspNetCore.Components.ElementReference el, double targetX) => Task.CompletedTask;
@@ -607,11 +607,11 @@ public interface IComponentInteropService : IAsyncDisposable, IDisposable
     /// <summary>
     /// Browser-local "today" as an ISO <c>"yyyy-MM-dd"</c> string (Codex round 2,
     /// P2 #9) — v2 parity: v2 derives "today" via the BROWSER's <c>new Date()</c>
-    /// (gantt-v2.js), while <c>Gantt3</c>/<c>GanttTimeline</c> previously used C#'s
+    /// (gantt-v2.js), while <c>GanttChart</c>/<c>GanttTimeline</c> previously used C#'s
     /// <c>DateTime.Today</c>, which on Blazor Server is the SERVER's local date,
-    /// not the visiting browser's. Called once from <c>Gantt3</c>'s first
+    /// not the visiting browser's. Called once from <c>GanttChart</c>'s first
     /// post-render (never during prerendering, where JS interop would throw —
-    /// see <c>Gantt3.OnAfterRenderAsync</c>'s remarks). Returns <c>null</c> when
+    /// see <c>GanttChart.OnAfterRenderAsync</c>'s remarks). Returns <c>null</c> when
     /// JS interop isn't available (a non-Gantt implementer, prerendering, or a
     /// torn-down circuit), in which case the caller keeps its server-side
     /// <see cref="System.DateTime.Today"/> fallback. This is additive surface on
@@ -633,7 +633,7 @@ public interface IComponentInteropService : IAsyncDisposable, IDisposable
     /// established (same module, same "browser clock, not the SERVER's" reason
     /// — Blazor Server's C# <c>DateTime.Now</c> is the server's own clock) rather
     /// than a second, parallel channel: <see cref="GanttV3GetLocalDateAsync"/>
-    /// itself is UNCHANGED (still date-only, still what Gantt3's Today logic
+    /// itself is UNCHANGED (still date-only, still what GanttChart's Today logic
     /// reads) — this is a NEW sibling for the one caller (<c>NowIndicator</c>)
     /// that genuinely needs sub-day precision, not a replacement. Returns
     /// <c>null</c> under the exact same conditions <see cref="GanttV3GetLocalDateAsync"/>
@@ -652,7 +652,7 @@ public interface IComponentInteropService : IAsyncDisposable, IDisposable
     /// (a <c>transform: translateX(...)</c> target) — Codex round 2, P1 #3's sticky-
     /// header fix. The header can no longer physically BE the same scrolling
     /// element as the row canvas (see <c>GanttTimeline.razor</c>'s remarks for why:
-    /// <c>position: sticky</c> must resolve against Gantt3's shared OUTER vertical
+    /// <c>position: sticky</c> must resolve against GanttChart's shared OUTER vertical
     /// scroller, which requires NO intervening scroll-container-establishing
     /// ancestor between the header and it), so this keeps the two horizontally
     /// column-aligned instead. Idempotent for the same <paramref name="canvasEl"/> —
@@ -674,7 +674,7 @@ public interface IComponentInteropService : IAsyncDisposable, IDisposable
     /// are scrolled out of view (the row canvas's own bars/tree already
     /// virtualize via <c>&lt;Virtualize&gt;</c>; the SVG arrow overlay
     /// previously did not). Independent of <see cref="GanttV3RegisterHeaderScrollSyncAsync"/> —
-    /// that one is skipped entirely in Gantt3's shared-pane mode (see
+    /// that one is skipped entirely in GanttChart's shared-pane mode (see
     /// <c>GanttTimeline.razor</c>'s own remarks), precisely the mode where
     /// arrow virtualization matters most. Default no-op DIM so existing
     /// implementers/test doubles keep compiling.
@@ -689,7 +689,7 @@ public interface IComponentInteropService : IAsyncDisposable, IDisposable
     /// (Codex round 5, P2 #5) — in the SAME "logical" coordinate space (0 =
     /// the scrollable content's own physical-left origin, RTL-normalized)
     /// that <see cref="GanttV3ScrollToXAsync"/>'s own targetX already uses.
-    /// <c>Gantt3</c> uses this to capture what the user ACTUALLY has
+    /// <c>GanttChart</c> uses this to capture what the user ACTUALLY has
     /// centered on screen before a view-mode switch recomputes the visible
     /// range, instead of assuming the outgoing range's own midpoint (a proxy
     /// that silently diverges the moment a user pans manually). Returns null
@@ -724,7 +724,7 @@ public interface IComponentInteropService : IAsyncDisposable, IDisposable
     /// never an incorrect commit.
     ///
     /// Queried at two points: <c>GanttTimeline</c>'s own gate before ever asking
-    /// <c>Gantt3</c> to extend <c>VisibleRange</c>, and <c>Gantt3</c>'s own
+    /// <c>GanttChart</c> to extend <c>VisibleRange</c>, and <c>GanttChart</c>'s own
     /// re-check immediately before it actually commits a leading-edge extension
     /// — closing the narrow race where a gesture starts DURING the one await
     /// (<c>GanttV3GetScrollCenterXAsync</c>'s own live-scroll-center read) that

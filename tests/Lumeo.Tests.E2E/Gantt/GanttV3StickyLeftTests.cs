@@ -17,7 +17,7 @@ namespace Lumeo.Tests.E2E.Gantt;
 /// viewport-narrow even though the rendered content visually spilled
 /// thousands of pixels wider. Reproduced live before the fix: GanttTree's
 /// bounding-box sat at x=-458 after scrolling to scrollLeft=1497 (and still
-/// x=-3114 after the first, insufficient fix attempt). See Gantt3.razor's
+/// x=-3114 after the first, insufficient fix attempt). See GanttChart.razor's
 /// own remarks on the <c>width:max-content</c> fix for the full mechanism.
 ///
 /// v2 has no tree/hierarchy pane at all (see GanttV3TreeTests' own remarks),

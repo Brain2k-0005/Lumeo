@@ -4,7 +4,7 @@ using Xunit;
 namespace Lumeo.Tests.E2E.Gantt;
 
 /// <summary>
-/// Gantt v3 Phase 3, T9 — horizontal infinite scroll (<c>Gantt3.InfiniteScroll</c>).
+/// Gantt v3 Phase 3, T9 — horizontal infinite scroll (<c>GanttChart.InfiniteScroll</c>).
 /// Real-browser proof to complement <c>GanttV3Phase3T9Tests</c> (bUnit): a genuine
 /// native 'scroll' event driving the rAF-throttled report all the way through
 /// gantt-v3.js's <c>hasActiveDrag</c>/scroll-correction pipeline, the ±1px visual-

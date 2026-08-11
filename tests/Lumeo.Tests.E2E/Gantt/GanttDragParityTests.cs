@@ -651,7 +651,7 @@ public class GanttDragParityTests : GanttParityTestBase
     [Fact]
     public async Task CanDrop_never_validates_when_unset()
     {
-        // Default v3 route: CanDrop is never wired (Gantt3.CanDrop == null), so
+        // Default v3 route: CanDrop is never wired (GanttChart.CanDrop == null), so
         // BuildDragOptions' hasCanDrop is false and gantt-v3.js's onPointerMove
         // never even attempts a ValidateDrop call — proven here via the REAL
         // interop call-count sink (only populated when ?candrop=1 wires the
@@ -815,7 +815,7 @@ public class GanttDragParityTests : GanttParityTestBase
         // padding aligns to the calendar-quarter start, PadBefore=4 quarters
         // before fe1's earliest Feb 2026 start — that snaps to Q1 2026 =
         // Jan 1, 2026, then 4 quarters/12 months earlier = Jan 1, 2025 — see
-        // Gantt3.ApplyPadding's own Quarter branch).
+        // GanttChart.ApplyPadding's own Quarter branch).
         await GotoHost("/e2e/gantt-v3?allowCreate=1&viewMode=Quarter&infiniteScroll=0");
         await WaitV3ReadyAsync();
         await ResetScrollLeftAsync();
