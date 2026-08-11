@@ -1,34 +1,34 @@
 // Lumeo.Charts — native rendering engine JS interop.
 //
 // This module is the ENTIRE JS surface of the native (non-ECharts) charting
-// engine: five narrow calls, each corresponding to a deliberate C#/JS
-// boundary decision (see docs/superpowers/specs "charts-first-party-engine").
-// C# owns every layout/scale/tick/path/hit-test decision; JS never decides
-// anything here, it only measures, forwards raw input, paints pre-computed
-// commands, or reads computed CSS. Do not add a sixth call without revisiting
+// engine, now scoped to lightweight cases (sparklines/mini charts) rather
+// than a full 14-type engine: four narrow calls, each corresponding to a
+// deliberate C#/JS boundary decision (see docs/superpowers/specs
+// "charts-first-party-engine"). C# owns every layout/scale/tick/path/hit-test
+// decision; JS never decides anything here, it only measures, forwards raw
+// input, or reads computed CSS. Do not add a fifth call without revisiting
 // that boundary decision first.
 //
 //   measureTextWidths(requests)                    — batched text metrics
 //   registerPointerTrack / unregisterPointerTrack   — rAF-throttled pointer index forwarding
-//   canvasDraw(elementId, commandsJson)             — Canvas fallback paint execution
 //   resolveThemeColors(tokens)                      — export-time theme color resolution
 //   observeChartBox / unobserveChartBox             — ResizeObserver-backed real-box-size reporting
+//
+// The Canvas-fallback draw-command path (canvasDraw) was dropped along with
+// the discrete-shape-heavy native chart types (heatmap, dense scatter) that
+// were its only consumer — a sparkline is always SVG.
 //
 // Does NOT touch echarts-interop.js — the legacy ECharts path stays fully
 // independent and unmodified.
 //
-// observeChartBox/unobserveChartBox is the fifth call, added deliberately to
-// close the native engine's aspect-ratio distortion bug: every chart built on
-// CartesianChartHost/XyChartHost rendered into a hardcoded 600x350 viewBox
-// with preserveAspectRatio="none", so whenever the REAL rendered box's aspect
-// differed from 600:350 (essentially always, since these charts default to
-// Width="100%") the SVG stretched non-uniformly — circles became ellipses,
-// axis-label glyphs stretched. The original Wave-0 authors deliberately did
-// NOT wire up a JS round-trip for layout measurement (see
-// NativeChartViewport's remarks) to avoid a flash of wrong margins on first
-// paint; this call is opted into ONLY by the two hosts that need real-pixel
-// parity, and the C# side renders nothing (not a wrong-aspect frame) until
-// the first callback lands — see CartesianChartHost/XyChartHost's own remarks.
+// observeChartBox/unobserveChartBox was added deliberately to close the
+// native engine's aspect-ratio distortion bug: charts rendered into a
+// hardcoded 600x350 viewBox with preserveAspectRatio="none", so whenever the
+// REAL rendered box's aspect differed from 600:350 (essentially always, since
+// these charts default to Width="100%") the SVG stretched non-uniformly —
+// circles became ellipses, axis-label glyphs stretched. This call is opted
+// into ONLY by hosts that need real-pixel parity, and the C# side renders
+// nothing (not a wrong-aspect frame) until the first callback lands.
 
 // ---------------------------------------------------------------------------
 // measureTextWidths — batched, offscreen-canvas text measurement.
@@ -137,64 +137,6 @@ export function unregisterPointerTrack(element) {
   element.removeEventListener('pointermove', entry.onMove);
   element.removeEventListener('pointerleave', entry.onLeave);
   trackers.delete(element);
-}
-
-// ---------------------------------------------------------------------------
-// canvasDraw — thin imperative executor for the Canvas fallback path
-// (opt-in only: live-high-frequency series, or discrete-shape series above
-// the shape-count budget). C# has already computed 100% of the geometry;
-// this only executes. `op` maps 1:1 to a CanvasRenderingContext2D method.
-// ---------------------------------------------------------------------------
-
-const canvasStates = new Map(); // elementId -> { canvas, ctx }
-
-function getCanvasState(elementId) {
-  const canvas = document.getElementById(elementId);
-  if (!canvas) return null;
-
-  let state = canvasStates.get(elementId);
-  if (!state || state.canvas !== canvas) {
-    const ctx = canvas.getContext('2d');
-    const dpr = window.devicePixelRatio || 1;
-    // Scale ONCE per (re)bound canvas element — canvas width/height attributes
-    // are set to CSS-size * dpr by the caller; this makes subsequent draw
-    // commands operate in CSS-pixel coordinates like the SVG path does.
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    state = { canvas, ctx };
-    canvasStates.set(elementId, state);
-  }
-  return state;
-}
-
-export function canvasDraw(elementId, commandsJson) {
-  const state = getCanvasState(elementId);
-  if (!state) return;
-  const ctx = state.ctx;
-  const commands = JSON.parse(commandsJson);
-
-  for (const cmd of commands) {
-    const a = cmd.args || [];
-    if (cmd.style) {
-      if (cmd.style.color) { ctx.strokeStyle = cmd.style.color; ctx.fillStyle = cmd.style.color; }
-      if (cmd.style.width != null) ctx.lineWidth = cmd.style.width;
-    }
-    switch (cmd.op) {
-      case 'beginPath': ctx.beginPath(); break;
-      case 'closePath': ctx.closePath(); break;
-      case 'moveTo': ctx.moveTo(a[0], a[1]); break;
-      case 'lineTo': ctx.lineTo(a[0], a[1]); break;
-      case 'rect': ctx.rect(a[0], a[1], a[2], a[3]); break;
-      case 'clearRect': ctx.clearRect(a[0], a[1], a[2], a[3]); break;
-      case 'arc': ctx.arc(a[0], a[1], a[2], a[3], a[4]); break;
-      case 'stroke': ctx.stroke(); break;
-      case 'fill': ctx.fill(); break;
-      default: break; // unknown op — ignore rather than throw; C# side is the source of truth
-    }
-  }
-}
-
-export function disposeCanvas(elementId) {
-  canvasStates.delete(elementId);
 }
 
 // ---------------------------------------------------------------------------

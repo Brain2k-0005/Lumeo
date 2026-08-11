@@ -38,23 +38,3 @@ public class ChartRenderStrategyTests
             L.ChartRenderStrategy.ForDiscreteShapes(shapeCount: 1, liveHighFrequencyOptIn: true));
     }
 }
-
-public class ChartCanvasCommandBuilderTests
-{
-    [Fact]
-    public void Serializes_Op_Args_And_Style_As_CamelCase_Json()
-    {
-        var commands = new[]
-        {
-            new L.ChartCanvasCommand("moveTo", new[] { 1.0, 2.0 }),
-            new L.ChartCanvasCommand("stroke", Style: new L.ChartCanvasStyle(Color: "#fff", Width: 2)),
-        };
-
-        var json = L.ChartCanvasCommandBuilder.ToJson(commands);
-
-        Assert.Contains("\"op\":\"moveTo\"", json);
-        Assert.Contains("\"args\":[1,2]", json);
-        Assert.Contains("\"color\":\"#fff\"", json);
-        Assert.Contains("\"width\":2", json);
-    }
-}

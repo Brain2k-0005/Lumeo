@@ -2035,16 +2035,6 @@ public sealed class ComponentInteropService : IComponentInteropService
         catch (JSDisconnectedException) { }
     }
 
-    public async ValueTask ChartCanvasDraw(string elementId, string commandsJson)
-    {
-        try
-        {
-            var module = await GetChartModuleAsync();
-            await module.InvokeVoidAsync("canvasDraw", elementId, commandsJson);
-        }
-        catch (JSDisconnectedException) { }
-    }
-
     public async ValueTask<IReadOnlyDictionary<string, string>> ChartResolveThemeColors(IReadOnlyList<string> tokens)
     {
         if (tokens.Count == 0) return new Dictionary<string, string>();

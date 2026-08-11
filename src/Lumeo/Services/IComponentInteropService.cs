@@ -936,13 +936,17 @@ public interface IComponentInteropService : IAsyncDisposable, IDisposable
     // need to change. ComponentInteropService overrides it with the real setAttribute interop.
     ValueTask RichTextSetAriaAttributesAsync(string id, bool ariaInvalid, string? ariaDescribedBy) => ValueTask.CompletedTask;
 
-    // Charts (first-party native rendering engine) — the four narrow JS calls
-    // the engine's C#/JS boundary is deliberately reduced to (batched text
-    // metrics, rAF-throttled pointer index forwarding, Canvas fallback paint
-    // execution, export-time theme color resolution). Default no-op/zero-value
-    // DIMs so existing implementers/test doubles keep compiling; only
-    // <see cref="ComponentInteropService"/> overrides them with real behavior
-    // via its own lazily-loaded chart-interop.js module.
+    // Charts (first-party native rendering engine, now scoped to lightweight
+    // cases — sparklines/mini charts) — the three narrow JS calls the
+    // engine's C#/JS boundary is deliberately reduced to (batched text
+    // metrics, rAF-throttled pointer index forwarding, export-time theme
+    // color resolution). The Canvas-fallback draw-command path was dropped
+    // along with the discrete-shape-heavy native chart types (heatmap,
+    // dense scatter) that were its only consumer — a sparkline is always
+    // SVG. Default no-op/zero-value DIMs so existing implementers/test
+    // doubles keep compiling; only <see cref="ComponentInteropService"/>
+    // overrides them with real behavior via its own lazily-loaded
+    // chart-interop.js module.
 
     /// <summary>
     /// Batched text-pixel-width measurement via an offscreen canvas
@@ -999,15 +1003,6 @@ public interface IComponentInteropService : IAsyncDisposable, IDisposable
 
     /// <summary>Tears down the listener registered by <see cref="ChartObserveBox{T}"/>.</summary>
     Task ChartUnobserveBox(string elementId) => Task.CompletedTask;
-
-    /// <summary>
-    /// Executes a pre-computed list of Canvas 2D draw commands (JSON-serialized
-    /// <c>ChartCanvasCommand</c> list) against the canvas identified by
-    /// <paramref name="elementId"/> — the Canvas-fallback paint path (spec
-    /// §2.4 point 3). C# has already computed 100% of the geometry; this call
-    /// makes zero decisions, it only executes. Default no-op DIM.
-    /// </summary>
-    ValueTask ChartCanvasDraw(string elementId, string commandsJson) => ValueTask.CompletedTask;
 
     /// <summary>
     /// Resolves each of <paramref name="tokens"/> (CSS custom property names,
