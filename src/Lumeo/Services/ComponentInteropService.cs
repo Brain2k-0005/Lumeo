@@ -1534,6 +1534,16 @@ public sealed class ComponentInteropService : IComponentInteropService
         catch (JSDisconnectedException) { }
     }
 
+    public async Task SchedulerSetLocaleAsync(string id, string locale)
+    {
+        try
+        {
+            var module = await GetSchedulerModuleAsync();
+            await module.InvokeVoidAsync("scheduler.setLocale", id, locale);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
     public async Task<string> SchedulerGetTitleAsync(string id)
     {
         try
@@ -1804,6 +1814,78 @@ public sealed class ComponentInteropService : IComponentInteropService
         {
             var module = await GetGanttV3ModuleAsync();
             await module.InvokeVoidAsync("ganttV3.unregisterBarContextMenu", el);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
+    // --- Scheduler first-party view engine (wave 1b) — its own module
+    // (scheduler-views.js), separate from the FullCalendar wrapper module above.
+
+    private IJSObjectReference? _schedulerViewsModule;
+
+    private async Task<IJSObjectReference> GetSchedulerViewsModuleAsync()
+    {
+        _schedulerViewsModule ??= await _jsRuntime.InvokeAsync<IJSObjectReference>(
+            "import", "./_content/Lumeo.Scheduler/js/scheduler-views.js");
+        return _schedulerViewsModule;
+    }
+
+    public async Task SchedulerViewsRegisterMonthDragAsync<[System.Diagnostics.CodeAnalysis.DynamicallyAccessedMembers(System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicMethods)] T>(Microsoft.AspNetCore.Components.ElementReference el, DotNetObjectReference<T> dotNetRef, object options) where T : class
+    {
+        try
+        {
+            var module = await GetSchedulerViewsModuleAsync();
+            await module.InvokeVoidAsync("schedulerViews.registerMonthDrag", el, dotNetRef, options);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
+    public async Task SchedulerViewsUnregisterMonthDragAsync(Microsoft.AspNetCore.Components.ElementReference el)
+    {
+        try
+        {
+            var module = await GetSchedulerViewsModuleAsync();
+            await module.InvokeVoidAsync("schedulerViews.unregisterMonthDrag", el);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
+    public async Task SchedulerViewsRegisterTimeGridDragAsync<[System.Diagnostics.CodeAnalysis.DynamicallyAccessedMembers(System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicMethods)] T>(Microsoft.AspNetCore.Components.ElementReference el, DotNetObjectReference<T> dotNetRef, object options) where T : class
+    {
+        try
+        {
+            var module = await GetSchedulerViewsModuleAsync();
+            await module.InvokeVoidAsync("schedulerViews.registerTimeGridDrag", el, dotNetRef, options);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
+    public async Task SchedulerViewsUnregisterTimeGridDragAsync(Microsoft.AspNetCore.Components.ElementReference el)
+    {
+        try
+        {
+            var module = await GetSchedulerViewsModuleAsync();
+            await module.InvokeVoidAsync("schedulerViews.unregisterTimeGridDrag", el);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
+    public async Task SchedulerViewsRegisterNowIndicatorAsync(Microsoft.AspNetCore.Components.ElementReference el, object options)
+    {
+        try
+        {
+            var module = await GetSchedulerViewsModuleAsync();
+            await module.InvokeVoidAsync("schedulerViews.registerNowIndicator", el, options);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
+    public async Task SchedulerViewsUnregisterNowIndicatorAsync(Microsoft.AspNetCore.Components.ElementReference el)
+    {
+        try
+        {
+            var module = await GetSchedulerViewsModuleAsync();
+            await module.InvokeVoidAsync("schedulerViews.unregisterNowIndicator", el);
         }
         catch (JSDisconnectedException) { }
     }
@@ -2151,6 +2233,18 @@ public sealed class ComponentInteropService : IComponentInteropService
             try
             {
                 await _ganttModule.DisposeAsync();
+            }
+            catch (JSDisconnectedException)
+            {
+                // Circuit disconnected, safe to ignore
+            }
+        }
+
+        if (_schedulerViewsModule is not null)
+        {
+            try
+            {
+                await _schedulerViewsModule.DisposeAsync();
             }
             catch (JSDisconnectedException)
             {

@@ -802,6 +802,7 @@ public class TrackingInteropService : IComponentInteropService
     public Task SchedulerPrevAsync(string id) => Task.CompletedTask;
     public Task SchedulerNextAsync(string id) => Task.CompletedTask;
     public Task SchedulerTodayAsync(string id) => Task.CompletedTask;
+    public Task SchedulerSetLocaleAsync(string id, string locale) => Task.CompletedTask;
     public Task<string> SchedulerGetTitleAsync(string id) => Task.FromResult(string.Empty);
     public Task SchedulerDestroyAsync(string id) => Task.CompletedTask;
 
@@ -863,6 +864,60 @@ public class TrackingInteropService : IComponentInteropService
     public Task GanttV3UnregisterDragAsync(ElementReference el)
     {
         _ganttV3UnregisterDragCallCount++;
+        return Task.CompletedTask;
+    }
+
+    // Scheduler first-party view engine drag/now-indicator registration tracking
+    // (wave 1b) — same shape as the GanttV3 block above, for the same reason:
+    // a test needs to assert the options bag actually pushed (hasCanDrop,
+    // editable, ...) and how many times each register/unregister call fired.
+    private int _schedulerViewsRegisterMonthDragCallCount;
+    private int _schedulerViewsUnregisterMonthDragCallCount;
+    private int _schedulerViewsRegisterTimeGridDragCallCount;
+    private int _schedulerViewsUnregisterTimeGridDragCallCount;
+    private int _schedulerViewsRegisterNowIndicatorCallCount;
+    private int _schedulerViewsUnregisterNowIndicatorCallCount;
+    public int SchedulerViewsRegisterMonthDragCallCount => _schedulerViewsRegisterMonthDragCallCount;
+    public int SchedulerViewsUnregisterMonthDragCallCount => _schedulerViewsUnregisterMonthDragCallCount;
+    public int SchedulerViewsRegisterTimeGridDragCallCount => _schedulerViewsRegisterTimeGridDragCallCount;
+    public int SchedulerViewsUnregisterTimeGridDragCallCount => _schedulerViewsUnregisterTimeGridDragCallCount;
+    public int SchedulerViewsRegisterNowIndicatorCallCount => _schedulerViewsRegisterNowIndicatorCallCount;
+    public object? LastSchedulerViewsMonthDragOptions { get; private set; }
+    public object? LastSchedulerViewsTimeGridDragOptions { get; private set; }
+    public IReadOnlyList<object?> SchedulerViewsNowIndicatorOptions => _schedulerViewsNowIndicatorOptions;
+    private readonly List<object?> _schedulerViewsNowIndicatorOptions = new();
+
+    public Task SchedulerViewsRegisterMonthDragAsync<T>(ElementReference el, DotNetObjectReference<T> dotNetRef, object options) where T : class
+    {
+        _schedulerViewsRegisterMonthDragCallCount++;
+        LastSchedulerViewsMonthDragOptions = options;
+        return Task.CompletedTask;
+    }
+    public Task SchedulerViewsUnregisterMonthDragAsync(ElementReference el)
+    {
+        _schedulerViewsUnregisterMonthDragCallCount++;
+        return Task.CompletedTask;
+    }
+    public Task SchedulerViewsRegisterTimeGridDragAsync<T>(ElementReference el, DotNetObjectReference<T> dotNetRef, object options) where T : class
+    {
+        _schedulerViewsRegisterTimeGridDragCallCount++;
+        LastSchedulerViewsTimeGridDragOptions = options;
+        return Task.CompletedTask;
+    }
+    public Task SchedulerViewsUnregisterTimeGridDragAsync(ElementReference el)
+    {
+        _schedulerViewsUnregisterTimeGridDragCallCount++;
+        return Task.CompletedTask;
+    }
+    public Task SchedulerViewsRegisterNowIndicatorAsync(ElementReference el, object options)
+    {
+        _schedulerViewsRegisterNowIndicatorCallCount++;
+        _schedulerViewsNowIndicatorOptions.Add(options);
+        return Task.CompletedTask;
+    }
+    public Task SchedulerViewsUnregisterNowIndicatorAsync(ElementReference el)
+    {
+        _schedulerViewsUnregisterNowIndicatorCallCount++;
         return Task.CompletedTask;
     }
 

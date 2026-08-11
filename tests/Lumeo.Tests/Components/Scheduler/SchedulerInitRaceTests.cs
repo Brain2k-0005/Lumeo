@@ -1,3 +1,4 @@
+using System.Globalization;
 using Bunit;
 using Microsoft.JSInterop;
 using Xunit;
@@ -136,5 +137,86 @@ public class SchedulerInitRaceTests : IAsyncLifetime
             Assert.Contains(_module.Invocations, i => i.Identifier == "scheduler.getTitle");
             Assert.Equal(0, SetEventsCount(_module));
         });
+    }
+
+    /// <summary>
+    /// Codex review finding #2 (P2), the locale analogue of the Events race above:
+    /// <c>scheduler.init</c> is an async JS handshake. While it is in flight
+    /// <c>_initialized</c> is still <c>false</c>, so OnParametersSetAsync's
+    /// culture-change branch records the new <c>_currentLocale</c> (it isn't gated on
+    /// <c>_initialized</c>) but SKIPS the <c>scheduler.setLocale</c> push (that IS
+    /// gated on <c>_initialized</c>). Init's OWN options were captured from the
+    /// culture in effect BEFORE the change, so the calendar is created with the STALE
+    /// locale — and because every later render sees <c>_currentLocale</c> already
+    /// "up to date", nothing ever re-pushes it again. The calendar would be stuck on
+    /// the old locale for the rest of its life.
+    ///
+    /// Fixed the same way as the Events race: snapshot the locale init is about to
+    /// render, and after <c>_initialized = true</c>, reconcile against the (possibly
+    /// now different) <c>_currentLocale</c> and push it if it changed.
+    ///
+    /// Per the review's rigor standard this drives the ACTUAL race — the culture
+    /// changes WHILE init is still pending, not after it resolves (a post-init change
+    /// would already be covered by <see cref="SchedulerLocaleTests"/> and would pass
+    /// even on the broken code, proving nothing about this bug).
+    /// </summary>
+    [Fact]
+    public async Task Culture_changed_while_init_is_in_flight_is_not_lost()
+    {
+        var originalCulture = CultureInfo.CurrentUICulture;
+        try
+        {
+            CultureInfo.CurrentUICulture = CultureInfo.GetCultureInfo("en-US");
+
+            // Leave scheduler.init PENDING — same technique as the Events race tests
+            // above — so _initialized stays false while we flip the culture.
+            var initHandler = _module.Setup<string>("scheduler.init", _ => true);
+
+            var cut = _ctx.Render<L.Scheduler>();
+
+            Assert.Equal(0, _module.Invocations.Count(i => i.Identifier == "scheduler.setLocale"));
+
+            // The culture flips WHILE init is still mid-handshake — the actual race,
+            // not a change applied after init has already resolved.
+            CultureInfo.CurrentUICulture = CultureInfo.GetCultureInfo("de-DE");
+            cut.Render(p => p.Add(c => c.Height, "640px"));
+
+            // Still nothing pushed to JS — OnParametersSetAsync recorded the change in
+            // _currentLocale but _initialized is still false, so the interop push was
+            // skipped (this is the bug's own mechanism, not yet its consequence).
+            Assert.Equal(0, _module.Invocations.Count(i => i.Identifier == "scheduler.setLocale"));
+
+            // Now complete the JS handshake.
+            await cut.InvokeAsync(() => initHandler.SetResult(InstanceId));
+
+            // Post-init reconciliation and the trailing scheduler.getTitle read both run
+            // in the OnAfterRenderAsync continuation that resumes AFTER init's await;
+            // SetResult's InvokeAsync does not await it. getTitle is that continuation's
+            // FINAL interop call, so waiting for it (as the Events race tests above do)
+            // guarantees the reconciliation has already run before we assert.
+            cut.WaitForAssertion(() =>
+            {
+                Assert.Contains(_module.Invocations, i => i.Identifier == "scheduler.getTitle");
+
+                // Init itself must have captured the STALE locale ("en") — confirms this
+                // test actually drove the race (a change applied only after init
+                // resolves would never exercise this path).
+                var init = Assert.Single(_module.Invocations, i => i.Identifier == "scheduler.init");
+                var options = (System.Collections.Generic.IDictionary<string, object?>)init.Arguments[2]!;
+                Assert.Equal("en", options["locale"]);
+
+                // Predicted WRONG behavior on the broken code: 0 scheduler.setLocale
+                // invocations, ever — the mid-init culture change is recorded in the
+                // field but nothing reconciles it once init completes, so the live
+                // calendar stays on "en" forever despite the culture now being de-DE.
+                var setLocale = Assert.Single(_module.Invocations, i => i.Identifier == "scheduler.setLocale");
+                Assert.Equal(InstanceId, setLocale.Arguments[0]);
+                Assert.Equal("de", setLocale.Arguments[1]);
+            });
+        }
+        finally
+        {
+            CultureInfo.CurrentUICulture = originalCulture;
+        }
     }
 }

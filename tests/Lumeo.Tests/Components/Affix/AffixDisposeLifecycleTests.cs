@@ -267,6 +267,7 @@ public class AffixDisposeLifecycleTests : IAsyncLifetime
         public Task SchedulerPrevAsync(string id) => _inner.SchedulerPrevAsync(id);
         public Task SchedulerNextAsync(string id) => _inner.SchedulerNextAsync(id);
         public Task SchedulerTodayAsync(string id) => _inner.SchedulerTodayAsync(id);
+        public Task SchedulerSetLocaleAsync(string id, string locale) => _inner.SchedulerSetLocaleAsync(id, locale);
         public Task<string> SchedulerGetTitleAsync(string id) => _inner.SchedulerGetTitleAsync(id);
         public Task SchedulerDestroyAsync(string id) => _inner.SchedulerDestroyAsync(id);
         public Task<string> GanttInitAsync(ElementReference el, object dotNetRef, object options) => _inner.GanttInitAsync(el, dotNetRef, options);

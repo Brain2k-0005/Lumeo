@@ -473,7 +473,7 @@ internal static partial class LumeoDefaultStrings
         ["Scheduler.Month"] = "Month",
         ["Scheduler.List"] = "List",
         ["Scheduler.Today"] = "Today",
-        ["Scheduler.WeekOf"] = "Week of",
+        ["Scheduler.WeekOf"] = "Week of {0}",
 
         // ── Gantt ───────────────────────────────────────────────────
         ["Gantt.Day"] = "Day",
@@ -534,6 +534,16 @@ internal static partial class LumeoDefaultStrings
         ["Gantt.SettingsOffDays"] = "Off days",
         ["Gantt.SettingsColorByGroup"] = "Color by group",
         ["Gantt.SettingsReset"] = "Reset to defaults",
+
+        // ── Scheduler (first-party view engine, wave 1b) ──────────────
+        ["Scheduler.AllDay"] = "All day",
+        ["Scheduler.NoEvents"] = "No events",
+        ["Scheduler.EventCount"] = "{0} events",
+        ["Scheduler.EventCount.One"] = "{0} event",
+        ["Scheduler.EventCount.Other"] = "{0} events",
+        ["Scheduler.MoreEvents"] = "{0} more",
+        ["Scheduler.MoreEvents.One"] = "{0} more",
+        ["Scheduler.MoreEvents.Other"] = "{0} more",
 
         // ── Theme ───────────────────────────────────────────────────
         ["Theme.Light"] = "Light",
@@ -1052,7 +1062,7 @@ internal static partial class LumeoDefaultStrings
         ["Scheduler.Month"] = "Monat",
         ["Scheduler.List"] = "Liste",
         ["Scheduler.Today"] = "Heute",
-        ["Scheduler.WeekOf"] = "Woche vom",
+        ["Scheduler.WeekOf"] = "Woche vom {0}",
 
         // ── Gantt ───────────────────────────────────────────────────
         ["Gantt.Day"] = "Tag",
@@ -1098,6 +1108,16 @@ internal static partial class LumeoDefaultStrings
         ["Gantt.SettingsOffDays"] = "Freie Tage",
         ["Gantt.SettingsColorByGroup"] = "Farbe nach Gruppe",
         ["Gantt.SettingsReset"] = "Auf Standard zurücksetzen",
+
+        // ── Scheduler (first-party view engine, wave 1b) ──────────────
+        ["Scheduler.AllDay"] = "Ganztägig",
+        ["Scheduler.NoEvents"] = "Keine Termine",
+        ["Scheduler.EventCount"] = "{0} Termine",
+        ["Scheduler.EventCount.One"] = "{0} Termin",
+        ["Scheduler.EventCount.Other"] = "{0} Termine",
+        ["Scheduler.MoreEvents"] = "{0} weitere",
+        ["Scheduler.MoreEvents.One"] = "{0} weiterer",
+        ["Scheduler.MoreEvents.Other"] = "{0} weitere",
 
         // ── Theme ───────────────────────────────────────────────────
         ["Theme.Light"] = "Hell",

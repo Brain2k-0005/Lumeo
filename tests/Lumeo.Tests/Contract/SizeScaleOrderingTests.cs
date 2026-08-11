@@ -278,6 +278,65 @@ public class SizeScaleOrderingTests : IAsyncLifetime
         SizeScaleAssert.AssertMonotonicNonDecreasing(series, "Icon h");
     }
 
+    // ============================== Input ==============================
+
+    // Input's mobile font-size class is deliberately the LITERAL "text-base" at every
+    // rung (the iOS-zoom guard — see Input.razor's SizeClasses remarks), so SizeScaleAssert
+    // .TextSizePx would just find "text-base" at every rung and report a flat, uninformative
+    // series; text-size ordering for Input is instead exercised by the E2E suite (computed
+    // desktop font-size), not here. Height and horizontal padding — the two dimensions whose
+    // rendered class token actually varies by Size — are checked in all THREE size tables
+    // (plain input / wrapper div / wrapped input), since a rung landing on only one of them
+    // is exactly the wrapper-vs-inner-element defect this campaign exists to close.
+
+    [Fact]
+    public void Input_Plain_Height_Is_Monotonic()
+    {
+        var series = Series(size =>
+        {
+            var cut = _ctx.Render<L.Input>(p => p.Add(i => i.Size, size));
+            return SizeScaleAssert.SpacingPx(cut.Find("input").GetAttribute("class"), "h");
+        }, "Input plain h");
+        SizeScaleAssert.AssertMonotonicNonDecreasing(series, "Input plain h");
+    }
+
+    [Fact]
+    public void Input_Plain_Padding_Is_Monotonic()
+    {
+        var series = Series(size =>
+        {
+            var cut = _ctx.Render<L.Input>(p => p.Add(i => i.Size, size));
+            return SizeScaleAssert.SpacingPx(cut.Find("input").GetAttribute("class"), "px");
+        }, "Input plain px");
+        SizeScaleAssert.AssertMonotonicNonDecreasing(series, "Input plain px");
+    }
+
+    [Fact]
+    public void Input_Wrapper_Height_Is_Monotonic()
+    {
+        // The <input>'s immediate parent is the WrapperClass div — the outer root div
+        // (`flex flex-col items-start`) also matches a bare `div.flex` selector, so walk
+        // up from the <input> instead of selecting by class (see InputTests.cs's
+        // Wrapper_Branch_Also_Renders_ShadowXs for the same precedent).
+        var series = Series(size =>
+        {
+            var cut = _ctx.Render<L.Input>(p => p.Add(i => i.Size, size).Add(i => i.Clearable, true).Add(i => i.Value, "x"));
+            return SizeScaleAssert.SpacingPx(cut.Find("div input").ParentElement!.GetAttribute("class"), "h");
+        }, "Input wrapper h");
+        SizeScaleAssert.AssertMonotonicNonDecreasing(series, "Input wrapper h");
+    }
+
+    [Fact]
+    public void Input_WrappedInput_Padding_Is_Monotonic()
+    {
+        var series = Series(size =>
+        {
+            var cut = _ctx.Render<L.Input>(p => p.Add(i => i.Size, size).Add(i => i.Clearable, true).Add(i => i.Value, "x"));
+            return SizeScaleAssert.SpacingPx(cut.Find("div input").GetAttribute("class"), "px");
+        }, "Input wrapped-input px");
+        SizeScaleAssert.AssertMonotonicNonDecreasing(series, "Input wrapped-input px");
+    }
+
     // ============================== Kbd ==============================
 
     [Fact]

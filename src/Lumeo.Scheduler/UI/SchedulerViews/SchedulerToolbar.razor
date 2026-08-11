@@ -1,0 +1,63 @@
+@namespace Lumeo
+@inject Lumeo.Services.Localization.ILumeoLocalizer L
+
+@* Prev/Next/Today + view switcher, extracted from the FullCalendar-era Scheduler.razor
+   (spec §1.1/§1.2) so the first-party view engine and any future consumer can share one
+   toolbar instance instead of duplicating the markup. Purely presentational — all state
+   (current view, current title) is owned by the caller. *@
+<div class="@($"flex flex-wrap items-center justify-between gap-2 {Class}".Trim())" @attributes="AdditionalAttributes">
+    <div class="flex items-center gap-1">
+        <Button Variant="Button.ButtonVariant.Outline" Size="Button.ButtonSize.Sm" OnClick="OnPrev" aria-label="@L["Scheduler.Previous"]">
+            <SvgGlyph Svg="@(LumeoIcons.ChevronLeft)" class="h-4 w-4" />
+        </Button>
+        <Button Variant="Button.ButtonVariant.Outline" Size="Button.ButtonSize.Sm" OnClick="OnToday">@L["Scheduler.Today"]</Button>
+        <Button Variant="Button.ButtonVariant.Outline" Size="Button.ButtonSize.Sm" OnClick="OnNext" aria-label="@L["Scheduler.Next"]">
+            <SvgGlyph Svg="@(LumeoIcons.ChevronRight)" class="h-4 w-4" />
+        </Button>
+    </div>
+    <div class="flex-1 text-center text-sm font-medium text-foreground truncate px-2">
+        @Title
+    </div>
+    <ToggleGroup Type="ToggleGroup.ToggleGroupType.Single"
+                 Variant="ToggleGroup.ToggleGroupVariant.Outline"
+                 Size="Lumeo.Size.Sm"
+                 Value="@CurrentView.ToString()"
+                 ValueChanged="OnViewValueChangedAsync">
+        <ToggleGroupItem Value="@nameof(SchedulerView.Month)">@L["Scheduler.Month"]</ToggleGroupItem>
+        <ToggleGroupItem Value="@nameof(SchedulerView.Week)">@L["Scheduler.Week"]</ToggleGroupItem>
+        <ToggleGroupItem Value="@nameof(SchedulerView.Day)">@L["Scheduler.Day"]</ToggleGroupItem>
+        <ToggleGroupItem Value="@nameof(SchedulerView.List)">@L["Scheduler.List"]</ToggleGroupItem>
+    </ToggleGroup>
+</div>
+
+@code {
+    /// <summary>The view currently shown by the caller. Drives the pressed state of the view switcher.</summary>
+    [Parameter] public SchedulerView CurrentView { get; set; }
+
+    /// <summary>Raised when the user picks a different view from the switcher.</summary>
+    [Parameter] public EventCallback<SchedulerView> CurrentViewChanged { get; set; }
+
+    /// <summary>The formatted title shown between the nav buttons and the view switcher (<c>SchedulerTitleFormatter.Format</c>'s output).</summary>
+    [Parameter] public string Title { get; set; } = "";
+
+    /// <summary>Raised when the "previous" nav button is clicked.</summary>
+    [Parameter] public EventCallback OnPrev { get; set; }
+
+    /// <summary>Raised when the "next" nav button is clicked.</summary>
+    [Parameter] public EventCallback OnNext { get; set; }
+
+    /// <summary>Raised when the "today" button is clicked.</summary>
+    [Parameter] public EventCallback OnToday { get; set; }
+
+    /// <summary>Additional CSS classes merged onto the root row.</summary>
+    [Parameter] public string? Class { get; set; }
+
+    /// <summary>Additional HTML attributes captured and forwarded to the root row.</summary>
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private async Task OnViewValueChangedAsync(string? v)
+    {
+        if (string.IsNullOrEmpty(v) || !Enum.TryParse<SchedulerView>(v, out var parsed) || parsed == CurrentView) return;
+        if (CurrentViewChanged.HasDelegate) await CurrentViewChanged.InvokeAsync(parsed);
+    }
+}
