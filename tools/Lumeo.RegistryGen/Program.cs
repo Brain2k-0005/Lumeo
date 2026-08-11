@@ -578,6 +578,14 @@ var componentDirs = uiRoots
     // EditorBrowsable(Never) work-in-progress API; keep the folder out of the
     // registry until the swap, then delete this filter.
     .Where(d => !string.Equals(Path.GetFileName(d), "GanttV3", StringComparison.OrdinalIgnoreCase))
+    // SchedulerViews (wave 1b — first-party Month/TimeGrid/Agenda/Toolbar view
+    // engine) is the same situation: work-in-progress components that ship
+    // alongside the FullCalendar-backed Scheduler but aren't wired into its
+    // public API surface yet, so they have no docs page and must not appear
+    // in the registry (which would otherwise fail the docs-parity check).
+    // Same fix shape as the GanttV3 filter above — delete once wave 2+ wires
+    // these into Scheduler.razor's public parameters and gives them a docs page.
+    .Where(d => !string.Equals(Path.GetFileName(d), "SchedulerViews", StringComparison.OrdinalIgnoreCase))
     .OrderBy(d => Path.GetFileName(d), StringComparer.OrdinalIgnoreCase)
     .ToArray();
 var knownComponentNames = componentDirs.Select(Path.GetFileName).Where(n => !string.IsNullOrEmpty(n)).Select(n => n!).ToHashSet(StringComparer.OrdinalIgnoreCase);

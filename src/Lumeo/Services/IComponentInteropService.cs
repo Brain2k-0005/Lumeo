@@ -864,6 +864,57 @@ public interface IComponentInteropService : IAsyncDisposable, IDisposable
     /// <summary>Tears down the bar context-menu channel registered by <see cref="GanttV3RegisterBarContextMenuAsync{T}"/> — removes the delegated <c>contextmenu</c> listener. Default no-op.</summary>
     Task GanttV3UnregisterBarContextMenuAsync(Microsoft.AspNetCore.Components.ElementReference el) => Task.CompletedTask;
 
+    // --- Scheduler first-party view engine (wave 1b) ---
+    // Own module (scheduler-views.js), separate from the FullCalendar wrapper
+    // (scheduler.js) above — the first-party Month/TimeGrid views ship alongside
+    // FullCalendar (spec §0/§6 wave 1), not replacing it yet, so this is additive
+    // surface loaded lazily like every other Scheduler/Gantt module here.
+
+    /// <summary>
+    /// Registers the Month view's whole-day ghost-drag engine (spec §3.1/§3.4) on
+    /// <paramref name="el"/> (the grid's <c>role="grid"</c> host). Delegated
+    /// <c>pointerdown</c> on any <c>[data-event-instance]</c> chip underneath; drop
+    /// targets are <c>[data-cell-date]</c> day cells. Idempotent re-registration
+    /// (mirrors <see cref="GanttV3RegisterDragAsync{T}"/>'s own remarks) — calling
+    /// again for an already-registered <paramref name="el"/> swaps the stored
+    /// <paramref name="dotNetRef"/>/<paramref name="options"/> in place. Default no-op
+    /// DIM so existing implementers/test doubles keep compiling.
+    /// </summary>
+    Task SchedulerViewsRegisterMonthDragAsync<[System.Diagnostics.CodeAnalysis.DynamicallyAccessedMembers(System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicMethods)] T>(Microsoft.AspNetCore.Components.ElementReference el, DotNetObjectReference<T> dotNetRef, object options) where T : class
+        => Task.CompletedTask;
+
+    /// <summary>Tears down the drag engine registered by <see cref="SchedulerViewsRegisterMonthDragAsync{T}"/>. Default no-op.</summary>
+    Task SchedulerViewsUnregisterMonthDragAsync(Microsoft.AspNetCore.Components.ElementReference el) => Task.CompletedTask;
+
+    /// <summary>
+    /// Registers the Week/Day time-grid's move/edge-resize/drag-to-create ghost-drag
+    /// engine (spec §3.1/§3.4) on <paramref name="el"/> (the grid's <c>role="grid"</c>
+    /// host, containing per-day <c>[data-daycol]</c> columns). Idempotent
+    /// re-registration, same contract as <see cref="SchedulerViewsRegisterMonthDragAsync{T}"/>.
+    /// Default no-op DIM so existing implementers/test doubles keep compiling.
+    /// </summary>
+    Task SchedulerViewsRegisterTimeGridDragAsync<[System.Diagnostics.CodeAnalysis.DynamicallyAccessedMembers(System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicMethods)] T>(Microsoft.AspNetCore.Components.ElementReference el, DotNetObjectReference<T> dotNetRef, object options) where T : class
+        => Task.CompletedTask;
+
+    /// <summary>Tears down the drag engine registered by <see cref="SchedulerViewsRegisterTimeGridDragAsync{T}"/>. Default no-op.</summary>
+    Task SchedulerViewsUnregisterTimeGridDragAsync(Microsoft.AspNetCore.Components.ElementReference el) => Task.CompletedTask;
+
+    /// <summary>
+    /// Registers the browser-local now-indicator line on a single day-column element
+    /// (spec §2.2 — positioned and refreshed ENTIRELY client-side via <c>new Date()</c>
+    /// and a JS-internal <c>setInterval</c>; never round-tripped through .NET as a
+    /// <see cref="System.DateTime"/>, and never drives a Blazor re-render per tick).
+    /// Takes no <c>DotNetObjectReference</c> — this path never calls back into .NET.
+    /// Call once per visible day column; <paramref name="options"/> carries the day's
+    /// own ISO date so JS can decide, from the BROWSER's own clock, whether this
+    /// particular column is "today" (and therefore whether to show its line at all).
+    /// Default no-op DIM so existing implementers/test doubles keep compiling.
+    /// </summary>
+    Task SchedulerViewsRegisterNowIndicatorAsync(Microsoft.AspNetCore.Components.ElementReference el, object options) => Task.CompletedTask;
+
+    /// <summary>Tears down the now-indicator registered by <see cref="SchedulerViewsRegisterNowIndicatorAsync"/> — clears its interval and removes the line element. Default no-op.</summary>
+    Task SchedulerViewsUnregisterNowIndicatorAsync(Microsoft.AspNetCore.Components.ElementReference el) => Task.CompletedTask;
+
     // Toolbar overflow observer — registers a ResizeObserver on the toolbar
     // element and invokes the handler with (fittingCount, totalCount) whenever
     // the number of items that fit before the "..." overflow trigger changes.
