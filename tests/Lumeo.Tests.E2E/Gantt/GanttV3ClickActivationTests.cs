@@ -20,7 +20,7 @@ public class GanttV3ClickActivationTests : GanttParityTestBase
     [Fact]
     public async Task Clicking_A_Bar_Fires_OnTaskClick_Through_Real_Dom_Bubbling()
     {
-        await GotoHost("/e2e/gantt-v3?viewMode=Day"); // no ?fixture= -> GanttV3Page's default branch -> GanttParityFixtures.SharedTasks
+        await GotoHost("/e2e/gantt-v3?viewMode=Day&infiniteScroll=0"); // no ?fixture= -> GanttV3Page's default branch -> GanttParityFixtures.SharedTasks
 
         var scrollPane = Page.Locator("[data-testid='gantt-v3-root'] div[style*='overflow']").First;
         await scrollPane.WaitForAsync(new() { Timeout = 15000 });
@@ -60,7 +60,7 @@ public class GanttV3ClickActivationTests : GanttParityTestBase
         // RegisterPreventDefaultKeys (the same targeted, key-specific
         // interop every other Lumeo role=button-on-a-div component already
         // uses for this exact problem — see Card.razor's own precedent).
-        await GotoHost("/e2e/gantt-v3?viewMode=Day");
+        await GotoHost("/e2e/gantt-v3?viewMode=Day&infiniteScroll=0");
 
         var scrollPane = Page.Locator("[data-testid='gantt-v3-root'] div[style*='overflow']").First;
         await scrollPane.WaitForAsync(new() { Timeout = 15000 });

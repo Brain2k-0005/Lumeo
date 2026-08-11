@@ -169,7 +169,7 @@ public class GanttV3CodexRound3Tests : IAsyncLifetime
         Assert.Equal(1, _interop.GanttV3ScrollToXCallCount);
         // The marker itself must still be suppressed — TodayHighlight keeps
         // controlling THAT, unchanged.
-        Assert.Empty(cut.FindAll(".lumeo-gantt-v3-today-line"));
+        Assert.Empty(cut.FindAll(".lumeo-gantt-v3-today-tint"));
     }
 
     [Fact]
@@ -186,7 +186,7 @@ public class GanttV3CodexRound3Tests : IAsyncLifetime
             .Add(c => c.TodayHighlight, true));
 
         Assert.Equal(1, _interop.GanttV3ScrollToXCallCount);
-        Assert.Single(cut.FindAll(".lumeo-gantt-v3-today-line"));
+        Assert.Single(cut.FindAll(".lumeo-gantt-v3-today-tint"));
     }
 
     // ── GanttTimeline: empty-task state message (finding #4) ────────────────

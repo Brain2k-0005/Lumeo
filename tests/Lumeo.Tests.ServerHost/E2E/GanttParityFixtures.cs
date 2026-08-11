@@ -125,6 +125,31 @@ internal static class GanttParityFixtures
     }
 
     /// <summary>
+    /// v3-only: a hierarchy-parent + 3 children, purpose-built for the design
+    /// spec Phase 3, T3 summary-rollup E2E suite (<c>/e2e/gantt-v3-tree?fixture=rollup</c>).
+    /// Duration-weighted math (<c>GanttRollupModel.DefaultRollupMath</c>):
+    /// weights are calendar days (c1=4, c2=10, c3=4), so the initial rollup is
+    /// a clean (4*100 + 10*50 + 4*0) / 18 = 900/18 = EXACTLY 50% — no rounding
+    /// ambiguity for the E2E label assertion. c3 starts at Progress=0 (its
+    /// progress handle therefore starts at the bar's own LEFT edge, matching
+    /// every other progress-drag E2E spec's own starting-position convention
+    /// — see <c>GanttDragParityTests.Progress_drag_commits_the_same_rounded_percent_on_both_routes</c>)
+    /// specifically so it is the suite's drag target: a full-bar-width drag
+    /// lands it at exactly 100%, recomputing the parent's rollup to
+    /// (4*100 + 10*50 + 4*100) / 18 = 1300/18 = 72.2% -> rounds to 72%.
+    /// </summary>
+    internal static List<GanttTask> RollupTasks() => new()
+    {
+        new("rp1", "Program", new DateTime(2026, 3, 1), new DateTime(2026, 3, 30)),
+        new("rc1", "Design", new DateTime(2026, 3, 1), new DateTime(2026, 3, 5),
+            Progress: 100) { ParentId = "rp1" }, // 4 days
+        new("rc2", "Build", new DateTime(2026, 3, 5), new DateTime(2026, 3, 15),
+            Progress: 50) { ParentId = "rp1" }, // 10 days
+        new("rc3", "Docs", new DateTime(2026, 3, 15), new DateTime(2026, 3, 19),
+            Progress: 0) { ParentId = "rp1" }, // 4 days — drag target
+    };
+
+    /// <summary>
     /// A dedicated, small fixture anchored on <see cref="DateTime.Today"/> — the ONLY
     /// place in this file that reads the clock, and only because the today-marker
     /// itself only renders when "today" falls inside the (deterministic, ±60-day-padded

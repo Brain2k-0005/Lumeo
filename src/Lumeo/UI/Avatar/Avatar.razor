@@ -21,9 +21,7 @@
 
     /// <summary>The avatar's content — typically an <see cref="AvatarImage"/> and a fallback <see cref="AvatarFallback"/> (initials), rendered inside the shape-clipped inner wrapper.</summary>
     [Parameter] public RenderFragment? ChildContent { get; set; }
-    /// <summary>Avatar size. Supported values: <see cref="Lumeo.Size.Sm"/>,
-    /// <see cref="Lumeo.Size.Md"/> (default), <see cref="Lumeo.Size.Lg"/>,
-    /// <see cref="Lumeo.Size.Xl"/>. Other values fall through to <c>Md</c>.</summary>
+    /// <summary>Avatar size. Supports all 7 <see cref="Lumeo.Size"/> values (Xxs–Xxl). Default <see cref="Lumeo.Size.Md"/>.</summary>
     [Parameter] public Lumeo.Size Size { get; set; } = Lumeo.Size.Md;
     /// <summary>Avatar outline. <c>Circle</c> (default) and <c>Square</c> are literal
     /// contracts — a Circle avatar stays a circle in every theme. <c>Themed</c> follows
@@ -90,24 +88,32 @@
     private string ShapeClasses => Shape switch
     {
         AvatarShape.Square => "rounded-md",
-        // *4 keeps Themed a full circle at every shipped radius base, including
-        // .style-new-york's tighter 0.5rem — 4 x 0.5rem = 32px, exactly h-16's
-        // 32px half-height (CSS clamps border-radius at 50%, so "exactly equal"
-        // still renders a full circle). At the default 0.75rem base that's
-        // 4 x 0.75rem = 48px, comfortably over every size's half-height.
-        // (The old *3 only reached 24px at the 0.5rem base — below Xl's 32px
-        // half-height, so the Xl avatar stopped being a circle under
-        // .style-new-york even though it read as fine at the default radius.)
-        AvatarShape.Themed => "rounded-[calc(var(--radius)*4)]",
+        // *5 keeps Themed a full circle at every shipped radius base, for every
+        // size up to Xxl. The binding constraint is the tightest shipped base —
+        // .style-new-york's 0.5rem (8px) — against the largest rung — Xxl's h-20,
+        // 40px half-height: 5 x 8px = 40px, exactly equal (CSS clamps
+        // border-radius at 50%, so "exactly equal" still renders a full circle).
+        // At the default 0.75rem (12px) base that's 5 x 12px = 60px, comfortably
+        // over every size's half-height.
+        // History: *3 (24px at the tight base) broke Xl (32px half-height) under
+        // .style-new-york. *4 (32px at the tight base) exactly covered Xl but not
+        // Xxl's 40px half-height once the Xxl rung was added — bumped to *5 so
+        // both the tight radius base AND the largest rung are covered together.
+        AvatarShape.Themed => "rounded-[calc(var(--radius)*5)]",
         _ => "rounded-full"
     };
 
     private string SizeClasses => Size switch
     {
         Lumeo.Size.Xxs => "h-5 w-5 text-[10px]",
+        // Own rung as of the full-scale rollout — previously fell through to the
+        // Md catch-all (40px), rendering LARGER than Sm (32px). Deliberate visual
+        // change: consumers relying on Size.Xs will see the avatar shrink to 24px.
+        Lumeo.Size.Xs => "h-6 w-6",
         Lumeo.Size.Sm => "h-8 w-8",
         Lumeo.Size.Lg => "h-12 w-12",
         Lumeo.Size.Xl => "h-16 w-16",
+        Lumeo.Size.Xxl => "h-20 w-20",
         _ => "h-10 w-10"
     };
 

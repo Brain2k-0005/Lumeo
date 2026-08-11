@@ -213,8 +213,8 @@ public class GanttV3CodexRound5Tests : IAsyncLifetime
             .AddChildContent<L.Gantt3>(g => g.Add(c => c.Tasks, tasks).Add(c => c.ViewMode, L.GanttViewMode.Day).Add(c => c.ShowTreePane, true)));
         var rtlTarget = rtlInterop.GanttV3ScrollToXCalls.Last();
 
-        Assert.True(Math.Abs((ltrTarget - rtlTarget) - GanttScale.TreePaneWidth) < 0.01,
-            $"expected the LTR and RTL scroll targets to differ by exactly TreePaneWidth ({GanttScale.TreePaneWidth}), got ltr={ltrTarget}, rtl={rtlTarget}, delta={ltrTarget - rtlTarget}");
+        Assert.True(Math.Abs((ltrTarget - rtlTarget) - GanttScale.DefaultTreePaneWidth) < 0.01,
+            $"expected the LTR and RTL scroll targets to differ by exactly the (unresized) default tree pane width ({GanttScale.DefaultTreePaneWidth}), got ltr={ltrTarget}, rtl={rtlTarget}, delta={ltrTarget - rtlTarget}");
 
         ltrCtx.Dispose();
         rtlCtx.Dispose();

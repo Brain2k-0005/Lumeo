@@ -16,7 +16,7 @@ public class GanttV3TreeTests : GanttParityTestBase
     [Fact]
     public async Task Tree_renders_five_rows_at_expected_depths()
     {
-        await GotoHost("/e2e/gantt-v3-tree");
+        await GotoHost("/e2e/gantt-v3-tree?infiniteScroll=0");
         var rows = Page.Locator("[data-testid='gantt-v3-tree-root'] [data-row-kind='task']");
         await rows.First.WaitForAsync(new() { Timeout = 15000 });
         await Assertions.Expect(rows).ToHaveCountAsync(5);
@@ -31,7 +31,7 @@ public class GanttV3TreeTests : GanttParityTestBase
     [Fact]
     public async Task Collapsing_a_parent_hides_its_descendant_rows_bars_and_arrows()
     {
-        await GotoHost("/e2e/gantt-v3-tree");
+        await GotoHost("/e2e/gantt-v3-tree?infiniteScroll=0");
         var rows = Page.Locator("[data-testid='gantt-v3-tree-root'] [data-row-kind='task']");
         await rows.First.WaitForAsync(new() { Timeout = 15000 });
 
@@ -69,7 +69,7 @@ public class GanttV3TreeTests : GanttParityTestBase
         // unlike TreeTasks' own 5-row fixture (too short to ever
         // meaningfully cull anything either way - see
         // Collapsing_a_parent_hides_its_descendant_rows_bars_and_arrows above).
-        await GotoHost("/e2e/gantt-v3-tree?fixture=tall");
+        await GotoHost("/e2e/gantt-v3-tree?fixture=tall&infiniteScroll=0");
 
         var rows = Page.Locator("[data-testid='gantt-v3-tree-root'] [data-row-kind='task']");
         await rows.First.WaitForAsync(new() { Timeout = 15000 });

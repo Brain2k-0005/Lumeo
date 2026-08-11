@@ -802,6 +802,7 @@ public class TrackingInteropService : IComponentInteropService
     public Task SchedulerPrevAsync(string id) => Task.CompletedTask;
     public Task SchedulerNextAsync(string id) => Task.CompletedTask;
     public Task SchedulerTodayAsync(string id) => Task.CompletedTask;
+    public Task SchedulerSetLocaleAsync(string id, string locale) => Task.CompletedTask;
     public Task<string> SchedulerGetTitleAsync(string id) => Task.FromResult(string.Empty);
     public Task SchedulerDestroyAsync(string id) => Task.CompletedTask;
 
@@ -920,6 +921,149 @@ public class TrackingInteropService : IComponentInteropService
         return Task.CompletedTask;
     }
 
+    // GanttV3 splitter-drag registration tracking (design spec Phase 3, T5) —
+    // mirrors the move/resize drag tracking immediately above: call counts +
+    // last options bag, plus a captured DotNetObjectReference so a test can
+    // simulate a JS-side commit (mirroring RaiseGanttV3VerticalScroll's own
+    // reflection-based simulate pattern) without a real browser pointer.
+    private int _ganttV3RegisterSplitterDragCallCount;
+    private int _ganttV3UnregisterSplitterDragCallCount;
+    public int GanttV3RegisterSplitterDragCallCount => _ganttV3RegisterSplitterDragCallCount;
+    public int GanttV3UnregisterSplitterDragCallCount => _ganttV3UnregisterSplitterDragCallCount;
+    public object? LastGanttV3SplitterDragOptions { get; private set; }
+    private object? _ganttV3SplitterDotNetRef;
+    public Task GanttV3RegisterSplitterDragAsync<T>(ElementReference handleEl, ElementReference paneEl, DotNetObjectReference<T> dotNetRef, object options) where T : class
+    {
+        _ganttV3RegisterSplitterDragCallCount++;
+        LastGanttV3SplitterDragOptions = options;
+        _ganttV3SplitterDotNetRef = dotNetRef.Value;
+        return Task.CompletedTask;
+    }
+    public Task GanttV3UnregisterSplitterDragAsync(ElementReference handleEl)
+    {
+        _ganttV3UnregisterSplitterDragCallCount++;
+        return Task.CompletedTask;
+    }
+
+    // Bug fix (Codex review, P2 #9) tracking — GanttV3ResetSplitterWidthAsync
+    // call count + the last (totalWidth, nameWidth) pair it was force-applied
+    // with, so a test can confirm GanttTree.CommitSplitterWidth's own
+    // deferred reset (armed via a controlled-veto SimulateGanttV3SplitterCommit,
+    // consumed on the NEXT OnAfterRenderAsync) lands with the resolved,
+    // post-round-trip authoritative width — not the mid-gesture, JS-mutated one.
+    private int _ganttV3ResetSplitterWidthCallCount;
+    public int GanttV3ResetSplitterWidthCallCount => _ganttV3ResetSplitterWidthCallCount;
+    public (double TotalWidth, double NameWidth)? LastGanttV3ResetSplitterWidth { get; private set; }
+    public Task GanttV3ResetSplitterWidthAsync(ElementReference paneEl, double totalWidth, double nameWidth)
+    {
+        _ganttV3ResetSplitterWidthCallCount++;
+        LastGanttV3ResetSplitterWidth = (totalWidth, nameWidth);
+        return Task.CompletedTask;
+    }
+    /// <summary>Simulates a JS-side splitter commit (pointerup/keyboard) by invoking the captured component's own <c>CommitSplitterWidth</c> method directly.</summary>
+    public async Task<bool> SimulateGanttV3SplitterCommit(double width)
+    {
+        var method = _ganttV3SplitterDotNetRef?.GetType().GetMethod("CommitSplitterWidth");
+        if (method is null) return false;
+        var result = method.Invoke(_ganttV3SplitterDotNetRef, new object[] { width });
+        if (result is Task task) await task;
+        return true;
+    }
+
+    // GanttV3 row-reorder-drag registration tracking (design spec Phase 3,
+    // T6) — mirrors the splitter tracking immediately above: call counts plus
+    // a captured DotNetObjectReference so a test can simulate a JS-side
+    // commit/validate without a real browser pointer. No options bag to
+    // capture here (see GanttV3RegisterRowReorderDragAsync's own remarks on
+    // this interop channel).
+    private int _ganttV3RegisterRowReorderDragCallCount;
+    private int _ganttV3UnregisterRowReorderDragCallCount;
+    public int GanttV3RegisterRowReorderDragCallCount => _ganttV3RegisterRowReorderDragCallCount;
+    public int GanttV3UnregisterRowReorderDragCallCount => _ganttV3UnregisterRowReorderDragCallCount;
+    private object? _ganttV3RowReorderDotNetRef;
+    public Task GanttV3RegisterRowReorderDragAsync<T>(ElementReference paneEl, DotNetObjectReference<T> dotNetRef) where T : class
+    {
+        _ganttV3RegisterRowReorderDragCallCount++;
+        _ganttV3RowReorderDotNetRef = dotNetRef.Value;
+        return Task.CompletedTask;
+    }
+    public Task GanttV3UnregisterRowReorderDragAsync(ElementReference paneEl)
+    {
+        _ganttV3UnregisterRowReorderDragCallCount++;
+        return Task.CompletedTask;
+    }
+    /// <summary>Simulates a JS-side row-reorder drop by invoking the captured component's own <c>CommitRowReorder</c> method directly.</summary>
+    public async Task<bool> SimulateGanttV3RowReorderCommit(string taskId, int targetIndex)
+    {
+        var method = _ganttV3RowReorderDotNetRef?.GetType().GetMethod("CommitRowReorder");
+        if (method is null) return false;
+        var result = method.Invoke(_ganttV3RowReorderDotNetRef, new object[] { taskId, targetIndex });
+        if (result is Task task) await task;
+        return true;
+    }
+    /// <summary>Simulates a JS-side live row-reorder validation call by invoking the captured component's own <c>ValidateRowDrop</c> method directly.</summary>
+    public bool? SimulateGanttV3RowReorderValidate(string taskId, int targetIndex)
+    {
+        var method = _ganttV3RowReorderDotNetRef?.GetType().GetMethod("ValidateRowDrop");
+        if (method is null) return null;
+        return (bool?)method.Invoke(_ganttV3RowReorderDotNetRef, new object[] { taskId, targetIndex });
+    }
+
+    // GanttV3 bar-context-menu registration tracking (design spec Phase 3,
+    // T8) — mirrors the row-reorder tracking immediately above: call counts
+    // plus a captured DotNetObjectReference so a test can simulate a JS-side
+    // right-click notification without a real browser contextmenu event. No
+    // options bag (see GanttV3RegisterBarContextMenuAsync's own remarks) —
+    // this channel is deliberately as simple as row-reorder's.
+    private int _ganttV3RegisterBarContextMenuCallCount;
+    private int _ganttV3UnregisterBarContextMenuCallCount;
+    public int GanttV3RegisterBarContextMenuCallCount => _ganttV3RegisterBarContextMenuCallCount;
+    public int GanttV3UnregisterBarContextMenuCallCount => _ganttV3UnregisterBarContextMenuCallCount;
+    private object? _ganttV3BarContextMenuDotNetRef;
+    public Task GanttV3RegisterBarContextMenuAsync<T>(ElementReference el, DotNetObjectReference<T> dotNetRef) where T : class
+    {
+        _ganttV3RegisterBarContextMenuCallCount++;
+        _ganttV3BarContextMenuDotNetRef = dotNetRef.Value;
+        return Task.CompletedTask;
+    }
+    public Task GanttV3UnregisterBarContextMenuAsync(ElementReference el)
+    {
+        _ganttV3UnregisterBarContextMenuCallCount++;
+        return Task.CompletedTask;
+    }
+    /// <summary>Simulates a JS-side bar right-click by invoking the captured component's own <c>NotifyBarContextMenu</c> method directly.</summary>
+    public bool SimulateGanttV3BarContextMenu(string taskId, double clientX, double clientY)
+    {
+        var method = _ganttV3BarContextMenuDotNetRef?.GetType().GetMethod("NotifyBarContextMenu");
+        if (method is null) return false;
+        method.Invoke(_ganttV3BarContextMenuDotNetRef, new object[] { taskId, clientX, clientY });
+        return true;
+    }
+
+    // GanttV3 gesture-suppression tracking (design spec Phase 3, T9) —
+    // settable so a test can simulate "a drag is currently in flight" without
+    // a real browser/gantt-v3.js. Defaults to false (no drag active),
+    // matching the interface's own default DIM, so an infinite-scroll
+    // extension test that never touches this exercises the normal
+    // (not-suppressed) path.
+    public bool GanttV3HasActiveDragToReturn { get; set; }
+    public int GanttV3HasActiveDragCallCount { get; private set; }
+    /// <summary>When set, <see cref="GanttV3HasActiveDragAsync"/> returns this
+    /// gate's Task instead of a completed one — letting a test SUSPEND
+    /// <c>GanttTimeline.TryRequestRangeExtensionAsync</c>'s own check mid-flight,
+    /// to prove its re-entrancy guard (<c>_rangeExtensionInFlight</c>) drops a
+    /// SECOND overlapping report rather than starting a second, concurrent
+    /// check (same idiom as <see cref="GanttV3RegisterVerticalScrollTrackingGate"/>/
+    /// <see cref="GanttV3ScrollCenterXGate"/>). Complete it with the desired
+    /// bool to resume.</summary>
+    public TaskCompletionSource<bool>? GanttV3HasActiveDragGate { get; set; }
+    public Task<bool> GanttV3HasActiveDragAsync()
+    {
+        GanttV3HasActiveDragCallCount++;
+        if (GanttV3HasActiveDragGate is not null) return GanttV3HasActiveDragGate.Task;
+        return Task.FromResult(GanttV3HasActiveDragToReturn);
+    }
+
     // GanttV3 browser-local-"today" tracking (Codex round 2, P2 #9) — settable
     // so a test can simulate the browser reporting a date that differs from
     // whatever DateTime.Today happens to be on the machine running the suite.
@@ -942,6 +1086,17 @@ public class TrackingInteropService : IComponentInteropService
         GanttV3GetLocalDateCallCount++;
         if (GanttV3LocalDateGate is not null) return GanttV3LocalDateGate.Task;
         return Task.FromResult(GanttV3LocalDateToReturn);
+    }
+
+    // GanttV3 browser-local-"now" tracking (design spec Phase 3, T2 —
+    // NowIndicator) — same shape as the date-only tracking immediately above,
+    // for the sibling GanttV3GetLocalDateTimeAsync interop call.
+    public string? GanttV3LocalDateTimeToReturn { get; set; }
+    public int GanttV3GetLocalDateTimeCallCount { get; private set; }
+    public Task<string?> GanttV3GetLocalDateTimeAsync()
+    {
+        GanttV3GetLocalDateTimeCallCount++;
+        return Task.FromResult(GanttV3LocalDateTimeToReturn);
     }
 
     // GanttV3 sticky-header scroll-sync registration tracking (Codex round 2,
@@ -987,11 +1142,24 @@ public class TrackingInteropService : IComponentInteropService
         GanttV3UnregisterVerticalScrollTrackingCallCount++;
         return Task.CompletedTask;
     }
-    /// <summary>Simulates a JS-side vertical scroll report by invoking the captured component's own <c>OnGanttV3VerticalScroll</c> method directly.</summary>
-    public void RaiseGanttV3VerticalScroll(double scrollTop, double clientHeight)
+    /// <summary>
+    /// Simulates a JS-side scroll report by invoking the captured component's
+    /// own <c>OnGanttV3VerticalScroll</c> method directly. <paramref name="scrollLeft"/>/
+    /// <paramref name="clientWidth"/> (design spec Phase 3, T7 — off-screen
+    /// indicators' own viewport signal, added to this SAME payload — see that
+    /// method's own remarks) default to 0: every call site written BEFORE T7
+    /// only ever meant to simulate a VERTICAL scroll/resize and never touched
+    /// horizontal state at all — GanttTimeline.VisibleTimelineWindow treats a
+    /// non-positive clientWidth as "not yet measured" (mirrors
+    /// RecomputeVisibleRowRange's identical clientHeight guard), so those
+    /// existing callers keep their EXACT prior behavior (no off-screen chip
+    /// ever renders) with no call-site changes required. A new T7 test opts
+    /// in by passing real, positive values for both.
+    /// </summary>
+    public void RaiseGanttV3VerticalScroll(double scrollTop, double clientHeight, double scrollLeft = 0, double clientWidth = 0)
     {
         var method = _ganttV3VerticalScrollDotNetRef?.GetType().GetMethod("OnGanttV3VerticalScroll");
-        method?.Invoke(_ganttV3VerticalScrollDotNetRef, new object[] { scrollTop, clientHeight });
+        method?.Invoke(_ganttV3VerticalScrollDotNetRef, new object[] { scrollTop, clientHeight, scrollLeft, clientWidth });
     }
 
     // GanttV3 live scroll-center reading (Codex round 5, P2 #5) — settable so

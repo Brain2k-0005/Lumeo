@@ -47,7 +47,7 @@ public class GanttV3NavTests : GanttParityTestBase
     [Fact]
     public async Task Next_and_previous_shift_the_period_label_by_exactly_one_month()
     {
-        await GotoHost("/e2e/gantt-v3?viewMode=Month");
+        await GotoHost("/e2e/gantt-v3?viewMode=Month&infiniteScroll=0");
         await PeriodLabelLocator.WaitForAsync(new() { Timeout = 15000 });
 
         var initialText = (await PeriodLabelLocator.TextContentAsync())!;
@@ -73,7 +73,7 @@ public class GanttV3NavTests : GanttParityTestBase
     [Fact]
     public async Task Today_recenters_the_current_window_on_today_preserving_its_width()
     {
-        await GotoHost("/e2e/gantt-v3?viewMode=Month");
+        await GotoHost("/e2e/gantt-v3?viewMode=Month&infiniteScroll=0");
         await PeriodLabelLocator.WaitForAsync(new() { Timeout = 15000 });
 
         // Reproduces Gantt3.ComputeInitialRange's Month branch + GanttParityFixtures.SharedTasks'
@@ -106,14 +106,14 @@ public class GanttV3NavTests : GanttParityTestBase
     [Fact]
     public async Task Today_button_scrolls_the_today_marker_into_view()
     {
-        await GotoHost("/e2e/gantt-v3?fixture=today");
+        await GotoHost("/e2e/gantt-v3?fixture=today&infiniteScroll=0");
         // Codex round 3, P2 #1: Gantt3's shared outer pane is now the scroll
         // owner (and latch target) — see GanttParityVisualTests' matching
         // update for the full reasoning.
         var host = Page.Locator("[data-testid='gantt-v3-root'] div[style*='overflow']").First;
         await host.WaitForAsync(new() { Timeout = 15000 });
 
-        var todayLine = Page.Locator("[data-testid='gantt-v3-root'] .lumeo-gantt-v3-today-line");
+        var todayLine = Page.Locator("[data-testid='gantt-v3-root'] .lumeo-gantt-v3-today-tint");
         await todayLine.WaitForAsync(new() { State = WaitForSelectorState.Attached, Timeout = 15000 });
 
         // Deflake (CI-only race, review wave round 3): wait for the
@@ -129,8 +129,45 @@ public class GanttV3NavTests : GanttParityTestBase
         // Force the viewport away from today first, so the Today CLICK's own
         // scroll effect is what's actually asserted below — not just the
         // separate auto-center-on-mount behavior this same P1 fix also adds.
-        await host.EvaluateAsync("el => el.scrollLeft = 0");
-        await Assertions.Expect(todayLine).Not.ToBeInViewportAsync(new() { Timeout = 5000 });
+        //
+        // Deflake round 2 (merge onto master post-#388, diagnosed via a JS
+        // scrollLeft/attribute-write log injected into a throwaway repro
+        // loop, ~15-20% local repro rate): the "done" wait above only proves
+        // the FIRST mount-time centerOn landed — it does not prove no MORE
+        // are pending. GanttTimeline.OnAfterRenderAsync updates its own
+        // dedup sentinels (_lastSeenScrollHostId/_lastConsumedScrollRequestId/
+        // _lastSeenToday) only AFTER several awaited interop round-trips
+        // earlier in the same method (SyncDragRegistrationAsync etc.) — on a
+        // live Blazor Server/SignalR circuit, a second render can be
+        // dispatched and run its OWN OnAfterRenderAsync while the first
+        // invocation is still suspended on one of those awaits, reading the
+        // still-stale (unset) sentinels and independently deciding a
+        // scroll-to-today is still needed. Both calls resolve to the SAME
+        // target (harmless for steady-state correctness) but the second,
+        // later requestAnimationFrame-scheduled write can land a few
+        // milliseconds AFTER this test's own scrollLeft=0 override — same
+        // symptom as the single-call race the "done" latch above already
+        // guards, just a second occurrence the latch can't see coming since
+        // it only fires once. Confirmed pre-existing (present identically on
+        // the prior merge commit — GanttTimeline/Gantt3 source is byte-for-
+        // byte unchanged across this merge), not a geometry/viewport
+        // regression from master. Retrying the override absorbs that one
+        // extra, already-in-flight write without weakening the assertion
+        // itself or the precondition it protects.
+        for (var attempt = 0; ; attempt++)
+        {
+            await host.EvaluateAsync("el => el.scrollLeft = 0");
+            try
+            {
+                await Assertions.Expect(todayLine).Not.ToBeInViewportAsync(new() { Timeout = attempt == 0 ? 1000 : 5000 });
+                break;
+            }
+            catch (PlaywrightException) when (attempt < 2)
+            {
+                // A still-in-flight duplicate mount-time scroll clobbered our
+                // override; it only ever fires once more, so retrying wins.
+            }
+        }
 
         await Page.GetByRole(AriaRole.Button, new() { Name = "Today", Exact = true }).ClickAsync();
 
