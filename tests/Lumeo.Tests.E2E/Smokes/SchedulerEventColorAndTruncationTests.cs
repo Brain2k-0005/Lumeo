@@ -5,7 +5,9 @@ namespace Lumeo.Tests.E2E.Smokes;
 
 /// <summary>
 /// Two independent, real defects on the docs Scheduler month view
-/// (<c>/components/scheduler</c>):
+/// (<c>/components/scheduler</c>, the FullCalendar-backed "Month View" demo —
+/// <c>Events="_monthEvents"</c>, which still carries the "Sprint planning" /
+/// "Offsite" fixtures these tests key off of):
 ///
 /// 1. Event chip titles in narrow month-view day cells were cut off mid-word
 ///    with no ellipsis and no way to recover the full text ("Sprint planning"
@@ -36,10 +38,24 @@ namespace Lumeo.Tests.E2E.Smokes;
 ///    way, just better-suited semantically and visually to a calendar event
 ///    category.
 ///
+/// RETARGETED (PR #399, "rebuild docs demos with realistic data and promote the
+/// first-party engine"): the page grew a new "First-party view engine" section
+/// (<c>SchedulerMonthView</c>/<c>SchedulerTimeGridView</c>/<c>SchedulerAgendaView</c> —
+/// no FullCalendar, no <c>.fc-event</c> markup at all) ahead of the FullCalendar-backed
+/// demos, so <c>section[data-toc-entry]</c> index <c>[0]</c> (what these tests used to
+/// query) resolved to "Month view (first-party engine)" instead of the FullCalendar
+/// "Month View" demo — <c>.fc-event</c> never matches there, so both scripts returned
+/// <c>null</c> and the tests failed on <c>Assert.NotNull</c>. Retargeted to select the
+/// section by its stable <c>data-toc-title="Month View"</c> (set from
+/// <c>ComponentDemo</c>'s <c>Title</c> parameter — see Shared/ComponentDemo.razor) instead
+/// of a positional index, so a future demo reorder can't silently break this again.
+///
 /// Requires the docs dev-server. See project README.md.
 /// </summary>
 public class SchedulerEventColorAndTruncationTests : PlaywrightTestBase
 {
+    private const string MonthViewSectionSelector = "section[data-toc-title=\"Month View\"]";
+
     // Resolves ANY CSS color (oklch/rgb/hex/var()) to concrete 0-255 sRGB via
     // a 1x1 canvas paint — real, rendered pixel color, not a string compare.
     private const string ResolveColorsScript =
@@ -48,7 +64,8 @@ public class SchedulerEventColorAndTruncationTests : PlaywrightTestBase
         "  const ctx = c.getContext('2d'); ctx.fillStyle = colorStr; ctx.fillRect(0, 0, 1, 1); " +
         "  const d = ctx.getImageData(0, 0, 1, 1).data; return [d[0], d[1], d[2]]; " +
         "} " +
-        "const sec = document.querySelectorAll('section[data-toc-entry]')[0]; " +
+        "const sec = document.querySelector('" + MonthViewSectionSelector + "'); " +
+        "if (!sec) return null; " +
         "const events = [...sec.querySelectorAll('.fc-event')]; " +
         "const ev = events.find(e => e.textContent.trim() === 'Offsite'); " +
         "if (!ev) return null; " +
@@ -58,7 +75,8 @@ public class SchedulerEventColorAndTruncationTests : PlaywrightTestBase
         "return { bgR: bg[0], bgG: bg[1], bgB: bg[2], fgR: fg[0], fgG: fg[1], fgB: fg[2] }; }";
 
     private const string TruncationScript =
-        "() => { const sec = document.querySelectorAll('section[data-toc-entry]')[0]; " +
+        "() => { const sec = document.querySelector('" + MonthViewSectionSelector + "'); " +
+        "if (!sec) return null; " +
         "const events = [...sec.querySelectorAll('.fc-event')]; " +
         "const ev = events.find(e => e.textContent.includes('Sprint planning')); " +
         "if (!ev) return null; " +
@@ -83,7 +101,7 @@ public class SchedulerEventColorAndTruncationTests : PlaywrightTestBase
 
         await Goto("/components/scheduler");
         await Page.WaitForLoadStateAsync(LoadState.NetworkIdle);
-        await Page.WaitForSelectorAsync(".fc-event", new() { Timeout = 30000 }); // FullCalendar loads from a CDN (esm.sh) on demand -- a bit more patient than the docs server's other CDN-backed smokes to absorb network variance, independent of what this test actually asserts
+        await Page.WaitForSelectorAsync(MonthViewSectionSelector + " .fc-event", new() { Timeout = 30000 }); // FullCalendar loads from a CDN (esm.sh) on demand -- a bit more patient than the docs server's other CDN-backed smokes to absorb network variance, independent of what this test actually asserts. Scoped to the "Month View" section specifically (not just any .fc-event on the page) since PR #399 added several other FullCalendar-backed demos further down this same page.
         await Page.WaitForTimeoutAsync(300);
 
         var colors = await Page.EvaluateAsync<ColorProbe?>(ResolveColorsScript);
@@ -124,7 +142,7 @@ public class SchedulerEventColorAndTruncationTests : PlaywrightTestBase
     {
         await Goto("/components/scheduler");
         await Page.WaitForLoadStateAsync(LoadState.NetworkIdle);
-        await Page.WaitForSelectorAsync(".fc-event", new() { Timeout = 30000 }); // FullCalendar loads from a CDN (esm.sh) on demand -- a bit more patient than the docs server's other CDN-backed smokes to absorb network variance, independent of what this test actually asserts
+        await Page.WaitForSelectorAsync(MonthViewSectionSelector + " .fc-event", new() { Timeout = 30000 }); // FullCalendar loads from a CDN (esm.sh) on demand -- a bit more patient than the docs server's other CDN-backed smokes to absorb network variance, independent of what this test actually asserts. Scoped to the "Month View" section specifically (not just any .fc-event on the page) since PR #399 added several other FullCalendar-backed demos further down this same page.
         await Page.WaitForTimeoutAsync(300);
 
         var result = await Page.EvaluateAsync<TruncationProbe?>(TruncationScript);
