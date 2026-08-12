@@ -61,10 +61,13 @@
 
     protected override void OnParametersSet()
     {
-        var pieData = Data.Select(d => new EChartPieData
+        var pieData = Data.Select((d, i) => new EChartPieData
         {
             Name = d.Name,
-            Value = d.Value
+            Value = d.Value,
+            // Per-slice decal — same pie-family categorical case as PieChart/DonutChart;
+            // see ChartHelper.GetDecal for the full reasoning and cardinality scoping.
+            ItemStyle = ChartHelper.GetDecal(i, Data.Count) is { } decal ? new EChartItemStyle { Decal = decal } : null
         }).ToList();
 
         var series = new EChartSeries
@@ -102,8 +105,7 @@
         if (Toolbox)
             _option.Toolbox = new EChartToolbox { Show = true, Feature = new EChartToolboxFeature { SaveAsImage = new() { Show = true }, Restore = new() { Show = true } } };
 
-        if (AnimationDuration.HasValue) _option.AnimationDuration = AnimationDuration;
-        if (!string.IsNullOrEmpty(AnimationEasing)) _option.AnimationEasing = AnimationEasing;
+        ChartHelper.ApplyAnimation(_option, AnimationDuration, AnimationEasing);
 
         ChartHelper.ApplyOptionOverride(_option, OptionOverride);
     }

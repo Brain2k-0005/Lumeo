@@ -19,6 +19,52 @@ if (typeof document !== 'undefined' && !window.__lumeoChartThemeListener) {
     window.__lumeoChartThemeListener = true;
 }
 
+// Same repaint path, driven by the OS/browser-level reduced-motion preference
+// rather than an app theme swap. ECharts bakes animation flags into the option
+// at setOption time — flipping the OS setting mid-session (or a browser devtools
+// emulation toggle while the docs site is open) would otherwise leave already-
+// rendered charts animating until their next unrelated re-render.
+if (typeof window !== 'undefined' && window.matchMedia && !window.__lumeoChartMotionListener) {
+    try {
+        const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
+        const onChange = () => {
+            if (charts.size === 0) return;
+            queueMicrotask(() => {
+                try { refreshAllCharts(); } catch (_) { /* ignore */ }
+            });
+        };
+        if (typeof mq.addEventListener === 'function') mq.addEventListener('change', onChange);
+        else if (typeof mq.addListener === 'function') mq.addListener(onChange); // Safari <14
+        window.__lumeoChartMotionListener = true;
+    } catch (_) { /* matchMedia unsupported — animations just use the initial read */ }
+}
+
+// True when the user (OS setting, or a browser's devtools emulation) has asked
+// for reduced motion. Checked fresh on every theme (re)registration AND applied
+// as a hard override in initChart/updateChart — see applyReducedMotion — so a
+// consumer's own AnimationDuration/AnimationEasing parameter can never re-enable
+// motion a11y setting has turned off.
+function prefersReducedMotion() {
+    try {
+        return typeof window !== 'undefined' && !!window.matchMedia
+            && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    } catch {
+        return false;
+    }
+}
+
+// Forces every ECharts animation off (entrance, update, emphasis/hover transitions —
+// `animation:false` is the one switch that reaches all of them, see ECharts' own
+// docs on the option) when reduced motion is active. Mutates and returns `options`
+// so callers can use it inline. Split out as a pure function (no DOM/ECharts
+// access) so it's covered by a plain computed-value unit test.
+function applyReducedMotion(options, reducedMotion) {
+    if (reducedMotion && options && typeof options === 'object') {
+        options.animation = false;
+    }
+    return options;
+}
+
 function loadECharts(src) {
     if (echartsLoaded && window.echarts) return Promise.resolve();
     if (echartsLoadPromise) return echartsLoadPromise;
@@ -86,8 +132,35 @@ function isColorProperty(key) {
 function resolveCssVarValue(str) {
     const match = str.match(/^var\(\s*(--[^,)]+)\s*(?:,\s*(.+))?\s*\)$/);
     if (!match) return str;
-    const resolved = getCssVar(match[1]);
-    return resolved || match[2] || str;
+    const varName = match[1];
+    const resolved = getCssVar(varName);
+    // A var() reference sitting inside a numeric option (e.g. a bar corner-radius
+    // array built from "var(--radius-sm)" — see BarChart.razor / EChartItemStyle.
+    // BorderRadiusCorners) resolves to a raw CSS length string ("0.75rem", "12px"),
+    // not a colour — getCssVar only hex-converts colour-looking values, so a length
+    // passes through untouched. ECharts' canvas properties (borderRadius, etc.) want
+    // a plain NUMBER of px, so convert here rather than leaving every call site to
+    // re-derive it (this mirrors buildLumeoTheme's own radius computation for the
+    // theme-level default, so a per-series override tracks the exact same value).
+    const lengthMatch = typeof resolved === 'string' && resolved.match(/^(-?[\d.]+)(rem|px)$/);
+    if (lengthMatch) {
+        const n = parseFloat(lengthMatch[1]);
+        return lengthMatch[2] === 'rem' ? n * 16 : n;
+    }
+    // `resolved` didn't parse as a plain rem/px length — this is the calc()-token
+    // case (e.g. --radius-sm: calc(var(--radius) * 0.5) in lumeo.css). getPropertyValue()
+    // on a custom property returns its SPECIFIED value verbatim ("calc(0.75rem * 0.5)"),
+    // never resolved — browsers only resolve a var()/calc() chain when it's actually
+    // APPLIED to a real CSS property. Fall back to the DOM-probe resolver, which does
+    // exactly that (same technique colorToHex already uses for oklch/color() colours).
+    const probed = resolveLengthPxViaProbe(varName);
+    if (probed !== null) return probed;
+    const fallbackRaw = match[2];
+    if (fallbackRaw) {
+        const n = parseFloat(fallbackRaw);
+        if (!Number.isNaN(n)) return n;
+    }
+    return resolved || str;
 }
 
 function getCssVar(name) {
@@ -100,6 +173,35 @@ function getCssVar(name) {
         return colorToHex(raw);
     }
     return raw;
+}
+
+// Resolves a CSS custom property that holds a LENGTH to a plain px number, even
+// when it's defined via calc()/nested var() (e.g. lumeo.css's
+// `--radius-sm: calc(var(--radius) * 0.5)`). getComputedStyle(...).getPropertyValue()
+// on a custom property returns the SPECIFIED value as authored text, not the
+// resolved one — confirmed live: --radius-sm reads back as the literal string
+// "calc(0.75rem * 0.5)", which parseFloat() turns into NaN, not 6. The fix is the
+// same one colorToHex already relies on for oklch()/color() colours: apply the
+// var() reference to an actual CSS property on a real (offscreen) element and let
+// the browser's own cascade do the calc() math, then read the COMPUTED result back.
+// Returns null (never NaN) on failure so callers can fall back explicitly.
+function resolveLengthPxViaProbe(varName) {
+    if (typeof document === 'undefined') return null;
+    try {
+        const probe = document.createElement('div');
+        probe.style.position = 'absolute';
+        probe.style.visibility = 'hidden';
+        probe.style.pointerEvents = 'none';
+        probe.style.left = '-9999px';
+        probe.style.width = `var(${varName})`;
+        document.body.appendChild(probe);
+        const computed = getComputedStyle(probe).width; // always resolves to a plain "Npx"
+        document.body.removeChild(probe);
+        const n = parseFloat(computed);
+        return Number.isFinite(n) ? n : null;
+    } catch {
+        return null;
+    }
 }
 
 function colorToHex(color) {
@@ -175,34 +277,194 @@ function rgbToHex(r, g, b) {
     return '#' + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
 }
 
-function registerLumeoTheme() {
-    if (lumeoThemeRegistered || !window.echarts) return;
+// --- Design-pass colour helpers (pure, no DOM) -----------------------------
+// The gradients/glows below are always DERIVED at build/render time from an
+// already-resolved CSS-variable colour (a `#rrggbb` string produced by
+// getCssVar/colorToHex, or — for the per-series bar/pie gradient callbacks —
+// from ECharts' own `params.color`, which by the time that callback runs is
+// always the resolved palette hex too). Nothing here is a hardcoded hex; see
+// the "CSS variables only" constraint in the design-pass brief.
 
-    const fg = getCssVar('--color-foreground') || '#1a1a1a';
-    const mutedFg = getCssVar('--color-muted-foreground') || '#737373';
-    const border = getCssVar('--color-border') || '#e5e5e5';
-    const bg = getCssVar('--color-background') || '#ffffff';
-    const card = getCssVar('--color-card') || '#ffffff';
+// Parses a `#rrggbb`/`#rgb` string into {r,g,b}. Returns null for anything
+// else (already-rgba(), unparseable) so callers can fail safe to a flat
+// colour instead of producing "rgba(NaN, NaN, NaN, ...)".
+function hexToRgb(hex) {
+    if (typeof hex !== 'string') return null;
+    let h = hex.trim();
+    if (h[0] !== '#') return null;
+    h = h.slice(1);
+    if (h.length === 3) h = h.split('').map((c) => c + c).join('');
+    if (h.length !== 6) return null;
+    const n = parseInt(h, 16);
+    if (Number.isNaN(n)) return null;
+    return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 };
+}
 
-    const chart1 = getCssVar('--color-chart-1') || '#e85d04';
-    const chart2 = getCssVar('--color-chart-2') || '#2c9e8f';
-    const chart3 = getCssVar('--color-chart-3') || '#2d4f5c';
-    const chart4 = getCssVar('--color-chart-4') || '#d4a843';
-    const chart5 = getCssVar('--color-chart-5') || '#e08844';
+// `color` at the given alpha (0-1) as an rgba() string. Falls back to the
+// original value unchanged when it isn't a hex colour we can parse — a safe
+// degrade to a flat colour rather than a broken paint.
+function withAlpha(color, alpha) {
+    const rgb = hexToRgb(color);
+    if (!rgb) return color;
+    return `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${alpha})`;
+}
 
-    const radiusRaw = getCssVar('--radius') || '0.75rem';
-    const radiusPx = parseFloat(radiusRaw) * (radiusRaw.includes('rem') ? 16 : 1);
-    const barRadius = [radiusPx, radiusPx, 0, 0];
+// Lightens a resolved hex colour toward white by `amount` (0-1). Used for the
+// near/top stop of the bar and pie gradients — a "lit from above" tint
+// derived from the series' OWN resolved colour (never a second hardcoded
+// hue), so it tracks whatever palette (theme tokens or a consumer's own
+// Colors/ColorPalette) is actually in play.
+function lighten(color, amount) {
+    const rgb = hexToRgb(color);
+    if (!rgb) return color;
+    const mix = (c) => Math.round(c + (255 - c) * amount);
+    return `rgb(${mix(rgb.r)}, ${mix(rgb.g)}, ${mix(rgb.b)})`;
+}
+
+/**
+ * Builds the Lumeo ECharts theme object from a CSS-variable getter (`cssVar`,
+ * normally {@link getCssVar}) and the current reduced-motion preference.
+ *
+ * Pulled out as a pure function — no `document`/`window.echarts` access — for two
+ * reasons: (1) `echarts.registerTheme` only accepts a plain object, so this is the
+ * natural seam; (2) it lets `__testing.buildLumeoTheme` be exercised with a fake
+ * `cssVar` in a plain Node test (see tests/js/echarts-interop-theme.test.mjs),
+ * asserting real computed values (numbers, booleans, exact colour strings) instead
+ * of ever re-deriving them from a class name.
+ *
+ * Design decisions baked in here (rather than left for each of the 30 chart
+ * wrappers to repeat) — see the charts-design PR description for the full
+ * reasoning:
+ *  - Legend is centred (`left: 'center'`) — reads as more deliberate than the
+ *    ECharts default left-alignment, and applies to every wrapper's legend
+ *    because none of them set `Left` themselves (theme values fill the gap left
+ *    by an unset option property under ECharts' per-property option merge).
+ *  - Value axes get a `minorTick`/`minorSplitLine` — genuinely finer tick
+ *    density without any wrapper touching `splitNumber` (the property doesn't
+ *    even exist on the typed `EChartAxis` model). Off by default in ECharts;
+ *    turning it on here is the single place that changes it everywhere.
+ *  - Tooltip mirrors the Lumeo `<PopoverContent>` surface (rounded-md, border,
+ *    shadow-lg, `bg-popover`/`text-popover-foreground` equivalents) and fades via
+ *    `transitionDuration` + an explicit `opacity`/`transform` CSS transition
+ *    (ECharts' own tooltip DOM element honours real `var(--...)` — unlike the
+ *    canvas-drawn series, no JS colour resolution is needed for it).
+ *  - Hover: `emphasis.focus:'series'` + a matching `blur` state on every series
+ *    type dims everything else instead of leaving other series at full opacity —
+ *    "which series am I looking at" reads instantly on hover.
+ *  - Entrance/update animation gets explicit duration/easing instead of relying
+ *    on ECharts' own defaults, and reduced-motion forces `animation:false`
+ *    (the one switch that reaches entrance, update, AND emphasis/hover
+ *    transitions — see applyReducedMotion for the belt-and-braces option-level
+ *    override applied on top of this).
+ */
+function buildLumeoTheme(cssVar, reducedMotion) {
+    const fg = cssVar('--color-foreground') || '#1a1a1a';
+    const mutedFg = cssVar('--color-muted-foreground') || '#737373';
+    const border = cssVar('--color-border') || '#e5e5e5';
+    const card = cssVar('--color-popover') || cssVar('--color-card') || '#ffffff';
+    const popoverFg = cssVar('--color-popover-foreground') || fg;
+
+    const chart1 = cssVar('--color-chart-1') || '#e85d04';
+    const chart2 = cssVar('--color-chart-2') || '#2c9e8f';
+    const chart3 = cssVar('--color-chart-3') || '#2d4f5c';
+    const chart4 = cssVar('--color-chart-4') || '#d4a843';
+    const chart5 = cssVar('--color-chart-5') || '#e08844';
+
+    // Glow tint: deliberately the BRAND accent (--color-primary), not a
+    // per-series colour. Verified empirically (see PR description) that
+    // ECharts invokes a callback function for `itemStyle.color` — so the
+    // bar/pie gradients below CAN be per-series — but never for
+    // `shadowColor` on any style block, on any series type, itemStyle
+    // included. A theme-level shadowColor is necessarily ONE literal value
+    // shared by every series of that type, so tinting it per-series isn't
+    // technically possible from this shared seam. Using the brand accent
+    // instead of a neutral black/grey turns that constraint into a
+    // consistent, opinionated identity — every glow across every chart
+    // reads as "this app", not as an ad-hoc drop-shadow.
+    const glowColor = cssVar('--color-primary') || chart1;
+
+    // rem/px CSS length -> a plain px number. Shared by every radius token read
+    // below so --radius, --radius-sm, etc. all go through the same conversion
+    // (mirrors resolveCssVarValue's length handling for the var() references
+    // BarChart.razor sends straight through to ECharts options).
+    const toPx = (raw) => parseFloat(raw) * (String(raw).includes('rem') ? 16 : 1);
+
+    const radiusRaw = cssVar('--radius') || '0.75rem';
+    const radiusPx = toPx(radiusRaw);
+    // Popover uses `rounded-md` (--radius-md == --radius by default) — tooltip
+    // matches it exactly rather than re-deriving its own scale.
+    const tooltipRadiusPx = radiusPx;
+
+    // Bar-family corner radius is HALF of --radius — the same ratio lumeo.css's own
+    // `--radius-sm: calc(var(--radius) * 0.5)` token defines — not the full --radius
+    // token tooltip/popover use above. --radius is calibrated for large surfaces
+    // (cards, buttons, the tooltip); applied literally to a bar COLUMN — which even
+    // at this theme's generous barMaxWidth tops out around 24-40px wide — it reads as
+    // an oversized pill cap rather than the reference's crisp, modest rounded top.
+    // Confirmed empirically: at the previous (dense-demo) 12px-radius-on-a-13px-wide
+    // bar ratio, ECharts' own corner-radius clamping (a rect can't have a corner
+    // radius bigger than half its own side) turned the "rounded top" into a near-full
+    // semicircle. Computed by halving the already-resolved radiusPx (rather than
+    // re-reading `--radius-sm` here) deliberately: getComputedStyle().getPropertyValue()
+    // on a custom property returns its SPECIFIED value verbatim, and --radius-sm is
+    // defined via calc() — reading it back gives the literal text
+    // "calc(0.75rem * 0.5)", not a resolved px number (confirmed live; parseFloat()
+    // on that string is NaN). resolveCssVarValue (used for the var(--radius-sm)
+    // STRINGS BarChart.razor sends through the option JSON) works around this with a
+    // DOM-probe resolver; buildLumeoTheme stays a pure function of `cssVar` (no
+    // `document` access, so it can't probe) and doesn't need to — halving the value
+    // it already has is the same number --radius-sm resolves to, without the
+    // calc()-read pitfall.
+    const barRadiusPx = radiusPx * 0.5;
+    const barRadius = [barRadiusPx, barRadiusPx, 0, 0];
 
     const noStroke = { textBorderWidth: 0, textBorderColor: 'transparent', textShadowBlur: 0, textShadowColor: 'transparent' };
-    const labelNoStroke = { ...noStroke, color: mutedFg, fontSize: 11 };
+    // 12 — Lumeo's --text-xs (0.75rem). The theme previously hardcoded 11px here (and
+    // on every axisLabel/legend.textStyle/radar.axisName below) — a size that doesn't
+    // exist anywhere on Lumeo's type scale (12/text-xs, 14/text-sm, ...). An off-scale
+    // size is exactly the kind of detail that reads as "not quite part of the library";
+    // see the charts-design-2 PR description for the full audit.
+    const labelNoStroke = { ...noStroke, color: mutedFg, fontSize: 12 };
 
-    window.echarts.registerTheme('lumeo', {
+    // Entrance vs update get different rhythms — a longer, gentler entrance read
+    // as "the chart is arriving"; a snappier update reads as "the data changed"
+    // without redrawing the whole scene every time. cubicOut matches shadcn/
+    // Radix's own default ease-out feel closely enough that it doesn't clash with
+    // the rest of a Lumeo app's motion.
+    const animation = reducedMotion
+        ? { animation: false }
+        : {
+            animationDuration: 700,
+            animationEasing: 'cubicOut',
+            animationDurationUpdate: 400,
+            animationEasingUpdate: 'cubicOut',
+        };
+
+    // Real fade: ECharts' own `transitionDuration` smooths tooltip repositioning,
+    // but the show/hide (opacity 0<->1) edge reads as an instant snap without an
+    // explicit CSS transition on the DOM node itself — extraCssText below adds
+    // one. Reduced motion collapses both to ~0 so the tooltip still appears
+    // instantly rather than "not fading in" (which would read as broken, not
+    // as an a11y accommodation).
+    const tooltipTransitionSeconds = reducedMotion ? 0 : 0.22;
+    const tooltipTransitionMs = Math.round(tooltipTransitionSeconds * 1000);
+
+    // Dim (not hide) every series except the hovered one — "which series am I
+    // looking at" without the chart jumping around. Reused verbatim across every
+    // series type below so the behaviour is one decision, not thirty.
+    const blurOpacity = { opacity: 0.32 };
+    const seriesHover = {
+        emphasis: { focus: 'series' },
+        blur: { itemStyle: blurOpacity, lineStyle: blurOpacity, areaStyle: blurOpacity, label: { opacity: 0.32 } },
+    };
+
+    return {
         color: [chart1, chart2, chart3, chart4, chart5],
         backgroundColor: 'transparent',
+        ...animation,
         textStyle: {
             color: mutedFg,
-            fontFamily: getComputedStyle(document.body).fontFamily || 'system-ui, sans-serif',
+            fontFamily: (typeof document !== 'undefined' && getComputedStyle(document.body).fontFamily) || 'system-ui, sans-serif',
             fontSize: 12,
             ...noStroke
         },
@@ -211,95 +473,261 @@ function registerLumeoTheme() {
             subtextStyle: { color: mutedFg, fontSize: 12 }
         },
         legend: {
-            textStyle: { color: mutedFg, fontSize: 11, ...noStroke },
+            // Centred reads as a deliberate design choice, not a default. Only
+            // `left` is set — `top`/`bottom` are left for each wrapper to decide
+            // (several anchor the legend to the bottom via `Bottom:"0%"`; setting
+            // a theme-level `top` here would fight that and squash the legend).
+            left: 'center',
+            // 12 — --text-xs, same audit as labelNoStroke above (was 11, off-scale).
+            textStyle: { color: mutedFg, fontSize: 12, ...noStroke },
             icon: radiusPx > 0 ? 'roundRect' : 'rect',
             itemWidth: 12,
             itemHeight: 8,
-            itemGap: 16
+            itemGap: 16,
+            pageIconColor: mutedFg,
+            pageIconInactiveColor: border,
+            pageTextStyle: { color: mutedFg }
         },
         tooltip: {
             backgroundColor: card,
-            borderColor: border,
+            // border-border/60 — PopoverContent's exact border treatment
+            // (`rounded-md border border-border/60 bg-popover ... shadow-lg`), not a
+            // full-opacity border. See src/Lumeo/UI/Popover/PopoverContent.razor.
+            borderColor: withAlpha(border, 0.6),
             borderWidth: 1,
-            textStyle: { color: fg, fontSize: 12 },
-            extraCssText: `border-radius: ${radiusPx}px; box-shadow: 0 4px 12px rgba(0,0,0,0.08); padding: 8px 12px;`
+            // PopoverContent uses `p-4` (16px, uniform) — the tooltip previously used
+            // an asymmetric [8,12] ECharts default instead of matching that padding.
+            padding: 16,
+            // 14 — --text-sm, matching the body-copy size Lumeo's own popover-family
+            // surfaces use for their content (DropdownMenuItem/SelectItem are both
+            // `text-sm`), not the smaller --text-xs used for ambient axis/legend labels.
+            textStyle: { color: popoverFg, fontSize: 14 },
+            // enterable:false + confine:true keep the tooltip from becoming a
+            // second interactive surface and from drifting outside the chart
+            // bounds on charts pinned near a viewport edge.
+            enterable: false,
+            confine: true,
+            transitionDuration: tooltipTransitionSeconds,
+            hideDelay: 60,
+            showDelay: 0,
+            axisPointer: {
+                lineStyle: { color: border, width: 1 },
+                crossStyle: { color: border, width: 1 },
+                shadowStyle: { color: 'rgba(148,163,184,0.14)' },
+                label: { backgroundColor: card, color: popoverFg, borderColor: withAlpha(border, 0.6), borderWidth: 1 }
+            },
+            // The popover surface, reproduced 1:1: rounded-md, border, shadow-lg,
+            // bg-popover/text-popover-foreground. box-shadow/border-radius reference
+            // the live CSS variables directly (this is real tooltip DOM, not
+            // canvas, so var(...) resolves natively without our JS colour
+            // resolver) with the computed px value as a safety fallback.
+            extraCssText: `border-radius: var(--radius-md, ${tooltipRadiusPx}px); box-shadow: var(--shadow-lg, 0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -4px rgba(0,0,0,0.1)); transition: opacity ${tooltipTransitionSeconds}s cubic-bezier(0.16,1,0.3,1), transform ${tooltipTransitionSeconds}s cubic-bezier(0.16,1,0.3,1); font-family: inherit;`
         },
         categoryAxis: {
             axisLine: { show: false },
             axisTick: { show: false },
-            axisLabel: { color: mutedFg, fontSize: 11, ...noStroke },
+            // 12 — --text-xs, same audit as labelNoStroke above (was 11, off-scale).
+            axisLabel: { color: mutedFg, fontSize: 12, ...noStroke },
             splitLine: { show: false }
         },
         valueAxis: {
             axisLine: { show: false },
             axisTick: { show: false },
-            axisLabel: { color: mutedFg, fontSize: 11, ...noStroke },
+            // 12 — --text-xs, same audit as labelNoStroke above (was 11, off-scale).
+            axisLabel: { color: mutedFg, fontSize: 12, ...noStroke },
+            // A single faint dashed gridline system — nothing else in Lumeo (Table,
+            // Card) layers a second, finer grid of sub-lines behind its primary
+            // divider, so the minorTick/minorSplitLine pair a previous pass added
+            // here (see the removed comment/tests) read as ECharts chrome rather
+            // than a Lumeo surface. Removed; the one splitLine below now carries
+            // "which gridline am I reading" alone, matching how the EvilCharts
+            // reference and every other Lumeo divider render.
             splitLine: {
                 show: true,
-                lineStyle: { color: border, type: 'dashed', opacity: 0.5 }
+                lineStyle: { color: border, type: 'dashed', opacity: 0.4 }
             }
         },
         label: labelNoStroke,
         line: {
             smooth: true,
             symbolSize: 0,
-            lineStyle: { width: 2 },
-            label: labelNoStroke
+            // Stroke stays a SOLID token colour, never a gradient — a line's
+            // legend swatch and its stroke need to read as the same colour at
+            // a glance, and (per the callback finding above) a per-series
+            // gradient isn't reliably achievable at this shared seam anyway.
+            // What lifts the line instead is a glow: a soft, brand-tinted
+            // halo at rest (barely-there ambient lift) that intensifies on
+            // hover — "lit rather than drawn" without fighting legibility of
+            // multiple overlapping series.
+            lineStyle: { width: 2, shadowBlur: 6, shadowColor: withAlpha(glowColor, 0.16) },
+            label: labelNoStroke,
+            emphasis: {
+                focus: 'series',
+                // Enlarge the hovered point's marker (scale is ECharts' built-in symbol-
+                // size multiplier for line/scatter series) alongside the stroke thickening
+                // above — "thicken the stroke or enlarge the marker" from the design-pass
+                // brief, both at once rather than colour carrying the hover state alone.
+                scale: 1.5,
+                lineStyle: { width: 3, shadowBlur: 14, shadowColor: withAlpha(glowColor, 0.34) }
+            },
+            blur: seriesHover.blur,
+            // Line/area's own entrance reveal is ECharts' native left-to-right
+            // clip-path draw (built into the 'line' series renderer — no
+            // per-point animationDelay needed or effective here, since the
+            // stroke/area is ONE continuous shape, not per-datum elements).
+            // What we control is its PACE: a longer, more deliberate entrance
+            // than bar/pie/scatter reads as "the line is drawing itself in"
+            // rather than "the chart is popping up" — a distinct rhythm per
+            // family, not one duration reused everywhere.
+            ...(reducedMotion ? {} : { animationDuration: 900, animationEasing: 'cubicOut' })
         },
         bar: {
-            barMaxWidth: 32,
-            itemStyle: { borderRadius: barRadius },
-            label: labelNoStroke
+            barMaxWidth: 40,
+            // Chunky-bar pass: ECharts' own defaults (barCategoryGap: '20%',
+            // barGap: '30%') read as "narrow strips with large gaps" once a chart
+            // has more than a handful of categories — confirmed by measuring the
+            // library's own 12-category/2-series demo BEFORE this change: 480px
+            // chart width / 12 categories -> a ~39px band per category, and the
+            // default gap ratios left only ~13px of that for each bar (barely a
+            // third of the band actually painted). Tightening both ratios gives
+            // the bars back a materially larger share of their band — same
+            // category count, chunkier confident columns instead of thin strips
+            // — without touching barMaxWidth's role as the ceiling for sparser
+            // axes (a 4-category chart was already hitting that ceiling before
+            // this change and still does; what changes there is the now-smaller
+            // gap BETWEEN groups, not the bar width itself).
+            barCategoryGap: '10%',
+            barGap: '8%',
+            // No itemStyle.color here — a previous pass built a top-lightened vertical
+            // gradient from a callback (confirmed working: ECharts DOES invoke a
+            // (params) => Color function for itemStyle.color at the theme level, unlike
+            // lineStyle/areaStyle/shadowColor). Removed: nothing else in Lumeo — Button,
+            // Badge, Card — fills a solid shape with a gradient; a bar is a flat, solid
+            // colour block the same way those are, and the reference this pass is
+            // matching is explicit ("solid, no visible gradient"). Leaving itemStyle.color
+            // unset lets ECharts' own resolved palette colour (the `color` array above, or
+            // a consumer's Colors/ColorPalette) paint the bar directly.
+            itemStyle: {
+                borderRadius: barRadius
+            },
+            label: labelNoStroke,
+            emphasis: { focus: 'series', itemStyle: { shadowBlur: 10, shadowColor: withAlpha(glowColor, 0.4) } },
+            blur: { itemStyle: blurOpacity, label: { opacity: 0.32 } },
+            // Cascading reveal: each subsequent bar starts a beat after the
+            // last instead of every bar growing from the baseline at once.
+            // Capped at 700ms of total spread so a wide category axis (30+
+            // bars) still finishes revealing in well under a second — an
+            // uncapped `idx * 45` would make a busy chart take seconds to
+            // finish drawing. Omitted entirely under reduced motion so no
+            // stray delay function lingers once animation is force-disabled
+            // (matches the animationDuration/-Easing omission below).
+            ...(reducedMotion ? {} : { animationDelay: (idx) => Math.min((idx || 0) * 45, 700) })
         },
         pie: {
-            itemStyle: { borderColor: card, borderWidth: 2 },
-            label: labelNoStroke
+            itemStyle: {
+                borderColor: card, borderWidth: 2,
+                // Same callback mechanism as bar (confirmed working for pie
+                // too), but RADIAL rather than linear — a per-slice "glassy"
+                // pop with the lightened tint near the centre fading to the
+                // full resolved colour at the slice's outer edge. Radial
+                // coordinates are relative to each slice's own bounding box
+                // (ECharts default), so every slice gets its own consistent
+                // centre-to-edge gradient regardless of its angle/size.
+                color: function (params) {
+                    const base = (params && params.color) || '#888888';
+                    return {
+                        type: 'radial', x: 0.5, y: 0.5, r: 0.7,
+                        colorStops: [
+                            { offset: 0, color: lighten(base, 0.28) },
+                            { offset: 1, color: base }
+                        ]
+                    };
+                }
+            },
+            label: labelNoStroke,
+            emphasis: { scale: true, scaleSize: 6, itemStyle: { shadowBlur: 16, shadowColor: withAlpha(glowColor, 0.45) } },
+            blur: { itemStyle: blurOpacity, label: { opacity: 0.32 } },
+            // Sweep reveal: slices begin their entrance in order around the
+            // circle instead of every slice expanding together. Capped at
+            // 500ms of spread for the same reason as the bar cascade above.
+            ...(reducedMotion ? {} : { animationDelay: (idx) => Math.min((idx || 0) * 90, 500) })
         },
         radar: {
-            axisName: { color: mutedFg, fontSize: 11 },
+            // 12 — --text-xs, same audit as labelNoStroke above (was 11, off-scale).
+            axisName: { color: mutedFg, fontSize: 12 },
             splitLine: { lineStyle: { color: border, opacity: 0.4 } },
             splitArea: { areaStyle: { color: ['transparent', 'transparent'] } },
             axisLine: { lineStyle: { color: border, opacity: 0.3 } },
-            label: labelNoStroke
+            label: labelNoStroke,
+            emphasis: { focus: 'series', lineStyle: { width: 3 } },
+            blur: seriesHover.blur
         },
         scatter: {
             symbolSize: 8,
-            itemStyle: { opacity: 0.75 },
-            label: labelNoStroke
+            // Scatter points are sparse individual marks (not a dense fill or
+            // a busy multi-bar chart), so — unlike bar/pie — a light glow AT
+            // REST earns its place here rather than reading as noise; it
+            // still steps up materially on hover.
+            itemStyle: { opacity: 0.75, shadowBlur: 4, shadowColor: withAlpha(glowColor, 0.18) },
+            label: labelNoStroke,
+            emphasis: { focus: 'series', scale: 1.25, itemStyle: { opacity: 1, shadowBlur: 12, shadowColor: withAlpha(glowColor, 0.4) } },
+            blur: { itemStyle: { opacity: 0.25 } },
+            // Fast cascading pop-in, capped so a dense scatter (hundreds of
+            // points) still fully reveals in well under half a second.
+            ...(reducedMotion ? {} : { animationDelay: (idx) => Math.min((idx || 0) * 10, 400) })
         },
         graph: {
             lineStyle: { color: border, opacity: 0.6 },
-            label: labelNoStroke
+            label: labelNoStroke,
+            emphasis: { focus: 'adjacency', scale: true, lineStyle: { width: 3 } },
+            blur: { itemStyle: blurOpacity, lineStyle: { opacity: 0.15 } }
         },
         sankey: {
-            label: labelNoStroke
+            label: labelNoStroke,
+            emphasis: { focus: 'adjacency' },
+            blur: { itemStyle: blurOpacity, lineStyle: blurOpacity }
         },
         funnel: {
-            label: labelNoStroke
+            label: labelNoStroke,
+            emphasis: { focus: 'self', label: { fontWeight: 600 } },
+            blur: { itemStyle: blurOpacity }
         },
         treemap: {
-            label: labelNoStroke
+            label: labelNoStroke,
+            breadcrumb: { itemStyle: { color: card, borderColor: border, textStyle: { color: mutedFg } } }
         },
         sunburst: {
-            label: labelNoStroke
+            label: labelNoStroke,
+            emphasis: { focus: 'ancestor' }
         },
         tree: {
-            label: labelNoStroke
+            label: labelNoStroke,
+            lineStyle: { color: border },
+            emphasis: { focus: 'descendant' }
         },
         themeRiver: {
-            label: labelNoStroke
+            label: labelNoStroke,
+            emphasis: { focus: 'series' },
+            blur: { itemStyle: blurOpacity }
         },
         heatmap: {
-            label: labelNoStroke
+            label: labelNoStroke,
+            emphasis: { itemStyle: { shadowBlur: 12, shadowColor: withAlpha(glowColor, 0.5) } }
         },
         boxplot: {
-            label: labelNoStroke
+            label: labelNoStroke,
+            emphasis: { focus: 'series', itemStyle: { borderWidth: 2 } },
+            blur: { itemStyle: blurOpacity }
         },
         candlestick: {
-            label: labelNoStroke
+            label: labelNoStroke,
+            emphasis: { focus: 'series' },
+            blur: { itemStyle: blurOpacity }
         },
         parallel: {
-            label: labelNoStroke
+            label: labelNoStroke,
+            emphasis: { focus: 'series', lineStyle: { width: 3 } },
+            blur: { lineStyle: { opacity: 0.12 } }
         },
         gauge: {
             axisLine: { lineStyle: { color: [[1, border]] } },
@@ -309,9 +737,151 @@ function registerLumeoTheme() {
             detail: { color: fg, fontWeight: 600, ...noStroke },
             title: { color: mutedFg, ...noStroke }
         }
-    });
+    };
+}
 
+function registerLumeoTheme() {
+    if (lumeoThemeRegistered || !window.echarts) return;
+    window.echarts.registerTheme('lumeo', buildLumeoTheme(getCssVar, prefersReducedMotion()));
     lumeoThemeRegistered = true;
+}
+
+// General axis concern (not bar-specific): reaches every cartesian chart type that
+// routes through initChart/updateChart (Bar, Line, Area, Candlestick, BoxPlot,
+// Waterfall, PictorialBar, Mixed, ...).
+//
+// ChartLabelHelper's C# "Smart" strategy (see ChartLabelHelper.cs) decides whether to
+// rotate category labels using ONLY the category COUNT (>10 -> -30°, >16 -> -60°,
+// >24 -> -75°) — it has no way to know the actual rendered pixel width, so it can't
+// tell "12 long labels that truly won't fit" from "12 three-letter month abbreviations
+// that fit horizontally with room to spare" (confirmed live: the docs' 12-category
+// "Jan"…"Dec" bar demo was rotating -30° purely from the category count, even though
+// the labels are short enough to sit flat). Pixel geometry only exists in the browser
+// at render time, so the correction belongs here, not in the C# heuristic.
+//
+// Runs AFTER resolveCssVars/applyReducedMotion but BEFORE the caller's own
+// chart.setOption(options) — it does one throwaway measurement render (so
+// grid.containLabel's reserved space and the axis' real pixel extent are genuine,
+// not guessed), measures each candidate axis' longest label against its actual
+// per-category slot width via canvas measureText, and MUTATES `options` in place so
+// the caller's subsequent real setOption() renders the corrected result. Two synchronous
+// setOption calls with no `await` between them never produce a visible in-between frame.
+//
+// Only ever SOFTENS an already-nonzero rotate (Smart's computed -30/-60/-75, or a
+// consumer's manual LabelRotate) — never touches an axis ECharts/Lumeo left
+// unrotated (LabelStrategy.Auto, or Smart/ShowAll at a category count that needs no
+// rotation), so LabelStrategy.ShowAll's "force every label, no rotation" contract and
+// LabelStrategy.Auto's native ECharts thinning are both left completely alone. When
+// rotation genuinely doesn't fit even after thinning, the originally-requested
+// rotation is kept untouched — this is a "never rotate more than asked, only ever
+// less" pass, not a full replacement of the C# heuristic.
+function autoFitCategoryAxisLabels(chart, options) {
+    if (!options || typeof options !== 'object') return;
+
+    const xCandidates = Array.isArray(options.xAxis)
+        ? options.xAxis
+            .map((axis, idx) => ({ axis, idx }))
+            .filter(({ axis }) => axis && axis.type === 'category' && Array.isArray(axis.data) && axis.data.length > 1
+                && axis.axisLabel && typeof axis.axisLabel.rotate === 'number' && axis.axisLabel.rotate !== 0)
+        : [];
+    // Y-dimension category axes (horizontal bar/area orientation) — rotating a
+    // vertical list of row labels is basically never the right call (they already
+    // read top-to-bottom, one per row; tilting them diagonally fights that instead
+    // of helping), and ChartLabelHelper applies the SAME Smart heuristic to
+    // whichever axis ends up carrying the categories, X or Y (see BarChart.razor's
+    // shared `categoryAxis` construction) — so a Horizontal chart with >10
+    // categories was inheriting an X-axis-shaped rotation on its Y axis. Cleared
+    // outright when there's comfortably more than one line of vertical room per
+    // row; no interval-thinning ladder needed here (row height, unlike a fixed
+    // chart width divided across many columns, isn't the usual crowding vector).
+    const yCandidates = Array.isArray(options.yAxis)
+        ? options.yAxis
+            .map((axis, idx) => ({ axis, idx }))
+            .filter(({ axis }) => axis && axis.type === 'category' && Array.isArray(axis.data) && axis.data.length > 1
+                && axis.axisLabel && typeof axis.axisLabel.rotate === 'number' && axis.axisLabel.rotate !== 0)
+        : [];
+
+    if (xCandidates.length === 0 && yCandidates.length === 0) return;
+
+    // Throwaway measurement render — see function comment for why this can't be
+    // estimated from options.grid alone (containLabel's reserved space depends on
+    // the CURRENT rotation, which is exactly what we're about to evaluate).
+    // Deliberately NOT lazyUpdate: that defers the coordinate-system build (the
+    // `axis` object getExtent() below reads from) to the next frame, so querying
+    // it synchronously right after setOption() would see nothing yet built
+    // (confirmed live — axisModel.axis was undefined immediately after a
+    // lazyUpdate:true setOption). A normal (synchronous) setOption is required so
+    // the measurement below reflects a REAL, already-built layout.
+    try {
+        chart.setOption(options);
+    } catch (_) {
+        return;
+    }
+
+    let model;
+    try {
+        model = chart.getModel();
+    } catch (_) {
+        return;
+    }
+    if (!model) return;
+
+    const fontFamily = (typeof document !== 'undefined' && getComputedStyle(document.body).fontFamily) || 'system-ui, sans-serif';
+    const measureCanvas = document.createElement('canvas');
+    const ctx = measureCanvas.getContext('2d');
+    const PAD = 8; // breathing room so adjacent labels don't visually kiss
+
+    for (const { axis, idx } of xCandidates) {
+        let axisModel;
+        try { axisModel = model.getComponent('xAxis', idx); } catch (_) { continue; }
+        if (!axisModel || !axisModel.axis || typeof axisModel.axis.getExtent !== 'function') continue;
+
+        const fontSize = (axis.axisLabel && axis.axisLabel.fontSize) || 12;
+        ctx.font = `${fontSize}px ${fontFamily}`;
+
+        const extent = axisModel.axis.getExtent();
+        const plotWidth = Math.abs(extent[1] - extent[0]);
+        const count = axis.data.length;
+        const slotWidth = plotWidth / count;
+        const maxLabelWidth = axis.data.reduce((max, d) => Math.max(max, ctx.measureText(String(d)).width), 0);
+
+        const fitsAt = (interval) => maxLabelWidth + PAD <= slotWidth * (interval + 1);
+
+        // Degrade WIDTH first — thin the label set — before ever tilting anything,
+        // per the design brief: rotation is the LAST resort, not the first response
+        // to density. Capped at "show every 4th" so a fit search never thins a
+        // chart down to an unreadable handful just to dodge a small tilt.
+        let bestInterval = null;
+        for (let interval = 0; interval <= 3; interval++) {
+            if (fitsAt(interval)) { bestInterval = interval; break; }
+        }
+
+        if (bestInterval !== null) {
+            axis.axisLabel = { ...axis.axisLabel, rotate: 0, interval: bestInterval };
+        }
+        // else: genuinely doesn't fit even thinned to every 4th label — leave the
+        // originally-requested rotation; it's the intended last-resort degrade,
+        // not something this pass invents from scratch.
+    }
+
+    for (const { axis, idx } of yCandidates) {
+        let axisModel;
+        try { axisModel = model.getComponent('yAxis', idx); } catch (_) { continue; }
+        if (!axisModel || !axisModel.axis || typeof axisModel.axis.getExtent !== 'function') continue;
+
+        const fontSize = (axis.axisLabel && axis.axisLabel.fontSize) || 12;
+        const extent = axisModel.axis.getExtent();
+        const plotHeight = Math.abs(extent[1] - extent[0]);
+        const rowHeight = plotHeight / axis.data.length;
+        const lineHeight = fontSize * 1.4; // ECharts' own default axisLabel line-height ratio
+
+        if (rowHeight >= lineHeight + PAD) {
+            axis.axisLabel = { ...axis.axisLabel, rotate: 0 };
+        }
+        // else: rows are genuinely too tight for one horizontal line each — keep
+        // the requested rotation (rare; a Y category axis needs a LOT of rows
+        // before this triggers).
+    }
 }
 
 export async function initChart(elementId, optionsJson, theme, echartsSource) {
@@ -356,6 +926,12 @@ export async function initChart(elementId, optionsJson, theme, echartsSource) {
 
     // Resolve CSS var() references in options since ECharts renders on Canvas
     resolveCssVars(options);
+    // Hard override: reduced motion wins even over a consumer's own
+    // AnimationDuration/AnimationEasing parameter — see applyReducedMotion.
+    applyReducedMotion(options, prefersReducedMotion());
+    // Pixel-aware category-label rotation correction — see function comment.
+    // Mutates `options` in place; the setOption below renders the corrected result.
+    autoFitCategoryAxisLabels(chart, options);
 
     try {
         chart.setOption(options);
@@ -369,6 +945,12 @@ export async function initChart(elementId, optionsJson, theme, echartsSource) {
     }
 
     charts.set(elementId, chart);
+    // Remember the PRISTINE (pre-resolveCssVars) option JSON and the theme name
+    // this instance was created with — refreshAllCharts needs both to actually
+    // re-resolve colours against the NEW live CSS variables. See the comment on
+    // refreshAllCharts for why `chart.getOption()` cannot be used for this.
+    chart._lumeoRawJson = optionsJson;
+    chart._lumeoTheme = effectiveTheme;
 
     // Auto-resize on container resize
     const observer = new ResizeObserver(() => {
@@ -383,6 +965,8 @@ export function updateChart(elementId, optionsJson, notMerge, replaceMergeJson) 
     if (!chart) return;
     const options = JSON.parse(optionsJson);
     resolveCssVars(options);
+    applyReducedMotion(options, prefersReducedMotion());
+    autoFitCategoryAxisLabels(chart, options);
     const opts = { notMerge: notMerge || false };
     if (replaceMergeJson) {
         try {
@@ -393,6 +977,10 @@ export function updateChart(elementId, optionsJson, notMerge, replaceMergeJson) 
         } catch { /* ignore bad input */ }
     }
     chart.setOption(options, opts);
+    // Chart.razor always ships the FULL merged option here (never a partial
+    // patch — see GetEffectiveJson/GetOptionsJson), so this stays the accurate
+    // "pristine" snapshot for the next refreshAllCharts, same as initChart.
+    chart._lumeoRawJson = optionsJson;
 }
 
 export function resizeChart(elementId) {
@@ -418,14 +1006,45 @@ export function resetLumeoTheme() {
     lumeoThemeRegistered = false;
 }
 
-// Re-register theme and refresh all charts (call when theme changes)
+// Re-register theme and refresh all charts (call when theme changes).
+//
+// IMPORTANT: this must NOT rebuild `opts` from `chart.getOption()`. ECharts'
+// getOption() always returns the fully MERGED/RESOLVED option — every themed
+// default (axisLabel.color, tooltip.backgroundColor, legend.textStyle.color,
+// the series `color` palette, ...) comes back baked in as concrete hex values,
+// indistinguishable from something the consumer set explicitly. Re-feeding
+// that into a freshly re-themed instance means the new theme's colours are
+// immediately shadowed by the OLD theme's already-resolved ones — the exact
+// "ECharts reads colours once at render time" trap the whole charts-design
+// pass exists to fix. A theme/dark-mode switch would silently no-op on any
+// already-rendered chart (confirmed via a live browser check: series colour
+// stayed pinned to the light-mode hex after toggling dark + firing
+// lumeo:theme-changed, even though --color-chart-1 itself had already updated).
+//
+// The fix: replay the PRISTINE option JSON each chart was last given (stashed
+// on the instance by initChart/updateChart as `_lumeoRawJson`, BEFORE
+// resolveCssVars ever touched it) through a fresh resolveCssVars pass against
+// the NOW-current CSS variables, into a newly re-themed instance. Anything the
+// chart doesn't set explicitly (which is most theming — most wrappers never
+// set `Color`) falls through to the theme's fresh values, same as first
+// render. Falls back to getOption() only for a chart that somehow has no
+// stashed raw JSON (defensive — should not happen via the normal Chart.razor
+// path).
 export function refreshAllCharts() {
     lumeoThemeRegistered = false;
     registerLumeoTheme();
     for (const [id, chart] of charts) {
         const el = document.getElementById(id);
         if (!el) continue;
-        const opts = chart.getOption();
+        let opts;
+        if (chart._lumeoRawJson) {
+            opts = JSON.parse(chart._lumeoRawJson);
+            resolveCssVars(opts);
+            applyReducedMotion(opts, prefersReducedMotion());
+        } else {
+            opts = chart.getOption();
+        }
+        const themeName = chart._lumeoTheme || 'lumeo';
         // Tear down the old ResizeObserver before disposing the chart. The
         // initChart path stores it on chart._lumeoObserver; without this
         // disconnect it kept observing the (still-mounted) element and
@@ -436,8 +1055,11 @@ export function refreshAllCharts() {
         const savedEvents = chart._lumeoEvents || [];
         const savedTooltip = chart._lumeoTooltip || null;
         chart.dispose();
-        const newChart = window.echarts.init(el, 'lumeo', { renderer: 'canvas' });
+        const newChart = window.echarts.init(el, themeName, { renderer: 'canvas' });
+        autoFitCategoryAxisLabels(newChart, opts);
         newChart.setOption(opts);
+        newChart._lumeoRawJson = chart._lumeoRawJson;
+        newChart._lumeoTheme = themeName;
         // Re-attach the tooltip slot first (it calls setOption), then the event
         // handlers. Disposing the old chart dropped every chart.on(...) binding
         // and the custom tooltip.formatter, so OnClick/OnDataZoom/OnBrushSelected
@@ -696,3 +1318,10 @@ export async function registerMap(mapName, geoJson) {
     const json = typeof geoJson === 'string' ? JSON.parse(geoJson) : geoJson;
     window.echarts.registerMap(mapName, json);
 }
+
+// Test-only seam (mirrors scheduler.js's `__testing` export). None of these
+// functions touch `document`/`window.echarts`, so they can be exercised with a
+// plain Node test asserting real computed values — see
+// tests/js/echarts-interop-theme.test.mjs. Not part of the public interop
+// surface; Blazor's JS interop only ever calls the named exports above.
+export const __testing = { buildLumeoTheme, prefersReducedMotion, applyReducedMotion, hexToRgb, withAlpha, lighten };
