@@ -290,6 +290,61 @@ public class GanttV3StylingHooksTests : IAsyncLifetime
         Assert.Equal("2026-01-04", options["nowDate"]);
     }
 
+    // ── data-selected is leaf-only (Codex review of this PR, P2) ─────────────
+
+    [Fact]
+    public void Data_Selected_Is_Not_Applied_To_A_Hierarchy_Parent_Bar()
+    {
+        // A selected leaf can BECOME a parent on a later task update, and task
+        // replacement does not normalize SelectedIds — so the stale id survives.
+        // The tree derives a parent's checkbox purely from its descendant
+        // leaves and can legitimately show it unchecked, so a plain membership
+        // test made data-selected contradict the checkbox on the same row.
+        var tasks = new List<L.GanttTask>
+        {
+            new("p1", "Epic", D(2026, 1, 2), D(2026, 1, 10)),
+            new("c1", "Child", D(2026, 1, 3), D(2026, 1, 5)) { ParentId = "p1" },
+        };
+        var cut = _ctx.Render<L.GanttTimeline>(p => p
+            .Add(c => c.Tasks, tasks)
+            .Add(c => c.RangeStart, D(2026, 1, 1))
+            .Add(c => c.RangeEnd, D(2026, 1, 31))
+            .Add(c => c.SelectedIds, new HashSet<string> { "p1", "c1" }));
+
+        // Predicted-wrong value before the fix: "" on the parent too.
+        Assert.Null(cut.Find("[data-task-id='p1']").GetAttribute("data-selected"));
+        Assert.Equal("", cut.Find("[data-task-id='c1']").GetAttribute("data-selected"));
+    }
+
+    [Fact]
+    public void The_Leaf_Only_Gate_Does_Not_Depend_On_ShowSummaryBars()
+    {
+        // Trap this nearly fell into: `row.Rollup` looks like a ready-made
+        // "is this a parent" test, but Rollups is EMPTY whenever
+        // ShowSummaryBars is off — keying the hook off it would have made
+        // data-selected flip with an unrelated display toggle. Asserted for
+        // BOTH values of that toggle.
+        var tasks = new List<L.GanttTask>
+        {
+            new("p1", "Epic", D(2026, 1, 2), D(2026, 1, 10)),
+            new("c1", "Child", D(2026, 1, 3), D(2026, 1, 5)) { ParentId = "p1" },
+        };
+
+        foreach (var showSummaryBars in new[] { false, true })
+        {
+            using var ctx = new BunitContext();
+            ctx.AddLumeoServices();
+            var cut = ctx.Render<L.GanttTimeline>(p => p
+                .Add(c => c.Tasks, tasks)
+                .Add(c => c.RangeStart, D(2026, 1, 1))
+                .Add(c => c.RangeEnd, D(2026, 1, 31))
+                .Add(c => c.ShowSummaryBars, showSummaryBars)
+                .Add(c => c.SelectedIds, new HashSet<string> { "p1" }));
+
+            Assert.Null(cut.Find("[data-task-id='p1']").GetAttribute("data-selected"));
+        }
+    }
+
     // ── data-past boundary (Codex review of this PR, P2) ──────────────────────
     // The original implementation compared the RAW Task.End, which disagreed
     // with the bar the user is looking at: GanttScale.BarGeometry treats End as
