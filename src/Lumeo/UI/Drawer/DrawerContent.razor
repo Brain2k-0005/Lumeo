@@ -133,6 +133,23 @@ else if (Context.IsOpen || _exiting)
     /// <summary>Two-way callback for <see cref="ActiveSnapPoint"/>, fired as the user drags between snaps or the panel settles.</summary>
     [Parameter] public EventCallback<int> ActiveSnapPointChanged { get; set; }
 
+    /// <summary>
+    /// Panel width (Left/Right sides) or height (Top/Bottom sides). Default
+    /// <see cref="DrawerSize.Default"/> keeps the original <c>max-w-sm</c> /
+    /// <c>max-h-[96vh]</c> caps unchanged. Family completion of the same lever
+    /// <see cref="SheetContent.Size"/> already gives <c>Sheet</c> — Drawer is Sheet's
+    /// structural twin for the bottom-sheet / edge-panel shape, so it gets its own
+    /// mirrored <c>DrawerSize</c> enum rather than the unified <see cref="Lumeo.Size"/>
+    /// scale: <see cref="DrawerSize.Full"/> is a layout intent (the mobile-fullscreen
+    /// bottom-sheet pattern on Top/Bottom), not a point on a scale — the same documented
+    /// reason <c>DialogSize</c>/<c>SheetSize</c> stay outside <see cref="Lumeo.Size"/>.
+    /// On Left/Right, <see cref="DrawerSize.Full"/> only lifts the width cap — the panel's
+    /// own <c>w-3/4</c> base stays unaffected, mirroring <c>SheetContent.SheetSize.Full</c>'s
+    /// own Left/Right precedent (documented there as NOT reaching full width, unlike
+    /// Top/Bottom).
+    /// </summary>
+    [Parameter] public DrawerSize Size { get; set; } = DrawerSize.Default;
+
     /// <summary>Additional CSS classes merged onto the panel element.</summary>
     [Parameter] public string? Class { get; set; }
     /// <summary>When <c>true</c> (the default), closing keeps the panel mounted for
@@ -312,13 +329,57 @@ else if (Context.IsOpen || _exiting)
     private string? _registeredDirection;
     private double[]? _registeredSnapPoints;
 
+    // Left/Right: width cap only (the w-3/4 base stays fixed regardless of Size — see the
+    // Size parameter doc, mirrors SheetContent.SizeClass's own Left/Right precedent).
+    // Top/Bottom: height cap. DrawerSize.Default keeps the pre-existing literal
+    // "max-h-[96vh]" so a consumer who sets nothing gets byte-identical output. Full on
+    // Top/Bottom hands over to "inset-y-0 h-full max-h-full"
+    // (mirrors SheetContent.SheetSize.Full's own Top/Bottom branch) — MarginClass below
+    // drops the mt-24 "peek" offset for that one case so the panel actually reaches both
+    // viewport edges instead of the offset fighting the height override.
+    private string SizeClass => Side is Lumeo.Side.Left or Lumeo.Side.Right
+        ? Size switch
+        {
+            DrawerSize.Sm => "max-w-xs",
+            DrawerSize.Lg => "max-w-lg",
+            DrawerSize.Xl => "max-w-xl",
+            DrawerSize.Full => "max-w-full",
+            _ => "max-w-sm"
+        }
+        // DrawerSize.Default's own max-h-[96vh] is already a generous near-fullscreen cap
+        // (the historical Drawer default, unchanged) — there is no already-shipped
+        // arbitrary-vh utility between 96vh and 100vh to slot Lg/Xl into without adding a
+        // NEW Tailwind utility (which would need both bundles rebuilt — see the repo's own
+        // "new utility class in the DOM with no rule behind it" warning). max-h-screen /
+        // max-h-full are both already in the shipped bundle (Drawer's own Left/Right arm
+        // uses max-h-screen already) and read as "taller than the 96vh default, functionally
+        // uncapped" — Lg/Xl/Full then differ by whether mt-24's peek offset still applies
+        // (Lg/Xl keep it; only Full drops it via MarginClass, so Full is the one size that
+        // actually reaches both viewport edges).
+        : Size switch
+        {
+            DrawerSize.Sm => "max-h-[40vh]",
+            DrawerSize.Lg => "max-h-screen",
+            DrawerSize.Xl => "max-h-full",
+            DrawerSize.Full => "inset-y-0 h-full max-h-full",
+            _ => "max-h-[96vh]"
+        };
+
+    // The permanent mt-24 top offset (the "peek" gap that lets the backdrop show above a
+    // Bottom drawer / below a Top drawer) fights a true Top/Bottom Full takeover, so it's
+    // the one case that drops it. Every other Side/Size combination keeps mt-24 exactly as
+    // before — including Left/Right at any Size, where mt-24 is unrelated to width.
+    private string? MarginClass => (Side is Lumeo.Side.Top or Lumeo.Side.Bottom) && Size == DrawerSize.Full
+        ? null
+        : "mt-24";
+
     private string PositionClasses => Side switch
     {
-        Lumeo.Side.Top => "inset-x-0 top-0 rounded-b-[10px] max-h-[96vh]",
-        Lumeo.Side.Right => "inset-y-0 end-0 w-3/4 max-w-sm rounded-s-[10px] h-full max-h-screen",
-        Lumeo.Side.Bottom => "inset-x-0 bottom-0 rounded-t-[10px] max-h-[96vh]",
-        Lumeo.Side.Left => "inset-y-0 start-0 w-3/4 max-w-sm rounded-e-[10px] h-full max-h-screen",
-        _ => "inset-x-0 bottom-0 rounded-t-[10px] max-h-[96vh]"
+        Lumeo.Side.Top => $"inset-x-0 top-0 rounded-b-[10px] {SizeClass}",
+        Lumeo.Side.Right => $"inset-y-0 end-0 w-3/4 {SizeClass} rounded-s-[10px] h-full max-h-screen",
+        Lumeo.Side.Bottom => $"inset-x-0 bottom-0 rounded-t-[10px] {SizeClass}",
+        Lumeo.Side.Left => $"inset-y-0 start-0 w-3/4 {SizeClass} rounded-e-[10px] h-full max-h-screen",
+        _ => $"inset-x-0 bottom-0 rounded-t-[10px] {SizeClass}"
     };
 
     // Snap mode: the JS gesture owns the transform (slide-in + resting offset),
@@ -422,7 +483,7 @@ else if (Context.IsOpen || _exiting)
     // the cost of the consumer's own content needing to fit the height cap,
     // or scroll itself, since the panel no longer will.
     private string CssClass =>
-        Cx.Merge("fixed mt-24 flex h-auto flex-col p-1.5 bg-background shadow-lg",
+        Cx.Merge("fixed", MarginClass, "flex h-auto flex-col p-1.5 bg-background shadow-lg",
             ScrollableBody ? "overflow-y-auto" : "overflow-visible",
             PositionClasses, AnimationClass, PointerClass, Class);
 
@@ -809,4 +870,9 @@ else if (Context.IsOpen || _exiting)
     }
 
     public enum DrawerAnimation { Slide, Fade, None }
+
+    /// <summary>Drawer sizes. Mirrors <see cref="SheetContent.SheetSize"/>'s shape — <c>Full</c>
+    /// is layout-intent (entire viewport on Top/Bottom), not a scale value, so this enum is
+    /// intentionally NOT replaced by <see cref="Lumeo.Size"/>.</summary>
+    public enum DrawerSize { Sm, Default, Lg, Xl, Full }
 }
