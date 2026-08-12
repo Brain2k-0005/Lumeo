@@ -17,8 +17,8 @@
        node before the text lands, so a region created at announce time is
        frequently missed. Same sr-only/polite/atomic shape Carousel.razor
        already uses. *@
-    <span @key="_announcementEpoch" class="sr-only" aria-live="polite" aria-atomic="true"
-          data-testid="scheduler-live-region" data-announce-epoch="@_announcementEpoch">@_announcement</span>
+    <span class="sr-only" aria-live="polite" aria-atomic="true"
+          data-testid="scheduler-live-region" data-announce-epoch="@_announcementEpoch">@AnnouncementText</span>
     <div class="@GridColsClass border-b border-border/60 bg-card">
         @if (ShowWeekNumbers)
         {
@@ -673,12 +673,18 @@
         {
             var ctx = new SchedulerScheduleDropContext(newStart, newEnd, SchedulerEventUpdateSource.Move);
             var result = CanDrop(ev, ctx);
-            // NOTE: no announce here. gantt-style commit-time re-validation
-            // still runs (a CanDrop that changed since the last poll), but the
-            // ORDINARY rejection never reaches this method at all — the JS
-            // awaits ValidateDrop and returns before calling CommitDrag. See
-            // NotifyDropRejected, which the JS calls on that path instead.
-            if (!result.Accepted) return;
+            // The ORDINARY rejection never reaches this method — the JS awaits
+            // ValidateDrop and returns before calling CommitDrag (see
+            // NotifyDropRejected). What DOES reach it is the staleness case this
+            // second check exists for: CanDrop said yes during the drag and says
+            // no now. JS has already passed its own rejection branch, so this is
+            // the only place that outcome can be announced (Codex review of this
+            // PR, P2) — without it the drop silently does nothing.
+            if (!result.Accepted)
+            {
+                Announce(L["Scheduler.Announce.MoveRejected", ev.Title]);
+                return;
+            }
             if (result.Adjustment is { } adjustment)
             {
                 newStart = adjustment.Start ?? newStart;
@@ -726,22 +732,31 @@
     private int _announcementEpoch;
 
     /// <summary>
-    /// Publishes <paramref name="message"/> to this view's polite live region.
+    /// The live region's rendered text. A zero-width space is appended on every
+    /// other announcement so that repeating an identical message still changes
+    /// the text node.
     /// <para>
-    /// Re-announcing the SAME text is the common case here — refusing the same
-    /// event twice produces an identical string — and assigning an identical
-    /// value mutates no text node, so observers have nothing to report (Codex
-    /// review of this PR, P2). The region is cleared first and republished on
-    /// the next render, which is a real removal followed by a real insertion.
+    /// Two earlier attempts at this were both wrong, and the second was worse
+    /// than the first. Clearing and re-setting inside one method does nothing —
+    /// Blazor coalesces the two renders. Keying the element on an epoch does
+    /// mutate the DOM, but by REMOVING the observed region and inserting a new,
+    /// already-populated one; screen readers that only announce changes inside
+    /// an already-observed live region can then miss every announcement (Codex
+    /// review of this PR, P2). The node must stay mounted, so only its text
+    /// changes — and U+200B is inaudible.
     /// </para>
     /// </summary>
+    private string? AnnouncementText =>
+        _announcement is null ? null : _announcementEpoch % 2 == 0 ? _announcement : _announcement + ZeroWidthSpace;
+
+    /// <summary>
+    /// U+200B. Named rather than written literally: an invisible character in
+    /// source is unreadable and easy to delete by accident.
+    /// </summary>
+    private const string ZeroWidthSpace = "​";
+
     private void Announce(string message)
     {
-        // The epoch drives @key on the region element. Two StateHasChanged calls
-        // in one synchronous method would NOT work — Blazor coalesces them into
-        // a single render, so clearing and re-setting the text nets out to the
-        // same string and no mutation. A changed @key makes Blazor remove and
-        // re-add the element, which assistive tech observes as new content.
         _announcementEpoch++;
         _announcement = message;
         StateHasChanged();

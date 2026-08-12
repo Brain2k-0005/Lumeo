@@ -14,8 +14,8 @@
 <div class="@($"flex flex-col rounded-md border border-border/60 overflow-hidden {Class}".Trim())" @attributes="AdditionalAttributes">
     @* See SchedulerMonthView's own live-region remarks — rendered empty at
        mount so assistive tech is already observing the node. *@
-    <span @key="_announcementEpoch" class="sr-only" aria-live="polite" aria-atomic="true"
-          data-testid="scheduler-live-region" data-announce-epoch="@_announcementEpoch">@_announcement</span>
+    <span class="sr-only" aria-live="polite" aria-atomic="true"
+          data-testid="scheduler-live-region" data-announce-epoch="@_announcementEpoch">@AnnouncementText</span>
     @if (_allDayInstances.Any())
     {
         <div class="flex border-b border-border/60">
@@ -645,10 +645,16 @@
         {
             var ctx = new SchedulerScheduleDropContext(finalStart, finalEnd, source);
             var result = CanDrop(src, ctx);
-            // No announce here — see NotifyDropRejected. The ordinary rejection
-            // never reaches this method: the JS awaits ValidateDrop and returns
-            // before calling CommitDrag.
-            if (!result.Accepted) return;
+            // See SchedulerMonthView's twin: the ordinary rejection is handled
+            // in NotifyDropRejected, but the commit-time staleness rejection
+            // lands HERE and would otherwise be silent. `source` already carries
+            // the gesture kind, so a refused resize keeps its own wording.
+            if (!result.Accepted)
+            {
+                var stale = source is SchedulerEventUpdateSource.ResizeStart or SchedulerEventUpdateSource.ResizeEnd;
+                Announce(L[stale ? "Scheduler.Announce.ResizeRejected" : "Scheduler.Announce.MoveRejected", src.Title]);
+                return;
+            }
             if (result.Adjustment is { } adjustment)
             {
                 finalStart = adjustment.Start ?? finalStart;
@@ -692,10 +698,22 @@
     private string? _announcement;
     private int _announcementEpoch;
 
+    /// <summary>
+    /// See <see cref="SchedulerMonthView"/>'s twin: the region element stays
+    /// MOUNTED and only its text changes, with a zero-width space alternating so
+    /// a repeated identical message is still a text mutation.
+    /// </summary>
+    private string? AnnouncementText =>
+        _announcement is null ? null : _announcementEpoch % 2 == 0 ? _announcement : _announcement + ZeroWidthSpace;
+
+    /// <summary>
+    /// U+200B. Named rather than written literally: an invisible character in
+    /// source is unreadable and easy to delete by accident.
+    /// </summary>
+    private const string ZeroWidthSpace = "​";
+
     private void Announce(string message)
     {
-        // See SchedulerMonthView.Announce — the epoch drives @key so a repeated
-        // identical message still mutates the DOM.
         _announcementEpoch++;
         _announcement = message;
         StateHasChanged();

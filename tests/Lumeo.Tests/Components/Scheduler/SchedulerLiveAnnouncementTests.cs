@@ -102,22 +102,34 @@ public class SchedulerLiveAnnouncementTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task Repeating_The_Same_Outcome_Still_Mutates_The_Live_Region()
+    public async Task Repeating_The_Same_Outcome_Mutates_The_Text_Without_Replacing_The_Region()
     {
-        // Assigning the identical string mutates no text node, so observers
-        // have nothing to announce (Codex review of this PR, P2). The region is
-        // @key'd on an epoch, so a repeat replaces the element.
+        // Two earlier attempts were wrong here. Clearing and re-setting inside
+        // one method does nothing (Blazor coalesces the renders). Keying the
+        // element on an epoch does mutate the DOM, but by REPLACING the observed
+        // node — and screen readers that only announce changes inside an
+        // already-observed region can then miss everything (Codex review of this
+        // PR, P2). So: same node, changed text.
         var cut = _ctx.Render<L.SchedulerMonthView>(p => p
             .Add(c => c.AnchorDate, new DateTime(2026, 3, 15))
             .Add(c => c.Events, new[] { Standup }));
 
         await cut.InvokeAsync(() => cut.Instance.NotifyDropRejected("e1"));
-        var first = cut.Find("[data-testid='scheduler-live-region']").GetAttribute("data-announce-epoch");
+        var first = cut.Find("[data-testid='scheduler-live-region']").TextContent;
 
         await cut.InvokeAsync(() => cut.Instance.NotifyDropRejected("e1"));
-        var second = cut.Find("[data-testid='scheduler-live-region']").GetAttribute("data-announce-epoch");
+        var second = cut.Find("[data-testid='scheduler-live-region']").TextContent;
 
+        // The text really changed...
         Assert.NotEqual(first, second);
+        // ...and only by an inaudible zero-width space, so it still reads the same.
+        Assert.Equal(first.TrimEnd('​'), second.TrimEnd('​'));
+        // Node identity is deliberately NOT asserted here: bUnit hands back a
+        // fresh wrapper per Find, so Assert.Same compares wrappers rather than
+        // DOM nodes and would fail even when the element never moved. The
+        // "keep the node mounted" half of this fix is enforced by the markup
+        // carrying no @key, not by something this test can observe.
+        Assert.Single(cut.FindAll("[data-testid='scheduler-live-region']"));
     }
 
     [Fact]
