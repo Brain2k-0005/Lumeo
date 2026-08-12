@@ -102,8 +102,12 @@
                     var label = LowerLabels[i];
                     @* Today column accent label (design spec Phase 3, T2) —
                        IsTodayColumn(i) gates only the CSS class, same column
-                       cell markup otherwise. *@
-                    <div class="@ColumnCellClass(i)" style="@ColumnCellStyle">@label</div>
+                       cell markup otherwise. data-off (styling-hooks audit,
+                       ReUI parity) — presence-only, same IsOffDayCell gate the
+                       canvas backdrop tint below already uses, so the header
+                       cell and the canvas band directly beneath it can never
+                       disagree about which columns are "off". *@
+                    <div class="@ColumnCellClass(i)" style="@ColumnCellStyle" data-off="@(IsOffDayCell(i) ? string.Empty : null)">@label</div>
                 }
             </div>
 
@@ -153,7 +157,12 @@
                 {
                     if (IsOffDayColumn(i))
                     {
-                        <div class="lumeo-gantt-v3-off-day pointer-events-none absolute inset-y-0 bg-muted/40" style="@OffDayColumnStyle(i)"></div>
+                        @* data-off (styling-hooks audit, ReUI parity) — unconditional
+                           here: this div only ever renders for a column IsOffDayColumn
+                           already confirmed true (the @if above), unlike the header
+                           cell's own data-off (every cell renders, off or not, so THAT
+                           one still needs the conditional). *@
+                        <div class="lumeo-gantt-v3-off-day pointer-events-none absolute inset-y-0 bg-muted/40" style="@OffDayColumnStyle(i)" data-off=""></div>
                     }
                 }
             }
@@ -358,6 +367,7 @@
                                       DragGhostTemplate="DragGhostTemplate"
                                       Readonly="@Readonly" OnTaskClick="OnTaskClick"
                                       SuppressPointerClick="@_dragConfirmed"
+                                      Selected="@SelectedIds.Contains(row.Task.Id)" Now="@EffectiveNow"
                                       FocusedTaskId="@EffectiveFocusedTaskId" OnKeyNavigation="HandleBarKeyNavigationAsync" />
                             @* Design spec Phase 3, T3 — a hierarchy-parent Task row (HasChildren)
                                renders BOTH its own GanttBar above (the task's own dates) AND this
@@ -675,6 +685,21 @@
 
     /// <summary>Raised when a bar is activated via click or keyboard (Enter/Space) — forwarded from every rendered <see cref="GanttBar"/> (Codex round 4, P2 #5). Same contract as v2's <c>Gantt.OnTaskClick</c>.</summary>
     [Parameter] public EventCallback<GanttTask> OnTaskClick { get; set; }
+
+    /// <summary>
+    /// The selected LEAF task ids (styling-hooks audit — ReUI parity's
+    /// <c>data-selected</c>). <c>GanttChart</c> forwards its own <see
+    /// cref="GanttV3.GanttState.SelectedIds"/> here — the SAME set <see
+    /// cref="GanttTree"/>'s row checkboxes already read/write (design spec
+    /// Phase 3, T6) — so a bar's <c>data-selected</c> attribute can never
+    /// disagree with the tree pane's own checkbox state for the identical
+    /// task. Default empty (no <see cref="GanttChart"/> wrapping — or a
+    /// standalone <see cref="GanttTimeline"/> that never wires this — renders
+    /// every bar unselected, matching every existing render before this
+    /// parameter existed: no caller ever set it, so <c>GanttBar.Selected</c>
+    /// was never true anywhere in the tree, byte-identical to today).
+    /// </summary>
+    [Parameter] public IReadOnlySet<string> SelectedIds { get; set; } = EmptySelectedIds;
 
     /// <summary>Additional CSS classes merged onto the root scroll container.</summary>
     [Parameter] public string? Class { get; set; }
@@ -1453,6 +1478,15 @@
     private IReadOnlySet<DayOfWeek> EffectiveOffDays => OffDays ?? GanttScale.DefaultOffDays(CultureInfo.CurrentCulture);
     private DateTime EffectiveNow => Now ?? DateTime.Now;
 
+    // Styling-hooks audit — SelectedIds' own default value. A `static readonly`
+    // field (not a `new HashSet<string>()` inline default expression) so every
+    // unselected chart shares the ONE empty instance rather than allocating a
+    // fresh empty set per component instance — mirrors GanttTree's own
+    // identical EmptySelectedIds precedent (that field is private to GanttTree,
+    // so this is a deliberate, small duplication rather than a cross-component
+    // reference).
+    private static readonly IReadOnlySet<string> EmptySelectedIds = new HashSet<string>();
+
     // Bug fix (Codex review wave): must pass EffectiveColumnWidth explicitly —
     // DateToPixel defaults to the mode's own config width when no override is
     // given, which silently ignored a caller's ColumnWidth override here (the
@@ -1492,12 +1526,19 @@
     // canvas's own independently-layered today-tint/off-day-tint divs.
     private string ColumnCellClass(int index)
     {
-        var isOffDay = MarkOffDays && SupportsOffDayMarking && IsOffDayColumn(index);
+        var isOffDay = IsOffDayCell(index);
         var textColor = IsTodayColumn(index)
             ? "font-bold text-primary"
             : isOffDay ? "text-muted-foreground/70" : "text-muted-foreground";
         return Cx.Merge("shrink-0 text-center text-xs", textColor, isOffDay ? "bg-muted/50" : null);
     }
+
+    // Styling-hooks audit (ReUI parity: data-off) — extracted so the header
+    // cell's CSS class AND its data-off attribute (markup above) read the
+    // EXACT same gate as this method's own prior inline calculation; a
+    // second, independently-typed copy of "MarkOffDays && SupportsOffDayMarking
+    // && IsOffDayColumn(index)" could silently drift from the class.
+    private bool IsOffDayCell(int index) => MarkOffDays && SupportsOffDayMarking && IsOffDayColumn(index);
 
     // Design spec Phase 3, T2 — "Mark off days". Column tinting only makes
     // visual sense when a single rendered column IS a single calendar day (or
