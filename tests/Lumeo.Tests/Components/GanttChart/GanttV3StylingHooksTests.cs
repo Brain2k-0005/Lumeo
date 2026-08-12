@@ -371,6 +371,41 @@ public class GanttV3StylingHooksTests : IAsyncLifetime
         }
     }
 
+    [Fact]
+    public void A_Standalone_Timeline_Asks_For_The_Browser_Clock_At_Most_Once_Even_When_Interop_Yields_Nothing()
+    {
+        // Regression (CI, caught on this PR): the resolve was guarded on
+        // "_selfResolvedNow is not null", which only trips on SUCCESS. When the
+        // interop legitimately yields nothing — prerendering, a torn-down
+        // circuit, a custom service whose default no-op returns null — the field
+        // stayed null and the call repeated on EVERY render, an unbounded
+        // per-render round trip whose awaits dispatched further render and
+        // registration cycles. Predicted-wrong value before the fix: a count
+        // that keeps climbing with the render count.
+        var interop = new TrackingInteropService { GanttV3LocalDateTimeToReturn = null };
+        using var ctx = new BunitContext();
+        ctx.AddLumeoServices();
+        ctx.Services.AddSingleton<Lumeo.Services.IComponentInteropService>(interop);
+
+        var tasks = new List<L.GanttTask> { new("t1", "Design", D(2026, 1, 2), D(2026, 1, 6)) };
+        var cut = ctx.Render<L.GanttTimeline>(p => p
+            .Add(c => c.Tasks, tasks)
+            .Add(c => c.ViewMode, L.GanttViewMode.Day)
+            .Add(c => c.RangeStart, D(2026, 1, 1))
+            .Add(c => c.RangeEnd, D(2026, 1, 31)));
+
+        for (var i = 0; i < 5; i++)
+        {
+            cut.Render(p => p
+                .Add(c => c.Tasks, tasks)
+                .Add(c => c.ViewMode, L.GanttViewMode.Day)
+                .Add(c => c.RangeStart, D(2026, 1, 1))
+                .Add(c => c.RangeEnd, D(2026, 1, 31)));
+        }
+
+        Assert.Equal(1, interop.GanttV3GetLocalDateTimeCallCount);
+    }
+
     // ── data-past boundary (Codex review of this PR, P2) ──────────────────────
     // The original implementation compared the RAW Task.End, which disagreed
     // with the bar the user is looking at: GanttScale.BarGeometry treats End as

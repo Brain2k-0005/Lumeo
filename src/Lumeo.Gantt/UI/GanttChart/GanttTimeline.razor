@@ -1507,7 +1507,26 @@
     /// </summary>
     private async Task ResolveOwnBrowserNowAsync()
     {
-        if (Now is not null || _selfResolvedNow is not null) return;
+        // Bug fix (CI, caught on this PR): the guard used to be
+        // "_selfResolvedNow is not null", which only trips on a SUCCESSFUL
+        // resolve. Whenever the interop legitimately yields nothing —
+        // prerendering, a torn-down circuit, a custom IComponentInteropService
+        // whose default no-op returns null — the field stayed null, so this ran
+        // again on EVERY subsequent render: an unbounded per-render interop
+        // call whose awaits kept dispatching further render/registration
+        // cycles. It surfaced as an extra prevent-default registration in
+        // GanttV3KeyboardNavigationTests, which passed locally and failed in
+        // CI — a timing-dependent symptom of an unconditional call, not a
+        // flaky test.
+        //
+        // Tracking the ATTEMPT rather than the outcome is what bounds it, and
+        // the flag is claimed BEFORE the await, not after: on a Server circuit
+        // a second render dispatches while the first is still awaiting interop,
+        // reads a flag set only afterwards, and proceeds too (the guard-before-
+        // await rule this component has been bitten by twice already).
+        if (Now is not null || _browserNowResolveAttempted) return;
+        _browserNowResolveAttempted = true;
+
         string? iso;
         try
         {
@@ -1522,6 +1541,8 @@
         _selfResolvedNow = browserNow;
         StateHasChanged();
     }
+
+    private bool _browserNowResolveAttempted;
 
     // Styling-hooks audit — SelectedIds' own default value. A `static readonly`
     // field (not a `new HashSet<string>()` inline default expression) so every
