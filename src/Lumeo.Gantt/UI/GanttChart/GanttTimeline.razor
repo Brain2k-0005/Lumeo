@@ -137,7 +137,7 @@
        this subtree entirely now), so GridLinesContainerStyle/TodayLineStyle/
        CanvasHeight and GanttArrowRouting's SourceEdge/TargetEdge all dropped
        their previous "+GanttScale.HeaderHeight" terms accordingly. *@
-    <div class="@CanvasScrollClass" @ref="_scrollHostRef">
+    <div class="@CanvasScrollClass" @ref="_scrollHostRef" data-gantt-v3-drag-origin="@_lastConfirmedDragOriginIso">
         <div class="relative" style="@CanvasStyle">
             @* Off-day column tint (design spec Phase 3, T2 — "Mark off days").
                Rendered BEHIND the grid lines/bars (background fill, painted
@@ -1205,6 +1205,26 @@
     // actually RETURNED without throwing.
     private bool _dragConfirmed;
 
+    // E2E deflake (GanttDragParityTests.Drag_create_after_panning_computes_dates_from_the_new_origin,
+    // investigated alongside #390): a pan (RangeStart/Origin change) re-renders,
+    // and SyncDragRegistrationAsync detects the resulting GanttInteropOptions
+    // change on its NEXT call and re-pushes originIso to gantt-v3.js's
+    // dragRegistrations map — but that re-push is its own genuine interop
+    // round-trip, with no PRIOR DOM-observable "done" signal for a test to
+    // wait on (unlike data-gantt-v3-initial-scroll for the initial centering
+    // scroll). The E2E spec used to paper over this with a blind
+    // Page.WaitForTimeoutAsync(500) — insufficient under load, per its own
+    // "flagged... as a candidate for a proper DOM-observable signal" remark.
+    // Recorded here, in ISO date form, ONLY once GanttV3RegisterDragAsync's
+    // own await has actually RETURNED (i.e. gantt-v3.js's dragRegistrations
+    // entry is confirmed updated — registerDrag mutates `options` in place
+    // synchronously within that same call, so a resolved await is definitive
+    // proof, not a guess) — see SyncDragRegistrationAsync's own remarks for
+    // exactly where. Rendered as data-gantt-v3-drag-origin on _scrollHostRef's
+    // own root div so a test can wait for it to reflect the NEW origin
+    // instead of sleeping a fixed, load-sensitive duration.
+    private string? _lastConfirmedDragOriginIso;
+
     // Design spec Phase 3, T8 — bar context-menu bookkeeping (see
     // SyncBarContextMenuRegistrationAsync/NotifyBarContextMenu). Deliberately
     // its OWN registration flag, not folded into _dragRegistered — this
@@ -1851,6 +1871,52 @@
     {
         if (firstRender)
         {
+            // Bug fix (#390 — mount-time scroll race): claim the initial
+            // "scroll to today owed" intent RIGHT HERE, before this block's
+            // own first await, not after ScrollToCenterAsync resolves further
+            // down (where it used to be claimed). GanttChart's own
+            // OnAfterRenderAsync calls StateHasChanged BEFORE its own
+            // RefreshBrowserTodayAsync/RefreshBrowserNowAsync awaits (see its
+            // own remarks) — that can dispatch a SECOND GanttTimeline render
+            // (firstRender=false) while THIS firstRender pass is still
+            // mid-flight in one of the several awaited interop round-trips
+            // below (SyncDragRegistrationAsync, SyncBarContextMenuRegistrationAsync,
+            // SyncWheelZoomRegistrationAsync, ReconcileHeaderScrollSyncAsync —
+            // none of which touch _lastConsumedScrollRequestId). That second
+            // render's own intentPending check used to read the SAME
+            // still-unclaimed _lastConsumedScrollRequestId this pass hadn't
+            // gotten to yet, independently concluded a scroll was still
+            // owed, and issued its OWN duplicate ScrollToCenterAsync call —
+            // both targeting the identical pixel (Today doesn't change
+            // mid-mount), so invisible unless something ELSE writes
+            // scrollLeft between the two landing (exactly what
+            // GanttV3StickyHeaderTests'/GanttDragParityTests' own manual
+            // scrollLeft resets do — the `-5633`-delta E2E failure this fix
+            // closes). Same defect class, same fix shape, as
+            // TryRequestRangeExtensionAsync's own _rangeExtensionInFlight
+            // (claim BEFORE the first await, not after the round-trip that
+            // state guards) — see its remarks. IsScrollHostReady/
+            // ShouldAttemptTodayScroll are plain synchronous reads (not
+            // themselves awaited), so evaluating them this early, rather
+            // than at the original call site further down, changes nothing
+            // about what they observe — only WHEN the resulting intent gets
+            // recorded. ONLY the claim moves; the awaits below keep their
+            // existing, deliberately-reviewed order (see each one's own
+            // remarks) — ScrollToCenterAsync itself still fires from its
+            // original spot, after SyncDragRegistrationAsync/
+            // SyncBarContextMenuRegistrationAsync/SyncWheelZoomRegistrationAsync/
+            // ReconcileHeaderScrollSyncAsync/RegisterVerticalScrollTrackingAsync,
+            // using the intent decided HERE rather than re-deriving it live
+            // (which would just read this pass's OWN now-claimed sentinel
+            // and wrongly conclude nothing is owed).
+            var initialIntentPending = IsScrollHostReady
+                && ShouldAttemptTodayScroll
+                && ScrollToTodayRequestId != _lastConsumedScrollRequestId;
+            if (initialIntentPending)
+            {
+                _lastConsumedScrollRequestId = Math.Max(_lastConsumedScrollRequestId, ScrollToTodayRequestId);
+            }
+
             // Phase 2, T1/T4 fix — deflake: this MUST run FIRST, before any of
             // master's own scroll/header interop calls below. WaitV3ReadyAsync
             // (the E2E drag-parity suite's own readiness check) only waits for
@@ -1933,30 +1999,16 @@
             // usage (ScrollHost null) is unaffected — IsScrollHostReady is
             // trivially true in that mode, so this still scrolls on
             // firstRender exactly as before ScrollHost existed.
-            if (IsScrollHostReady && ShouldAttemptTodayScroll)
+            // The intent — and its claim against _lastConsumedScrollRequestId
+            // — were already decided and recorded at the TOP of this block,
+            // before any of the awaits above; re-deriving "is a scroll still
+            // owed" HERE, live, would just read this pass's OWN now-claimed
+            // sentinel and wrongly conclude nothing is (see the bug-fix
+            // remarks up top). initialIntentPending is reused as-is, not
+            // recomputed, for exactly that reason.
+            if (initialIntentPending)
             {
-                var initialIntentPending = ScrollToTodayRequestId != _lastConsumedScrollRequestId;
-                // Bug fix (Codex round 15 review, P2): capture the request id
-                // being applied BEFORE the await below — ScrollToCenterAsync is
-                // an interop round-trip, and if a NEWER ScrollToTodayRequestId
-                // arrives while it's outstanding (a second render pushing
-                // another recenter before this one's scroll lands), re-reading
-                // the LIVE ScrollToTodayRequestId afterward would mark that
-                // newer, not-yet-applied request as consumed too — its own
-                // target never gets a fresh apply.
-                //
-                // Math.Max (not a flat overwrite) so the REVERSE interleaving
-                // is also safe: if the newer request's own apply already ran
-                // and completed WHILE this one was still stuck (recording the
-                // newer id first), this call resuming afterward must not roll
-                // _lastConsumedScrollRequestId back down to its OWN (now
-                // stale) id — that would spuriously mark the already-applied
-                // newer target "pending" again on some later, unrelated
-                // render. Whichever id is numerically highest is always the
-                // one that was actually (or will be) applied last.
-                var requestIdBeingApplied = ScrollToTodayRequestId;
-                await ScrollToCenterAsync(ResolveScrollTargetX(initialIntentPending), ResolveScrollTargetOffset(initialIntentPending));
-                _lastConsumedScrollRequestId = Math.Max(_lastConsumedScrollRequestId, requestIdBeingApplied);
+                await ScrollToCenterAsync(ResolveScrollTargetX(true), ResolveScrollTargetOffset(true));
             }
 
             return;
@@ -2004,13 +2056,22 @@
             {
                 // Bug fix (Codex round 15 review, P2) — see the firstRender
                 // branch's own remarks above for the full reasoning: capture
-                // the id this call is actually applying before the await, mark
-                // THAT one consumed (via Math.Max, not a flat overwrite — see
-                // the same remarks for why), not whatever ScrollToTodayRequestId
+                // the id this call is actually applying, mark THAT one
+                // consumed (via Math.Max, not a flat overwrite — see the same
+                // remarks for why), not whatever ScrollToTodayRequestId
                 // happens to read once the interop round-trip resolves.
+                //
+                // Bug fix (#390): claimed BEFORE the await below, not after —
+                // this branch has no OTHER await preceding it (unlike
+                // firstRender's own several interop round-trips), so this is
+                // its ONLY suspension point; claiming here closes the same
+                // race the firstRender fix closes (a render dispatched while
+                // THIS call is mid-flight must see the intent already
+                // claimed), see the firstRender branch's own remarks for the
+                // full defect-class writeup.
                 var requestIdBeingApplied = ScrollToTodayRequestId;
-                await ScrollToCenterAsync(ResolveScrollTargetX(intentPending), ResolveScrollTargetOffset(intentPending));
                 _lastConsumedScrollRequestId = Math.Max(_lastConsumedScrollRequestId, requestIdBeingApplied);
+                await ScrollToCenterAsync(ResolveScrollTargetX(intentPending), ResolveScrollTargetOffset(intentPending));
             }
 
             // Codex round 7 review, P2 #2: a genuine host-identity change
@@ -2540,7 +2601,20 @@
         try
         {
             await Interop.GanttV3RegisterDragAsync(_scrollHostRef, _selfRef, BuildDragOptions(options));
-            if (!_dragConfirmed)
+
+            // E2E deflake — see _lastConfirmedDragOriginIso's own remarks.
+            // The await above just RETURNED, so gantt-v3.js's dragRegistrations
+            // entry is definitively updated to THIS options.Origin already
+            // (registerDrag mutates its stored options synchronously within
+            // this same call) — recording it here, unconditionally (not only
+            // on the false->true _dragConfirmed transition below), is what
+            // lets a LATER pan's own re-push also update the rendered
+            // attribute, not just the very first registration.
+            var originIso = options.Origin.ToString("yyyy-MM-dd");
+            var originChanged = _lastConfirmedDragOriginIso != originIso;
+            _lastConfirmedDragOriginIso = originIso;
+
+            if (!_dragConfirmed || originChanged)
             {
                 _dragConfirmed = true;
                 // OnAfterRenderAsync's own await here doesn't itself trigger
@@ -2548,7 +2622,9 @@
                 // SuppressPointerClick binding needs this to actually reach
                 // the DOM (see RecomputeVisibleRowRange's identical pattern
                 // below for the same "async completion needs its own
-                // StateHasChanged" reasoning).
+                // StateHasChanged" reasoning). Also covers a LATER pan's own
+                // origin change, not just the initial confirm, so
+                // data-gantt-v3-drag-origin actually reaches the DOM then too.
                 StateHasChanged();
             }
         }

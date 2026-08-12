@@ -884,25 +884,34 @@ public class GanttDragParityTests : GanttParityTestBase
         await ResetScrollLeftAsync();
         var periodLabel = Page.Locator($"{V3Root} span.text-sm.font-medium");
         var initialLabel = (await periodLabel.TextContentAsync())!;
-        await Page.GetByRole(AriaRole.Button, new() { Name = "Next period" }).ClickAsync();
-        await Assertions.Expect(periodLabel).Not.ToHaveTextAsync(initialLabel, new() { Timeout = 10000 });
 
-        // Deflake (found investigating a reported "wildly wrong date" failure
-        // under heavy parallel test-suite load): panning changes Origin, which
+        // Deflake, root-caused alongside #390: panning changes Origin, which
         // GanttTimeline.SyncDragRegistrationAsync's own options-hash check
         // detects on the NEXT render — it re-pushes originIso to the JS drag
         // engine via a genuine interop round-trip (the listener itself stays
         // attached throughout; only the STORED originIso option updates,
         // asynchronously). The period LABEL re-renders synchronously with the
         // click (nothing to wait for there), but that round-trip is a
-        // SEPARATE, later async step with no DOM-observable "done" signal to
-        // wait on (unlike data-gantt-v3-initial-scroll for the initial
-        // centering). Racing ahead of it lets the second drag-create compute
-        // its dates against the STALE (pre-pan) origin. A short, bounded
-        // settle covers a single SignalR round-trip under realistic load;
-        // flagged in the reconcile report as a candidate for a proper
-        // DOM-observable signal if this ever proves insufficient.
-        await Page.WaitForTimeoutAsync(500);
+        // SEPARATE, later async step. This USED to have no DOM-observable
+        // "done" signal to wait on (unlike data-gantt-v3-initial-scroll for
+        // the initial centering) and papered over the gap with a blind
+        // Page.WaitForTimeoutAsync(500) — insufficient under load, exactly as
+        // this comment used to predict ("flagged... as a candidate for a
+        // proper DOM-observable signal if this ever proves insufficient" —
+        // it did, confirmed via a repeated-run flake investigation). Fixed
+        // product-side: GanttTimeline now renders the LAST origin its own
+        // (awaited, hence definitively landed) GanttV3RegisterDragAsync call
+        // actually confirmed as data-gantt-v3-drag-origin on its row-canvas
+        // root — see _lastConfirmedDragOriginIso's own remarks. Captured
+        // BEFORE the pan click so the wait below proves the SPECIFIC
+        // post-pan re-push landed, not merely that some earlier (pre-pan)
+        // confirm already happened to satisfy a same-shaped assertion.
+        var dragOriginHost = Page.Locator($"{V3Root} .lumeo-gantt-v3-canvas-scroll");
+        var originBeforePan = await dragOriginHost.GetAttributeAsync("data-gantt-v3-drag-origin");
+
+        await Page.GetByRole(AriaRole.Button, new() { Name = "Next period" }).ClickAsync();
+        await Assertions.Expect(periodLabel).Not.ToHaveTextAsync(initialLabel, new() { Timeout = 10000 });
+        await Assertions.Expect(dragOriginHost).Not.ToHaveAttributeAsync("data-gantt-v3-drag-origin", originBeforePan ?? "", new() { Timeout = 10000 });
 
         var track2 = Page.Locator($"{V3Root} [data-gantt-row-track][data-row-key='task:fe3']");
         var box2 = await track2.BoundingBoxAsync();
