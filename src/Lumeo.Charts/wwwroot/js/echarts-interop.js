@@ -364,7 +364,7 @@ function buildLumeoTheme(cssVar, reducedMotion) {
     const card = cssVar('--color-popover') || cssVar('--color-card') || '#ffffff';
     const popoverFg = cssVar('--color-popover-foreground') || fg;
 
-    const chart1 = cssVar('--color-chart-1') || cssVar('--color-primary') || '#e85d04';
+    const chart1 = cssVar('--color-chart-1') || '#e85d04';
     const chart2 = cssVar('--color-chart-2') || '#2c9e8f';
     const chart3 = cssVar('--color-chart-3') || '#2d4f5c';
     const chart4 = cssVar('--color-chart-4') || '#d4a843';

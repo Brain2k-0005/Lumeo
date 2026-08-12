@@ -54,7 +54,7 @@ public class GanttV3Phase3T7Tests : IAsyncLifetime
     }
 
     [Fact]
-    public void ColorByGroup_False_Renders_The_Default_Primary_Bar_Regardless_Of_Group()
+    public void ColorByGroup_False_Renders_The_Default_Chart_Palette_Bar_Regardless_Of_Group()
     {
         var cut = _ctx.Render<L.GanttChart>(p => p
             .Add(c => c.Tasks, GroupedFixture())
@@ -65,8 +65,14 @@ public class GanttV3Phase3T7Tests : IAsyncLifetime
         // ~16% tint directly into a color-mix() expression around ResolvedColor
         // (see GanttBar.BarBgStyle's own remarks) instead of the raw resolved
         // color plus a Tailwind opacity-* utility — the wrapped literal still
-        // proves ResolvedColor's own unchanged default (var(--color-primary)).
-        Assert.Equal("color-mix(in oklab, var(--color-primary) 16%, transparent)", BarColorStyle(cut, "a1"));
+        // proves ResolvedColor's own default.
+        //
+        // Chart-independence wave (2026-08): ResolvedColor's null fallback moved
+        // from var(--color-primary) to var(--color-chart-1) — a plain Gantt (no
+        // BarColor, no ColorByGroup) now follows the theme's CHART palette, not
+        // the brand/accent colour, same as every other Lumeo chart (see
+        // GanttBar.Color's own remarks on why).
+        Assert.Equal("color-mix(in oklab, var(--color-chart-1) 16%, transparent)", BarColorStyle(cut, "a1"));
     }
 
     [Fact]
