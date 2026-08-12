@@ -34,15 +34,38 @@ public class BorderBeamTests : IAsyncLifetime
     }
 
     [Theory]
-    [InlineData(Lumeo.BorderBeam.BeamSize.Sm, "1px")]
-    [InlineData(Lumeo.BorderBeam.BeamSize.Md, "1.5px")]
-    [InlineData(Lumeo.BorderBeam.BeamSize.Lg, "3px")]
-    public void Size_Maps_To_Beam_Size_Variable(Lumeo.BorderBeam.BeamSize size, string expectedPx)
+    [InlineData(Lumeo.Size.Xxs, "0.5px")]
+    [InlineData(Lumeo.Size.Xs, "0.75px")]
+    [InlineData(Lumeo.Size.Sm, "1px")]
+    [InlineData(Lumeo.Size.Md, "1.5px")]
+    [InlineData(Lumeo.Size.Lg, "3px")]
+    [InlineData(Lumeo.Size.Xl, "4px")]
+    [InlineData(Lumeo.Size.Xxl, "5px")]
+    public void Size_Maps_To_Beam_Size_Variable(Lumeo.Size size, string expectedPx)
     {
         var cut = _ctx.Render<Lumeo.BorderBeam>(p => p
             .Add(b => b.Size, size));
 
         Assert.Contains($"--lumeo-beam-size: {expectedPx}", cut.Find("div").GetAttribute("style"));
+    }
+
+    [Fact]
+    public void Size_Sm_Md_Lg_Render_Byte_Identical_To_Pre_Migration_Values()
+    {
+        // Disable-check precedent: this is the pinned pre-migration mapping
+        // (Sm=1px, Md=1.5px, Lg=3px) — a regression here would silently
+        // change every existing consumer's beam thickness.
+        string PxFor(Lumeo.Size size)
+        {
+            var cut = _ctx.Render<Lumeo.BorderBeam>(p => p.Add(b => b.Size, size));
+            var style = cut.Find("div").GetAttribute("style") ?? "";
+            var m = System.Text.RegularExpressions.Regex.Match(style, @"--lumeo-beam-size:\s*([0-9.]+px)");
+            return m.Success ? m.Groups[1].Value : "";
+        }
+
+        Assert.Equal("1px", PxFor(Lumeo.Size.Sm));
+        Assert.Equal("1.5px", PxFor(Lumeo.Size.Md));
+        Assert.Equal("3px", PxFor(Lumeo.Size.Lg));
     }
 
     [Fact]

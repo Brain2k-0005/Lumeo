@@ -199,4 +199,72 @@ public class BadgeTests : IAsyncLifetime
         Assert.Contains("ICON", cut.Markup);
         Assert.Contains("Badge Text", cut.Markup);
     }
+
+    // --- Size (migrated from Badge.BadgeSize to Lumeo.Size) ---
+    // Exact space-delimited token comparisons (never Assert.Contains — Tailwind's
+    // scale is built from prefixes of itself, e.g. px-2 matches px-2.5) pinning the
+    // pre-migration Sm/Md/Lg render byte-for-byte, at the default Variant/Density.
+
+    private static string[] Tokens(AngleSharp.Dom.IElement el) =>
+        (el.GetAttribute("class") ?? "").Split(' ', StringSplitOptions.RemoveEmptyEntries);
+
+    [Fact]
+    public void Size_Sm_Renders_Byte_Identical_To_Pre_Migration_BadgeSize_Sm()
+    {
+        var cut = _ctx.Render<Lumeo.Badge>(p => p
+            .Add(b => b.Size, Lumeo.Size.Sm)
+            .AddChildContent("X"));
+
+        Assert.Equal(
+            new[]
+            {
+                "inline-flex", "items-center", "border", "font-semibold", "transition-colors",
+                "focus:outline-none", "rounded-md", "text-[10px]", "px-2", "py-0",
+                "border-transparent", "bg-primary", "text-primary-foreground", "shadow"
+            },
+            Tokens(cut.Find("div")));
+    }
+
+    [Fact]
+    public void Size_Md_Renders_Byte_Identical_To_Pre_Migration_BadgeSize_Md_Default()
+    {
+        var cut = _ctx.Render<Lumeo.Badge>(p => p.AddChildContent("X"));
+
+        Assert.Equal(
+            new[]
+            {
+                "inline-flex", "items-center", "border", "font-semibold", "transition-colors",
+                "focus:outline-none", "rounded-md", "text-xs", "px-2.5", "py-0.5",
+                "border-transparent", "bg-primary", "text-primary-foreground", "shadow"
+            },
+            Tokens(cut.Find("div")));
+    }
+
+    [Fact]
+    public void Size_Lg_Renders_Byte_Identical_To_Pre_Migration_BadgeSize_Lg()
+    {
+        var cut = _ctx.Render<Lumeo.Badge>(p => p
+            .Add(b => b.Size, Lumeo.Size.Lg)
+            .AddChildContent("X"));
+
+        Assert.Equal(
+            new[]
+            {
+                "inline-flex", "items-center", "border", "font-semibold", "transition-colors",
+                "focus:outline-none", "rounded-md", "text-sm", "px-3", "py-1",
+                "border-transparent", "bg-primary", "text-primary-foreground", "shadow"
+            },
+            Tokens(cut.Find("div")));
+    }
+
+    [Theory]
+    [InlineData(Lumeo.Size.Xxs, "text-[8px]")]
+    [InlineData(Lumeo.Size.Xs, "text-[9px]")]
+    [InlineData(Lumeo.Size.Xl, "text-base")]
+    [InlineData(Lumeo.Size.Xxl, "text-lg")]
+    public void New_Rungs_Render_Their_Documented_Text_Size(Lumeo.Size size, string expectedTextClass)
+    {
+        var cut = _ctx.Render<Lumeo.Badge>(p => p.Add(b => b.Size, size).AddChildContent("X"));
+        Assert.Contains(expectedTextClass, Tokens(cut.Find("div")));
+    }
 }
