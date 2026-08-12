@@ -228,4 +228,141 @@ public class ProgressTests : IAsyncLifetime
 
         Assert.Contains("75%", cut.Markup);
     }
+
+    // --- Size (migrated from an untyped string to Lumeo.Size) ---
+    // These pin the pre-migration mapping byte-for-byte: old "Small"/"Default"/
+    // "Large" string values must render identically under Lumeo.Size.Sm/Md/Lg.
+
+    [Fact]
+    public void Size_Sm_Linear_Height_Matches_PreMigration_Small()
+    {
+        var cut = _ctx.Render<Lumeo.Progress>(p => p.Add(b => b.Value, 50).Add(b => b.Size, Lumeo.Size.Sm));
+        var bar = cut.Find("[role='progressbar']");
+        Assert.Equal(
+            new[] { "relative", "h-1", "w-full", "overflow-hidden", "rounded-[var(--radius)]", "bg-primary/20" },
+            bar.GetAttribute("class")!.Split(' ', StringSplitOptions.RemoveEmptyEntries));
+    }
+
+    [Fact]
+    public void Size_Md_Linear_Height_Matches_PreMigration_Default()
+    {
+        var cut = _ctx.Render<Lumeo.Progress>(p => p.Add(b => b.Value, 50));
+        var bar = cut.Find("[role='progressbar']");
+        Assert.Equal(
+            new[] { "relative", "h-2", "w-full", "overflow-hidden", "rounded-[var(--radius)]", "bg-primary/20" },
+            bar.GetAttribute("class")!.Split(' ', StringSplitOptions.RemoveEmptyEntries));
+    }
+
+    [Fact]
+    public void Size_Lg_Linear_Height_Matches_PreMigration_Large()
+    {
+        var cut = _ctx.Render<Lumeo.Progress>(p => p.Add(b => b.Value, 50).Add(b => b.Size, Lumeo.Size.Lg));
+        var bar = cut.Find("[role='progressbar']");
+        Assert.Equal(
+            new[] { "relative", "h-4", "w-full", "overflow-hidden", "rounded-[var(--radius)]", "bg-primary/20" },
+            bar.GetAttribute("class")!.Split(' ', StringSplitOptions.RemoveEmptyEntries));
+    }
+
+    [Theory]
+    [InlineData(Lumeo.Size.Xxs, "width: 24px; height: 24px")]
+    [InlineData(Lumeo.Size.Xs, "width: 32px; height: 32px")]
+    [InlineData(Lumeo.Size.Sm, "width: 40px; height: 40px")]
+    [InlineData(Lumeo.Size.Md, "width: 56px; height: 56px")]
+    [InlineData(Lumeo.Size.Lg, "width: 80px; height: 80px")]
+    [InlineData(Lumeo.Size.Xl, "width: 96px; height: 96px")]
+    [InlineData(Lumeo.Size.Xxl, "width: 112px; height: 112px")]
+    public void Circular_Size_Sets_Diameter_Style(Lumeo.Size size, string expectedStyle)
+    {
+        var cut = _ctx.Render<Lumeo.Progress>(p => p
+            .Add(b => b.Value, 50)
+            .Add(b => b.Shape, Lumeo.Progress.ProgressShape.Circular)
+            .Add(b => b.Size, size));
+
+        Assert.Equal(expectedStyle, cut.Find("svg").GetAttribute("style"));
+    }
+
+    [Fact]
+    public void Circular_Size_Sm_Diameter_Matches_PreMigration_Small()
+    {
+        var cut = _ctx.Render<Lumeo.Progress>(p => p
+            .Add(b => b.Value, 50)
+            .Add(b => b.Shape, Lumeo.Progress.ProgressShape.Circular)
+            .Add(b => b.Size, Lumeo.Size.Sm));
+
+        Assert.Equal("width: 40px; height: 40px", cut.Find("svg").GetAttribute("style"));
+    }
+
+    [Fact]
+    public void Circular_Size_Md_Diameter_Matches_PreMigration_Default()
+    {
+        var cut = _ctx.Render<Lumeo.Progress>(p => p
+            .Add(b => b.Value, 50)
+            .Add(b => b.Shape, Lumeo.Progress.ProgressShape.Circular));
+
+        Assert.Equal("width: 56px; height: 56px", cut.Find("svg").GetAttribute("style"));
+    }
+
+    [Fact]
+    public void Circular_Size_Lg_Diameter_Matches_PreMigration_Large()
+    {
+        var cut = _ctx.Render<Lumeo.Progress>(p => p
+            .Add(b => b.Value, 50)
+            .Add(b => b.Shape, Lumeo.Progress.ProgressShape.Circular)
+            .Add(b => b.Size, Lumeo.Size.Lg));
+
+        Assert.Equal("width: 80px; height: 80px", cut.Find("svg").GetAttribute("style"));
+    }
+
+    [Fact]
+    public void Circular_ShowValue_Text_Size_Md_Matches_PreMigration_Default()
+    {
+        var cut = _ctx.Render<Lumeo.Progress>(p => p
+            .Add(b => b.Value, 50)
+            .Add(b => b.Shape, Lumeo.Progress.ProgressShape.Circular)
+            .Add(b => b.ShowValue, true));
+
+        var span = cut.Find("span");
+        Assert.Equal(
+            new[] { "absolute", "inset-0", "flex", "items-center", "justify-center", "text-foreground", "text-xs", "font-medium" },
+            span.GetAttribute("class")!.Split(' ', StringSplitOptions.RemoveEmptyEntries));
+    }
+
+    [Fact]
+    public void Circular_ShowValue_Text_Size_Lg_Matches_PreMigration_Large()
+    {
+        var cut = _ctx.Render<Lumeo.Progress>(p => p
+            .Add(b => b.Value, 50)
+            .Add(b => b.Shape, Lumeo.Progress.ProgressShape.Circular)
+            .Add(b => b.ShowValue, true)
+            .Add(b => b.Size, Lumeo.Size.Lg));
+
+        var span = cut.Find("span");
+        Assert.Equal(
+            new[] { "absolute", "inset-0", "flex", "items-center", "justify-center", "text-foreground", "text-sm", "font-semibold" },
+            span.GetAttribute("class")!.Split(' ', StringSplitOptions.RemoveEmptyEntries));
+    }
+
+    [Fact]
+    public void Circular_ShowValue_Text_Size_Sm_Matches_PreMigration_Small()
+    {
+        var cut = _ctx.Render<Lumeo.Progress>(p => p
+            .Add(b => b.Value, 50)
+            .Add(b => b.Shape, Lumeo.Progress.ProgressShape.Circular)
+            .Add(b => b.ShowValue, true)
+            .Add(b => b.Size, Lumeo.Size.Sm));
+
+        var span = cut.Find("span");
+        Assert.Equal(
+            new[] { "absolute", "inset-0", "flex", "items-center", "justify-center", "text-foreground", "text-[10px]", "font-medium" },
+            span.GetAttribute("class")!.Split(' ', StringSplitOptions.RemoveEmptyEntries));
+    }
+
+    [Fact]
+    public void Size_Xxs_And_Xs_Linear_Height_Tie_At_H0_5()
+    {
+        var xxs = _ctx.Render<Lumeo.Progress>(p => p.Add(b => b.Value, 50).Add(b => b.Size, Lumeo.Size.Xxs));
+        var xs = _ctx.Render<Lumeo.Progress>(p => p.Add(b => b.Value, 50).Add(b => b.Size, Lumeo.Size.Xs));
+        Assert.Contains("h-0.5", xxs.Find("[role='progressbar']").GetAttribute("class"));
+        Assert.Contains("h-0.5", xs.Find("[role='progressbar']").GetAttribute("class"));
+    }
 }
