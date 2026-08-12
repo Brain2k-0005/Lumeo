@@ -184,7 +184,7 @@ function registerLumeoTheme() {
     const bg = getCssVar('--color-background') || '#ffffff';
     const card = getCssVar('--color-card') || '#ffffff';
 
-    const chart1 = getCssVar('--color-chart-1') || getCssVar('--color-primary') || '#e85d04';
+    const chart1 = getCssVar('--color-chart-1') || '#e85d04';
     const chart2 = getCssVar('--color-chart-2') || '#2c9e8f';
     const chart3 = getCssVar('--color-chart-3') || '#2d4f5c';
     const chart4 = getCssVar('--color-chart-4') || '#d4a843';
