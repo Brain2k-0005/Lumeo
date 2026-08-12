@@ -1,9 +1,19 @@
-@page "/components/gantt"
+@page "/components/gantt-legacy"
 
-<PageTitle>Gantt — Lumeo</PageTitle>
+<PageTitle>Gantt (Legacy) — Lumeo</PageTitle>
 
-<PageHeader Title="Gantt"
-            Description="A project timeline with draggable task bars, dependencies, and progress tracking. Renders with a custom Lumeo SVG engine — no third-party charting library." />
+<PageHeader Title="Gantt (Legacy)"
+            Description="The original SVG-based Gantt engine. Kept for backward compatibility — new projects should use GanttChart." />
+
+<Alert Variant="Alert.AlertVariant.Warning" ShowIcon="true" Class="mt-6">
+    <ChildContent>
+        <strong>Not recommended for new code.</strong> <code>Gantt</code> is the original SVG-based engine — no tree
+        pane, no hierarchy, no commit gate, a fixed 5-scale zoom range. It still ships unchanged in
+        <code>Lumeo.Gantt</code> for existing consumers. New projects should use
+        <a href="/components/gantt-chart" class="text-primary hover:underline"><code>GanttChart</code></a>, the actively
+        developed engine with dependency arrows, milestones, hierarchy, a real drag commit gate, and 7 zoom levels.
+    </ChildContent>
+</Alert>
 
 <InstallUsage Component="Gantt" Package="Lumeo.Gantt" />
 
@@ -16,34 +26,9 @@
     </ChildContent>
 </Alert>
 
-<div class="mt-10 space-y-3">
-    <Heading Id="when-to-use" Level="2" Class="scroll-mt-20">When to Use</Heading>
-    <ul class="list-disc list-inside space-y-1 text-muted-foreground text-sm">
-        <li>Planning a project with ordered phases and cross-task dependencies.</li>
-        <li>Letting stakeholders see "what blocks what" at a glance.</li>
-        <li>Allowing team leads to drag tasks to reschedule, and drag the progress handle to mark completion.</li>
-    </ul>
-</div>
-
 <Stack Gap="8" Class="mt-8">
     <ComponentDemo Title="Basic project plan" Code="@_basicCode">
-        @* ColumnWidth=16 (narrower than Day view's 38px default): the 5-task
-           demo spans 32 days, and Gantt's initial scroll centers "today" in the
-           viewport (today is this data's day 0 — a project with no history).
-           At the default 38px/day, that centering left only ~half the box's
-           width for the FUTURE side, cutting the second bar ("Design") off
-           mid-label with no visible scroll affordance. 16px/day keeps the
-           first two (dependent) tasks fully in view on first paint with margin
-           to spare; it's a per-demo tweak, not a change to Gantt's shared
-           scroll/padding behavior (which real projects rely on for
-           reschedule-by-drag). *@
-        <Gantt Tasks="_basicTasks" ViewMode="GanttViewMode.Day" Height="420px" ColumnWidth="16" />
-    </ComponentDemo>
-
-    <ComponentDemo Title="With progress bars" Code="@_progressCode">
-        @* Same ColumnWidth rationale as "Basic project plan" above — same task
-           date range. *@
-        <Gantt Tasks="_progressTasks" ViewMode="GanttViewMode.Day" Height="420px" ColumnWidth="16" />
+        <Gantt Tasks="_basicTasks" ViewMode="GanttViewMode.Day" Height="420px" />
     </ComponentDemo>
 
     <ComponentDemo Title="Drag to reschedule + change progress" Code="@_dragCode">
@@ -67,15 +52,6 @@
                     <span class="font-mono text-xs">@_lastChange.Name — @_lastChange.Start:d → @_lastChange.End:d (@_lastChange.Progress%)</span>
                 }
             </div>
-            <div class="rounded-md border border-border/60 bg-muted/40 p-3 text-sm">
-                <div class="font-medium mb-2">Current tasks</div>
-                <ul class="space-y-1 font-mono text-xs">
-                    @foreach (var t in _dragTasks)
-                    {
-                        <li>@t.Id — @t.Name (@t.Start:d → @t.End:d, @t.Progress%)</li>
-                    }
-                </ul>
-            </div>
         </Stack>
     </ComponentDemo>
 
@@ -83,16 +59,6 @@
         <Stack Gap="3">
             <Lumeo.Text Size="sm" Color="muted">Use the built-in toolbar above the chart to toggle between Day, Week, Month, and Year. Pass <code>GanttViewMode.QuarterDay</code> or <code>GanttViewMode.HalfDay</code> programmatically for hour-granularity views.</Lumeo.Text>
             <Gantt Tasks="_viewModesTasks" ViewMode="GanttViewMode.Week" Height="420px" />
-        </Stack>
-    </ComponentDemo>
-
-    <ComponentDemo Title="Milestones" Code="@_milestoneCode">
-        <Stack Gap="3">
-            <Lumeo.Text Size="sm" Color="muted">
-                Set <code>IsMilestone = true</code> on any task to render it as a diamond at a point in time.
-                Milestones are read-only (drag is suppressed) and can carry dependencies just like regular bars.
-            </Lumeo.Text>
-            <Gantt Tasks="_milestoneTasks" ViewMode="GanttViewMode.Day" Height="320px" />
         </Stack>
     </ComponentDemo>
 
@@ -111,35 +77,6 @@
         <Stack Gap="3">
             <Lumeo.Text Size="sm" Color="muted">Set <code>Readonly="true"</code> to lock the chart — bars can't be dragged or resized.</Lumeo.Text>
             <Gantt Tasks="_basicTasks" ViewMode="GanttViewMode.Day" Height="320px" Readonly="true" />
-        </Stack>
-    </ComponentDemo>
-
-    <ComponentDemo Title="Hide today line + custom bar/column sizing">
-        <Stack Gap="3">
-            <Lumeo.Text Size="sm" Color="muted">Turn off the today marker with <code>TodayHighlight="false"</code>, and densify the timeline with <code>BarHeight</code> / <code>ColumnWidth</code>.</Lumeo.Text>
-            <Gantt Tasks="_basicTasks" ViewMode="GanttViewMode.Day" Height="320px"
-                   TodayHighlight="false" BarHeight="30" ColumnWidth="36" />
-        </Stack>
-    </ComponentDemo>
-
-    <ComponentDemo Title="Toolbar trailing content">
-        <Gantt Tasks="_basicTasks" ViewMode="GanttViewMode.Day" Height="320px">
-            <TrailingContent>
-                <Button Size="Button.ButtonSize.Sm" Variant="Button.ButtonVariant.Outline">
-                    <DynamicIcon Name="Plus" Class="h-4 w-4 me-1" /> Add task
-                </Button>
-            </TrailingContent>
-        </Gantt>
-    </ComponentDemo>
-
-    <ComponentDemo Title="Per-task bar colour" Code="@_barColorCode">
-        <Stack Gap="3">
-            <Lumeo.Text Size="sm" Color="muted">
-                Use the <code>BarColor</code> delegate to return any CSS colour (hex, rgb, or a CSS variable like
-                <code>var(--color-destructive)</code>) per task. Useful for traffic-light status colouring.
-            </Lumeo.Text>
-            <Gantt Tasks="_colorTasks" ViewMode="GanttViewMode.Day" Height="280px"
-                   BarColor="@GetBarColor" />
         </Stack>
     </ComponentDemo>
 </Stack>
@@ -175,31 +112,12 @@
             </TableBody>
         </Table>
     </div>
-
-    <Heading Id="gantt-view-mode" Level="3" Class="mt-8 scroll-mt-20">GanttViewMode</Heading>
-    <div class="overflow-x-auto mt-4">
-        <Table>
-            <TableHeader>
-                <TableRow>
-                    <TableHead Class="w-[200px]">Value</TableHead>
-                    <TableHead>Description</TableHead>
-                </TableRow>
-            </TableHeader>
-            <TableBody>
-                <TableRow><TableCell Class="font-mono text-xs">QuarterDay</TableCell><TableCell>6-hour columns — useful for hour-scale shift scheduling. Not exposed in the toolbar.</TableCell></TableRow>
-                <TableRow><TableCell Class="font-mono text-xs">HalfDay</TableCell><TableCell>12-hour columns. Not exposed in the toolbar.</TableCell></TableRow>
-                <TableRow><TableCell Class="font-mono text-xs">Day</TableCell><TableCell>One column per day — the default.</TableCell></TableRow>
-                <TableRow><TableCell Class="font-mono text-xs">Week</TableCell><TableCell>One column per week.</TableCell></TableRow>
-                <TableRow><TableCell Class="font-mono text-xs">Month</TableCell><TableCell>One column per month — best for multi-quarter plans.</TableCell></TableRow>
-                <TableRow><TableCell Class="font-mono text-xs">Year</TableCell><TableCell>One column per year — best for roadmap-style views.</TableCell></TableRow>
-            </TableBody>
-        </Table>
-    </div>
 </div>
 
 <div class="mt-12">
     <Heading Id="related" Level="2" Class="scroll-mt-20">Related Components</Heading>
     <ul class="mt-4 space-y-2 text-sm">
+        <li><a href="/components/gantt-chart" class="text-primary hover:underline">GanttChart</a> — the actively developed engine: hierarchy, commit gate, 7 zoom levels.</li>
         <li><a href="/components/scheduler" class="text-primary hover:underline">Scheduler</a> — calendar-style event grid when you care about time-of-day rather than project phases.</li>
         <li><a href="/components/datagrid" class="text-primary hover:underline">Data Grid</a> — tabular view of the same task data when a timeline isn't needed.</li>
     </ul>
@@ -222,24 +140,8 @@
         };
     }
 
-    // ── Progress demo ────────────────────────────────────────────────────
-    private List<GanttTask> _progressTasks = BuildProgressTasks();
-
-    private static List<GanttTask> BuildProgressTasks()
-    {
-        var d = DateTime.Today;
-        return new List<GanttTask>
-        {
-            new("research",    "Research",    d,                 d.AddDays(5),  Progress: 100, Dependencies: null),
-            new("design",      "Design",      d.AddDays(5),      d.AddDays(12), Progress: 60,  Dependencies: new[] { "research" }),
-            new("development", "Development", d.AddDays(12),     d.AddDays(25), Progress: 30,  Dependencies: new[] { "design" }),
-            new("testing",     "Testing",     d.AddDays(22),     d.AddDays(30), Progress: 0,   Dependencies: new[] { "development" }),
-            new("launch",      "Launch",      d.AddDays(30),     d.AddDays(32), Progress: 0,   Dependencies: new[] { "testing" }),
-        };
-    }
-
     // ── Drag demo ────────────────────────────────────────────────────────
-    private IEnumerable<GanttTask> _dragTasks = BuildProgressTasks();
+    private IEnumerable<GanttTask> _dragTasks = BuildBasicTasks();
     private GanttTask? _lastChange;
 
     private Task HandleDateChange(GanttTask t)
@@ -271,22 +173,6 @@
         };
     }
 
-    // ── Milestone demo ───────────────────────────────────────────────────
-    private List<GanttTask> _milestoneTasks = BuildMilestoneTasks();
-
-    private static List<GanttTask> BuildMilestoneTasks()
-    {
-        var d = DateTime.Today;
-        return new List<GanttTask>
-        {
-            new("design",    "Design",      d,               d.AddDays(8)),
-            new("m-design",  "Design Done", d.AddDays(8),    d.AddDays(8),  IsMilestone: true, Dependencies: new[] { "design" }),
-            new("dev",       "Development", d.AddDays(8),    d.AddDays(20), Dependencies: new[] { "m-design" }),
-            new("m-dev",     "Dev Done",    d.AddDays(20),   d.AddDays(20), IsMilestone: true, Dependencies: new[] { "dev" }),
-            new("launch",    "Launch",      d.AddDays(20),   d.AddDays(22), Dependencies: new[] { "m-dev" }),
-        };
-    }
-
     // ── Grouping demo ────────────────────────────────────────────────────
     private List<GanttTask> _groupedTasks = BuildGroupedTasks();
 
@@ -304,30 +190,8 @@
         };
     }
 
-    // ── Bar colour demo ──────────────────────────────────────────────────
-    private List<GanttTask> _colorTasks = BuildColorTasks();
-
-    private static List<GanttTask> BuildColorTasks()
-    {
-        var d = DateTime.Today;
-        return new List<GanttTask>
-        {
-            new("t1", "On Track",    d,               d.AddDays(5)),
-            new("t2", "At Risk",     d.AddDays(5),    d.AddDays(12)),
-            new("t3", "Delayed",     d.AddDays(12),   d.AddDays(20)),
-        };
-    }
-
-    private static string? GetBarColor(GanttTask t) => t.Name switch
-    {
-        "On Track" => "var(--color-success, #22c55e)",
-        "At Risk"  => "var(--color-warning, #f59e0b)",
-        "Delayed"  => "var(--color-destructive)",
-        _ => null,
-    };
-
     // ── Code snippets ────────────────────────────────────────────────────
-    private string _basicCode = @"<Gantt Tasks=""_tasks"" ViewMode=""GanttViewMode.Day"" Height=""420px"" ColumnWidth=""16"" />
+    private string _basicCode = @"<Gantt Tasks=""_tasks"" ViewMode=""GanttViewMode.Day"" Height=""420px"" />
 
 @code {
     private List<GanttTask> _tasks = new() {
@@ -336,17 +200,6 @@
         new(""development"", ""Development"", DateTime.Today.AddDays(12),  DateTime.Today.AddDays(25), Dependencies: new[] { ""design"" }),
         new(""testing"",     ""Testing"",     DateTime.Today.AddDays(22),  DateTime.Today.AddDays(30), Dependencies: new[] { ""development"" }),
         new(""launch"",      ""Launch"",      DateTime.Today.AddDays(30),  DateTime.Today.AddDays(32), Dependencies: new[] { ""testing"" }),
-    };
-}";
-
-    private string _progressCode = @"<Gantt Tasks=""_tasks"" ViewMode=""GanttViewMode.Day"" Height=""420px"" ColumnWidth=""16"" />
-
-@code {
-    private List<GanttTask> _tasks = new() {
-        new(""research"",    ""Research"",    DateTime.Today,             DateTime.Today.AddDays(5),  Progress: 100),
-        new(""design"",      ""Design"",      DateTime.Today.AddDays(5),  DateTime.Today.AddDays(12), Progress: 60,  Dependencies: new[] { ""research"" }),
-        new(""development"", ""Development"", DateTime.Today.AddDays(12), DateTime.Today.AddDays(25), Progress: 30,  Dependencies: new[] { ""design"" }),
-        // ...
     };
 }";
 
@@ -365,21 +218,6 @@
 
     private string _viewModesCode = @"<Gantt Tasks=""_tasks"" ViewMode=""GanttViewMode.Week"" Height=""420px"" />";
 
-    private string _milestoneCode = @"<Gantt Tasks=""_tasks"" ViewMode=""GanttViewMode.Day"" Height=""320px"" />
-
-@code {
-    // IsMilestone=true renders a diamond at the Start date.
-    // End is clamped to Start automatically.
-    private List<GanttTask> _tasks = new()
-    {
-        new(""design"",   ""Design"",      d,             d.AddDays(8)),
-        new(""m-design"", ""Design Done"", d.AddDays(8),  d.AddDays(8), IsMilestone: true,
-            Dependencies: new[] { ""design"" }),
-        new(""dev"",      ""Development"", d.AddDays(8),  d.AddDays(20),
-            Dependencies: new[] { ""m-design"" }),
-    };
-}";
-
     private string _groupCode = @"<Gantt Tasks=""_tasks"" ViewMode=""GanttViewMode.Day"" Height=""380px""
        GroupBy=""@(t => t.GroupLabel ?? """")""  />
 
@@ -391,19 +229,6 @@
         new(""fe2"", ""Components"", d.AddDays(6),d.AddDays(14), GroupLabel: ""Frontend""),
         new(""be1"", ""API Design"", d,           d.AddDays(5),  GroupLabel: ""Backend""),
         new(""be2"", ""REST Impl"",  d.AddDays(5),d.AddDays(15), GroupLabel: ""Backend""),
-    };
-}";
-
-    private string _barColorCode = @"<Gantt Tasks=""_tasks"" ViewMode=""GanttViewMode.Day"" Height=""280px""
-       BarColor=""@GetBarColor"" />
-
-@code {
-    private static string? GetBarColor(GanttTask t) => t.Name switch
-    {
-        ""On Track"" => ""var(--color-success, #22c55e)"",
-        ""At Risk""  => ""var(--color-warning, #f59e0b)"",
-        ""Delayed""  => ""var(--color-destructive)"",
-        _ => null,
     };
 }";
 }

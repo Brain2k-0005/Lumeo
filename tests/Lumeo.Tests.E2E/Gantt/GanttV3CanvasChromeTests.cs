@@ -224,7 +224,7 @@ public class GanttV3CanvasChromeTests : GanttParityTestBase
         await zoomIn.ClickAsync();
 
         // Month -> Week: PeriodLabel's default branch ("MMM d, yyyy – MMM d, yyyy")
-        // is the only Gantt3.PeriodLabel format containing an en-dash range at
+        // is the only GanttChart.PeriodLabel format containing an en-dash range at
         // day precision — proves the FLOATING control drove a real,
         // chart-wide view-mode switch (the SAME GanttState every other
         // surface reads), not merely its own local state.

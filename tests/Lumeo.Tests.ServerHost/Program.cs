@@ -2,7 +2,7 @@ using System.Globalization;
 using Lumeo;
 using Lumeo.Tests.ServerHost.Components;
 
-// Codex round 2, P2 #4/#8: GanttScale's month-name header labels (and Gantt3's
+// Codex round 2, P2 #4/#8: GanttScale's month-name header labels (and GanttChart's
 // pre-existing PeriodLabel) render via CultureInfo.CurrentCulture — v2 parity
 // (v2's fmtMonth/fmtMonthShort follow the BROWSER's locale, not hardcoded
 // English), but a Blazor Server circuit's ambient culture otherwise falls back
