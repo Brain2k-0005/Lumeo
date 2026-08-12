@@ -993,8 +993,16 @@ function registerDrag(el, dotNetRef, options) {
             // null, and addDays on it yields an Invalid Date) — leave the
             // cloned attribute alone rather than paint from NaN.
             if (!endInclusive || Number.isNaN(endInclusive.getTime())) return;
-            const now = new Date();
-            const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+            // The TIMELINE's effective now (dragOptions.nowDate), never this
+            // engine's own new Date() (Codex review of this PR, P2): GanttBar
+            // computes data-past from GanttTimeline.Now when a consumer supplies
+            // one — a historical or simulated timeline — so reading the real
+            // browser clock here made the ghost contradict the very bar it was
+            // cloned from. No fallback to new Date(): if .NET did not send a
+            // date, leave the cloned attribute rather than invent a clock the
+            // bars are not using.
+            const today = dragOptions && dragOptions.nowDate ? parseIsoDate(dragOptions.nowDate) : null;
+            if (!today || Number.isNaN(today.getTime())) return;
             const end = new Date(endInclusive.getFullYear(), endInclusive.getMonth(), endInclusive.getDate());
             if (today > end) ghost.setAttribute('data-past', '');
             else ghost.removeAttribute('data-past');

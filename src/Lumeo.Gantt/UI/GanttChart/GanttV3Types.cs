@@ -316,12 +316,27 @@ public sealed record GanttScheduleDropContext(
 /// <param name="HasCanDrop">Whether <see cref="Lumeo.GanttTimeline.CanDrop"/> is set (gates whether JS ever calls <c>ValidateDrop</c> at all).</param>
 /// <param name="AllowCreate"><see cref="Lumeo.GanttTimeline.AllowCreate"/> at push time.</param>
 /// <param name="Origin">The row-canvas-space date origin (drag-create's only anchor — see <c>BuildDragOptions</c>'s remarks).</param>
+/// <param name="NowDate">
+/// <see cref="Lumeo.GanttTimeline.EffectiveNow"/>'s DATE part at push time, so the drag
+/// engine's own <c>data-past</c> refresh on the ghost uses the SAME clock the bars do
+/// (Codex review of the styling-hooks PR, P2). The JS side previously read
+/// <c>new Date()</c>, which silently ignored a consumer-supplied
+/// <see cref="Lumeo.GanttTimeline.Now"/> — a historical or simulated timeline then had
+/// ghosts contradicting the very bars they were cloned from.
+/// <para>
+/// Only the date part travels, deliberately: it is all the whole-day past-ness rule
+/// needs, and it means this field changes at most once per calendar day rather than on
+/// every clock resolve — so adding it to this equality-compared snapshot does not turn
+/// the registration short-circuit into a re-registration treadmill.
+/// </para>
+/// </param>
 internal readonly record struct GanttInteropOptions(
     int ColumnWidth,
     double PixelsPerDay,
     bool HasCanDrop,
     bool AllowCreate,
-    DateTime Origin);
+    DateTime Origin,
+    DateTime NowDate);
 
 /// <summary>
 /// A duration-weighted rollup summary for one hierarchy-parent or flat-group

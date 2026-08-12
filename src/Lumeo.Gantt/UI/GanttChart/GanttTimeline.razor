@@ -2713,7 +2713,7 @@
         // pure representation swap, not a behavior change (same 5 fields,
         // same gate, same drag-safety story: gantt-v3.js snapshots options at
         // pointerdown regardless of when/whether a re-registration lands).
-        var options = new GanttInteropOptions(EffectiveColumnWidth, PixelsPerDay, CanDrop is not null, AllowCreate, Origin);
+        var options = new GanttInteropOptions(EffectiveColumnWidth, PixelsPerDay, CanDrop is not null, AllowCreate, Origin, EffectiveNow.Date);
         if (_dragRegistered && options == _lastDragOptions) return;
 
         _selfRef ??= DotNetObjectReference.Create(this);
@@ -2961,6 +2961,12 @@
         ["columnWidth"] = options.ColumnWidth,
         ["pixelsPerDay"] = options.PixelsPerDay,
         ["resizeHandlePx"] = 6,
+        // The timeline's EFFECTIVE "now" date (Codex review of the styling-hooks
+        // PR, P2) — see GanttInteropOptions.NowDate's own remarks. The drag
+        // engine refreshes the ghost's data-past from this, never from its own
+        // new Date(), so a consumer-supplied Now (a historical/simulated
+        // timeline) governs the ghost exactly as it already governs the bars.
+        ["nowDate"] = options.NowDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
         // Phase 2, T2 — tells gantt-v3.js whether to bother calling ValidateDrop
         // AT ALL during a move/resize drag. A plain "CanDrop is null on the C#
         // side so just always return true from ValidateDrop" would still let JS

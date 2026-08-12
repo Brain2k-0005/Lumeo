@@ -1,6 +1,7 @@
 using Bunit;
 using Lumeo.GanttV3;
 using Lumeo.Tests.Helpers;
+using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 using L = Lumeo;
 
@@ -261,6 +262,32 @@ public class GanttV3StylingHooksTests : IAsyncLifetime
         cut.Render(p => p.Add(c => c.Tasks, recurring));
 
         Assert.Equal("", cut.Find("[data-task-id='t1']").GetAttribute("data-recurring"));
+    }
+
+    [Fact]
+    public void The_Drag_Options_Carry_The_Timelines_Own_Now_So_The_Ghost_Cannot_Use_A_Second_Clock()
+    {
+        // Regression (Codex review of this PR, P2): the ghost's data-past
+        // refresh in gantt-v3.js originally read `new Date()`. GanttBar derives
+        // data-past from GanttTimeline.Now when a consumer supplies one (a
+        // historical or simulated timeline), so the ghost could contradict the
+        // very bar it was cloned from mid-drag. The engine now reads this
+        // option instead; asserting the CONSUMER-supplied date (deliberately
+        // not today) is what proves no second clock can creep back in.
+        var interop = new TrackingInteropService();
+        using var ctx = new BunitContext();
+        ctx.AddLumeoServices();
+        ctx.Services.AddSingleton<Lumeo.Services.IComponentInteropService>(interop);
+
+        ctx.Render<L.GanttTimeline>(p => p
+            .Add(c => c.Tasks, new List<L.GanttTask> { new("t1", "Design", D(2026, 1, 2), D(2026, 1, 6)) })
+            .Add(c => c.ViewMode, L.GanttViewMode.Day)
+            .Add(c => c.RangeStart, D(2026, 1, 1))
+            .Add(c => c.RangeEnd, D(2026, 1, 10))
+            .Add(c => c.Now, new DateTime(2026, 1, 4, 9, 30, 0)));
+
+        var options = Assert.IsType<Dictionary<string, object?>>(interop.LastGanttV3DragOptions);
+        Assert.Equal("2026-01-04", options["nowDate"]);
     }
 
     // ── data-past boundary (Codex review of this PR, P2) ──────────────────────
