@@ -153,6 +153,53 @@ public class GanttInteropTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task JsOnDateChange_Preserves_IsRecurring_Across_The_JS_Payload_Round_Trip()
+    {
+        // Regression (Codex review of the styling-hooks PR, P1): IsRecurring is
+        // the second non-positional init property on the shared GanttTask
+        // record, added after gantt-v2.js's taskToJson was written — so the JS
+        // payload never carries it, exactly like ParentId above. This case is
+        // WORSE than the ParentId one though: the merged task is written back
+        // into _tasks and re-emitted via TasksChanged, so an unrelated drag
+        // silently cleared a consumer-set flag AND made the cleared value the
+        // new source of truth. Predicted-wrong values without the merge: false
+        // on both surfaces.
+        var recurringTask = Task1 with { IsRecurring = true };
+        L.GanttTask? dateChanged = null;
+        IEnumerable<L.GanttTask>? pushedTasks = null;
+        var cut = _ctx.Render<L.Gantt>(p => p
+            .Add(c => c.Tasks, new[] { recurringTask })
+            .Add(c => c.OnDateChange, (L.GanttTask t) => { dateChanged = t; })
+            .Add(c => c.TasksChanged, (IEnumerable<L.GanttTask> ts) => { pushedTasks = ts; }));
+
+        var moved = Task1 with { Start = new DateTime(2026, 1, 3), End = new DateTime(2026, 1, 9) };
+        Assert.False(moved.IsRecurring); // mirror the JS payload exactly
+        await cut.InvokeAsync(() => cut.Instance.JsOnDateChange(moved));
+
+        var replaced = Assert.Single(pushedTasks!);
+        Assert.Equal(new DateTime(2026, 1, 3), replaced.Start); // the edit itself still applied
+        Assert.True(replaced.IsRecurring);                     // but the flag survived
+
+        Assert.NotNull(dateChanged);
+        Assert.True(dateChanged!.IsRecurring); // the OnDateChange ARGUMENT must carry it too
+    }
+
+    [Fact]
+    public async Task JsOnTaskClick_Merges_IsRecurring_Onto_The_Renderer_Normalized_Payload()
+    {
+        var recurringTask = Task1 with { IsRecurring = true };
+        L.GanttTask? clicked = null;
+        var cut = _ctx.Render<L.Gantt>(p => p
+            .Add(c => c.Tasks, new[] { recurringTask })
+            .Add(c => c.OnTaskClick, (L.GanttTask t) => { clicked = t; }));
+
+        await cut.InvokeAsync(() => cut.Instance.JsOnTaskClick(Task1));
+
+        Assert.NotNull(clicked);
+        Assert.True(clicked!.IsRecurring);
+    }
+
+    [Fact]
     public async Task JsOnProgressChange_Preserves_ParentId_Across_The_JS_Payload_Round_Trip()
     {
         // Mirror of the JsOnDateChange case above, for the progress-change path.

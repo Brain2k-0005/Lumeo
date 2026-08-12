@@ -102,7 +102,13 @@
     {
         var categoryAxis = new EChartAxis { Type = "category", Data = Categories };
         ChartLabelHelper.ApplyTo(categoryAxis, LabelStrategy, Categories.Count, LabelRotate);
-        var valueAxis = new EChartAxis { Type = "value" };
+        // Bar-only: no axis line, no ticks (the shared theme already turns those off for
+        // every value axis) AND no value-number labels either — the reference this pass
+        // matches ("clean like EvilCharts") carries the reading entirely on the faint
+        // dashed gridlines, with no Y axis at all. Scoped to BarChart's own axis instance
+        // rather than the shared theme's valueAxis block, so a value-heavy chart type
+        // (e.g. a KPI trend AreaChart) that still needs its numbers keeps them.
+        var valueAxis = new EChartAxis { Type = "value", AxisLabel = new EChartAxisLabel { Show = false } };
 
         var seriesList = Series.Select(s => new EChartSeries
         {
@@ -112,24 +118,42 @@
             Stack = Stacked ? "total" : null
         }).ToList();
 
-        // When stacked, the theme's rounded corners on every segment make
-        // the stack look like floating pills (each segment rounds its own
-        // 4 corners, so adjacent segments meet at the arc). We flatten
-        // the inner segments and round only the outermost end of the stack:
-        //
-        //   Vertical stacked   → last series (top) rounds top corners
-        //   Horizontal stacked → last series (right) rounds right corners
-        //
-        // Radius is derived from --radius (fallback 6 px if unavailable
-        // from the CSS side since we're in C#). Consumers who want a
-        // different value can override via OptionOverride on the series.
+        // Radius is "var(--radius-sm)" — HALF of --radius (lumeo.css:
+        // `--radius-sm: calc(var(--radius) * 0.5)`), the same smaller step the
+        // shared theme's own default bar rounding now uses (see buildLumeoTheme's
+        // barRadius in echarts-interop.js), not the full --radius token cards/
+        // buttons/the tooltip use. --radius applied literally to a bar COLUMN (even
+        // at the theme's generous barMaxWidth, 24-40px wide) reads as an oversized
+        // pill cap rather than the reference's crisp, modest rounded top — confirmed
+        // empirically on the library's own 12-category demo before this change (a
+        // 12px radius on a ~13px-wide bar rendered as a near-full semicircle). The
+        // chart interop's resolveCssVars pass resolves the var() reference to the
+        // live computed pixel value at render time; a previous pass hardcoded
+        // `const int r = 6` here, which silently ignored whatever --radius the
+        // active theme/style actually set. Consumers who want a different value can
+        // still override via OptionOverride on the series.
+        const string radiusVar = "var(--radius-sm)";
+        object[] verticalForwardCorners = { radiusVar, radiusVar, 0, 0 };     // rounds the top (positive value grows up)
+        object[] horizontalForwardCorners = { 0, radiusVar, radiusVar, 0 };   // rounds the right/leading end (positive value grows right)
+
         if (Stacked && seriesList.Count > 0)
         {
-            const int r = 6;
-            int[] outerCorners = Horizontal
-                ? new[] { 0, r, r, 0 }   // round right side
-                : new[] { r, r, 0, 0 };  // round top side
-            int[] flat = { 0, 0, 0, 0 };
+            // When stacked, the theme's rounded corners on every segment make
+            // the stack look like floating pills (each segment rounds its own
+            // 4 corners, so adjacent segments meet at the arc). We flatten
+            // the inner segments and round only the outermost end of the stack:
+            //
+            //   Vertical stacked   → last series (top) rounds top corners
+            //   Horizontal stacked → last series (right) rounds right corners
+            //
+            // Sign-aware per-point rounding (see ChartHelper.BuildBarData) is NOT
+            // applied here — identifying the "outermost of its own sign's stack"
+            // datapoint varies per category when a stack mixes positive and
+            // negative values, which is a materially harder problem than this
+            // pass's brief covers. Stacked bars keep today's series-index-based
+            // outer/inner split.
+            object[] outerCorners = Horizontal ? horizontalForwardCorners : verticalForwardCorners;
+            object[] flat = { 0, 0, 0, 0 };
 
             // Use the array form everywhere — ECharts merges theme + series
             // itemStyle and a scalar `borderRadius: 0` doesn't reliably replace
@@ -147,12 +171,40 @@
         {
             // Non-stacked horizontal: theme default `[r, r, 0, 0]` rounds the
             // TOP edge (rectangle corners), which looks wrong for a horizontal
-            // bar. Override so every bar's right end is rounded instead.
-            const int r = 6;
-            foreach (var s in seriesList)
-                s.ItemStyle = new EChartItemStyle { BorderRadiusCorners = new[] { 0, r, r, 0 } };
+            // bar. Override so every bar's right end is rounded instead — and, per
+            // datapoint, flip to the LEFT end for a negative value (see
+            // ChartHelper.BarCorners): a negative horizontal bar extends left from
+            // the zero baseline, so its own far tip is the left edge, not the right.
+            foreach (var (s, orig) in seriesList.Zip(Series))
+            {
+                s.ItemStyle = new EChartItemStyle { BorderRadiusCorners = horizontalForwardCorners };
+                s.Data = ChartHelper.BuildBarData(orig.Values, horizontalForwardCorners);
+            }
+        }
+        else
+        {
+            // The common case: grouped (or single-series) vertical bars, not
+            // stacked. Explicit now rather than relying on the shared theme's
+            // default `bar.itemStyle.borderRadius` falling through unset —
+            // matches the SAME value the theme would apply anyway for an
+            // all-non-negative series, but being explicit here is what lets a
+            // negative value flip to rounding its bottom instead of its top (see
+            // ChartHelper.BarCorners) — a per-series theme default can't do that,
+            // it has no idea which category's value is negative.
+            foreach (var (s, orig) in seriesList.Zip(Series))
+            {
+                s.ItemStyle = new EChartItemStyle { BorderRadiusCorners = verticalForwardCorners };
+                s.Data = ChartHelper.BuildBarData(orig.Values, verticalForwardCorners);
+            }
         }
 
+        // No per-series decal (pattern fill) here anymore — a previous pass added one
+        // for grouped/stacked multi-series bars (see ChartHelper.GetDecal, still used by
+        // Pie/Donut). Removed for bar specifically: the reference this pass matches is
+        // explicit ("no pattern"), and nothing else in Lumeo — Button, Badge, Card —
+        // textures a solid fill; each series' own palette colour plus the legend swatch
+        // is the same "which series is which" signal every other Lumeo surface relies on
+        // (a table row doesn't get a hatch pattern to read apart from the row above it).
         if (ShowDataLabels)
             foreach (var s in seriesList)
                 s.Label = new EChartLabel { Show = true, Position = LabelPosition, Formatter = LabelFormat };
@@ -169,10 +221,16 @@
             XAxis = new List<EChartAxis> { Horizontal ? valueAxis : categoryAxis },
             YAxis = new List<EChartAxis> { Horizontal ? categoryAxis : valueAxis },
             Series = seriesList,
+            // Left tightened from the previous 3% now that the value axis carries no
+            // number labels — ContainLabel still reserves exactly the space the visible
+            // category labels need, so this is reclaimed whitespace, not a clipped axis.
+            // Top comes down with it: a small top-right legend (below) needs far less
+            // vertical band than the old centred one, matching the reference's "generous
+            // whitespace... the chart breathes" read instead of ECharts' cramped defaults.
             Grid = new EChartGrid
             {
-                Left = "3%", Right = "4%",
-                Top = ShowLegend ? "14%" : "5%",
+                Left = "0.5%", Right = "1%",
+                Top = ShowLegend ? "10%" : "3%",
                 Bottom = DataZoom ? "15%" : "3%",
                 ContainLabel = true
             },
@@ -182,8 +240,11 @@
         if (ShowTooltip)
             _option.Tooltip = new EChartTooltip { Trigger = "axis", AxisPointer = new EChartAxisPointer { Type = "shadow" } };
 
+        // Bar-only: top-right, matching the reference ("small, top-right, tiny square
+        // swatches") rather than the shared theme's centred default (left: every other
+        // chart wrapper still gets that centred legend unchanged).
         if (ShowLegend && Series.Count > 0)
-            _option.Legend = new EChartLegend { Data = Series.Select(s => s.Name).ToList() };
+            _option.Legend = new EChartLegend { Data = Series.Select(s => s.Name).ToList(), Left = "right", Top = "0%" };
 
         if (DataZoom)
             _option.DataZoom = new List<EChartDataZoom> { new() { Type = "slider", Show = true }, new() { Type = "inside" } };
@@ -191,8 +252,7 @@
         if (Toolbox)
             _option.Toolbox = new EChartToolbox { Show = true, Feature = new EChartToolboxFeature { SaveAsImage = new() { Show = true }, Restore = new() { Show = true }, DataZoom = new() { Show = true } } };
 
-        if (AnimationDuration.HasValue) _option.AnimationDuration = AnimationDuration;
-        if (!string.IsNullOrEmpty(AnimationEasing)) _option.AnimationEasing = AnimationEasing;
+        ChartHelper.ApplyAnimation(_option, AnimationDuration, AnimationEasing);
 
         ChartHelper.ApplyOptionOverride(_option, OptionOverride);
     }

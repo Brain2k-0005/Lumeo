@@ -240,4 +240,75 @@ public class GanttV3StylingHooksTests : IAsyncLifetime
         Assert.All(lowerCells, c => Assert.Null(c.GetAttribute("data-off")));
         Assert.Empty(cut.FindAll(".lumeo-gantt-v3-off-day"));
     }
+
+    [Fact]
+    public void Toggling_Only_IsRecurring_Reaches_The_Rendered_Bar()
+    {
+        // Regression (Codex review of this PR, P2): GanttChart.ComputeTasksHash
+        // did not fold IsRecurring in, so a task list whose ONLY change was
+        // this flag hashed identically to the previous one. OnParametersSetAsync
+        // then treated the parameter as unchanged, kept the old _state.Tasks,
+        // and data-recurring stayed stale. Predicted-wrong value on the second
+        // assert without the hash fix: null (attribute never appears).
+        var plain = new List<L.GanttTask> { new("t1", "Standup", D(2026, 1, 5), D(2026, 1, 5)) };
+        var cut = _ctx.Render<L.GanttChart>(p => p.Add(c => c.Tasks, plain));
+        Assert.Null(cut.Find("[data-task-id='t1']").GetAttribute("data-recurring"));
+
+        var recurring = new List<L.GanttTask>
+        {
+            new("t1", "Standup", D(2026, 1, 5), D(2026, 1, 5)) { IsRecurring = true },
+        };
+        cut.Render(p => p.Add(c => c.Tasks, recurring));
+
+        Assert.Equal("", cut.Find("[data-task-id='t1']").GetAttribute("data-recurring"));
+    }
+
+    // ── data-past boundary (Codex review of this PR, P2) ──────────────────────
+    // The original implementation compared the RAW Task.End, which disagreed
+    // with the bar the user is looking at: GanttScale.BarGeometry treats End as
+    // INCLUSIVE and renders through End.Date.AddDays(1). Both tests below fail
+    // against that version and pass against the rendered-endpoint one.
+
+    [Fact]
+    public void Data_Past_Absent_While_Now_Is_Still_Inside_The_Task_S_Own_Final_Day()
+    {
+        // End is 2026-06-15 (inclusive) and "now" is midday on that same day —
+        // the bar still covers all of today, so the hook must NOT say past.
+        // Predicted-wrong value under a raw `Task.End < EffectiveNow` compare:
+        // "" (present), because midnight-plus-anything already exceeds
+        // 2026-06-15T00:00:00.
+        var task = new L.GanttTask("t1", "Design", D(2026, 6, 10), D(2026, 6, 15));
+        var cut = _ctx.Render<L.GanttBar>(p => p
+            .Add(c => c.Task, task).Add(c => c.X, 0d).Add(c => c.Width, 100d).Add(c => c.RowIndex, 0)
+            .Add(c => c.Now, new DateTime(2026, 6, 15, 12, 0, 0)));
+
+        Assert.Null(cut.Find("[data-task-id='t1']").GetAttribute("data-past"));
+    }
+
+    [Fact]
+    public void Data_Past_Appears_Once_Now_Crosses_Into_The_Day_After_The_Inclusive_End()
+    {
+        var task = new L.GanttTask("t1", "Design", D(2026, 6, 10), D(2026, 6, 15));
+        var cut = _ctx.Render<L.GanttBar>(p => p
+            .Add(c => c.Task, task).Add(c => c.X, 0d).Add(c => c.Width, 100d).Add(c => c.RowIndex, 0)
+            .Add(c => c.Now, new DateTime(2026, 6, 16, 0, 0, 0)));
+
+        Assert.Equal("", cut.Find("[data-task-id='t1']").GetAttribute("data-past"));
+    }
+
+    [Fact]
+    public void Data_Past_For_A_Milestone_Follows_Its_Rendered_Start_Not_A_Mismatched_End()
+    {
+        // BarGeometry positions a milestone from Start alone and ignores End
+        // entirely, so a milestone carrying an inconsistent End (nothing in the
+        // data model forbids it) must not report a past-ness its own diamond
+        // contradicts. Predicted-wrong value under the raw-End compare: null,
+        // because the stale End is still in the future.
+        var milestone = new L.GanttTask("m1", "Launch", D(2026, 6, 10), D(2026, 12, 31), IsMilestone: true);
+        var cut = _ctx.Render<L.GanttBar>(p => p
+            .Add(c => c.Task, milestone).Add(c => c.X, 0d).Add(c => c.Width, 22d).Add(c => c.RowIndex, 0)
+            .Add(c => c.Now, new DateTime(2026, 6, 11, 0, 0, 0)));
+
+        Assert.Equal("", cut.Find("[data-task-id='m1']").GetAttribute("data-past"));
+    }
 }

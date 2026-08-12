@@ -1065,6 +1065,17 @@ function registerDrag(el, dotNetRef, options) {
                 const newProgress = clampProgress(origProgress + ((isRtl ? -dx : dx) / geo.width) * 100);
                 const fill = ghost.querySelector('.lumeo-gantt-v3-bar-progress');
                 if (fill) fill.style.width = newProgress + '%';
+                // Bug fix (Codex review of the styling-hooks PR, P2): makeGhost
+                // CLONES the original bar, so the ghost inherited a frozen
+                // data-progress (and possibly data-completed) from before the
+                // drag. The preview then matched consumer selectors for the OLD
+                // percentage while visibly showing a different one — and a bar
+                // dragged down from 100% kept [data-completed] the whole time.
+                // Keep both hooks on the ghost in step with the width above.
+                const rounded = Math.round(newProgress);
+                ghost.setAttribute('data-progress', String(rounded));
+                if (rounded === 100) ghost.setAttribute('data-completed', '');
+                else ghost.removeAttribute('data-completed');
             }
 
             if (mode !== 'progress' && dragOptions && dragOptions.hasCanDrop) {

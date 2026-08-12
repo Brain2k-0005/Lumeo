@@ -13,14 +13,18 @@
     [Parameter] public bool ShowDots { get; set; } = true;
     /// <summary>When true, stacks each series on top of the previous one instead of overlaying them independently.</summary>
     [Parameter] public bool Stacked { get; set; }
-    /// <summary>When true (default) the fill uses a lighter opacity than a solid area.
-    /// This is the legacy opacity-only behaviour and is unaffected by
-    /// <see cref="GradientFill"/>.</summary>
+    /// <summary>When true (default), each series' area fades from its own resolved
+    /// colour at a moderate top opacity down to fully transparent at the baseline —
+    /// a vertical gradient fade, on by default. When false, the area renders as a
+    /// flatter, denser translucent fill with no gradient instead (the pre-gradient
+    /// look, still available as the explicit "solid" alternative). Superseded by
+    /// <see cref="GradientFill"/>/<see cref="GradientStops"/> when either of those
+    /// is set (a fully opaque top stop, for a bolder "brand" fill).</summary>
     [Parameter] public bool Gradient { get; set; } = true;
-    /// <summary>Opt into a <em>real</em> vertical gradient fill: each series' area fades
-    /// from its own (brand/theme) colour at the top to transparent at the bottom, the
-    /// look used by modern dashboards. Off by default so existing charts are unchanged.
-    /// Override the stops with <see cref="GradientStops"/>.</summary>
+    /// <summary>Opt into a bolder vertical gradient fill: each series' area fades from
+    /// its own (brand/theme) colour at <em>full</em> opacity at the top to transparent
+    /// at the bottom — more saturated than the default <see cref="Gradient"/> fade.
+    /// Off by default; override the stops with <see cref="GradientStops"/>.</summary>
     [Parameter] public bool GradientFill { get; set; }
     /// <summary>Explicit gradient colour-stops applied to every series' area fill when
     /// set (implies <see cref="GradientFill"/>). Offsets run 0 (top) → 1 (bottom);
@@ -97,7 +101,6 @@
 
     protected override void OnParametersSet()
     {
-        var areaOpacity = Gradient ? 0.3 : 0.7;
         var useRealGradient = GradientFill || GradientStops is { Count: > 0 };
 
         var seriesList = Series.Select((s, i) => new EChartSeries
@@ -109,10 +112,28 @@
             ShowSymbol = ShowDots ? null : false,
             SymbolSize = ShowDots ? 6 : null,
             Stack = Stacked ? "total" : null,
+            // Three distinct looks, all built on the SAME BuildGradient() helper
+            // (each series fading from its own resolved colour to transparent) so
+            // there is one gradient recipe, not three:
+            //  - GradientFill/GradientStops (explicit opt-in): full-opacity top
+            //    stop — the boldest, "brand" fill.
+            //  - Gradient=true (the default): the same gradient, but the whole
+            //    fill is scaled to a moderate top opacity via AreaStyle.Opacity —
+            //    the restrained everyday default.
+            //  - Gradient=false: no gradient at all, a flat denser fill — the
+            //    explicit "solid" alternative, unchanged from before this pass.
             AreaStyle = useRealGradient
                 ? new EChartAreaStyle { Gradient = BuildGradient(i) }
-                : new EChartAreaStyle { Opacity = areaOpacity }
+                : Gradient
+                    ? new EChartAreaStyle { Opacity = 0.45, Gradient = BuildGradient(i) }
+                    : new EChartAreaStyle { Opacity = 0.7 }
         }).ToList();
+
+        // Same marker/dash/weight cycle as LineChart — an area's boundary stroke is
+        // still a "line" series underneath, so it benefits from the same colour-
+        // independent form differentiation. See ChartHelper.ApplyLineForm.
+        for (var i = 0; i < seriesList.Count; i++)
+            ChartHelper.ApplyLineForm(seriesList[i], i);
 
         if (ShowDataLabels)
             foreach (var s in seriesList)
@@ -158,8 +179,7 @@
         if (Toolbox)
             _option.Toolbox = new EChartToolbox { Show = true, Feature = new EChartToolboxFeature { SaveAsImage = new() { Show = true }, Restore = new() { Show = true }, DataZoom = new() { Show = true } } };
 
-        if (AnimationDuration.HasValue) _option.AnimationDuration = AnimationDuration;
-        if (!string.IsNullOrEmpty(AnimationEasing)) _option.AnimationEasing = AnimationEasing;
+        ChartHelper.ApplyAnimation(_option, AnimationDuration, AnimationEasing);
 
         ChartHelper.ApplyOptionOverride(_option, OptionOverride);
     }

@@ -276,6 +276,13 @@ public class EChartSplitLine
 
 public class EChartAxisLabel
 {
+    /// <summary>When explicitly set to <c>false</c>, hides the axis's value labels entirely
+    /// (e.g. a bar chart's value axis when gridlines alone carry the reading — see
+    /// BarChart.razor). Left null everywhere else so ECharts' default (<c>true</c>) applies
+    /// unchanged.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public bool? Show { get; set; }
+
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? Color { get; set; }
 
@@ -635,9 +642,15 @@ public class EChartItemStyle
     /// Per-corner border radius as [top-left, top-right, bottom-right, bottom-left].
     /// Takes precedence over <see cref="BorderRadius"/> when set. Useful for
     /// stacked bar charts where only the outermost segment should be rounded.
+    /// Elements are typically <c>int</c> (a flat corner, e.g. <c>0</c>) or a
+    /// <c>"var(--radius)"</c> string — the chart interop's <c>resolveCssVars</c> pass
+    /// resolves the latter to the live computed pixel value (see
+    /// <c>resolveCssVarValue</c>'s length-to-px conversion in echarts-interop.js), so a
+    /// corner radius set this way tracks <c>--radius</c> exactly like the shared theme's
+    /// own default bar rounding, instead of a hardcoded literal disconnected from it.
     /// </summary>
     [JsonIgnore]
-    public int[]? BorderRadiusCorners { get; set; }
+    public object[]? BorderRadiusCorners { get; set; }
 
     // ECharts accepts either a number or a 4-element array for `borderRadius`.
     // We expose two strongly-typed setters and pick the right one at serialization time.
@@ -656,6 +669,53 @@ public class EChartItemStyle
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? ShadowColor { get; set; }
+
+    /// <summary>Pattern-fill (hatch/dot/etc.) drawn over <see cref="Color"/> — ECharts'
+    /// <c>itemStyle.decal</c>. Set per-series/per-data (never at the shared theme level:
+    /// a live probe during the charts-design pass confirmed ECharts does NOT invoke a
+    /// theme-level <c>itemStyle.decal</c> callback function the way it does for
+    /// <c>itemStyle.color</c> — see <see cref="ChartHelper.GetDecal"/>).</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public EChartDecal? Decal { get; set; }
+}
+
+/// <summary>
+/// An ECharts decal (pattern-fill) descriptor — <c>itemStyle.decal</c>. Gives
+/// categorical series/slices a colour-independent way to read apart (colour-blind-safe,
+/// and the honest answer when the active palette's hues are close or achromatic — see
+/// the charts-design PR description). Built by <see cref="ChartHelper.GetDecal"/>,
+/// never authored directly by a chart wrapper's consumer.
+/// </summary>
+public class EChartDecal
+{
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Symbol { get; set; }
+
+    // ECharts accepts a number, a number[], or a number[][] (grouped dash runs) for
+    // both dash-array axes — left untyped (object) rather than modelling all three
+    // shapes, mirroring the existing Data/ExtensionData convention used elsewhere in
+    // this file for genuinely polymorphic ECharts option shapes.
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public object? DashArrayX { get; set; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public object? DashArrayY { get; set; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public double? Rotation { get; set; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public double? SymbolSize { get; set; }
+
+    /// <summary>Pattern stroke/fill colour. Always a CSS variable token (e.g.
+    /// <c>var(--color-border)</c>), resolved by the chart interop's existing
+    /// <c>resolveCssVars</c> pass exactly like every other <c>var(...)</c> reference in
+    /// a chart option — never a raw hex.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Color { get; set; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? BackgroundColor { get; set; }
 }
 
 public class EChartLabel
@@ -1316,6 +1376,7 @@ public class EChartVisualMapPiece
 [JsonSerializable(typeof(EChartMarkArea))]
 [JsonSerializable(typeof(EChartVisualMapPiece))]
 [JsonSerializable(typeof(List<EChartVisualMapPiece>))]
+[JsonSerializable(typeof(EChartDecal))]
 [JsonSerializable(typeof(List<List<object>>))]
 [JsonSerializable(typeof(object[]))]
 [JsonSerializable(typeof(List<object[]>))]

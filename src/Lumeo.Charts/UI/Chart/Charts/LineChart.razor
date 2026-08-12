@@ -91,6 +91,12 @@
             SymbolSize = ShowDots ? 6 : null
         }).ToList();
 
+        // Marker symbol + stroke dash + stroke weight cycle per series — tells a 2nd/3rd
+        // line apart from the 1st by FORM, not just colour (see ChartHelper.ApplyLineForm
+        // for the full reasoning, including why series 0 gets a bolder stroke).
+        for (var i = 0; i < seriesList.Count; i++)
+            ChartHelper.ApplyLineForm(seriesList[i], i);
+
         if (ShowDataLabels)
             foreach (var s in seriesList)
                 s.Label = new EChartLabel { Show = true, Position = LabelPosition, Formatter = LabelFormat };
@@ -135,8 +141,7 @@
         if (Toolbox)
             _option.Toolbox = new EChartToolbox { Show = true, Feature = new EChartToolboxFeature { SaveAsImage = new() { Show = true }, Restore = new() { Show = true }, DataZoom = new() { Show = true } } };
 
-        if (AnimationDuration.HasValue) _option.AnimationDuration = AnimationDuration;
-        if (!string.IsNullOrEmpty(AnimationEasing)) _option.AnimationEasing = AnimationEasing;
+        ChartHelper.ApplyAnimation(_option, AnimationDuration, AnimationEasing);
 
         ChartHelper.ApplyOptionOverride(_option, OptionOverride);
     }
