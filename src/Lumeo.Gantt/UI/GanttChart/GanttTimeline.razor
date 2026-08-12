@@ -1120,6 +1120,75 @@
     // more range."
     private bool _suppressNextExtensionReport;
 
+    // Bug fix (residual #390 double-scroll — reconciling the mount-scroll
+    // dedup with infinite scroll's own suppression flag above): #390 closed
+    // the race where a SECOND render, dispatched while firstRender's own
+    // pass is still mid-flight in its several awaited interop round-trips,
+    // independently re-derives "is a scroll still owed" from the (at that
+    // point not-yet-claimed) _lastConsumedScrollRequestId and wrongly
+    // concludes one is. It did NOT close a sibling race: firstRender's own
+    // "initialIntentPending" decision is captured ONCE, in a local variable,
+    // before any of those awaits, and is acted on UNCONDITIONALLY once they
+    // all resolve — even if a DIFFERENT, faster-racing render already issued
+    // the equivalent scroll in the meantime. That other render is real:
+    // GanttChart's own firstRender OnAfterRenderAsync calls StateHasChanged()
+    // BEFORE its own awaits specifically so GanttTimeline gets a "second
+    // chance" once ScrollHost captures (see this component's own
+    // OnAfterRenderAsync remarks) — that second, non-firstRender render
+    // reaches its scrollHostChanged branch, which (correctly, by design —
+    // see its own remarks) issues the centering scroll WITHOUT gating on
+    // intentPending, since a host becoming ready is itself a re-scroll
+    // trigger independent of the bookkeeping flag. Confirmed live (this
+    // task's own E2E gate, with diagnostic logging + a stack trace on the
+    // arming call): both passes call ScrollToCenterAsync for the SAME
+    // request id, back to back, each re-arming _suppressNextExtensionReport
+    // above — invisible on a fast local run (the redundant second call
+    // resolves before any later, genuine report arrives), but under CI's
+    // slower interop timing (lengthened further by this same PR's own added
+    // SyncWheelZoomRegistrationAsync round-trip in the firstRender chain the
+    // stuck pass is queued behind) the redundant call can still be
+    // in-flight — flag armed — when a real, later scroll (e.g. this test
+    // suite's own deliberate near-leading-edge scroll) arrives and gets
+    // wrongly swallowed, with nothing left to retry it
+    // (GanttV3InfiniteScrollTests' own "scrollWidth never grew ... within
+    // the retry budget" failure).
+    //
+    // NOT a per-request-id "has this id ever been issued" latch — a first
+    // attempt at that (this task's own local gate caught it) broke
+    // GanttV3CodexRound2Tests/GanttV3CodexRound14Tests' own coverage of a
+    // GENUINELY DIFFERENT, later trigger that legitimately reuses the SAME
+    // ScrollToTodayRequestId value: Today changing after mount (a browser-
+    // date re-resolution landing a render or two later, or midnight ticking
+    // over) re-scrolls via the `Today != _lastSeenToday` disjunct below —
+    // see that branch's own remarks — WITHOUT ever bumping
+    // ScrollToTodayRequestId, since recentering on a changed Today is not
+    // itself a new "intent" in that sense. A blanket "already issued for
+    // this id" guard cannot tell that legitimate re-trigger apart from the
+    // mount race above (same id, both cases) and silently ate it.
+    //
+    // Scoped instead to the ONE mount-time race described above, and ONLY
+    // that race: a claim ticket armed by firstRender's own early decision
+    // (only when it decided a scroll IS owed), naming the exact request id
+    // it intends to apply. Both of the two call sites that could possibly
+    // be racing for THAT SAME id — firstRender's own trailing action below,
+    // and the non-firstRender branch's scrollHostChanged-triggered action —
+    // clear it if it still matches their own id right before they act;
+    // firstRender's OWN trailing action additionally treats a
+    // no-longer-matching ticket as "someone else already handled this" and
+    // skips. The non-firstRender branch never gates its OWN action on this
+    // ticket — it keeps scrolling unconditionally exactly as it always has
+    // (Today-changed/scrollHostChanged are independent, legitimate triggers
+    // that must never be suppressed) — it only ever clears the ticket as a
+    // side effect, so a STILL-mid-flight firstRender pass finds out its own
+    // action is now redundant. Nulled out once consumed (by whichever side
+    // gets there first) or when firstRender never armed one to begin with
+    // (initialIntentPending false), so it can never stick around and
+    // wrongly suppress an unrelated LATER id (request ids only ever
+    // increase — see _lastConsumedScrollRequestId's own remarks — so a
+    // stale ticket for an OLD id can never accidentally match a NEWER one
+    // either).
+    private int? _mountScrollClaim;
+
     private ElementReference _scrollHostRef;
     private ElementReference _headerInnerRef;
     // The last scroll-intent version actually CONSUMED (applied to the DOM).
@@ -1912,9 +1981,18 @@
             var initialIntentPending = IsScrollHostReady
                 && ShouldAttemptTodayScroll
                 && ScrollToTodayRequestId != _lastConsumedScrollRequestId;
+            // Bug fix (residual #390 double-scroll — see _mountScrollClaim's
+            // own remarks): captured alongside the claim below, not re-read
+            // once the several awaits further down resolve — nothing in this
+            // component bumps ScrollToTodayRequestId itself (only GanttChart
+            // does, via a new parameter push, which is a different render
+            // entirely), so it cannot change out from under this local
+            // between now and this pass's own trailing action.
+            var initialRequestId = ScrollToTodayRequestId;
             if (initialIntentPending)
             {
-                _lastConsumedScrollRequestId = Math.Max(_lastConsumedScrollRequestId, ScrollToTodayRequestId);
+                _lastConsumedScrollRequestId = Math.Max(_lastConsumedScrollRequestId, initialRequestId);
+                _mountScrollClaim = initialRequestId;
             }
 
             // Phase 2, T1/T4 fix — deflake: this MUST run FIRST, before any of
@@ -2006,8 +2084,21 @@
             // sentinel and wrongly conclude nothing is (see the bug-fix
             // remarks up top). initialIntentPending is reused as-is, not
             // recomputed, for exactly that reason.
-            if (initialIntentPending)
+            //
+            // Bug fix (residual #390 double-scroll — see _mountScrollClaim's
+            // own remarks): the ticket armed at the top of this block only
+            // still matches initialRequestId if NOBODY has raced ahead and
+            // handled it already — the non-firstRender branch's own
+            // scrollHostChanged-triggered action (GanttChart's deliberate
+            // "second chance" render, dispatched while this pass was stuck
+            // in the several interop round-trips above) clears it the
+            // instant it fires. If that already happened, this call would be
+            // a purely redundant SECOND scroll for the identical target —
+            // re-arming ScrollToCenterAsync's own suppression flag for no
+            // reason (see that flag's remarks) — so it's skipped, not fired.
+            if (initialIntentPending && _mountScrollClaim == initialRequestId)
             {
+                _mountScrollClaim = null;
                 await ScrollToCenterAsync(ResolveScrollTargetX(true), ResolveScrollTargetOffset(true));
             }
 
@@ -2071,6 +2162,19 @@
                 // full defect-class writeup.
                 var requestIdBeingApplied = ScrollToTodayRequestId;
                 _lastConsumedScrollRequestId = Math.Max(_lastConsumedScrollRequestId, requestIdBeingApplied);
+                // Bug fix (residual #390 double-scroll — see
+                // _mountScrollClaim's own remarks): this branch keeps
+                // scrolling UNCONDITIONALLY here, exactly as it always has —
+                // Today-changed/scrollHostChanged are independent, legitimate
+                // re-scroll triggers (see this trigger's own class remarks
+                // above) that must never be suppressed, including on a
+                // request id that was already applied once before (Today
+                // changing bumps neither ScrollToTodayRequestId nor this
+                // guard). Clearing the ticket here — only when it still
+                // names THIS exact id — is purely a courtesy to a firstRender
+                // pass that might STILL be mid-flight behind this one: it has
+                // no effect on whether THIS call itself proceeds.
+                if (_mountScrollClaim == requestIdBeingApplied) _mountScrollClaim = null;
                 await ScrollToCenterAsync(ResolveScrollTargetX(intentPending), ResolveScrollTargetOffset(intentPending));
             }
 
