@@ -510,6 +510,17 @@ internal static partial class LumeoDefaultStrings
         ["Gantt.ZoomOut"] = "Zoom out",
         ["Gantt.ScrollToEarlierTask"] = "Scroll to {0} (earlier)",
         ["Gantt.ScrollToLaterTask"] = "Scroll to {0} (later)",
+        // Arrow-key navigation's own aria-live announcements (design spec —
+        // wheel-zoom + keyboard-nav promotion). Focus MOVING between bars is
+        // announced natively by the browser reading the newly-focused bar's
+        // own Gantt.TaskAriaLabel — no separate string needed there. These
+        // three cover the cases nothing else announces: no further row to
+        // move to, and a Shift+Arrow schedule nudge (which never moves focus,
+        // so a re-rendered aria-label on the STILL-focused bar would not be
+        // re-announced without this live region).
+        ["Gantt.KeyboardNoMoreTasks"] = "No further task to focus",
+        ["Gantt.KeyboardTaskMoved"] = "{0} moved to {1} to {2}",
+        ["Gantt.KeyboardTaskResized"] = "{0} now ends {1}",
         // Design spec Phase 3, T8 — GanttSettingsMenu's own trigger, group
         // headings, toggle labels, and "Reset to defaults" button.
         ["Gantt.Settings"] = "Settings",

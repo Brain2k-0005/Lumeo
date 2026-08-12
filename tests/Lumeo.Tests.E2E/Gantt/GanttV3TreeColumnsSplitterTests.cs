@@ -234,7 +234,7 @@ public class GanttV3TreeColumnsSplitterTests : GanttParityTestBase
         await Page.Mouse.UpAsync();
 
         // Give the CommitSplitterWidth round trip (JS -> GanttTree ->
-        // Gantt3.HandleTreePaneResizeAsync -> the vetoing TreePaneWidthChanged
+        // GanttChart.HandleTreePaneResizeAsync -> the vetoing TreePaneWidthChanged
         // handler -> GanttTree's own deferred OnAfterRenderAsync reset) time
         // to land — a real, multi-await interop chain, not instantaneous.
         // Polls the actual rendered WIDTH (not a raw style-attribute string

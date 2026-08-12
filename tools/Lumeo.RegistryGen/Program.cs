@@ -76,6 +76,7 @@ var componentToPackage = new Dictionary<string, string>(StringComparer.OrdinalIg
     ["Scheduler"] = "Lumeo.Scheduler",
     // Gantt satellite
     ["Gantt"] = "Lumeo.Gantt",
+    ["GanttChart"] = "Lumeo.Gantt",
     // PdfViewer satellite
     ["PdfViewer"] = "Lumeo.PdfViewer",
     // Maps satellite
@@ -197,6 +198,7 @@ var categoryMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCas
     ["Scheduler"] = "Data Display",
     ["Sparkline"] = "Data Display",
     ["Gantt"] = "Data Display",
+    ["GanttChart"] = "Data Display",
     ["Map"] = "Data Display",
     ["MapMarker"] = "Data Display",
     ["MapHeatmap"] = "Data Display",
@@ -335,6 +337,7 @@ var descriptions = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCa
     ["Stepper"] = "Stateful multi-step wizard with navigation, validation gating, and header indicators.",
     ["Window"] = "Non-modal draggable and resizable floating panel with minimize and maximize support.",
     ["Gauge"] = "Single-value gauge with radial, arc, and linear variants and threshold colour bands.",
+    ["GanttChart"] = "Project timeline with dependency arrows, milestones, hierarchy tree pane, summary rollups, and a reject/accept/adjust drag commit gate.",
     ["Barcode"] = "Inline SVG Code 128B barcode renderer (scannable).",
     ["RingProgress"] = "Circular determinate progress ring with optional centre label or custom content.",
     ["Highlighter"] = "Wraps occurrences of one or more search terms in the text with highlight marks.",
@@ -573,18 +576,16 @@ var cssVarMap = new Dictionary<string, string>
 var componentDirs = uiRoots
     .Where(Directory.Exists)
     .SelectMany(root => Directory.GetDirectories(root))
-    // GanttV3 is the in-progress Razor rewrite of Gantt (working name — it gets
-    // swapped in and renamed to Gantt in its final phase). Its components are
-    // EditorBrowsable(Never) work-in-progress API; keep the folder out of the
-    // registry until the swap, then delete this filter.
-    .Where(d => !string.Equals(Path.GetFileName(d), "GanttV3", StringComparison.OrdinalIgnoreCase))
     // SchedulerViews (wave 1b — first-party Month/TimeGrid/Agenda/Toolbar view
-    // engine) is the same situation: work-in-progress components that ship
-    // alongside the FullCalendar-backed Scheduler but aren't wired into its
-    // public API surface yet, so they have no docs page and must not appear
-    // in the registry (which would otherwise fail the docs-parity check).
-    // Same fix shape as the GanttV3 filter above — delete once wave 2+ wires
-    // these into Scheduler.razor's public parameters and gives them a docs page.
+    // engine) is work-in-progress: components that ship alongside the
+    // FullCalendar-backed Scheduler but aren't wired into its public API
+    // surface yet, so they have no docs page and must not appear in the
+    // registry (which would otherwise fail the docs-parity check). Delete
+    // once wave 2+ wires these into Scheduler.razor's public parameters and
+    // gives them a docs page.
+    // (The equivalent GanttV3 filter that used to live here was removed —
+    // GanttV3 has been promoted to GanttChart and is a real registered
+    // component now.)
     .Where(d => !string.Equals(Path.GetFileName(d), "SchedulerViews", StringComparison.OrdinalIgnoreCase))
     .OrderBy(d => Path.GetFileName(d), StringComparer.OrdinalIgnoreCase)
     .ToArray();

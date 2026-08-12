@@ -30,7 +30,7 @@ public class GanttV3StickyHeaderTests : GanttParityTestBase
         var header = Page.Locator("[data-testid='gantt-v3-root'] .lumeo-gantt-v3-header");
         await header.WaitForAsync(new() { Timeout = 15000 });
 
-        // Gantt3's own shared vertical-scroll pane (the "rounded-md border ...
+        // GanttChart's own shared vertical-scroll pane (the "rounded-md border ...
         // overflow:auto" wrapper around the tree+timeline flex row) — not
         // GanttTimeline's own root (which no longer establishes any scroll
         // container itself post-restructure; see GanttTimeline.razor's remarks).
@@ -104,7 +104,7 @@ public class GanttV3StickyHeaderTests : GanttParityTestBase
         // Virtualize now correctly resolves ITS scroll ancestor to be THIS
         // outer pane (real, height-capped) instead of the row-canvas wrapper's
         // own (content-sized, never-actually-clipping) overflow-x:auto div —
-        // that wrapper no longer sets overflow-x:auto at all when Gantt3
+        // that wrapper no longer sets overflow-x:auto at all when GanttChart
         // supplies ScrollHost (see GanttTimeline.ScrollHost's remarks), so
         // there's no longer an intervening scroll container to mis-anchor
         // against. A tall (60-row) fixture must now materialize STRICTLY
@@ -120,7 +120,7 @@ public class GanttV3StickyHeaderTests : GanttParityTestBase
     public async Task Header_columns_stay_aligned_with_the_row_canvas_after_a_horizontal_scroll()
     {
         // Codex round 3, P2 #1: the row-canvas div is no longer a scroll
-        // container at all (overflow-x-auto moved up to Gantt3's shared outer
+        // container at all (overflow-x-auto moved up to GanttChart's shared outer
         // pane — see GanttTimeline.ScrollHost's remarks), so the JS transform
         // sync this spec used to assert (gantt-v3.js's registerHeaderScrollSync)
         // is no longer registered in this mode either — it would double-apply

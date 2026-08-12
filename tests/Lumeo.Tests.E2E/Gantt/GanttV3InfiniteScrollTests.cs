@@ -4,7 +4,7 @@ using Xunit;
 namespace Lumeo.Tests.E2E.Gantt;
 
 /// <summary>
-/// Gantt v3 Phase 3, T9 — horizontal infinite scroll (<c>Gantt3.InfiniteScroll</c>).
+/// Gantt v3 Phase 3, T9 — horizontal infinite scroll (<c>GanttChart.InfiniteScroll</c>).
 /// Real-browser proof to complement <c>GanttV3Phase3T9Tests</c> (bUnit): a genuine
 /// native 'scroll' event driving the rAF-throttled report all the way through
 /// gantt-v3.js's <c>hasActiveDrag</c>/scroll-correction pipeline, the ±1px visual-
@@ -59,9 +59,31 @@ public class GanttV3InfiniteScrollTests : GanttParityTestBase
     // delayed, matching every other stabilization helper in this project's
     // Gantt E2E suite (e.g. GanttV3CanvasChromeTests' own
     // ForceScrollLeftZeroAndWaitStableAsync).
+    //
+    // Bug fix (this task's own CI gate): a real extension commit is a
+    // multi-hop chain — native 'scroll' event -> rAF-throttled report() ->
+    // SignalR round trip -> TryRequestRangeExtensionAsync's own
+    // GanttV3HasActiveDragAsync interop call -> HandleRangeExtensionRequestAsync's
+    // GanttV3GetScrollCenterXAsync interop call -> SetVisibleRange -> a
+    // render -> ScrollToCenterAsync's own interop call — several sequential
+    // SignalR round trips, not one. The 40x100ms (4s) budget this used to
+    // have was proven, via a local disable-check that inserted an artificial
+    // 5s delay into HandleRangeExtensionRequestAsync (a slow-but-CORRECT
+    // commit — the same ±1px assertion below still passed once the extension
+    // actually landed), to reproduce the EXACT CI failure this file's own
+    // history shows across MULTIPLE otherwise-unrelated specs in this class
+    // (Bar_X_Stays_Visually_Stable's own run, Scrolling_Near_The_Leading_Edge's,
+    // Scrolling_To_Either_Physical_Extreme_Under_Rtl's — the last on MASTER
+    // itself, before this branch's own wheel-zoom/pointer-offset work ever
+    // existed) — "scrollWidth never grew ... within the retry budget", not a
+    // pixel-drift assertion failure. A CI runner under load genuinely needs
+    // more than 4s for this chain sometimes; 150x100ms (15s) matches this
+    // same file's own Timeout=15000 idiom used everywhere else a real,
+    // eventually-consistent condition is awaited (e.g. WaitReadyAsync's own
+    // "done" latch above), rather than inventing a new number.
     private async Task<double> WaitForScrollWidthToGrowAsync(double before)
     {
-        for (var attempt = 0; attempt < 40; attempt++)
+        for (var attempt = 0; attempt < 150; attempt++)
         {
             var current = await ScrollPane.EvaluateAsync<double>("el => el.scrollWidth");
             if (current > before) return current;
