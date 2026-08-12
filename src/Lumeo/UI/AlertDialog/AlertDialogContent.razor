@@ -32,6 +32,16 @@
 
     /// <summary>Additional CSS classes merged onto the panel.</summary>
     [Parameter] public string? Class { get; set; }
+    /// <summary>Controls the panel's max width, from <see cref="AlertDialogSize.Sm"/> up
+    /// to <see cref="AlertDialogSize.Full"/>. Default <see cref="AlertDialogSize.Default"/>
+    /// (<c>max-w-lg</c>, unchanged). Family completion of the same lever
+    /// <see cref="DialogContent.Size"/> already gives <c>Dialog</c> — <c>AlertDialog</c> is
+    /// DialogContent's structural twin (same panel shape, same modal machinery), so it gets
+    /// its own mirrored <c>AlertDialogSize</c> enum rather than the unified
+    /// <see cref="Lumeo.Size"/> scale: <see cref="AlertDialogSize.Full"/> is a layout intent,
+    /// not a point on a scale, the same documented reason <c>DialogSize</c>/<c>SheetSize</c>
+    /// stay outside <see cref="Lumeo.Size"/>.</summary>
+    [Parameter] public AlertDialogSize Size { get; set; } = AlertDialogSize.Default;
     /// <summary>When <c>true</c> (the default), closing keeps the panel mounted for
     /// a brief zoom-out (and backdrop fade-out) before unmounting instead of
     /// vanishing instantly — so a declarative alert dialog animates its close the
@@ -103,7 +113,18 @@
     // element (returning null makes Blazor omit the attribute entirely).
     private string? DescribedBy => Context.DescriptionRegistry.HasDescription ? Context.DescriptionId : null;
 
-    private string CssClass => Cx.Merge("relative grid w-full max-w-lg gap-4 bg-background p-6 shadow-lg sm:rounded-lg", AnimationClass, PointerClass, Class);
+    // Mirrors DialogContent.SizeClass exactly (same panel, same width scale).
+    private string SizeClass => Size switch
+    {
+        AlertDialogSize.Sm => "max-w-sm",
+        AlertDialogSize.Default => "max-w-lg",
+        AlertDialogSize.Lg => "max-w-2xl",
+        AlertDialogSize.Xl => "max-w-4xl",
+        AlertDialogSize.Full => "max-w-[calc(100vw-2rem)] max-h-[calc(100vh-2rem)]",
+        _ => "max-w-lg"
+    };
+
+    private string CssClass => Cx.Merge("relative grid w-full", SizeClass, "gap-4 bg-background p-6 shadow-lg sm:rounded-lg", AnimationClass, PointerClass, Class);
 
     protected override void OnParametersSet()
     {
@@ -236,4 +257,9 @@
             await Cleanup();
         }
     }
+
+    /// <summary>AlertDialog sizes. Mirrors <see cref="DialogContent.DialogSize"/> exactly
+    /// — <c>Full</c> is layout-intent (entire viewport), not a scale value, so this enum is
+    /// intentionally NOT replaced by <see cref="Lumeo.Size"/>.</summary>
+    public enum AlertDialogSize { Sm, Default, Lg, Xl, Full }
 }

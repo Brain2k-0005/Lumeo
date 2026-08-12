@@ -235,6 +235,34 @@
 </Stack>
 
 <div class="mt-12 space-y-4">
+    <Heading Id="sizes" Level="2" Class="scroll-mt-20">Sizes</Heading>
+    <Lumeo.Text Size="sm" Color="muted">
+        Click any trigger below to open the drawer at that size — DrawerContent.DrawerSize covers every value. On
+        the default Bottom side, size controls the panel's max height; on Left/Right it controls max width instead
+        (the panel's own 3/4-viewport base width is unaffected — mirrors <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">SheetContent.SheetSize.Full</code>'s
+        own Left/Right precedent). <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">Full</code> on
+        Top/Bottom takes the entire viewport, the mobile-fullscreen bottom-sheet pattern.
+    </Lumeo.Text>
+
+    <AutoVariants TEnum="DrawerContent.DrawerSize" Title="DrawerContent.DrawerSize">
+        <Drawer Open="@(_sizeOpen.TryGetValue(context, out var v) && v)" OpenChanged="@(o => OnSizeOpenChanged(context, o))">
+            <DrawerTrigger>
+                <Button Variant="Button.ButtonVariant.Outline">Open @context.ToString()</Button>
+            </DrawerTrigger>
+            <DrawerContent Size="@context">
+                <DrawerHeader>
+                    <DrawerTitle>DrawerSize = @context</DrawerTitle>
+                    <DrawerDescription>This drawer uses <code>DrawerContent.DrawerSize.@context.ToString()</code>.</DrawerDescription>
+                </DrawerHeader>
+                <DrawerFooter>
+                    <DrawerClose><Button Class="w-full">Close</Button></DrawerClose>
+                </DrawerFooter>
+            </DrawerContent>
+        </Drawer>
+    </AutoVariants>
+</div>
+
+<div class="mt-12 space-y-4">
     <Heading Id="intercepting-close" Level="2" Class="scroll-mt-20">Intercepting close</Heading>
     <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
         <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">OnBeforeClose</code> fires for
@@ -351,6 +379,12 @@
     private bool _guardOpen;
     private bool _guardDirty;
     private string? _guardNote;
+
+    private Dictionary<DrawerContent.DrawerSize, bool> _sizeOpen = new();
+    private void OnSizeOpenChanged(DrawerContent.DrawerSize size, bool open)
+    {
+        _sizeOpen[size] = open;
+    }
 
     // Snap points demo (#218)
     private bool _snapOpen;
