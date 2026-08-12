@@ -111,7 +111,7 @@ internal static class GanttColorModel
     ///
     /// Returns <c>null</c> when <paramref name="color"/> is <c>null</c> (the
     /// caller keeps its EXISTING <c>text-foreground</c> styling — the default
-    /// primary-coloured bar's look is unchanged, out of this feature's scope)
+    /// chart-palette-coloured bar's look is unchanged, out of this feature's scope)
     /// or when it cannot be parsed as a hex (<c>#rgb</c>/<c>#rgba</c>/
     /// <c>#rrggbb</c>/<c>#rrggbbaa</c>) or <c>rgb()</c>/<c>rgba()</c> literal —
     /// an honest, documented limitation: a <c>var()</c> reference, named CSS
