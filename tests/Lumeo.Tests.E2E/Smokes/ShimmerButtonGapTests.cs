@@ -22,6 +22,28 @@ namespace Lumeo.Tests.E2E.Smokes;
 /// Drives <c>tests/Lumeo.Tests.ServerHost</c>'s <c>/e2e/shimmer-button-gap</c> page the
 /// same way <see cref="InputSizingTests"/> drives <c>/e2e/input-sizing</c> — see that
 /// class's remarks for why a separate base URL / no shared Gantt collection is used.
+///
+/// CI flake fix (master e2e red, 2026-08-12): this suite intermittently failed with
+/// <c>Cannot read properties of null (reading 'querySelector')</c> — the exact same
+/// symptom <see cref="InputSizingTests"/>'s class-level remarks document under "CI
+/// flake fix, item 1". Root cause is identical: <c>tests/Lumeo.Tests.ServerHost</c>
+/// renders with <c>InteractiveServerRenderMode(prerender: false)</c> (see
+/// <c>App.razor</c>), so the initial HTML is an empty shell and every element only
+/// appears once the SignalR circuit's first render batch arrives over the
+/// already-open WebSocket. <c>Page.WaitForLoadStateAsync(NetworkIdle)</c> in
+/// <c>InitializeAsync</c> only observes HTTP/JS asset downloads settling, not that
+/// render batch — so a raw <c>document.querySelector</c> inside <c>Page.EvaluateAsync</c>
+/// can run before the button/icon/label elements attach, especially under the shared
+/// ServerHost process's resource contention from other Smokes classes running in
+/// xUnit's default parallel collection. Verified NOT a missing-CSS-utility issue: the
+/// actual CI error text was the null-querySelector TypeError above, not a wrong
+/// computed-gap value, and a literal substring scan of the shipped
+/// <c>src/Lumeo/wwwroot/css/lumeo-utilities.css</c> bundle confirms <c>.gap-1{</c>,
+/// <c>.gap-1\.5{</c> and <c>.gap-2{</c> are all present. Fixed the same way
+/// <see cref="InputSizingTests"/> was: every element lookup now goes through
+/// <c>Locator.WaitForAsync</c> (which waits, up to its own timeout, for the element to
+/// attach) before evaluating against it, instead of a one-shot
+/// <c>document.querySelector</c> that assumes the element already exists.
 /// </summary>
 public class ShimmerButtonGapTests : IAsyncLifetime
 {
@@ -49,25 +71,39 @@ public class ShimmerButtonGapTests : IAsyncLifetime
         _playwright.Dispose();
     }
 
+    // Resolves a data-testid to a Playwright Locator that WAITS (up to its default
+    // timeout) for a matching element to attach to the DOM, instead of a one-shot
+    // `document.querySelector` that assumes it already exists. See the class-level
+    // remarks (CI flake fix) for why this matters on this specific host.
+    private ILocator ByTestId(string testId) => _page.Locator($"[data-testid=\"{testId}\"]");
+
     private async Task<double> ComputedColumnGapPxAsync(string size)
-        => await _page.EvaluateAsync<double>(
-            @"(size) => {
-                const btn = document.querySelector(`[data-testid=""shimmer-${size}""]`);
-                const span = btn.querySelector(':scope > span');
+    {
+        var btn = ByTestId($"shimmer-{size}");
+        await btn.WaitForAsync(new LocatorWaitForOptions { State = WaitForSelectorState.Attached });
+        return await btn.EvaluateAsync<double>(
+            @"(el) => {
+                const span = el.querySelector(':scope > span');
                 return parseFloat(getComputedStyle(span).columnGap);
-            }",
-            size);
+            }");
+    }
 
     private async Task<double> MeasuredIconToLabelGapPxAsync(string size)
-        => await _page.EvaluateAsync<double>(
-            @"(size) => {
-                const icon = document.querySelector(`[data-testid=""shimmer-${size}-icon""]`);
-                const label = document.querySelector(`[data-testid=""shimmer-${size}-label""]`);
-                const iconRect = icon.getBoundingClientRect();
+    {
+        var icon = ByTestId($"shimmer-{size}-icon");
+        var label = ByTestId($"shimmer-{size}-label");
+        await icon.WaitForAsync(new LocatorWaitForOptions { State = WaitForSelectorState.Attached });
+        await label.WaitForAsync(new LocatorWaitForOptions { State = WaitForSelectorState.Attached });
+
+        return await icon.EvaluateAsync<double>(
+            @"(iconEl, testid) => {
+                const label = document.querySelector(`[data-testid=""${testid}""]`);
+                const iconRect = iconEl.getBoundingClientRect();
                 const labelRect = label.getBoundingClientRect();
                 return labelRect.left - iconRect.right;
             }",
-            size);
+            $"shimmer-{size}-label");
+    }
 
     // Predicted-vs-actual (disable check): reverting InnerContentClass back to the
     // pre-fix hardcoded "gap-2" on the inner span (with the outer button's SizeClasses
