@@ -127,6 +127,29 @@ public class SchedulerMonthViewWeekNumbersTests : IAsyncLifetime
     }
 
     [Fact]
+    public void The_Header_Label_Stays_Visible_To_Assistive_Technology()
+    {
+        // Codex review of this PR, P2: the first version marked this cell
+        // aria-hidden to avoid an "empty column header" announcement. Wrong
+        // trade — the cell is not empty, it carries the ONLY text explaining
+        // what the new column is, so hiding it left screen readers announcing
+        // bare numbers like "35" with nothing to relate them to.
+        var cut = _ctx.Render<L.SchedulerMonthView>(p => p
+            .Add(c => c.AnchorDate, new DateTime(2026, 1, 15))
+            .Add(c => c.ShowWeekNumbers, true));
+
+        // Positive assertion, not just "the bad string is absent": find the
+        // element actually carrying the label and prove it is exposed.
+        var labelled = cut.FindAll("span")
+            .Where(e => string.Equals(e.TextContent.Trim(), "Wk", StringComparison.Ordinal))
+            .ToList();
+
+        var header = Assert.Single(labelled);
+        Assert.Null(header.GetAttribute("aria-hidden"));
+        Assert.Null(header.GetAttribute("role")); // not role="presentation" either
+    }
+
+    [Fact]
     public void The_Week_Column_Is_Not_A_Gridcell_So_Keyboard_Navigation_Is_Untouched()
     {
         // The month grid's arrow-key navigation walks day cells by index. A
