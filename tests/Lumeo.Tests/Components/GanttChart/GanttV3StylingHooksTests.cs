@@ -317,6 +317,32 @@ public class GanttV3StylingHooksTests : IAsyncLifetime
     }
 
     [Fact]
+    public void The_Leaf_Only_Gate_Honours_A_Caller_Supplied_Rows_List_Not_The_Ignored_Tasks_Parameter()
+    {
+        // Regression (Codex review of this PR, P2): the first version of the
+        // gate rebuilt hierarchy from the Tasks parameter. `Rows` takes
+        // priority over `Tasks` when a caller supplies it, and Tasks is then
+        // legitimately EMPTY — so a supplied parent row was stamped as a leaf
+        // and could take data-selected, recreating exactly the parent/checkbox
+        // contradiction the gate exists to prevent. Parent-ness now comes from
+        // the authoritative GanttVisibleRow.HasChildren.
+        var parent = new L.GanttTask("p1", "Epic", D(2026, 1, 2), D(2026, 1, 10));
+        var rows = new List<GanttVisibleRow>
+        {
+            new(GanttRowKind.Task, parent, "Epic", 0, true, "p1", false),
+        };
+
+        var cut = _ctx.Render<L.GanttTimeline>(p => p
+            .Add(c => c.Tasks, new List<L.GanttTask>()) // deliberately empty — Rows wins
+            .Add(c => c.Rows, rows)
+            .Add(c => c.RangeStart, D(2026, 1, 1))
+            .Add(c => c.RangeEnd, D(2026, 1, 31))
+            .Add(c => c.SelectedIds, new HashSet<string> { "p1" }));
+
+        Assert.Null(cut.Find("[data-task-id='p1']").GetAttribute("data-selected"));
+    }
+
+    [Fact]
     public void The_Leaf_Only_Gate_Does_Not_Depend_On_ShowSummaryBars()
     {
         // Trap this nearly fell into: `row.Rollup` looks like a ready-made

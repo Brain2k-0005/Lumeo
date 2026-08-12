@@ -1821,9 +1821,12 @@
         GanttTask? Task, double X, double Width, int RowIndex, string? Color, string? Label,
         string? GroupRowKey = null, GanttRollup? Rollup = null, double SummaryX = 0, double SummaryWidth = 0,
         GanttOffscreenDirection Offscreen = GanttOffscreenDirection.None,
-        // Whether this row's task is a hierarchy PARENT (some other task names
-        // it via ParentId). Stamped here rather than asked per row — see
-        // BuildParentTaskIds. Only consumer today is the data-selected gate.
+        // Whether this row is a hierarchy PARENT, copied straight from the
+        // authoritative GanttVisibleRow.HasChildren (Codex review of the
+        // styling-hooks PR, P2). An earlier attempt reconstructed this from the
+        // Tasks parameter — wrong, because `Rows` takes priority over `Tasks`
+        // when a caller supplies it, and `Tasks` is then legitimately empty or
+        // stale. Only consumer today is the data-selected gate.
         bool IsParent = false);
 
     // Virtualize<TItem>.Items requires ICollection<TItem> (IReadOnlyList doesn't
@@ -1856,13 +1859,25 @@
             // null ParentId "bucket" under the wrong mode).
             var usesHierarchy = ColorByGroup && GanttRowModel.UsesHierarchy(GanttRowModel.FilterValidDurationTasks(Tasks));
             var visibleWindow = ShowOffscreenIndicators ? VisibleTimelineWindow : null;
-            // One build for the whole row list, same discipline as `rollups`
-            // above. Scans the FilterValidDurationTasks-filtered set, not the
-            // raw Tasks parameter — identical reasoning to the round-2 P2 #7
-            // fix on `usesHierarchy` directly above: a ParentId pointing at an
-            // invalid-duration task that BuildVisibleRows already dropped must
-            // not make the target count as a rendered parent.
-            var parentIds = BuildParentTaskIds(GanttRowModel.FilterValidDurationTasks(Tasks));
+            // Parent-ness for the data-selected gate, derived from the SAME
+            // authoritative row list being rendered — never from the Tasks
+            // parameter, which `Rows` overrides and which is then legitimately
+            // empty or stale (Codex review of the styling-hooks PR, P2).
+            //
+            // Two sources, because neither alone is complete:
+            //  * row.HasChildren — authoritative when a caller supplies Rows,
+            //    and the only way to know about a declared parent whose
+            //    children are not themselves in the list.
+            //  * the rows' own ParentId links — needed because
+            //    BuildFallbackRows (the Rows==null path) hardcodes
+            //    HasChildren:false for every row, so a standalone timeline fed
+            //    through Tasks would otherwise report every parent as a leaf.
+            var parentIds = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var r in visibleRows)
+            {
+                var pid = r.Task?.ParentId;
+                if (!string.IsNullOrEmpty(pid)) parentIds.Add(pid!);
+            }
             var rows = new List<GanttTimelineRow>(visibleRows.Count);
             for (var i = 0; i < visibleRows.Count; i++)
             {
@@ -1890,7 +1905,7 @@
                 var color = BarColor?.Invoke(task) ?? (ColorByGroup ? GanttColorModel.ResolveGroupColorVar(usesHierarchy, task) : null);
                 var (x, width) = GanttScale.BarGeometry(task, ViewMode, Origin, EffectiveColumnWidth, EffectiveBarHeight);
                 var offscreen = visibleWindow is { } w ? ResolveOffscreenDirection(x, width, w) : GanttOffscreenDirection.None;
-                rows.Add(new GanttTimelineRow(task, x, width, i, color, null, null, rollup, summaryX, summaryWidth, offscreen, parentIds.Contains(task.Id)));
+                rows.Add(new GanttTimelineRow(task, x, width, i, color, null, null, rollup, summaryX, summaryWidth, offscreen, row.HasChildren || parentIds.Contains(task.Id)));
             }
             return rows;
         }
@@ -1929,21 +1944,6 @@
     /// unrelated display toggle.
     /// </para>
     /// </summary>
-    /// <remarks>
-    /// Built ONCE per render inside <see cref="RowItems"/> and stamped onto each
-    /// row (<c>GanttTimelineRow.IsParent</c>), never evaluated per row — the
-    /// same shape <see cref="Rollups"/> already uses, and for the same reason:
-    /// a per-row rebuild would be O(rows x tasks) on a virtualized list.
-    /// </remarks>
-    private static HashSet<string> BuildParentTaskIds(IEnumerable<GanttTask> tasks)
-    {
-        var ids = new HashSet<string>(StringComparer.Ordinal);
-        foreach (var t in tasks)
-        {
-            if (!string.IsNullOrEmpty(t.ParentId)) ids.Add(t.ParentId!);
-        }
-        return ids;
-    }
 
     // A row has a rollup exactly when it's collapsible (HasChildren) AND the
     // Rollups dictionary actually has an entry for its ToggleKey — the second
@@ -2120,15 +2120,6 @@
                 _mountScrollClaim = initialRequestId;
             }
 
-            // Standalone-timeline browser clock (Codex review of the
-            // styling-hooks PR, P2) — see ResolveOwnBrowserNowAsync, which
-            // self-gates to "no Now supplied" and is therefore a pure no-op in
-            // the GanttChart-hosted composition. Deliberately placed AFTER the
-            // scroll claim above and BEFORE the registration awaits: it must
-            // not sit between the claim and its own sentinel write (the #390
-            // bug shape), and resolving it early means the first paint that
-            // carries data-past already carries the right one.
-            await ResolveOwnBrowserNowAsync();
 
             // Phase 2, T1/T4 fix — deflake: this MUST run FIRST, before any of
             // master's own scroll/header interop calls below. WaitV3ReadyAsync
@@ -2196,6 +2187,19 @@
             // and retried on the same scrollHostChanged transition.
             if (IsScrollHostReady) await RegisterVerticalScrollTrackingAsync();
 
+            // Standalone-timeline browser clock — LAST among this pass's
+            // awaits, deliberately (Codex review of the styling-hooks PR, P2).
+            // Placed before SyncDragRegistrationAsync in the first attempt, it
+            // pushed the delegated pointer listener behind an extra interop
+            // round trip, so a drag begun on an already-painted bar in that
+            // window was silently missed. That also hit the NORMAL GanttChart
+            // composition, contrary to what the first version of this claimed:
+            // GanttChart passes Now="@_browserNow", which is null until its own
+            // resolve lands, so the "hosted path is a no-op" gate did not hold
+            // on the first render. Nothing about data-past is interaction-
+            // critical, so it yields to every registration above it.
+            await ResolveOwnBrowserNowAsync();
+
             // Bug fix (Codex round 3, P2 #1): a caller-supplied ScrollHost's
             // value DURING this render is unavoidably whatever the ancestor's
             // own ref field held when the ANCESTOR's render tree was built —
@@ -2239,6 +2243,15 @@
 
             return;
         }
+
+        // Bug fix (Codex review of the styling-hooks PR, P2): a timeline that
+        // mounted WITH a Now and later has it cleared became eligible for
+        // self-resolution but was never asked again, because the only call site
+        // was the firstRender branch above. EffectiveNow then fell back to the
+        // server clock for the rest of the session. Self-gated the same way, so
+        // this is a plain no-op on every render where Now is still supplied or
+        // the value is already resolved.
+        await ResolveOwnBrowserNowAsync();
 
         // Today (Codex round 2, P2 #9) changing — e.g. GanttChart's browser-date
         // resolution landing a render or two after mount — is treated exactly
