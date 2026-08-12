@@ -134,7 +134,20 @@
         get
         {
             var heightCls = string.IsNullOrEmpty(PreviewHeight) ? "min-h-[160px]" : string.Empty;
-            var overflow  = OverflowVisible ? "overflow-visible" : "overflow-x-auto overflow-y-auto";
+            // Horizontal auto-scroll is legitimate here (wide tables/toolbars that
+            // shouldn't force the whole page to scroll sideways). Vertical scrolling
+            // is not: the container only sets a *minimum* height (min-h-[160px], or a
+            // fixed PreviewHeight when the caller opts in), so in-flow content already
+            // grows the box to fit. `overflow-y-auto` used to clip content to whatever
+            // height the box happened to compute to and show an unexpected inner
+            // scrollbar — most visibly on chart demos, where the visually-hidden
+            // screen-reader data table (an absolutely-positioned <table>, which the
+            // CSS table-sizing algorithm treats a `sr-only` `width/height:1px` as a
+            // minimum rather than an exact size) inflates scrollHeight far past the
+            // visible chart. `overflow-y-hidden` clips that invisible overflow
+            // without ever touching real, in-flow (i.e. visible) content, which
+            // simply keeps growing the box as before.
+            var overflow  = OverflowVisible ? "overflow-visible" : "overflow-x-auto overflow-y-hidden";
             return $"{heightCls} p-6 sm:p-8 bg-muted/20 {overflow} flex items-center justify-center".Trim();
         }
     }
