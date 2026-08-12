@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Linq;
 
 namespace Lumeo.SchedulerKernel;
 
@@ -49,11 +50,18 @@ public static class SchedulerRRuleParser
 
         SchedulerRecurrenceFrequency? freq = null;
         var interval = 1;
+        var intervalSeen = false;
         int? count = null;
         DateTime? until = null;
         List<SchedulerByDayRule>? byDay = null;
 
-        foreach (var part in text.Split(';', StringSplitOptions.RemoveEmptyEntries))
+        // NOT RemoveEmptyEntries (Codex review of this PR, P2): that silently
+        // swallowed ";FREQ=DAILY", "FREQ=DAILY;" and "FREQ=DAILY;;COUNT=2",
+        // which is exactly the truncated/mis-assembled calendar line this
+        // parser's strictness exists to surface.
+        var parts = text.Split(';');
+        if (parts.Length == 0) return false;
+        foreach (var part in parts)
         {
             var eq = part.IndexOf('=');
             if (eq <= 0) return false; // "FREQ" with no value, or a stray "=WEEKLY"
@@ -77,6 +85,11 @@ public static class SchedulerRRuleParser
                     break;
 
                 case "INTERVAL":
+                    // Duplicate-rejected like every other part (Codex review of
+                    // this PR, P2): letting a second INTERVAL overwrite the
+                    // first silently picks a winner from an ambiguous rule.
+                    if (intervalSeen) return false;
+                    intervalSeen = true;
                     if (!int.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out interval) || interval < 1)
                         return false; // RFC 5545: INTERVAL is a positive integer
                     break;
@@ -106,6 +119,7 @@ public static class SchedulerRRuleParser
         }
 
         if (freq is null) return false; // FREQ is the one REQUIRED part (RFC 5545 §3.3.10)
+        if (!ByDayIsHonouredBy(freq.Value, byDay)) return false;
 
         rule = new SchedulerRecurrenceRule(freq.Value, interval, count, until, byDay);
         return true;
@@ -124,26 +138,68 @@ public static class SchedulerRRuleParser
                 "optional INTERVAL, COUNT or UNTIL, and BYDAY (ordinals allowed, e.g. 2MO or -1FR).");
 
     /// <summary>
+    /// Whether the expander will actually HONOUR <paramref name="byDay"/> under
+    /// <paramref name="freq"/> (Codex review of this PR, P1). Rejecting mismatches is the whole
+    /// point of this parser's strictness — each case below otherwise parses cleanly and then
+    /// produces a series that silently means something else:
+    /// <list type="bullet">
+    ///   <item><c>FREQ=DAILY;BYDAY=MO</c> — daily expansion ignores ByDay entirely, so this
+    ///   would expand to EVERY day rather than Mondays.</item>
+    ///   <item><c>FREQ=WEEKLY;BYDAY=2MO</c> — weekly expansion ignores the ordinal, so
+    ///   "second Monday" would expand to every Monday.</item>
+    ///   <item><c>FREQ=MONTHLY;BYDAY=MO</c> — RFC 5545 reads an unqualified monthly term as
+    ///   EVERY Monday in the month; this rule model treats a missing ordinal as the FIRST one
+    ///   (see <see cref="SchedulerByDayRule.Ordinal"/>, which records that divergence as
+    ///   out of scope), so accepting it would quietly drop every occurrence but the first.</item>
+    /// </list>
+    /// </summary>
+    private static bool ByDayIsHonouredBy(SchedulerRecurrenceFrequency freq, List<SchedulerByDayRule>? byDay)
+    {
+        if (byDay is null) return true; // no BYDAY at all is always fine
+
+        return freq switch
+        {
+            SchedulerRecurrenceFrequency.Daily => false,
+            SchedulerRecurrenceFrequency.Weekly => byDay.All(d => d.Ordinal is null),
+            SchedulerRecurrenceFrequency.Monthly => byDay.All(d => d.Ordinal is not null),
+            _ => false,
+        };
+    }
+
+    /// <summary>
     /// RFC 5545 writes UNTIL as a DATE (<c>yyyyMMdd</c>) or a DATE-TIME (<c>yyyyMMddTHHmmss</c>,
     /// optionally UTC-suffixed with <c>Z</c>).
     /// <para>
-    /// The <c>Z</c> form is accepted but NOT converted to local time, deliberately: this
-    /// scheduler's kernel is documented as wall-clock throughout — it never calls
-    /// <c>ToLocalTime</c>/<c>ToUniversalTime</c> — so shifting only this one value would make
-    /// UNTIL disagree with every other date in the same rule. <see cref="SchedulerRecurrenceRule.Until"/>
-    /// is also compared by DATE only, which makes the distinction moot for all but a series
-    /// ending within hours of midnight.
+    /// A DATE-TIME is accepted ONLY when its time-of-day is <c>23:59:59</c> — the end-of-day
+    /// idiom real calendars emit. Correction to an earlier claim of mine that the distinction was
+    /// "moot" (Codex review of this PR, P2): it is not.
+    /// <see cref="SchedulerRecurrenceRule.Until"/> is bounded by DATE, so a cutoff of
+    /// <c>20260812T080000</c> would still include that day's 09:00 occurrence — later than the
+    /// caller asked for. End-of-day is the one time-of-day where date-only bounding is exactly
+    /// equivalent; every other value is rejected rather than silently widened to the full day.
+    /// </para>
+    /// <para>
+    /// The <c>Z</c> suffix is accepted but NOT converted to local time: this scheduler's kernel is
+    /// wall-clock throughout — it never calls <c>ToLocalTime</c>/<c>ToUniversalTime</c> — so
+    /// shifting only this one value would make UNTIL disagree with every other date in the same
+    /// rule.
     /// </para>
     /// </summary>
     private static bool TryParseUntil(string value, out DateTime result)
     {
         var text = value.EndsWith("Z", StringComparison.OrdinalIgnoreCase) ? value[..^1] : value;
-        return DateTime.TryParseExact(
-            text,
-            ["yyyyMMdd", "yyyyMMdd'T'HHmmss"],
-            CultureInfo.InvariantCulture,
-            DateTimeStyles.None,
-            out result);
+
+        if (DateTime.TryParseExact(text, "yyyyMMdd", CultureInfo.InvariantCulture, DateTimeStyles.None, out result))
+            return true;
+
+        if (!DateTime.TryParseExact(text, "yyyyMMdd'T'HHmmss", CultureInfo.InvariantCulture, DateTimeStyles.None, out result))
+            return false;
+
+        // See the remarks above: only the end-of-day idiom survives date-only bounding intact.
+        if (result.TimeOfDay == new TimeSpan(23, 59, 59)) return true;
+
+        result = default;
+        return false;
     }
 
     private static bool TryParseByDay(string value, out List<SchedulerByDayRule>? terms)
@@ -180,10 +236,20 @@ public static class SchedulerRRuleParser
                     return false;
                 // RFC 5545 allows +/-1..53; 0 is explicitly invalid, and this rule set treats a
                 // missing ordinal as "first", so a literal 0 must not silently become that.
-                if (parsedOrdinal == 0) return false;
+                // RFC 5545 bounds BYDAY ordinals to +/-1..53 (Codex review of
+                // this PR, P2). 54MO parses as an integer and then matches no
+                // date in any month, so the expander silently yields an EMPTY
+                // series instead of reporting the bad rule.
+                if (parsedOrdinal == 0 || Math.Abs(parsedOrdinal) > 53) return false;
                 ordinal = parsedOrdinal;
             }
 
+            // Duplicate terms are rejected, not collapsed (Codex review of this
+            // PR, P2): "BYDAY=1MO,1MO" reaches monthly expansion as two rules,
+            // emitting two instances at the SAME timestamp and burning the whole
+            // COUNT on one date. Rejecting matches how duplicate PARTS are
+            // handled — an ambiguous rule is not silently resolved.
+            if (parsed.Any(t => t.Day == day.Value && t.Ordinal == ordinal)) return false;
             parsed.Add(new SchedulerByDayRule(day.Value, ordinal));
         }
 

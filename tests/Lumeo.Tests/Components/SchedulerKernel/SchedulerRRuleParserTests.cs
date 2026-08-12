@@ -63,7 +63,7 @@ public class SchedulerRRuleParserTests
     [Theory]
     [InlineData("FREQ=DAILY;UNTIL=20261231")]
     [InlineData("FREQ=DAILY;UNTIL=20261231T235959")]
-    [InlineData("FREQ=DAILY;UNTIL=20261231T235959Z")]
+    [InlineData("FREQ=DAILY;UNTIL=20261231T235959Z")]  // the end-of-day idiom real calendars emit
     public void Parses_Every_Until_Form(string rrule)
     {
         var rule = SchedulerRRuleParser.Parse(rrule);
@@ -116,6 +116,16 @@ public class SchedulerRRuleParserTests
     [InlineData("FREQ=WEEKLY;COUNT=0")]
     [InlineData("FREQ=WEEKLY;BYDAY=XX")]           // not a weekday
     [InlineData("FREQ=WEEKLY;BYDAY=0MO")]          // RFC 5545 forbids ordinal 0
+    [InlineData("FREQ=WEEKLY;BYDAY=54MO")]         // and bounds ordinals to +/-1..53
+    [InlineData("FREQ=DAILY;BYDAY=MO")]            // daily expansion ignores ByDay entirely
+    [InlineData("FREQ=WEEKLY;BYDAY=2MO")]          // weekly expansion ignores the ordinal
+    [InlineData("FREQ=MONTHLY;BYDAY=MO")]          // unqualified monthly term means EVERY Monday
+    [InlineData("FREQ=MONTHLY;BYDAY=1MO,1MO")]     // duplicate term would double-emit and burn COUNT
+    [InlineData("FREQ=DAILY;INTERVAL=2;INTERVAL=3")] // duplicate part is ambiguous
+    [InlineData(";FREQ=DAILY")]                    // empty leading segment
+    [InlineData("FREQ=DAILY;")]                    // empty trailing segment
+    [InlineData("FREQ=DAILY;;COUNT=2")]            // empty middle segment
+    [InlineData("FREQ=DAILY;UNTIL=20260812T080000")] // a mid-day cutoff cannot survive date-only bounding
     [InlineData("FREQ=WEEKLY;BYDAY=")]             // empty value
     [InlineData("FREQ=DAILY;UNTIL=2026-12-31")]    // ISO-with-dashes is not RFC 5545's form
     [InlineData("FREQ=DAILY;FREQ=WEEKLY")]         // duplicate part is ambiguous
