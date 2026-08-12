@@ -1524,7 +1524,18 @@
         // a second render dispatches while the first is still awaiting interop,
         // reads a flag set only afterwards, and proceeds too (the guard-before-
         // await rule this component has been bitten by twice already).
-        if (Now is not null || _browserNowResolveAttempted) return;
+        // A controlled Now takes over: drop the self-resolved value AND the
+        // attempt flag, so returning to uncontrolled mode re-queries instead of
+        // restoring a clock cached before the handover (Codex review of this
+        // PR, P2 — a timeline left mounted for days would otherwise resurrect a
+        // days-old "now" for data-past and the now indicator).
+        if (Now is not null)
+        {
+            _selfResolvedNow = null;
+            _browserNowResolveAttempted = false;
+            return;
+        }
+        if (_browserNowResolveAttempted) return;
         _browserNowResolveAttempted = true;
 
         string? iso;

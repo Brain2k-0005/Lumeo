@@ -406,6 +406,43 @@ public class GanttV3StylingHooksTests : IAsyncLifetime
         Assert.Equal(1, interop.GanttV3GetLocalDateTimeCallCount);
     }
 
+    [Fact]
+    public void Returning_To_An_Uncontrolled_Now_Re_Queries_Instead_Of_Restoring_A_Stale_Clock()
+    {
+        // Regression (Codex review of this PR, P2): after one successful
+        // self-resolve, supplying an explicit Now and later clearing it reused
+        // the cached value, so a long-lived timeline could restore a clock
+        // cached days earlier. Predicted-wrong value before the fix: the call
+        // count stays at 1 because the attempt flag was never cleared.
+        var interop = new TrackingInteropService { GanttV3LocalDateTimeToReturn = "2026-01-04T09:30:00" };
+        using var ctx = new BunitContext();
+        ctx.AddLumeoServices();
+        ctx.Services.AddSingleton<Lumeo.Services.IComponentInteropService>(interop);
+
+        var tasks = new List<L.GanttTask> { new("t1", "Design", D(2026, 1, 2), D(2026, 1, 6)) };
+        var cut = ctx.Render<L.GanttTimeline>(p => p
+            .Add(c => c.Tasks, tasks)
+            .Add(c => c.RangeStart, D(2026, 1, 1))
+            .Add(c => c.RangeEnd, D(2026, 1, 31)));
+        Assert.Equal(1, interop.GanttV3GetLocalDateTimeCallCount);
+
+        // Controlled for a while...
+        cut.Render(p => p
+            .Add(c => c.Tasks, tasks)
+            .Add(c => c.RangeStart, D(2026, 1, 1))
+            .Add(c => c.RangeEnd, D(2026, 1, 31))
+            .Add(c => c.Now, new DateTime(2026, 6, 1, 8, 0, 0)));
+
+        // ...then handed back to the component.
+        cut.Render(p => p
+            .Add(c => c.Tasks, tasks)
+            .Add(c => c.RangeStart, D(2026, 1, 1))
+            .Add(c => c.RangeEnd, D(2026, 1, 31))
+            .Add(c => c.Now, (DateTime?)null));
+
+        Assert.Equal(2, interop.GanttV3GetLocalDateTimeCallCount);
+    }
+
     // ── data-past boundary (Codex review of this PR, P2) ──────────────────────
     // The original implementation compared the RAW Task.End, which disagreed
     // with the bar the user is looking at: GanttScale.BarGeometry treats End as
