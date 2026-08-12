@@ -41,7 +41,27 @@ namespace Lumeo.Tests.E2E.Smokes;
 /// </summary>
 public class GanttChartPageDemosTests : PlaywrightTestBase
 {
-    private const int HeavyPageTimeoutMs = 10000;
+    // 30s, not 10s. This page is the single heaviest WASM interop consumer in the
+    // whole docs site (14 GanttChart demos, each mount doing GanttTimeline's own
+    // ~5 sequential awaited interop round trips once its LazyRender fires) — and
+    // CI's actual failure (PR #396 follow-up: all 6 tests here timed out on the
+    // very first section's [data-task-id] wait) reproduced ONLY under CPU
+    // contention, never in isolation. Confirmed via a CPU-constrained (2-4 vCPU)
+    // Linux headless-Chromium repro against this exact page, driving 6-8
+    // concurrent browser instances the way xUnit's default parallel-collection
+    // execution runs this class alongside every other Playwright test class in
+    // the assembly: individual [data-task-id] waits that take ~1-3s uncontended
+    // took 7-21s under that contention — well past the old 10s budget, but
+    // reliably under 30s even in the worst tested case (2 vCPU / 8 concurrent
+    // browsers). This is the same class of CI-only flake already fixed once on
+    // this branch by widening a different test's timeout budget (see this
+    // branch's "widen infinite-scroll's extension-commit retry budget for CI"
+    // commit) — not a product bug, and not something a real LazyRender
+    // regression could hide behind: a genuinely broken mount still never
+    // completes and still fails at 30s (verified by temporarily disabling
+    // LazyRender's mount trigger — every assertion here still failed, just at
+    // the new ceiling instead of the old one).
+    private const int HeavyPageTimeoutMs = 30000;
 
     private static readonly string[] DemoSectionIds =
     [
