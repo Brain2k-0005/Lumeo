@@ -321,6 +321,7 @@ internal static partial class LumeoDefaultStrings
         ["Scheduler.Day"] = "日",
         ["Scheduler.Week"] = "週",
         ["Scheduler.Month"] = "月",
+        ["Scheduler.WeekNumberAbbrev"] = "週",
         ["Scheduler.List"] = "リスト",
         ["Scheduler.Today"] = "今日",
         ["Scheduler.WeekOf"] = "{0}の週",

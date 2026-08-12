@@ -321,6 +321,7 @@ internal static partial class LumeoDefaultStrings
         ["Scheduler.Day"] = "Giorno",
         ["Scheduler.Week"] = "Settimana",
         ["Scheduler.Month"] = "Mese",
+        ["Scheduler.WeekNumberAbbrev"] = "Sett",
         ["Scheduler.List"] = "Elenco",
         ["Scheduler.Today"] = "Oggi",
         ["Scheduler.WeekOf"] = "Settimana del {0}",

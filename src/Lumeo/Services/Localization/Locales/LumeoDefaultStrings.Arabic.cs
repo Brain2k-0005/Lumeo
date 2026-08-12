@@ -264,6 +264,7 @@ internal static partial class LumeoDefaultStrings
         ["Scheduler.ResourceLegend"] = "مفتاح الموارد",
         ["Scheduler.Today"] = "اليوم",
         ["Scheduler.Month"] = "شهر",
+        ["Scheduler.WeekNumberAbbrev"] = "أسبوع",
         ["Scheduler.Week"] = "أسبوع",
         ["Scheduler.Day"] = "يوم",
         ["Scheduler.List"] = "قائمة",

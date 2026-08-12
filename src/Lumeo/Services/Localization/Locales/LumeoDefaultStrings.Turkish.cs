@@ -259,6 +259,7 @@ internal static partial class LumeoDefaultStrings
         ["Scheduler.ResourceLegend"] = "Kaynak açıklaması",
         ["Scheduler.Today"] = "Bugün",
         ["Scheduler.Month"] = "Ay",
+        ["Scheduler.WeekNumberAbbrev"] = "Hf",
         ["Scheduler.Week"] = "Hafta",
         ["Scheduler.Day"] = "Gün",
         ["Scheduler.List"] = "Liste",
