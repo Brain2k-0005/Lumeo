@@ -37,6 +37,21 @@
     color: var(--color-primary-foreground) !important;
 }
 
+/* Narrow month-view day cells routinely can't fit a full event title —
+   FullCalendar's own default is `text-overflow: clip`, which chops the
+   label mid-word ("Sprint planning" -> "10a Spr") with no visual cue that
+   anything was cut. `ellipsis` is the standard, expected calendar-grid
+   affordance (matches Google/Outlook/Apple Calendar) and needs no extra
+   markup — `white-space: nowrap` + `overflow: hidden` are already
+   FullCalendar's own defaults on this element. Paired with the native
+   `title` attribute scheduler.js now sets per event (see eventDidMount),
+   which gives the FULL, untruncated title + time on hover — a plain
+   browser tooltip needs no extra JS dependency and works for keyboard
+   focus too (the event chip is a focusable <a>/<div>). */
+.fc .fc-event-title {
+    text-overflow: ellipsis;
+}
+
 /* ── Event dot indicators ────────────────────────────────────────────── */
 .fc .fc-daygrid-event-dot {
     border-color: var(--color-primary) !important;
@@ -45,6 +60,57 @@
 .fc .fc-list-event-dot {
     border-color: var(--color-primary) !important;
 }
+
+/* ── Per-event Color overrides: matching contrasting text/dot ───────────
+   The three rules above are only correct for events with NO SchedulerEvent
+   .Color override (see SchedulerTypes.cs) — they render at the DEFAULT
+   --fc-event-bg-color (var(--color-primary)), so --color-primary-foreground
+   is genuinely the right contrasting text. An event WITH a Color override
+   paints a DIFFERENT background, but until scheduler.js's
+   colorForegroundClass() tagged it with one of the classes below, the same
+   !important primary-foreground text/dot rules still applied — silently
+   unreadable whenever primary-foreground's lightness lands close to the
+   override's own (e.g. --color-accent's dark-mode background is dark grey,
+   and primary-foreground is ALSO dark in dark mode: near-invisible text on
+   the "Offsite" demo bar at /components/scheduler). Each block below pairs
+   a Color token with its OWN "-foreground" counterpart, which the theme
+   already guarantees contrasts correctly in both light and dark mode —
+   the extra class name gives it the specificity to beat the default rules
+   above without touching them. */
+.fc .fc-event.lumeo-fc-event-color-secondary .fc-event-title,
+.fc .fc-event.lumeo-fc-event-color-secondary .fc-event-time { color: var(--color-secondary-foreground) !important; }
+.fc .fc-event.lumeo-fc-event-color-secondary .fc-daygrid-event-dot,
+.fc .fc-event.lumeo-fc-event-color-secondary .fc-list-event-dot { border-color: var(--color-secondary) !important; }
+
+.fc .fc-event.lumeo-fc-event-color-destructive .fc-event-title,
+.fc .fc-event.lumeo-fc-event-color-destructive .fc-event-time { color: var(--color-destructive-foreground) !important; }
+.fc .fc-event.lumeo-fc-event-color-destructive .fc-daygrid-event-dot,
+.fc .fc-event.lumeo-fc-event-color-destructive .fc-list-event-dot { border-color: var(--color-destructive) !important; }
+
+.fc .fc-event.lumeo-fc-event-color-accent .fc-event-title,
+.fc .fc-event.lumeo-fc-event-color-accent .fc-event-time { color: var(--color-accent-foreground) !important; }
+.fc .fc-event.lumeo-fc-event-color-accent .fc-daygrid-event-dot,
+.fc .fc-event.lumeo-fc-event-color-accent .fc-list-event-dot { border-color: var(--color-accent) !important; }
+
+.fc .fc-event.lumeo-fc-event-color-muted .fc-event-title,
+.fc .fc-event.lumeo-fc-event-color-muted .fc-event-time { color: var(--color-muted-foreground) !important; }
+.fc .fc-event.lumeo-fc-event-color-muted .fc-daygrid-event-dot,
+.fc .fc-event.lumeo-fc-event-color-muted .fc-list-event-dot { border-color: var(--color-muted) !important; }
+
+.fc .fc-event.lumeo-fc-event-color-success .fc-event-title,
+.fc .fc-event.lumeo-fc-event-color-success .fc-event-time { color: var(--color-success-foreground) !important; }
+.fc .fc-event.lumeo-fc-event-color-success .fc-daygrid-event-dot,
+.fc .fc-event.lumeo-fc-event-color-success .fc-list-event-dot { border-color: var(--color-success) !important; }
+
+.fc .fc-event.lumeo-fc-event-color-warning .fc-event-title,
+.fc .fc-event.lumeo-fc-event-color-warning .fc-event-time { color: var(--color-warning-foreground) !important; }
+.fc .fc-event.lumeo-fc-event-color-warning .fc-daygrid-event-dot,
+.fc .fc-event.lumeo-fc-event-color-warning .fc-list-event-dot { border-color: var(--color-warning) !important; }
+
+.fc .fc-event.lumeo-fc-event-color-info .fc-event-title,
+.fc .fc-event.lumeo-fc-event-color-info .fc-event-time { color: var(--color-info-foreground) !important; }
+.fc .fc-event.lumeo-fc-event-color-info .fc-daygrid-event-dot,
+.fc .fc-event.lumeo-fc-event-color-info .fc-list-event-dot { border-color: var(--color-info) !important; }
 
 /* ── Column header cells ─────────────────────────────────────────────── */
 .fc .fc-col-header-cell {

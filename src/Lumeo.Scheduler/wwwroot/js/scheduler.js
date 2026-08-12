@@ -161,6 +161,42 @@ function eventToJson(ev) {
     };
 }
 
+// Lumeo design tokens that ship a matching "-foreground" pair (see
+// src/Lumeo/wwwroot/css/lumeo.css) — i.e. tokens it's safe to auto-derive
+// readable event text/dot color for. `primary` is deliberately excluded:
+// it's already lumeo-scheduler.css's DEFAULT (--fc-event-text-color), so
+// events with no Color override need no extra class.
+const FOREGROUND_PAIRED_TOKENS = new Set([
+    'secondary', 'destructive', 'accent', 'muted', 'success', 'warning', 'info',
+]);
+
+// SchedulerEvent.Color (see SchedulerTypes.cs) is documented as "a CSS color
+// or variable reference, e.g. var(--color-primary)". When a per-event Color
+// names one of Lumeo's semantic tokens, FullCalendar's rendered background
+// changes but — until scheduler.js tags the event — its title/time text and
+// dot indicator stayed hardcoded to var(--color-primary-foreground) (see the
+// lumeo-fc-event-color-* rules in lumeo-scheduler.css), which is only
+// guaranteed to contrast against var(--color-primary) itself. That silently
+// produced unreadable combinations for any OTHER Color (e.g. white-on-white
+// with --color-accent in light mode; near-black-on-dark-grey with
+// --color-accent in dark mode). Returns the matching CSS class (which the
+// stylesheet maps back to that SAME token's own "-foreground" pair) or null
+// when Color isn't one of Lumeo's known paired tokens (raw hex/rgb, an
+// unpaired token like the chart-N series colors, or no Color at all) — those
+// keep today's default (--color-primary-foreground) unchanged.
+function colorForegroundClass(color) {
+    if (typeof color !== 'string') return null;
+    const match = color.trim().match(/^var\(\s*--color-([a-z0-9-]+)\s*\)$/i);
+    if (!match) return null;
+    const token = match[1].toLowerCase();
+    return FOREGROUND_PAIRED_TOKENS.has(token) ? `lumeo-fc-event-color-${token}` : null;
+}
+
+function mergeClassNames(existing, extra) {
+    const base = !existing ? [] : (typeof existing === 'string' ? existing.split(/\s+/).filter(Boolean) : existing);
+    return extra ? [...base, extra] : base;
+}
+
 function normalizeEvent(e) {
     // Accept either camelCase or PascalCase keys (JSON from .NET can ship either).
     const id = e.id ?? e.Id;
@@ -170,6 +206,7 @@ function normalizeEvent(e) {
     const url = e.url ?? e.Url ?? null;
     const extendedProps = e.extendedProps ?? e.ExtendedProps ?? null;
     const classNames = e.classNames ?? e.ClassNames ?? null;
+    const fgClass = colorForegroundClass(color);
 
     // ── Simple recurrence (free FullCalendar model, no rrule premium plugin) ──
     const daysOfWeek = e.daysOfWeek ?? e.DaysOfWeek ?? null;
@@ -193,9 +230,8 @@ function normalizeEvent(e) {
         if (Array.isArray(exdate) && exdate.length > 0) obj.exdate = exdate;
         if (color) obj.backgroundColor = color, obj.borderColor = color;
         if (url) obj.url = url;
-        if (classNames) obj.classNames = typeof classNames === 'string'
-            ? classNames.split(/\s+/).filter(Boolean)
-            : classNames;
+        const mergedRecurClassNames = mergeClassNames(classNames, fgClass);
+        if (mergedRecurClassNames.length > 0) obj.classNames = mergedRecurClassNames;
         if (extendedProps) obj.extendedProps = extendedProps;
         return obj;
     }
@@ -212,9 +248,8 @@ function normalizeEvent(e) {
     };
     if (color) obj.backgroundColor = color, obj.borderColor = color;
     if (url) obj.url = url;
-    if (classNames) obj.classNames = typeof classNames === 'string'
-        ? classNames.split(/\s+/).filter(Boolean)
-        : classNames;
+    const mergedClassNames = mergeClassNames(classNames, fgClass);
+    if (mergedClassNames.length > 0) obj.classNames = mergedClassNames;
     if (extendedProps) obj.extendedProps = extendedProps;
     return obj;
 }
@@ -265,6 +300,16 @@ export const scheduler = {
             },
             eventChange(info) {
                 dotNetRef.invokeMethodAsync('JsOnEventChange', eventToJson(info.event));
+            },
+            // Month/week day cells are routinely too narrow for a full event
+            // title (lumeo-scheduler.css now ellipsis-truncates instead of
+            // FullCalendar's default hard `clip`) — a native title attribute
+            // is the simplest way to surface the FULL text on hover/focus
+            // without a custom tooltip widget/dependency, and works for
+            // keyboard users too since the event chip is itself focusable.
+            eventDidMount(info) {
+                const timePrefix = info.timeText ? `${info.timeText} — ` : '';
+                info.el.title = `${timePrefix}${info.event.title}`;
             },
         };
 
