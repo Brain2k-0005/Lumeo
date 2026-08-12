@@ -12,16 +12,33 @@
    Scheduler.razor (the only component with public parameters, spec §1.2) is the eventual host;
    this component is usable and independently testable on its own in the meantime. *@
 <div class="@($"flex flex-col rounded-md border border-border/60 overflow-hidden {Class}".Trim())" @attributes="AdditionalAttributes">
-    <div class="grid grid-cols-7 border-b border-border/60 bg-card">
+    <div class="@GridColsClass border-b border-border/60 bg-card">
+        @if (ShowWeekNumbers)
+        {
+            @* Corner cell above the week-number column. aria-hidden + presentation:
+               it labels nothing, and letting it into the header row would make
+               screen readers announce an empty column header for every row. *@
+            <span class="px-2 py-1.5 text-center text-[11px] font-medium text-muted-foreground"
+                  role="presentation" aria-hidden="true">@L["Scheduler.WeekNumberAbbrev"]</span>
+        }
         @foreach (var d in _weekdayHeaders)
         {
             <span class="px-2 py-1.5 text-right text-[11px] font-medium text-muted-foreground">@d</span>
         }
     </div>
-    <div class="grid grid-cols-7" role="grid" aria-label="@L["Scheduler.Month"]" @ref="_hostRef">
+    <div class="@GridColsClass" role="grid" aria-label="@L["Scheduler.Month"]" @ref="_hostRef">
         @for (var row = 0; row < 6; row++)
         {
             <div role="row" class="contents">
+                @if (ShowWeekNumbers)
+                {
+                    @* role="rowheader" (not gridcell): it labels the row rather
+                       than holding a focusable day, so keyboard grid navigation
+                       — which walks _cellRefs by index — is untouched. *@
+                    <div role="rowheader"
+                         class="flex items-start justify-center border-b border-e border-border/60 bg-muted/30 px-1 py-1 text-[11px] tabular-nums text-muted-foreground"
+                         data-week-number="@WeekNumberForRow(row)">@WeekNumberForRow(row)</div>
+                }
                 @for (var col = 0; col < 7; col++)
                 {
                     var cellIndex = row * 7 + col;
@@ -139,6 +156,25 @@
     /// <summary>First day of the week for grid layout. Default Monday.</summary>
     [Parameter] public DayOfWeek FirstDayOfWeek { get; set; } = DayOfWeek.Monday;
 
+    /// <summary>
+    /// Renders an extra leading column with each row's ISO-8601 week number
+    /// (ReUI parity — its event calendar exposes a "week numbers" display
+    /// toggle). Default <c>false</c>: when off, the grid keeps its exact
+    /// previous 7-column markup, so this cannot shift any existing layout.
+    /// <para>
+    /// The number is always the ISO-8601 week (<see cref="System.Globalization.ISOWeek"/>),
+    /// computed from each row's own THURSDAY. Thursday is ISO's defining day —
+    /// the week a Thursday falls in IS its ISO week — and every 7-day row
+    /// contains exactly one Thursday no matter which
+    /// <see cref="FirstDayOfWeek"/> the grid starts on. That makes the label
+    /// independent of the grid's start day, which a naive "first cell of the
+    /// row" reading is not: in a Sunday-start grid the leading Sunday belongs
+    /// to the PREVIOUS ISO week, so reading the row's first cell would label
+    /// most rows one week too low.
+    /// </para>
+    /// </summary>
+    [Parameter] public bool ShowWeekNumbers { get; set; }
+
     /// <summary>Max visible pill lanes per day before "+N more". Default <see cref="SchedulerMonthLayout.DefaultMaxVisibleLanes"/>.</summary>
     [Parameter] public int MaxVisibleLanes { get; set; } = SchedulerMonthLayout.DefaultMaxVisibleLanes;
 
@@ -202,6 +238,29 @@
     private readonly Dictionary<string, ElementReference> _pillRefs = new(StringComparer.Ordinal);
     private int _focusedIndex;
     private string[] _weekdayHeaders = Array.Empty<string>();
+
+    // Written as literal class strings, never interpolated: the Tailwind v4
+    // build only emits utilities it can SEE in source, so a computed
+    // $"grid-cols-{n}" would produce a class with no rule behind it — the
+    // "class in the DOM without a rule" trap this repo has hit before.
+    private string GridColsClass => ShowWeekNumbers ? "grid grid-cols-[auto_repeat(7,minmax(0,1fr))]" : "grid grid-cols-7";
+
+    /// <summary>
+    /// The ISO-8601 week number for display row <paramref name="row"/>, read off
+    /// that row's own Thursday — see <see cref="ShowWeekNumbers"/> for why
+    /// Thursday rather than the row's first cell.
+    /// </summary>
+    private int WeekNumberForRow(int row)
+    {
+        for (var col = 0; col < 7; col++)
+        {
+            var date = _cells[row * 7 + col].Date;
+            if (date.DayOfWeek == DayOfWeek.Thursday) return ISOWeek.GetWeekOfYear(date);
+        }
+        // Unreachable for a 7-day row, but a silent 0 would be a worse failure
+        // than falling back to the row's first date.
+        return ISOWeek.GetWeekOfYear(_cells[row * 7].Date);
+    }
     private ElementReference _hostRef;
     private DotNetObjectReference<SchedulerMonthView>? _selfRef;
     private bool _dragRegistered;
