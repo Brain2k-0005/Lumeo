@@ -864,6 +864,63 @@ public interface IComponentInteropService : IAsyncDisposable, IDisposable
     /// <summary>Tears down the bar context-menu channel registered by <see cref="GanttV3RegisterBarContextMenuAsync{T}"/> — removes the delegated <c>contextmenu</c> listener. Default no-op.</summary>
     Task GanttV3UnregisterBarContextMenuAsync(Microsoft.AspNetCore.Components.ElementReference el) => Task.CompletedTask;
 
+    /// <summary>
+    /// Registers GanttV3's wheel-zoom channel (<c>GanttTimeline.WheelZoom</c> —
+    /// gantt-v3.js's <c>ganttV3.registerWheelZoom</c>) — a SIXTH registration
+    /// channel alongside <see cref="GanttV3RegisterDragAsync{T}"/>/<see
+    /// cref="GanttV3RegisterSplitterDragAsync{T}"/>/<see
+    /// cref="GanttV3RegisterRowReorderDragAsync{T}"/>/<see
+    /// cref="GanttV3RegisterBarContextMenuAsync{T}"/>. A single delegated native
+    /// <c>wheel</c> listener on <paramref name="el"/> that does nothing at all for a
+    /// bare wheel (no ctrl/meta key — see the JS implementation's own remarks) and,
+    /// for a Ctrl/Cmd+wheel, decides ENTIRELY synchronously (from <paramref
+    /// name="options"/>'s pushed zoom-level list/current mode) whether to
+    /// <c>preventDefault</c> and invoke the caller's <c>CommitWheelZoom</c>
+    /// JSInvokable, or leave the event alone so the browser's own page-zoom runs at
+    /// an exhausted zoom limit. Calling this again for an already-registered
+    /// <paramref name="el"/> updates the stored <paramref name="dotNetRef"/>/<paramref
+    /// name="options"/> in place (idempotent), mirroring every other registration
+    /// channel above. Default no-op DIM so existing implementers/test doubles keep
+    /// compiling; <see cref="Lumeo.Services.ComponentInteropService"/> overrides both
+    /// with the real registration.
+    /// </summary>
+    Task GanttV3RegisterWheelZoomAsync<[System.Diagnostics.CodeAnalysis.DynamicallyAccessedMembers(System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicMethods)] T>(Microsoft.AspNetCore.Components.ElementReference el, DotNetObjectReference<T> dotNetRef, object options) where T : class
+        => Task.CompletedTask;
+
+    /// <summary>Tears down the wheel-zoom channel registered by <see cref="GanttV3RegisterWheelZoomAsync{T}"/> — removes the delegated <c>wheel</c> listener. Default no-op.</summary>
+    Task GanttV3UnregisterWheelZoomAsync(Microsoft.AspNetCore.Components.ElementReference el) => Task.CompletedTask;
+
+    /// <summary>
+    /// Sets DOM focus on the bar for <paramref name="taskId"/> within
+    /// <paramref name="containerEl"/> — the DOM-side half of arrow-key
+    /// navigation's roving tabindex (<c>GanttTimeline.MoveBarFocusAsync</c>).
+    /// Resolves the target via a scoped <c>[data-task-id]</c> query (the same
+    /// attribute <see cref="GanttV3RegisterDragAsync{T}"/>'s own hit-testing
+    /// already relies on), not a global id lookup — a bar's own internal id
+    /// (<c>GanttBar.razor</c>'s <c>_barId</c>) is a per-component-instance
+    /// random value, not derivable from a task id. A plain
+    /// <c>element.focus()</c> call, which auto-scrolls an in-DOM-but-clipped
+    /// target into view natively. No-op when <paramref name="containerEl"/>
+    /// is unset or the task isn't currently rendered. Default no-op DIM so
+    /// existing implementers/test doubles keep compiling.
+    /// </summary>
+    Task GanttV3FocusBarAsync(Microsoft.AspNetCore.Components.ElementReference containerEl, string taskId) => Task.CompletedTask;
+
+    /// <summary>
+    /// Companion to <see cref="GanttV3ScrollToXAsync"/> — places <paramref
+    /// name="targetX"/> (the same timeline-origin-relative pixel space) at
+    /// <paramref name="offsetPx"/> pixels from <paramref name="el"/>'s own
+    /// viewport left edge, instead of <see cref="GanttV3ScrollToXAsync"/>'s
+    /// hardcoded viewport-CENTER placement. The one caller is wheel-zoom's
+    /// own pointer-anchored recenter (<c>GanttTimeline.ScrollTargetOffsetOverride</c>)
+    /// — every other recenter in GanttV3 genuinely wants the target centered,
+    /// so this is a NEW, separate write path rather than a
+    /// <see cref="GanttV3ScrollToXAsync"/> overload, keeping that method's own
+    /// existing behavior/E2E assertions untouched. Default no-op DIM so
+    /// existing implementers/test doubles keep compiling.
+    /// </summary>
+    Task GanttV3ScrollToOffsetAsync(Microsoft.AspNetCore.Components.ElementReference el, double targetX, double offsetPx) => Task.CompletedTask;
+
     // Toolbar overflow observer — registers a ResizeObserver on the toolbar
     // element and invokes the handler with (fittingCount, totalCount) whenever
     // the number of items that fit before the "..." overflow trigger changes.

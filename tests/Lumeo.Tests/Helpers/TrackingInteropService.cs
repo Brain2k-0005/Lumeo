@@ -986,6 +986,66 @@ public class TrackingInteropService : IComponentInteropService
         return true;
     }
 
+    // GanttV3 wheel-zoom registration tracking (wheel-zoom + keyboard-nav
+    // promotion) — mirrors the row-reorder/bar-context-menu tracking above:
+    // call counts, the last pushed options bag (so a test can assert the
+    // resolved zoom-level list/currentMode gantt-v3.js's own synchronous
+    // preventDefault decision would read), plus a captured
+    // DotNetObjectReference so a test can simulate a JS-side wheel-zoom
+    // commit by invoking CommitWheelZoom directly — no real 'wheel' event or
+    // browser exists in bUnit's headless DOM.
+    private int _ganttV3RegisterWheelZoomCallCount;
+    private int _ganttV3UnregisterWheelZoomCallCount;
+    public int GanttV3RegisterWheelZoomCallCount => _ganttV3RegisterWheelZoomCallCount;
+    public int GanttV3UnregisterWheelZoomCallCount => _ganttV3UnregisterWheelZoomCallCount;
+    public object? LastGanttV3WheelZoomOptions { get; private set; }
+    private object? _ganttV3WheelZoomDotNetRef;
+    public Task GanttV3RegisterWheelZoomAsync<T>(ElementReference el, DotNetObjectReference<T> dotNetRef, object options) where T : class
+    {
+        _ganttV3RegisterWheelZoomCallCount++;
+        LastGanttV3WheelZoomOptions = options;
+        _ganttV3WheelZoomDotNetRef = dotNetRef.Value;
+        return Task.CompletedTask;
+    }
+    public Task GanttV3UnregisterWheelZoomAsync(ElementReference el)
+    {
+        _ganttV3UnregisterWheelZoomCallCount++;
+        return Task.CompletedTask;
+    }
+    /// <summary>Simulates a JS-side wheel-zoom commit (the exact call gantt-v3.js's <c>registerWheelZoom</c> makes once it has already decided, synchronously, that this gesture zooms) by invoking the captured component's own <c>CommitWheelZoom</c> method directly.</summary>
+    public async Task<bool> SimulateGanttV3WheelZoom(string modeStr, double contentX, double offsetPx)
+    {
+        var method = _ganttV3WheelZoomDotNetRef?.GetType().GetMethod("CommitWheelZoom");
+        if (method is null) return false;
+        var result = method.Invoke(_ganttV3WheelZoomDotNetRef, new object[] { modeStr, contentX, offsetPx });
+        if (result is Task task) await task;
+        return true;
+    }
+
+    // GanttV3 roving-focus tracking (arrow-key navigation) — records every
+    // (containerEl, taskId) pair GanttTimeline.MoveBarFocusAsync asked JS to
+    // focus, so a test can assert WHICH task ended up focused without a real
+    // DOM/browser .focus() call.
+    private readonly List<string> _ganttV3FocusBarCalls = new();
+    public IReadOnlyList<string> GanttV3FocusBarCalls => _ganttV3FocusBarCalls;
+    public Task GanttV3FocusBarAsync(ElementReference containerEl, string taskId)
+    {
+        _ganttV3FocusBarCalls.Add(taskId);
+        return Task.CompletedTask;
+    }
+
+    // GanttV3ScrollToOffsetAsync tracking (wheel-zoom's own pointer-anchored
+    // recenter) — mirrors GanttV3ScrollToXCalls above: records each
+    // (targetX, offsetPx) pair so a test can assert the exact pixel geometry
+    // a wheel-zoom recenter resolves to, without a real scrollable DOM.
+    private readonly List<(double TargetX, double OffsetPx)> _ganttV3ScrollToOffsetCalls = new();
+    public IReadOnlyList<(double TargetX, double OffsetPx)> GanttV3ScrollToOffsetCalls => _ganttV3ScrollToOffsetCalls;
+    public Task GanttV3ScrollToOffsetAsync(ElementReference el, double targetX, double offsetPx)
+    {
+        _ganttV3ScrollToOffsetCalls.Add((targetX, offsetPx));
+        return Task.CompletedTask;
+    }
+
     // GanttV3 gesture-suppression tracking (design spec Phase 3, T9) —
     // settable so a test can simulate "a drag is currently in flight" without
     // a real browser/gantt-v3.js. Defaults to false (no drag active),

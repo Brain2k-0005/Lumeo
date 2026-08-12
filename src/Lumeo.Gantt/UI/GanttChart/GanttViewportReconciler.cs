@@ -134,6 +134,20 @@ internal enum GanttViewModeSource
     /// clarity/audit, not to branch on anywhere else.
     /// </summary>
     Imperative,
+
+    /// <summary>
+    /// A Ctrl/Cmd+wheel zoom gesture over the timeline (<c>GanttTimeline.WheelZoom</c>).
+    /// Treated exactly like <see cref="Toolbar"/>/<see cref="Imperative"/> for the
+    /// controlled-consumer echo — a user zooming by wheel is just as much "the
+    /// component decided a new mode" as a toolbar click, so a controlled chart is
+    /// asked to ratify it the same way. The one thing that DOES differ for this
+    /// source: <c>GanttChart.HandleWheelZoomRequestedAsync</c> supplies an explicit,
+    /// already-known anchor (date + pointer offset) instead of letting
+    /// <c>ReconcileAsync</c> capture the live viewport CENTER — see
+    /// <c>ReconcileAsync</c>'s own <c>explicitCapturedCenter</c>/<c>explicitOffsetOverride</c>
+    /// parameters.
+    /// </summary>
+    Wheel,
 }
 
 /// <summary>

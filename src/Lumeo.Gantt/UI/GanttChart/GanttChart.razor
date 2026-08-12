@@ -126,6 +126,7 @@
                            Today="@EffectiveToday"
                            ScrollTargetDate="@_scrollTargetDate"
                            ScrollTargetXOverride="@_scrollTargetXOverride"
+                           ScrollTargetOffsetOverride="@_scrollTargetOffsetOverride"
                            ScrollHostLeadingOffset="@ScrollHostLeadingOffset"
                            LeadingPaneWidth="@(EffectiveShowTreePane ? EffectiveTreePaneTotalWidth : 0)"
                            ScrollHost="@_scrollPaneRef"
@@ -141,6 +142,8 @@
                            ShowOffscreenIndicators="@ShowOffscreenIndicators"
                            ShowZoomControl="@ShowZoomControl"
                            ZoomLevels="@ZoomLevels"
+                           WheelZoom="@WheelZoom"
+                           OnWheelZoomRequested="HandleWheelZoomRequestedAsync"
                            DragGhostTemplate="@DragGhostTemplate"
                            BarContextMenu="@BarContextMenu"
                            InfiniteScroll="@InfiniteScroll"
@@ -368,6 +371,21 @@
     /// contract, including the Quarter-must-be-explicit rule.
     /// </summary>
     [Parameter] public IReadOnlyList<GanttViewMode>? ZoomLevels { get; set; }
+
+    /// <summary>
+    /// Ctrl/Cmd + wheel over the timeline zooms, anchored on the pointer
+    /// position (ReUI parity — <c>wheelZoom</c>, defaulting <c>true</c>). A
+    /// bare wheel is never touched — the page/pane keeps scrolling exactly
+    /// as it would with no Gantt on it. Steps through <see cref="ZoomLevels"/>
+    /// (the SAME resolved list <see cref="ShowZoomControl"/>'s stepper and
+    /// <c>GanttNav</c>'s toolbar already step through — never a second,
+    /// independently-tunable list); at the resolved list's own zoom limits
+    /// the gesture is left alone entirely, so the browser's own ctrl/cmd+wheel
+    /// page-zoom takes over instead of the gesture being silently swallowed.
+    /// See <see cref="Lumeo.GanttTimeline.WheelZoom"/>'s own remarks for the
+    /// full "stepped, not continuous" design rationale.
+    /// </summary>
+    [Parameter] public bool WheelZoom { get; set; } = true;
 
     /// <summary>
     /// Extra tree-pane columns rendered after the pinned name column (design spec
@@ -823,7 +841,23 @@
     // below already covered the commit AND the scroll-intent emit (both sit
     // after it); this only adds the RETURN VALUE so callers outside this
     // method can extend the same guard to their own side effects.
-    private async Task<GanttReconcileOutcome> ReconcileAsync(IReadOnlyList<GanttTask> nextTasks, GanttViewMode nextMode)
+    // explicitCapturedCenter/explicitOffsetOverride (both null for every
+    // EXISTING caller — toolbar, imperative, parameter, task changes —
+    // preserving their exact prior "capture the live viewport center, then
+    // recenter ON it" behavior unchanged): wheel-zoom's own caller
+    // (HandleWheelZoomRequestedAsync) is the ONE place that supplies both —
+    // an anchor date it already computed itself (skips the live-DOM capture
+    // in the CAPTURE PHASE below entirely) and the pointer's own local
+    // viewport offset (forwarded to EmitScrollIntent's own offsetOverride in
+    // the EMIT PHASE, so the eventual recenter lands that date at the
+    // POINTER's position instead of centerOn's usual viewport-center
+    // placement). Neither changes decision.NeedsLiveCenterCapture/Range/Target
+    // at all — GanttViewportReconciler.Decide's own matrix is unaware of
+    // wheel-zoom as a concept; this only changes WHERE the captured-center
+    // VALUE comes from and where it's ultimately scrolled TO.
+    private async Task<GanttReconcileOutcome> ReconcileAsync(
+        IReadOnlyList<GanttTask> nextTasks, GanttViewMode nextMode,
+        DateTime? explicitCapturedCenter = null, double? explicitOffsetOverride = null)
     {
         // Bug fix (Codex PR-382 review round 7, P2 "Stop Today replay after
         // component disposal"): the ONE central refusal to start new work on a
@@ -897,8 +931,16 @@
         // ResolveCurrentCenterDateAsync's own remarks for why the live DOM
         // direction can't be trusted here for a ThemeService-driven flip.
         var generation = BeginReconcile();
-        DateTime? capturedCenter = null;
-        if (decision.NeedsLiveCenterCapture)
+        // explicitCapturedCenter (see ReconcileAsync's own new params remarks
+        // just below this method's signature): wheel-zoom already knows its
+        // own anchor date synchronously — computed from the pointer's
+        // position at the moment the gesture fired, under the OLD scale —
+        // so it skips this live-DOM capture entirely rather than asking
+        // ResolveCurrentCenterDateAsync for the viewport's CENTER, which
+        // would silently discard the pointer-specific anchor and fall back
+        // to every OTHER trigger's "preserve whatever was centered" behavior.
+        DateTime? capturedCenter = explicitCapturedCenter;
+        if (decision.NeedsLiveCenterCapture && capturedCenter is null)
             capturedCenter = await ResolveCurrentCenterDateAsync(prev.LeadingOffset, prev.ColumnWidth, prev.Direction);
 
         // Bug fix (Codex round 15 review, P1): abandon entirely if a NEWER
@@ -941,7 +983,11 @@
         switch (decision.Target)
         {
             case GanttScrollTarget.CapturedCenter:
-                EmitScrollIntent(capturedCenter);
+                // explicitOffsetOverride is null for every non-wheel-zoom
+                // caller (see this method's own new-params remarks) —
+                // EmitScrollIntent's own offsetOverride default preserves
+                // centerOn's usual viewport-center placement unchanged there.
+                EmitScrollIntent(capturedCenter, offsetOverride: explicitOffsetOverride);
                 break;
             case GanttScrollTarget.TodayOrMidpoint:
                 // An emptiness transition (or, since round 16, a disjoint
@@ -974,10 +1020,17 @@
     // `target` parameter cannot express. Always overwritten (never merged
     // with a stale previous value) so a LATER plain-date intent correctly
     // clears any earlier pixel override.
-    private void EmitScrollIntent(DateTime? target, double? pixelOverride = null)
+    // offsetOverride (null for every EXISTING caller): wheel-zoom's own
+    // recenter (see ReconcileAsync's own explicitOffsetOverride remarks) is
+    // the one caller that supplies it — forwarded straight through to
+    // GanttTimeline.ScrollTargetOffsetOverride, which routes the eventual
+    // scroll through GanttV3ScrollToOffsetAsync (pointer-anchored) instead
+    // of the default GanttV3ScrollToXAsync/centerOn (viewport-centered).
+    private void EmitScrollIntent(DateTime? target, double? pixelOverride = null, double? offsetOverride = null)
     {
         _scrollTargetDate = target;
         _scrollTargetXOverride = pixelOverride;
+        _scrollTargetOffsetOverride = offsetOverride;
         _scrollToTodayRequestId++;
     }
 
@@ -1284,8 +1337,10 @@
         // owes the SAME consumer echo Toolbar does: from a controlled parent's
         // point of view, an imperative pick and a user's own toolbar click are
         // indistinguishable ("the component decided a new mode, ratify it or
-        // not") — see GanttViewModeSource.Imperative's own remarks.
-        var owesConsumerEcho = (intent.Source == GanttViewModeSource.Toolbar || intent.Source == GanttViewModeSource.Imperative)
+        // not") — see GanttViewModeSource.Imperative's own remarks. Wheel
+        // (wheel-zoom) joins the same group for the identical reason — see
+        // GanttViewModeSource.Wheel's own remarks.
+        var owesConsumerEcho = intent.Source is GanttViewModeSource.Toolbar or GanttViewModeSource.Imperative or GanttViewModeSource.Wheel
             && ViewModeChanged.HasDelegate
             && outcome == GanttReconcileOutcome.Committed;
 
@@ -2419,6 +2474,16 @@
     private Task HandleViewModeChangedAsync(GanttViewMode mode) =>
         ApplyViewModeIntentAsync(mode, GanttViewModeSource.Toolbar);
 
+    // GanttTimeline.OnWheelZoomRequested's own handler (see WheelZoom's own
+    // remarks). Unlike HandleViewModeChangedAsync above, this one already
+    // has an anchor in hand — GanttTimeline computed it synchronously from
+    // the pointer's own position at the moment the gesture fired — so it
+    // threads it through as ApplyViewModeIntentAsync's explicit anchor
+    // instead of letting ReconcileAsync fall back to its own live-viewport-
+    // center capture.
+    private Task HandleWheelZoomRequestedAsync((GanttViewMode Mode, DateTime AnchorDate, double AnchorOffsetPx) request) =>
+        ApplyViewModeIntentAsync(request.Mode, GanttViewModeSource.Wheel, request.AnchorDate, request.AnchorOffsetPx);
+
     // A mode-only change against the CURRENT task set — routed through the SAME
     // reconcile every other trigger uses (Codex round 14), which decides it as a
     // self-centered recenter that preserves the live scroll position (capture
@@ -2439,7 +2504,9 @@
     // SettleViewModeIntentAsync's owesConsumerEcho check, which now treats
     // Imperative exactly like Toolbar (a controlled consumer is asked to ratify
     // an imperative pick the same way it would a user's own toolbar click).
-    private async Task ApplyViewModeIntentAsync(GanttViewMode mode, GanttViewModeSource source)
+    private async Task ApplyViewModeIntentAsync(
+        GanttViewMode mode, GanttViewModeSource source,
+        DateTime? explicitAnchorDate = null, double? explicitAnchorOffsetPx = null)
     {
         if (mode == _state.ViewMode) return;
 
@@ -2450,7 +2517,7 @@
         // write, since this pick deliberately overrides it (round 20 finding B).
         var intent = ClaimViewModeIntent(mode, source);
 
-        var outcome = await ReconcileAsync(_state.Tasks, mode);
+        var outcome = await ReconcileAsync(_state.Tasks, mode, explicitAnchorDate, explicitAnchorOffsetPx);
         // Superseded/no-op: suppress every side effect, not just the commit
         // (round 16 finding #2) — including the consumer echo, which would
         // otherwise report a mode that was never applied. The intent is
@@ -2759,6 +2826,10 @@
     // remarks. Null (the default) for every scroll intent except a leading-
     // edge extension's own recenter.
     private double? _scrollTargetXOverride;
+
+    // See GanttTimeline.ScrollTargetOffsetOverride's own remarks. Null (the
+    // default) for every scroll intent except a wheel-zoom recenter.
+    private double? _scrollTargetOffsetOverride;
 
     // Phase 2, T1 — bubbled from GanttTimeline.OnTaskUpdate (its own JS-driven
     // CommitDrag) exactly like GanttTree.OnToggleCollapse: GanttChart is the only

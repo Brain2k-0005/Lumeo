@@ -29,6 +29,19 @@
    [EditorBrowsable(Never)] keeps this working-name API out of consumer
    IntelliSense until the Phase-4 rename (fix-round follow-up). *@
 <div class="@RootClass" style="@RootStyle" @attributes="AdditionalAttributes">
+    @* Keyboard-navigation live region (arrow-key nav's own a11y requirement —
+       what a screen-reader user hears after a focus move or a keyboard-driven
+       schedule edit). Follows the SAME sr-only aria-live="polite" span idiom
+       already established across this repo (Lumeo.Sortable's own
+       _reorderAnnouncement, Lumeo.DataGrid's _columnReorderAnnouncement) —
+       the Scheduler's first-party views (feat/scheduler-first-party) don't
+       actually have an announcement precedent of their own to follow yet
+       (that branch isn't merged here and has no aria-live region at all), so
+       this follows the Sortable/DataGrid convention instead, the closest
+       actual first-party precedent in this codebase. A single element at the
+       ROOT (not nested inside the virtualized row canvas) so it's always
+       present in the accessibility tree regardless of scroll/virtualization. *@
+    <span aria-live="polite" aria-atomic="true" class="sr-only">@_keyboardAnnouncement</span>
     @* Two-row header (Codex round 2, P1 #3 — "sticky header still broken").
        Deliberately OUTSIDE the horizontal-scroll wrapper below: `position:
        sticky` resolves against the NEAREST ancestor that establishes a
@@ -344,7 +357,8 @@
                                       BarHeight="EffectiveBarHeight" Color="@row.Color" BarTemplate="BarTemplate"
                                       DragGhostTemplate="DragGhostTemplate"
                                       Readonly="@Readonly" OnTaskClick="OnTaskClick"
-                                      SuppressPointerClick="@_dragConfirmed" />
+                                      SuppressPointerClick="@_dragConfirmed"
+                                      FocusedTaskId="@EffectiveFocusedTaskId" OnKeyNavigation="HandleBarKeyNavigationAsync" />
                             @* Design spec Phase 3, T3 — a hierarchy-parent Task row (HasChildren)
                                renders BOTH its own GanttBar above (the task's own dates) AND this
                                envelope strip (its children's rolled-up dates) — see
@@ -974,6 +988,69 @@
     [Parameter] public IReadOnlyList<GanttViewMode>? ZoomLevels { get; set; }
 
     /// <summary>
+    /// Ctrl/Cmd + wheel over the timeline zooms, anchored on the pointer
+    /// position (ReUI parity — <c>wheelZoom</c>, defaulting <c>true</c>). A
+    /// BARE wheel is never touched (no listener decision even looks at it
+    /// beyond the ctrl/meta check) — the page/pane keeps scrolling exactly as
+    /// it would with no Gantt on it at all, which is the entire reason ReUI
+    /// requires the modifier rather than hijacking plain wheel. At the
+    /// current <see cref="ZoomLevels"/> list's own zoom limits (already at
+    /// the finest/coarsest resolved level) the gesture is left alone
+    /// entirely — no <c>preventDefault</c> — so the BROWSER's own ctrl/cmd+wheel
+    /// page-zoom takes over instead of the gesture being silently swallowed.
+    /// Steps through the SAME resolved <see cref="GanttZoomLevelModel"/> list
+    /// <see cref="Lumeo.GanttZoomControl"/>/<c>GanttNav</c> already step
+    /// through (see <see cref="GanttZoomLevelModel"/>'s own "shared, never
+    /// duplicated" remarks) — a discrete stepper, not a continuous zoom
+    /// factor: GanttV3's zoom model is ALREADY a fixed 4-5 mode ladder
+    /// (Day/Week/Month/[Quarter]/Year), unlike ReUI's own continuous 0.5-3
+    /// factor grafted onto a single view. Introducing a second, continuous
+    /// "zoom factor" alongside that existing discrete model would be a much
+    /// larger, orthogonal change (a new persisted scale dimension every
+    /// other GanttV3 pixel computation would need to multiply through) for a
+    /// gesture that, discretely stepped, already reads as "zoom" to a user —
+    /// stepping is the right fit for THIS scale model, not a compromise.
+    /// </summary>
+    [Parameter] public bool WheelZoom { get; set; } = true;
+
+    /// <summary>
+    /// Raised instead of <see cref="ViewModeChanged"/> when a wheel-zoom
+    /// gesture (<see cref="WheelZoom"/>) picks a new mode AND a richer host
+    /// (<c>GanttChart</c>) is listening — carries the anchor date (under the
+    /// OLD scale, at the pointer's content-space position) and the pointer's
+    /// own local offset from the viewport's left edge, so the host can
+    /// recenter the SAME date back under the pointer after the mode switch
+    /// instead of merely preserving the viewport's CENTER (what every OTHER
+    /// <see cref="ViewMode"/> trigger — the toolbar, an imperative
+    /// <c>SetViewMode</c> — already does via <c>GanttChart</c>'s own
+    /// capture/recenter pipeline). Falls back to invoking
+    /// <see cref="ViewModeChanged"/> directly (no anchor) when this has no
+    /// delegate — a standalone <see cref="Lumeo.GanttTimeline"/> (no
+    /// <c>GanttChart</c> wrapping it, so nothing to recenter with anyway)
+    /// still gets basic wheel-zoom this way. Never invoked TOGETHER with
+    /// <see cref="ViewModeChanged"/> for the SAME gesture (would race
+    /// <c>GanttChart</c>'s own mode-change guard, applying the intent twice
+    /// and silently discarding whichever call lands second) — exactly one of
+    /// the two fires.
+    /// </summary>
+    [Parameter] public EventCallback<(GanttViewMode Mode, DateTime AnchorDate, double AnchorOffsetPx)> OnWheelZoomRequested { get; set; }
+
+    /// <summary>
+    /// Pixel-precise offset (from the scroll viewport's own left edge) a
+    /// pending <see cref="ScrollTargetXOverride"/>/<see cref="ScrollTargetDate"/>
+    /// recenter should land at, INSTEAD of <c>centerOn</c>'s usual
+    /// viewport-CENTER placement — <c>GanttChart</c>'s own wheel-zoom anchor
+    /// preservation is the one caller (see <see cref="OnWheelZoomRequested"/>'s
+    /// remarks): every other recenter in this codebase genuinely wants the
+    /// captured date centered, so this stays <c>null</c> for them, preserving
+    /// their exact prior "center" behavior. Honored only while the SAME
+    /// intent this render's <see cref="ScrollTargetDate"/>/<see cref="ScrollToTodayRequestId"/>
+    /// pairs with is still pending — same one-shot-then-expires contract as
+    /// <see cref="ScrollTargetXOverride"/> itself.
+    /// </summary>
+    [Parameter] public double? ScrollTargetOffsetOverride { get; set; }
+
+    /// <summary>
     /// Overrides the drag ghost's rendered content for every bar (design spec Phase
     /// 3, T8). Passed straight through to <see cref="Lumeo.GanttBar.DragGhostTemplate"/>
     /// — see its own remarks for the full coordinate-space contract.
@@ -1385,6 +1462,14 @@
             ? pixelOverride
             : GanttScale.DateToPixel(ViewMode, Origin, (intentPending ? ScrollTargetDate : null) ?? Today, EffectiveColumnWidth);
 
+    // Companion to ResolveScrollTargetX — see ScrollTargetOffsetOverride's own
+    // remarks. Null (every existing caller) preserves centerOn's usual
+    // viewport-center placement unchanged; only while the SAME intent is
+    // still pending does a caller-supplied offset take over, mirroring
+    // ScrollTargetXOverride's own "only while intentPending" gate exactly.
+    private double? ResolveScrollTargetOffset(bool intentPending) =>
+        intentPending ? ScrollTargetOffsetOverride : null;
+
     // v2 parity (Codex round 2, P2 #8): v2's scroll-to-today gate is
     // `todayPx > 0` (gantt-v2.js:684) — deliberately LOOSER than the
     // today-LINE marker's own render gate (`todayInRange`, upper+lower
@@ -1792,6 +1877,13 @@
             // listeners attached before the first real pointer/mouse event a
             // Playwright spec could possibly fire.
             await SyncBarContextMenuRegistrationAsync();
+            // Wheel zoom's own registration channel — see its remarks for why
+            // this one is gated on IsScrollHostReady like RegisterVerticalScrollTrackingAsync
+            // (it targets EffectiveScrollHost, which can be a not-yet-captured
+            // caller-supplied ElementReference), unlike Drag/BarContextMenu
+            // above (which always target this component's own always-ready
+            // _scrollHostRef).
+            await SyncWheelZoomRegistrationAsync();
 
             // Codex round 3, P2 #1: the JS scroll-sync transform exists ONLY to
             // work around an intervening overflow-x:auto ancestor hijacking the
@@ -1863,7 +1955,7 @@
                 // render. Whichever id is numerically highest is always the
                 // one that was actually (or will be) applied last.
                 var requestIdBeingApplied = ScrollToTodayRequestId;
-                await ScrollToCenterAsync(ResolveScrollTargetX(initialIntentPending));
+                await ScrollToCenterAsync(ResolveScrollTargetX(initialIntentPending), ResolveScrollTargetOffset(initialIntentPending));
                 _lastConsumedScrollRequestId = Math.Max(_lastConsumedScrollRequestId, requestIdBeingApplied);
             }
 
@@ -1917,7 +2009,7 @@
                 // the same remarks for why), not whatever ScrollToTodayRequestId
                 // happens to read once the interop round-trip resolves.
                 var requestIdBeingApplied = ScrollToTodayRequestId;
-                await ScrollToCenterAsync(ResolveScrollTargetX(intentPending));
+                await ScrollToCenterAsync(ResolveScrollTargetX(intentPending), ResolveScrollTargetOffset(intentPending));
                 _lastConsumedScrollRequestId = Math.Max(_lastConsumedScrollRequestId, requestIdBeingApplied);
             }
 
@@ -1971,6 +2063,13 @@
         // SyncDragRegistrationAsync's own remarks: a caller wiring/un-wiring
         // BarContextMenu after mount takes effect on the very next render.
         await SyncBarContextMenuRegistrationAsync();
+        // Checked on EVERY render too, unconditionally (not folded into the
+        // intentPending/scrollHostChanged block above) — a bare ViewMode
+        // parameter change on a STANDALONE timeline (no GanttChart wrapping
+        // it to bump ScrollToTodayRequestId) would otherwise never re-sync
+        // the registered currentMode, leaving JS's own synchronous
+        // zoom-limit check comparing against a stale mode.
+        await SyncWheelZoomRegistrationAsync();
     }
 
     // Codex round 4, P2 #3. Idempotent per EffectiveScrollHost value — the JS
@@ -2348,10 +2447,17 @@
     // consuming it on the very NEXT OnGanttV3VerticalScroll report (see its
     // own remarks) treats exactly one post-recenter report as "this is the
     // scroll settling," not "the user wants more."
-    private Task ScrollToCenterAsync(double targetX)
+    // offsetOverride (see ScrollTargetOffsetOverride's own remarks): null for
+    // every existing caller (unchanged centerOn/viewport-center behavior);
+    // wheel-zoom's own recenter is the one caller that supplies it, routing
+    // to GanttV3ScrollToOffsetAsync instead so the anchor date lands at the
+    // POINTER's own local offset rather than the viewport's center.
+    private Task ScrollToCenterAsync(double targetX, double? offsetOverride = null)
     {
         _suppressNextExtensionReport = true;
-        return Interop.GanttV3ScrollToXAsync(EffectiveScrollHost, ScrollHostLeadingOffset + targetX);
+        return offsetOverride is { } offset
+            ? Interop.GanttV3ScrollToOffsetAsync(EffectiveScrollHost, ScrollHostLeadingOffset + targetX, offset)
+            : Interop.GanttV3ScrollToXAsync(EffectiveScrollHost, ScrollHostLeadingOffset + targetX);
     }
 
     // Phase 2, T1 — (un)registers gantt-v3.js's pointer drag engine against
@@ -2527,6 +2633,88 @@
         if (_disposed)
         {
             try { await Interop.GanttV3UnregisterBarContextMenuAsync(_scrollHostRef); }
+            catch (JSDisconnectedException) { }
+        }
+    }
+
+    // Wheel-zoom (see WheelZoom's own remarks) — a FIFTH registration
+    // channel, but unlike drag/context-menu/splitter/row-reorder (all
+    // delegated on _scrollHostRef, this component's own always-ready row-
+    // canvas ref), this one targets EffectiveScrollHost — the SAME element
+    // ScrollToCenterAsync/centerOn already scroll, since the pointer's local
+    // "offset from the viewport's own left edge" (offsetPx) needs THAT
+    // element's real, clipped bounding rect, not the row-canvas's own
+    // (which is always exactly TotalWidth wide, never clipped itself — see
+    // CommitWheelZoom's own remarks). EffectiveScrollHost can be a
+    // caller-supplied ElementReference that isn't ready yet (same
+    // "not-yet-captured" race RegisterVerticalScrollTrackingAsync's own
+    // remarks describe), so this mirrors THAT method's IsScrollHostReady
+    // gate and its own _registeredScrollHostRef bookkeeping — a genuine host
+    // IDENTITY change (not just "not ready -> ready") unregisters the OLD
+    // element before registering the new one, closing the same leak
+    // RegisterVerticalScrollTrackingAsync's own remarks close.
+    private bool _wheelZoomRegistered;
+    private ElementReference? _registeredWheelZoomHostRef;
+    private GanttViewMode? _lastWheelZoomMode;
+
+    private async Task SyncWheelZoomRegistrationAsync()
+    {
+        if (!IsScrollHostReady) return;
+
+        if (!WheelZoom)
+        {
+            if (_wheelZoomRegistered)
+            {
+                _wheelZoomRegistered = false;
+                try { await Interop.GanttV3UnregisterWheelZoomAsync(_registeredWheelZoomHostRef ?? EffectiveScrollHost); }
+                catch (JSDisconnectedException) { }
+            }
+            return;
+        }
+
+        if (_wheelZoomRegistered && _registeredWheelZoomHostRef is { } oldHost && !oldHost.Equals(EffectiveScrollHost))
+        {
+            _wheelZoomRegistered = false;
+            try { await Interop.GanttV3UnregisterWheelZoomAsync(oldHost); }
+            catch (JSDisconnectedException) { }
+        }
+
+        // Idempotent per (host, ViewMode) — ganttV3.registerWheelZoom's own
+        // Map-keyed-by-element registration additionally swaps its stored
+        // options in place on a repeat call (same idempotent contract every
+        // other registerX in gantt-v3.js already has), so re-registering
+        // here is always safe; this check only avoids a redundant interop
+        // round-trip on every otherwise-unrelated render. ZoomLevels itself
+        // changing without ViewMode/WheelZoom also changing is rare enough
+        // (typically set once by the consumer) that this doesn't track it
+        // separately — a small, accepted looseness, not a correctness gap.
+        if (_wheelZoomRegistered && _registeredWheelZoomHostRef.HasValue && _lastWheelZoomMode == ViewMode) return;
+
+        _selfRef ??= DotNetObjectReference.Create(this);
+        _wheelZoomRegistered = true;
+        _registeredWheelZoomHostRef = EffectiveScrollHost;
+        _lastWheelZoomMode = ViewMode;
+
+        var options = new Dictionary<string, object?>
+        {
+            ["currentMode"] = ViewMode.ToString(),
+            ["levels"] = GanttZoomLevelModel.Resolve(ZoomLevels).Select(l => l.ToString()).ToArray(),
+        };
+
+        try
+        {
+            await Interop.GanttV3RegisterWheelZoomAsync(EffectiveScrollHost, _selfRef, options);
+        }
+        catch (Exception)
+        {
+            // Same "degrade, don't take the render down" reasoning as every
+            // other SyncXRegistrationAsync's own catch in this file.
+            _wheelZoomRegistered = false;
+        }
+
+        if (_disposed || !WheelZoom)
+        {
+            try { await Interop.GanttV3UnregisterWheelZoomAsync(EffectiveScrollHost); }
             catch (JSDisconnectedException) { }
         }
     }
@@ -2899,6 +3087,49 @@
         _ => GanttTaskUpdateSource.Move,
     };
 
+    /// <summary>
+    /// JS -&gt; .NET wheel-zoom commit (see <see cref="WheelZoom"/>'s own
+    /// remarks): fired by gantt-v3.js's <c>registerWheelZoom</c> ONLY when it
+    /// already decided, synchronously, that this Ctrl/Cmd+wheel gesture
+    /// resolves to a genuine step within the resolved zoom-level list (an
+    /// exhausted zoom limit never reaches here at all — JS leaves the native
+    /// event alone in that case, see <see cref="WheelZoom"/>'s remarks for
+    /// why that matters). <paramref name="contentX"/> is the pointer's
+    /// position in FULL logical content-space (<c>EffectiveScrollHost</c>'s
+    /// own coordinate origin, i.e. including a sibling tree pane's width in
+    /// GanttChart's shared-pane mode) at the moment of the gesture, still
+    /// under the OLD (current, pre-switch) <see cref="ViewMode"/>/<see
+    /// cref="Origin"/>/<see cref="EffectiveColumnWidth"/> — <see
+    /// cref="ScrollHostLeadingOffset"/> is subtracted here to bring it back
+    /// into THIS component's own timeline-relative space before resolving a
+    /// date, the same subtraction <see cref="ScrollToCenterAsync"/> adds back
+    /// on the way out. <see cref="GanttScale.PixelToDateContinuous"/> (not the
+    /// snapping <see cref="GanttScale.PixelToDate"/> drag/resize math uses) —
+    /// same "don't collapse a live pointer read to the nearest whole
+    /// column" reasoning <c>GanttChart.ResolveCurrentCenterDateAsync</c>'s own
+    /// remarks give for the identical choice on the toolbar/imperative
+    /// recenter path. <paramref name="offsetPx"/> is the pointer's own local
+    /// offset from the scroll VIEWPORT's left edge (not the content's) —
+    /// forwarded straight through to <see cref="OnWheelZoomRequested"/>/
+    /// <see cref="ScrollTargetOffsetOverride"/> unchanged, since it's already
+    /// in the exact space <c>ganttV3.scrollToOffset</c> needs.
+    /// </summary>
+    [JSInvokable]
+    public Task CommitWheelZoom(string modeStr, double contentX, double offsetPx)
+    {
+        if (!WheelZoom) return Task.CompletedTask; // JSInvokable is a public surface — don't trust a stray call blindly, same reasoning as CommitDrag's own Readonly guard
+        if (!Enum.TryParse<GanttViewMode>(modeStr, out var newMode) || newMode == ViewMode) return Task.CompletedTask;
+
+        var anchorDate = GanttScale.PixelToDateContinuous(ViewMode, Origin, contentX - ScrollHostLeadingOffset, EffectiveColumnWidth);
+
+        // See OnWheelZoomRequested's own remarks: exactly one of the two
+        // fires, never both — a richer host (GanttChart) gets the anchor, a
+        // standalone timeline falls back to its own plain ViewModeChanged.
+        return OnWheelZoomRequested.HasDelegate
+            ? OnWheelZoomRequested.InvokeAsync((newMode, anchorDate, offsetPx))
+            : ViewModeChanged.InvokeAsync(newMode);
+    }
+
     // Shared by CommitDrag/CommitProgress/NotifyTaskClick/ValidateDrop — resolves
     // against EffectiveRows (not the raw Tasks parameter), see CommitDrag's own
     // remarks for why that's correct for a hierarchy-filtered/collapsed caller.
@@ -2912,6 +3143,181 @@
     // click) and must resolve against whatever was last actually rendered, the
     // same snapshot-timing CommitDrag's own remarks already rely on ("any task
     // with an active drag is, by definition, currently rendered").
+    // ── Roving-tabindex arrow-key navigation (GanttV3's own a11y gap — the
+    // engine previously had no arrow-key support at all; only Enter/Space
+    // activation existed) ────────────────────────────────────────────────
+    //
+    // _focusedTaskId is the roving-focus "current" bar; null until a
+    // keyboard interaction has actually happened. EffectiveFocusedTaskId
+    // falls back to the FIRST visible task row so a single Tab always
+    // reaches exactly ONE bar (never zero, and never every bar the way an
+    // unconditional tabindex="0" used to) even before that.
+    private string? _focusedTaskId;
+
+    private string? EffectiveFocusedTaskId
+    {
+        get
+        {
+            if (_focusedTaskId is { } id && _taskIndex.ContainsKey(id)) return id;
+            foreach (var row in EffectiveRows)
+            {
+                if (row.Task is not null) return row.Task.Id;
+            }
+            return null;
+        }
+    }
+
+    // The aria-live region's own live text (see the markup's own remarks for
+    // why this follows Lumeo.Sortable/Lumeo.DataGrid's existing sr-only
+    // announcement convention). Replaced, never appended — aria-atomic reads
+    // the WHOLE new value on each change.
+    private string? _keyboardAnnouncement;
+
+    /// <summary>
+    /// Entry point for every <see cref="Lumeo.GanttBar.OnKeyNavigation"/>
+    /// event — see <see cref="GanttBarKeyNavigation"/>'s own remarks for the
+    /// full Shift-held/not-held split this dispatches on.
+    /// </summary>
+    private Task HandleBarKeyNavigationAsync(GanttBarKeyNavigation nav) =>
+        nav.ShiftKey ? CommitKeyboardTimingChangeAsync(nav.Task, nav.Key) : MoveBarFocusAsync(nav.Task, nav.Key);
+
+    /// <summary>
+    /// Plain arrow (no Shift): roving focus moves to the bar in the
+    /// previous/next VISIBLE row. Up and Left both mean "previous", Down and
+    /// Right both mean "next" — GanttV3 rows are one-task-per-row, so there
+    /// is no distinct "leftward" bar within the same row to move to; Left/
+    /// Right alias Up/Down rather than being left as dead keys (the ARIA
+    /// listbox authoring pattern permits this for a single-axis list).
+    ///
+    /// Resolved against <see cref="EffectiveRows"/> — the FULL logical row
+    /// list (hierarchy-filter/collapse-aware, same source <see
+    /// cref="CommitDrag"/>/<see cref="FindTask"/> already use), not just the
+    /// currently-virtualized subset — so "next task" always means the next
+    /// one in the list. Whether the move actually LANDS focus depends on
+    /// that row being currently rendered: <see
+    /// cref="Lumeo.Services.IComponentInteropService.GanttV3FocusBarAsync"/>
+    /// calls a plain <c>element.focus()</c>, which the browser auto-scrolls
+    /// into view for an element that's in the DOM but visually clipped — so
+    /// this reaches every row inside Virtualize's own overscan buffer for
+    /// free. A row far enough outside that buffer needs a scroll first
+    /// (out of this feature's scope — the same limitation any virtualized
+    /// list's keyboard nav has without dedicated scroll-into-view wiring; no
+    /// vertical "scroll to task" primitive exists anywhere in GanttV3 today
+    /// to build that on top of).
+    /// </summary>
+    private async Task MoveBarFocusAsync(GanttTask current, string key)
+    {
+        var forward = key is "ArrowDown" or "ArrowRight";
+        var backward = key is "ArrowUp" or "ArrowLeft";
+        if (!forward && !backward) return;
+
+        var rows = EffectiveRows;
+        var currentIndex = -1;
+        for (var i = 0; i < rows.Count; i++)
+        {
+            if (rows[i].Task?.Id == current.Id) { currentIndex = i; break; }
+        }
+        if (currentIndex < 0) return;
+
+        var step = forward ? 1 : -1;
+        for (var i = currentIndex + step; i >= 0 && i < rows.Count; i += step)
+        {
+            if (rows[i].Task is not { } target) continue;
+            _focusedTaskId = target.Id;
+            StateHasChanged();
+            try { await Interop.GanttV3FocusBarAsync(_scrollHostRef, target.Id); }
+            catch (JSDisconnectedException) { }
+            return;
+        }
+
+        // No further visible row in that direction — nothing else would
+        // announce this (focus never moved, so no new aria-label is ever
+        // read), unlike a successful move, where the browser's own
+        // focus-change announcement of the newly-focused bar's
+        // Gantt.TaskAriaLabel already covers it without a separate string.
+        _keyboardAnnouncement = L["Gantt.KeyboardNoMoreTasks"];
+        StateHasChanged();
+    }
+
+    /// <summary>
+    /// Shift+Arrow: nudges the FOCUSED task's own schedule by one day,
+    /// through the SAME <see cref="OnTaskUpdate"/> commit gate a mouse drag
+    /// uses (see <see cref="CommitDrag"/>) — tagged <see
+    /// cref="GanttTaskUpdateSource.Keyboard"/> so a consumer's gate can tell
+    /// a keyboard nudge apart from a mouse drag with one check, the way
+    /// ReUI's own <c>onEventUpdate</c> tags a keyboard-originated edit with a
+    /// flat "keyboard" source (see <see cref="GanttTaskUpdateSource.Keyboard"/>'s
+    /// own remarks for why this is ONE source covering both the move and
+    /// resize cases below, not two/three separate keyboard-specific members).
+    ///
+    /// Always ONE DAY per key press, never a per-<see cref="ViewMode"/>
+    /// calendar unit — mirrors <see cref="CommitDrag"/>/<c>computeSnappedDates</c>'s
+    /// own move/resize math, which is ALSO always day-based regardless of
+    /// ViewMode (only drag-CREATE steps by a calendar unit — see
+    /// <c>BuildDragOptions</c>'s own <c>scaleUnit</c> remarks for why that
+    /// case differs), so keyboard and mouse editing always agree on what one
+    /// nudge means, independent of how zoomed in/out the view happens to be.
+    ///
+    /// Left/Right move the whole task (Start+End shift together, Source=Move
+    /// shape but tagged Keyboard); Up/Down resize the End edge only (grow on
+    /// Up, shrink on Down, clamped to never cross Start — mirrors
+    /// <see cref="CommitDrag"/>'s own resize-end clamp). A keyboard binding
+    /// for resizing the START edge is a legitimate follow-up, deliberately
+    /// out of scope here: v2 itself never had ANY left-edge resize (only a
+    /// single right/End handle), so covering that one edge via keyboard is a
+    /// consistent, v2-parity-sized scope cut, not an arbitrary one.
+    /// </summary>
+    private async Task CommitKeyboardTimingChangeAsync(GanttTask task, string key)
+    {
+        if (Readonly) return;
+
+        // Resolve the LIVE task — repeated Shift+Arrow presses must each
+        // apply against whatever the LAST commit actually produced (once
+        // OnTaskUpdate's gate gets a chance to run and, if accepted, land in
+        // Tasks/EffectiveRows), not a stale closure snapshot from whenever
+        // this bar first received focus.
+        var original = FindTask(task.Id) ?? task;
+
+        DateTime newStart = original.Start, newEnd = original.End;
+        bool isResize;
+        switch (key)
+        {
+            case "ArrowLeft":
+                newStart = original.Start.AddDays(-1);
+                newEnd = original.End.AddDays(-1);
+                isResize = false;
+                break;
+            case "ArrowRight":
+                newStart = original.Start.AddDays(1);
+                newEnd = original.End.AddDays(1);
+                isResize = false;
+                break;
+            case "ArrowUp":
+                newEnd = original.End.AddDays(1);
+                isResize = true;
+                break;
+            case "ArrowDown":
+                newEnd = original.End.AddDays(-1);
+                if (newEnd < original.Start) newEnd = original.Start; // mirrors CommitDrag's own resize-end clamp
+                isResize = true;
+                break;
+            default:
+                return;
+        }
+
+        var updated = original with { Start = newStart, End = newEnd };
+        if (!OnTaskUpdate.HasDelegate) return; // no gate wired — nothing to commit, nothing to announce (mirrors CommitDrag's own no-delegate no-op)
+
+        _keyboardAnnouncement = isResize
+            ? L["Gantt.KeyboardTaskResized", original.Name, newEnd.ToString("MMM d, yyyy", CultureInfo.CurrentCulture)]
+            : L["Gantt.KeyboardTaskMoved", original.Name,
+                newStart.ToString("MMM d, yyyy", CultureInfo.CurrentCulture),
+                newEnd.ToString("MMM d, yyyy", CultureInfo.CurrentCulture)];
+        StateHasChanged();
+
+        await OnTaskUpdate.InvokeAsync(new GanttTaskUpdate(updated, GanttTaskUpdateSource.Keyboard));
+    }
+
     private GanttTask? FindTask(string taskId) =>
         _taskIndex.TryGetValue(taskId, out var task) ? task : null;
 
@@ -2982,6 +3388,13 @@
             // only for the (unreachable in practice) case where the flag is
             // set but the tracked reference somehow isn't.
             try { await Interop.GanttV3UnregisterVerticalScrollTrackingAsync(_registeredScrollHostRef ?? EffectiveScrollHost); }
+            catch (JSDisconnectedException) { }
+        }
+        if (_wheelZoomRegistered)
+        {
+            // Same "unregister against whichever host was ACTUALLY
+            // registered" reasoning as vertical-scroll-tracking above.
+            try { await Interop.GanttV3UnregisterWheelZoomAsync(_registeredWheelZoomHostRef ?? EffectiveScrollHost); }
             catch (JSDisconnectedException) { }
         }
         _selfRef?.Dispose();

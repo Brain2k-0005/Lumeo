@@ -28,6 +28,19 @@ public enum GanttTaskUpdateSource
     Progress,
     /// <summary>A new task was created via drag-create on an empty track (T3 — not yet raised).</summary>
     Create,
+    /// <summary>
+    /// The task's Start/End (or just End, for a keyboard resize) changed via
+    /// keyboard nudging on a focused bar — Shift+Arrow to move, Shift+Up/Down
+    /// to resize the End edge (see <see cref="Lumeo.GanttTimeline"/>'s own
+    /// keyboard-navigation remarks). Mirrors ReUI's own keyboard-drag
+    /// behavior, which tags every such edit with a single flat "keyboard"
+    /// source regardless of whether it was a move or a resize — this enum
+    /// does the same rather than adding separate KeyboardMove/
+    /// KeyboardResizeEnd members, so a consumer's <c>OnTaskUpdate</c> gate can
+    /// cheaply special-case "this came from the keyboard, not a mouse drag"
+    /// with one check.
+    /// </summary>
+    Keyboard,
 }
 
 /// <summary>
@@ -49,6 +62,27 @@ public enum GanttTaskUpdateSource
 /// </param>
 /// <param name="Source">Which gesture produced this update.</param>
 public sealed record GanttTaskUpdate(GanttTask Task, GanttTaskUpdateSource Source);
+
+/// <summary>
+/// One arrow-key press on a focused <see cref="Lumeo.GanttBar"/> (wheel-zoom's
+/// keyboard-navigation sibling feature). Raised by <see cref="Lumeo.GanttBar"/>'s
+/// own <c>OnKeyNavigation</c> and consumed by <see cref="Lumeo.GanttTimeline"/>,
+/// which decides what it means: with no modifier, roving focus moves to the
+/// previous/next visible row's bar; with <see cref="ShiftKey"/> held, the
+/// FOCUSED task's own schedule is nudged instead (Left/Right moves the whole
+/// task by a day, Up/Down grows/shrinks its End edge by a day) and routed
+/// through the same <c>OnTaskUpdate</c> commit gate a mouse drag uses, tagged
+/// <see cref="GanttTaskUpdateSource.Keyboard"/>.
+///
+/// <c>public</c> — crosses <see cref="Lumeo.GanttBar"/>'s public
+/// <c>EventCallback&lt;GanttBarKeyNavigation&gt; OnKeyNavigation</c> parameter
+/// (same CS0053 public-parameter-can't-expose-a-less-accessible-type
+/// constraint <see cref="GanttTaskUpdateSource"/>'s remarks explain).
+/// </summary>
+/// <param name="Task">The bar that had focus when the key was pressed.</param>
+/// <param name="Key">The raw <c>KeyboardEvent.key</c> value — one of "ArrowUp"/"ArrowDown"/"ArrowLeft"/"ArrowRight".</param>
+/// <param name="ShiftKey">Whether Shift was held — the focus-move/schedule-edit discriminator (see the class remarks).</param>
+public sealed record GanttBarKeyNavigation(GanttTask Task, string Key, bool ShiftKey);
 
 /// <summary>
 /// A candidate override for a commit's Start/End/Progress, offered by a

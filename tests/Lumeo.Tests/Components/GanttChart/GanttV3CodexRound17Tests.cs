@@ -207,8 +207,18 @@ public class GanttV3CodexRound17Tests : IAsyncLifetime
     [Fact]
     public async Task Finding4_Removing_OnTaskClick_While_Registration_Is_In_Flight_Unregisters_Instead_Of_Committing()
     {
+        // Renders GanttBar DIRECTLY (not via GanttTimeline) — isolates the
+        // ORIGINAL round-17 regression exactly as found: OnTaskClick as the
+        // SOLE driver of the prevent-default registration, no OnKeyNavigation
+        // delegate in play. GanttTimeline itself now ALWAYS wires
+        // OnKeyNavigation on every bar it renders (arrow-key navigation —
+        // see GanttBar.OnKeyNavigation's own remarks), so removing ONLY
+        // OnTaskClick from a GanttTimeline-hosted bar no longer means
+        // "nothing wants registration anymore" — see the sibling
+        // Mid_Flight_Combination_Drift_Reregisters_Instead_Of_Unregistering
+        // test in GanttV3KeyboardNavigationTests for THAT (new, deliberately
+        // different) behavior.
         var task = new L.GanttTask("t1", "Task", D(2026, 1, 1), D(2026, 1, 5));
-        var rows = new List<GanttVisibleRow> { new(GanttRowKind.Task, task, task.Name, 0, false, null, false) };
 
         // Gate the registration BEFORE the bar even mounts, so its own
         // automatic firstRender registration call (triggered because
@@ -216,12 +226,10 @@ public class GanttV3CodexRound17Tests : IAsyncLifetime
         var gate = new TaskCompletionSource();
         _interop.RegisterPreventDefaultKeysGate = gate;
 
-        var cut = _ctx.Render<L.GanttTimeline>(p => p
-            .Add(c => c.Tasks, new List<L.GanttTask> { task })
-            .Add(c => c.Rows, rows)
-            .Add(c => c.ViewMode, L.GanttViewMode.Day)
-            .Add(c => c.RangeStart, D(2025, 12, 1))
-            .Add(c => c.RangeEnd, D(2026, 3, 1))
+        var cut = _ctx.Render<L.GanttBar>(p => p
+            .Add(c => c.Task, task)
+            .Add(c => c.X, 0d)
+            .Add(c => c.Width, 114d)
             .Add(c => c.OnTaskClick, EventCallback.Factory.Create<L.GanttTask>(this, _ => { })));
 
         Assert.Single(_interop.RegisterPreventDefaultKeysElementIds);
@@ -236,11 +244,9 @@ public class GanttV3CodexRound17Tests : IAsyncLifetime
         // their default, so the "no delegate" value must be passed
         // explicitly here, not just left out.
         cut.Render(p => p
-            .Add(c => c.Tasks, new List<L.GanttTask> { task })
-            .Add(c => c.Rows, rows)
-            .Add(c => c.ViewMode, L.GanttViewMode.Day)
-            .Add(c => c.RangeStart, D(2025, 12, 1))
-            .Add(c => c.RangeEnd, D(2026, 3, 1))
+            .Add(c => c.Task, task)
+            .Add(c => c.X, 0d)
+            .Add(c => c.Width, 114d)
             .Add(c => c.OnTaskClick, default(EventCallback<L.GanttTask>)));
 
         Assert.Empty(_interop.UnregisterPreventDefaultKeysElementIds); // not yet -- the in-flight call hasn't resumed

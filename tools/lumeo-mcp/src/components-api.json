@@ -1,10 +1,10 @@
 {
   "$schema": "https://lumeo.nativ.sh/components-api-schema.json",
   "version": "4.3.3",
-  "generated": "2026-08-11T16:47:15.0702647Z",
+  "generated": "2026-08-12T06:08:59.2912942Z",
   "stats": {
     "componentCount": 165,
-    "totalParameters": 4467,
+    "totalParameters": 4473,
     "totalEnums": 91,
     "totalRecords": 65,
     "serviceCount": 33,
@@ -1810,6 +1810,30 @@
           "summary": null
         },
         {
+          "name": "GanttV3RegisterWheelZoomAsync",
+          "returnType": "Task",
+          "signature": "GanttV3RegisterWheelZoomAsync<[System.Diagnostics.CodeAnalysis.DynamicallyAccessedMembers(System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicMethods)] T>(Microsoft.AspNetCore.Components.ElementReference el, DotNetObjectReference<T> dotNetRef, object options)",
+          "summary": null
+        },
+        {
+          "name": "GanttV3UnregisterWheelZoomAsync",
+          "returnType": "Task",
+          "signature": "GanttV3UnregisterWheelZoomAsync(Microsoft.AspNetCore.Components.ElementReference el)",
+          "summary": null
+        },
+        {
+          "name": "GanttV3FocusBarAsync",
+          "returnType": "Task",
+          "signature": "GanttV3FocusBarAsync(Microsoft.AspNetCore.Components.ElementReference containerEl, string taskId)",
+          "summary": null
+        },
+        {
+          "name": "GanttV3ScrollToOffsetAsync",
+          "returnType": "Task",
+          "signature": "GanttV3ScrollToOffsetAsync(Microsoft.AspNetCore.Components.ElementReference el, double targetX, double offsetPx)",
+          "summary": null
+        },
+        {
           "name": "RegisterToolbarOverflow",
           "returnType": "ValueTask",
           "signature": "RegisterToolbarOverflow(string elementId, Func<int, int, Task> handler)",
@@ -3226,6 +3250,30 @@
           "returnType": "Task",
           "signature": "GanttV3UnregisterBarContextMenuAsync(Microsoft.AspNetCore.Components.ElementReference el)",
           "summary": "Tears down the bar context-menu channel registered by GanttV3RegisterBarContextMenuAsync{T} — removes the delegated contextmenu listener. Default no-op."
+        },
+        {
+          "name": "GanttV3RegisterWheelZoomAsync",
+          "returnType": "Task",
+          "signature": "GanttV3RegisterWheelZoomAsync<[System.Diagnostics.CodeAnalysis.DynamicallyAccessedMembers(System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicMethods)] T>(Microsoft.AspNetCore.Components.ElementReference el, DotNetObjectReference<T> dotNetRef, object options)",
+          "summary": "Registers GanttV3's wheel-zoom channel (GanttTimeline.WheelZoom — gantt-v3.js's ganttV3.registerWheelZoom) — a SIXTH registration channel alongside GanttV3RegisterDragAsync{T}/GanttV3RegisterSplitterDragAsync{T}/GanttV3RegisterRowReorderDragAsync{T}/GanttV3RegisterBarContextMenuAsync{T}. A single delegated native wheel listener on el that does nothing at all for a bare wheel (no ctrl/meta key — see the JS implementation's own remarks) and, for a Ctrl/Cmd+wheel, decides ENTIRELY synchronously (from options's pushed zoom-level list/current mode) whether to preventDefault and invoke the caller's CommitWheelZoom JSInvokable, or leave the event alone so the browser's own page-zoom runs at an exhausted zoom limit. Calling this again for an already-registered el updates the stored dotNetRef/options in place (idempotent), mirroring every other registration channel above. Default no-op DIM so existing implementers/test doubles keep compiling; ComponentInteropService overrides both with the real registration."
+        },
+        {
+          "name": "GanttV3UnregisterWheelZoomAsync",
+          "returnType": "Task",
+          "signature": "GanttV3UnregisterWheelZoomAsync(Microsoft.AspNetCore.Components.ElementReference el)",
+          "summary": "Tears down the wheel-zoom channel registered by GanttV3RegisterWheelZoomAsync{T} — removes the delegated wheel listener. Default no-op."
+        },
+        {
+          "name": "GanttV3FocusBarAsync",
+          "returnType": "Task",
+          "signature": "GanttV3FocusBarAsync(Microsoft.AspNetCore.Components.ElementReference containerEl, string taskId)",
+          "summary": "Sets DOM focus on the bar for taskId within containerEl — the DOM-side half of arrow-key navigation's roving tabindex (GanttTimeline.MoveBarFocusAsync). Resolves the target via a scoped [data-task-id] query (the same attribute GanttV3RegisterDragAsync{T}'s own hit-testing already relies on), not a global id lookup — a bar's own internal id (GanttBar.razor's _barId) is a per-component-instance random value, not derivable from a task id. A plain element.focus() call, which auto-scrolls an in-DOM-but-clipped target into view natively. No-op when containerEl is unset or the task isn't currently rendered. Default no-op DIM so existing implementers/test doubles keep compiling."
+        },
+        {
+          "name": "GanttV3ScrollToOffsetAsync",
+          "returnType": "Task",
+          "signature": "GanttV3ScrollToOffsetAsync(Microsoft.AspNetCore.Components.ElementReference el, double targetX, double offsetPx)",
+          "summary": "Companion to GanttV3ScrollToXAsync — places targetX (the same timeline-origin-relative pixel space) at offsetPx pixels from el's own viewport left edge, instead of GanttV3ScrollToXAsync's hardcoded viewport-CENTER placement. The one caller is wheel-zoom's own pointer-anchored recenter (GanttTimeline.ScrollTargetOffsetOverride) — every other recenter in GanttV3 genuinely wants the target centered, so this is a NEW, separate write path rather than a GanttV3ScrollToXAsync overload, keeping that method's own existing behavior/E2E assertions untouched. Default no-op DIM so existing implementers/test doubles keep compiling."
         },
         {
           "name": "RegisterToolbarOverflow",
@@ -34395,6 +34443,15 @@
           "isEditorRequired": false
         },
         {
+          "name": "WheelZoom",
+          "type": "bool",
+          "default": "true",
+          "description": "Ctrl/Cmd + wheel over the timeline zooms, anchored on the pointer position (ReUI parity — wheelZoom, defaulting true). A bare wheel is never touched — the page/pane keeps scrolling exactly as it would with no Gantt on it. Steps through ZoomLevels (the SAME resolved list ShowZoomControl's stepper and GanttNav's toolbar already step through — never a second, independently-tunable list); at the resolved list's own zoom limits the gesture is left alone entirely, so the browser's own ctrl/cmd+wheel page-zoom takes over instead of the gesture being silently swallowed. See WheelZoom's own remarks for the full \"stepped, not continuous\" design rationale.",
+          "isCascading": false,
+          "captureUnmatched": false,
+          "isEditorRequired": false
+        },
+        {
           "name": "TreeColumns",
           "type": "IReadOnlyList<GanttTreeColumn>?",
           "default": null,
@@ -34857,6 +34914,24 @@
               "isEditorRequired": false
             },
             {
+              "name": "FocusedTaskId",
+              "type": "string?",
+              "default": null,
+              "description": "Roving-tabindex target (arrow-key navigation — GanttV3's own accessibility gap, closed alongside wheel zoom). Every bar defaults to tabindex=\"0\" when this is null (preserves EXACT prior behavior for a standalone GanttBar, e.g. every existing bUnit test that renders one in isolation with no GanttTimeline wrapping it). When set by GanttTimeline (which always sets it once ANY bar exists), only the bar whose Task's id matches gets tabindex=\"0\" — every other bar gets -1, so a single Tab reaches exactly ONE bar instead of every bar in the chart, and arrow keys move which one that is.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "OnKeyNavigation",
+              "type": "EventCallback<GanttBarKeyNavigation>",
+              "default": null,
+              "description": "Raised on ArrowUp/ArrowDown/ArrowLeft/ArrowRight (never Enter/Space — those stay OnTaskClick's own). Always wired by GanttTimeline (not a consumer-facing opt-in — arrow navigation works out of the box on every chart), so a bar rendered through it always has onkeydown attached even when OnTaskClick itself has no delegate. A standalone GanttBar with neither delegate set keeps its exact prior \"no onkeydown at all\" behavior.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
               "name": "Class",
               "type": "string?",
               "default": null,
@@ -34907,6 +34982,11 @@
               "name": "OnTaskClick",
               "type": "EventCallback<GanttTask>",
               "description": "Raised when the bar is activated via mouse click OR keyboard (Enter/Space on the now-focusable bar — Codex round 4, P2 #5). Same contract as v2's Gantt.OnTaskClick (EventCallback<GanttTask>)."
+            },
+            {
+              "name": "OnKeyNavigation",
+              "type": "EventCallback<GanttBarKeyNavigation>",
+              "description": "Raised on ArrowUp/ArrowDown/ArrowLeft/ArrowRight (never Enter/Space — those stay OnTaskClick's own). Always wired by GanttTimeline (not a consumer-facing opt-in — arrow navigation works out of the box on every chart), so a bar rendered through it always has onkeydown attached even when OnTaskClick itself has no delegate. A standalone GanttBar with neither delegate set keeps its exact prior \"no onkeydown at all\" behavior."
             }
           ],
           "enums": [],
@@ -35804,6 +35884,33 @@
               "isEditorRequired": false
             },
             {
+              "name": "WheelZoom",
+              "type": "bool",
+              "default": "true",
+              "description": "Ctrl/Cmd + wheel over the timeline zooms, anchored on the pointer position (ReUI parity — wheelZoom, defaulting true). A BARE wheel is never touched (no listener decision even looks at it beyond the ctrl/meta check) — the page/pane keeps scrolling exactly as it would with no Gantt on it at all, which is the entire reason ReUI requires the modifier rather than hijacking plain wheel. At the current ZoomLevels list's own zoom limits (already at the finest/coarsest resolved level) the gesture is left alone entirely — no preventDefault — so the BROWSER's own ctrl/cmd+wheel page-zoom takes over instead of the gesture being silently swallowed. Steps through the SAME resolved GanttZoomLevelModel list GanttZoomControl/GanttNav already step through (see GanttZoomLevelModel's own \"shared, never duplicated\" remarks) — a discrete stepper, not a continuous zoom factor: GanttV3's zoom model is ALREADY a fixed 4-5 mode ladder (Day/Week/Month/[Quarter]/Year), unlike ReUI's own continuous 0.5-3 factor grafted onto a single view. Introducing a second, continuous \"zoom factor\" alongside that existing discrete model would be a much larger, orthogonal change (a new persisted scale dimension every other GanttV3 pixel computation would need to multiply through) for a gesture that, discretely stepped, already reads as \"zoom\" to a user — stepping is the right fit for THIS scale model, not a compromise.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "OnWheelZoomRequested",
+              "type": "EventCallback<(GanttViewMode Mode, DateTime AnchorDate, double AnchorOffsetPx)>",
+              "default": null,
+              "description": "Raised instead of ViewModeChanged when a wheel-zoom gesture (WheelZoom) picks a new mode AND a richer host (GanttChart) is listening — carries the anchor date (under the OLD scale, at the pointer's content-space position) and the pointer's own local offset from the viewport's left edge, so the host can recenter the SAME date back under the pointer after the mode switch instead of merely preserving the viewport's CENTER (what every OTHER ViewMode trigger — the toolbar, an imperative SetViewMode — already does via GanttChart's own capture/recenter pipeline). Falls back to invoking ViewModeChanged directly (no anchor) when this has no delegate — a standalone GanttTimeline (no GanttChart wrapping it, so nothing to recenter with anyway) still gets basic wheel-zoom this way. Never invoked TOGETHER with ViewModeChanged for the SAME gesture (would race GanttChart's own mode-change guard, applying the intent twice and silently discarding whichever call lands second) — exactly one of the two fires.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "ScrollTargetOffsetOverride",
+              "type": "double?",
+              "default": null,
+              "description": "Pixel-precise offset (from the scroll viewport's own left edge) a pending ScrollTargetXOverride/ScrollTargetDate recenter should land at, INSTEAD of centerOn's usual viewport-CENTER placement — GanttChart's own wheel-zoom anchor preservation is the one caller (see OnWheelZoomRequested's remarks): every other recenter in this codebase genuinely wants the captured date centered, so this stays null for them, preserving their exact prior \"center\" behavior. Honored only while the SAME intent this render's ScrollTargetDate/ScrollToTodayRequestId pairs with is still pending — same one-shot-then-expires contract as ScrollTargetXOverride itself.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
               "name": "DragGhostTemplate",
               "type": "RenderFragment<GanttTask>?",
               "default": null,
@@ -35855,6 +35962,11 @@
               "name": "OnTaskUpdate",
               "type": "EventCallback<GanttTaskUpdate>",
               "description": "Raised once, on drop, after a drag-move/-resize commits (design spec Phase 2, T1's unified commit gate — GanttTaskUpdate(Task, Source)). GanttChart subscribes to this to update its GanttState and re-raise its OWN OnTaskUpdate/OnDateChange/ TasksChanged — this component never touches GanttState itself (same bubbling contract as OnToggleCollapse)."
+            },
+            {
+              "name": "OnWheelZoomRequested",
+              "type": "EventCallback<(GanttViewMode Mode, DateTime AnchorDate, double AnchorOffsetPx)>",
+              "description": "Raised instead of ViewModeChanged when a wheel-zoom gesture (WheelZoom) picks a new mode AND a richer host (GanttChart) is listening — carries the anchor date (under the OLD scale, at the pointer's content-space position) and the pointer's own local offset from the viewport's left edge, so the host can recenter the SAME date back under the pointer after the mode switch instead of merely preserving the viewport's CENTER (what every OTHER ViewMode trigger — the toolbar, an imperative SetViewMode — already does via GanttChart's own capture/recenter pipeline). Falls back to invoking ViewModeChanged directly (no anchor) when this has no delegate — a standalone GanttTimeline (no GanttChart wrapping it, so nothing to recenter with anyway) still gets basic wheel-zoom this way. Never invoked TOGETHER with ViewModeChanged for the SAME gesture (would race GanttChart's own mode-change guard, applying the intent twice and silently discarding whichever call lands second) — exactly one of the two fires."
             },
             {
               "name": "OnRangeExtensionRequested",
@@ -36151,10 +36263,12 @@
           "separator"
         ],
         "ariaAttributes": [
+          "aria-atomic",
           "aria-expanded",
           "aria-hidden",
           "aria-label",
           "aria-labelledby",
+          "aria-live",
           "aria-orientation",
           "aria-valuemax",
           "aria-valuemin",

@@ -196,6 +196,33 @@
     /// </summary>
     [Parameter] public EventCallback<GanttTask> OnTaskClick { get; set; }
 
+    /// <summary>
+    /// Roving-tabindex target (arrow-key navigation — GanttV3's own
+    /// accessibility gap, closed alongside wheel zoom). Every bar defaults to
+    /// <c>tabindex="0"</c> when this is <c>null</c> (preserves EXACT prior
+    /// behavior for a standalone <see cref="Lumeo.GanttBar"/>, e.g. every
+    /// existing bUnit test that renders one in isolation with no
+    /// <see cref="Lumeo.GanttTimeline"/> wrapping it). When set by
+    /// <see cref="Lumeo.GanttTimeline"/> (which always sets it once ANY bar
+    /// exists), only the bar whose <see cref="Task"/>'s id matches gets
+    /// <c>tabindex="0"</c> — every other bar gets <c>-1</c>, so a single Tab
+    /// reaches exactly ONE bar instead of every bar in the chart, and arrow
+    /// keys move which one that is.
+    /// </summary>
+    [Parameter] public string? FocusedTaskId { get; set; }
+
+    /// <summary>
+    /// Raised on ArrowUp/ArrowDown/ArrowLeft/ArrowRight (never Enter/Space —
+    /// those stay <see cref="OnTaskClick"/>'s own). Always wired by
+    /// <see cref="Lumeo.GanttTimeline"/> (not a consumer-facing opt-in — arrow
+    /// navigation works out of the box on every chart), so a bar rendered
+    /// through it always has <c>onkeydown</c> attached even when
+    /// <see cref="OnTaskClick"/> itself has no delegate. A standalone
+    /// <see cref="Lumeo.GanttBar"/> with neither delegate set keeps its exact
+    /// prior "no onkeydown at all" behavior.
+    /// </summary>
+    [Parameter] public EventCallback<GanttBarKeyNavigation> OnKeyNavigation { get; set; }
+
     /// <summary>Additional CSS classes merged onto the positioned wrapper.</summary>
     [Parameter] public string? Class { get; set; }
 
@@ -545,8 +572,28 @@
     // class needs the TYPE rather than the property — "Task.CompletedTask"
     // would otherwise try (and fail) to resolve a static member off the
     // GanttTask-typed property instead of the Task type.
-    private System.Threading.Tasks.Task HandleKeyDown(KeyboardEventArgs e) =>
-        e.Key is "Enter" or " " ? OnTaskClick.InvokeAsync(Task) : System.Threading.Tasks.Task.CompletedTask;
+    // Arrow-key navigation (GanttV3's own a11y gap — see GanttBarKeyNavigation's
+    // remarks). Kept as a static array (not a per-call `is` pattern) so
+    // GanttTimeline's own HandleBarKeyNavigationAsync switch is the ONE place
+    // that interprets what each key actually does — this method only
+    // recognizes "is this one of the four arrow keys" and forwards the raw
+    // key + modifier, exactly the same "GanttBar stays purely presentational,
+    // GanttTimeline owns the interaction semantics" split OnTaskClick already
+    // established.
+    private static readonly string[] ArrowKeys = ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"];
+
+    private async System.Threading.Tasks.Task HandleKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key is "Enter" or " ")
+        {
+            await OnTaskClick.InvokeAsync(Task);
+            return;
+        }
+        if (OnKeyNavigation.HasDelegate && Array.IndexOf(ArrowKeys, e.Key) >= 0)
+        {
+            await OnKeyNavigation.InvokeAsync(new GanttBarKeyNavigation(Task, e.Key, e.ShiftKey));
+        }
+    }
 
     private System.Threading.Tasks.Task HandleClick(MouseEventArgs e) => OnTaskClick.InvokeAsync(Task);
 
@@ -562,16 +609,29 @@
     // descendant, no separate wiring needed here).
     private Dictionary<string, object> InnerAttributes(IReadOnlyDictionary<string, object> slotAttributes)
     {
+        // Roving tabindex (see FocusedTaskId's own remarks): null keeps every
+        // bar at "0" (standalone/prior behavior); once GanttTimeline sets it,
+        // only the matching bar is "0" and every other bar is "-1" — still
+        // in the accessibility tree (a screen reader can still read it via
+        // GanttTree, arrows off the currently-focused bar), just out of the
+        // default Tab order.
+        var isRoving = FocusedTaskId is not null;
         var attrs = new Dictionary<string, object>(slotAttributes)
         {
             ["id"] = _barId,
-            ["tabindex"] = "0",
+            ["tabindex"] = !isRoving || FocusedTaskId == Task.Id ? "0" : "-1",
             ["aria-label"] = TaskAriaLabel,
         };
+        // Arrow-key navigation is wired independently of OnTaskClick (see
+        // OnKeyNavigation's own remarks — GanttTimeline always wires it, so
+        // this fires even on a chart with no OnTaskClick consumer at all).
+        if (OnTaskClick.HasDelegate || OnKeyNavigation.HasDelegate)
+        {
+            attrs["onkeydown"] = EventCallback.Factory.Create<KeyboardEventArgs>(this, HandleKeyDown);
+        }
         if (OnTaskClick.HasDelegate)
         {
             attrs["role"] = "button";
-            attrs["onkeydown"] = EventCallback.Factory.Create<KeyboardEventArgs>(this, HandleKeyDown);
             // CRITICAL fix (Phase-1/Phase-2 reconciliation): see
             // SuppressPointerClick's own remarks — GanttTimeline's delegated JS
             // pointer engine (registered whenever it isn't Readonly) already
@@ -599,6 +659,15 @@
     // directly instead.
     private readonly string _barId = $"gantt-bar-{Guid.NewGuid():N}";
     private bool _preventDefaultKeysRegistered;
+    // Which flag combination the CURRENT registration's rule set reflects —
+    // arrow-key navigation (see OnKeyNavigation's own remarks) needs the
+    // registered rules to grow/shrink independently of OnTaskClick's own
+    // Space rule, and registerPreventDefaultKeys REPLACES the whole rule set
+    // per call (see its own JS remarks), so a flag flipping without the
+    // OTHER one changing must still trigger a re-register, not just the
+    // false->true/true->false transitions the original single bool tracked.
+    private bool _preventDefaultForTaskClick;
+    private bool _preventDefaultForKeyNav;
     // Codex round 16 review, P2 finding #6 — see OnAfterRenderAsync's own
     // remarks below for why the register call needs to check this AFTER its
     // own await, mirroring Affix.razor's identical RegisterAsync/_disposed
@@ -632,14 +701,48 @@
     // firstRender-only prevent-default registration (that one is safe only
     // because Card's own IsInteractive flip happens to always go through a
     // full remount via an `@if`, which this component has no equivalent of).
+    // Builds the full rule set for the CURRENT flag combination — Space
+    // (OnTaskClick's own Codex round 6 fix) and/or the four arrow keys
+    // (OnKeyNavigation's own — arrows have no native default action on a
+    // plain div, but suppressing them anyway costs nothing and guards
+    // against a browser/extension's own spatial-navigation heuristics; see
+    // PreventDefaultKeyRule's own remarks for the "ArrowLeft" example it
+    // already documents).
+    private static List<Lumeo.Services.PreventDefaultKeyRule> BuildPreventDefaultRules(bool wantTaskClick, bool wantKeyNav)
+    {
+        var rules = new List<Lumeo.Services.PreventDefaultKeyRule>();
+        if (wantTaskClick) rules.Add(new Lumeo.Services.PreventDefaultKeyRule(" "));
+        if (wantKeyNav)
+        {
+            rules.Add(new Lumeo.Services.PreventDefaultKeyRule("ArrowUp"));
+            rules.Add(new Lumeo.Services.PreventDefaultKeyRule("ArrowDown"));
+            rules.Add(new Lumeo.Services.PreventDefaultKeyRule("ArrowLeft"));
+            rules.Add(new Lumeo.Services.PreventDefaultKeyRule("ArrowRight"));
+        }
+        return rules;
+    }
+
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        var wantPreventDefault = OnTaskClick.HasDelegate;
-        if (wantPreventDefault && !_preventDefaultKeysRegistered)
+        var wantTaskClick = OnTaskClick.HasDelegate;
+        var wantKeyNav = OnKeyNavigation.HasDelegate;
+        var wantPreventDefault = wantTaskClick || wantKeyNav;
+        // Re-register not just on the false->true transition the original
+        // single-bool version tracked, but also whenever the FLAG COMBINATION
+        // changes while already registered (see _preventDefaultForTaskClick's
+        // own remarks) — registerPreventDefaultKeys replaces the whole rule
+        // set per call, so a stale combination would silently keep an
+        // out-of-date rule list (e.g. missing the arrow rules if
+        // OnKeyNavigation attaches after OnTaskClick already triggered the
+        // first registration).
+        var needsRegister = wantPreventDefault &&
+            (!_preventDefaultKeysRegistered || _preventDefaultForTaskClick != wantTaskClick || _preventDefaultForKeyNav != wantKeyNav);
+
+        if (needsRegister)
         {
             try
             {
-                await Interop.RegisterPreventDefaultKeys(_barId, new[] { new Lumeo.Services.PreventDefaultKeyRule(" ") });
+                await Interop.RegisterPreventDefaultKeys(_barId, BuildPreventDefaultRules(wantTaskClick, wantKeyNav));
 
                 // Bug fix (Codex round 16 review, P2 finding #6): virtualization
                 // can dispose this bar (scrolled out of view) WHILE the register
@@ -660,25 +763,50 @@
                     return;
                 }
 
-                // Bug fix (Codex round 17 review, P2): OnTaskClick can be
-                // REMOVED (flip to no delegate) in a LATER render while THIS
-                // register call is still in flight — wantPreventDefault above
-                // was read at the START of this render, so it's already stale
-                // by the time this await resolves. Re-reading
-                // OnTaskClick.HasDelegate now (the live, current value) and
-                // unregistering immediately if it's gone avoids committing
-                // "registered" against a desired state that no longer holds —
-                // the complement of the disposed check above, same
-                // "resume, recheck, correct" idiom.
-                if (!OnTaskClick.HasDelegate)
+                // Bug fix (Codex round 17 review, P2): either delegate can flip
+                // AGAIN while THIS register call is still in flight — re-reading
+                // both live values now (the same "resume, recheck, correct"
+                // idiom the disposed check above uses) and unregistering
+                // immediately if NEITHER still wants it avoids committing
+                // "registered" against a desired state that no longer holds.
+                var liveTaskClick = OnTaskClick.HasDelegate;
+                var liveKeyNav = OnKeyNavigation.HasDelegate;
+                if (!liveTaskClick && !liveKeyNav)
                 {
                     try { await Interop.UnregisterPreventDefaultKeys(_barId); }
                     catch (Microsoft.JSInterop.JSDisconnectedException) { }
                     catch (InvalidOperationException) { }
+                    _preventDefaultKeysRegistered = false;
                     return;
                 }
 
+                // Bug fix (arrow-key navigation promotion): the COMBINATION
+                // can also drift while this call was in flight without ever
+                // reaching "neither wants it" (e.g. OnTaskClick removed but
+                // OnKeyNavigation still does — GanttTimeline always wires the
+                // latter, so removing a consumer's OnTaskClick mid-flight
+                // never trips the branch above). The rules already SENT by
+                // the await above reflect the STALE (wantTaskClick, wantKeyNav)
+                // captured before it started, not these live values — left
+                // uncorrected, JS would keep enforcing a rule that's no
+                // longer wanted (e.g. still suppressing Space after
+                // OnTaskClick was removed) until some UNRELATED later render
+                // happens to re-trigger registration. One more (cheap, rare)
+                // register call with the LIVE combination keeps JS in sync
+                // immediately instead.
+                if (liveTaskClick != wantTaskClick || liveKeyNav != wantKeyNav)
+                {
+                    try
+                    {
+                        await Interop.RegisterPreventDefaultKeys(_barId, BuildPreventDefaultRules(liveTaskClick, liveKeyNav));
+                    }
+                    catch (Microsoft.JSInterop.JSDisconnectedException) { }
+                    catch (InvalidOperationException) { }
+                }
+
                 _preventDefaultKeysRegistered = true;
+                _preventDefaultForTaskClick = liveTaskClick;
+                _preventDefaultForKeyNav = liveKeyNav;
             }
             catch (Microsoft.JSInterop.JSDisconnectedException) { }
             catch (InvalidOperationException) { } // JS interop unavailable during prerender
