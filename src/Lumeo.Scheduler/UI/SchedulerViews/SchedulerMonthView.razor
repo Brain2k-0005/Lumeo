@@ -12,6 +12,12 @@
    Scheduler.razor (the only component with public parameters, spec §1.2) is the eventual host;
    this component is usable and independently testable on its own in the meantime. *@
 <div class="@($"flex flex-col rounded-md border border-border/60 overflow-hidden {Class}".Trim())" @attributes="AdditionalAttributes">
+    @* Live region for pointer-gesture outcomes (ReUI parity). Rendered
+       unconditionally and EMPTY at mount: assistive tech must be observing the
+       node before the text lands, so a region created at announce time is
+       frequently missed. Same sr-only/polite/atomic shape Carousel.razor
+       already uses. *@
+    <span class="sr-only" aria-live="polite" aria-atomic="true" data-testid="scheduler-live-region">@_announcement</span>
     <div class="@GridColsClass border-b border-border/60 bg-card">
         @if (ShowWeekNumbers)
         {
@@ -667,7 +673,14 @@
         {
             var ctx = new SchedulerScheduleDropContext(newStart, newEnd, SchedulerEventUpdateSource.Move);
             var result = CanDrop(ev, ctx);
-            if (!result.Accepted) return;
+            if (!result.Accepted)
+            {
+                // A rejected drag is the case that MOST needs announcing: the
+                // event silently springs back, which a sighted user reads from
+                // the animation and a screen-reader user gets no signal for.
+                Announce(L["Scheduler.Announce.MoveRejected", ev.Title]);
+                return;
+            }
             if (result.Adjustment is { } adjustment)
             {
                 newStart = adjustment.Start ?? newStart;
@@ -677,8 +690,35 @@
         }
 
         var updated = ev with { Start = newStart, End = newEnd, AllDay = newAllDay };
+        // Announced from the COMMITTED values, after any CanDrop adjustment has
+        // been applied — an adjusted drop lands somewhere other than where the
+        // pointer was released, so announcing the proposed date would tell the
+        // user something that did not happen.
+        Announce(L["Scheduler.Announce.EventMoved", ev.Title, FormatAnnounceDate(updated.Start)]);
         if (OnEventChange.HasDelegate) await OnEventChange.InvokeAsync(updated);
     }
+
+    // ── Live-region announcements (ReUI parity) ──────────────────────────────
+    // reui.io's event calendar lists "live-region announcements for gestures";
+    // these views had no aria-live region at all, so a pointer drag produced no
+    // screen-reader signal whatsoever. Mirrors Carousel.razor's existing house
+    // pattern (sr-only span, polite, atomic) rather than inventing a second one.
+
+    private string? _announcement;
+
+    /// <summary>Publishes <paramref name="message"/> to this view's polite live region.</summary>
+    private void Announce(string message)
+    {
+        _announcement = message;
+        StateHasChanged();
+    }
+
+    /// <summary>
+    /// Long-date format for announcements — deliberately NOT the terse cell
+    /// label: read aloud out of context, "14" says nothing, "14 March 2026" does.
+    /// </summary>
+    private static string FormatAnnounceDate(DateTime value) =>
+        value.ToString("D", CultureInfo.CurrentUICulture);
 
     /// <summary>
     /// [JSInvokable] commits a drag-across-cells date-range selection (spec §3.4's Month row —
