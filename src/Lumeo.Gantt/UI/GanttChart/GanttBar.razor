@@ -1,0 +1,881 @@
+@namespace Lumeo
+@using System.ComponentModel
+@using System.Globalization
+@using Lumeo.GanttV3
+@using Lumeo.Services
+@implements IAsyncDisposable
+@inject Lumeo.Services.Localization.ILumeoLocalizer L
+@inject Lumeo.Services.IComponentInteropService Interop
+@inject Lumeo.Services.IThemeService Theme
+@attribute [EditorBrowsable(EditorBrowsableState.Never)]
+
+@* GanttBar — v3's single task-bar renderer (design spec Phase 2, T2 "read-only
+   markup"). Renders EITHER a duration bar (background + progress fill) or,
+   for Task.IsMilestone, a diamond (a rotated square — port of gantt-v2.js's
+   SVG polygon geometry, gantt-v2.js lines 459-484: a square of side BarHeight
+   rotated 45deg is exactly the same shape as v2's 4-point diamond polygon).
+   Positioning is entirely via the --lumeo-gantt-bar-* CSS custom properties
+   set on the absolutely positioned Tooltip wrapper (the wrapper carries the
+   position/size so the AsChild inner div can stay a plain flex box) — the
+   caller (GanttTimeline) computes X/Width/RowIndex from GanttScale and hands
+   them in; this component has no knowledge of dates, view modes, or the
+   scale table itself.
+
+   NOTE (accessibility): the task spec asked for this component to be
+   `internal`. The Razor compiler unconditionally generates a component's
+   class as `public partial class` — there is no supported directive to make
+   it `internal` (open feature requests: dotnet/aspnetcore#5516,
+   dotnet/razor#8715), so a code-behind `internal partial class` here would
+   only produce CS0262 (conflicting partial-declaration accessibility). This
+   component is therefore `public` and its new members are recorded in
+   PublicAPI.Unshipped.txt like any other public addition — see the T2 report
+   for the full rationale; flagged for the reviewer/team lead to confirm.
+   [EditorBrowsable(Never)] keeps this working-name API out of consumer
+   IntelliSense until the Phase-4 rename (fix-round follow-up). *@
+<Tooltip Class="@WrapperClass" AdditionalAttributes="@WrapperAttributes">
+    <TooltipTrigger AsChild>
+        <ChildContentSlot Context="slot">
+            <div class="@InnerClass" @attributes="InnerAttributes(slot.Attributes)">
+                @if (Task.IsMilestone)
+                {
+                    <div class="lumeo-gantt-v3-milestone rounded-sm" style="@ColorStyle"></div>
+                    @* G4c (2026-08-10 shadcn alignment) — see OutsideLabelClass's own remarks:
+                       unified with the bar-outside and summary-strip labels (was
+                       font-medium/text-foreground here). *@
+                    <span class="lumeo-gantt-v3-milestone-label @OutsideLabelClass absolute start-full top-1/2 ms-2 -translate-y-1/2 whitespace-nowrap">@Task.Name</span>
+                }
+                else
+                {
+                    @* G4a/G4b (2026-08-10 shadcn alignment): rounded → rounded-sm (see
+                       WrapperClass's own remarks); the flat "opacity-30" element-wide fade
+                       is replaced by baking the alpha directly into background-color AND
+                       adding the demo's defining 1px border (its own alpha independent of
+                       the fill's — an element-wide opacity would have diluted the border to
+                       ~7% instead of the demo's 45%, see BarBgStyle's own remarks). *@
+                    <div class="lumeo-gantt-v3-bar-bg absolute inset-0 rounded-sm border" style="@BarBgStyle"></div>
+                    <div class="@ProgressFillClass" style="@ProgressStyle"></div>
+                    @if (BarTemplate is not null)
+                    {
+                        @BarTemplate(Task)
+                    }
+                    else if (LabelFitsInsideBar)
+                    {
+                        <span class="@InBarLabelClass" style="@InBarLabelStyle">@Task.Name</span>
+                    }
+                }
+            </div>
+            @* Narrow-bar fallback label (design spec Phase 3, T7 — "falls back
+               beside the bar when too narrow"). Rendered as a SIBLING of
+               @InnerClass, not nested inside it — the SAME reason the
+               progress-handle div below is a sibling (see its own remarks):
+               @InnerClass carries "overflow-hidden" for every non-milestone
+               bar UNCONDITIONALLY (so the in-bar label/bg/progress clip to
+               the bar's own rounded corners), which would silently clip this
+               label's "start-full" (deliberately OUTSIDE the bar's own box,
+               same positioning idiom as the milestone label above) position
+               right back down to invisible if it lived inside that div
+               instead. No contrast handling here (unlike the in-bar label
+               above): this text sits over the ambient row/canvas background,
+               never over Color, so the existing text-foreground token is
+               already correct — exactly like the milestone label's own
+               "beside, always text-foreground" treatment, which this mirrors. *@
+            @if (!Task.IsMilestone && !LabelFitsInsideBar && BarTemplate is null)
+            {
+                <span class="lumeo-gantt-v3-bar-label-outside @OutsideLabelClass absolute start-full top-1/2 ms-2 -translate-y-1/2 whitespace-nowrap">@Task.Name</span>
+            }
+            @* Progress handle (Phase 2, T2 — v2 parity: gantt-v2.js:564-574's
+               progressHandle circle, "small circle at the right edge of progress
+               overlay", shown only on hover via opacity 0->1, gantt-v2.js:578-586's
+               mouseenter/mouseleave — ported here as a pure CSS group-hover reveal
+               (WrapperClass carries "group"; see its own remarks) instead of JS
+               enter/leave listeners, since Blazor already renders the element
+               declaratively. v2 never creates this element at all when readonly
+               (gantt-v2.js:555 `if (!readonly) { ... progressHandle = ... }`) or
+               for a milestone (the milestone branch returns before reaching it,
+               gantt-v2.js:504) — both mirrored here as an @if guard, not a CSS
+               display:none, so gantt-v3.js's delegated pointerdown never even has
+               a [data-gantt-progress-handle] element to hit-test in either case.
+               Rendered as a SIBLING of the @InnerClass div (not nested inside it)
+               so its bottom-edge-straddling offset isn't clipped by InnerClass's
+               own "overflow-hidden" (needed to clip the bg/progress-fill/label to
+               the bar's rounded corners) — both are still descendants of the
+               "group"-classed, data-task-id-carrying Tooltip wrapper, which is
+               all gantt-v3.js's `e.target.closest('[data-task-id]')` needs. *@
+            @if (!Task.IsMilestone && !Readonly)
+            {
+                <div class="@ProgressHandleClass"
+                     style="@ProgressHandleStyle" data-gantt-progress-handle="true"></div>
+            }
+        </ChildContentSlot>
+    </TooltipTrigger>
+    @* Design spec Phase 3, T8 — DragGhostTemplate's hidden clone source. See
+       gantt-v3.js's makeGhost for the full "why clone THIS instead of the bar"
+       reasoning; this is the .razor half: a SIBLING of the Tooltip wrapper
+       above (same parent — the row-canvas's per-row item div GanttTimeline
+       renders this component into), positioned with the EXACT SAME
+       WrapperStyle (same X/Width/RowIndex/BarHeight this bar itself was
+       given, so --lumeo-gantt-bar-x/-w/-row + left/top/width/height are
+       byte-identical) — the pinned Phase-2 coordinate-space rule ("bars are
+       nested inside the row canvas, arrows are the outer canvas + HeaderHeight
+       — mixing the two up is the bug class to avoid") is satisfied by
+       construction: this node lives in the SAME parent as the real bar, not a
+       new one, so cloning it instead of the bar changes only WHAT gets
+       rendered inside the ghost, never WHERE the ghost's own box starts out.
+       `hidden` (Tailwind's display:none) keeps this out of layout/paint and
+       off the accessibility tree entirely while idle; gantt-v3.js's makeGhost
+       strips both the class and any inline display:none the instant it clones
+       this node into a live ghost. Gated on !Readonly — see
+       GanttTimeline.SyncDragRegistrationAsync's own "no listeners at all when
+       Readonly" contract: no drag ever starts on a Readonly chart, so there is
+       nothing for this template to ever be cloned into. *@
+    @if (DragGhostTemplate is not null && !Readonly)
+    {
+        <div class="hidden absolute rounded-sm" style="@WrapperStyle" data-gantt-ghost-template="true" aria-hidden="true">
+            <div class="@InnerClass">
+                @DragGhostTemplate(Task)
+            </div>
+        </div>
+    }
+    <TooltipContent>
+        <div class="font-medium">@Task.Name</div>
+        <div class="mt-0.5 opacity-75">@Task.Start.ToString("MMM d, yyyy", CultureInfo.CurrentCulture) &#8594; @TooltipEndDate.ToString("MMM d, yyyy", CultureInfo.CurrentCulture)</div>
+        @* Bug fix (Codex round 5, P2 #6): this used to be a hardcoded English
+           literal ("N% complete") regardless of the active culture — every
+           OTHER string in this component (and the rest of GanttV3) already
+           routes through the same Gantt.* localization family. *@
+        <div class="opacity-75">@L["Gantt.PercentComplete", ClampedProgress]</div>
+    </TooltipContent>
+</Tooltip>
+
+@code {
+    /// <summary>The task/milestone this bar represents.</summary>
+    [Parameter, EditorRequired] public GanttTask Task { get; set; } = null!;
+
+    /// <summary>
+    /// Left pixel offset within the timeline canvas, already resolved by the
+    /// caller via <see cref="GanttScale.DateToPixel"/>. For a milestone this is
+    /// the diamond's bounding-box left edge (center-column minus half the bar
+    /// height), not the task's raw start-date pixel.
+    /// </summary>
+    [Parameter] public double X { get; set; }
+
+    /// <summary>Pixel width of the bar (or, for a milestone, the diamond's square bounding box — equal to <see cref="BarHeight"/>).</summary>
+    [Parameter] public double Width { get; set; }
+
+    /// <summary>Zero-based row slot within the timeline (mirrors v2's rowSlot — may differ from the task's index when group header rows are interleaved by a future task).</summary>
+    [Parameter] public int RowIndex { get; set; }
+
+    /// <summary>Bar height in pixels. Defaults to <see cref="GanttScale.DefaultBarHeight"/>.</summary>
+    [Parameter] public int BarHeight { get; set; } = GanttScale.DefaultBarHeight;
+
+    /// <summary>
+    /// Per-task colour override (hex, rgb, or a CSS variable reference) — mirrors
+    /// v2's <c>BarColor</c> delegate output. Null falls back to the theme's chart
+    /// palette (<c>--color-chart-1</c>) — deliberately NOT <c>--color-primary</c>:
+    /// the Gantt's default bar fill must follow chart theming (independent of the
+    /// brand/accent colour), same as the rest of Lumeo's charts, rather than
+    /// silently repainting every bar whenever a consumer changes their primary
+    /// colour. <see cref="GanttColorModel.ResolveGroupColorVar"/>'s own
+    /// <c>ColorByGroup</c> per-group palette sits above this same token family.
+    /// </summary>
+    [Parameter] public string? Color { get; set; }
+
+    /// <summary>Replaces the bar's default label content when set. Not used for milestones (v2 parity: milestones always show their name next to the diamond).</summary>
+    [Parameter] public RenderFragment<GanttTask>? BarTemplate { get; set; }
+
+    /// <summary>
+    /// Overrides the drag ghost's rendered CONTENT (design spec Phase 3, T8). Null
+    /// (the default) keeps the prior behavior — gantt-v3.js's <c>makeGhost</c> clones
+    /// this bar's own rendered markup. When set, a HIDDEN sibling template carrying
+    /// this fragment's output is cloned instead — see the markup's own remarks for
+    /// the full coordinate-space contract (byte-identical position/size to the real
+    /// bar; only the ghost's visual content differs). Applies to move/resize/progress
+    /// drags of THIS bar, including for a milestone.
+    /// </summary>
+    [Parameter] public RenderFragment<GanttTask>? DragGhostTemplate { get; set; }
+
+    /// <summary>
+    /// Raised when the bar is activated via mouse click OR keyboard (Enter/Space
+    /// on the now-focusable bar — Codex round 4, P2 #5). Same contract as v2's
+    /// <c>Gantt.OnTaskClick</c> (<c>EventCallback&lt;GanttTask&gt;</c>).
+    /// </summary>
+    [Parameter] public EventCallback<GanttTask> OnTaskClick { get; set; }
+
+    /// <summary>
+    /// Roving-tabindex target (arrow-key navigation — GanttV3's own
+    /// accessibility gap, closed alongside wheel zoom). Every bar defaults to
+    /// <c>tabindex="0"</c> when this is <c>null</c> (preserves EXACT prior
+    /// behavior for a standalone <see cref="Lumeo.GanttBar"/>, e.g. every
+    /// existing bUnit test that renders one in isolation with no
+    /// <see cref="Lumeo.GanttTimeline"/> wrapping it). When set by
+    /// <see cref="Lumeo.GanttTimeline"/> (which always sets it once ANY bar
+    /// exists), only the bar whose <see cref="Task"/>'s id matches gets
+    /// <c>tabindex="0"</c> — every other bar gets <c>-1</c>, so a single Tab
+    /// reaches exactly ONE bar instead of every bar in the chart, and arrow
+    /// keys move which one that is.
+    /// </summary>
+    [Parameter] public string? FocusedTaskId { get; set; }
+
+    /// <summary>
+    /// Raised on ArrowUp/ArrowDown/ArrowLeft/ArrowRight (never Enter/Space —
+    /// those stay <see cref="OnTaskClick"/>'s own). Always wired by
+    /// <see cref="Lumeo.GanttTimeline"/> (not a consumer-facing opt-in — arrow
+    /// navigation works out of the box on every chart), so a bar rendered
+    /// through it always has <c>onkeydown</c> attached even when
+    /// <see cref="OnTaskClick"/> itself has no delegate. A standalone
+    /// <see cref="Lumeo.GanttBar"/> with neither delegate set keeps its exact
+    /// prior "no onkeydown at all" behavior.
+    /// </summary>
+    [Parameter] public EventCallback<GanttBarKeyNavigation> OnKeyNavigation { get; set; }
+
+    /// <summary>Additional CSS classes merged onto the positioned wrapper.</summary>
+    [Parameter] public string? Class { get; set; }
+
+    /// <summary>
+    /// Disables the progress handle (design spec Phase 2, T2 — v2 parity:
+    /// <c>Gantt.Readonly</c>/<c>GanttTimeline.Readonly</c>). Threaded down from
+    /// <see cref="Lumeo.GanttTimeline"/>'s own <c>Readonly</c> parameter — mirrors
+    /// gantt-v2.js's own <c>if (!readonly) { progressHandle = ... }</c> (never
+    /// creating the handle element at all when readonly, gantt-v2.js:555). Default
+    /// <c>false</c> (interactive).
+    /// </summary>
+    [Parameter] public bool Readonly { get; set; }
+
+    /// <summary>
+    /// Suppresses this bar's OWN native <c>onclick</c> wiring while still keeping
+    /// <c>onkeydown</c> (Enter/Space) active (design spec Phase-1/Phase-2
+    /// reconciliation fix — CRITICAL: <c>OnTaskClick</c> double-firing on every
+    /// non-readonly pointer click). <see cref="Lumeo.GanttTimeline"/> registers its
+    /// OWN JS-driven delegated pointerdown listener whenever it isn't
+    /// <see cref="Lumeo.GanttTimeline.Readonly"/> (gantt-v3.js's
+    /// <c>ganttV3.registerDrag</c>), which ALREADY discriminates a below-threshold
+    /// click from a drag and invokes <c>NotifyTaskClick</c> exactly once per
+    /// pointer click — independently of this component's own native
+    /// <c>onclick</c>, which would otherwise ALSO fire for the identical physical
+    /// click. GanttTimeline sets this to <c>true</c> for every bar it renders once
+    /// its own engine's registration has actually been CONFIRMED (its interop
+    /// register call returned without throwing — see
+    /// <c>GanttTimeline.SyncDragRegistrationAsync</c>'s own remarks), not merely
+    /// whenever <c>!Readonly</c> (registration never depends on
+    /// <c>AllowCreate</c>/<c>CanDrop</c>, only on <c>Readonly</c>). Bug fix (Codex P2
+    /// finding "Keep pointer clicks when drag interop is unavailable"): a custom
+    /// <c>IComponentInteropService</c> that never overrides
+    /// <c>GanttV3RegisterDragAsync</c> (inheriting its default no-op), or a register
+    /// call that genuinely throws, previously left this permanently <c>true</c> with
+    /// no delegated listener ever attached — pointer clicks were dead forever even
+    /// though keyboard activation kept working. <c>false</c> when readonly (no
+    /// engine is ever registered there, so this component's own native
+    /// <c>onclick</c> remains the ONLY pointer-click path) OR while registration is
+    /// still pending or has failed. Default <c>false</c> so a caller rendering
+    /// <see cref="GanttBar"/> directly (standalone, no <see cref="GanttTimeline"/>
+    /// — including every existing bUnit test that clicks a bar in isolation, with
+    /// no real gantt-v3.js engine to fall back on) keeps its exact prior
+    /// click-fires-once behavior unchanged. Keyboard activation (Enter/Space)
+    /// NEVER routes through gantt-v3.js's pointer engine at all (it only ever
+    /// listens for pointerdown/pointermove/pointerup), so <c>onkeydown</c> is
+    /// never suppressed by this flag — there is no double-fire risk there to
+    /// guard against.
+    /// </summary>
+    [Parameter] public bool SuppressPointerClick { get; set; }
+
+    /// <summary>Captures unmatched attributes and applies them to the positioned wrapper.</summary>
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    // Tooltip's own root div defaults to "relative inline-flex" (see Tooltip.razor);
+    // Cx.Merge resolves the relative/absolute conflict group so "absolute" (added
+    // here) wins over Tooltip's "relative" while "inline-flex" survives untouched.
+    //
+    // "group" (Phase 2, T2) lets the sibling progress-handle div reveal itself via
+    // a "group-hover:opacity-100" utility on HOVER OF THIS WRAPPER — the same
+    // element gantt-v3.js hit-tests via [data-task-id] (see WrapperAttributes) —
+    // rather than needing a JS mouseenter/mouseleave pair (v2's own approach,
+    // gantt-v2.js:578-586).
+    //
+    // Bug fix (Codex round 4, P2 #7): Task.CustomClass never reached the
+    // rendered bar at all — GanttTimeline already hands this component the
+    // FULL Task object (`Task="row.Task"`), so no cross-component forwarding
+    // was actually missing; WrapperClass itself just never merged it in. v2
+    // parity note: gantt-v2.js documents a `customClass` task field in its
+    // own schema comment (line 12) but its renderer never actually applies it
+    // anywhere to a bar element — v2's own feature is unshipped/dead code, so
+    // there is no existing v2 PLACEMENT to mirror here; merged onto the outer
+    // bar wrapper (this component's own "bar-wrapper" equivalent) as the most
+    // semantically natural placement for a whole-bar class override.
+    // Bug fix (Codex P2 finding "Opt touch drag targets out of native
+    // horizontal panning"): a touch pointerdown's own e.preventDefault()
+    // (gantt-v3.js's onPointerDown) does NOT replace the CSS touch-action
+    // negotiation, which the browser resolves BEFORE pointer events even
+    // dispatch — without this, a horizontal or diagonal touch-drag starting
+    // on a bar can be claimed by native scrolling instead, producing a
+    // pointercancel that silently drops the gesture (move/resize/progress
+    // all become unreliable on touch). `touch-pan-y` (not `none`) still
+    // allows native VERTICAL panning through a bar — the drag engine never
+    // reads clientY at all (see gantt-v3.js's own coordinate-space remarks),
+    // so vertical touch scroll keeps working; only horizontal, which the
+    // engine DOES claim once a drag starts, is opted out of native handling.
+    // Deliberately scoped to non-readonly ONLY (matches SyncDragRegistration
+    // Async's own "no listener at all when Readonly" contract exactly) —
+    // PR #381's own dead-scroll-zone regression came from touch-action:none
+    // applied BROADLY (a whole container, always), not from a small,
+    // conditionally-applied touch-action on the exact elements a gesture is
+    // actually registered for.
+    // "transition-shadow hover:shadow-md" (design spec Phase 3, T7 — "bar
+    // ... hover states") — same class pairing Lumeo.KanbanCard already uses
+    // for its own hover "lift" (a shadow change never affects layout/
+    // geometry, unlike a hover:scale-* transform, which would visually
+    // overlap a bar's own precisely-positioned neighbors in a densely-packed
+    // timeline — the geometry-neutral choice, not merely a stylistic one).
+    // G4a (2026-08-10 shadcn alignment): bare "rounded" is Tailwind v4's
+    // hardcoded legacy alias (border-radius:.25rem = 4px), entirely outside
+    // the --radius-* token namespace — un-themeable and, per the audit, 2px
+    // LESS round than the demo's 6px bars, not more (S2's radius-scale
+    // re-anchor never touches this class since it was never on the token
+    // scale to begin with). rounded-sm = --radius-sm = 6px, an exact match,
+    // brought into the token system for the first time.
+    private string WrapperClass => Cx.Merge("group absolute rounded-sm transition-shadow hover:shadow-md", !Readonly ? "touch-pan-y" : null, Task.CustomClass, Class);
+
+    // Bug fix (Codex round 4, P2 #5; moved Codex round 5, P1 #1 / P2 #2/#3):
+    // the focus-visible ring classes used to live on WrapperClass (the outer
+    // Tooltip wrapper), matching where tabindex used to be — now that focus
+    // lands on THIS element instead (see InnerAttributes' remarks for why),
+    // the ring has to move here too, or :focus-visible would simply never
+    // match anything. Same four classes as Button.razor's BaseClasses
+    // (Lumeo's standard focus idiom); the rendered ring's size/position is
+    // unchanged from round 4 either way — this box has always been the exact
+    // same h-full/w-full square Wrapper's own dimensions describe (a
+    // milestone's diamond rotation lives on ITS OWN inner sub-div, not this
+    // one), only which element the CSS pseudo-class is declared ON has moved.
+    // G4a — see WrapperClass's own remarks: rounded → rounded-sm.
+    private string InnerClass => Cx.Merge(
+        "relative flex h-full w-full items-center rounded-sm focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-2",
+        Task.IsMilestone ? "justify-center" : "overflow-hidden");
+
+    private string ResolvedColor => Color ?? "var(--color-chart-1)";
+
+    // Bug fix (Codex round 3, P2 #5): GanttScale.BarGeometry's milestone branch
+    // positions the diamond using ONLY Task.Start (a milestone is a POINT, not
+    // a span — Task.End is geometrically irrelevant to where it renders), but
+    // this tooltip used to print the raw Task.Start/Task.End pair verbatim —
+    // if a consumer's milestone happened to carry an End different from Start
+    // (nothing enforces they match), the tooltip claimed a multi-day range for
+    // a bar that visually occupies a single point, which is misleading. v2
+    // parity: gantt-v2.js's own normalizeTasks forces `end = start` for every
+    // milestone (gantt-v2.js:90) BEFORE its tooltip ever reads it, so v2's
+    // tooltip always shows a same-date range for milestones, never the raw
+    // (possibly inconsistent) end. Reproduced here at display time — Task.End
+    // itself is left untouched, this only affects what the tooltip shows.
+    private DateTime TooltipEndDate => Task.IsMilestone ? Task.Start : Task.End;
+
+    // Bug fix (Codex review wave): a BarHeight-side square rotated 45deg has a
+    // bounding-box DIAGONAL of BarHeight*sqrt(2) — sizing the square to the full
+    // wrapper box (the old "h-full w-full") therefore rendered a diamond ~41%
+    // LARGER than v2's, which draws its diamond polygon with vertices at
+    // center +/- BarHeight/2 (gantt-v2.js lines 465-470) — a bounding box of
+    // EXACTLY BarHeight, not BarHeight*sqrt(2). Scaling the square's side down
+    // to BarHeight/sqrt(2) before rotating makes the ROTATED bounding box come
+    // out to exactly BarHeight again, matching v2 (and GanttScale.BarGeometry's
+    // own milestone bounding-box math, which was already correct — only this
+    // component's un-rotated square size was wrong) and letting dependency
+    // arrows (which terminate at the bounding-box edge, not the diamond itself)
+    // actually touch the diamond instead of landing short of it.
+    private double MilestoneSidePx => BarHeight / Math.Sqrt(2);
+
+    private string ColorStyle => Task.IsMilestone
+        ? FormattableString.Invariant($"background-color:{ResolvedColor};transform:rotate(45deg);width:{MilestoneSidePx}px;height:{MilestoneSidePx}px;")
+        : FormattableString.Invariant($"background-color:{ResolvedColor};");
+
+    // G4b (2026-08-10 shadcn alignment): the demo's `--ev-bg` bakes its ~10-16%
+    // effective alpha directly INTO the background colour (measured per-accent:
+    // 0.099-0.157 light, a literal 0.16 constant in dark — an encoding
+    // necessity of THEIR token pipeline, not per-mode tuning; house rule
+    // forbids a `dark:` branch here regardless, so this uses one constant,
+    // 16%, toward the top of that measured range). Deliberately NOT a
+    // Tailwind `opacity-*` utility (the previous `opacity-30` approach) — an
+    // element-wide opacity would ALSO fade the border below to ~7% (16% x
+    // 45%) instead of the demo's independent 45%, which is exactly what
+    // "carries edge definition at low tint" and would be lost. color-mix
+    // keeps the two alphas independent by construction.
+    private string BarBgStyle => FormattableString.Invariant(
+        $"background-color:color-mix(in oklab, {ResolvedColor} 16%, transparent);border-color:color-mix(in oklab, {ResolvedColor} 45%, transparent);");
+
+    // Bug fix (Codex round 9 review, P2 #6): extracted so the tooltip's own
+    // display (below) uses the IDENTICAL clamp as the progress fill's width,
+    // instead of risking a second, unclamped read of Task.Progress —
+    // Task.Progress is a caller-supplied value with no enforced range (a
+    // consumer setting Progress=150 previously got a fill correctly capped
+    // at 100% width, but a tooltip claiming "150% complete").
+    private int ClampedProgress => Math.Clamp(Task.Progress, 0, 100);
+
+    private string ProgressStyle =>
+        FormattableString.Invariant($"width:{ClampedProgress}%;background-color:{ResolvedColor};");
+
+    // G4b — the demo's `.g-prog` squares its trailing (end) edge, rounding
+    // only at 100% (its own defining detail: a progress fill mid-bar reads as
+    // a partial fill sliding UNDER the bar's own rounded end, not a
+    // second independently-rounded pill floating inside it). `rounded-s-sm`
+    // (Tailwind's LOGICAL start-side radius) rounds only the inline-start
+    // corners — physically left under LTR, right under RTL, matching
+    // ProgressStyle's own `start-0` anchor and every other logical property
+    // this component already uses (border-s, inset-inline-start) — so this
+    // needs no separate RTL branch. At ClampedProgress==100 the fill's own
+    // trailing edge coincides with the bar's, so it gets the SAME full
+    // rounded-sm as the bar shape (G4a) instead of a visible square notch.
+    private string ProgressFillClass => Cx.Merge(
+        "lumeo-gantt-v3-bar-progress absolute inset-y-0 start-0",
+        ClampedProgress >= 100 ? "rounded-sm" : "rounded-s-sm");
+
+    // Design spec Phase 3, T7 — "falls back beside the bar when too narrow".
+    // No v2 threshold exists to port for parity (see
+    // GanttScale.MinInBarLabelWidth's own remarks — a full-file search of
+    // gantt-v2.js found no width-gated label-placement logic at all); this is
+    // v3-only. Milestones never reach this — the markup's own @if guards on
+    // !Task.IsMilestone for both branches, matching the milestone label's
+    // existing unconditional "always beside" treatment above.
+    private bool LabelFitsInsideBar => Width >= GanttScale.MinInBarLabelWidth;
+
+    // G4c (2026-08-10 shadcn alignment): the milestone label, the bar-outside
+    // fallback label AND GanttSummaryBar's own outside label were three
+    // independently-drifted class strings (font-medium/text-foreground here
+    // and on the milestone label, text-[11px]/font-semibold/muted-foreground
+    // on the summary strip) for what the demo renders as ONE `.g-out` style
+    // (12px / weight 400 / muted-foreground) everywhere text sits beside
+    // (never inside) a bar/strip. Shared here so this component's own two
+    // sites can never re-diverge from each other; GanttSummaryBar.razor
+    // duplicates the identical literal (no cross-package internal visibility
+    // to share the constant itself across Lumeo.Gantt's public API surface).
+    private const string OutsideLabelClass = "text-xs font-normal text-muted-foreground";
+
+    // Design spec Phase 3, T7 — "contrast handling (CSS color-mix/var-based
+    // foreground pick vs custom bar colors)". Null (Color unset, or
+    // unparseable) means "keep the EXISTING text-foreground class" — see
+    // GanttColorModel.PickLabelForegroundVar's own remarks for the full
+    // reasoning (why a plain var() pick was chosen over color-mix/
+    // contrast-color(), and why an unparseable custom color intentionally
+    // falls back rather than guessing).
+    private string? InBarLabelForegroundVar => GanttColorModel.PickLabelForegroundVar(Color, Theme.IsDark);
+
+    private string InBarLabelClass => Cx.Merge(
+        "lumeo-gantt-v3-bar-label relative truncate px-2 text-xs font-medium",
+        InBarLabelForegroundVar is null ? "text-foreground" : null);
+
+    private string? InBarLabelStyle => InBarLabelForegroundVar is { } fg
+        ? FormattableString.Invariant($"color:{fg};")
+        : null;
+
+    // "Small circle at the right edge of progress overlay" (gantt-v2.js:564-574) —
+    // v2 positions its circle's CENTER at the progress boundary (cx = x1 + progressW);
+    // this port's equivalent is centering the handle div's own horizontal midpoint
+    // at that same {progress}% mark along the bar's own width via a logical
+    // inset-inline-start percentage (RTL-safe, unlike a raw physical "left") —
+    // see ProgressHandleClass's own remarks for the OTHER half of that centering.
+    private string ProgressHandleStyle
+    {
+        get
+        {
+            var progress = Math.Clamp(Task.Progress, 0, 100);
+            return FormattableString.Invariant($"inset-inline-start:{progress}%;background-color:{ResolvedColor};");
+        }
+    }
+
+    // Same cascading-then-Theme-fallback resolution as GanttChart.EffectiveDirection
+    // (this component has no other route to its own ambient direction — see its
+    // own remarks for why ScopedDirection is a non-virtual, once-per-render
+    // CascadingParameter rather than something recomputed elsewhere).
+    [CascadingParameter(Name = "LumeoDirection")] private LayoutDirection? ScopedDirection { get; set; }
+    private LayoutDirection EffectiveDirection => ScopedDirection ?? Theme.CurrentDirection;
+
+    // Bug fix (Codex P2 finding "Center the progress handle correctly in
+    // RTL"): inset-inline-start anchors the handle's LOGICAL-start edge at
+    // the progress mark — physically the LEFT edge under LTR, but the RIGHT
+    // edge under RTL (see ProgressHandleStyle's own remarks). Centering that
+    // edge onto the mark means shifting the box towards its OWN interior by
+    // half its width, which is a PHYSICAL leftward shift under LTR
+    // (-translate-x-1/2, unchanged) but a PHYSICAL RIGHTWARD shift under RTL
+    // (translate-x-1/2, positive) — re-derived from the actual rendered
+    // geometry, not a blind sign flip of the OTHER RTL fix in gantt-v3.js
+    // (that one flips the FILL WIDTH's growth-direction delta; this one
+    // flips a fixed centering offset — same bar, different math): under RTL
+    // with the OLD (always-negative) transform, the handle's center lands a
+    // full handle-width PAST the boundary, entirely off the fill edge at
+    // high progress (Codex's own "100% progress can end up entirely outside
+    // the bar" example) — verified against the concrete boundary math in
+    // this component's own PR-383 test coverage (RTL boundary positions
+    // computed independently, not by trusting the sign flip alone).
+    private string ProgressHandleClass => Cx.Merge(
+        "lumeo-gantt-v3-progress-handle absolute bottom-0 h-2 w-2 translate-y-1/2 cursor-ns-resize rounded-full border-2 border-background opacity-0 transition-opacity group-hover:opacity-100",
+        EffectiveDirection == LayoutDirection.Rtl ? "translate-x-1/2" : "-translate-x-1/2");
+
+    // The wrapper carries BOTH the raw --lumeo-gantt-bar-* custom properties (so a
+    // consumer stylesheet can read/override them) and the physical left/top/width/
+    // height that consume them — see GanttScale's TZ/DST-safety note for why every
+    // number here comes from plain arithmetic, never culture-sensitive formatting.
+    private string WrapperStyle
+    {
+        get
+        {
+            // Bug fix (CodeRabbit review): this used to inline the exact same
+            // formula GanttScale.BarTop already encapsulates — precisely the
+            // divergence hoisting BarTop out was meant to prevent (see
+            // GanttScale.BarTop's own remarks: "so GanttArrowRouting can
+            // recover the exact same bar-center Y a rendered GanttBar uses,
+            // without a second, potentially-diverging copy of the formula" —
+            // GanttArrowRouting already called it; this component just hadn't
+            // been updated to). Calling it here instead removes the second
+            // copy.
+            var top = GanttScale.BarTop(RowIndex, BarHeight);
+            return FormattableString.Invariant(
+                $"--lumeo-gantt-bar-x:{X}px;--lumeo-gantt-bar-w:{Width}px;--lumeo-gantt-bar-row:{RowIndex};left:var(--lumeo-gantt-bar-x);top:{top}px;width:var(--lumeo-gantt-bar-w);height:{BarHeight}px;");
+        }
+    }
+
+    // Bug fix (Codex round 4, P2 #5): same Start/end normalization the
+    // tooltip already applies (round 3, P2 #5) — a milestone's End is
+    // geometrically irrelevant (GanttScale.BarGeometry positions it from
+    // Start alone), so the announced date range shouldn't imply a span.
+    private string TaskAriaLabel => L["Gantt.TaskAriaLabel", Task.Name,
+        Task.Start.ToString("MMM d, yyyy", CultureInfo.CurrentCulture),
+        TooltipEndDate.ToString("MMM d, yyyy", CultureInfo.CurrentCulture)];
+
+    // Bug fix (Codex round 4, P2 #5; corrected Codex round 5, P1 #1 / P2 #2/#3):
+    // the round-4 version put tabindex/role/onkeydown on WrapperAttributes,
+    // splatted onto TOOLTIP'S OWN ROOT — the SAME element Tooltip.razor binds
+    // its own `@onclick="HandleTap"` (touch tap-to-pin) and
+    // `@onkeydown="HandleKeyDown"` (Escape-dismiss) to, directly in its
+    // markup, BEFORE its `@attributes` splat point. Blazor's attribute-frame
+    // diffing always lets whichever same-named frame was added LAST win, so
+    // splatting onkeydown there silently replaced Tooltip's own Escape
+    // handling (review-confirmed regression: Escape stopped closing/
+    // unpinning the tooltip on a focused bar), and the round-4 comment this
+    // replaces deliberately avoided adding "onclick" for the identical
+    // reason — which meant mouse/touch clicks never reached OnTaskClick at
+    // all (a real P1).
+    //
+    // Fixed by moving tabindex + the keyboard/click handlers onto THIS
+    // component's OWN inner content div instead (see InnerAttributes below)
+    // — a genuinely DIFFERENT DOM element than Tooltip's root (TooltipTrigger's
+    // AsChild mode renders it with NO wrapper of its own — see
+    // TooltipTrigger.razor's remarks — so this div is Tooltip's root's direct
+    // child). A click/keydown here still bubbles UP to Tooltip's root exactly
+    // like native DOM bubbling (Blazor's synthetic dispatch mirrors it), so
+    // Tooltip's OWN onclick/onkeydown fire independently and unmodified —
+    // tap-to-pin and Escape-dismiss both keep working — while THIS handler
+    // ALSO fires for the same event, since they're bound to different
+    // elements entirely (no attribute-frame collision to begin with).
+    // tabindex has to move together with the keyboard handler (not stay on
+    // the outer element alone): a keydown's native target is whatever
+    // element is actually FOCUSED, and bubbling only flows UPWARD from
+    // there — an onkeydown bound to a DESCENDANT of the focused element
+    // would never see a keydown that originated on an ancestor.
+    //
+    // A native <div> (unlike <button>) never synthesizes a "click" event
+    // from an Enter/Space keydown on its own, so HandleClick (mouse/touch)
+    // and HandleKeyDown (Enter/Space) can never double-invoke OnTaskClick
+    // for the same physical activation.
+    //
+    // Named "Task" as a property already (the bar's own GanttTask), so
+    // System.Threading.Tasks.Task must stay fully qualified anywhere this
+    // class needs the TYPE rather than the property — "Task.CompletedTask"
+    // would otherwise try (and fail) to resolve a static member off the
+    // GanttTask-typed property instead of the Task type.
+    // Arrow-key navigation (GanttV3's own a11y gap — see GanttBarKeyNavigation's
+    // remarks). Kept as a static array (not a per-call `is` pattern) so
+    // GanttTimeline's own HandleBarKeyNavigationAsync switch is the ONE place
+    // that interprets what each key actually does — this method only
+    // recognizes "is this one of the four arrow keys" and forwards the raw
+    // key + modifier, exactly the same "GanttBar stays purely presentational,
+    // GanttTimeline owns the interaction semantics" split OnTaskClick already
+    // established.
+    private static readonly string[] ArrowKeys = ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"];
+
+    private async System.Threading.Tasks.Task HandleKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key is "Enter" or " ")
+        {
+            await OnTaskClick.InvokeAsync(Task);
+            return;
+        }
+        if (OnKeyNavigation.HasDelegate && Array.IndexOf(ArrowKeys, e.Key) >= 0)
+        {
+            await OnKeyNavigation.InvokeAsync(new GanttBarKeyNavigation(Task, e.Key, e.ShiftKey));
+        }
+    }
+
+    private System.Threading.Tasks.Task HandleClick(MouseEventArgs e) => OnTaskClick.InvokeAsync(Task);
+
+    // Bug fix (Codex round 5, P2 #3): role="button" and the keyboard/click
+    // handlers only apply when OnTaskClick actually HAS a delegate — a bar
+    // with nothing listening for activation has no business claiming
+    // role="button" (a false affordance promising assistive-tech users an
+    // action that would do nothing). tabindex + aria-label stay
+    // UNCONDITIONAL: focus is still meaningful with no click handler at all,
+    // since it's what makes Tooltip's own focusin-driven "show on keyboard
+    // focus" behavior work for a bar's date-range tooltip (see Tooltip's own
+    // HandleFocusIn remarks — its `@onfocusin` bubbles from any focusable
+    // descendant, no separate wiring needed here).
+    private Dictionary<string, object> InnerAttributes(IReadOnlyDictionary<string, object> slotAttributes)
+    {
+        // Roving tabindex (see FocusedTaskId's own remarks): null keeps every
+        // bar at "0" (standalone/prior behavior); once GanttTimeline sets it,
+        // only the matching bar is "0" and every other bar is "-1" — still
+        // in the accessibility tree (a screen reader can still read it via
+        // GanttTree, arrows off the currently-focused bar), just out of the
+        // default Tab order.
+        var isRoving = FocusedTaskId is not null;
+        var attrs = new Dictionary<string, object>(slotAttributes)
+        {
+            ["id"] = _barId,
+            ["tabindex"] = !isRoving || FocusedTaskId == Task.Id ? "0" : "-1",
+            ["aria-label"] = TaskAriaLabel,
+        };
+        // Arrow-key navigation is wired independently of OnTaskClick (see
+        // OnKeyNavigation's own remarks — GanttTimeline always wires it, so
+        // this fires even on a chart with no OnTaskClick consumer at all).
+        if (OnTaskClick.HasDelegate || OnKeyNavigation.HasDelegate)
+        {
+            attrs["onkeydown"] = EventCallback.Factory.Create<KeyboardEventArgs>(this, HandleKeyDown);
+        }
+        if (OnTaskClick.HasDelegate)
+        {
+            attrs["role"] = "button";
+            // CRITICAL fix (Phase-1/Phase-2 reconciliation): see
+            // SuppressPointerClick's own remarks — GanttTimeline's delegated JS
+            // pointer engine (registered whenever it isn't Readonly) already
+            // invokes NotifyTaskClick exactly once per below-threshold pointer
+            // click, so wiring this native onclick TOO double-fires OnTaskClick
+            // for the identical physical click. onkeydown above is NEVER gated
+            // by this flag — keyboard activation never touches the pointer
+            // engine at all.
+            if (!SuppressPointerClick)
+            {
+                attrs["onclick"] = EventCallback.Factory.Create<MouseEventArgs>(this, HandleClick);
+            }
+        }
+        return attrs;
+    }
+
+    // Codex round 6, P2 #4 — a stable id for RegisterPreventDefaultKeys below
+    // (document.getElementById-based; see its own remarks). Always present
+    // (not conditional on OnTaskClick.HasDelegate) so it's harmless overhead
+    // on a merely-focusable bar and doesn't churn if a delegate is added
+    // later. Lumeo.Internal.LumeoIds (the core project's own id-generator,
+    // same "{prefix}-{guidN}" convention it uses) is `internal` to the core
+    // Lumeo assembly and not visible from this one (Lumeo.Gantt) — no
+    // InternalsVisibleTo grants it — so this inlines the identical format
+    // directly instead.
+    private readonly string _barId = $"gantt-bar-{Guid.NewGuid():N}";
+    private bool _preventDefaultKeysRegistered;
+    // Which flag combination the CURRENT registration's rule set reflects —
+    // arrow-key navigation (see OnKeyNavigation's own remarks) needs the
+    // registered rules to grow/shrink independently of OnTaskClick's own
+    // Space rule, and registerPreventDefaultKeys REPLACES the whole rule set
+    // per call (see its own JS remarks), so a flag flipping without the
+    // OTHER one changing must still trigger a re-register, not just the
+    // false->true/true->false transitions the original single bool tracked.
+    private bool _preventDefaultForTaskClick;
+    private bool _preventDefaultForKeyNav;
+    // Codex round 16 review, P2 finding #6 — see OnAfterRenderAsync's own
+    // remarks below for why the register call needs to check this AFTER its
+    // own await, mirroring Affix.razor's identical RegisterAsync/_disposed
+    // pattern for the same class of late-interop leak.
+    private bool _disposed;
+
+    // Bug fix (Codex round 6, P2 #4): a div[role=button] has no NATIVE
+    // Space-activation semantics — the browser still runs its own default
+    // action for Space (scroll the viewport) alongside HandleKeyDown's own
+    // OnTaskClick invocation, since nothing tells it Space was "handled"
+    // here the way it would be for a real &lt;button&gt;. Declarative
+    // @onkeydown:preventDefault is all-or-nothing (would ALSO swallow Tab/
+    // arrow-key navigation reaching this element, since Blazor's directive
+    // can't be conditioned per-key), so this uses the SAME targeted,
+    // key-specific interop every other Lumeo role=button-on-a-div component
+    // already relies on for the identical problem (see Card.razor's own
+    // remarks — same finding, same fix). Enter has no default browser action
+    // on a div, so only Space needs suppressing. Registered only when
+    // OnTaskClick actually has a delegate — matching InnerAttributes' own
+    // gating (round 5, P2 #3): with no delegate, Space does nothing here at
+    // all, so there's nothing to protect from the browser's default either.
+    //
+    // Bug fix (Codex round 6 review / cx6b, Important #2): the FIRST version
+    // of this only registered on `firstRender && OnTaskClick.HasDelegate`,
+    // but role/onkeydown/onclick in InnerAttributes above re-evaluate
+    // HasDelegate on EVERY render — a consumer attaching OnTaskClick AFTER
+    // mount (or detaching it later) got the live keyboard/click wiring
+    // without ever registering (or unregistering) the matching preventDefault
+    // suppression. Reconciled on every render instead, mirroring Card.razor's
+    // OWN ripple-listener precedent two methods below its identical
+    // firstRender-only prevent-default registration (that one is safe only
+    // because Card's own IsInteractive flip happens to always go through a
+    // full remount via an `@if`, which this component has no equivalent of).
+    // Builds the full rule set for the CURRENT flag combination — Space
+    // (OnTaskClick's own Codex round 6 fix) and/or the four arrow keys
+    // (OnKeyNavigation's own — arrows have no native default action on a
+    // plain div, but suppressing them anyway costs nothing and guards
+    // against a browser/extension's own spatial-navigation heuristics; see
+    // PreventDefaultKeyRule's own remarks for the "ArrowLeft" example it
+    // already documents).
+    private static List<Lumeo.Services.PreventDefaultKeyRule> BuildPreventDefaultRules(bool wantTaskClick, bool wantKeyNav)
+    {
+        var rules = new List<Lumeo.Services.PreventDefaultKeyRule>();
+        if (wantTaskClick) rules.Add(new Lumeo.Services.PreventDefaultKeyRule(" "));
+        if (wantKeyNav)
+        {
+            rules.Add(new Lumeo.Services.PreventDefaultKeyRule("ArrowUp"));
+            rules.Add(new Lumeo.Services.PreventDefaultKeyRule("ArrowDown"));
+            rules.Add(new Lumeo.Services.PreventDefaultKeyRule("ArrowLeft"));
+            rules.Add(new Lumeo.Services.PreventDefaultKeyRule("ArrowRight"));
+        }
+        return rules;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        var wantTaskClick = OnTaskClick.HasDelegate;
+        var wantKeyNav = OnKeyNavigation.HasDelegate;
+        var wantPreventDefault = wantTaskClick || wantKeyNav;
+        // Re-register not just on the false->true transition the original
+        // single-bool version tracked, but also whenever the FLAG COMBINATION
+        // changes while already registered (see _preventDefaultForTaskClick's
+        // own remarks) — registerPreventDefaultKeys replaces the whole rule
+        // set per call, so a stale combination would silently keep an
+        // out-of-date rule list (e.g. missing the arrow rules if
+        // OnKeyNavigation attaches after OnTaskClick already triggered the
+        // first registration).
+        var needsRegister = wantPreventDefault &&
+            (!_preventDefaultKeysRegistered || _preventDefaultForTaskClick != wantTaskClick || _preventDefaultForKeyNav != wantKeyNav);
+
+        if (needsRegister)
+        {
+            try
+            {
+                await Interop.RegisterPreventDefaultKeys(_barId, BuildPreventDefaultRules(wantTaskClick, wantKeyNav));
+
+                // Bug fix (Codex round 16 review, P2 finding #6): virtualization
+                // can dispose this bar (scrolled out of view) WHILE the register
+                // call above is still in flight. DisposeAsync would then run
+                // BEFORE _preventDefaultKeysRegistered is set below, see nothing
+                // to tear down (its own `if (!_preventDefaultKeysRegistered)
+                // return;` guard), and return early — leaking the JS-side
+                // registration forever, since this instance is gone and nothing
+                // will ever call Unregister for its barId afterward. Mirrors
+                // Affix.razor's own RegisterAsync: check disposed state
+                // immediately after the await and unregister right away instead
+                // of committing to "registered" on a torn-down instance.
+                if (_disposed)
+                {
+                    try { await Interop.UnregisterPreventDefaultKeys(_barId); }
+                    catch (Microsoft.JSInterop.JSDisconnectedException) { }
+                    catch (ObjectDisposedException) { }
+                    return;
+                }
+
+                // Bug fix (Codex round 17 review, P2): either delegate can flip
+                // AGAIN while THIS register call is still in flight — re-reading
+                // both live values now (the same "resume, recheck, correct"
+                // idiom the disposed check above uses) and unregistering
+                // immediately if NEITHER still wants it avoids committing
+                // "registered" against a desired state that no longer holds.
+                var liveTaskClick = OnTaskClick.HasDelegate;
+                var liveKeyNav = OnKeyNavigation.HasDelegate;
+                if (!liveTaskClick && !liveKeyNav)
+                {
+                    try { await Interop.UnregisterPreventDefaultKeys(_barId); }
+                    catch (Microsoft.JSInterop.JSDisconnectedException) { }
+                    catch (InvalidOperationException) { }
+                    _preventDefaultKeysRegistered = false;
+                    return;
+                }
+
+                // Bug fix (arrow-key navigation promotion): the COMBINATION
+                // can also drift while this call was in flight without ever
+                // reaching "neither wants it" (e.g. OnTaskClick removed but
+                // OnKeyNavigation still does — GanttTimeline always wires the
+                // latter, so removing a consumer's OnTaskClick mid-flight
+                // never trips the branch above). The rules already SENT by
+                // the await above reflect the STALE (wantTaskClick, wantKeyNav)
+                // captured before it started, not these live values — left
+                // uncorrected, JS would keep enforcing a rule that's no
+                // longer wanted (e.g. still suppressing Space after
+                // OnTaskClick was removed) until some UNRELATED later render
+                // happens to re-trigger registration. One more (cheap, rare)
+                // register call with the LIVE combination keeps JS in sync
+                // immediately instead.
+                if (liveTaskClick != wantTaskClick || liveKeyNav != wantKeyNav)
+                {
+                    try
+                    {
+                        await Interop.RegisterPreventDefaultKeys(_barId, BuildPreventDefaultRules(liveTaskClick, liveKeyNav));
+                    }
+                    catch (Microsoft.JSInterop.JSDisconnectedException) { }
+                    catch (InvalidOperationException) { }
+                }
+
+                _preventDefaultKeysRegistered = true;
+                _preventDefaultForTaskClick = liveTaskClick;
+                _preventDefaultForKeyNav = liveKeyNav;
+            }
+            catch (Microsoft.JSInterop.JSDisconnectedException) { }
+            catch (InvalidOperationException) { } // JS interop unavailable during prerender
+        }
+        else if (!wantPreventDefault && _preventDefaultKeysRegistered)
+        {
+            try
+            {
+                await Interop.UnregisterPreventDefaultKeys(_barId);
+            }
+            catch (Microsoft.JSInterop.JSDisconnectedException) { }
+            catch (InvalidOperationException) { }
+            _preventDefaultKeysRegistered = false;
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        // Codex round 16 review, P2 finding #6: set UNCONDITIONALLY, before the
+        // early-return below — OnAfterRenderAsync's own in-flight register call
+        // checks this flag right after its await to catch exactly the case
+        // where dispose lands while _preventDefaultKeysRegistered is still
+        // false (so the early return here would otherwise skip teardown
+        // entirely, believing there was nothing registered yet).
+        _disposed = true;
+        if (!_preventDefaultKeysRegistered) return;
+        try
+        {
+            await Interop.UnregisterPreventDefaultKeys(_barId);
+        }
+        catch (Microsoft.JSInterop.JSDisconnectedException) { }
+        catch (ObjectDisposedException) { }
+        catch (InvalidOperationException) { }
+    }
+
+    private Dictionary<string, object> WrapperAttributes
+    {
+        get
+        {
+            var attrs = new Dictionary<string, object>
+            {
+                ["style"] = WrapperStyle,
+                ["data-task-id"] = Task.Id,
+                // Phase 2, T1 — the JS drag engine (gantt-v3.js) reads these directly
+                // at pointerdown so it can compute the committed Start/End via its own
+                // addDays (mirrors gantt-v2.js's toLocalDateString/parseDate) without a
+                // JS->.NET round trip mid-drag; ghost-only dragging with ONE commit on
+                // drop depends on JS already having the original dates in hand.
+                // "yyyy-MM-dd" — no time component, matching GanttTask's date-only
+                // contract and the format CommitDrag parses back with TryParseExact.
+                ["data-task-start"] = Task.Start.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+                ["data-task-end"] = Task.End.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+                // Phase 2, T2 — same "JS reads the original value directly, no
+                // round trip" rationale as data-task-start/-end above: the progress
+                // drag's ghost-fill math (dx / barWidth * 100, relative to the
+                // ORIGINAL progress) needs this at pointerdown time.
+                ["data-task-progress"] = Math.Clamp(Task.Progress, 0, 100).ToString(CultureInfo.InvariantCulture),
+            };
+            if (Task.IsMilestone) attrs["data-milestone"] = "true";
+            // Author-supplied attributes win on collision (splat-last semantics
+            // used throughout Lumeo — see TooltipTrigger.BuildAttrs for the same pattern).
+            if (AdditionalAttributes is not null)
+                foreach (var kv in AdditionalAttributes) attrs[kv.Key] = kv.Value;
+            return attrs;
+        }
+    }
+}

@@ -14,7 +14,7 @@ public class GanttV3ScrollCenteringTests : GanttParityTestBase
     [Fact]
     public async Task Initial_centering_lands_the_today_marker_mid_viewport_with_the_tree_pane_shown()
     {
-        // Bug fix (Codex round 4, P2 #2): EffectiveScrollHost (Gantt3's outer
+        // Bug fix (Codex round 4, P2 #2): EffectiveScrollHost (GanttChart's outer
         // pane) scrolls based on its OWN content's absolute position, which
         // starts with GanttTree's width BEFORE the timeline even begins when
         // a tree pane is shown — but TodayX is computed relative to the
@@ -76,10 +76,10 @@ public class GanttV3ScrollCenteringTests : GanttParityTestBase
         // Bug fix (Codex round 4, P2 #8): a view-mode switch used to reset the
         // viewport to the tasks' own min/max window (ComputeInitialRange) and
         // never even requested a DOM re-scroll at all — whatever the user had
-        // navigated to before switching was silently discarded. Gantt3 now
+        // navigated to before switching was silently discarded. GanttChart now
         // captures the CURRENT range's midpoint before switching and recenters
         // the new mode's window around that same date, then requests a scroll
-        // (see Gantt3.HandleViewModeChangedAsync's own remarks).
+        // (see GanttChart.HandleViewModeChangedAsync's own remarks).
         await GotoHost("/e2e/gantt-v3?viewMode=Day&infiniteScroll=0"); // no ?fixture= -> GanttV3Page's default branch -> GanttParityFixtures.SharedTasks()
 
         var scrollPane = Page.Locator("[data-testid='gantt-v3-root'] div[style*='overflow']").First;
@@ -113,7 +113,7 @@ public class GanttV3ScrollCenteringTests : GanttParityTestBase
 
         // "Still visible" is the concrete, robust assertion here (a fully
         // reliable EXACT re-center is approximate by design — see
-        // Gantt3.VisibleCenterDate's own remarks on why the range's midpoint
+        // GanttChart.VisibleCenterDate's own remarks on why the range's midpoint
         // is a proxy, not a live scroll reading) — the regression this guards
         // against is the bar landing scrolled COMPLETELY out of view, which
         // ToBeInViewportAsync catches directly.
@@ -130,7 +130,7 @@ public class GanttV3ScrollCenteringTests : GanttParityTestBase
         // themselves) but goes stale the moment the user pans the DOM
         // manually: nothing keeps VisibleRange's own midpoint in sync with an
         // arbitrary scroll position that was never accompanied by a
-        // VisibleRange change at all. Gantt3 now reads the pane's ACTUAL live
+        // VisibleRange change at all. GanttChart now reads the pane's ACTUAL live
         // scroll center via a new interop round-trip before recomputing the
         // range, so a manual pan survives a mode switch too, not just a
         // Today-click-driven one.

@@ -11,7 +11,7 @@ namespace Lumeo.Tests.E2E.Gantt;
 /// docs/superpowers/gantt-v3-t4-report.md). Both routes render the SAME 12-task
 /// fixture (<c>GanttParityFixtures.SharedTasks</c>) through
 /// <c>tests/Lumeo.Tests.ServerHost</c>'s <c>/e2e/gantt-v2</c> (v2's <c>Gantt</c>,
-/// SVG) and <c>/e2e/gantt-v3</c> (the working-name <c>Gantt3</c>, plain divs).
+/// SVG) and <c>/e2e/gantt-v3</c> (the working-name <c>GanttChart</c>, plain divs).
 ///
 /// Every geometry assertion compares THREE values: v2's rendered DOM, v3's
 /// rendered DOM, and <see cref="GanttDayModeMath"/>'s independent re-derivation
@@ -374,7 +374,7 @@ public class GanttParityTests : GanttParityTestBase
         // view-mode switch (gantt-v2.js's render() re-derives it from
         // whatever `tasks` it sees on every call); v3 now instead recenters
         // the new mode's window around wherever the PREVIOUS mode's viewport
-        // was actually centered (see Gantt3.HandleViewModeChangedAsync's own
+        // was actually centered (see GanttChart.HandleViewModeChangedAsync's own
         // remarks — matching what users expect and what REUI does, per the
         // finding's own framing), so the two legitimately land on DIFFERENT
         // date windows after a Day->Week switch and their header label TEXT
@@ -437,7 +437,7 @@ public class GanttParityTests : GanttParityTestBase
 
     // ── Initial viewport (P1, Codex review wave) ─────────────────────────────
     //
-    // Regression: Gantt3.ComputeInitialRange pads ~60 Day-mode columns before
+    // Regression: GanttChart.ComputeInitialRange pads ~60 Day-mode columns before
     // the earliest task, and nothing ever moved scrollLeft off its default 0 —
     // the committed v3 Day visual baseline itself showed an empty grid on first
     // paint. Uses the today-anchored fixture (not the shared, date-fixed one):
@@ -466,7 +466,7 @@ public class GanttParityTests : GanttParityTestBase
         // the scroll's own completion latch first just gives a clearer
         // failure message ("the scroll itself never landed" vs. "bar not
         // where expected") if the interop is ever slow enough to matter.
-        // Codex round 3, P2 #1: the latch now lands on Gantt3's shared outer
+        // Codex round 3, P2 #1: the latch now lands on GanttChart's shared outer
         // pane, not GanttTimeline's own row-canvas div — see
         // GanttParityVisualTests' matching update for the full reasoning.
         var v3Host = Page.Locator("[data-testid='gantt-v3-root'] div[style*='overflow']").First;

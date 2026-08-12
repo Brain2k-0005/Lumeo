@@ -19,7 +19,7 @@ namespace Lumeo.Tests.E2E.Gantt;
 /// <c>PeriodLabel</c> text GanttNav renders.
 ///
 /// Month view is used throughout: <c>PeriodLabel</c> for Month mode is exactly
-/// <c>range.Start:"MMMM yyyy"</c> (Gantt3.razor's <c>PeriodLabel</c> getter), a
+/// <c>range.Start:"MMMM yyyy"</c> (GanttChart.razor's <c>PeriodLabel</c> getter), a
 /// single unambiguous "MMMM yyyy" string, and Month's <c>GanttScale</c> step is
 /// exactly 1 calendar month — both make the shift assertions exact string/date
 /// arithmetic instead of pixel-tolerance comparisons.
@@ -76,7 +76,7 @@ public class GanttV3NavTests : GanttParityTestBase
         await GotoHost("/e2e/gantt-v3?viewMode=Month&infiniteScroll=0");
         await PeriodLabelLocator.WaitForAsync(new() { Timeout = 15000 });
 
-        // Reproduces Gantt3.ComputeInitialRange's Month branch + GanttParityFixtures.SharedTasks'
+        // Reproduces GanttChart.ComputeInitialRange's Month branch + GanttParityFixtures.SharedTasks'
         // known min/max dates: minDate = fe1.Start (2026-02-23), maxDate = be6.End (2026-04-03)
         // — the LATEST of every task's (IsMilestone ? Start : End), and be6.End postdates
         // fe-ms's milestone Start (2026-03-08). PadBefore/PadAfter = 12 months for Month mode.
@@ -107,7 +107,7 @@ public class GanttV3NavTests : GanttParityTestBase
     public async Task Today_button_scrolls_the_today_marker_into_view()
     {
         await GotoHost("/e2e/gantt-v3?fixture=today&infiniteScroll=0");
-        // Codex round 3, P2 #1: Gantt3's shared outer pane is now the scroll
+        // Codex round 3, P2 #1: GanttChart's shared outer pane is now the scroll
         // owner (and latch target) — see GanttParityVisualTests' matching
         // update for the full reasoning.
         var host = Page.Locator("[data-testid='gantt-v3-root'] div[style*='overflow']").First;
@@ -149,7 +149,7 @@ public class GanttV3NavTests : GanttParityTestBase
         // symptom as the single-call race the "done" latch above already
         // guards, just a second occurrence the latch can't see coming since
         // it only fires once. Confirmed pre-existing (present identically on
-        // the prior merge commit — GanttTimeline/Gantt3 source is byte-for-
+        // the prior merge commit — GanttTimeline/GanttChart source is byte-for-
         // byte unchanged across this merge), not a geometry/viewport
         // regression from master. Retrying the override absorbs that one
         // extra, already-in-flight write without weakening the assertion
