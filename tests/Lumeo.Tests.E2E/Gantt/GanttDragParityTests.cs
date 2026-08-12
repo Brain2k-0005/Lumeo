@@ -578,13 +578,24 @@ public class GanttDragParityTests : GanttParityTestBase
         await Page.Mouse.MoveAsync(start.X, start.Y);
         await Page.Mouse.DownAsync();
         await Page.Mouse.MoveAsync(start.X - DayPxDay * 4, start.Y); // -4 days: Start 03-04, invalid (< blackout 03-05)
-        // data-drop-invalid (styling-hooks audit — renamed from this file's
-        // own prior data-invalid="true"; presence-only now, matching ReUI's
-        // own attribute name/shape — see gantt-v3.js's setGhostInvalid).
+        // data-drop-invalid (styling-hooks audit — ReUI's own attribute
+        // name/shape, presence-only; see gantt-v3.js's setGhostInvalid).
         await Assertions.Expect(ghost).ToHaveAttributeAsync("data-drop-invalid", "", new() { Timeout = 5000 });
+        // ...and the legacy data-invalid="true" alias ALONGSIDE it (Codex
+        // review of this PR, P2). The first pass renamed the attribute; that
+        // would have silently broken every consumer override built on the hook
+        // this file's own comment had called "stable". Asserting the exact
+        // "true" VALUE, not just presence, because pre-existing selectors may
+        // well be written as [data-invalid="true"].
+        await Assertions.Expect(ghost).ToHaveAttributeAsync("data-invalid", "true", new() { Timeout = 5000 });
 
         await Page.Mouse.MoveAsync(start.X - DayPxDay * 3, start.Y); // -3 days: Start 03-05, valid (boundary)
         await Assertions.Expect(ghost).Not.ToHaveAttributeAsync("data-drop-invalid", "", new() { Timeout = 5000 });
+        // Both clear together — also the regression guard for the pending-key
+        // repaint added in this round: if pendingKeys ever leaked (a key left
+        // in the set after its verdict settled), revisiting this already-valid
+        // position would wrongly repaint the ghost invalid and fail here.
+        await Assertions.Expect(ghost).Not.ToHaveAttributeAsync("data-invalid", "true", new() { Timeout = 5000 });
 
         await Page.Mouse.UpAsync();
         var json = await WaitForSinkChangeAsync("event-sink-taskupdate", null);
@@ -1118,6 +1129,15 @@ public class GanttDragParityTests : GanttParityTestBase
         await Page.Mouse.MoveAsync(start.X, start.Y);
         await Page.Mouse.DownAsync();
         await Page.Mouse.MoveAsync(start.X + 1, start.Y); // 1px — below DRAG_THRESHOLD_PX (3px)
+
+        // Assert DURING the gesture, pointer still down (Codex review of this
+        // PR): asserting only after MouseUp would also pass for a regression
+        // that sets the attribute on the below-threshold move and then clears
+        // it in cleanup() — i.e. the exact "never appears" claim this test
+        // exists to make would go unchecked. Short timeout on purpose: this is
+        // a "must already be absent" check, not something to wait for.
+        await Assertions.Expect(bar).Not.ToHaveAttributeAsync("data-dragging", "", new() { Timeout = 1000 });
+
         await Page.Mouse.UpAsync();
         var json = await WaitForSinkChangeAsync("event-sink-click", null);
         Assert.Equal("fe3", ParseTask(json).Id); // proves this really was the click fallback, not a swallowed gesture
