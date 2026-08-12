@@ -1,3 +1,4 @@
+using Lumeo;
 using Lumeo.SchedulerKernel;
 using Xunit;
 
@@ -116,7 +117,14 @@ public class SchedulerRRuleParserTests
     [InlineData("FREQ=WEEKLY;COUNT=0")]
     [InlineData("FREQ=WEEKLY;BYDAY=XX")]           // not a weekday
     [InlineData("FREQ=WEEKLY;BYDAY=0MO")]          // RFC 5545 forbids ordinal 0
-    [InlineData("FREQ=WEEKLY;BYDAY=54MO")]         // and bounds ordinals to +/-1..53
+    [InlineData("FREQ=MONTHLY;BYDAY=6MO")]         // no month has a sixth Monday — would yield an empty series
+    [InlineData("FREQ=MONTHLY;BYDAY=-6MO")]
+    [InlineData("FREQ=MONTHLY;BYDAY=-2147483648MO")] // Math.Abs(int.MinValue) would THROW from a TryParse
+    [InlineData("FREQ=MONTHLY;BYDAY=1MO,-5MO")]    // same date in any five-Monday month
+    [InlineData("FREQ=WEEKLY;BYDAY=MO,")]          // trailing empty term
+    [InlineData("FREQ=WEEKLY;BYDAY=,MO")]          // leading empty term
+    [InlineData("FREQ=WEEKLY;BYDAY=MO,,WE")]       // empty middle term
+    [InlineData("FREQ=DAILY;UNTIL=20261231Z")]     // Z belongs to DATE-TIME, not DATE
     [InlineData("FREQ=DAILY;BYDAY=MO")]            // daily expansion ignores ByDay entirely
     [InlineData("FREQ=WEEKLY;BYDAY=2MO")]          // weekly expansion ignores the ordinal
     [InlineData("FREQ=MONTHLY;BYDAY=MO")]          // unqualified monthly term means EVERY Monday

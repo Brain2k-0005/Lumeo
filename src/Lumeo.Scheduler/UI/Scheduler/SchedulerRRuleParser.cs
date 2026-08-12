@@ -1,7 +1,13 @@
 using System.Globalization;
 using System.Linq;
 
-namespace Lumeo.SchedulerKernel;
+// Deliberately alongside SchedulerRecurrenceRule.cs in UI/Scheduler rather than
+// in Kernel/ (Codex review of this PR, P2): RegistryGen builds a component's
+// vendored `files` list from its own UI/<Name>/ folder, so nothing under Kernel/
+// is shipped by `lumeo add scheduler` — this parser would have been public API
+// that source-vendored consumers simply did not receive. It also belongs next to
+// the type it produces.
+namespace Lumeo;
 
 /// <summary>
 /// Parses an RFC 5545 <c>RRULE</c> string into a <see cref="SchedulerRecurrenceRule"/>.
@@ -15,7 +21,7 @@ namespace Lumeo.SchedulerKernel;
 ///
 /// <para>
 /// <b>Scope is deliberately the same subset the expander already implements</b>
-/// (<see cref="SchedulerRecurrenceExpander"/>): <c>FREQ</c> of DAILY/WEEKLY/MONTHLY, plus
+/// (<see cref="Lumeo.SchedulerKernel.SchedulerRecurrenceExpander"/>): <c>FREQ</c> of DAILY/WEEKLY/MONTHLY, plus
 /// <c>INTERVAL</c>, <c>COUNT</c>, <c>UNTIL</c> and <c>BYDAY</c> (with RFC 5545 ordinals such as
 /// <c>2MO</c> / <c>-1FR</c>). Anything outside that — <c>FREQ=YEARLY</c>, <c>BYMONTHDAY</c>,
 /// <c>BYSETPOS</c>, <c>WKST</c>, … — is <b>rejected</b>, never silently dropped. Accepting a
@@ -187,10 +193,14 @@ public static class SchedulerRRuleParser
     /// </summary>
     private static bool TryParseUntil(string value, out DateTime result)
     {
-        var text = value.EndsWith("Z", StringComparison.OrdinalIgnoreCase) ? value[..^1] : value;
+        // The Z designator belongs to RFC 5545's DATE-TIME form only, so a
+        // date-only value carrying one is malformed (Codex review of this PR,
+        // P2) — stripping it unconditionally made "20261231Z" parse.
+        var hasUtcSuffix = value.EndsWith("Z", StringComparison.OrdinalIgnoreCase);
+        var text = hasUtcSuffix ? value[..^1] : value;
 
         if (DateTime.TryParseExact(text, "yyyyMMdd", CultureInfo.InvariantCulture, DateTimeStyles.None, out result))
-            return true;
+            return !hasUtcSuffix;
 
         if (!DateTime.TryParseExact(text, "yyyyMMdd'T'HHmmss", CultureInfo.InvariantCulture, DateTimeStyles.None, out result))
             return false;
@@ -207,7 +217,10 @@ public static class SchedulerRRuleParser
         terms = null;
         var parsed = new List<SchedulerByDayRule>();
 
-        foreach (var raw in value.Split(',', StringSplitOptions.RemoveEmptyEntries))
+        // Empty entries preserved for the same reason the outer split preserves
+        // them (Codex review of this PR, P2): "BYDAY=MO,", ",MO" and "MO,,WE"
+        // are malformed, and dropping the blanks made them parse.
+        foreach (var raw in value.Split(','))
         {
             var term = raw.Trim();
             if (term.Length < 2) return false;
@@ -236,11 +249,19 @@ public static class SchedulerRRuleParser
                     return false;
                 // RFC 5545 allows +/-1..53; 0 is explicitly invalid, and this rule set treats a
                 // missing ordinal as "first", so a literal 0 must not silently become that.
-                // RFC 5545 bounds BYDAY ordinals to +/-1..53 (Codex review of
-                // this PR, P2). 54MO parses as an integer and then matches no
-                // date in any month, so the expander silently yields an EMPTY
-                // series instead of reporting the bad rule.
-                if (parsedOrdinal == 0 || Math.Abs(parsedOrdinal) > 53) return false;
+                // Bounded to +/-1..5, not RFC 5545's +/-1..53 (Codex review of
+                // this PR, P2): ordinals are only honoured for MONTHLY here (see
+                // ByDayIsHonouredBy), and no month can contain a sixth
+                // occurrence of a weekday. "6MO" would otherwise resolve to
+                // nothing every month, so the expander spins to its safety cap
+                // and yields a silently EMPTY series instead of reporting the
+                // bad rule. The wider RFC range exists for YEARLY, which this
+                // subset does not implement.
+                //
+                // Compared without Math.Abs on purpose: Math.Abs(int.MinValue)
+                // THROWS, which would make the documented never-throwing
+                // TryParse throw for "BYDAY=-2147483648MO".
+                if (parsedOrdinal is 0 or > 5 or < -5) return false;
                 ordinal = parsedOrdinal;
             }
 
@@ -250,6 +271,16 @@ public static class SchedulerRRuleParser
             // COUNT on one date. Rejecting matches how duplicate PARTS are
             // handled — an ambiguous rule is not silently resolved.
             if (parsed.Any(t => t.Day == day.Value && t.Ordinal == ordinal)) return false;
+            // ...and reject SEMANTIC overlap too (Codex review of this PR, P2):
+            // "1MO,-5MO" are distinct terms that resolve to the SAME date in any
+            // month with five Mondays, emitting a duplicate instance and burning
+            // COUNT on one date — the same failure the exact-duplicate check
+            // above prevents, just spelled differently. Any mix of a
+            // counts-from-start and a counts-from-end ordinal for one weekday
+            // can collide depending on month length, so the whole combination is
+            // refused rather than accepted for some months and not others.
+            if (ordinal is { } o && parsed.Any(t => t.Day == day.Value && t.Ordinal is { } prev && Math.Sign(prev) != Math.Sign(o)))
+                return false;
             parsed.Add(new SchedulerByDayRule(day.Value, ordinal));
         }
 
