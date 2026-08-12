@@ -296,6 +296,29 @@ public class GanttV3StylingHooksTests : IAsyncLifetime
         Assert.Equal("", cut.Find("[data-task-id='t1']").GetAttribute("data-past"));
     }
 
+    [Theory]
+    [InlineData(true)]  // milestone — endpoint derives from Start
+    [InlineData(false)] // duration bar — endpoint derives from End
+    public void Data_Past_Does_Not_Overflow_For_A_Max_Value_Dated_Task(bool isMilestone)
+    {
+        // Regression (Codex review of this PR, P2): the first version of the
+        // endpoint fix computed `.AddDays(1)` on the task's own date, which
+        // throws ArgumentOutOfRangeException at DateTime.MaxValue.Date — a
+        // legitimate "no deadline" sentinel. That took a bar which rendered
+        // fine BEFORE this PR and made it crash on render, so the styling hook
+        // would have introduced a hard failure rather than a wrong class.
+        var max = DateTime.MaxValue.Date;
+        var task = isMilestone
+            ? new L.GanttTask("t1", "Someday", max, max, IsMilestone: true)
+            : new L.GanttTask("t1", "Someday", D(2026, 1, 1), max);
+
+        var ex = Record.Exception(() => _ctx.Render<L.GanttBar>(p => p
+            .Add(c => c.Task, task).Add(c => c.X, 0d).Add(c => c.Width, 40d).Add(c => c.RowIndex, 0)
+            .Add(c => c.Now, new DateTime(2026, 6, 15, 12, 0, 0))));
+
+        Assert.Null(ex);
+    }
+
     [Fact]
     public void Data_Past_For_A_Milestone_Follows_Its_Rendered_Start_Not_A_Mismatched_End()
     {

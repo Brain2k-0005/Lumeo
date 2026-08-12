@@ -972,6 +972,34 @@ function registerDrag(el, dotNetRef, options) {
         const pendingKeys = new Set();
         let lastValidatedKey = null;
 
+        // Bug fix (Codex review of this PR, P2): makeGhost CLONES the bar, so
+        // the ghost carried the ORIGINAL task's data-past for the whole
+        // gesture — drag a finished task into the future and the preview
+        // stayed styled as past until the drop committed. Same class as the
+        // progress-hook staleness already fixed above, for the date-changing
+        // modes. Mirrors GanttBar.IsPast exactly: whole-day comparison against
+        // the LAST RENDERED day (candidate Start for a milestone, whose
+        // geometry ignores End; candidate End otherwise), never constructing
+        // the day after it — see that property's own remarks for why the
+        // "+1 day" form overflowed at DateTime.MaxValue.
+        function refreshGhostPast(dx) {
+            if (!ghost) return;
+            const dayPx = dragOptions && dragOptions.pixelsPerDay > 0 ? dragOptions.pixelsPerDay : 0;
+            if (!dayPx) return; // no day scale to snap with — leave the cloned value rather than guess
+            const movedDays = Math.round(dx / dayPx);
+            const { newStart: candStart, newEnd: candEnd } = computeSnappedDates(mode, movedDays, origStart, origEnd);
+            const endInclusive = isMilestone ? candStart : candEnd;
+            // Missing/unparseable data-task-start|end (parseIsoDate returns
+            // null, and addDays on it yields an Invalid Date) — leave the
+            // cloned attribute alone rather than paint from NaN.
+            if (!endInclusive || Number.isNaN(endInclusive.getTime())) return;
+            const now = new Date();
+            const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+            const end = new Date(endInclusive.getFullYear(), endInclusive.getMonth(), endInclusive.getDate());
+            if (today > end) ghost.setAttribute('data-past', '');
+            else ghost.removeAttribute('data-past');
+        }
+
         function checkCanDrop(dx) {
             const dayPx = dragOptions && dragOptions.pixelsPerDay > 0 ? dragOptions.pixelsPerDay : 1;
             const movedDays = Math.round(dx / dayPx);
@@ -1110,8 +1138,9 @@ function registerDrag(el, dotNetRef, options) {
                 else ghost.removeAttribute('data-completed');
             }
 
-            if (mode !== 'progress' && dragOptions && dragOptions.hasCanDrop) {
-                checkCanDrop(dx);
+            if (mode !== 'progress') {
+                refreshGhostPast(dx);
+                if (dragOptions && dragOptions.hasCanDrop) checkCanDrop(dx);
             }
         };
 

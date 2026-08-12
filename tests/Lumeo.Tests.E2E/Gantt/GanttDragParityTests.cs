@@ -1081,6 +1081,41 @@ public class GanttDragParityTests : GanttParityTestBase
     // ── L: data-dragging (styling-hooks audit) ───────────────────────────────
 
     [Fact]
+    public async Task Data_past_on_the_move_ghost_tracks_the_candidate_dates_not_the_cloned_value()
+    {
+        // Codex review of this PR, P2: makeGhost clones the bar, so the ghost
+        // carried the ORIGINAL task's data-past for the whole gesture.
+        //
+        // COVERAGE LIMIT, stated rather than papered over: the interesting
+        // transition is a drag that CROSSES today, and this suite's fixtures
+        // cannot express it. GanttParityFixtures pins every task to
+        // 2026-02-23..2026-04-03 (deliberately — dozens of date-exact
+        // assertions in this file depend on those constants), so relative to
+        // any real run date after that window they are all permanently past,
+        // and reaching a non-past candidate would need a ~150-day drag, i.e.
+        // thousands of pixels across scroll boundaries. What IS asserted here
+        // is the direction that regresses silently: refreshGhostPast runs on
+        // every move and agrees with the candidate, instead of leaving a
+        // frozen clone or spuriously clearing the hook.
+        await GotoHost("/e2e/gantt-v3?infiniteScroll=0");
+        await WaitV3ReadyAsync();
+        var bar = Page.Locator($"{V3Root} [data-task-id='fe3']");
+        var ghost = Page.Locator(".lumeo-gantt-v3-drag-ghost");
+        var start = await CenterAsync(bar);
+
+        // fe3 is 2026-03-08..2026-03-15 — past for any run after that window.
+        await Assertions.Expect(bar).ToHaveAttributeAsync("data-past", "", new() { Timeout = 5000 });
+
+        await Page.Mouse.MoveAsync(start.X, start.Y);
+        await Page.Mouse.DownAsync();
+        await Page.Mouse.MoveAsync(start.X + DayPxDay * 3, start.Y); // +3 days, still past
+        await Assertions.Expect(ghost).ToHaveAttributeAsync("data-past", "", new() { Timeout = 5000 });
+
+        await Page.Mouse.UpAsync();
+        await WaitForSinkChangeAsync("event-sink-taskupdate", null);
+    }
+
+    [Fact]
     public async Task Data_dragging_appears_once_the_drag_threshold_is_crossed_and_disappears_on_release()
     {
         // gantt-v3.js's drag engine is pure pointer-event/DOM-ghost JS with no

@@ -455,13 +455,23 @@
     // the instant the clock passed midnight into its own final day. (2) A
     // milestone's rendered extent derives from Start (BarGeometry ignores End
     // for milestones entirely), so a milestone with a mismatched End reported
-    // a past-ness its own diamond disagreed with. Both now use the SAME
-    // normalized exclusive endpoint the geometry uses, so the hook can never
-    // contradict the rendered timeline.
-    private DateTime RenderedEndExclusive =>
-        (Task.IsMilestone ? Task.Start.Date : Task.End.Date).AddDays(1);
+    // a past-ness its own diamond disagreed with. Both now resolve to the SAME
+    // last-rendered-day the geometry uses, so the hook can never contradict
+    // the rendered timeline.
+    // The task's LAST rendered day, inclusive — Start for a milestone (whose
+    // geometry ignores End entirely), End otherwise.
+    private DateTime RenderedEndInclusive => (Task.IsMilestone ? Task.Start : Task.End).Date;
 
-    private bool IsPast => EffectiveNow >= RenderedEndExclusive;
+    // Bug fix (Codex review of this PR, P2): the first version of this fix
+    // computed the EXCLUSIVE endpoint as `.AddDays(1)` and compared
+    // `EffectiveNow >= that`. Correct arithmetic, but it threw
+    // ArgumentOutOfRangeException for a task dated DateTime.MaxValue.Date
+    // (9999-12-31) — a legitimate "no deadline" sentinel — taking a bar that
+    // rendered fine before this PR and making it crash on render. Comparing
+    // whole calendar days instead is exactly equivalent (now >= end+1day, on
+    // dates, is the same statement as now.Date > end) and cannot overflow,
+    // because it never constructs the day after the endpoint.
+    private bool IsPast => EffectiveNow.Date > RenderedEndInclusive;
 
     private string ProgressStyle =>
         FormattableString.Invariant($"width:{ClampedProgress}%;background-color:{ResolvedColor};");
