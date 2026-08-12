@@ -193,7 +193,14 @@ function registerMonthDrag(hostEl, dotNetRef, options) {
                     promise = dragDotNet.invokeMethodAsync('ValidateDrop', eventId, lastDateIso).catch(() => false);
                 }
                 const valid = await promise;
-                if (!valid) return; // fail-closed: no commit on invalid/unconfirmed drop
+                if (!valid) {
+                    // Tell .NET the drop was refused so it can announce it
+                    // (Codex review of the live-region PR, P1). CommitDrag is
+                    // never reached for a rejection, so an announce placed
+                    // there could not fire for the very case it existed for.
+                    dragDotNet.invokeMethodAsync('NotifyDropRejected', eventId).catch(() => {});
+                    return; // fail-closed: no commit on invalid/unconfirmed drop
+                }
             }
 
             dragDotNet.invokeMethodAsync('CommitDrag', eventId, lastDateIso).catch(() => {});
@@ -459,7 +466,13 @@ function registerTimeGridDrag(hostEl, dotNetRef, options) {
                         promise = dragDotNet.invokeMethodAsync('ValidateDrop', instanceKey, state.mode, state.dayIso, state.deltaMinutes).catch(() => false);
                     }
                     const valid = await promise;
-                    if (!valid) return; // fail-closed
+                    if (!valid) {
+                        // See the month handler's own remarks. The mode travels
+                        // too, so a refused RESIZE is not announced as a refused
+                        // move.
+                        dragDotNet.invokeMethodAsync('NotifyDropRejected', instanceKey, state.mode).catch(() => {});
+                        return; // fail-closed
+                    }
                 }
 
                 dragDotNet.invokeMethodAsync('CommitDrag', instanceKey, state.mode, state.dayIso, state.deltaMinutes).catch(() => {});

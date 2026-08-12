@@ -237,6 +237,11 @@ public class P2LocalizationSweepTests : IAsyncLifetime
         "Scheduler.Previous", "Scheduler.Next", "Scheduler.ResourceLegend",
         "Scheduler.Day", "Scheduler.Week", "Scheduler.Month", "Scheduler.List",
         "Scheduler.Today", "Scheduler.WeekOf",
+        // ReUI-parity additions — listed here so a locale gap fails the sweep
+        // instead of silently falling back to English at runtime.
+        "Scheduler.WeekNumberAbbrev",
+        "Scheduler.Announce.EventMoved", "Scheduler.Announce.EventRescheduled",
+        "Scheduler.Announce.MoveRejected", "Scheduler.Announce.ResizeRejected",
     };
 
     [Theory]

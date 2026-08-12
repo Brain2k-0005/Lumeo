@@ -14,7 +14,8 @@
 <div class="@($"flex flex-col rounded-md border border-border/60 overflow-hidden {Class}".Trim())" @attributes="AdditionalAttributes">
     @* See SchedulerMonthView's own live-region remarks — rendered empty at
        mount so assistive tech is already observing the node. *@
-    <span class="sr-only" aria-live="polite" aria-atomic="true" data-testid="scheduler-live-region">@_announcement</span>
+    <span @key="_announcementEpoch" class="sr-only" aria-live="polite" aria-atomic="true"
+          data-testid="scheduler-live-region" data-announce-epoch="@_announcementEpoch">@_announcement</span>
     @if (_allDayInstances.Any())
     {
         <div class="flex border-b border-border/60">
@@ -644,13 +645,10 @@
         {
             var ctx = new SchedulerScheduleDropContext(finalStart, finalEnd, source);
             var result = CanDrop(src, ctx);
-            if (!result.Accepted)
-            {
-                // See SchedulerMonthView's identical announce: a rejected drag
-                // springs back with no signal a screen reader can pick up.
-                Announce(L["Scheduler.Announce.MoveRejected", src.Title]);
-                return;
-            }
+            // No announce here — see NotifyDropRejected. The ordinary rejection
+            // never reaches this method: the JS awaits ValidateDrop and returns
+            // before calling CommitDrag.
+            if (!result.Accepted) return;
             if (result.Adjustment is { } adjustment)
             {
                 finalStart = adjustment.Start ?? finalStart;
@@ -664,19 +662,41 @@
         // and with TIMES, not just the date: in a time grid the times are the
         // whole point of the gesture. Covers resize as well as move, which is
         // why the wording is "now <start> to <end>" rather than "moved to".
+        // Gated on OnEventChange (Codex review of this PR, P2): with no handler
+        // the gesture is ghost-only and the real block snaps back, so announcing
+        // a reschedule would describe something that did not persist.
+        if (!OnEventChange.HasDelegate) return;
         Announce(L["Scheduler.Announce.EventRescheduled",
             src.Title, FormatAnnounceMoment(updated.Start), FormatAnnounceMoment(updated.End)]);
-        if (OnEventChange.HasDelegate) await OnEventChange.InvokeAsync(updated);
+        await OnEventChange.InvokeAsync(updated);
     }
 
     // ── Live-region announcements (ReUI parity) ──────────────────────────────
     // See SchedulerMonthView's own remarks — same house pattern (Carousel.razor),
     // same reason: these views shipped with no aria-live region at all.
 
+    /// <summary>
+    /// [JSInvokable] counterpart to <see cref="SchedulerMonthView.NotifyDropRejected"/> — see its
+    /// remarks. <paramref name="mode"/> carries the gesture kind so a refused RESIZE is not
+    /// announced as a refused move (Codex review of this PR, P2).
+    /// </summary>
+    [JSInvokable]
+    public void NotifyDropRejected(string instanceKey, string? mode)
+    {
+        // Same instanceKey -> event resolution CommitDrag performs.
+        var title = ParseInstanceKey(instanceKey) is { } p ? FindEvent(p.EventId)?.Title ?? string.Empty : string.Empty;
+        var isResize = mode is not null && mode.StartsWith("resize", StringComparison.OrdinalIgnoreCase);
+        Announce(L[isResize ? "Scheduler.Announce.ResizeRejected" : "Scheduler.Announce.MoveRejected", title]);
+    }
+
     private string? _announcement;
+    private int _announcementEpoch;
 
     private void Announce(string message)
     {
+        // See SchedulerMonthView.Announce — the epoch drives @key so a repeated
+        // identical message still mutates the DOM.
+        _announcementEpoch++;
         _announcement = message;
         StateHasChanged();
     }

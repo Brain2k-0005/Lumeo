@@ -17,7 +17,8 @@
        node before the text lands, so a region created at announce time is
        frequently missed. Same sr-only/polite/atomic shape Carousel.razor
        already uses. *@
-    <span class="sr-only" aria-live="polite" aria-atomic="true" data-testid="scheduler-live-region">@_announcement</span>
+    <span @key="_announcementEpoch" class="sr-only" aria-live="polite" aria-atomic="true"
+          data-testid="scheduler-live-region" data-announce-epoch="@_announcementEpoch">@_announcement</span>
     <div class="@GridColsClass border-b border-border/60 bg-card">
         @if (ShowWeekNumbers)
         {
@@ -672,14 +673,12 @@
         {
             var ctx = new SchedulerScheduleDropContext(newStart, newEnd, SchedulerEventUpdateSource.Move);
             var result = CanDrop(ev, ctx);
-            if (!result.Accepted)
-            {
-                // A rejected drag is the case that MOST needs announcing: the
-                // event silently springs back, which a sighted user reads from
-                // the animation and a screen-reader user gets no signal for.
-                Announce(L["Scheduler.Announce.MoveRejected", ev.Title]);
-                return;
-            }
+            // NOTE: no announce here. gantt-style commit-time re-validation
+            // still runs (a CanDrop that changed since the last poll), but the
+            // ORDINARY rejection never reaches this method at all — the JS
+            // awaits ValidateDrop and returns before calling CommitDrag. See
+            // NotifyDropRejected, which the JS calls on that path instead.
+            if (!result.Accepted) return;
             if (result.Adjustment is { } adjustment)
             {
                 newStart = adjustment.Start ?? newStart;
@@ -693,8 +692,14 @@
         // been applied — an adjusted drop lands somewhere other than where the
         // pointer was released, so announcing the proposed date would tell the
         // user something that did not happen.
+        //
+        // Gated on OnEventChange (Codex review of this PR, P2): with no handler
+        // the drag is ghost-only — the real chip snaps back and Events is
+        // untouched — so announcing a move would describe something the user
+        // can neither see nor keep.
+        if (!OnEventChange.HasDelegate) return;
         Announce(L["Scheduler.Announce.EventMoved", ev.Title, FormatAnnounceDate(updated.Start)]);
-        if (OnEventChange.HasDelegate) await OnEventChange.InvokeAsync(updated);
+        await OnEventChange.InvokeAsync(updated);
     }
 
     // ── Live-region announcements (ReUI parity) ──────────────────────────────
@@ -703,11 +708,41 @@
     // screen-reader signal whatsoever. Mirrors Carousel.razor's existing house
     // pattern (sr-only span, polite, atomic) rather than inventing a second one.
 
-    private string? _announcement;
+    /// <summary>
+    /// [JSInvokable] the drag engine calls when it refuses to commit a drop
+    /// (Codex review of this PR, P1). The ordinary rejection path lives entirely
+    /// in JS — it awaits <see cref="ValidateDrop"/> and returns without ever
+    /// calling <see cref="CommitDrag"/> — so this is the ONLY seam where a
+    /// refused drag can be announced.
+    /// </summary>
+    [JSInvokable]
+    public void NotifyDropRejected(string eventId)
+    {
+        var ev = FindEvent(eventId);
+        Announce(L["Scheduler.Announce.MoveRejected", ev?.Title ?? string.Empty]);
+    }
 
-    /// <summary>Publishes <paramref name="message"/> to this view's polite live region.</summary>
+    private string? _announcement;
+    private int _announcementEpoch;
+
+    /// <summary>
+    /// Publishes <paramref name="message"/> to this view's polite live region.
+    /// <para>
+    /// Re-announcing the SAME text is the common case here — refusing the same
+    /// event twice produces an identical string — and assigning an identical
+    /// value mutates no text node, so observers have nothing to report (Codex
+    /// review of this PR, P2). The region is cleared first and republished on
+    /// the next render, which is a real removal followed by a real insertion.
+    /// </para>
+    /// </summary>
     private void Announce(string message)
     {
+        // The epoch drives @key on the region element. Two StateHasChanged calls
+        // in one synchronous method would NOT work — Blazor coalesces them into
+        // a single render, so clearing and re-setting the text nets out to the
+        // same string and no mutation. A changed @key makes Blazor remove and
+        // re-add the element, which assistive tech observes as new content.
+        _announcementEpoch++;
         _announcement = message;
         StateHasChanged();
     }

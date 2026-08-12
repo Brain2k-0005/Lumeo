@@ -50,7 +50,8 @@ public class SchedulerLiveAnnouncementTests : IAsyncLifetime
     {
         var cut = _ctx.Render<L.SchedulerMonthView>(p => p
             .Add(c => c.AnchorDate, new DateTime(2026, 3, 15))
-            .Add(c => c.Events, new[] { Standup }));
+            .Add(c => c.Events, new[] { Standup })
+            .Add(c => c.OnEventChange, (L.SchedulerEvent _) => { }));
 
         await cut.InvokeAsync(() => cut.Instance.CommitDrag("e1", "2026-03-12"));
 
@@ -62,23 +63,76 @@ public class SchedulerLiveAnnouncementTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task A_Rejected_Month_Move_Is_Announced_Rather_Than_Failing_Silently()
+    public async Task A_Rejected_Month_Move_Is_Announced_Through_The_Path_The_Drag_Engine_Actually_Takes()
     {
+        // Regression (Codex review of this PR, P1): the first version announced
+        // from CommitDrag, which an ordinary rejection NEVER reaches — the JS
+        // awaits ValidateDrop and returns without calling it. The original test
+        // called CommitDrag directly and so drove a path the real engine does
+        // not take for rejections, which is exactly why it passed while the
+        // feature did not work. This drives NotifyDropRejected, the seam the
+        // engine actually calls.
         var cut = _ctx.Render<L.SchedulerMonthView>(p => p
             .Add(c => c.AnchorDate, new DateTime(2026, 3, 15))
-            .Add(c => c.Events, new[] { Standup })
-            .Add(c => c.CanDrop, (L.SchedulerEvent _, L.SchedulerScheduleDropContext _)
-                => L.SchedulerDropResult.Reject));
+            .Add(c => c.Events, new[] { Standup }));
 
-        await cut.InvokeAsync(() => cut.Instance.CommitDrag("e1", "2026-03-12"));
+        await cut.InvokeAsync(() => cut.Instance.NotifyDropRejected("e1"));
 
         var text = cut.Find("[data-testid='scheduler-live-region']").TextContent;
         Assert.Contains("Standup", text);
-        // Predicted-wrong result before the fix: empty — the drag was rejected
-        // and nothing was said.
-        Assert.NotEqual(string.Empty, text.Trim());
-        // And it must NOT claim a successful move.
         Assert.DoesNotContain(new DateTime(2026, 3, 12).ToString("D"), text);
+    }
+
+    [Fact]
+    public async Task A_Rejected_TimeGrid_Resize_Is_Not_Announced_As_A_Failed_Move()
+    {
+        var cut = _ctx.Render<L.SchedulerTimeGridView>(p => p
+            .Add(c => c.AnchorDate, new DateTime(2026, 3, 10))
+            .Add(c => c.Events, new[] { Standup }));
+
+        await cut.InvokeAsync(() => cut.Instance.NotifyDropRejected("e1|2026-03-10T09:00:00", "resize-end"));
+        var resizeText = cut.Find("[data-testid='scheduler-live-region']").TextContent;
+
+        await cut.InvokeAsync(() => cut.Instance.NotifyDropRejected("e1|2026-03-10T09:00:00", "move"));
+        var moveText = cut.Find("[data-testid='scheduler-live-region']").TextContent;
+
+        // Predicted-wrong result before the fix: identical strings, because the
+        // one branch handled Move, ResizeStart and ResizeEnd alike.
+        Assert.NotEqual(resizeText, moveText);
+    }
+
+    [Fact]
+    public async Task Repeating_The_Same_Outcome_Still_Mutates_The_Live_Region()
+    {
+        // Assigning the identical string mutates no text node, so observers
+        // have nothing to announce (Codex review of this PR, P2). The region is
+        // @key'd on an epoch, so a repeat replaces the element.
+        var cut = _ctx.Render<L.SchedulerMonthView>(p => p
+            .Add(c => c.AnchorDate, new DateTime(2026, 3, 15))
+            .Add(c => c.Events, new[] { Standup }));
+
+        await cut.InvokeAsync(() => cut.Instance.NotifyDropRejected("e1"));
+        var first = cut.Find("[data-testid='scheduler-live-region']").GetAttribute("data-announce-epoch");
+
+        await cut.InvokeAsync(() => cut.Instance.NotifyDropRejected("e1"));
+        var second = cut.Find("[data-testid='scheduler-live-region']").GetAttribute("data-announce-epoch");
+
+        Assert.NotEqual(first, second);
+    }
+
+    [Fact]
+    public async Task A_Move_Is_Not_Announced_When_There_Is_No_OnEventChange_Handler()
+    {
+        // Without a handler the drag is ghost-only: the chip snaps back and
+        // Events is untouched, so announcing a move would describe something
+        // the user can neither see nor keep (Codex review of this PR, P2).
+        var cut = _ctx.Render<L.SchedulerMonthView>(p => p
+            .Add(c => c.AnchorDate, new DateTime(2026, 3, 15))
+            .Add(c => c.Events, new[] { Standup }));
+
+        await cut.InvokeAsync(() => cut.Instance.CommitDrag("e1", "2026-03-12"));
+
+        Assert.Equal(string.Empty, cut.Find("[data-testid='scheduler-live-region']").TextContent.Trim());
     }
 
     [Fact]
@@ -91,6 +145,7 @@ public class SchedulerLiveAnnouncementTests : IAsyncLifetime
         var cut = _ctx.Render<L.SchedulerMonthView>(p => p
             .Add(c => c.AnchorDate, new DateTime(2026, 3, 15))
             .Add(c => c.Events, new[] { Standup })
+            .Add(c => c.OnEventChange, (L.SchedulerEvent _) => { })
             .Add(c => c.CanDrop, (L.SchedulerEvent _, L.SchedulerScheduleDropContext _)
                 => L.SchedulerDropResult.AcceptWith(new L.SchedulerDropAdjustment(forced, forced.AddMinutes(30)))));
 
