@@ -81,6 +81,7 @@ public static class SubcategoryInferrer
         ["TreeView"] = "Lists & Trees",
         ["Scheduler"] = "Lists & Trees",
         ["Gantt"] = "Lists & Trees",
+        ["GanttChart"] = "Lists & Trees",
 
         ["Chart"] = "Charts",
 

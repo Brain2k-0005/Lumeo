@@ -46,6 +46,58 @@ export const ganttV3 = {
         requestAnimationFrame(() => tryScroll(0));
     },
 
+    // Wheel-zoom's own recenter (GanttTimeline.ScrollTargetOffsetOverride) —
+    // the SAME retry-until-measurable shape as centerOn above, but places
+    // targetX at an ARBITRARY viewport offset (offsetPx, pixels from el's own
+    // left edge) instead of centerOn's hardcoded w/2. A separate function
+    // (not a centerOn(el, targetX, offsetPx = w/2) overload) so centerOn's
+    // own existing behavior/E2E assertions are untouched by construction —
+    // no shared code path for a new caller to accidentally perturb.
+    scrollToOffset(el, targetX, offsetPx) {
+        if (!el) return;
+        const tryScroll = (attempt) => {
+            const w = el.clientWidth;
+            if (w > 50) {
+                const logicalTarget = Math.max(0, targetX - offsetPx);
+                el.scrollLeft = toNativeScrollLeft(el, logicalTarget);
+                el.setAttribute('data-gantt-v3-initial-scroll', 'done');
+            } else if (attempt < 30) {
+                requestAnimationFrame(() => tryScroll(attempt + 1));
+            }
+        };
+        requestAnimationFrame(() => tryScroll(0));
+    },
+
+    // Roving-tabindex focus target (arrow-key navigation's own DOM-side
+    // half — see GanttTimeline.MoveBarFocusAsync's own remarks). Scoped
+    // queries by [data-task-id] within containerEl, mirroring every other
+    // bar-scoped lookup in this file (registerDrag's own
+    // e.target.closest('[data-task-id]'), registerBarContextMenu) rather
+    // than a global document.getElementById — a bar's own _barId
+    // (GanttBar.razor) is a per-COMPONENT-INSTANCE random guid, not
+    // deterministic from a task id, so data-task-id (already rendered on
+    // every bar's wrapper, deterministic and stable) is the only reliable
+    // handle GanttTimeline has to "the bar for task X" from outside GanttBar
+    // itself. CSS.escape guards a task id containing quotes/brackets/etc.
+    // from breaking the attribute selector. The actual tabindex="0" element
+    // is a DESCENDANT of the [data-task-id] wrapper (GanttBar's own inner
+    // content div, not the wrapper itself — see GanttBar.razor's
+    // InnerAttributes/WrapperAttributes split), so this focuses the first
+    // [tabindex] descendant, falling back to the wrapper itself if somehow
+    // absent. A plain element.focus() call auto-scrolls an in-DOM-but-
+    // visually-clipped target into view natively — see
+    // GanttTimeline.MoveBarFocusAsync's own remarks for why that's enough
+    // to reach every row inside Virtualize's own overscan buffer without
+    // this needing any scroll-into-view logic of its own.
+    focusBar(containerEl, taskId) {
+        if (!containerEl || typeof taskId !== 'string') return;
+        const selector = `[data-task-id="${CSS.escape(taskId)}"]`;
+        const barEl = containerEl.querySelector(selector);
+        if (!barEl) return;
+        const focusable = barEl.querySelector('[tabindex]') || barEl;
+        focusable.focus();
+    },
+
     // Browser-local "today" as yyyy-MM-dd (Codex round 2, P2 #9): v2 derives
     // "today" via the BROWSER's `new Date()` (gantt-v2.js:326-327); Gantt3/
     // GanttTimeline previously used C#'s DateTime.Today, which on Blazor Server
@@ -128,6 +180,9 @@ export const ganttV3 = {
 
     registerBarContextMenu,
     unregisterBarContextMenu,
+
+    registerWheelZoom,
+    unregisterWheelZoom,
 
     hasActiveDrag,
 };
@@ -1793,6 +1848,94 @@ function unregisterBarContextMenu(el) {
     if (!reg) return;
     el.removeEventListener('contextmenu', reg.onContextMenu);
     barContextMenuRegistrations.delete(el);
+}
+
+// ── Wheel zoom (Ctrl/Cmd + wheel over the timeline — REUI parity,
+// GanttTimeline.WheelZoom) ──────────────────────────────────────────────────
+//
+// A SIXTH, separate registration channel (alongside registerDrag/
+// registerSplitterDrag/registerRowReorderDrag/registerBarContextMenu),
+// targeting EffectiveScrollHost — the SAME element centerOn/scrollToOffset
+// already scroll (see GanttTimeline.CommitWheelZoom's own remarks for why
+// THIS element, not the row-canvas registerDrag itself delegates pointer
+// events on: offsetPx below needs el's own CLIPPED viewport rect, which the
+// always-full-width row-canvas element can't provide).
+//
+// The listener is unconditional on every native 'wheel' event over that
+// element ({ passive: false } — required to ever call preventDefault at
+// all), but does NOTHING for a bare wheel: no ctrl/meta key means an
+// immediate return with no side effect, no preventDefault, no .NET call —
+// the page/pane scrolls exactly as if this listener didn't exist. That
+// early, unconditional check is the entire mechanism behind "a bare wheel
+// keeps scrolling the page."
+//
+// Whether a Ctrl/Cmd+wheel actually zooms (vs. being left alone for the
+// browser's own native page-zoom) is decided ENTIRELY synchronously, here,
+// from the OPTIONS bag .NET last pushed (levels/currentMode) — no .NET round
+// trip precedes that decision, so JS can preventDefault (or not) in the SAME
+// tick the event fires. That is what makes "at the zoom limits the gesture
+// returns to the browser" possible at all: an async decision could not do
+// this — by the time any Promise resolved, the browser would already have
+// run (or skipped) its own default action for the wheel event.
+const wheelZoomRegistrations = new Map(); // el -> { dotNetRef, options, onWheel }
+
+function registerWheelZoom(el, dotNetRef, options) {
+    if (!el) return;
+    const existing = wheelZoomRegistrations.get(el);
+    if (existing) {
+        // Idempotent re-registration (a ViewMode/ZoomLevels change) — same
+        // "swap dotNetRef/options in place" contract every other registerX
+        // in this file already has.
+        existing.dotNetRef = dotNetRef;
+        existing.options = options;
+        return;
+    }
+
+    const reg = { dotNetRef, options, onWheel: null };
+
+    reg.onWheel = (e) => {
+        if (!(e.ctrlKey || e.metaKey)) return; // bare wheel — never touched, see this block's own remarks
+
+        const opts = reg.options;
+        const levels = opts && Array.isArray(opts.levels) ? opts.levels : [];
+        const currentIndex = levels.indexOf(opts && opts.currentMode);
+        if (currentIndex < 0) return; // current mode isn't steppable at all — defer to the browser, same as an exhausted limit below
+
+        // Standard wheel convention: deltaY < 0 ("scroll up" / pinch-out)
+        // zooms IN. Levels are ordered coarsest-last (GanttZoomLevelModel's
+        // own Day..Year order — the same convention GanttZoomControl's own
+        // +/- stepper documents), so zooming IN steps TOWARD index 0.
+        const zoomingIn = e.deltaY < 0;
+        const nextIndex = zoomingIn ? currentIndex - 1 : currentIndex + 1;
+        if (nextIndex < 0 || nextIndex >= levels.length) return; // at a limit — let the browser's own ctrl/cmd+wheel page-zoom take over instead of swallowing the gesture
+
+        e.preventDefault();
+
+        // contentX/offsetPx — see GanttTimeline.CommitWheelZoom's own remarks
+        // for exactly what each feeds into on the .NET side. fromNativeScrollLeft
+        // is this file's own existing RTL-normalization helper (already used
+        // by registerHeaderScrollSync/getScrollCenterX for the identical
+        // "live native scrollLeft -> logical offset" conversion).
+        const rect = el.getBoundingClientRect();
+        const offsetPx = e.clientX - rect.left;
+        const logical = fromNativeScrollLeft(el, el.scrollLeft);
+        const contentX = logical + offsetPx;
+
+        if (reg.dotNetRef) {
+            reg.dotNetRef.invokeMethodAsync('CommitWheelZoom', levels[nextIndex], contentX, offsetPx).catch(() => {});
+        }
+    };
+
+    el.addEventListener('wheel', reg.onWheel, { passive: false });
+    wheelZoomRegistrations.set(el, reg);
+}
+
+function unregisterWheelZoom(el) {
+    if (!el) return;
+    const reg = wheelZoomRegistrations.get(el);
+    if (!reg) return;
+    el.removeEventListener('wheel', reg.onWheel);
+    wheelZoomRegistrations.delete(el);
 }
 
 export default ganttV3;

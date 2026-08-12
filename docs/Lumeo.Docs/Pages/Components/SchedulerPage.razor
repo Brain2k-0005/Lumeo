@@ -3,29 +3,39 @@
 <PageTitle>Scheduler — Lumeo</PageTitle>
 
 <PageHeader Title="Scheduler"
-            Description="A calendar & event scheduler with month, week, day, and list views. Drag events to reschedule, resize to change duration, or drag across the grid to create new ones." />
+            Description="A calendar & event scheduler with month, week, day, and agenda views. Drag events to reschedule, resize to change duration, or drag across the grid to create new ones." />
 
 <InstallUsage Component="Scheduler" Package="Lumeo.Scheduler" />
 
 <Alert Variant="Alert.AlertVariant.Warning" ShowIcon="true" Class="mt-6">
     <ChildContent>
-        <strong>In active development.</strong> Theme integration just landed — please refresh and report any
-        residual visual issues. FullCalendar Premium features (resource lane views, vertical resource view,
-        true timeline view) are NOT wrapped — see the licensing note below. This release adds simple
-        recurrence, resource color-coding, now-indicator, and slot-time controls.
+        <strong>Two rendering engines, one component family.</strong> <Lumeo.Code>Scheduler</Lumeo.Code> wraps
+        FullCalendar Standard (MIT) and is the default today. Alongside it, a first-party Blazor rendering engine
+        (<Lumeo.Code>SchedulerMonthView</Lumeo.Code> / <Lumeo.Code>SchedulerTimeGridView</Lumeo.Code> /
+        <Lumeo.Code>SchedulerAgendaView</Lumeo.Code>) ships no third-party JS calendar library at all — that is
+        where active development is focused, and it is demoed first below. See
+        <a href="#choosing-an-engine" class="underline hover:text-foreground">Choosing an engine</a> for the
+        trade-offs.
     </ChildContent>
 </Alert>
 
 <Alert Variant="Alert.AlertVariant.Info" ShowIcon="true" Class="mt-3">
     <ChildContent>
         <strong>Dependencies &amp; licensing — MIT for everything Lumeo ships.</strong>
-        Powered by <a href="https://fullcalendar.io/" class="underline hover:text-foreground">FullCalendar Standard</a>
-        (MIT), loaded once on demand. The month / week / day / list views Lumeo wraps are all in the free MIT bundle.
+        <Lumeo.Code>Scheduler</Lumeo.Code> is powered by
+        <a href="https://fullcalendar.io/" class="underline hover:text-foreground">FullCalendar Standard</a>
+        (MIT), fetched once on demand from a CDN. The month / week / day / list views Lumeo wraps are all in the
+        free MIT bundle — no FullCalendar Premium code is bundled or required.
         <br /><br />
         <strong>Important caveat:</strong> FullCalendar's <em>Premium</em> features (Resource Timeline, Vertical
         Resource View, Resource Day Grid, and adapter plugins for Vue/React if you embed those) require a paid
         FullCalendar Premium license direct from FullCalendar. Lumeo does NOT wrap these and does NOT bundle
         any Premium code — but if you extend the Scheduler in your own app to call those plugins, that's on you.
+        <br /><br />
+        <strong>Runtime note:</strong> because the FullCalendar bundle loads from a CDN at runtime, the
+        <Lumeo.Code>Scheduler</Lumeo.Code> demos below need outbound network access to render — if you're viewing
+        this offline or from an environment that blocks the CDN, they'll appear empty while the first-party engine
+        demos above them (no CDN dependency) still work.
     </ChildContent>
 </Alert>
 
@@ -33,22 +43,192 @@
     <Heading Id="when-to-use" Level="2" Class="scroll-mt-20">When to Use</Heading>
     <ul class="list-disc list-inside space-y-1 text-muted-foreground text-sm">
         <li>Displaying appointments, meetings, shifts, or any time-based event grid.</li>
-        <li>Giving users direct manipulation controls — drag to reschedule, drag-to-select to create.</li>
-        <li>Switching between month overviews and focused day/week planning within the same view.</li>
+        <li>Giving users direct manipulation controls — drag to reschedule, drag-to-select to create, resize to change duration.</li>
+        <li>Switching between month overviews, focused day/week planning, and a flat agenda list within the same data.</li>
+        <li>Showing overlapping events (double-booked rooms, parallel tracks), multi-day spans, and recurring series side by side.</li>
     </ul>
 </div>
 
-<Stack Gap="8" Class="mt-8">
-    <ComponentDemo Title="Month View (basic)" Code="@_monthCode">
+<div class="mt-10 space-y-3">
+    <Heading Id="choosing-an-engine" Level="2" Class="scroll-mt-20">Choosing an engine</Heading>
+    <Lumeo.Text Size="sm" Color="muted">
+        Both engines read the same <Lumeo.Code>SchedulerEvent</Lumeo.Code> record and the same recurrence model, so
+        switching between them later is a component swap, not a data-model migration.
+    </Lumeo.Text>
+    <div class="overflow-x-auto">
+        <Table>
+            <TableHeader>
+                <TableRow>
+                    <TableHead Class="w-[260px]">Capability</TableHead>
+                    <TableHead Class="w-[220px]">Scheduler (FullCalendar)</TableHead>
+                    <TableHead>First-party engine (preview)</TableHead>
+                </TableRow>
+            </TableHeader>
+            <TableBody>
+                <TableRow><TableCell>Month / week / day / agenda views</TableCell><TableCell>Yes</TableCell><TableCell>Yes</TableCell></TableRow>
+                <TableRow><TableCell>Drag to reschedule</TableCell><TableCell>Direct-manipulation drag</TableCell><TableCell>Ghost-outline preview, commits on drop</TableCell></TableRow>
+                <TableRow><TableCell>Drop validation</TableCell><TableCell>Boolean accept/reject</TableCell><TableCell>Three-way: reject / accept / accept-with-adjustment</TableCell></TableRow>
+                <TableRow><TableCell>Overflow ("+N more")</TableCell><TableCell>Built-in popover</TableCell><TableCell>Built-in popover, lists hidden instances</TableCell></TableRow>
+                <TableRow><TableCell>Business-hours shading</TableCell><TableCell>Yes</TableCell><TableCell>Yes</TableCell></TableRow>
+                <TableRow><TableCell>Structured recurrence</TableCell><TableCell>Simple <Lumeo.Code>DaysOfWeek</Lumeo.Code> model</TableCell><TableCell><Lumeo.Code>DaysOfWeek</Lumeo.Code> or structured <Lumeo.Code>SchedulerRecurrenceRule</Lumeo.Code></TableCell></TableRow>
+                <TableRow><TableCell>Resource color-coding / legend</TableCell><TableCell>Yes</TableCell><TableCell>Not yet</TableCell></TableRow>
+                <TableRow><TableCell>N-day / custom views</TableCell><TableCell>Via FullCalendar view names</TableCell><TableCell>Not a public view yet</TableCell></TableRow>
+                <TableRow><TableCell>IANA time zones</TableCell><TableCell>Yes</TableCell><TableCell>Browser-local time only</TableCell></TableRow>
+                <TableRow><TableCell>ARIA grid + 2-D keyboard navigation</TableCell><TableCell>FullCalendar's own</TableCell><TableCell>First-party <Lumeo.Code>role="grid"</Lumeo.Code> + arrow-key roving tabindex</TableCell></TableRow>
+                <TableRow><TableCell>i18n</TableCell><TableCell>FullCalendar locale packs</TableCell><TableCell>English only today</TableCell></TableRow>
+                <TableRow><TableCell>Third-party JS on the page</TableCell><TableCell>FullCalendar (CDN, MIT)</TableCell><TableCell>None</TableCell></TableRow>
+                <TableRow><TableCell>Multi-calendar split / overlay panes</TableCell><TableCell colspan="2">Not implemented by either engine — see note below.</TableCell></TableRow>
+            </TableBody>
+        </Table>
+    </div>
+    <Alert Variant="Alert.AlertVariant.Info" ShowIcon="true">
+        <ChildContent>
+            <strong>Split / overlay panes (Outlook-style multi-calendar view)</strong> — showing several calendars
+            either overlaid in one column or side by side as separate panes, with per-calendar tabs to merge/split
+            them — is a real interaction pattern worth having eventually, but neither engine implements it today.
+            <Lumeo.Code>Scheduler</Lumeo.Code>'s <Lumeo.Code>Resources</Lumeo.Code> parameter only color-codes
+            events by resource; it does not lay out separate resource/calendar lanes (that's the FullCalendar
+            Premium Resource Timeline, which Lumeo does not wrap). Tracked as a roadmap item, not a current gap fix.
+        </ChildContent>
+    </Alert>
+</div>
+
+<div class="mt-16 space-y-3">
+    <Heading Id="first-party-engine" Level="2" Class="scroll-mt-20">First-party view engine</Heading>
+    <Lumeo.Text Size="sm" Color="muted">
+        A native Blazor rendering engine for Month, Week/Day, and Agenda views, built without FullCalendar —
+        no third-party JS calendar library on the page for these views. It ships alongside
+        <Lumeo.Code>Scheduler</Lumeo.Code> below, which remains the default and is unaffected.
+    </Lumeo.Text>
+    <Alert Variant="Alert.AlertVariant.Warning" ShowIcon="true">
+        <ChildContent>
+            <strong>Preview — not the default yet.</strong> <Lumeo.Code>SchedulerMonthView</Lumeo.Code>,
+            <Lumeo.Code>SchedulerTimeGridView</Lumeo.Code>, and <Lumeo.Code>SchedulerAgendaView</Lumeo.Code> are
+            separate, independently-usable components, not drop-in replacements for <Lumeo.Code>Scheduler</Lumeo.Code>
+            — there is no shared <Lumeo.Code>Scheduler</Lumeo.Code> switch to opt into this engine yet. See the
+            comparison table above for the current gap list (no resource lanes, no time zones, no N-day view,
+            English-only i18n).
+        </ChildContent>
+    </Alert>
+</div>
+
+<Stack Gap="8" Class="mt-6">
+    <ComponentDemo Title="Month view (first-party engine)" Code="@_fpMonthCode">
+        <Stack Gap="3">
+            <Lumeo.Text Size="sm" Color="muted">
+                Realistic month with overlapping events, a multi-day span, and a weekday-recurring standup.
+                Today's cell has 5 events — more than the 3-lane budget — so it overflows into a
+                "<Lumeo.Code>+N more</Lumeo.Code>" popover. Drag an event to move it (ghost preview until you
+                release); drag across empty days to create one.
+            </Lumeo.Text>
+            <SchedulerMonthView Events="_fpMonthEvents"
+                                 AnchorDate="_fpAnchor"
+                                 BusinessHours="true"
+                                 OnDateSelect="OnFpMonthDateSelect"
+                                 OnEventChange="OnFpMonthEventChange" />
+            <div class="rounded-md border border-border/60 bg-muted/40 p-3 text-sm">
+                <div class="font-medium mb-1">Last interaction</div>
+                @if (_fpMonthLog is null)
+                {
+                    <span class="text-muted-foreground">Drag an event, or drag-select empty days, to see it here.</span>
+                }
+                else
+                {
+                    <span class="font-mono text-xs">@_fpMonthLog</span>
+                }
+            </div>
+        </Stack>
+    </ComponentDemo>
+
+    <ComponentDemo Title="Week view (first-party engine)" Code="@_fpWeekCode">
+        <Stack Gap="3">
+            <Lumeo.Text Size="sm" Color="muted">
+                Same event set, time-grid layout. Overlapping events are packed side by side, off-hours are
+                shaded, and the red line tracks the current time. Drag moves an event across days/times as a
+                ghost outline; drag the bottom edge to resize.
+            </Lumeo.Text>
+            <SchedulerTimeGridView Events="_fpWeekEvents"
+                                    AnchorDate="_fpAnchor"
+                                    Days="7"
+                                    BusinessHours="true"
+                                    NowIndicator="true"
+                                    OnEventChange="OnFpWeekEventChange" />
+            <div class="rounded-md border border-border/60 bg-muted/40 p-3 text-sm">
+                <div class="font-medium mb-1">Last change</div>
+                @if (_fpWeekLog is null)
+                {
+                    <span class="text-muted-foreground">Drag or resize an event to see it here.</span>
+                }
+                else
+                {
+                    <span class="font-mono text-xs">@_fpWeekLog</span>
+                }
+            </div>
+        </Stack>
+    </ComponentDemo>
+
+    <ComponentDemo Title="Day view (first-party engine)">
+        <SchedulerTimeGridView Events="_fpWeekEvents" AnchorDate="_fpAnchor" Days="1" BusinessHours="true" NowIndicator="true" />
+    </ComponentDemo>
+
+    <ComponentDemo Title="Agenda view (first-party engine)" Code="@_fpAgendaCode">
+        <Stack Gap="3">
+            <Lumeo.Text Size="sm" Color="muted">
+                Flat chronological list across the next 30 days — the same events as the calendar views above,
+                including recurring occurrences and multi-day spans, grouped by day.
+            </Lumeo.Text>
+            <SchedulerAgendaView Events="_fpAgendaEvents" AnchorDate="_fpAnchor" DaysToShow="30" />
+        </Stack>
+    </ComponentDemo>
+
+    <ComponentDemo Title="Drop validation (CanDrop)" Code="@_fpCanDropCode">
+        <Stack Gap="3">
+            <Lumeo.Text Size="sm" Color="muted">
+                <Lumeo.Code>CanDrop</Lumeo.Code> is a three-way gate evaluated before any drop commits:
+                <Lumeo.Code>SchedulerDropResult.Reject</Lumeo.Code>, <Lumeo.Code>.Accept</Lumeo.Code>, or
+                <Lumeo.Code>.AcceptWith(adjustment)</Lumeo.Code> to snap the drop to a different time than the
+                user dragged to. Nothing mutates until <Lumeo.Code>CanDrop</Lumeo.Code> returns — dragging only
+                ever moves a ghost outline. Try dragging the event onto the <strong>15th</strong> (rejected) or
+                the <strong>22nd</strong> (accepted, but snapped forward one day) of this month.
+            </Lumeo.Text>
+            <SchedulerMonthView Events="_fpDropEvents"
+                                 AnchorDate="_fpAnchor"
+                                 CanDrop="ValidateDrop"
+                                 OnEventChange="OnFpDropEventChange" />
+            <div class="rounded-md border border-border/60 bg-muted/40 p-3 text-sm">
+                <div class="font-medium mb-1">Last CanDrop check</div>
+                @if (_fpDropLog is null)
+                {
+                    <span class="text-muted-foreground">Drag the event onto the 15th or the 22nd.</span>
+                }
+                else
+                {
+                    <span class="font-mono text-xs">@_fpDropLog</span>
+                }
+            </div>
+        </Stack>
+    </ComponentDemo>
+</Stack>
+
+<div class="mt-16 space-y-3">
+    <Heading Id="fullcalendar-engine" Level="2" Class="scroll-mt-20">Scheduler (FullCalendar-backed, default)</Heading>
+    <Lumeo.Text Size="sm" Color="muted">
+        The full-featured, currently-default engine — recurrence, resource color-coding, a now-indicator, and
+        slot-time controls, all on top of FullCalendar Standard (MIT). Requires the CDN fetch described above.
+    </Lumeo.Text>
+</div>
+
+<Stack Gap="8" Class="mt-6">
+    <ComponentDemo Title="Month View" Code="@_monthCode">
         <Scheduler Events="_monthEvents" InitialView="SchedulerView.Month" Height="620px" />
     </ComponentDemo>
 
-    <ComponentDemo Title="Week View (timed + all-day)" Code="@_weekCode">
-        <Scheduler Events="_weekEvents" InitialView="SchedulerView.Week" Height="620px" BusinessHours="true" />
+    <ComponentDemo Title="Week View (timed + all-day + overlaps)" Code="@_weekCode">
+        <Scheduler Events="_weekEvents" InitialView="SchedulerView.Week" Height="620px" BusinessHours="true" NowIndicator="true" />
     </ComponentDemo>
 
     <ComponentDemo Title="Day View">
-        <Scheduler Events="_weekEvents" InitialView="SchedulerView.Day" Height="620px" />
+        <Scheduler Events="_weekEvents" InitialView="SchedulerView.Day" Height="620px" NowIndicator="true" />
     </ComponentDemo>
 
     <ComponentDemo Title="List View (agenda)">
@@ -164,9 +344,10 @@
                 <TableRow><TableCell Class="font-mono text-xs">Color</TableCell><TableCell Class="font-mono text-xs">string?</TableCell><TableCell>CSS color or variable reference like <Lumeo.Code>"var(--color-primary)"</Lumeo.Code>.</TableCell></TableRow>
                 <TableRow><TableCell Class="font-mono text-xs">Url</TableCell><TableCell Class="font-mono text-xs">string?</TableCell><TableCell>Optional link opened on click instead of firing <Lumeo.Code>OnEventClick</Lumeo.Code>.</TableCell></TableRow>
                 <TableRow><TableCell Class="font-mono text-xs">ExtendedProps</TableCell><TableCell Class="font-mono text-xs">Dictionary&lt;string, object&gt;?</TableCell><TableCell>Arbitrary app-level metadata round-tripped through the JS layer.</TableCell></TableRow>
-                <TableRow><TableCell Class="font-mono text-xs">DaysOfWeek</TableCell><TableCell Class="font-mono text-xs">IReadOnlyList&lt;DayOfWeek&gt;?</TableCell><TableCell>Recurring: days of the week on which the event repeats. Uses FullCalendar's free simple recurrence model. When set, Start/End provide the time-of-day only.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">DaysOfWeek</TableCell><TableCell Class="font-mono text-xs">IReadOnlyList&lt;DayOfWeek&gt;?</TableCell><TableCell>Recurring: days of the week on which the event repeats (both engines). When set, Start/End provide the time-of-day only.</TableCell></TableRow>
                 <TableRow><TableCell Class="font-mono text-xs">RecurrenceEnd</TableCell><TableCell Class="font-mono text-xs">DateTime?</TableCell><TableCell>Recurring: last date on which the event appears. Only meaningful when <Lumeo.Code>DaysOfWeek</Lumeo.Code> is set.</TableCell></TableRow>
-                <TableRow><TableCell Class="font-mono text-xs">ExceptionDates</TableCell><TableCell Class="font-mono text-xs">IReadOnlyList&lt;DateTime&gt;?</TableCell><TableCell>Recurring: specific dates to skip (one-off exclusions). Only meaningful when <Lumeo.Code>DaysOfWeek</Lumeo.Code> is set.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">ExceptionDates</TableCell><TableCell Class="font-mono text-xs">IReadOnlyList&lt;DateTime&gt;?</TableCell><TableCell>Recurring: specific dates to skip (one-off exclusions).</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">Recurrence</TableCell><TableCell Class="font-mono text-xs">SchedulerRecurrenceRule?</TableCell><TableCell>Structured RRULE-subset recurrence (FREQ, INTERVAL, COUNT, UNTIL, BYDAY). Takes precedence over <Lumeo.Code>DaysOfWeek</Lumeo.Code>/<Lumeo.Code>RecurrenceEnd</Lumeo.Code> when set; supported by both engines.</TableCell></TableRow>
                 <TableRow><TableCell Class="font-mono text-xs">ResourceId</TableCell><TableCell Class="font-mono text-xs">string?</TableCell><TableCell>Matches this event to a <Lumeo.Code>SchedulerResource</Lumeo.Code> for color-coding when the Scheduler has a <Lumeo.Code>Resources</Lumeo.Code> list.</TableCell></TableRow>
                 <TableRow><TableCell Class="font-mono text-xs">ClassNames</TableCell><TableCell Class="font-mono text-xs">string?</TableCell><TableCell>Extra CSS class names applied directly to this event's chip (space-separated).</TableCell></TableRow>
             </TableBody>
@@ -226,6 +407,66 @@
             </TableBody>
         </Table>
     </div>
+
+    <Heading Id="first-party-views" Level="3" Class="mt-8 scroll-mt-20">First-party view components</Heading>
+    <Lumeo.Text Size="sm" Color="muted" Class="mt-2">
+        Not yet a registered public API surface (no dedicated docs registry entry), but usable and independently
+        testable today. Shared parameters across all three: <Lumeo.Code>Events</Lumeo.Code>,
+        <Lumeo.Code>AnchorDate</Lumeo.Code>, <Lumeo.Code>OnEventClick</Lumeo.Code>,
+        <Lumeo.Code>ResolveEventColor</Lumeo.Code>, <Lumeo.Code>Class</Lumeo.Code>, <Lumeo.Code>AdditionalAttributes</Lumeo.Code>.
+    </Lumeo.Text>
+    <div class="overflow-x-auto mt-4">
+        <Table>
+            <TableHeader>
+                <TableRow>
+                    <TableHead Class="w-[200px]">Component</TableHead>
+                    <TableHead Class="w-[220px]">Distinguishing parameters</TableHead>
+                    <TableHead>Description</TableHead>
+                </TableRow>
+            </TableHeader>
+            <TableBody>
+                <TableRow>
+                    <TableCell Class="font-mono text-xs">SchedulerMonthView</TableCell>
+                    <TableCell Class="font-mono text-xs">MaxVisibleLanes, SelectedDate(Changed), CanDrop, Selectable, BusinessHours(Days), Editable, OnDateSelect, OnEventChange</TableCell>
+                    <TableCell>Always-42-cell month grid. Events beyond <Lumeo.Code>MaxVisibleLanes</Lumeo.Code> (default 3) collapse into a "+N more" popover.</TableCell>
+                </TableRow>
+                <TableRow>
+                    <TableCell Class="font-mono text-xs">SchedulerTimeGridView</TableCell>
+                    <TableCell Class="font-mono text-xs">Days, SlotMinTime/MaxTime, NowIndicator, CanDrop, BusinessHours(Start/End/Days), Editable, Selectable, OnDateSelect, OnEventChange</TableCell>
+                    <TableCell>Hourly time grid. <Lumeo.Code>Days="7"</Lumeo.Code> is the week view, <Lumeo.Code>Days="1"</Lumeo.Code> is the day view.</TableCell>
+                </TableRow>
+                <TableRow>
+                    <TableCell Class="font-mono text-xs">SchedulerAgendaView</TableCell>
+                    <TableCell Class="font-mono text-xs">DaysToShow</TableCell>
+                    <TableCell>Flat chronological list, grouped by day, read-only (no drag/resize — it's a list).</TableCell>
+                </TableRow>
+            </TableBody>
+        </Table>
+    </div>
+
+    <Heading Id="scheduler-drop-result" Level="3" Class="mt-8 scroll-mt-20">SchedulerDropResult / CanDrop</Heading>
+    <Lumeo.Text Size="sm" Color="muted" Class="mt-2">
+        <Lumeo.Code>CanDrop</Lumeo.Code> is a plain
+        <Lumeo.Code>Func&lt;SchedulerEvent, SchedulerScheduleDropContext, SchedulerDropResult&gt;</Lumeo.Code>
+        parameter on the first-party views (Scheduler-family, not FullCalendar's own drop validation). It is
+        evaluated before a drag/resize/create commits — nothing mutates the underlying collection until it returns.
+    </Lumeo.Text>
+    <div class="overflow-x-auto mt-4">
+        <Table>
+            <TableHeader>
+                <TableRow>
+                    <TableHead Class="w-[240px]">Member</TableHead>
+                    <TableHead>Description</TableHead>
+                </TableRow>
+            </TableHeader>
+            <TableBody>
+                <TableRow><TableCell Class="font-mono text-xs">SchedulerDropResult.Reject</TableCell><TableCell>Cancels the drop; the event snaps back to its original position.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">SchedulerDropResult.Accept</TableCell><TableCell>Commits the drop exactly as proposed.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">SchedulerDropResult.AcceptWith(adjustment)</TableCell><TableCell>Commits the drop, overriding <Lumeo.Code>Start</Lumeo.Code>/<Lumeo.Code>End</Lumeo.Code>/<Lumeo.Code>AllDay</Lumeo.Code> with a <Lumeo.Code>SchedulerDropAdjustment</Lumeo.Code> (e.g. snapping to a valid slot).</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">SchedulerScheduleDropContext</TableCell><TableCell><Lumeo.Code>ProposedStart</Lumeo.Code>, <Lumeo.Code>ProposedEnd</Lumeo.Code>, <Lumeo.Code>Source</Lumeo.Code> (which gesture — move, resize, or create — produced this proposal).</TableCell></TableRow>
+            </TableBody>
+        </Table>
+    </div>
 </div>
 
 <div class="mt-12">
@@ -237,7 +478,152 @@
 </div>
 
 @code {
-    // ── Month demo ───────────────────────────────────────────────────────
+    private static readonly DateTime Today = DateTime.Today;
+
+    // ── First-party engine: shared realistic dataset ───────────────────────
+    // Overlaps (4 same-time events on "today"), a multi-day all-day span
+    // crossing today, a weekday-recurring standup, a weekly-recurring
+    // review, and events spread across the surrounding weeks so month,
+    // week/day, and the 30-day agenda all have real content.
+    private readonly DateTime _fpAnchor = Today;
+
+    private static List<SchedulerEvent> BuildFirstPartyEvents()
+    {
+        var t = Today;
+        return new List<SchedulerEvent>
+        {
+            new("fp1", "Planning Q4", t.AddDays(-9).AddHours(9), t.AddDays(-9).AddHours(10), Color: "var(--color-chart-2)"),
+            new("fp2", "Design sync", t.AddDays(-6).AddHours(10), t.AddDays(-6).AddHours(11), Color: "var(--color-chart-3)"),
+            new("fp3", "Team offsite", t.AddDays(-1), t.AddDays(1), AllDay: true, Color: "var(--color-accent)"),
+            new("fp4", "Daily stand-up", t.AddHours(9), t.AddHours(9.25),
+                DaysOfWeek: new[] { DayOfWeek.Monday, DayOfWeek.Tuesday, DayOfWeek.Wednesday, DayOfWeek.Thursday, DayOfWeek.Friday },
+                RecurrenceEnd: t.AddMonths(2), Color: "var(--color-chart-1)"),
+            new("fp5", "Kickoff — Design", t.AddHours(10), t.AddHours(10.75), Color: "var(--color-primary)"),
+            new("fp6", "Kickoff — Backend", t.AddHours(10.25), t.AddHours(11), Color: "var(--color-chart-4)"),
+            new("fp7", "Kickoff — Docs", t.AddHours(10.5), t.AddHours(11.25), Color: "var(--color-chart-5)"),
+            new("fp8", "Kickoff — QA", t.AddHours(10.75), t.AddHours(11.5), Color: "var(--color-destructive)"),
+            new("fp9", "Release readiness", t.AddHours(15), t.AddHours(16), Color: "var(--color-chart-2)"),
+            new("fp10", "Design review", t.AddHours(14), t.AddHours(15),
+                DaysOfWeek: new[] { DayOfWeek.Tuesday }, RecurrenceEnd: t.AddMonths(2), Color: "var(--color-chart-3)"),
+            new("fp11", "1:1 sync", t.AddHours(16), t.AddHours(16.5),
+                DaysOfWeek: new[] { DayOfWeek.Thursday }, RecurrenceEnd: t.AddMonths(2), Color: "var(--color-chart-4)"),
+            new("fp12", "Client call", t.AddDays(2).AddHours(11), t.AddDays(2).AddHours(12), Color: "var(--color-primary)"),
+            new("fp13", "Hackathon", t.AddDays(4), t.AddDays(6), AllDay: true, Color: "var(--color-destructive)"),
+            new("fp14", "Sprint review", t.AddDays(7).AddHours(15), t.AddDays(7).AddHours(16), Color: "var(--color-chart-2)"),
+            new("fp15", "Docs sprint", t.AddDays(10), t.AddDays(12), AllDay: true, Color: "var(--color-accent)"),
+            new("fp16", "Beta tag", t.AddDays(15).AddHours(9), t.AddDays(15).AddHours(9.5), Color: "var(--color-chart-5)"),
+        };
+    }
+
+    private List<SchedulerEvent> _fpMonthEvents = BuildFirstPartyEvents();
+    private List<SchedulerEvent> _fpWeekEvents = BuildFirstPartyEvents();
+    private List<SchedulerEvent> _fpAgendaEvents = BuildFirstPartyEvents();
+    private string? _fpMonthLog;
+    private string? _fpWeekLog;
+
+    private Task OnFpMonthDateSelect(SchedulerDateRange range)
+    {
+        var ev = new SchedulerEvent(
+            Id: Guid.NewGuid().ToString("N"),
+            Title: "New event",
+            Start: range.Start,
+            End: range.End,
+            AllDay: range.AllDay,
+            Color: "var(--color-primary)");
+        _fpMonthEvents = _fpMonthEvents.Append(ev).ToList();
+        _fpMonthLog = $"created \"New event\" on {range.Start:MMM d}";
+        return Task.CompletedTask;
+    }
+
+    private Task OnFpMonthEventChange(SchedulerEvent ev)
+    {
+        var idx = _fpMonthEvents.FindIndex(e => e.Id == ev.Id);
+        if (idx >= 0) _fpMonthEvents[idx] = ev;
+        _fpMonthLog = $"{ev.Title} moved to {ev.Start:MMM d}";
+        return Task.CompletedTask;
+    }
+
+    private Task OnFpWeekEventChange(SchedulerEvent ev)
+    {
+        var idx = _fpWeekEvents.FindIndex(e => e.Id == ev.Id);
+        if (idx >= 0) _fpWeekEvents[idx] = ev;
+        _fpWeekLog = $"{ev.Title}: {ev.Start:MMM d HH:mm} → {ev.End:HH:mm}";
+        return Task.CompletedTask;
+    }
+
+    // ── First-party engine: CanDrop three-way validation demo ──────────────
+    private List<SchedulerEvent> _fpDropEvents = BuildDropValidationEvents();
+    private string? _fpDropLog;
+
+    private static List<SchedulerEvent> BuildDropValidationEvents()
+    {
+        var t = Today;
+        return new List<SchedulerEvent>
+        {
+            new("drop1", "Drag onto the 15th or 22nd", t.AddHours(10), t.AddHours(11), Color: "var(--color-primary)"),
+        };
+    }
+
+    private SchedulerDropResult ValidateDrop(SchedulerEvent ev, SchedulerScheduleDropContext ctx)
+    {
+        if (ctx.ProposedStart.Day == 15)
+        {
+            _fpDropLog = $"{ev.Title} -> {ctx.ProposedStart:MMM d} ({ctx.Source}) — rejected, the 15th is blocked";
+            _ = InvokeAsync(StateHasChanged);
+            return SchedulerDropResult.Reject;
+        }
+        if (ctx.ProposedStart.Day == 22)
+        {
+            var snapped = ctx.ProposedStart.AddDays(1);
+            _fpDropLog = $"{ev.Title} -> {ctx.ProposedStart:MMM d} ({ctx.Source}) — accepted, snapped to {snapped:MMM d}";
+            _ = InvokeAsync(StateHasChanged);
+            return SchedulerDropResult.AcceptWith(new SchedulerDropAdjustment(Start: snapped, End: snapped + (ctx.ProposedEnd - ctx.ProposedStart)));
+        }
+        _fpDropLog = $"{ev.Title} -> {ctx.ProposedStart:MMM d} ({ctx.Source}) — accepted as proposed";
+        _ = InvokeAsync(StateHasChanged);
+        return SchedulerDropResult.Accept;
+    }
+
+    private Task OnFpDropEventChange(SchedulerEvent ev)
+    {
+        var idx = _fpDropEvents.FindIndex(e => e.Id == ev.Id);
+        if (idx >= 0) _fpDropEvents[idx] = ev;
+        return Task.CompletedTask;
+    }
+
+    // ── First-party engine: code snippets ───────────────────────────────────
+    private string _fpMonthCode = @"<SchedulerMonthView Events=""_events""
+                     AnchorDate=""_anchor""
+                     BusinessHours=""true""
+                     OnDateSelect=""OnDateSelect""
+                     OnEventChange=""OnEventChange"" />";
+
+    private string _fpWeekCode = @"<SchedulerTimeGridView Events=""_events""
+                        AnchorDate=""_anchor""
+                        Days=""7""
+                        BusinessHours=""true""
+                        NowIndicator=""true""
+                        OnEventChange=""OnEventChange"" />";
+
+    private string _fpAgendaCode = @"<SchedulerAgendaView Events=""_events"" AnchorDate=""_anchor"" DaysToShow=""30"" />";
+
+    private string _fpCanDropCode = @"<SchedulerMonthView Events=""_events"" CanDrop=""ValidateDrop"" OnEventChange=""OnEventChange"" />
+
+@code {
+    private SchedulerDropResult ValidateDrop(SchedulerEvent ev, SchedulerScheduleDropContext ctx)
+    {
+        if (ctx.ProposedStart.Day == 15) return SchedulerDropResult.Reject;
+        if (ctx.ProposedStart.Day == 22)
+        {
+            var snapped = ctx.ProposedStart.AddDays(1);
+            return SchedulerDropResult.AcceptWith(new SchedulerDropAdjustment(
+                Start: snapped, End: snapped + (ctx.ProposedEnd - ctx.ProposedStart)));
+        }
+        return SchedulerDropResult.Accept;
+    }
+}";
+
+    // ── FullCalendar engine: Month demo ─────────────────────────────────────
     private List<SchedulerEvent> _monthEvents = BuildMonthEvents();
 
     private static List<SchedulerEvent> BuildMonthEvents()
@@ -255,11 +641,13 @@
             new("m7", "Engineering demo", first.AddDays(12).AddHours(13), first.AddDays(12).AddHours(14), Color: "var(--color-primary)"),
             new("m8", "Offsite", first.AddDays(16), first.AddDays(18), AllDay: true, Color: "var(--color-accent)"),
             new("m9", "Hackathon", first.AddDays(22).AddHours(9), first.AddDays(22).AddHours(17), Color: "var(--color-destructive)"),
-            new("m10", "Retro", first.AddDays(25).AddHours(16), first.AddDays(25).AddHours(17), Color: "var(--color-primary)")
+            new("m10", "Retro", first.AddDays(25).AddHours(16), first.AddDays(25).AddHours(17), Color: "var(--color-primary)"),
+            new("m11", "Design review", first.AddDays(2).AddHours(9), first.AddDays(2).AddHours(9).AddMinutes(30),
+                DaysOfWeek: new[] { today.DayOfWeek }, RecurrenceEnd: first.AddMonths(2), Color: "var(--color-chart-3)")
         };
     }
 
-    // ── Week demo ────────────────────────────────────────────────────────
+    // ── FullCalendar engine: Week demo ──────────────────────────────────────
     private List<SchedulerEvent> _weekEvents = BuildWeekEvents();
 
     private static List<SchedulerEvent> BuildWeekEvents()
@@ -274,7 +662,11 @@
             new("w3", "All-hands", monday.AddDays(1).AddHours(14), monday.AddDays(1).AddHours(15), Color: "var(--color-destructive)"),
             new("w4", "Interview", monday.AddDays(2).AddHours(11), monday.AddDays(2).AddHours(12), Color: "var(--color-primary)"),
             new("w5", "Conference", monday.AddDays(3), monday.AddDays(4), AllDay: true, Color: "var(--color-destructive)"),
-            new("w6", "Pair coding", monday.AddDays(4).AddHours(13), monday.AddDays(4).AddHours(15), Color: "var(--color-primary)")
+            new("w6", "Pair coding", monday.AddDays(4).AddHours(13), monday.AddDays(4).AddHours(15), Color: "var(--color-primary)"),
+            // Overlap cluster — three double-booked slots Wednesday morning, to show FullCalendar's own column packing.
+            new("w7", "Design huddle", monday.AddDays(2).AddHours(9), monday.AddDays(2).AddHours(9).AddMinutes(45), Color: "var(--color-chart-2)"),
+            new("w8", "Backend huddle", monday.AddDays(2).AddHours(9).AddMinutes(15), monday.AddDays(2).AddHours(10), Color: "var(--color-chart-4)"),
+            new("w9", "QA huddle", monday.AddDays(2).AddHours(9).AddMinutes(30), monday.AddDays(2).AddHours(10).AddMinutes(15), Color: "var(--color-chart-5)")
         };
     }
 
@@ -326,7 +718,8 @@
     private string _weekCode = @"<Scheduler Events=""_events""
            InitialView=""SchedulerView.Week""
            Height=""620px""
-           BusinessHours=""true"" />";
+           BusinessHours=""true""
+           NowIndicator=""true"" />";
 
     private string _createCode = @"<Scheduler Events=""_events""
            InitialView=""SchedulerView.Week""

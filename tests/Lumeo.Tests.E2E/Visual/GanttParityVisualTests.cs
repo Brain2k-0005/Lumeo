@@ -51,7 +51,7 @@ public class GanttParityVisualTests : GanttParityTestBase
 
         // Bug fix (Codex round 5 review, Important #2): both v2 and v3 resolve
         // "today" from the BROWSER's real clock (v2's gantt-v2.js directly,
-        // v3 via getLocalDateIso() — see Gantt3's own Codex round 2, P2 #9
+        // v3 via getLocalDateIso() — see GanttChart's own Codex round 2, P2 #9
         // remarks on why it reads the browser's date rather than the server's).
         // The v3-only scroll-to-today LATCH below (added for round 2's P1 fix)
         // stabilizes the RACE against that async resolution, but neither route
@@ -119,10 +119,10 @@ public class GanttParityVisualTests : GanttParityTestBase
             // runs, which the scroll-gate fix (not this wait) is what actually
             // stabilizes; this wait only removes the SEPARATE async-landing race.
             // Codex round 3, P2 #1: the scroll-to-today latch attribute now
-            // lands on Gantt3's shared OUTER pane (the "overflow:auto" wrapper
+            // lands on GanttChart's shared OUTER pane (the "overflow:auto" wrapper
             // around the tree+timeline flex row), not on GanttTimeline's own
             // row-canvas div — that div no longer scrolls (or carries
-            // overflow-x-auto) at all once Gantt3 supplies ScrollHost, since
+            // overflow-x-auto) at all once GanttChart supplies ScrollHost, since
             // ITS scroll interop calls now all target the outer pane directly
             // (see GanttTimeline.EffectiveScrollHost's remarks).
             var scrollHost = Page.Locator($"[data-testid='{rootTestId}'] div[style*='overflow']").First;
@@ -217,7 +217,7 @@ public class GanttParityVisualTests : GanttParityTestBase
         // those back the 8 existing parity baselines; changing them would
         // invalidate every one of those unrelated to this test): SharedTasks'
         // own row count (12 tasks + 2 group headers) renders shorter than
-        // Gantt3's own 900px pane Height, so the pane never actually needs
+        // GanttChart's own 900px pane Height, so the pane never actually needs
         // to scroll vertically — position:sticky has NOTHING to stick
         // against in that case and the zoom control simply sits at its
         // normal in-flow position near the LAST row, past the shared
@@ -334,7 +334,7 @@ public class GanttParityVisualTests : GanttParityTestBase
         Content = "*, *::before, *::after { animation-duration: 0s !important; animation-delay: 0s !important; transition-duration: 0s !important; transition-delay: 0s !important; }",
     });
 
-    /// <summary>Waits for Gantt3's own scroll-to-today/initial-centering latch
+    /// <summary>Waits for GanttChart's own scroll-to-today/initial-centering latch
     /// (stamped atomically on the shared scroll pane — see the class remarks
     /// on <c>Gantt_page_matches_baseline</c>) so a snapshot never races the
     /// async scroll landing, regardless of which page/route rendered it.</summary>

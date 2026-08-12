@@ -63,3 +63,84 @@
 .fc .fc-day-sun {
     background: transparent !important;
 }
+
+/* ============================================================
+   First-party view engine (wave 1b) — Month/TimeGrid drag/drop visuals.
+   Purely CSS-variable-driven per house rules (no raw hex/hsl, no `dark:`
+   Tailwind prefixes — dark mode is the same variable swap lumeo.css already
+   does everywhere else). Everything ELSE about a drag (ghost position, size,
+   the now-indicator line) is set as inline styles by scheduler-views.js
+   directly, so this file only needs the few hooks that are static/structural.
+   ============================================================ */
+
+/* Month view: the day cell currently under a drag-to-move ghost. */
+[data-cell-date][data-drop-target] {
+    outline: 2px dashed var(--color-ring);
+    outline-offset: -2px;
+    background: color-mix(in oklab, var(--color-accent) 70%, transparent);
+}
+
+/* Any cloned drag ghost (Month or TimeGrid) — scheduler-views.js's makeGhost. */
+[data-scheduler-ghost] {
+    border-radius: 6px;
+    box-shadow: 0 6px 16px color-mix(in oklab, var(--color-foreground) 20%, transparent);
+}
+
+/* CanDrop rejected the ghost's current candidate position (spec §3.2's fail-closed rule —
+   this is the visual half; the commit itself is refused in C#/JS regardless of styling). */
+[data-scheduler-ghost][data-invalid] {
+    box-shadow: 0 0 0 2px color-mix(in oklab, var(--color-destructive) 55%, transparent);
+}
+
+/* Month drag-across-cells date-range selection (§3.4's Month row — previously absent).
+   Highlighted purely via a data attribute JS toggles on the real cells during the drag
+   (no cloned ghost needed — the cells themselves are the "preview"). */
+[data-cell-date][data-select-target] {
+    background: color-mix(in oklab, var(--color-ring) 18%, transparent);
+    outline: 1px dashed var(--color-ring);
+    outline-offset: -1px;
+}
+
+/* Business-hours shading (Month off-days, TimeGrid off-days/off-hours) — ReUI's own
+   `data-off` vocabulary (audit §2's styling-hook gap), applied to whichever grid cell/slot
+   falls outside the configured business hours/days when BusinessHours is enabled. */
+[data-off] {
+    background: color-mix(in oklab, var(--color-muted) 45%, transparent);
+}
+
+/* TimeGrid resize-handle affordance (audit's "a hit zone nobody can see is not a feature"
+   finding) — a thin grip bar fades in at the top/bottom RESIZE_HANDLE_PX zone on hover,
+   matching the JS's own resolveHitMode geometry. No whole-pill cursor override: the 6px
+   grab zones are a small fraction of the pill, so an ns-resize cursor across the entire
+   chip would misleadingly suggest the whole thing (not just the edges) resizes on drag.
+   Editable-only (data-resizable is only emitted when Editable is true — see
+   SchedulerTimeGridView.razor). */
+[data-event-instance][data-resizable]::before,
+[data-event-instance][data-resizable]::after {
+    content: "";
+    position: absolute;
+    left: 50%;
+    width: 18px;
+    height: 3px;
+    margin-left: -9px;
+    border-radius: 2px;
+    background: color-mix(in oklab, var(--color-foreground) 40%, transparent);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 120ms ease;
+}
+
+[data-event-instance][data-resizable]::before {
+    top: 2px;
+}
+
+[data-event-instance][data-resizable]::after {
+    bottom: 2px;
+}
+
+[data-event-instance][data-resizable]:hover::before,
+[data-event-instance][data-resizable]:hover::after,
+[data-event-instance][data-resizable]:focus-visible::before,
+[data-event-instance][data-resizable]:focus-visible::after {
+    opacity: 1;
+}

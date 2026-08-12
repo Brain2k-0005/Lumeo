@@ -107,6 +107,28 @@
 </Stack>
 
 <div class="mt-12 space-y-4">
+    <Heading Id="sizes" Level="2" Class="scroll-mt-20">Sizes</Heading>
+    <Lumeo.Text Size="sm" Color="muted">Click any trigger below to open the alert dialog at that size — AlertDialogContent.AlertDialogSize covers every value.</Lumeo.Text>
+
+    <AutoVariants TEnum="AlertDialogContent.AlertDialogSize" Title="AlertDialogContent.AlertDialogSize">
+        <AlertDialog Open="@(_sizeOpen.TryGetValue(context, out var v) && v)" OpenChanged="@(o => OnSizeOpenChanged(context, o))">
+            <AlertDialogTrigger>
+                <Button Variant="Button.ButtonVariant.Outline">Open @context.ToString()</Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent Size="@context">
+                <AlertDialogHeader>
+                    <AlertDialogTitle>AlertDialogSize = @context</AlertDialogTitle>
+                    <AlertDialogDescription>This alert dialog uses <code>AlertDialogContent.AlertDialogSize.@context.ToString()</code>.</AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                    <AlertDialogCancel>Close</AlertDialogCancel>
+                </AlertDialogFooter>
+            </AlertDialogContent>
+        </AlertDialog>
+    </AutoVariants>
+</div>
+
+<div class="mt-12 space-y-4">
     <Heading Id="intercepting-close" Level="2" Class="scroll-mt-20">Intercepting close</Heading>
     <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
         <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">OnBeforeClose</code> fires
@@ -207,6 +229,12 @@
     private bool _guardOpen;
     private string? _guardTyped;
     private const string _guardExpected = "lumeo";
+
+    private Dictionary<AlertDialogContent.AlertDialogSize, bool> _sizeOpen = new();
+    private void OnSizeOpenChanged(AlertDialogContent.AlertDialogSize size, bool open)
+    {
+        _sizeOpen[size] = open;
+    }
 
     private Task GuardAlertClose(Lumeo.DismissEventArgs e)
     {

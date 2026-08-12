@@ -57,8 +57,24 @@ namespace Lumeo.Tests.E2E.Smokes;
 /// from a one-shot <c>Page.EvaluateAsync</c> + raw <c>querySelector</c> (which assumes the
 /// element already exists) to <c>Locator.WaitForAsync</c> + <c>Locator.EvaluateAsync</c>
 /// (which resolves the selector against an ACTUAL Playwright locator that waits — up to its
-/// own timeout — for a matching element to attach before evaluating against it). All 9
-/// Size x Density cases now go through this same robust path.
+/// own timeout — for a matching element to attach before evaluating against it). All Size x
+/// Density cases now go through this same robust path (originally 9 Sm/Md/Lg combos; the
+/// full-scale rollout extended the ServerHost page and this suite to all 21 Size x Density
+/// combinations across the 7-rung Lumeo.Size scale — see
+/// Xxs_And_Xs_Line_Box_Measurements_Match_Predicted_Geometry for the new small rungs'
+/// measured numbers).
+///
+/// Owner decision (2026-08-10, PR #391): three combos — Xxs/Compact, Xxs/Comfortable,
+/// Xs/Compact — could not hold a 16px line box inside their control even with
+/// max-md:leading-none applied (a physical conflict between the 16px iOS-zoom floor and a
+/// sub-24px control height). The owner chose: control size wins over the zoom guard at Xxs
+/// and Xs. Those two rungs now render their OWN small font (8px / 10px) UNCONDITIONALLY —
+/// no text-base mobile floor, no md: breakpoint split — paired with a permanent (non-gated)
+/// leading-none, so their line box is always font-size * 1 rather than the 16px guard's line
+/// box. Sm and up are untouched. This suite now asserts NO combination overflows (the
+/// leading-none fix on Xxs/Xs, like everywhere else, closes the defect completely once the
+/// font itself is small) and separately asserts the accepted zoom consequence: Xxs/Xs render
+/// their small font (not 16px) at mobile width, so iOS Safari will zoom on focus there.
 /// </summary>
 public class InputSizingTests : IAsyncLifetime
 {
@@ -121,6 +137,39 @@ public class InputSizingTests : IAsyncLifetime
     }
 
     /// <summary>
+    /// Owner decision (PR #391): Sm and every rung above it keeps the 16px iOS-zoom-guard
+    /// floor on mobile — this is a pure regression guard proving the additive Xxs/Xs branch
+    /// changed nothing for the rungs that already shipped the guard.
+    /// </summary>
+    [Theory]
+    [InlineData("size-Sm-density-Comfortable")]
+    [InlineData("size-Md-density-Comfortable")]
+    [InlineData("size-Lg-density-Comfortable")]
+    [InlineData("size-Xl-density-Comfortable")]
+    [InlineData("size-Xxl-density-Comfortable")]
+    public async Task Sm_And_Up_Still_Render_16px_On_Mobile(string testId)
+    {
+        var mobile = await ComputedFontSizeAsync(testId, MobileWidth);
+        Assert.Equal("16px", mobile);
+    }
+
+    /// <summary>
+    /// Owner decision (PR #391): Xxs and Xs are the exception. They render their OWN small
+    /// font at mobile width too — NOT the 16px zoom-guard floor — because the guard's line
+    /// box physically cannot fit inside their control at Compact/Comfortable. This is the
+    /// accepted consequence made explicit: focusing an Xxs or Xs input on iOS Safari zooms
+    /// the viewport, since the computed font size is below 16px.
+    /// </summary>
+    [Theory]
+    [InlineData("size-Xxs-density-Comfortable", "8px")]
+    [InlineData("size-Xs-density-Comfortable", "10px")]
+    public async Task Xxs_And_Xs_Render_Their_Own_Small_Font_On_Mobile_Not_The_Zoom_Guard(string testId, string expectedPx)
+    {
+        var mobile = await ComputedFontSizeAsync(testId, MobileWidth);
+        Assert.Equal(expectedPx, mobile);
+    }
+
+    /// <summary>
     /// Finding 4b: an EXPLICIT unprefixed font-size override in Class must win at every
     /// breakpoint — the whole point of the fix. Asserts the COMPUTED value, not the class
     /// string: the bug this closes is exactly a case where the class string looked correct
@@ -149,14 +198,27 @@ public class InputSizingTests : IAsyncLifetime
     /// <summary>
     /// Finding 3: no rendered Input, at any Size x Density combination, may have a line box
     /// taller than the content area actually available inside its control (client height
-    /// minus padding minus border). Checked at the mobile width, where every Sm/Default combo
-    /// carries the 16px text-base baseline that caused the original overflow.
+    /// minus padding minus border). Checked at the mobile width — the width every rung's
+    /// worst case renders at. Extended (full-scale rollout) from the original 9 Sm/Md/Lg
+    /// combos to all 21 Size x Density combos. Owner decision (PR #391): this is now an
+    /// UNCONDITIONAL pass/fail gate for every combination, including Xxs/Xs — those two rungs
+    /// no longer measure against the 16px zoom-guard's line box (which THREE of their combos
+    /// physically could not fit); they measure against their own small font + permanent
+    /// leading-none, which fits everywhere (see
+    /// Xxs_And_Xs_Line_Box_Measurements_Match_Predicted_Geometry for the exact numbers). That
+    /// was the defect being fixed, so nothing is exempted here any more.
     /// </summary>
     // Plain strings (not Lumeo.Size/Density) deliberately — this test project carries no
     // reference to the Lumeo library (Playwright drives it purely over HTTP), and the values
     // only need to match the data-testid="size-{size}-density-{density}" the ServerHost page
     // renders (InputSizingPage.razor), which formats the SAME enums via their ToString().
     [Theory]
+    [InlineData("Xxs", "Compact")]
+    [InlineData("Xxs", "Comfortable")]
+    [InlineData("Xxs", "Spacious")]
+    [InlineData("Xs", "Compact")]
+    [InlineData("Xs", "Comfortable")]
+    [InlineData("Xs", "Spacious")]
     [InlineData("Sm", "Compact")]
     [InlineData("Sm", "Comfortable")]
     [InlineData("Sm", "Spacious")]
@@ -166,11 +228,61 @@ public class InputSizingTests : IAsyncLifetime
     [InlineData("Lg", "Compact")]
     [InlineData("Lg", "Comfortable")]
     [InlineData("Lg", "Spacious")]
-    public async Task No_line_box_exceeds_its_control_height(string size, string density)
+    [InlineData("Xl", "Compact")]
+    [InlineData("Xl", "Comfortable")]
+    [InlineData("Xl", "Spacious")]
+    [InlineData("Xxl", "Compact")]
+    [InlineData("Xxl", "Comfortable")]
+    [InlineData("Xxl", "Spacious")]
+    public async Task Measure_line_box_vs_available_content_height(string size, string density)
     {
+        // Unconditional gate — every Size x Density combination, Xxs/Xs included, must fit.
+        // Proves the defect (line box taller than available control height) is gone
+        // everywhere, not just the 18 combos that already had margin to spare.
         await _page.SetViewportSizeAsync(MobileWidth, 900);
         var testId = $"size-{size}-density-{density}";
+        var geometry = await MeasureGeometryAsync(testId);
+        var available = geometry.ClientHeight - geometry.PaddingTop - geometry.PaddingBottom;
 
+        Assert.True(geometry.LineHeight <= available,
+            $"{testId}: line-height {geometry.LineHeight}px exceeds the {available}px available inside a {geometry.ClientHeight}px (client height) control " +
+            $"(padding {geometry.PaddingTop + geometry.PaddingBottom}px).");
+    }
+
+    /// <summary>
+    /// Constraint 3 rigor requirement: measure the resulting line box against each control's
+    /// height and show the numbers, specifically for the Xxs/Xs rungs — the two the owner's
+    /// trade-off decision (PR #391) applies to. Input.razor's SizeClasses remarks predict the
+    /// EXACT figures asserted here (available = clientHeight - 8px padding, since clientHeight
+    /// already excludes the 2px border; line box = own font-size * 1, since leading-none is now
+    /// permanent/unconditional rather than gated to max-md): Xxs's line box is always 8px,
+    /// Xs's is always 10px, and every one of the six combos below now has margin to spare —
+    /// including the three (Xxs/Compact, Xxs/Comfortable, Xs/Compact) that used to overflow
+    /// the OLD 16px zoom-guard line box before the owner's decision replaced it with the
+    /// control's own small font.
+    /// </summary>
+    [Theory]
+    [InlineData("Xxs", "Compact", 18.0, 10.0, 8.0)]
+    [InlineData("Xxs", "Comfortable", 22.0, 14.0, 8.0)]
+    [InlineData("Xxs", "Spacious", 26.0, 18.0, 8.0)]
+    [InlineData("Xs", "Compact", 22.0, 14.0, 10.0)]
+    [InlineData("Xs", "Comfortable", 26.0, 18.0, 10.0)]
+    [InlineData("Xs", "Spacious", 30.0, 22.0, 10.0)]
+    public async Task Xxs_And_Xs_Line_Box_Measurements_Match_Predicted_Geometry(string size, string density, double expectedClientHeight, double expectedAvailable, double expectedLineHeight)
+    {
+        await _page.SetViewportSizeAsync(MobileWidth, 900);
+        var geometry = await MeasureGeometryAsync($"size-{size}-density-{density}");
+        var available = geometry.ClientHeight - geometry.PaddingTop - geometry.PaddingBottom;
+
+        Assert.Equal(expectedClientHeight, geometry.ClientHeight);
+        Assert.Equal(expectedAvailable, available);
+        Assert.Equal(expectedLineHeight, geometry.LineHeight); // leading-none -> line-height: 1 * own font-size
+        Assert.True(geometry.LineHeight <= available,
+            $"{size}/{density}: line-height {geometry.LineHeight}px exceeds the {available}px available.");
+    }
+
+    private async Task<BoxGeometry> MeasureGeometryAsync(string testId)
+    {
         // Wait for THIS specific element to attach before touching it — see the class-level
         // remarks (CI flake fix, item 1) for why a raw querySelector isn't safe here.
         var locator = ByTestId(testId);
@@ -181,7 +293,7 @@ public class InputSizingTests : IAsyncLifetime
         // line box is clientHeight minus padding only. Border must NOT be subtracted a second
         // time here (an earlier draft of this test double-subtracted it, silently making the
         // assertion 2px stricter than the real available space).
-        var geometry = await locator.EvaluateAsync<BoxGeometry>(
+        return await locator.EvaluateAsync<BoxGeometry>(
             @"(el) => {
                 const cs = getComputedStyle(el);
                 return {
@@ -191,12 +303,6 @@ public class InputSizingTests : IAsyncLifetime
                     PaddingBottom: parseFloat(cs.paddingBottom),
                 };
             }");
-
-        var available = geometry.ClientHeight - geometry.PaddingTop - geometry.PaddingBottom;
-
-        Assert.True(geometry.LineHeight <= available,
-            $"{testId}: line-height {geometry.LineHeight}px exceeds the {available}px available inside a {geometry.ClientHeight}px (client height) control " +
-            $"(padding {geometry.PaddingTop + geometry.PaddingBottom}px).");
     }
 
     private sealed class BoxGeometry
