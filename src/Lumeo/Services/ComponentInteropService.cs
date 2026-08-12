@@ -1818,6 +1818,46 @@ public sealed class ComponentInteropService : IComponentInteropService
         catch (JSDisconnectedException) { }
     }
 
+    public async Task GanttV3RegisterWheelZoomAsync<[System.Diagnostics.CodeAnalysis.DynamicallyAccessedMembers(System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicMethods)] T>(Microsoft.AspNetCore.Components.ElementReference el, DotNetObjectReference<T> dotNetRef, object options) where T : class
+    {
+        try
+        {
+            var module = await GetGanttV3ModuleAsync();
+            await module.InvokeVoidAsync("ganttV3.registerWheelZoom", el, dotNetRef, options);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
+    public async Task GanttV3UnregisterWheelZoomAsync(Microsoft.AspNetCore.Components.ElementReference el)
+    {
+        try
+        {
+            var module = await GetGanttV3ModuleAsync();
+            await module.InvokeVoidAsync("ganttV3.unregisterWheelZoom", el);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
+    public async Task GanttV3FocusBarAsync(Microsoft.AspNetCore.Components.ElementReference containerEl, string taskId)
+    {
+        try
+        {
+            var module = await GetGanttV3ModuleAsync();
+            await module.InvokeVoidAsync("ganttV3.focusBar", containerEl, taskId);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
+    public async Task GanttV3ScrollToOffsetAsync(Microsoft.AspNetCore.Components.ElementReference el, double targetX, double offsetPx)
+    {
+        try
+        {
+            var module = await GetGanttV3ModuleAsync();
+            await module.InvokeVoidAsync("ganttV3.scrollToOffset", el, targetX, offsetPx);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
     // --- Scheduler first-party view engine (wave 1b) — its own module
     // (scheduler-views.js), separate from the FullCalendar wrapper module above.
 

@@ -19,7 +19,7 @@ namespace Lumeo.Tests.E2E.Gantt;
 /// virtualized in lockstep with it instead of separately.
 ///
 /// v2 has no drag-create at all (a v3-only, REUI-parity addition — see
-/// <c>Gantt3.AllowCreate</c>'s own remarks), so there is no v2 counterpart to
+/// <c>GanttChart.AllowCreate</c>'s own remarks), so there is no v2 counterpart to
 /// compare against here.
 /// </summary>
 public class GanttV3RowTrackVirtualizationTests : GanttParityTestBase

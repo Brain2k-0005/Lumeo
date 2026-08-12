@@ -4,7 +4,7 @@ namespace Lumeo.Tests.ServerHost.E2E;
 /// Deterministic task fixtures shared by the v2/v3 Gantt parity harness
 /// (feat/gantt-v3, T4 — see docs/superpowers/gantt-v3-t4-report.md). Rendered
 /// by BOTH <c>/e2e/gantt-v2</c> (Lumeo's <c>Gantt</c>) and <c>/e2e/gantt-v3</c>
-/// (the working-name <c>Gantt3</c>) so the Lumeo.Tests.E2E Playwright suite can
+/// (the working-name <c>GanttChart</c>) so the Lumeo.Tests.E2E Playwright suite can
 /// assert render-equivalence against the SAME data.
 ///
 /// Dates are hardcoded (March 2026) — NEVER <see cref="DateTime.Now"/>/
@@ -18,7 +18,7 @@ internal static class GanttParityFixtures
 {
     /// <summary>
     /// 12 tasks (incl. 1 milestone) across 2 flat groups ("Frontend" sorts
-    /// before "Ops" alphabetically — <c>Gantt</c>/<c>Gantt3</c> both sort
+    /// before "Ops" alphabetically — <c>Gantt</c>/<c>GanttChart</c> both sort
     /// tasks by <c>GroupBy</c> output before rendering, so the group names are
     /// chosen to keep this list's declared order == the rendered row order).
     /// Exactly 3 dependency edges are set, covering:
@@ -67,7 +67,7 @@ internal static class GanttParityFixtures
 
     /// <summary>Per-task bar colour override for <see cref="SharedTasks"/> — mirrors what a
     /// consumer's <c>BarColor</c> delegate looks like; identical contract for v2's
-    /// <c>Gantt.BarColor</c> and v3's <c>Gantt3.BarColor</c>.</summary>
+    /// <c>Gantt.BarColor</c> and v3's <c>GanttChart.BarColor</c>.</summary>
     internal static string? GetBarColor(GanttTask t) => t.Id switch
     {
         "fe3" => "#f59e0b",

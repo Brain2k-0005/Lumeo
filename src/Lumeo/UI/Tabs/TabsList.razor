@@ -76,6 +76,10 @@ else
 @code {
     [CascadingParameter] public Tabs.TabsContext? Context { get; set; }
 
+    // Ambient density — read the same way TabsTrigger.PadClass reads it (null falls back
+    // to Comfortable, since DensityScope's own default Value is Density.Comfortable).
+    [CascadingParameter] private Lumeo.Density? Density { get; set; }
+
     // A scoped <DirectionProvider> cascades its direction here; when present it
     // wins over the global ThemeService so a subtree can be RTL even if the app
     // is LTR (and vice versa). Null when no provider wraps this list — then the
@@ -419,6 +423,32 @@ else
         await OnLayoutChanged.InvokeAsync(new TabsLayout(snapshot));
     }
 
+    // TabsTrigger.PadClass already tracks Density for the trigger's own padding — this is
+    // the container-side half of that same fix: the track's fixed height never moved with
+    // it, so a Compact/Spacious trigger either rattled around in (Compact) or overflowed
+    // (Spacious) a track still sized for Comfortable. Horizontal-only (vertical tracks are
+    // already h-auto/w-auto — unbounded, never at risk — see the baseClasses switch below).
+    //
+    // Derived from the SAME py values PadClass resolves per (Variant, Orientation=Horizontal,
+    // Density) — trigger content-box height = 2*py + text-sm's 20px line-height, then this
+    // track adds the fixed 8px (4px each side) breathing room every variant already carries
+    // today, whether via Default's own p-1 padding utility or Card/Pill/Underline's implicit
+    // fixed-height slack:
+    //   Compact:            py-1   (8px)  -> trigger 28px -> track 36px = h-9  (ALL variants)
+    //   Comfortable Default: py-1   (8px)  -> trigger 28px -> track 36px = h-9  (unchanged)
+    //   Comfortable other:   py-1.5 (12px) -> trigger 32px -> track 40px = h-10 (unchanged)
+    //   Spacious:            py-2   (16px) -> trigger 36px -> track 44px = h-11 (ALL variants)
+    // Null Density resolves the same as Comfortable (PadClass's own null-fallback), so a
+    // consumer who never touches DensityScope gets exactly today's h-9 (Default) / h-10
+    // (Card/Pill/Underline) — byte-identical.
+    private string TrackHeightClass => (CurrentVariant, Density) switch
+    {
+        (_, Lumeo.Density.Spacious) => "h-11",
+        (_, Lumeo.Density.Compact) => "h-9",
+        (Tabs.TabsVariant.Default, _) => "h-9",
+        _ => "h-10"
+    };
+
     private string CssClass
     {
         get
@@ -431,10 +461,10 @@ else
                     // the list's bottom border (-mb-px); centered tabs floated
                     // above the border line with a visible gap, so the "card"
                     // looked detached from its baseline.
-                    : "inline-flex h-10 items-end justify-center border-b border-border/40 text-muted-foreground",
+                    : $"inline-flex {TrackHeightClass} items-end justify-center border-b border-border/40 text-muted-foreground",
                 Tabs.TabsVariant.Pill => IsVertical
                     ? "flex flex-col h-auto w-auto items-stretch justify-start gap-1 text-muted-foreground"
-                    : "inline-flex h-10 items-center justify-center gap-1 text-muted-foreground",
+                    : $"inline-flex {TrackHeightClass} items-center justify-center gap-1 text-muted-foreground",
                 // Underline: text tabs on a shared baseline border — no background box,
                 // items-END so each trigger's 2px underline (-mb-px) sits exactly on the
                 // list's 1px border line (same seam mechanic as Card). justify-START, not
@@ -447,10 +477,10 @@ else
                 // Scrollable list must start at its first tab.
                 Tabs.TabsVariant.Underline => IsVertical
                     ? "flex flex-col h-auto w-auto items-stretch justify-start border-e border-border/40 text-muted-foreground"
-                    : "inline-flex h-10 items-end justify-start border-b border-border/40 text-muted-foreground",
+                    : $"inline-flex {TrackHeightClass} items-end justify-start border-b border-border/40 text-muted-foreground",
                 _ => IsVertical
                     ? "flex flex-col h-auto w-auto items-stretch justify-start rounded-lg bg-muted p-1 text-muted-foreground"
-                    : "inline-flex h-9 items-center justify-center rounded-lg bg-muted p-1 text-muted-foreground"
+                    : $"inline-flex {TrackHeightClass} items-center justify-center rounded-lg bg-muted p-1 text-muted-foreground"
             };
             var indicatorWrapper = RenderIndicator ? "relative lumeo-tabs-list" : null;
             return Cx.Merge(baseClasses, indicatorWrapper, Class);

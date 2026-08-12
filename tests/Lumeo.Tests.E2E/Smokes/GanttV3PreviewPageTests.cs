@@ -26,7 +26,7 @@ public class GanttV3PreviewPageTests : PlaywrightTestBase
     // its weight divisor so it can never hit 0/NaN, Quarter's column math is
     // pure constant arithmetic, no index/range op that could throw). This
     // page is the heaviest in the whole Smoke suite by a wide margin — FIVE
-    // live Gantt3/Gantt instances rendered at once (flat, grouped, tree,
+    // live GanttChart/Gantt instances rendered at once (flat, grouped, tree,
     // tree-columns+splitter, quarter+settings-menu over a ~15-month roadmap,
     // plus the v2 reference) — yet it inherited the SAME 15000ms constant
     // every single-instance Smoke page uses, and unlike the other
