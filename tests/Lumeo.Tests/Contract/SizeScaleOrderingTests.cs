@@ -158,6 +158,73 @@ public class SizeScaleOrderingTests : IAsyncLifetime
         SizeScaleAssert.AssertMonotonicNonDecreasing(series, "Avatar h");
     }
 
+    // ============================== Badge ==============================
+
+    [Fact]
+    public void Badge_Text_Size_Is_Monotonic()
+    {
+        var series = Series(size =>
+        {
+            var cut = _ctx.Render<L.Badge>(p => p.Add(b => b.Size, size).AddChildContent("X"));
+            return SizeScaleAssert.TextSizePx(cut.Find("div").GetAttribute("class"));
+        }, "Badge text");
+        SizeScaleAssert.AssertMonotonicNonDecreasing(series, "Badge text");
+    }
+
+    [Fact]
+    public void Badge_Padding_Px_Is_Monotonic()
+    {
+        var series = Series(size =>
+        {
+            var cut = _ctx.Render<L.Badge>(p => p.Add(b => b.Size, size).AddChildContent("X"));
+            return SizeScaleAssert.SpacingPx(cut.Find("div").GetAttribute("class"), "px");
+        }, "Badge padding px");
+        SizeScaleAssert.AssertMonotonicNonDecreasing(series, "Badge padding px");
+    }
+
+    [Fact]
+    public void Badge_Padding_Py_Is_Monotonic()
+    {
+        var series = Series(size =>
+        {
+            var cut = _ctx.Render<L.Badge>(p => p.Add(b => b.Size, size).AddChildContent("X"));
+            return SizeScaleAssert.SpacingPx(cut.Find("div").GetAttribute("class"), "py");
+        }, "Badge padding py");
+        SizeScaleAssert.AssertMonotonicNonDecreasing(series, "Badge padding py");
+    }
+
+    [Fact]
+    public void Badge_Padding_Py_Xxs_Xs_Sm_Tie_At_Py0()
+    {
+        // Vertical padding floors at py-0 for Xxs/Xs (can't go negative below
+        // the pre-existing Sm=py-0) at the default Comfortable density.
+        double? PyAt(L.Size size)
+        {
+            var cut = _ctx.Render<L.Badge>(p => p.Add(b => b.Size, size).AddChildContent("X"));
+            return SizeScaleAssert.SpacingPx(cut.Find("div").GetAttribute("class"), "py");
+        }
+        var xxs = PyAt(L.Size.Xxs);
+        var xs = PyAt(L.Size.Xs);
+        var sm = PyAt(L.Size.Sm);
+        Assert.Equal(xxs, xs);
+        Assert.Equal(xs, sm);
+    }
+
+    // ============================== BorderBeam ==============================
+
+    [Fact]
+    public void BorderBeam_Size_Is_Monotonic()
+    {
+        var series = Series(size =>
+        {
+            var cut = _ctx.Render<L.BorderBeam>(p => p.Add(b => b.Size, size));
+            var style = cut.Find("div").GetAttribute("style") ?? "";
+            var m = Regex.Match(style, @"--lumeo-beam-size:\s*(?<n>[0-9.]+)px");
+            return m.Success ? double.Parse(m.Groups["n"].Value, NumberStyles.Float, CultureInfo.InvariantCulture) : (double?)null;
+        }, "BorderBeam size px");
+        SizeScaleAssert.AssertMonotonicNonDecreasing(series, "BorderBeam size px");
+    }
+
     // ============================== Chip ==============================
 
     [Fact]
@@ -404,6 +471,65 @@ public class SizeScaleOrderingTests : IAsyncLifetime
             return SizeScaleAssert.SpacingPx(cut.Find("li").GetAttribute("class"), "py");
         }, "ListItem padding py");
         SizeScaleAssert.AssertMonotonicNonDecreasing(series, "ListItem padding py");
+    }
+
+    // ============================== Progress ==============================
+
+    [Fact]
+    public void Progress_Linear_Height_Is_Monotonic()
+    {
+        var series = Series(size =>
+        {
+            var cut = _ctx.Render<L.Progress>(p => p.Add(pr => pr.Value, 50).Add(pr => pr.Size, size));
+            return SizeScaleAssert.SpacingPx(cut.Find("[role='progressbar']").GetAttribute("class"), "h");
+        }, "Progress linear h");
+        SizeScaleAssert.AssertMonotonicNonDecreasing(series, "Progress linear h");
+    }
+
+    [Fact]
+    public void Progress_Linear_Height_Xxs_And_Xs_Tie_At_H0_5()
+    {
+        double? HeightAt(L.Size size)
+        {
+            var cut = _ctx.Render<L.Progress>(p => p.Add(pr => pr.Value, 50).Add(pr => pr.Size, size));
+            return SizeScaleAssert.SpacingPx(cut.Find("[role='progressbar']").GetAttribute("class"), "h");
+        }
+        Assert.Equal(HeightAt(L.Size.Xxs), HeightAt(L.Size.Xs));
+    }
+
+    private static double? StyleWidthPx(string? style)
+    {
+        var m = Regex.Match(style ?? "", @"width:\s*(?<n>[0-9.]+)px");
+        return m.Success ? double.Parse(m.Groups["n"].Value, NumberStyles.Float, CultureInfo.InvariantCulture) : null;
+    }
+
+    [Fact]
+    public void Progress_Circular_Diameter_Is_Monotonic()
+    {
+        var series = Series(size =>
+        {
+            var cut = _ctx.Render<L.Progress>(p => p
+                .Add(pr => pr.Value, 50)
+                .Add(pr => pr.Shape, L.Progress.ProgressShape.Circular)
+                .Add(pr => pr.Size, size));
+            return StyleWidthPx(cut.Find("svg").GetAttribute("style"));
+        }, "Progress circular diameter");
+        SizeScaleAssert.AssertMonotonicNonDecreasing(series, "Progress circular diameter");
+    }
+
+    [Fact]
+    public void Progress_Circular_Text_Is_Monotonic()
+    {
+        var series = Series(size =>
+        {
+            var cut = _ctx.Render<L.Progress>(p => p
+                .Add(pr => pr.Value, 50)
+                .Add(pr => pr.Shape, L.Progress.ProgressShape.Circular)
+                .Add(pr => pr.ShowValue, true)
+                .Add(pr => pr.Size, size));
+            return SizeScaleAssert.TextSizePx(cut.Find("span").GetAttribute("class"));
+        }, "Progress circular text");
+        SizeScaleAssert.AssertMonotonicNonDecreasing(series, "Progress circular text");
     }
 
     // ============================== Rating ==============================

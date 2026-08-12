@@ -39,9 +39,9 @@
       },
       {
         "name": "Size",
-        "type": "BeamSize",
-        "default": "BeamSize.Md",
-        "description": "Thickness of the animated border beam. Defaults to Md (1.5px).",
+        "type": "Lumeo.Size",
+        "default": "Lumeo.Size.Md",
+        "description": "Thickness of the animated border beam. Supports all 7 Size values (Xxs–Xxl). Defaults to Md (1.5px).",
         "isCascading": false,
         "captureUnmatched": false,
         "isEditorRequired": false
@@ -93,17 +93,7 @@
       }
     ],
     "events": [],
-    "enums": [
-      {
-        "name": "BeamSize",
-        "values": [
-          "Sm",
-          "Md",
-          "Lg"
-        ],
-        "description": null
-      }
-    ],
+    "enums": [],
     "records": [],
     "gotchas": [],
     "cssVars": [
@@ -122,13 +112,13 @@
     "parseError": null
   },
   "testCoverage": {
-    "tier": 1,
+    "tier": 3,
     "files": 1,
-    "tests": 8,
-    "relatedFiles": 0,
+    "tests": 9,
+    "relatedFiles": 1,
     "render": true,
-    "behavior": false,
-    "a11y": false,
+    "behavior": true,
+    "a11y": true,
     "keyboard": false,
     "scale": false,
     "e2e": false,
@@ -147,7 +137,7 @@
   "source": [
     {
       "path": "UI/BorderBeam/BorderBeam.razor",
-      "content": "@namespace Lumeo\n\n<div class=\"@CssClass\" style=\"@StyleString\" @attributes=\"AdditionalAttributes\">\n    @ChildContent\n</div>\n\n@code {\n    /// <summary>Content wrapped inside the beamed border, rendered as the element the\n    /// animated border traces around.</summary>\n    [Parameter] public RenderFragment? ChildContent { get; set; }\n    /// <summary>Thickness of the animated border beam. Defaults to <see cref=\"BeamSize.Md\"/> (1.5px).</summary>\n    [Parameter] public BeamSize Size { get; set; } = BeamSize.Md;\n    /// <summary>How long, in milliseconds, one full loop of the beam animation takes.\n    /// Defaults to 8000 (8s).</summary>\n    [Parameter] public int DurationMs { get; set; } = 8000;\n\n    /// <summary>Starting color of the beam. Accepts any CSS color — defaults to <c>var(--color-primary)</c>.</summary>\n    [Parameter] public string? ColorFrom { get; set; }\n\n    /// <summary>Ending color of the beam. Accepts any CSS color — defaults to <c>var(--color-primary)</c>.</summary>\n    [Parameter] public string? ColorTo { get; set; }\n\n    /// <summary>Additional CSS classes merged onto the root <c>div</c>.</summary>\n    [Parameter] public string? Class { get; set; }\n    /// <summary>Unmatched attributes splatted onto the root <c>div</c>.</summary>\n    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }\n\n    private string CssClass => string.Join(\" \", new[] { \"lumeo-border-beam rounded-lg\", Class }.Where(s => !string.IsNullOrWhiteSpace(s)));\n\n    private string BeamPx => Size switch\n    {\n        BeamSize.Sm => \"1px\",\n        BeamSize.Lg => \"3px\",\n        _ => \"1.5px\"\n    };\n\n    private string StyleString\n    {\n        get\n        {\n            var parts = new List<string>\n            {\n                $\"--lumeo-beam-size: {BeamPx}\",\n                $\"--lumeo-beam-duration: {DurationMs}ms\"\n            };\n            if (!string.IsNullOrWhiteSpace(ColorFrom)) parts.Add($\"--lumeo-beam-from: {ColorFrom}\");\n            if (!string.IsNullOrWhiteSpace(ColorTo)) parts.Add($\"--lumeo-beam-to: {ColorTo}\");\n            return string.Join(\"; \", parts) + \";\";\n        }\n    }\n\n    public enum BeamSize { Sm, Md, Lg }\n}\n"
+      "content": "@namespace Lumeo\n\n<div class=\"@CssClass\" style=\"@StyleString\" @attributes=\"AdditionalAttributes\">\n    @ChildContent\n</div>\n\n@code {\n    /// <summary>Content wrapped inside the beamed border, rendered as the element the\n    /// animated border traces around.</summary>\n    [Parameter] public RenderFragment? ChildContent { get; set; }\n    /// <summary>Thickness of the animated border beam. Supports all 7 <see cref=\"Lumeo.Size\"/>\n    /// values (Xxs–Xxl). Defaults to <see cref=\"Lumeo.Size.Md\"/> (1.5px).</summary>\n    [Parameter] public Lumeo.Size Size { get; set; } = Lumeo.Size.Md;\n    /// <summary>How long, in milliseconds, one full loop of the beam animation takes.\n    /// Defaults to 8000 (8s).</summary>\n    [Parameter] public int DurationMs { get; set; } = 8000;\n\n    /// <summary>Starting color of the beam. Accepts any CSS color — defaults to <c>var(--color-primary)</c>.</summary>\n    [Parameter] public string? ColorFrom { get; set; }\n\n    /// <summary>Ending color of the beam. Accepts any CSS color — defaults to <c>var(--color-primary)</c>.</summary>\n    [Parameter] public string? ColorTo { get; set; }\n\n    /// <summary>Additional CSS classes merged onto the root <c>div</c>.</summary>\n    [Parameter] public string? Class { get; set; }\n    /// <summary>Unmatched attributes splatted onto the root <c>div</c>.</summary>\n    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }\n\n    private string CssClass => string.Join(\" \", new[] { \"lumeo-border-beam rounded-lg\", Class }.Where(s => !string.IsNullOrWhiteSpace(s)));\n\n    // Sm/Md/Lg pin the exact pre-migration px values (see BorderBeamTests.cs).\n    // Xxs/Xs step below Sm, Xl/Xxl step above Lg.\n    private string BeamPx => Size switch\n    {\n        Lumeo.Size.Xxs => \"0.5px\",\n        Lumeo.Size.Xs => \"0.75px\",\n        Lumeo.Size.Sm => \"1px\",\n        Lumeo.Size.Lg => \"3px\",\n        Lumeo.Size.Xl => \"4px\",\n        Lumeo.Size.Xxl => \"5px\",\n        _ => \"1.5px\"\n    };\n\n    private string StyleString\n    {\n        get\n        {\n            var parts = new List<string>\n            {\n                $\"--lumeo-beam-size: {BeamPx}\",\n                $\"--lumeo-beam-duration: {DurationMs}ms\"\n            };\n            if (!string.IsNullOrWhiteSpace(ColorFrom)) parts.Add($\"--lumeo-beam-from: {ColorFrom}\");\n            if (!string.IsNullOrWhiteSpace(ColorTo)) parts.Add($\"--lumeo-beam-to: {ColorTo}\");\n            return string.Join(\"; \", parts) + \";\";\n        }\n    }\n\n}\n"
     }
   ],
   "slots": [
@@ -164,7 +154,8 @@
   "keyboardInteractions": [],
   "tests": [
     "tests/Lumeo.Docs.Tests/Catalog/CatalogCardTests.cs",
-    "tests/Lumeo.Tests/Components/BorderBeam/BorderBeamTests.cs"
+    "tests/Lumeo.Tests/Components/BorderBeam/BorderBeamTests.cs",
+    "tests/Lumeo.Tests/Contract/SizeScaleOrderingTests.cs"
   ],
-  "mdSummary": "# BorderBeam\n\nAnimated gradient border beam effect for hero elements.\n\n**Package:** `Lumeo.Motion` · **Category:** Motion\n**Docs:** https://lumeo.nativ.sh/components/border-beam\n\n## Parameters\n| Owner | Name | Type | Default | Description |\n|---|---|---|---|---|\n| BorderBeam | ChildContent | `RenderFragment?` | `` | Content wrapped inside the beamed border, rendered as the element the animated border traces around. |\n| BorderBeam | Size | `BeamSize` | `BeamSize.Md` | Thickness of the animated border beam. Defaults to Md (1.5px). |\n| BorderBeam | DurationMs | `int` | `8000` | How long, in milliseconds, one full loop of the beam animation takes. Defaults to 8000 (8s). |\n| BorderBeam | ColorFrom | `string?` | `` | Starting color of the beam. Accepts any CSS color — defaults to var(--color-primary). |\n| BorderBeam | ColorTo | `string?` | `` | Ending color of the beam. Accepts any CSS color — defaults to var(--color-primary). |\n| BorderBeam | Class | `string?` | `` | Additional CSS classes merged onto the root div. |\n| BorderBeam | AdditionalAttributes | `Dictionary<string, object>?` | `` | Unmatched attributes splatted onto the root div. |\n\n## Slots\n- `ChildContent` (BorderBeam) — Content wrapped inside the beamed border, rendered as the element the animated border traces around.\n\n## Events\n- (none)\n\n## Sub-components\n- (none)\n\n## Cascading values it expects\n- (none)\n\n## Services it injects\n- (none)\n\n## Keyboard\n—\n\n## Example\n```razor\n<BorderBeam />\n```\n\n## CSS variables\n`--radius`\n\n## Files\n- `UI/BorderBeam/BorderBeam.razor`\n"
+  "mdSummary": "# BorderBeam\n\nAnimated gradient border beam effect for hero elements.\n\n**Package:** `Lumeo.Motion` · **Category:** Motion\n**Docs:** https://lumeo.nativ.sh/components/border-beam\n\n## Parameters\n| Owner | Name | Type | Default | Description |\n|---|---|---|---|---|\n| BorderBeam | ChildContent | `RenderFragment?` | `` | Content wrapped inside the beamed border, rendered as the element the animated border traces around. |\n| BorderBeam | Size | `Lumeo.Size` | `Lumeo.Size.Md` | Thickness of the animated border beam. Supports all 7 Size values (Xxs–Xxl). Defaults to Md (1.5px). |\n| BorderBeam | DurationMs | `int` | `8000` | How long, in milliseconds, one full loop of the beam animation takes. Defaults to 8000 (8s). |\n| BorderBeam | ColorFrom | `string?` | `` | Starting color of the beam. Accepts any CSS color — defaults to var(--color-primary). |\n| BorderBeam | ColorTo | `string?` | `` | Ending color of the beam. Accepts any CSS color — defaults to var(--color-primary). |\n| BorderBeam | Class | `string?` | `` | Additional CSS classes merged onto the root div. |\n| BorderBeam | AdditionalAttributes | `Dictionary<string, object>?` | `` | Unmatched attributes splatted onto the root div. |\n\n## Slots\n- `ChildContent` (BorderBeam) — Content wrapped inside the beamed border, rendered as the element the animated border traces around.\n\n## Events\n- (none)\n\n## Sub-components\n- (none)\n\n## Cascading values it expects\n- (none)\n\n## Services it injects\n- (none)\n\n## Keyboard\n—\n\n## Example\n```razor\n<BorderBeam />\n```\n\n## CSS variables\n`--radius`\n\n## Files\n- `UI/BorderBeam/BorderBeam.razor`\n"
 }
