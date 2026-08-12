@@ -38,11 +38,12 @@ else
 
     /// <summary>Color variant. <see cref="BadgeVariant.Default"/> (primary) is applied when unset.</summary>
     [Parameter] public BadgeVariant Variant { get; set; } = BadgeVariant.Default;
-    /// <summary>Badge size — drives text size + padding. <c>Md</c> (default)
+    /// <summary>Badge size — drives text size + padding. Supports all 7
+    /// <see cref="Lumeo.Size"/> values (Xxs–Xxl). <c>Md</c> (default)
     /// reproduces the historical badge metrics. Use <c>Sm</c> for dense
     /// inline tags / counts and <c>Lg</c> for prominent status chips — avoids
     /// consumer-side <c>!px-*</c> / <c>!h-*</c> / <c>!text-*</c> overrides.</summary>
-    [Parameter] public BadgeSize Size { get; set; } = BadgeSize.Md;
+    [Parameter] public Lumeo.Size Size { get; set; } = Lumeo.Size.Md;
     /// <summary>Pill shape instead of the default <c>rounded-md</c> — for count/quota
     /// chips. Theme-radius-aware: renders as a full pill at stock radii and squares off
     /// along with the rest of the UI in sharp themes (<c>--radius: 0</c>).</summary>
@@ -91,26 +92,49 @@ else
         }
     }
 
+    // Xxs/Xs are one step below the historical Sm; Xl/Xxl one step above the
+    // historical Lg. Sm/Md/Lg pin the exact pre-migration values (see the
+    // preservation tests in BadgeTests.cs).
     private string TextClass => Size switch
     {
-        BadgeSize.Sm => "text-[10px]",
-        BadgeSize.Lg => "text-sm",
+        Lumeo.Size.Xxs => "text-[8px]",
+        Lumeo.Size.Xs => "text-[9px]",
+        Lumeo.Size.Sm => "text-[10px]",
+        Lumeo.Size.Lg => "text-sm",
+        Lumeo.Size.Xl => "text-base",
+        Lumeo.Size.Xxl => "text-lg",
         _ => "text-xs"
     };
 
     // Padding tracks Size first, then Density nudges within the size.
-    // (Md, Comfortable) reproduces the historical px-2.5 py-0.5.
+    // (Md, Comfortable) reproduces the historical px-2.5 py-0.5. Sm/Md/Lg
+    // rows below are byte-identical to the pre-migration 3-value switch —
+    // only the Xxs/Xs/Xl/Xxl rows are new. Vertical padding floors at py-0
+    // for Xxs/Xs (Comfortable/Compact) — can't go negative — so those two
+    // rungs deliberately tie there; documented via SizeScaleOrderingTests.
     private string PadClass => (Size, EffectiveDensity) switch
     {
-        (BadgeSize.Sm, Lumeo.Density.Compact)  => "px-1.5 py-0",
-        (BadgeSize.Sm, Lumeo.Density.Spacious) => "px-2.5 py-0.5",
-        (BadgeSize.Sm, _)                      => "px-2 py-0",
-        (BadgeSize.Lg, Lumeo.Density.Compact)  => "px-2.5 py-0.5",
-        (BadgeSize.Lg, Lumeo.Density.Spacious) => "px-4 py-1.5",
-        (BadgeSize.Lg, _)                      => "px-3 py-1",
-        (_, Lumeo.Density.Compact)             => "px-2 py-0.5",
-        (_, Lumeo.Density.Spacious)            => "px-3 py-1",
-        _                                      => "px-2.5 py-0.5"
+        (Lumeo.Size.Xxs, Lumeo.Density.Compact)  => "px-0.5 py-0",
+        (Lumeo.Size.Xxs, Lumeo.Density.Spacious) => "px-1.5 py-0",
+        (Lumeo.Size.Xxs, _)                      => "px-1 py-0",
+        (Lumeo.Size.Xs, Lumeo.Density.Compact)   => "px-1 py-0",
+        (Lumeo.Size.Xs, Lumeo.Density.Spacious)  => "px-2 py-0.5",
+        (Lumeo.Size.Xs, _)                       => "px-1.5 py-0",
+        (Lumeo.Size.Sm, Lumeo.Density.Compact)   => "px-1.5 py-0",
+        (Lumeo.Size.Sm, Lumeo.Density.Spacious)  => "px-2.5 py-0.5",
+        (Lumeo.Size.Sm, _)                       => "px-2 py-0",
+        (Lumeo.Size.Lg, Lumeo.Density.Compact)   => "px-2.5 py-0.5",
+        (Lumeo.Size.Lg, Lumeo.Density.Spacious)  => "px-4 py-1.5",
+        (Lumeo.Size.Lg, _)                       => "px-3 py-1",
+        (Lumeo.Size.Xl, Lumeo.Density.Compact)   => "px-3 py-1",
+        (Lumeo.Size.Xl, Lumeo.Density.Spacious)  => "px-5 py-2",
+        (Lumeo.Size.Xl, _)                       => "px-3.5 py-1.5",
+        (Lumeo.Size.Xxl, Lumeo.Density.Compact)  => "px-3.5 py-1.5",
+        (Lumeo.Size.Xxl, Lumeo.Density.Spacious) => "px-6 py-2.5",
+        (Lumeo.Size.Xxl, _)                      => "px-4 py-2",
+        (_, Lumeo.Density.Compact)               => "px-2 py-0.5",
+        (_, Lumeo.Density.Spacious)              => "px-3 py-1",
+        _                                        => "px-2.5 py-0.5"
     };
 
     private const string BaseClasses = "inline-flex items-center border font-semibold transition-colors focus:outline-none";
@@ -146,5 +170,4 @@ else
     private Task HandleRemove() => OnRemove.InvokeAsync();
 
     public enum BadgeVariant { Default, Secondary, Destructive, Outline, Success, Warning }
-    public enum BadgeSize { Sm, Md, Lg }
 }

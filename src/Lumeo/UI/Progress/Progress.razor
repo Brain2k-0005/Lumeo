@@ -175,8 +175,10 @@ else
     /// <summary>End color of a linear gradient fill (CSS color string). Requires <see cref="GradientFrom"/>
     /// to also be set.</summary>
     [Parameter] public string? GradientTo { get; set; }
-    /// <summary>Bar thickness / ring diameter preset: <c>"Small"</c>, <c>"Default"</c>, or <c>"Large"</c>.</summary>
-    [Parameter] public string Size { get; set; } = "Default";
+    /// <summary>Bar thickness / ring diameter / label text size. Supports all 7 <see cref="Lumeo.Size"/>
+    /// values (Xxs–Xxl). Defaults to <see cref="Lumeo.Size.Md"/>, which reproduces the historical
+    /// <c>"Default"</c> metrics (<c>Sm</c> reproduces <c>"Small"</c>, <c>Lg</c> reproduces <c>"Large"</c>).</summary>
+    [Parameter] public Lumeo.Size Size { get; set; } = Lumeo.Size.Md;
     /// <summary>Stroke width in px for the circular shape's ring. Default: 4.</summary>
     [Parameter] public int StrokeWidth { get; set; } = 4;
     /// <summary>Additional CSS classes merged onto the progress element (bar or circular wrapper).</summary>
@@ -204,10 +206,17 @@ else
     private string ProgressDataState => Indeterminate ? "indeterminate" : (AriaValue >= Max ? "complete" : "loading");
 
     // --- Linear progress ---
+    // Sm/Md/Lg pin the exact pre-migration height (see the preservation tests
+    // in ProgressTests.cs). Xxs/Xs tie below Sm (a 2px track stays visible,
+    // it just doesn't grow further); Xl/Xxl step above Lg.
     private string SizeClass => Size switch
     {
-        "Small" => "h-1",
-        "Large" => "h-4",
+        Lumeo.Size.Xxs => "h-0.5",
+        Lumeo.Size.Xs => "h-0.5",
+        Lumeo.Size.Sm => "h-1",
+        Lumeo.Size.Lg => "h-4",
+        Lumeo.Size.Xl => "h-5",
+        Lumeo.Size.Xxl => "h-6",
         _ => "h-2"
     };
 
@@ -273,17 +282,27 @@ else
     private double Circumference => 2 * Math.PI * CircularRadius;
     private double DashOffset => IsIndeterminate ? Circumference * 0.75 : Circumference * (1.0 - Percentage / 100.0);
 
+    // Sm/Md/Lg pin the exact pre-migration diameter (see the preservation
+    // tests in ProgressTests.cs). Xxs/Xs step below Sm; Xl/Xxl step above Lg.
     private string CircularSizeStyle => Size switch
     {
-        "Small" => "width: 40px; height: 40px",
-        "Large" => "width: 80px; height: 80px",
+        Lumeo.Size.Xxs => "width: 24px; height: 24px",
+        Lumeo.Size.Xs => "width: 32px; height: 32px",
+        Lumeo.Size.Sm => "width: 40px; height: 40px",
+        Lumeo.Size.Lg => "width: 80px; height: 80px",
+        Lumeo.Size.Xl => "width: 96px; height: 96px",
+        Lumeo.Size.Xxl => "width: 112px; height: 112px",
         _ => "width: 56px; height: 56px"
     };
 
     private string CircularTextSize => Size switch
     {
-        "Small" => "text-[10px] font-medium",
-        "Large" => "text-sm font-semibold",
+        Lumeo.Size.Xxs => "text-[8px] font-medium",
+        Lumeo.Size.Xs => "text-[9px] font-medium",
+        Lumeo.Size.Sm => "text-[10px] font-medium",
+        Lumeo.Size.Lg => "text-sm font-semibold",
+        Lumeo.Size.Xl => "text-base font-semibold",
+        Lumeo.Size.Xxl => "text-lg font-semibold",
         _ => "text-xs font-medium"
     };
 

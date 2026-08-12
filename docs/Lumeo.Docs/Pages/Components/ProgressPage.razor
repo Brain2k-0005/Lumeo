@@ -166,6 +166,46 @@
             </Stack>
         </Container>
     </ComponentDemo>
+
+    <ComponentDemo Title="Sizes" Code="@_sizeCode">
+        <Container MaxWidth="md" Center="false" Padding="">
+            <Stack Gap="4">
+                <Stack Gap="1">
+                    <Lumeo.Text As="span" Size="sm" Color="muted">Sm</Lumeo.Text>
+                    <Progress Value="60" Size="Lumeo.Size.Sm" />
+                </Stack>
+                <Stack Gap="1">
+                    <Lumeo.Text As="span" Size="sm" Color="muted">Md (default)</Lumeo.Text>
+                    <Progress Value="60" />
+                </Stack>
+                <Stack Gap="1">
+                    <Lumeo.Text As="span" Size="sm" Color="muted">Lg</Lumeo.Text>
+                    <Progress Value="60" Size="Lumeo.Size.Lg" />
+                </Stack>
+            </Stack>
+        </Container>
+    </ComponentDemo>
+
+    <ComponentDemo Title="Size — interactive" Code="@_sizeInteractiveCode">
+        <Container MaxWidth="md" Center="false" Padding="">
+            <Stack Gap="4">
+                <Lumeo.Text Size="sm" Color="muted">Pick a size to see the bar thickness and ring diameter change live (all 7 Lumeo.Size rungs are supported).</Lumeo.Text>
+                <Segmented @bind-Value="_previewSize">
+                    <SegmentedItem Value="Xxs">Xxs</SegmentedItem>
+                    <SegmentedItem Value="Xs">Xs</SegmentedItem>
+                    <SegmentedItem Value="Sm">Sm</SegmentedItem>
+                    <SegmentedItem Value="Md">Md</SegmentedItem>
+                    <SegmentedItem Value="Lg">Lg</SegmentedItem>
+                    <SegmentedItem Value="Xl">Xl</SegmentedItem>
+                    <SegmentedItem Value="Xxl">Xxl</SegmentedItem>
+                </Segmented>
+                <Progress Value="65" Size="_progressSizeEnum" ShowLabel="true" />
+                <Flex Align="center" Gap="4">
+                    <Progress Value="65" Shape="Progress.ProgressShape.Circular" Size="_progressSizeEnum" ShowValue="true" />
+                </Flex>
+            </Stack>
+        </Container>
+    </ComponentDemo>
 </Stack>
 
 <div class="mt-12">
@@ -233,6 +273,13 @@
         <Stack>
             <Heading Level="3" Class="mb-3">Progress</Heading>
             <PropsTable Slug="progress" />
+            <Lumeo.Text Size="sm" Color="muted" Class="mt-2">
+                <code>Size</code> is a typed <code>Lumeo.Size</code> as of this release (previously an untyped
+                <code>string</code> taking <code>"Small"</code>/<code>"Default"</code>/<code>"Large"</code>) and
+                supports all 7 <code>Lumeo.Size</code> values (Xxs–Xxl). <code>Sm</code>/<code>Md</code>/<code>Lg</code>
+                reproduce the exact pre-migration <code>"Small"</code>/<code>"Default"</code>/<code>"Large"</code>
+                metrics for both the linear bar thickness and the circular ring diameter/label text.
+            </Lumeo.Text>
         </Stack>
 
         <Stack>
@@ -273,8 +320,30 @@
     private Progress.ProgressVariant _progressVariant = Progress.ProgressVariant.Default;
     private Progress.ProgressShape _progressShape = Progress.ProgressShape.Linear;
 
+    private string _previewSize = "Md";
+    private Lumeo.Size _progressSizeEnum =>
+        Enum.TryParse<Lumeo.Size>(_previewSize, out var s) ? s : Lumeo.Size.Md;
+
     private void Increase() => _value = Math.Min(100, _value + 10);
     private void Decrease() => _value = Math.Max(0, _value - 10);
+
+    private string _sizeCode = @"<Progress Value=""60"" Size=""Lumeo.Size.Sm"" />
+<Progress Value=""60"" />                        @* Md — default *@
+<Progress Value=""60"" Size=""Lumeo.Size.Lg"" />";
+
+    private string _sizeInteractiveCode = @"<Segmented @bind-Value=""_size"">
+    <SegmentedItem Value=""Xxs"">Xxs</SegmentedItem>
+    <SegmentedItem Value=""Xs"">Xs</SegmentedItem>
+    <SegmentedItem Value=""Sm"">Sm</SegmentedItem>
+    <SegmentedItem Value=""Md"">Md</SegmentedItem>
+    <SegmentedItem Value=""Lg"">Lg</SegmentedItem>
+    <SegmentedItem Value=""Xl"">Xl</SegmentedItem>
+    <SegmentedItem Value=""Xxl"">Xxl</SegmentedItem>
+</Segmented>
+<Progress Value=""65"" Size=""@_sizeEnum"" ShowLabel=""true"" />
+<Progress Value=""65"" Shape=""Progress.ProgressShape.Circular"" Size=""@_sizeEnum"" ShowValue=""true"" />
+
+@code { private Lumeo.Size _sizeEnum = Lumeo.Size.Md; }";
 
     private string _variantInteractiveCode = @"<Progress Value=""65"" Variant=""Progress.ProgressVariant.Success"" ShowLabel=""true"" />";
     private string _shapeInteractiveCode = @"@* Linear (default) *@
