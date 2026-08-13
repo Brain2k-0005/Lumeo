@@ -755,17 +755,37 @@ function computeSnappedDates(mode, movedDays, origStart, origEnd) {
 // inline style referencing var(--color-destructive) needs no stylesheet rule
 // of its own (unlike a Tailwind utility class, which would need the v3 CSS
 // build to have ever seen that class string) — the browser resolves the
-// custom property from whatever theme root is already in scope. data-invalid
-// is the stable hook (E2E selector / consumer override), the inline style is
-// what actually paints.
+// custom property from whatever theme root is already in scope.
+//
+// data-drop-invalid is the ReUI-parity hook (the styling-hooks audit — ReUI
+// names this exact attribute), the inline style is what actually paints.
+// Presence-only (an empty-string value, never "true"/"false") — same
+// boolean-attribute convention every OTHER new styling hook in this pass uses
+// (see GanttBar.razor's WrapperAttributes remarks): `[data-drop-invalid]` is a
+// valid CSS selector this way.
+//
+// data-invalid="true" is kept ALONGSIDE it, not replaced (Codex review of this
+// PR, P2). The first pass renamed it, but this file's own prior comment called
+// data-invalid "the stable hook (E2E selector / consumer override)" — i.e. it
+// was explicitly promised to consumers, so dropping it would silently break
+// every existing CanDrop override, in a PR whose whole point is to ADD styling
+// hooks. It is also the house convention beyond this component: Lumeo.Scheduler
+// paints its own drag ghost with the identical attribute and ships a
+// `[data-scheduler-ghost][data-invalid]` rule, so a Gantt-only rename would
+// have split a cross-component convention too. Both are set and cleared
+// together; the value shapes differ deliberately (the legacy alias keeps its
+// original "true" value so existing `[data-invalid="true"]` selectors — not
+// just `[data-invalid]` — keep matching).
 function setGhostInvalid(ghost, invalid) {
     if (!ghost) return;
     if (invalid) {
+        ghost.setAttribute('data-drop-invalid', '');
         ghost.setAttribute('data-invalid', 'true');
         ghost.classList.add('lumeo-gantt-v3-drag-ghost-invalid');
         ghost.style.outline = '2px solid var(--color-destructive)';
         ghost.style.backgroundColor = 'var(--color-destructive)';
     } else {
+        ghost.removeAttribute('data-drop-invalid');
         ghost.removeAttribute('data-invalid');
         ghost.classList.remove('lumeo-gantt-v3-drag-ghost-invalid');
         ghost.style.outline = '';
@@ -946,7 +966,47 @@ function registerDrag(el, dotNetRef, options) {
         // drag session (not module-level), so it never outlives the drag and
         // never collides with a concurrent drag on a different bar.
         const validationCache = new Map(); // snapped-position key -> Promise<bool>
+        // Keys whose cached promise has not settled yet. Needed because a Map
+        // of promises cannot answer "is this one still in flight?" — see the
+        // revisit branch in checkCanDrop for why that question matters.
+        const pendingKeys = new Set();
         let lastValidatedKey = null;
+
+        // Bug fix (Codex review of this PR, P2): makeGhost CLONES the bar, so
+        // the ghost carried the ORIGINAL task's data-past for the whole
+        // gesture — drag a finished task into the future and the preview
+        // stayed styled as past until the drop committed. Same class as the
+        // progress-hook staleness already fixed above, for the date-changing
+        // modes. Mirrors GanttBar.IsPast exactly: whole-day comparison against
+        // the LAST RENDERED day (candidate Start for a milestone, whose
+        // geometry ignores End; candidate End otherwise), never constructing
+        // the day after it — see that property's own remarks for why the
+        // "+1 day" form overflowed at DateTime.MaxValue.
+        function refreshGhostPast(dx) {
+            if (!ghost) return;
+            const dayPx = dragOptions && dragOptions.pixelsPerDay > 0 ? dragOptions.pixelsPerDay : 0;
+            if (!dayPx) return; // no day scale to snap with — leave the cloned value rather than guess
+            const movedDays = Math.round(dx / dayPx);
+            const { newStart: candStart, newEnd: candEnd } = computeSnappedDates(mode, movedDays, origStart, origEnd);
+            const endInclusive = isMilestone ? candStart : candEnd;
+            // Missing/unparseable data-task-start|end (parseIsoDate returns
+            // null, and addDays on it yields an Invalid Date) — leave the
+            // cloned attribute alone rather than paint from NaN.
+            if (!endInclusive || Number.isNaN(endInclusive.getTime())) return;
+            // The TIMELINE's effective now (dragOptions.nowDate), never this
+            // engine's own new Date() (Codex review of this PR, P2): GanttBar
+            // computes data-past from GanttTimeline.Now when a consumer supplies
+            // one — a historical or simulated timeline — so reading the real
+            // browser clock here made the ghost contradict the very bar it was
+            // cloned from. No fallback to new Date(): if .NET did not send a
+            // date, leave the cloned attribute rather than invent a clock the
+            // bars are not using.
+            const today = dragOptions && dragOptions.nowDate ? parseIsoDate(dragOptions.nowDate) : null;
+            if (!today || Number.isNaN(today.getTime())) return;
+            const end = new Date(endInclusive.getFullYear(), endInclusive.getMonth(), endInclusive.getDate());
+            if (today > end) ghost.setAttribute('data-past', '');
+            else ghost.removeAttribute('data-past');
+        }
 
         function checkCanDrop(dx) {
             const dayPx = dragOptions && dragOptions.pixelsPerDay > 0 ? dragOptions.pixelsPerDay : 1;
@@ -972,10 +1032,44 @@ function registerDrag(el, dotNetRef, options) {
                 // function at all (see checkCanDrop's/onPointerUp's own
                 // `dragOptions.hasCanDrop` gate), so a chart with no CanDrop
                 // still commits unconditionally, exactly as before.
+                //
+                // Styling-hooks audit (data-drop-invalid, fail-closed while
+                // pending): an unresolved verdict for a BRAND NEW snapped
+                // position used to leave the ghost showing whatever its PRIOR
+                // position's verdict happened to be — optimistically "valid"
+                // more often than not, since most positions along a drag are.
+                // That is the same fail-OPEN shape the P1 fix above already
+                // closed for a REJECTED invocation, just for the in-flight
+                // window instead of the rejected-outcome case: painting the
+                // ghost invalid before the async call is even dispatched
+                // means an unresolved predicate reads as invalid, matching
+                // this drag's own fail-closed COMMIT gate (onPointerUp below
+                // awaits the identical promise and requires `valid === true`)
+                // rather than a stale, possibly-wrong "valid" flashing between
+                // repaints.
+                setGhostInvalid(ghost, true);
+                pendingKeys.add(key);
                 promise = dragDotNet
                     ? dragDotNet.invokeMethodAsync('ValidateDrop', taskId, mode, toLocalDateString(candStart), toLocalDateString(candEnd)).catch(() => false)
                     : Promise.resolve(false);
+                // Registered BEFORE the repaint .then below, so by the time
+                // that one runs the key is already off the pending set.
+                promise.then(() => pendingKeys.delete(key));
                 validationCache.set(key, promise);
+            } else if (pendingKeys.has(key)) {
+                // Bug fix (Codex review of this PR, P2): the pessimistic
+                // repaint above used to be gated on `!promise` alone, on the
+                // reasoning that revisiting an already-cached key "has nothing
+                // new to hide behind a pessimistic repaint". That holds for a
+                // SETTLED verdict, but not for one still in flight: drag to a
+                // slow-validating position A (ghost correctly painted
+                // invalid-while-pending), move to a fast/valid position B
+                // (ghost repainted valid), then move back to A before A's
+                // verdict lands — the cache hit skipped the repaint and left
+                // the ghost showing B's "valid" for a position whose verdict
+                // is still unknown. Same fail-OPEN shape as the two cases
+                // above, reached through the cache instead of a fresh call.
+                setGhostInvalid(ghost, true);
             }
             promise.then((valid) => {
                 // Only repaint if the drag hasn't already moved on to a DIFFERENT
@@ -1001,7 +1095,20 @@ function registerDrag(el, dotNetRef, options) {
             if (!dragInitiated) {
                 if (Math.abs(dx) < DRAG_THRESHOLD_PX) return;
                 dragInitiated = true;
-                ghost = makeGhost(barEl);
+                ghost = makeGhost(barEl); // clone FIRST — see data-dragging's own remarks below for why order matters
+                // Styling-hooks audit (data-dragging): set on barEl, never
+                // Blazor-rendered — this whole engine runs a live gesture with
+                // NO Blazor round trip until CommitDrag on drop (see this
+                // function's own class remarks: "the REAL Blazor-owned bar div
+                // is never mutated by JS" predates this attribute; a render
+                // can't reach a mid-gesture truth only JS holds). Presence-only,
+                // same convention as data-drop-invalid/every other new hook.
+                // Set AFTER makeGhost (which clones barEl) so the clone does
+                // NOT inherit it — a consumer rule mirroring ReUI's own
+                // "data-dragging hides the original, the ghost stands in for
+                // it" intent (e.g. `[data-dragging] { opacity: 0 }`) must hide
+                // ONLY the original, never the ghost that is the live preview.
+                barEl.setAttribute('data-dragging', '');
             }
             // gantt-v2.js:698-720 (applyDragVisual) — the ghost-only v3
             // equivalent: 'move' translates the whole ghost, 'resize-end'
@@ -1026,10 +1133,22 @@ function registerDrag(el, dotNetRef, options) {
                 const newProgress = clampProgress(origProgress + ((isRtl ? -dx : dx) / geo.width) * 100);
                 const fill = ghost.querySelector('.lumeo-gantt-v3-bar-progress');
                 if (fill) fill.style.width = newProgress + '%';
+                // Bug fix (Codex review of the styling-hooks PR, P2): makeGhost
+                // CLONES the original bar, so the ghost inherited a frozen
+                // data-progress (and possibly data-completed) from before the
+                // drag. The preview then matched consumer selectors for the OLD
+                // percentage while visibly showing a different one — and a bar
+                // dragged down from 100% kept [data-completed] the whole time.
+                // Keep both hooks on the ghost in step with the width above.
+                const rounded = Math.round(newProgress);
+                ghost.setAttribute('data-progress', String(rounded));
+                if (rounded === 100) ghost.setAttribute('data-completed', '');
+                else ghost.removeAttribute('data-completed');
             }
 
-            if (mode !== 'progress' && dragOptions && dragOptions.hasCanDrop) {
-                checkCanDrop(dx);
+            if (mode !== 'progress') {
+                refreshGhostPast(dx);
+                if (dragOptions && dragOptions.hasCanDrop) checkCanDrop(dx);
             }
         };
 
@@ -1118,6 +1237,7 @@ function registerDrag(el, dotNetRef, options) {
             barEl.removeEventListener('pointercancel', onPointerCancel);
             try { barEl.releasePointerCapture(pointerId); } catch (_) { /* already released */ }
             if (ghost && ghost.parentNode) ghost.parentNode.removeChild(ghost);
+            barEl.removeAttribute('data-dragging'); // styling-hooks audit — harmless no-op below the drag threshold (never set)
             activeBarDrags.delete(barEl);
             activeDragGestureCount--; // design spec Phase 3, T9 — mirrors the activeBarDrags.add above
             // Bug fix (Codex P2 finding "Cancel active drags when

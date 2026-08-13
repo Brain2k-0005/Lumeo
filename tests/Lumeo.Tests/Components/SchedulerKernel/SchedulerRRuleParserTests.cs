@@ -65,6 +65,7 @@ public class SchedulerRRuleParserTests
     [InlineData("FREQ=DAILY;UNTIL=20261231")]
     [InlineData("FREQ=DAILY;UNTIL=20261231T235959")]
     [InlineData("FREQ=DAILY;UNTIL=20261231T235959Z")]  // the end-of-day idiom real calendars emit
+    [InlineData("freq=daily;until=20261231t235959z")]  // a producer that lowercases the whole line
     public void Parses_Every_Until_Form(string rrule)
     {
         var rule = SchedulerRRuleParser.Parse(rrule);
@@ -123,6 +124,9 @@ public class SchedulerRRuleParserTests
     [InlineData("FREQ=MONTHLY;BYDAY=1MO,-5MO")]    // 1+5=6 — same date in any five-Monday month
     [InlineData("FREQ=MONTHLY;BYDAY=1MO,-4MO")]    // 1+4=5 — same date in any four-Monday month
     [InlineData("FREQ=DAILY;INTERVAL=2147483647")] // would overflow the expander's AddDays
+    [InlineData("FREQ=DAILY;INTERVAL=5001")]      // per-frequency bound: 501 steps must stay in range
+    [InlineData("FREQ=WEEKLY;INTERVAL=801")]
+    [InlineData("FREQ=MONTHLY;INTERVAL=151")]     // 501 monthly steps of 151 overflow DateTime
     [InlineData("FREQ=DAILY;COUNT=501")]           // above the expander's own occurrence cap
     [InlineData("FREQ=WEEKLY;BYDAY=MO,")]          // trailing empty term
     [InlineData("FREQ=WEEKLY;BYDAY=,MO")]          // leading empty term

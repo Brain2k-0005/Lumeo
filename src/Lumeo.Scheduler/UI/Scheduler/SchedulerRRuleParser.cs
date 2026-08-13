@@ -21,13 +21,30 @@ namespace Lumeo;
 ///
 /// <para>
 /// <b>Scope is deliberately the same subset the expander already implements</b>
-/// (<see cref="Lumeo.SchedulerKernel.SchedulerRecurrenceExpander"/>): <c>FREQ</c> of DAILY/WEEKLY/MONTHLY, plus
+/// (the recurrence expander): <c>FREQ</c> of DAILY/WEEKLY/MONTHLY, plus
 /// <c>INTERVAL</c>, <c>COUNT</c>, <c>UNTIL</c> and <c>BYDAY</c> (with RFC 5545 ordinals such as
 /// <c>2MO</c> / <c>-1FR</c>). Anything outside that — <c>FREQ=YEARLY</c>, <c>BYMONTHDAY</c>,
 /// <c>BYSETPOS</c>, <c>WKST</c>, … — is <b>rejected</b>, never silently dropped. Accepting a
 /// rule and then quietly ignoring half of it is the worst possible outcome here: the caller
 /// gets a series that looks plausible and is wrong, on their real calendar data. A rejected
 /// parse is a bug report; a silently narrowed rule is a support ticket six months later.
+/// </para>
+///
+/// <para>
+/// <b>Known divergence, deliberately NOT rejected — a bare <c>FREQ=MONTHLY</c> anchored on
+/// day 29, 30 or 31.</b> RFC 5545 SKIPS months that lack that day (a 31st-anchored rule has no
+/// February occurrence); the expander CLAMPS to the month's last day instead, which is a
+/// documented wave-1 choice of its own. So importing <c>FREQ=MONTHLY;COUNT=3</c> for a
+/// <c>DTSTART</c> of 2026-01-31 yields a February date the source calendar would not have.
+/// </para>
+/// <para>
+/// Rejecting every bare monthly rule would close that hole, and is the wrong trade: the
+/// overwhelming majority are anchored on days 1-28, where the two readings are identical, and
+/// refusing them would make importing ordinary monthly events impossible. The divergence is
+/// also not visible from the rule text at all — it depends on <c>DTSTART</c>, which this parser
+/// never sees — so the check belongs where both are known, not here. Callers importing
+/// month-end anchors should either supply an explicit <c>BYDAY</c> ordinal (<c>-1FR</c> and
+/// friends resolve exactly) or filter the expanded occurrences themselves.
 /// </para>
 /// </summary>
 public static class SchedulerRRuleParser
@@ -36,7 +53,33 @@ public static class SchedulerRRuleParser
     /// Largest accepted <c>INTERVAL</c> — see the INTERVAL branch for why a
     /// bound is needed at all.
     /// </summary>
-    private const int MaxInterval = 10_000;
+    /// <summary>
+    /// Mirror of the expander's own occurrence cap, duplicated as a literal on
+    /// purpose (Codex review of this PR, P2): referencing
+    /// <c>SchedulerRecurrenceExpander.OccurrenceCap</c> would compile here but
+    /// NOT in a source-vendored install, because nothing under <c>Kernel/</c> is
+    /// shipped by <c>lumeo add scheduler</c> — the very gap moving this file
+    /// closed, reintroduced as a type reference. Kept in sync by the
+    /// round-trip tests, which expand parser output through the real expander.
+    /// </summary>
+    private const int ExpanderOccurrenceCap = 500;
+
+    /// <summary>
+    /// Largest accepted <c>INTERVAL</c>, per frequency (Codex review of this PR,
+    /// P2). A single flat cap was not enough: the expander takes up to
+    /// <see cref="ExpanderOccurrenceCap"/> + 1 steps and advances BEFORE it can
+    /// notice COUNT is satisfied, so the safe bound depends on how far one step
+    /// moves. 501 steps must stay inside DateTime's range from any realistic
+    /// start — roughly 2.9M days, i.e. ~5 700 daily / ~820 weekly / ~190 monthly
+    /// steps — and these are the next round number below each.
+    /// </summary>
+    private static int MaxIntervalFor(SchedulerRecurrenceFrequency freq) => freq switch
+    {
+        SchedulerRecurrenceFrequency.Daily => 5_000,
+        SchedulerRecurrenceFrequency.Weekly => 800,
+        SchedulerRecurrenceFrequency.Monthly => 150,
+        _ => 1,
+    };
 
     /// <summary>
     /// Attempts to parse <paramref name="rrule"/>. Returns <c>false</c> (with
@@ -104,13 +147,8 @@ public static class SchedulerRRuleParser
                     intervalSeen = true;
                     if (!int.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out interval) || interval < 1)
                         return false; // RFC 5545: INTERVAL is a positive integer
-                    // Upper bound (Codex review of this PR, P2): the expander
-                    // advances with DateTime.AddDays/AddMonths and does so BEFORE
-                    // it can notice COUNT is satisfied, so a huge interval throws
-                    // out of a rule the parser had called valid. 10000 steps is
-                    // far past any real calendar (27 years of daily steps, 833
-                    // years of monthly ones) and cannot overflow.
-                    if (interval > MaxInterval) return false;
+                    // The upper bound depends on FREQ, which may appear LATER in
+                    // the string, so it is enforced after the loop.
                     break;
 
                 case "COUNT":
@@ -122,7 +160,7 @@ public static class SchedulerRRuleParser
                     // larger COUNT silently yields fewer occurrences than asked
                     // for — the same accept-then-quietly-do-something-else
                     // failure this parser exists to refuse.
-                    if (parsedCount > Lumeo.SchedulerKernel.SchedulerRecurrenceExpander.OccurrenceCap) return false;
+                    if (parsedCount > ExpanderOccurrenceCap) return false;
                     count = parsedCount;
                     break;
 
@@ -144,6 +182,7 @@ public static class SchedulerRRuleParser
         }
 
         if (freq is null) return false; // FREQ is the one REQUIRED part (RFC 5545 §3.3.10)
+        if (interval > MaxIntervalFor(freq.Value)) return false;
         if (!ByDayIsHonouredBy(freq.Value, byDay)) return false;
 
         rule = new SchedulerRecurrenceRule(freq.Value, interval, count, until, byDay);
@@ -215,8 +254,13 @@ public static class SchedulerRRuleParser
         // The Z designator belongs to RFC 5545's DATE-TIME form only, so a
         // date-only value carrying one is malformed (Codex review of this PR,
         // P2) — stripping it unconditionally made "20261231Z" parse.
-        var hasUtcSuffix = value.EndsWith("Z", StringComparison.OrdinalIgnoreCase);
-        var text = hasUtcSuffix ? value[..^1] : value;
+        // Upper-cased first (Codex review of this PR, P2): the 'T' separator is
+        // matched as a literal, so a producer that lowercases the whole value —
+        // "20261231t235959z" — was rejected even though the contract promises
+        // case-insensitive values, and every other part already honours that.
+        var upper = value.ToUpperInvariant();
+        var hasUtcSuffix = upper.EndsWith("Z", StringComparison.Ordinal);
+        var text = hasUtcSuffix ? upper[..^1] : upper;
 
         if (DateTime.TryParseExact(text, "yyyyMMdd", CultureInfo.InvariantCulture, DateTimeStyles.None, out result))
             return !hasUtcSuffix;
