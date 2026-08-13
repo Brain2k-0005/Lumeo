@@ -44,6 +44,36 @@ public class GanttV3RowSelectionReorderTests : GanttParityTestBase
     }
 
     [Fact]
+    public async Task Leaf_Checkbox_Toggle_Marks_The_Bar_Data_Selected()
+    {
+        // Styling-hooks audit (ReUI parity: data-selected). GanttBar has no
+        // Selected parameter reachable from a standalone bUnit render of just
+        // <GanttBar> — the wiring runs GanttChart's GanttState.SelectedIds ->
+        // GanttTimeline.SelectedIds -> GanttBar.Selected end to end, so only a
+        // REAL checkbox click through the full component tree (this route)
+        // proves the plumbing, not a test that sets a parameter directly.
+        await GotoHost("/e2e/gantt-v3-tree?checkboxes=1&infiniteScroll=0");
+
+        var leafCheckbox = RowByLabel("Wireframes").Locator(".lumeo-gantt-v3-tree-checkbox");
+        await leafCheckbox.WaitForAsync(new() { Timeout = 15000 });
+        // "grandchild1" — GanttParityFixtures.TreeTasks()'s own id for "Wireframes".
+        var bar = Page.Locator($"{Root} [data-task-id='grandchild1']");
+
+        // Predicted-wrong baseline: absent, not merely a falsy value — a
+        // disable-check that already finds this present proves the fixture
+        // wrong, not the wiring.
+        await Expect(bar).Not.ToHaveAttributeAsync("data-selected", "");
+
+        await leafCheckbox.ClickAsync();
+        await Expect(bar).ToHaveAttributeAsync("data-selected", "");
+
+        // Toggling back off clears it — proves this tracks live selection
+        // state, not a one-way "ever selected" flag.
+        await leafCheckbox.ClickAsync();
+        await Expect(bar).Not.ToHaveAttributeAsync("data-selected", "");
+    }
+
+    [Fact]
     public async Task Parent_Checkbox_Reflects_Tri_State_And_Selects_All_Descendants()
     {
         await GotoHost("/e2e/gantt-v3-tree?checkboxes=1&infiniteScroll=0");

@@ -440,6 +440,10 @@ else
             // drag/resize/progress edit (via ReplaceTask) persisted the stale
             // parent instead of the caller's update.
             hash.Add(t.ParentId);
+            // IsRecurring joins for exactly the reason above — it is the second
+            // non-positional init property on the shared record, and a
+            // flag-only change must not hash identically to the unchanged task.
+            hash.Add(t.IsRecurring);
             if (t.Dependencies is not null)
                 foreach (var d in t.Dependencies) hash.Add(d);
             // Fold the delegate output so a BarColor / GroupBy swap that leaves the
@@ -506,8 +510,17 @@ else
         // Only ParentId is actually missing from `t`; merging JUST that field
         // onto the normalized payload fixes the hierarchy gap without losing
         // the normalization the renderer already did.
+        //
+        // Bug fix (Codex review of the styling-hooks PR, P1): IsRecurring is the
+        // SECOND field in exactly this position — a non-positional init property
+        // the shared record gained after gantt-v2.js's taskToJson was written,
+        // so the payload never carries it either. Without merging it here a
+        // click reported IsRecurring == false for a task the consumer had
+        // marked, the same way ParentId used to.
         var stored = _tasks.Find(x => x.Id == t.Id);
-        var merged = stored is not null ? t with { ParentId = stored.ParentId } : t;
+        var merged = stored is not null
+            ? t with { ParentId = stored.ParentId, IsRecurring = stored.IsRecurring }
+            : t;
         if (OnTaskClick.HasDelegate) await OnTaskClick.InvokeAsync(merged);
     }
 
@@ -564,7 +577,19 @@ else
             // can pass the MERGED task to OnDateChange/OnProgressChange too —
             // `t` is a by-value parameter, so reassigning it here never
             // propagates back to either caller's own local on its own.
-            t = t with { ParentId = _tasks[idx].ParentId };
+            //
+            // Bug fix (Codex review of the styling-hooks PR, P1): IsRecurring
+            // needs the identical treatment and is strictly WORSE without it —
+            // ParentId only mattered to hierarchy consumers, whereas this path
+            // writes the merged task straight back into _tasks and emits it via
+            // TasksChanged, so an unrelated drag/resize/progress edit silently
+            // CLEARED a flag the consumer had set, and the cleared value became
+            // the new source of truth.
+            t = t with
+            {
+                ParentId = _tasks[idx].ParentId,
+                IsRecurring = _tasks[idx].IsRecurring,
+            };
             _tasks[idx] = t;
         }
         _lastTasksHash = ComputeTasksHash(_tasks);

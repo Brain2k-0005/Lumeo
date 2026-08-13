@@ -43,6 +43,25 @@ public record GanttTask(
     /// ParentId-only change), and by <c>with</c>-expressions.
     /// </summary>
     public string? ParentId { get; init; }
+
+    /// <summary>
+    /// Marks this task as originating from a recurring series (styling-hooks audit —
+    /// see <see cref="Lumeo.GanttBar"/>'s <c>data-recurring</c> attribute). GanttV3
+    /// has no recurrence-EXPANSION engine of its own (unlike <c>Lumeo.Scheduler</c>'s
+    /// <c>SchedulerRecurrenceRule</c>/<c>SchedulerRecurrenceExpander</c>) — a consumer
+    /// who generates repeating tasks externally (e.g. one <see cref="GanttTask"/> per
+    /// week of a weekly standup) sets this flag on each generated occurrence so the
+    /// rendered bar can still be styled as "part of a series" via CSS, the same way
+    /// ReUI's Gantt marks an expanded recurring occurrence. Default <c>false</c> — every
+    /// existing task (which never set this) renders byte-identically.
+    ///
+    /// Added the same way <see cref="ParentId"/> was (a non-positional <c>init</c>
+    /// property in the record body, not a new positional-constructor parameter) —
+    /// see <see cref="ParentId"/>'s own remarks for why: the positional constructor
+    /// and <c>Deconstruct</c> are shipped API, and CONTRIBUTING.md's stability policy
+    /// forbids changing either outside the Obsolete-one-minor-then-major flow.
+    /// </summary>
+    public bool IsRecurring { get; init; }
 }
 
 /// <summary>

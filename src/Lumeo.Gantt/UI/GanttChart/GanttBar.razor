@@ -228,6 +228,38 @@
     /// </summary>
     [Parameter] public EventCallback<GanttBarKeyNavigation> OnKeyNavigation { get; set; }
 
+    /// <summary>
+    /// Marks this bar as the selected occurrence (styling-hooks audit — ReUI
+    /// parity's <c>data-selected</c>). Independent of <see cref="Task"/> itself:
+    /// the caller decides what "selected" means (<see
+    /// cref="Lumeo.GanttChart.SelectedIds"/> membership, when wired through
+    /// <see cref="Lumeo.GanttTimeline"/> — see that component's own
+    /// <c>SelectedIds</c> parameter). Default <c>false</c>, so a standalone
+    /// <see cref="Lumeo.GanttBar"/> (no caller ever set this) renders
+    /// byte-identically to before this parameter existed — no
+    /// <c>data-selected</c> attribute at all, not merely one set to a falsy
+    /// value (see <see cref="WrapperAttributes"/>'s own remarks on the
+    /// presence-vs-value convention every new styling-hook attribute here
+    /// follows).
+    /// </summary>
+    [Parameter] public bool Selected { get; set; }
+
+    /// <summary>
+    /// The current date+time backing <c>data-past</c> (styling-hooks audit —
+    /// ReUI parity). Null (the default) falls back to <see cref="DateTime.Now"/>
+    /// (the SERVER's local time) — the same standalone-usage fallback <see
+    /// cref="Lumeo.GanttTimeline.Now"/>/<c>Today</c> already give when no
+    /// <see cref="Lumeo.GanttChart"/> wraps the component. <see
+    /// cref="Lumeo.GanttTimeline"/> forwards its own already browser-resolved
+    /// <c>EffectiveNow</c> here (the SAME value <c>NowIndicator</c>'s marker
+    /// position uses — see that parameter's own remarks for why "browser time,
+    /// not server time" matters: a server-rendered/prerendered chart has no
+    /// business deciding what is "past" from a clock in a different time zone
+    /// than the person looking at it), so this is never a second, independently
+    /// resolved "now".
+    /// </summary>
+    [Parameter] public DateTime? Now { get; set; }
+
     /// <summary>Additional CSS classes merged onto the positioned wrapper.</summary>
     [Parameter] public string? Class { get; set; }
 
@@ -405,6 +437,41 @@
     // consumer setting Progress=150 previously got a fill correctly capped
     // at 100% width, but a tooltip claiming "150% complete").
     private int ClampedProgress => Math.Clamp(Task.Progress, 0, 100);
+
+    // Styling-hooks audit — see Now's own remarks for why this mirrors
+    // GanttTimeline.EffectiveNow's identical "browser time, else server time"
+    // fallback rather than resolving a second, independent "now".
+    private DateTime EffectiveNow => Now ?? DateTime.Now;
+
+    // "the task lies in the past" (styling-hooks audit, ReUI's own data-past):
+    // End, not Start — a multi-day task that started in the past but hasn't
+    // finished yet is still IN PROGRESS, not past.
+    //
+    // Bug fix (Codex review of the styling-hooks PR, P2): this compared the
+    // RAW Task.End, which contradicted the bar the user is looking at in two
+    // ways. (1) GanttScale.BarGeometry treats End as an INCLUSIVE date and
+    // renders through End.Date.AddDays(1), so a task ending today still has a
+    // bar covering all of today — yet raw-End comparison flipped it to "past"
+    // the instant the clock passed midnight into its own final day. (2) A
+    // milestone's rendered extent derives from Start (BarGeometry ignores End
+    // for milestones entirely), so a milestone with a mismatched End reported
+    // a past-ness its own diamond disagreed with. Both now resolve to the SAME
+    // last-rendered-day the geometry uses, so the hook can never contradict
+    // the rendered timeline.
+    // The task's LAST rendered day, inclusive — Start for a milestone (whose
+    // geometry ignores End entirely), End otherwise.
+    private DateTime RenderedEndInclusive => (Task.IsMilestone ? Task.Start : Task.End).Date;
+
+    // Bug fix (Codex review of this PR, P2): the first version of this fix
+    // computed the EXCLUSIVE endpoint as `.AddDays(1)` and compared
+    // `EffectiveNow >= that`. Correct arithmetic, but it threw
+    // ArgumentOutOfRangeException for a task dated DateTime.MaxValue.Date
+    // (9999-12-31) — a legitimate "no deadline" sentinel — taking a bar that
+    // rendered fine before this PR and making it crash on render. Comparing
+    // whole calendar days instead is exactly equivalent (now >= end+1day, on
+    // dates, is the same statement as now.Date > end) and cannot overflow,
+    // because it never constructs the day after the endpoint.
+    private bool IsPast => EffectiveNow.Date > RenderedEndInclusive;
 
     private string ProgressStyle =>
         FormattableString.Invariant($"width:{ClampedProgress}%;background-color:{ResolvedColor};");
@@ -869,8 +936,51 @@
                 // drag's ghost-fill math (dx / barWidth * 100, relative to the
                 // ORIGINAL progress) needs this at pointerdown time.
                 ["data-task-progress"] = Math.Clamp(Task.Progress, 0, 100).ToString(CultureInfo.InvariantCulture),
+                // Styling-hooks audit (ReUI parity: data-selected, data-dragging,
+                // data-progress, data-completed, data-past, data-recurring,
+                // data-off, data-drop-invalid — 0 of 8 existed under any name
+                // before this pass). data-progress is the one VALUE-carrying hook
+                // of the eight (ReUI: "content comes from ... data attributes";
+                // its own data-progress carries the clamped 0-100 number, not a
+                // bare presence marker) — matches ClampedProgress exactly, the
+                // SAME value the progress fill's width and the tooltip's
+                // "N% complete" line already read, so this can never disagree
+                // with what's actually painted. Unconditional (unlike ReUI,
+                // where event.progress is OPTIONAL and the attribute is omitted
+                // entirely when unset): Lumeo's GanttTask.Progress is a
+                // non-nullable int (default 0), and the progress fill/tooltip
+                // already render unconditionally for every non-milestone bar —
+                // there is no "no progress data" state in this data model to
+                // omit the attribute FOR. Applied to milestones too (Task.Progress
+                // is still a real, readable field there, same as the tooltip's
+                // own unconditional "N% complete" line) rather than special-cased
+                // out, for the same "never disagree with what render already
+                // does" reason.
+                ["data-progress"] = ClampedProgress.ToString(CultureInfo.InvariantCulture),
             };
             if (Task.IsMilestone) attrs["data-milestone"] = "true";
+            // Every hook below is presence-vs-absence (Lumeo's established
+            // boolean-attribute idiom — see e.g. Accordion/Checkbox/ContextMenu's
+            // own `data-disabled="@(Disabled ? string.Empty : null)"` pattern):
+            // the key is only ADDED when the state is true, an empty-string value
+            // (a bare attribute in the rendered DOM), never a string "true"/"false"
+            // — so `[data-selected]` is a valid, working CSS selector, matching the
+            // ReUI shape this audit is closing the gap against.
+            if (ClampedProgress == 100) attrs["data-completed"] = "";
+            if (IsPast) attrs["data-past"] = "";
+            if (Task.IsRecurring) attrs["data-recurring"] = "";
+            if (Selected) attrs["data-selected"] = "";
+            // data-dragging is deliberately NOT set here: GanttV3's drag engine
+            // (gantt-v3.js) is a pure pointer-event/DOM-ghost engine with no
+            // per-gesture Blazor round trip while a drag is live (see
+            // GanttTimeline's own remarks — "the REAL Blazor-owned bar div is
+            // never mutated by JS" was true only until this attribute; a
+            // Blazor render can't reach a mid-gesture truth JS alone owns).
+            // gantt-v3.js sets/clears data-dragging directly on THIS element
+            // (found the same way every other drag lookup already does, via
+            // data-task-id) the instant the drag threshold is crossed/the
+            // gesture ends — see its own onPointerMove/cleanup remarks.
+            //
             // Author-supplied attributes win on collision (splat-last semantics
             // used throughout Lumeo — see TooltipTrigger.BuildAttrs for the same pattern).
             if (AdditionalAttributes is not null)
