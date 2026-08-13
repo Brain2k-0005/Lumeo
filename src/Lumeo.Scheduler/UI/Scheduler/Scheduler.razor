@@ -4,7 +4,7 @@
 @inject Lumeo.Services.IComponentInteropService Interop
 @inject Lumeo.Services.Localization.ILumeoLocalizer L
 
-@if (_initError is not null)
+@if (_initError is not null && Engine != SchedulerEngine.FirstParty)
 {
     <div class="@($"flex items-center justify-center text-sm text-destructive border border-destructive/30 rounded-md bg-destructive/5 {Class}".Trim())" style="height: @Height;" @attributes="AdditionalAttributes">
         <span>@_initError</span>
@@ -75,7 +75,7 @@ else
                                         FirstDayOfWeek="@EffectiveFirstDayOfWeek"
                                         BusinessHours="@BusinessHours"
                                         ShowWeekNumbers="@ShowWeekNumbers" HideWeekends="@HideWeekends"
-                                        Editable="@Editable" Selectable="@Selectable"
+                                        Editable="@Editable" Selectable="@Selectable" CanDrop="@CanDrop"
                                         ResolveEventColor="@ResolveFirstPartyColor"
                                         ResolveEventClassNames="@ResolveFirstPartyClassNames"
                                         OnEventClick="@OnEventClick" OnDateSelect="@OnDateSelect"
@@ -87,7 +87,7 @@ else
                                            FirstDayOfWeek="@EffectiveFirstDayOfWeek"
                                            BusinessHours="@BusinessHours" NowIndicator="@NowIndicator"
                                            SlotMinTime="@SlotMinTime" SlotMaxTime="@SlotMaxTime"
-                                           Editable="@Editable" Selectable="@Selectable"
+                                           Editable="@Editable" Selectable="@Selectable" CanDrop="@CanDrop"
                                            ResolveEventColor="@ResolveFirstPartyColor"
                                            ResolveEventClassNames="@ResolveFirstPartyClassNames"
                                            OnEventClick="@OnEventClick" OnDateSelect="@OnDateSelect"
@@ -99,14 +99,14 @@ else
                                            FirstDayOfWeek="@EffectiveFirstDayOfWeek"
                                            BusinessHours="@BusinessHours" NowIndicator="@NowIndicator"
                                            SlotMinTime="@SlotMinTime" SlotMaxTime="@SlotMaxTime"
-                                           Editable="@Editable" Selectable="@Selectable"
+                                           Editable="@Editable" Selectable="@Selectable" CanDrop="@CanDrop"
                                            ResolveEventColor="@ResolveFirstPartyColor"
                                            ResolveEventClassNames="@ResolveFirstPartyClassNames"
                                            OnEventClick="@OnEventClick" OnDateSelect="@OnDateSelect"
                                            OnEventChange="@OnFirstPartyEventChangeAsync"
                                            OnRequestPrev="@PrevAsync" OnRequestNext="@NextAsync" />
                     break;
-                case SchedulerView.Resource:
+                case SchedulerView.Resource when Resources is { Count: > 0 }:
                     <SchedulerResourceView Events="@EffectiveEvents" Date="@_fpAnchor"
                                            Resources="@Resources"
                                            SlotMinTime="@SlotMinTime" SlotMaxTime="@SlotMaxTime"
@@ -118,6 +118,7 @@ else
                        reading FullCalendar's listWeek gives. *@
                     <SchedulerAgendaView Events="@EffectiveEvents" AnchorDate="@FirstPartyAgendaStart" DaysToShow="7"
                                          ResolveEventColor="@ResolveFirstPartyColor"
+                                         ResolveEventClassNames="@ResolveFirstPartyClassNames"
                                          OnEventClick="@OnEventClick" />
                     break;
             }
@@ -172,6 +173,13 @@ else
     /// only — the wrapper ignores it.
     /// </summary>
     [Parameter] public bool HideWeekends { get; set; }
+
+    /// <summary>
+    /// Three-way drop validation for first-party drags: reject, accept, or accept with an
+    /// adjustment. <see cref="SchedulerEngine.FirstParty"/> only — the wrapper has no equivalent
+    /// seam.
+    /// </summary>
+    [Parameter] public Func<SchedulerEvent, SchedulerScheduleDropContext, SchedulerDropResult>? CanDrop { get; set; }
     /// <summary>The calendar view shown on mount. Default: <see cref="SchedulerView.Month"/>.</summary>
     [Parameter] public SchedulerView InitialView { get; set; } = SchedulerView.Month;
     /// <summary>The date the calendar is centered on at mount. Default: today.</summary>
@@ -343,7 +351,11 @@ else
             }
         }
 
-        if (_initialized && Events is not null)
+        // Also runs for the first-party engine (Codex review of this PR, P1). That
+        // engine never sets _initialized — there is no JS handshake — so gating
+        // adoption on it meant a parent that replaced its Events collection saw the
+        // calendar keep rendering the old one forever.
+        if ((_initialized || Engine == SchedulerEngine.FirstParty) && Events is not null)
         {
             var incoming = Events.ToList();
             var hash = ComputeEventsHash(incoming);
@@ -396,9 +408,17 @@ else
             _initialized = false;
             _renderedAsFirstParty = true;
             try { await Interop.SchedulerDestroyAsync(dying); } catch (Exception) { /* circuit gone — nothing to reclaim */ }
+            // ...and the DotNetObjectReference with it (Codex review, P2): destroying
+            // the JS side alone leaks the .NET handle for the component's lifetime.
+            _selfRef?.Dispose();
+            _selfRef = null;
             return;
         }
 
+        // Carries the LIVE view and date across (Codex review of this PR, P2): init
+        // reads InitialView/InitialDate, so a user who had navigated away or changed
+        // view was thrown back to the mount state the moment the parent switched
+        // engines.
         var switchedFromFirstParty = _renderedAsFirstParty && Engine == SchedulerEngine.FullCalendar;
         if ((!firstRender && !switchedFromFirstParty) || _initialized) return;
         _renderedAsFirstParty = false;
@@ -664,7 +684,7 @@ else
     }
 
     /// <summary>Recomputes the toolbar title from the first-party anchor. The wrapper reads its title back from FullCalendar; this engine owns it.</summary>
-    private void RefreshFirstPartyTitle() => _title = ComputeTitle(_fpAnchor, _currentView);
+    private void RefreshFirstPartyTitle() => _title = ComputeFirstPartyTitle();
 
     /// <summary>
     /// The view name handed to FullCalendar. <see cref="SchedulerView.Resource"/> has no
@@ -674,6 +694,18 @@ else
     /// </summary>
     private static string WrapperViewName(SchedulerView view) =>
         (view == SchedulerView.Resource ? SchedulerView.Day : view).ToString();
+
+    /// <summary>
+    /// Title for a first-party view. List shows a WEEK from the aligned start and Resource shows
+    /// a single day, neither of which ComputeTitle's wrapper-shaped branches describe (Codex
+    /// review of this PR, P2) — List fell through to the month name, Resource to a week.
+    /// </summary>
+    private string ComputeFirstPartyTitle() => _currentView switch
+    {
+        SchedulerView.List => ComputeTitle(FirstPartyAgendaStart, SchedulerView.Week),
+        SchedulerView.Resource => ComputeTitle(_fpAnchor, SchedulerView.Day),
+        var v => ComputeTitle(_fpAnchor, v),
+    };
 
     private string ComputeTitle(DateTime date, SchedulerView view) => view switch
     {
