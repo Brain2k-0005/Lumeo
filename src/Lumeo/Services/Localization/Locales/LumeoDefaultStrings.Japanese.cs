@@ -323,7 +323,14 @@ internal static partial class LumeoDefaultStrings
         ["Scheduler.Month"] = "月",
         ["Scheduler.WeekNumberAbbrev"] = "週",
         ["Scheduler.WeekNumberLabel"] = "第{0}週",
+<<<<<<< HEAD
         ["Scheduler.ResourceGridLabel"] = "{0} のリソース",
+=======
+        ["Scheduler.Announce.EventMoved"] = "{0} を {1} に移動しました",
+        ["Scheduler.Announce.EventRescheduled"] = "{0} は {1} から {2} になりました",
+        ["Scheduler.Announce.MoveRejected"] = "{0} を移動できませんでした",
+        ["Scheduler.Announce.ResizeRejected"] = "{0} の長さを変更できませんでした",
+>>>>>>> origin/master
         ["Scheduler.List"] = "リスト",
         ["Scheduler.Today"] = "今日",
         ["Scheduler.WeekOf"] = "{0}の週",

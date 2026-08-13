@@ -12,6 +12,13 @@
    Scheduler.razor (the only component with public parameters, spec §1.2) is the eventual host;
    this component is usable and independently testable on its own in the meantime. *@
 <div class="@($"flex flex-col rounded-md border border-border/60 overflow-hidden {Class}".Trim())" @attributes="AdditionalAttributes">
+    @* Live region for pointer-gesture outcomes (ReUI parity). Rendered
+       unconditionally and EMPTY at mount: assistive tech must be observing the
+       node before the text lands, so a region created at announce time is
+       frequently missed. Same sr-only/polite/atomic shape Carousel.razor
+       already uses. *@
+    <span class="sr-only" aria-live="polite" aria-atomic="true"
+          data-testid="scheduler-live-region" data-announce-epoch="@_announcementEpoch">@AnnouncementText</span>
     <div class="@GridColsClass border-b border-border/60 bg-card">
         @if (ShowWeekNumbers)
         {
@@ -788,7 +795,18 @@
         {
             var ctx = new SchedulerScheduleDropContext(newStart, newEnd, SchedulerEventUpdateSource.Move);
             var result = CanDrop(ev, ctx);
-            if (!result.Accepted) return;
+            // The ORDINARY rejection never reaches this method — the JS awaits
+            // ValidateDrop and returns before calling CommitDrag (see
+            // NotifyDropRejected). What DOES reach it is the staleness case this
+            // second check exists for: CanDrop said yes during the drag and says
+            // no now. JS has already passed its own rejection branch, so this is
+            // the only place that outcome can be announced (Codex review of this
+            // PR, P2) — without it the drop silently does nothing.
+            if (!result.Accepted)
+            {
+                Announce(L["Scheduler.Announce.MoveRejected", ev.Title]);
+                return;
+            }
             if (result.Adjustment is { } adjustment)
             {
                 newStart = adjustment.Start ?? newStart;
@@ -798,8 +816,89 @@
         }
 
         var updated = ev with { Start = newStart, End = newEnd, AllDay = newAllDay };
-        if (OnEventChange.HasDelegate) await OnEventChange.InvokeAsync(updated);
+        // Announced from the COMMITTED values, after any CanDrop adjustment has
+        // been applied — an adjusted drop lands somewhere other than where the
+        // pointer was released, so announcing the proposed date would tell the
+        // user something that did not happen.
+        //
+        // Gated on OnEventChange (Codex review of this PR, P2): with no handler
+        // the drag is ghost-only — the real chip snaps back and Events is
+        // untouched — so announcing a move would describe something the user
+        // can neither see nor keep.
+        // A CanDrop adjustment can snap the event back to exactly where it
+        // started; the earlier no-op check ran against the PROPOSED values,
+        // not these (Codex review of this PR, P2). Announcing a move for an
+        // unchanged event states something that did not happen.
+        if (updated.Start == ev.Start && updated.End == ev.End && updated.AllDay == ev.AllDay) return;
+        if (!OnEventChange.HasDelegate) return;
+        // Announced AFTER the handler completes (Codex review of this PR,
+        // P2): an async OnEventChange that faults — persistence refusing
+        // the update, say — leaves the JS caller catching a failed
+        // CommitDrag while the user has already been told it moved.
+        await OnEventChange.InvokeAsync(updated);
+        Announce(L["Scheduler.Announce.EventMoved", ev.Title, FormatAnnounceDate(updated.Start)]);
     }
+
+    // ── Live-region announcements (ReUI parity) ──────────────────────────────
+    // reui.io's event calendar lists "live-region announcements for gestures";
+    // these views had no aria-live region at all, so a pointer drag produced no
+    // screen-reader signal whatsoever. Mirrors Carousel.razor's existing house
+    // pattern (sr-only span, polite, atomic) rather than inventing a second one.
+
+    /// <summary>
+    /// [JSInvokable] the drag engine calls when it refuses to commit a drop
+    /// (Codex review of this PR, P1). The ordinary rejection path lives entirely
+    /// in JS — it awaits <see cref="ValidateDrop"/> and returns without ever
+    /// calling <see cref="CommitDrag"/> — so this is the ONLY seam where a
+    /// refused drag can be announced.
+    /// </summary>
+    [JSInvokable]
+    public void NotifyDropRejected(string eventId)
+    {
+        var ev = FindEvent(eventId);
+        Announce(L["Scheduler.Announce.MoveRejected", ev?.Title ?? string.Empty]);
+    }
+
+    private string? _announcement;
+    private int _announcementEpoch;
+
+    /// <summary>
+    /// The live region's rendered text. A zero-width space is appended on every
+    /// other announcement so that repeating an identical message still changes
+    /// the text node.
+    /// <para>
+    /// Two earlier attempts at this were both wrong, and the second was worse
+    /// than the first. Clearing and re-setting inside one method does nothing —
+    /// Blazor coalesces the two renders. Keying the element on an epoch does
+    /// mutate the DOM, but by REMOVING the observed region and inserting a new,
+    /// already-populated one; screen readers that only announce changes inside
+    /// an already-observed live region can then miss every announcement (Codex
+    /// review of this PR, P2). The node must stay mounted, so only its text
+    /// changes — and U+200B is inaudible.
+    /// </para>
+    /// </summary>
+    private string? AnnouncementText =>
+        _announcement is null ? null : _announcementEpoch % 2 == 0 ? _announcement : _announcement + ZeroWidthSpace;
+
+    /// <summary>
+    /// U+200B. Named rather than written literally: an invisible character in
+    /// source is unreadable and easy to delete by accident.
+    /// </summary>
+    private const string ZeroWidthSpace = "​";
+
+    private void Announce(string message)
+    {
+        _announcementEpoch++;
+        _announcement = message;
+        StateHasChanged();
+    }
+
+    /// <summary>
+    /// Long-date format for announcements — deliberately NOT the terse cell
+    /// label: read aloud out of context, "14" says nothing, "14 March 2026" does.
+    /// </summary>
+    private static string FormatAnnounceDate(DateTime value) =>
+        value.ToString("D", CultureInfo.CurrentUICulture);
 
     /// <summary>
     /// [JSInvokable] commits a drag-across-cells date-range selection (spec §3.4's Month row —

@@ -323,7 +323,14 @@ internal static partial class LumeoDefaultStrings
         ["Scheduler.Month"] = "Maand",
         ["Scheduler.WeekNumberAbbrev"] = "Wk",
         ["Scheduler.WeekNumberLabel"] = "Week {0}",
+<<<<<<< HEAD
         ["Scheduler.ResourceGridLabel"] = "Resources op {0}",
+=======
+        ["Scheduler.Announce.EventMoved"] = "{0} verplaatst naar {1}",
+        ["Scheduler.Announce.EventRescheduled"] = "{0} nu van {1} tot {2}",
+        ["Scheduler.Announce.MoveRejected"] = "{0} kon niet worden verplaatst",
+        ["Scheduler.Announce.ResizeRejected"] = "{0} kon niet worden aangepast",
+>>>>>>> origin/master
         ["Scheduler.List"] = "Lijst",
         ["Scheduler.Today"] = "Vandaag",
         ["Scheduler.WeekOf"] = "Week van {0}",

@@ -12,6 +12,10 @@
    overlapping-event column packing. Internal building block — see SchedulerMonthView's own
    remarks for the "Scheduler.razor is the only component with public parameters" note. *@
 <div class="@($"flex flex-col rounded-md border border-border/60 overflow-hidden {Class}".Trim())" @attributes="AdditionalAttributes">
+    @* See SchedulerMonthView's own live-region remarks — rendered empty at
+       mount so assistive tech is already observing the node. *@
+    <span class="sr-only" aria-live="polite" aria-atomic="true"
+          data-testid="scheduler-live-region" data-announce-epoch="@_announcementEpoch">@AnnouncementText</span>
     @if (_allDayInstances.Any())
     {
         <div class="flex border-b border-border/60">
@@ -641,7 +645,16 @@
         {
             var ctx = new SchedulerScheduleDropContext(finalStart, finalEnd, source);
             var result = CanDrop(src, ctx);
-            if (!result.Accepted) return;
+            // See SchedulerMonthView's twin: the ordinary rejection is handled
+            // in NotifyDropRejected, but the commit-time staleness rejection
+            // lands HERE and would otherwise be silent. `source` already carries
+            // the gesture kind, so a refused resize keeps its own wording.
+            if (!result.Accepted)
+            {
+                var stale = source is SchedulerEventUpdateSource.ResizeStart or SchedulerEventUpdateSource.ResizeEnd;
+                Announce(L[stale ? "Scheduler.Announce.ResizeRejected" : "Scheduler.Announce.MoveRejected", src.Title]);
+                return;
+            }
             if (result.Adjustment is { } adjustment)
             {
                 finalStart = adjustment.Start ?? finalStart;
@@ -651,8 +664,71 @@
         }
 
         var updated = src with { Start = finalStart, End = finalEnd, AllDay = finalAllDay };
-        if (OnEventChange.HasDelegate) await OnEventChange.InvokeAsync(updated);
+        // Announced from the COMMITTED values, after any CanDrop adjustment —
+        // and with TIMES, not just the date: in a time grid the times are the
+        // whole point of the gesture. Covers resize as well as move, which is
+        // why the wording is "now <start> to <end>" rather than "moved to".
+        // Gated on OnEventChange (Codex review of this PR, P2): with no handler
+        // the gesture is ghost-only and the real block snaps back, so announcing
+        // a reschedule would describe something that did not persist.
+        // A CanDrop adjustment can snap the event back to exactly where it
+        // started; the earlier no-op check ran against the PROPOSED values,
+        // not these (Codex review of this PR, P2). Announcing a move for an
+        // unchanged event states something that did not happen.
+        if (updated.Start == src.Start && updated.End == src.End && updated.AllDay == src.AllDay) return;
+        if (!OnEventChange.HasDelegate) return;
+        // See SchedulerMonthView's twin: announce only once the handler
+        // has completed, so a faulted persist cannot be heard as success.
+        await OnEventChange.InvokeAsync(updated);
+        Announce(L["Scheduler.Announce.EventRescheduled",
+            src.Title, FormatAnnounceMoment(updated.Start), FormatAnnounceMoment(updated.End)]);
     }
+
+    // ── Live-region announcements (ReUI parity) ──────────────────────────────
+    // See SchedulerMonthView's own remarks — same house pattern (Carousel.razor),
+    // same reason: these views shipped with no aria-live region at all.
+
+    /// <summary>
+    /// [JSInvokable] counterpart to <see cref="SchedulerMonthView.NotifyDropRejected"/> — see its
+    /// remarks. <paramref name="mode"/> carries the gesture kind so a refused RESIZE is not
+    /// announced as a refused move (Codex review of this PR, P2).
+    /// </summary>
+    [JSInvokable]
+    public void NotifyDropRejected(string instanceKey, string? mode)
+    {
+        // Same instanceKey -> event resolution CommitDrag performs.
+        var title = ParseInstanceKey(instanceKey) is { } p ? FindEvent(p.EventId)?.Title ?? string.Empty : string.Empty;
+        var isResize = mode is not null && mode.StartsWith("resize", StringComparison.OrdinalIgnoreCase);
+        Announce(L[isResize ? "Scheduler.Announce.ResizeRejected" : "Scheduler.Announce.MoveRejected", title]);
+    }
+
+    private string? _announcement;
+    private int _announcementEpoch;
+
+    /// <summary>
+    /// See <see cref="SchedulerMonthView"/>'s twin: the region element stays
+    /// MOUNTED and only its text changes, with a zero-width space alternating so
+    /// a repeated identical message is still a text mutation.
+    /// </summary>
+    private string? AnnouncementText =>
+        _announcement is null ? null : _announcementEpoch % 2 == 0 ? _announcement : _announcement + ZeroWidthSpace;
+
+    /// <summary>
+    /// U+200B. Named rather than written literally: an invisible character in
+    /// source is unreadable and easy to delete by accident.
+    /// </summary>
+    private const string ZeroWidthSpace = "​";
+
+    private void Announce(string message)
+    {
+        _announcementEpoch++;
+        _announcement = message;
+        StateHasChanged();
+    }
+
+    /// <summary>Date + time of day, spelled out — an announcement is heard without the grid for context.</summary>
+    private static string FormatAnnounceMoment(DateTime value) =>
+        value.ToString("f", CultureInfo.CurrentUICulture);
 
     [JSInvokable]
     public async Task CommitCreate(string dayIso, int startMinute, int endMinute)

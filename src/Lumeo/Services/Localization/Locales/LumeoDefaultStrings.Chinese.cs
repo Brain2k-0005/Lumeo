@@ -261,7 +261,14 @@ internal static partial class LumeoDefaultStrings
         ["Scheduler.Month"] = "月",
         ["Scheduler.WeekNumberAbbrev"] = "周",
         ["Scheduler.WeekNumberLabel"] = "第 {0} 周",
+<<<<<<< HEAD
         ["Scheduler.ResourceGridLabel"] = "{0} 的资源",
+=======
+        ["Scheduler.Announce.EventMoved"] = "{0} 已移至 {1}",
+        ["Scheduler.Announce.EventRescheduled"] = "{0} 现在为 {1} 至 {2}",
+        ["Scheduler.Announce.MoveRejected"] = "无法移动 {0}",
+        ["Scheduler.Announce.ResizeRejected"] = "无法调整 {0} 的时长",
+>>>>>>> origin/master
         ["Scheduler.Week"] = "周",
         ["Scheduler.Day"] = "日",
         ["Scheduler.List"] = "列表",
