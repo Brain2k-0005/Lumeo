@@ -123,34 +123,6 @@ public record SchedulerDateRange(DateTime Start, DateTime End, bool AllDay)
     public SchedulerDateRange() : this(default, default, false) { }
 }
 
-/// <summary>
-/// Which rendering engine <see cref="Scheduler"/> uses.
-/// </summary>
-public enum SchedulerEngine
-{
-    /// <summary>
-    /// The FullCalendar-backed wrapper. The default, and unchanged from every previous release —
-    /// an existing consumer that never sets <c>Engine</c> renders byte-identically.
-    /// </summary>
-    FullCalendar,
-
-    /// <summary>
-    /// Lumeo's own Blazor views (<c>SchedulerMonthView</c>, <c>SchedulerTimeGridView</c>,
-    /// <c>SchedulerAgendaView</c>) — no third-party calendar JS at all.
-    /// <para>
-    /// Opt-in on purpose. The two engines are not pixel-identical and do not support exactly the
-    /// same parameter set, so switching is a decision a consumer makes deliberately rather than
-    /// inherits from an upgrade. What the first-party engine adds: it honours
-    /// <see cref="SchedulerEvent.Recurrence"/> (the wrapper ignores it entirely), and it is the
-    /// only path to the week-number, weekend-hiding, live-announcement and resource features.
-    /// </para>
-    /// <para>
-    /// Not carried over yet: the JS-side imperative navigation the wrapper exposes. That is
-    /// listed on <see cref="Scheduler.Engine"/> so the gap is visible before the switch, not after.
-    /// </para>
-    /// </summary>
-    FirstParty,
-}
 
 /// <summary>
 /// Built-in views exposed by the Lumeo scheduler. Maps onto FullCalendar's
@@ -164,25 +136,16 @@ public enum SchedulerView
     List,
 
     /// <summary>
-    /// One column per entry in <c>Scheduler.Resources</c>, for a single day.
-    /// <para>
-    /// Only meaningful with <see cref="SchedulerEngine.FirstParty"/> — FullCalendar's own
-    /// resource views are a paid plugin this library does not take a dependency on, so the
-    /// wrapper falls back to <see cref="Day"/> rather than failing. Added last so the existing
-    /// values keep their numeric identity.
-    /// </para>
+    /// One column per entry in <c>Scheduler.Resources</c>, for a single day. Requires
+    /// <c>Resources</c> to be non-empty; without it the view falls back to <see cref="Day"/>.
     /// </summary>
     Resource,
 
     /// <summary>
     /// A rolling window of <c>Scheduler.VisibleDays</c> days starting at the current date —
     /// ReUI's "N-day" view. Unlike <see cref="Week"/> it does not align to a week start, so
-    /// "the next three days" stays the next three days as you page through it.
-    /// <para>
-    /// Only meaningful with <see cref="SchedulerEngine.FirstParty"/>; the wrapper has no
-    /// custom-duration view configured and falls back to <see cref="Week"/>. Added last so
-    /// the existing values keep their numeric identity.
-    /// </para>
+    /// "the next three days" stays the next three days as you page through it. Set
+    /// <c>Scheduler.VisibleDays</c> to choose the width.
     /// </summary>
     MultiDay,
 }

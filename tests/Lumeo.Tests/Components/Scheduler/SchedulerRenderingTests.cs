@@ -7,23 +7,21 @@ using L = Lumeo;
 namespace Lumeo.Tests.Components.Scheduler;
 
 /// <summary>
-/// Closes the last ReUI-comparison gap that was reachable without a product decision: the
-/// first-party views existed, were tested, and were shown on the docs page — but the shipped
-/// <c>&lt;Scheduler&gt;</c> could not render them, so a consumer using the public component had no
-/// way to get week numbers, weekend hiding, live announcements, resource columns, or
-/// <c>SchedulerEvent.Recurrence</c> (which the FullCalendar wrapper ignores entirely).
+/// <c>&lt;Scheduler&gt;</c> now renders Lumeo's own Blazor views and nothing else — the
+/// FullCalendar wrapper, its <c>Engine</c> switch and its JS bridge are gone. These cover what
+/// the component renders and how its toolbar drives it, all without touching JS.
 ///
 /// <para>
-/// Deliberately an OPT-IN, not a switch of the default. Flipping the default would change what
-/// every existing consumer renders on an upgrade — that is the owner's call, not a cleanup. The
-/// first test below is the one that matters most: with <c>Engine</c> unset, nothing changes.
+/// The features below were once reachable only through the opt-in engine — week numbers,
+/// weekend hiding, live announcements, resource columns, and <c>SchedulerEvent.Recurrence</c>,
+/// which the wrapper ignored entirely. They are simply what the component does now.
 /// </para>
 /// </summary>
-public class SchedulerEngineTests : IAsyncLifetime
+public class SchedulerRenderingTests : IAsyncLifetime
 {
     private readonly BunitContext _ctx = new();
 
-    public SchedulerEngineTests() => _ctx.AddLumeoServices();
+    public SchedulerRenderingTests() => _ctx.AddLumeoServices();
     public Task InitializeAsync() => Task.CompletedTask;
     public async Task DisposeAsync() => await _ctx.DisposeAsync();
 
@@ -35,22 +33,20 @@ public class SchedulerEngineTests : IAsyncLifetime
     ];
 
     [Fact]
-    public void The_Default_Engine_Is_Still_The_FullCalendar_Wrapper()
+    public void The_Default_Render_Is_Lumeos_Own_Grid()
     {
-        // The whole point of the opt-in: an existing consumer that never sets
-        // Engine must render exactly what it rendered before — a JS host element,
-        // and none of the first-party view markup.
+        // The inverse of what this asserted before the removal: with no parameters at all,
+        // the component renders its own month grid rather than an empty JS host div.
         var cut = _ctx.Render<L.Scheduler>(p => p.Add(c => c.Events, Events));
 
-        Assert.Empty(cut.FindAll("[role='grid']"));            // month/time-grid views expose one
-        Assert.Empty(cut.FindAll("[data-testid='scheduler-live-region']"));
+        Assert.NotEmpty(cut.FindAll("[role='grid']"));
+        Assert.Equal(42, cut.FindAll("[data-cell-date]").Count);
     }
 
     [Fact]
-    public void The_First_Party_Engine_Renders_Lumeos_Own_Month_View()
+    public void The_Month_View_Renders_A_42_Cell_Grid()
     {
         var cut = _ctx.Render<L.Scheduler>(p => p
-            .Add(c => c.Engine, L.SchedulerEngine.FirstParty)
             .Add(c => c.InitialView, L.SchedulerView.Month)
             .Add(c => c.InitialDate, Day)
             .Add(c => c.Events, Events));
@@ -60,7 +56,7 @@ public class SchedulerEngineTests : IAsyncLifetime
     }
 
     [Fact]
-    public void The_First_Party_Engine_Honours_Recurrence_Which_The_Wrapper_Ignores()
+    public void Recurrence_Is_Expanded()
     {
         // The sharpest reason this opt-in exists. Scheduler.razor's ToJsEvent
         // branches solely on the legacy DaysOfWeek pair, so a structured
@@ -71,7 +67,6 @@ public class SchedulerEngineTests : IAsyncLifetime
         { Recurrence = rule };
 
         var cut = _ctx.Render<L.Scheduler>(p => p
-            .Add(c => c.Engine, L.SchedulerEngine.FirstParty)
             .Add(c => c.InitialView, L.SchedulerView.Month)
             .Add(c => c.InitialDate, Day)
             .Add(c => c.Events, new[] { ev }));
@@ -83,10 +78,9 @@ public class SchedulerEngineTests : IAsyncLifetime
     [Theory]
     [InlineData(L.SchedulerView.Week)]
     [InlineData(L.SchedulerView.Day)]
-    public void The_Time_Grid_Views_Map_Onto_The_First_Party_Engine(L.SchedulerView view)
+    public void The_Time_Grid_Views_Render(L.SchedulerView view)
     {
         var cut = _ctx.Render<L.Scheduler>(p => p
-            .Add(c => c.Engine, L.SchedulerEngine.FirstParty)
             .Add(c => c.InitialView, view)
             .Add(c => c.InitialDate, Day)
             .Add(c => c.Events, Events));
@@ -98,7 +92,6 @@ public class SchedulerEngineTests : IAsyncLifetime
     public void The_List_View_Maps_To_The_Agenda_View()
     {
         var cut = _ctx.Render<L.Scheduler>(p => p
-            .Add(c => c.Engine, L.SchedulerEngine.FirstParty)
             .Add(c => c.InitialView, L.SchedulerView.List)
             .Add(c => c.InitialDate, Day)
             .Add(c => c.Events, Events));
@@ -115,7 +108,6 @@ public class SchedulerEngineTests : IAsyncLifetime
         // anchor date instead. Predicted-wrong behaviour if it were still routed
         // through interop: nothing moves, because there is no JS instance at all.
         var cut = _ctx.Render<L.Scheduler>(p => p
-            .Add(c => c.Engine, L.SchedulerEngine.FirstParty)
             .Add(c => c.InitialView, L.SchedulerView.Month)
             .Add(c => c.InitialDate, Day));
 
@@ -135,7 +127,6 @@ public class SchedulerEngineTests : IAsyncLifetime
         // weekend hiding, but no parameters existed for either — the claim was in
         // the API documentation and not in the code.
         var cut = _ctx.Render<L.Scheduler>(p => p
-            .Add(c => c.Engine, L.SchedulerEngine.FirstParty)
             .Add(c => c.InitialView, L.SchedulerView.Month)
             .Add(c => c.InitialDate, Day)
             .Add(c => c.ShowWeekNumbers, true)
@@ -152,7 +143,6 @@ public class SchedulerEngineTests : IAsyncLifetime
         // SchedulerResourceView at all.
         var rooms = new[] { new L.SchedulerResource("r1", "Room A") };
         var cut = _ctx.Render<L.Scheduler>(p => p
-            .Add(c => c.Engine, L.SchedulerEngine.FirstParty)
             .Add(c => c.InitialView, L.SchedulerView.Resource)
             .Add(c => c.InitialDate, Day)
             .Add(c => c.Resources, rooms)
@@ -166,14 +156,13 @@ public class SchedulerEngineTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task A_First_Party_Edit_Reaches_A_Bind_Events_Consumer()
+    public async Task An_Edit_Reaches_A_Bind_Events_Consumer()
     {
         // Codex review, P1: OnEventChange was forwarded straight to the children,
         // so EventsChanged never fired — a consumer using @bind-Events without a
         // separate handler saw the edit reach nobody.
         IEnumerable<L.SchedulerEvent>? pushed = null;
         var cut = _ctx.Render<L.Scheduler>(p => p
-            .Add(c => c.Engine, L.SchedulerEngine.FirstParty)
             .Add(c => c.InitialView, L.SchedulerView.Month)
             .Add(c => c.InitialDate, Day)
             .Add(c => c.Events, Events)
@@ -187,7 +176,7 @@ public class SchedulerEngineTests : IAsyncLifetime
     }
 
     [Fact]
-    public void An_Event_Keeps_Its_Resource_Colour_After_Switching_Engines()
+    public void An_Event_Keeps_Its_Resource_Colour()
     {
         // Codex review, P2: passing EventColor straight through dropped the
         // resource fallback, so an event carrying only a ResourceId lost its colour
@@ -196,7 +185,6 @@ public class SchedulerEngineTests : IAsyncLifetime
         var ev = new L.SchedulerEvent("e1", "Standup", Day.AddHours(9), Day.AddHours(10), ResourceId: "r1");
 
         var cut = _ctx.Render<L.Scheduler>(p => p
-            .Add(c => c.Engine, L.SchedulerEngine.FirstParty)
             .Add(c => c.InitialView, L.SchedulerView.Month)
             .Add(c => c.InitialDate, Day)
             .Add(c => c.Resources, rooms)
@@ -206,14 +194,13 @@ public class SchedulerEngineTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task An_Uncontrolled_First_Party_Edit_Sticks()
+    public async Task An_Uncontrolled_Edit_Sticks()
     {
         // Codex review, P1 — and a correction to my OWN previous fix: routing the
         // edit through a local list repaired the controlled case and left the
         // documented UNCONTROLLED mode broken, so with no EventsChanged delegate
         // the chip still snapped back.
         var cut = _ctx.Render<L.Scheduler>(p => p
-            .Add(c => c.Engine, L.SchedulerEngine.FirstParty)
             .Add(c => c.InitialView, L.SchedulerView.Month)
             .Add(c => c.InitialDate, Day)
             .Add(c => c.Events, Events));
@@ -233,7 +220,6 @@ public class SchedulerEngineTests : IAsyncLifetime
         // the week-sized default skipped six days per click.
         var rooms = new[] { new L.SchedulerResource("r1", "Room A") };
         var cut = _ctx.Render<L.Scheduler>(p => p
-            .Add(c => c.Engine, L.SchedulerEngine.FirstParty)
             .Add(c => c.InitialView, L.SchedulerView.Resource)
             .Add(c => c.InitialDate, Day)
             .Add(c => c.Resources, rooms)
@@ -250,39 +236,33 @@ public class SchedulerEngineTests : IAsyncLifetime
     }
 
     [Fact]
-    public void The_First_Party_Engine_Creates_No_JS_Instance()
+    public void No_Calendar_Library_Is_Loaded_At_All()
     {
-        // What makes this a genuinely dependency-free path rather than the same
-        // wrapper with different markup: no init call, so no calendar library.
-        var interop = new TrackingInteropService();
-        using var ctx = new BunitContext();
-        ctx.AddLumeoServices();
-        ctx.Services.AddSingleton<Lumeo.Services.IComponentInteropService>(interop);
+        // What this used to assert — that the first-party engine skipped the JS init — is
+        // now structural rather than behavioural: there is no init method left on the
+        // interop surface to call. The assertion that still carries weight is that the
+        // shipped package contains no calendar library and no module to load one.
+        var scheduler = typeof(L.Scheduler).Assembly.Location;
+        var wwwroot = Path.Combine(Path.GetDirectoryName(scheduler)!, "..", "..", "..", "..", "..",
+                                   "src", "Lumeo.Scheduler", "wwwroot", "js");
 
-        ctx.Render<L.Scheduler>(p => p
-            .Add(c => c.Engine, L.SchedulerEngine.FirstParty)
-            .Add(c => c.InitialDate, Day)
-            .Add(c => c.Events, Events));
+        if (!Directory.Exists(wwwroot)) return;   // packaged run — nothing to inspect
 
-        Assert.Equal(0, interop.SchedulerInitCallCount);
+        var modules = Directory.GetFiles(wwwroot, "*.js").Select(Path.GetFileName).ToArray();
+        Assert.DoesNotContain("scheduler.js", modules);          // the FullCalendar bridge
+        Assert.Contains("scheduler-views.js", modules);          // the first-party drag module stays
     }
 
     [Fact]
-    public void Replacing_Events_In_First_Party_Mode_Touches_No_JS_At_All()
+    public void Replacing_Events_Is_Adopted_By_The_Grid()
     {
-        // Codex review of this PR, P2. Adoption had to be opened to the first-party engine
-        // (otherwise a parent replacing its collection was never picked up), and that also
-        // let it reach an interop call guarded only by a null-forgiving `!` — untrue here,
-        // because this engine never creates a FullCalendar instance. The JS side no-ops on
-        // an unknown id, but getting there imports scheduler.js, which can throw wherever
-        // JS is unavailable at all and take the pure-Blazor update down with it.
-        var interop = new TrackingInteropService();
+        // Adoption used to be gated on a JS handshake that never happened for this engine,
+        // so a parent replacing its collection saw the calendar keep rendering the old one
+        // forever. The gate is gone with the wrapper; this keeps the behaviour pinned.
         using var ctx = new BunitContext();
         ctx.AddLumeoServices();
-        ctx.Services.AddSingleton<Lumeo.Services.IComponentInteropService>(interop);
 
         var cut = ctx.Render<L.Scheduler>(p => p
-            .Add(c => c.Engine, L.SchedulerEngine.FirstParty)
             .Add(c => c.InitialView, L.SchedulerView.Month)
             .Add(c => c.InitialDate, Day)
             .Add(c => c.Events, Events));
@@ -292,14 +272,11 @@ public class SchedulerEngineTests : IAsyncLifetime
             new L.SchedulerEvent("e2", "Retro", Day.AddHours(14), Day.AddHours(15)),
         };
         cut.Render(p => p
-            .Add(c => c.Engine, L.SchedulerEngine.FirstParty)
             .Add(c => c.InitialView, L.SchedulerView.Month)
             .Add(c => c.InitialDate, Day)
             .Add(c => c.Events, replaced));
 
-        // The replacement is adopted...
         Assert.Contains("Retro", cut.Markup, StringComparison.Ordinal);
-        // ...without ever reaching the JS bridge.
-        Assert.Empty(interop.SchedulerSetEventsIds);
+        Assert.DoesNotContain("Standup", cut.Markup, StringComparison.Ordinal);
     }
 }

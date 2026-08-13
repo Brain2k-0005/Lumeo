@@ -196,7 +196,7 @@ internal static class DepsCommand
         if (string.IsNullOrEmpty(path) || path == "/") return true;
 
         // Paths that end in a version specifier like "@6", "@5" — ESM module references.
-        // e.g. https://esm.sh/@fullcalendar/core@6  → last segment is "core@6"
+        // e.g. https://esm.sh/maplibre-gl@5  → last segment is "maplibre-gl@5"
         var lastSegment = Path.GetFileName(path);
         if (System.Text.RegularExpressions.Regex.IsMatch(lastSegment, @"@\d"))
             return true;

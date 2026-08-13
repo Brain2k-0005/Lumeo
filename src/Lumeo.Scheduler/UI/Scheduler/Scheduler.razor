@@ -1,20 +1,10 @@
 @namespace Lumeo
 @using Lumeo.SchedulerKernel
-@implements IAsyncDisposable
 @inject Lumeo.Services.IComponentInteropService Interop
 @inject Lumeo.Services.Localization.ILumeoLocalizer L
 
-@if (_initError is not null && Engine != SchedulerEngine.FirstParty)
-{
-    <div class="@($"flex items-center justify-center text-sm text-destructive border border-destructive/30 rounded-md bg-destructive/5 {Class}".Trim())" style="height: @Height;" @attributes="AdditionalAttributes">
-        <span>@_initError</span>
-    </div>
-}
-else
-{
 <div class="@($"flex flex-col gap-3 rounded-md border border-border/60 bg-card p-3 {Class}".Trim())" @attributes="AdditionalAttributes">
-    @* Lumeo-styled toolbar above the FullCalendar canvas.
-       FullCalendar's built-in header is hidden in JS (headerToolbar: false). *@
+    @* Lumeo-styled toolbar above the calendar grid. *@
     <div class="flex flex-wrap items-center justify-between gap-2">
         <div class="flex items-center gap-1">
             <Button Variant="Button.ButtonVariant.Outline" Size="Button.ButtonSize.Sm" OnClick="PrevAsync" aria-label="@L["Scheduler.Previous"]">
@@ -37,24 +27,21 @@ else
             <ToggleGroupItem Value="Week">@L["Scheduler.Week"]</ToggleGroupItem>
             <ToggleGroupItem Value="Day">@L["Scheduler.Day"]</ToggleGroupItem>
             <ToggleGroupItem Value="List">@L["Scheduler.List"]</ToggleGroupItem>
-            @if (Engine == SchedulerEngine.FirstParty && VisibleDays is > 0)
+            @if (VisibleDays is > 0)
             {
                 @* Labelled with the actual count — "N days" is meaningless as a fixed string,
                    and this button only exists once a caller has chosen an N. *@
                 <ToggleGroupItem Value="MultiDay">@string.Format(L["Scheduler.NDays"], EffectiveVisibleDays)</ToggleGroupItem>
             }
-            @if (Engine == SchedulerEngine.FirstParty && Resources is { Count: > 0 })
+            @if (Resources is { Count: > 0 })
             {
-                @* Offered only where it works: FullCalendar's resource views are a
-                   paid plugin, so showing this button under the wrapper would sell
-                   something the wrapper cannot render. *@
                 <ToggleGroupItem Value="Resource">@L["Scheduler.Resources"]</ToggleGroupItem>
             }
         </ToggleGroup>
     </div>
 
     @* Resource legend — rendered when Resources are provided.
-       Uses simple color-coded dots; no FullCalendar Premium plugin required. *@
+       Uses simple color-coded dots. *@
     @if (_resolvedResources is { Count: > 0 })
     {
         <div class="flex flex-wrap items-center gap-x-4 gap-y-1 px-1 pb-1" aria-label="@L["Scheduler.ResourceLegend"]">
@@ -69,14 +56,10 @@ else
         </div>
     }
 
-    @if (Engine == SchedulerEngine.FirstParty)
-    {
-        @* No JS host at all in this mode — the interop registration below is
-           skipped too, so a first-party consumer loads no calendar library. *@
-        @* Height bounds the SCROLL viewport (Codex review of this PR, P2): applied
-           only as an outer max-height it left the inner views free to grow past it,
-           so a tall month rendered outside the box the caller asked for. *@
-        <div style="height: @Height; max-height: @Height; overflow: auto;">
+    @* Height bounds the SCROLL viewport (Codex review, P2): applied only as an
+       outer max-height it left the inner views free to grow past it, so a tall
+       month rendered outside the box the caller asked for. *@
+    <div style="height: @Height; max-height: @Height; overflow: auto;">
             @switch (_currentView)
             {
                 case SchedulerView.Month:
@@ -140,21 +123,15 @@ else
                     break;
                 default:
                     @* List maps to the agenda view — the same "flat, chronological"
-                       reading FullCalendar's listWeek gives. *@
+                       reading a week-long agenda gives. *@
                     <SchedulerAgendaView Events="@EffectiveEvents" AnchorDate="@FirstPartyAgendaStart" DaysToShow="7"
                                          ResolveEventColor="@ResolveFirstPartyColor"
                                          ResolveEventClassNames="@ResolveFirstPartyClassNames"
                                          OnEventClick="@OnEventClick" />
                     break;
             }
-        </div>
-    }
-    else
-    {
-        <div @ref="_hostRef" style="height: @Height;"></div>
-    }
+    </div>
 </div>
-}
 
 @code {
     // ── Core parameters ──────────────────────────────────────────────────
@@ -166,42 +143,20 @@ else
     /// this makes <see cref="Events"/> controlled.</summary>
     [Parameter] public EventCallback<IEnumerable<SchedulerEvent>> EventsChanged { get; set; }
 
-    /// <summary>
-    /// Which engine renders the calendar. Defaults to <see cref="SchedulerEngine.FullCalendar"/>,
-    /// so a consumer that never sets this is completely unaffected.
-    /// <para>
-    /// <see cref="SchedulerEngine.FirstParty"/> renders Lumeo's own Blazor views and loads no
-    /// third-party calendar JS. It is the only mode that honours
-    /// <see cref="SchedulerEvent.Recurrence"/> — the wrapper's serializer branches solely on the
-    /// legacy <see cref="SchedulerEvent.DaysOfWeek"/> pair — and the only one with live-region
-    /// announcements for drag outcomes, week numbers (<see cref="ShowWeekNumbers"/>), weekend
-    /// hiding (<see cref="HideWeekends"/>) and resource columns (supply <see cref="Resources"/>
-    /// and select <see cref="SchedulerView.Resource"/>).
-    /// </para>
-    /// <para>
-    /// Parameters NOT yet carried across, stated up front rather than discovered later:
-    /// the JS-side imperative navigation has no
-    /// equivalent (the toolbar moves an internal anchor date instead). Everything else on this
-    /// component maps.
-    /// </para>
-    /// </summary>
-    [Parameter] public SchedulerEngine Engine { get; set; } = SchedulerEngine.FullCalendar;
 
     /// <summary>
-    /// Shows an ISO-8601 week-number column in the month view. <see cref="SchedulerEngine.FirstParty"/>
-    /// only — the wrapper ignores it.
+    /// Shows an ISO-8601 week-number column in the month view..
     /// </summary>
     [Parameter] public bool ShowWeekNumbers { get; set; }
 
     /// <summary>
-    /// Hides the Saturday and Sunday columns in the month view. <see cref="SchedulerEngine.FirstParty"/>
-    /// only — the wrapper ignores it.
+    /// Hides the Saturday and Sunday columns in the month view..
     /// </summary>
     [Parameter] public bool HideWeekends { get; set; }
 
     /// <summary>
     /// Three-way drop validation for first-party drags: reject, accept, or accept with an
-    /// adjustment. <see cref="SchedulerEngine.FirstParty"/> only — the wrapper has no equivalent
+    /// adjustment.
     /// seam.
     /// </summary>
     [Parameter] public Func<SchedulerEvent, SchedulerScheduleDropContext, SchedulerDropResult>? CanDrop { get; set; }
@@ -214,7 +169,7 @@ else
     /// <summary>Allows the user to click/drag a date range to select it, raising <see cref="OnDateSelect"/>.
     /// Default: true.</summary>
     [Parameter] public bool Selectable { get; set; } = true;
-    /// <summary>Shades non-business hours in the time-grid views (maps to FullCalendar's <c>businessHours</c>).</summary>
+    /// <summary>Shades non-business hours in the time-grid views.</summary>
     [Parameter] public bool BusinessHours { get; set; }
     /// <summary>CSS height of the calendar canvas. Default: <c>"640px"</c>.</summary>
     [Parameter] public string Height { get; set; } = "640px";
@@ -230,25 +185,24 @@ else
     // ── Time-grid display parameters ─────────────────────────────────────
     /// <summary>
     /// Show the current-time indicator line in time-grid views. Default: true.
-    /// Maps to FullCalendar's <c>nowIndicator</c> option.
     /// </summary>
     [Parameter] public bool NowIndicator { get; set; } = true;
 
     /// <summary>
     /// Earliest visible time slot in time-grid views (e.g. 07:00).
-    /// Maps to FullCalendar's <c>slotMinTime</c>. Default: 00:00 (FullCalendar shows the full day).
+    /// Default: 00:00 — the full day.
     /// </summary>
     [Parameter] public TimeOnly? SlotMinTime { get; set; }
 
     /// <summary>
     /// Latest visible time slot in time-grid views (e.g. 22:00).
-    /// Maps to FullCalendar's <c>slotMaxTime</c>. Default: 24:00 (FullCalendar shows the full day).
+    /// Default: 24:00 — the full day.
     /// </summary>
     [Parameter] public TimeOnly? SlotMaxTime { get; set; }
 
     /// <summary>
     /// Duration of each time slot row in time-grid views.
-    /// Maps to FullCalendar's <c>slotDuration</c> (formatted as HH:mm:ss). Default: 00:30:00.
+    /// Default: one hour. Values that do not divide an hour are rounded up to one that does.
     /// </summary>
     [Parameter] public TimeSpan? SlotDuration { get; set; }
 
@@ -287,34 +241,28 @@ else
     /// are color-coded by their <see cref="SchedulerEvent.ResourceId"/> and a legend
     /// is rendered above the calendar.
     /// <br />
-    /// Note: this uses Lumeo's color-coding fallback, NOT FullCalendar Premium resource
-    /// lanes (which require a paid FullCalendar Premium license not bundled here).
+    /// Note: this colour-codes events by resource. <see cref="SchedulerView.Resource"/> is
+    /// what lays out one lane per resource.
     /// </summary>
     [Parameter] public IReadOnlyList<SchedulerResource>? Resources { get; set; }
 
     // ── Event styling callbacks ──────────────────────────────────────────
     /// <summary>
     /// Optional callback that returns extra CSS class names for an event chip.
-    /// The classes are appended to the FullCalendar event's <c>classNames</c>.
+    /// The classes are appended to the event chip's own.
     /// Use for conditional styling without touching <see cref="SchedulerEvent.Color"/>.
     /// </summary>
     [Parameter] public Func<SchedulerEvent, string>? EventClassNames { get; set; }
 
     /// <summary>
     /// Optional callback that returns a CSS color string for an event.
-    /// Applied as <c>backgroundColor</c> / <c>borderColor</c> in FullCalendar.
+    /// Applied to the event chip's background and text colour.
     /// Supersedes <see cref="SchedulerEvent.Color"/> when both are set; resource
     /// color applies as a fallback when neither is set.
     /// </summary>
     [Parameter] public Func<SchedulerEvent, string>? EventColor { get; set; }
 
     // ── Error handling ───────────────────────────────────────────────────
-    /// <summary>
-    /// Raised when JS initialization fails (e.g. CDN down, FullCalendar threw).
-    /// The argument is the error message. When raised the component renders an
-    /// error card instead of the calendar.
-    /// </summary>
-    [Parameter] public EventCallback<string> OnInitError { get; set; }
 
     // ── Standard pass-through ────────────────────────────────────────────
     /// <summary>Additional CSS classes merged onto the root card.</summary>
@@ -322,20 +270,14 @@ else
     /// <summary>Additional HTML attributes captured and forwarded to the root card.</summary>
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
-    private ElementReference _hostRef;
-    private DotNetObjectReference<Scheduler>? _selfRef;
-    private string? _instanceId;
-    private bool _initialized;
-    private string? _initError;
     private int _lastEventsHash;
     private SchedulerView _currentView;
     private string _currentViewValue => _currentView.ToString();
     private string _title = "";
 
-    // The FullCalendar locale code most recently computed from CultureInfo.CurrentUICulture.
-    // Recomputed every OnParametersSetAsync (not just once at init) so a culture change that
-    // triggers a re-render (e.g. the host app flips CurrentUICulture and calls StateHasChanged)
-    // is pushed to the live FullCalendar instance instead of only ever being read once.
+    // The UI culture the cached title was last formatted for.
+    // Re-read on every parameter set, not just at init: the title is cached, so a culture
+    // change arriving through an ordinary re-render has to invalidate it.
     private string _currentLocale = "en";
 
     // Snapshot of the most recent events set — used by eventChange to build the
@@ -362,61 +304,30 @@ else
         _lastEventsHash = ComputeEventsHash(_events);
         _lastPushedEventsHash = _lastEventsHash;
         SeedFirstPartyAnchor();
-        // The FIRST-PARTY title, not the wrapper-shaped one: ComputeTitle has no branch for
-        // List, Resource or MultiDay, so every one of them opened on the month name and only
-        // corrected itself once the user pressed prev/next. The wrapper path still starts from
-        // ComputeTitle because FullCalendar overwrites the title from JS on mount anyway.
-        _title = Engine == SchedulerEngine.FirstParty
-            ? ComputeFirstPartyTitle()
-            : ComputeTitle(InitialDate ?? DateTime.Today, _currentView);
-        _currentLocale = ResolveFullCalendarLocale(System.Globalization.CultureInfo.CurrentUICulture);
+        // ComputeTitle has no branch for List, Resource or MultiDay, so all three used to
+        // open on the month name and only corrected themselves once the user navigated.
+        _title = ComputeFirstPartyTitle();
+        _currentLocale = System.Globalization.CultureInfo.CurrentUICulture.Name;
         RebuildResourceLookup();
     }
 
-    protected override async Task OnParametersSetAsync()
+    protected override void OnParametersSet()
     {
         _displayZone = SchedulerTimeZoneProjection.Resolve(TimeZone);
         // Rebuild the resource lookup whenever the Resources param changes.
         RebuildResourceLookup();
 
-        // Re-resolve the locale on every parameter-set cycle (i.e. every render, not just at
-        // init) so a UI-culture change that reaches this component via a normal re-render is
-        // actually reflected in FullCalendar's own chrome (day/month names, button labels) —
-        // this is the fix for "no locale is ever passed to FullCalendar, and even the one
-        // computed at init would never update again."
-        var resolvedLocale = ResolveFullCalendarLocale(System.Globalization.CultureInfo.CurrentUICulture);
-        if (Engine == SchedulerEngine.FirstParty && resolvedLocale != _currentLocale)
+        // The title is cached, so a UI-culture change that arrives through a normal
+        // re-render has to invalidate it explicitly — otherwise a German toolbar sat over
+        // an English calendar until the user happened to navigate.
+        var culture = System.Globalization.CultureInfo.CurrentUICulture.Name;
+        if (culture != _currentLocale)
         {
-            // The wrapper reads its title back from FullCalendar, which re-renders
-            // itself on a locale change; this engine caches its own, so a culture
-            // switch left a German toolbar over an English calendar (Codex review,
-            // P2).
-            _currentLocale = resolvedLocale;
+            _currentLocale = culture;
             RefreshFirstPartyTitle();
         }
 
-        if (resolvedLocale != _currentLocale)
-        {
-            _currentLocale = resolvedLocale;
-            if (_initialized && _instanceId is not null)
-            {
-                await Interop.SchedulerSetLocaleAsync(_instanceId, _currentLocale);
-
-                // The toolbar's cached _title is otherwise only refreshed at init or on
-                // navigation (Prev/Next/Today/view change — see RefreshTitleAsync below).
-                // Without this, a locale-sensitive title (e.g. a localized month name)
-                // silently stays in the OLD language until the user happens to navigate.
-                // Re-fetch it now that FullCalendar has actually re-rendered with the
-                // new locale.
-                _title = await Interop.SchedulerGetTitleAsync(_instanceId);
-            }
-        }
-
-        // Also runs for the first-party engine (Codex review of this PR, P1). That
-        // engine never sets _initialized — there is no JS handshake — so gating
-        // adoption on it meant a parent that replaced its Events collection saw the
-        // calendar keep rendering the old one forever.
-        if ((_initialized || Engine == SchedulerEngine.FirstParty) && Events is not null)
+        if (Events is not null)
         {
             var incoming = Events.ToList();
             var hash = ComputeEventsHash(incoming);
@@ -441,231 +352,11 @@ else
             {
                 _events = incoming;
                 _lastPushedEventsHash = hash;
-
-                // Only when a FullCalendar instance actually exists (Codex review of this
-                // PR, P2). Opening this block to the first-party engine — my own earlier
-                // fix, without which a replaced Events collection was never adopted — also
-                // let it reach an interop call whose `!` was simply untrue: that engine
-                // never initializes FullCalendar, so _instanceId is null by design. The
-                // JS side no-ops on an unknown id, but the service imports scheduler.js
-                // to get there, which can throw where JS is unavailable at all
-                // (prerender, a torn-down circuit) and take the otherwise pure-Blazor
-                // update down with it.
-                if (_instanceId is not null)
-                {
-                    await Interop.SchedulerSetEventsAsync(_instanceId, incoming.Select(ToJsEvent).Cast<object>());
-                }
             }
 
             // Keep the uncontrolled discriminator pointing at the last Events hash observed.
             _lastEventsHash = hash;
         }
-    }
-
-    protected override async Task OnAfterRenderAsync(bool firstRender)
-    {
-        // The firstRender gate is kept EXACTLY as it was for the wrapper — my first
-        // attempt at the engine-switch fix relaxed it for every FullCalendar render
-        // and broke SchedulerInitRaceTests, which is precisely the "default path
-        // unchanged" promise this PR makes. The extra pass opens ONLY after a real
-        // FirstParty -> FullCalendar transition (Codex review of this PR, P2): a
-        // component that mounted first-party never ran this block, so flipping back
-        // later left _initialized false and no JS instance was ever created.
-        // Switching an ALREADY-INITIALIZED wrapper to the first-party engine must
-        // dispose the JS instance (Codex review of this PR, P2) — the _initialized
-        // guard below returns first, so the old calendar was left alive behind the
-        // new markup, holding its DotNetObjectReference.
-        if (Engine == SchedulerEngine.FirstParty && _initialized && _instanceId is not null)
-        {
-            var dying = _instanceId;
-            _instanceId = null;
-            _initialized = false;
-            _renderedAsFirstParty = true;
-            try { await Interop.SchedulerDestroyAsync(dying); } catch (Exception) { /* circuit gone — nothing to reclaim */ }
-            // ...and the DotNetObjectReference with it (Codex review, P2): destroying
-            // the JS side alone leaks the .NET handle for the component's lifetime.
-            _selfRef?.Dispose();
-            _selfRef = null;
-            return;
-        }
-
-        // Carries the LIVE view and date across (Codex review of this PR, P2): init
-        // reads InitialView/InitialDate, so a user who had navigated away or changed
-        // view was thrown back to the mount state the moment the parent switched
-        // engines.
-        var switchedFromFirstParty = _renderedAsFirstParty && Engine == SchedulerEngine.FullCalendar;
-        if ((!firstRender && !switchedFromFirstParty) || _initialized) return;
-        _renderedAsFirstParty = false;
-
-        // The first-party engine touches no JS at all: no instance to create, no
-        // library to load, nothing to dispose. Returning here is what makes
-        // Engine=FirstParty a genuinely dependency-free path rather than the same
-        // wrapper with different markup.
-        if (Engine == SchedulerEngine.FirstParty)
-        {
-            _renderedAsFirstParty = true;
-            return;
-        }
-
-        _selfRef = DotNetObjectReference.Create(this);
-
-        // Snapshot exactly what init is about to render. OnParametersSetAsync drops any
-        // Events refresh that arrives while _initialized is still false (the init is an
-        // async JS handshake), so the parent's latest events can land AFTER these options
-        // were captured but BEFORE init completes. We re-read Events post-init and push
-        // the delta so that mid-init refresh is never silently lost.
-        var initEventsHash = _lastEventsHash;
-
-        // Same problem, same fix, for the locale: OnParametersSetAsync's culture-change
-        // branch above always updates _currentLocale (it doesn't gate that on
-        // _initialized), but it only pushes the change via SchedulerSetLocaleAsync when
-        // _initialized is already true. A culture change that lands mid-handshake is
-        // therefore recorded in the field yet never reaches the live FullCalendar
-        // instance that init is about to create with the OLD (pre-change) locale
-        // snapshot below — the calendar would be stuck in that stale locale forever,
-        // since every later render sees _currentLocale already "up to date" and never
-        // re-pushes it. Snapshot what init is about to render and reconcile after,
-        // mirroring the Events reconciliation above.
-        var initLocale = _currentLocale;
-
-        // Trim safety: anonymous types crossing JS interop lose their constructor
-        // parameter names under a trimmed publish, and JSRuntime's reflection-based
-        // serializer throws NotSupportedException("ConstructorContainsNullParameterNames")
-        // at runtime (same class of bug as BlurFade/PreventDefaultKeyRule). Use a
-        // Dictionary instead — identical JSON, no constructor metadata involved.
-        var options = new Dictionary<string, object?>
-        {
-            ["view"] = WrapperViewName(InitialView),
-            ["initialDate"] = (InitialDate ?? DateTime.Today).ToString("yyyy-MM-dd"),
-            ["events"] = _events.Select(ToJsEvent).ToArray(),
-            ["editable"] = Editable,
-            ["selectable"] = Selectable,
-            ["businessHours"] = BusinessHours,
-            ["height"] = Height,
-            ["firstDay"] = FirstDayOfWeek,
-            ["locale"] = _currentLocale,
-            ["nowIndicator"] = NowIndicator,
-            ["slotMinTime"] = SlotMinTime.HasValue ? SlotMinTime.Value.ToString("HH:mm:ss") : (string?)null,
-            ["slotMaxTime"] = SlotMaxTime.HasValue ? SlotMaxTime.Value.ToString("HH:mm:ss") : (string?)null,
-            ["slotDuration"] = SlotDuration.HasValue ? $"{(int)SlotDuration.Value.TotalHours:D2}:{SlotDuration.Value.Minutes:D2}:{SlotDuration.Value.Seconds:D2}" : (string?)null
-        };
-
-        try
-        {
-            _instanceId = await Interop.SchedulerInitAsync(_hostRef, _selfRef, options);
-            _initialized = true;
-
-            // Reconcile against the latest Events: if the parent swapped them while init
-            // was in flight, init rendered the stale snapshot — push the current set now.
-            if (Events is not null)
-            {
-                var current = Events.ToList();
-                var currentHash = ComputeEventsHash(current);
-                if (currentHash != initEventsHash)
-                {
-                    _events = current;
-                    _lastEventsHash = currentHash;
-                    _lastPushedEventsHash = currentHash;
-                    await Interop.SchedulerSetEventsAsync(_instanceId, current.Select(ToJsEvent).Cast<object>());
-                }
-            }
-
-            // Reconcile against the latest locale: if the UI culture changed while init
-            // was in flight, _currentLocale already holds the new value (see the comment
-            // on initLocale above) but the interop push was skipped — push it now, before
-            // reading the title, so the very first title read already reflects it.
-            if (_currentLocale != initLocale)
-            {
-                await Interop.SchedulerSetLocaleAsync(_instanceId, _currentLocale);
-            }
-
-            // Read the real title from FullCalendar now that the view is rendered.
-            _title = await Interop.SchedulerGetTitleAsync(_instanceId);
-            StateHasChanged();
-        }
-        catch (Microsoft.JSInterop.JSDisconnectedException)
-        {
-            // Circuit dropped mid-init (e.g. user navigated away during prerender
-            // hand-off). Nothing to render; swallow as Gantt does.
-        }
-        catch (Microsoft.JSInterop.JSException ex)
-        {
-            _initError = ex.Message;
-            Console.Error.WriteLine($"[Lumeo Scheduler] Init failed: {ex.Message}");
-            if (OnInitError.HasDelegate)
-                await OnInitError.InvokeAsync(ex.Message);
-            StateHasChanged();
-        }
-    }
-
-    private object ToJsEvent(SchedulerEvent ev)
-    {
-        // Determine the effective color: EventColor callback > event.Color > resource color.
-        var effectiveColor = EventColor?.Invoke(ev)
-            ?? ev.Color
-            ?? (ev.ResourceId is not null && _resourceById.TryGetValue(ev.ResourceId, out var res) ? res.Color : null);
-
-        // Effective class names: EventClassNames callback merged with event.ClassNames.
-        var cbClasses = EventClassNames?.Invoke(ev);
-        var effectiveClassNames = string.IsNullOrEmpty(cbClasses)
-            ? ev.ClassNames
-            : string.IsNullOrEmpty(ev.ClassNames) ? cbClasses : $"{ev.ClassNames} {cbClasses}";
-
-        // For recurring events with DaysOfWeek we use FullCalendar's free simple
-        // recurrence model: the start/end fields become time-of-day values only.
-        if (ev.DaysOfWeek is { Count: > 0 })
-        {
-            // Cross-midnight / next-day recurring events: when the end time-of-day is at or
-            // before the start time-of-day, emitting endTime literally (e.g. start 22:00,
-            // end 02:00) hands FullCalendar an end EARLIER than the start, which it silently
-            // mis-renders (zero/negative-length chip). Express the span as an explicit
-            // duration instead — FullCalendar adds it to startTime per occurrence, correctly
-            // carrying the event past midnight. The real elapsed span (End - Start) is the
-            // source of truth, so even a >24h recurring window is represented faithfully.
-            var span = ev.End - ev.Start;
-            var crossesMidnight = ev.End.TimeOfDay <= ev.Start.TimeOfDay;
-            // Trim safety: Dictionary instead of an anonymous type — see the options
-            // comment in OnAfterRenderAsync above.
-            return new Dictionary<string, object?>
-            {
-                ["id"] = ev.Id,
-                ["title"] = ev.Title,
-                // Time-of-day string for recurring events (HH:mm:ss).
-                ["startTime"] = ev.Start.ToString("HH:mm:ss"),
-                // Same-day window: keep the literal endTime (unchanged normal path).
-                // Cross-midnight window: omit endTime and supply a duration instead.
-                ["endTime"] = crossesMidnight ? (string?)null : ev.End.ToString("HH:mm:ss"),
-                ["duration"] = crossesMidnight && span > TimeSpan.Zero
-                    ? $"{(int)span.TotalHours:D2}:{span.Minutes:D2}:{span.Seconds:D2}"
-                    : (string?)null,
-                ["daysOfWeek"] = ev.DaysOfWeek.Select(d => (int)d).ToArray(),
-                ["startRecur"] = ev.Start.ToString("yyyy-MM-dd"),
-                ["endRecur"] = ev.RecurrenceEnd.HasValue
-                    ? ev.RecurrenceEnd.Value.ToString("yyyy-MM-dd")
-                    : (string?)null,
-                ["exdate"] = ev.ExceptionDates?.Select(d => d.ToString("yyyy-MM-dd")).ToArray(),
-                ["allDay"] = ev.AllDay,
-                ["color"] = effectiveColor,
-                ["url"] = ev.Url,
-                ["classNames"] = effectiveClassNames,
-                ["extendedProps"] = ev.ExtendedProps
-            };
-        }
-
-        // Standard (non-recurring) event. Trim safety: Dictionary instead of an
-        // anonymous type — see the options comment in OnAfterRenderAsync above.
-        return new Dictionary<string, object?>
-        {
-            ["id"] = ev.Id,
-            ["title"] = ev.Title,
-            ["start"] = ev.Start.ToString("o"),
-            ["end"] = ev.End.ToString("o"),
-            ["allDay"] = ev.AllDay,
-            ["color"] = effectiveColor,
-            ["url"] = ev.Url,
-            ["classNames"] = effectiveClassNames,
-            ["extendedProps"] = ev.ExtendedProps
-        };
     }
 
     private void RebuildResourceLookup()
@@ -757,25 +448,8 @@ else
         return hash.ToHashCode();
     }
 
-    /// <summary>Recomputes the toolbar title from the first-party anchor. The wrapper reads its title back from FullCalendar; this engine owns it.</summary>
+    /// <summary>Recomputes the toolbar title from the anchor date.</summary>
     private void RefreshFirstPartyTitle() => _title = ComputeFirstPartyTitle();
-
-    /// <summary>
-    /// The view name handed to FullCalendar. <see cref="SchedulerView.Resource"/> has no
-    /// free-plugin equivalent, so it degrades to <see cref="SchedulerView.Day"/> exactly as its
-    /// own documentation promises — sending "Resource" across simply produced an unknown view
-    /// (Codex review of this PR, P2).
-    /// </summary>
-    private static string WrapperViewName(SchedulerView view) => view switch
-    {
-        SchedulerView.Resource => SchedulerView.Day.ToString(),
-        // No custom-duration view is registered on the wrapper's FullCalendar instance, so an
-        // N-day request degrades to the nearest thing it does have rather than being sent
-        // across as an unknown view name.
-        SchedulerView.MultiDay => SchedulerView.Week.ToString(),
-        _ => view.ToString(),
-    };
-
     /// <summary>
     /// Title for a first-party view. List shows a WEEK from the aligned start and Resource shows
     /// a single day, neither of which ComputeTitle's wrapper-shaped branches describe (Codex
@@ -792,12 +466,20 @@ else
 
     private string ComputeTitle(DateTime date, SchedulerView view) => view switch
     {
-        SchedulerView.Month => date.ToString("MMMM yyyy"),
-        SchedulerView.Week => string.Format(L["Scheduler.WeekOf"], StartOfWeek(date).ToString("MMM d, yyyy")),
-        SchedulerView.Day => date.ToString("dddd, MMM d, yyyy"),
-        SchedulerView.List => date.ToString("MMMM yyyy"),
-        _ => date.ToString("MMMM yyyy")
+        SchedulerView.Month => date.ToString("MMMM yyyy", Ui),
+        SchedulerView.Week => string.Format(L["Scheduler.WeekOf"], StartOfWeek(date).ToString("MMM d, yyyy", Ui)),
+        SchedulerView.Day => date.ToString("dddd, MMM d, yyyy", Ui),
+        SchedulerView.List => date.ToString("MMMM yyyy", Ui),
+        _ => date.ToString("MMMM yyyy", Ui)
     };
+
+    /// <summary>
+    /// The UI culture, not the ambient one. Every view formats its own dates against
+    /// CurrentUICulture and the toolbar's change detection watches it too, so formatting the
+    /// title against CurrentCulture left the two disagreeing whenever a host set them apart —
+    /// German buttons over an English month name.
+    /// </summary>
+    private static System.Globalization.CultureInfo Ui => System.Globalization.CultureInfo.CurrentUICulture;
 
     private string MultiDayTitle()
     {
@@ -816,39 +498,12 @@ else
         return date.AddDays(-diff).Date;
     }
 
-    // Maps the ambient UI culture to a FullCalendar locale code. FullCalendar ships one
-    // locale-pack file per code (loaded lazily in scheduler.js, mirroring the same
-    // CDN-override mechanism the core/plugin bundles already use) — "en" needs no extra
-    // file since it's FullCalendar's own built-in default. Two of Lumeo's 14 shipped
-    // locales don't map onto their plain ISO two-letter code 1:1 in FullCalendar's own
-    // locale-file naming (simplified Chinese ships as "zh-cn", not "zh").
-    private static string ResolveFullCalendarLocale(System.Globalization.CultureInfo culture)
-    {
-        var lang = culture.TwoLetterISOLanguageName.ToLowerInvariant();
-        return lang switch
-        {
-            "zh" => "zh-cn",
-            // Under invariant globalization (or CultureInfo.InvariantCulture explicitly),
-            // TwoLetterISOLanguageName is "iv" — not a real ISO language code, and not a
-            // locale FullCalendar ships (there is no locales/iv.js). Left unmapped, every
-            // Scheduler instance would await a guaranteed-failed import before falling
-            // back to English (and, since failed dynamic imports aren't cached, every
-            // instance would repeat that failed request). "en" is FullCalendar's actual
-            // built-in default, so map straight to it and skip the doomed request entirely.
-            "iv" => "en",
-            _ => lang
-        };
-    }
-
-    // ── First-party engine state ─────────────────────────────────────────
-    // The wrapper delegates navigation to FullCalendar; the first-party views are
-    // pure Blazor and need an anchor date of our own. Seeded once from InitialDate
-    // so both engines start on the same day.
+    // ── Navigation state ─────────────────────────────────────────────────
+    // The views are pure Blazor renderers of a date range, so the toolbar owns the
+    // anchor date. Seeded once from InitialDate.
     private DateTime _fpAnchor = DateTime.Today;
     private bool _fpAnchorSeeded;
 
-    /// <summary>Set while the component is rendering first-party, so a later switch back to the wrapper can still initialize it exactly once.</summary>
-    private bool _renderedAsFirstParty;
 
     /// <summary>
     /// What the first-party views render: the component's own working copy, which is
@@ -904,7 +559,26 @@ else
         // documented UNCONTROLLED mode broken: with no EventsChanged delegate the
         // edit went into a temporary list and was dropped, so the chip snapped
         // back exactly as before.
-        var idx = _events.FindIndex(e => string.Equals(e.Id, updated.Id, StringComparison.Ordinal));
+        // Resolve by Id, but only when it resolves UNAMBIGUOUSLY (battle-test finding #21,
+        // carried over from the deleted JS bridge — the guard lived only there,
+        // and this path used the same bare FindIndex the finding was about). A blank Id
+        // identifies nothing, and a duplicate Id is genuinely ambiguous; silently merging
+        // onto the first match corrupts the wrong record. In both cases the stored
+        // collection is left untouched and only the reported event is surfaced.
+        var matches = 0;
+        var idx = -1;
+        if (!string.IsNullOrEmpty(updated.Id))
+        {
+            for (var i = 0; i < _events.Count; i++)
+            {
+                if (string.Equals(_events[i].Id, updated.Id, StringComparison.Ordinal))
+                {
+                    matches++;
+                    if (idx < 0) idx = i;
+                }
+            }
+        }
+        if (matches > 1) idx = -1;
 
         // Converted back BEFORE it is stored or handed on: the views work in display
         // wall-clock and cannot know what frame the caller used, so the original event is what
@@ -912,18 +586,30 @@ else
         // would quietly rewrite the caller's data into a different frame on every drag.
         var committed = SchedulerTimeZoneProjection.FromDisplay(updated, idx >= 0 ? _events[idx] : null, _displayZone);
 
-        if (idx >= 0) _events[idx] = committed; else _events.Add(committed);
-        _lastEventsHash = ComputeEventsHash(_events);
-
-        // Recorded BEFORE invoking the parent (Codex review of this PR, P1) — the
-        // same discipline the wrapper's own commit path already follows. A
-        // controlled parent re-renders synchronously inside InvokeAsync, so
-        // OnParametersSetAsync must already see this hash as "the value we just
-        // pushed" to tell an accepted echo from a veto. Set afterwards, a parent
-        // that REJECTS the edit by handing its old collection straight back looked
-        // like an unrelated change and was adopted — the rejection silently became
-        // the new truth.
-        _lastPushedEventsHash = _lastEventsHash;
+        if (idx >= 0)
+        {
+            _events[idx] = committed;
+        }
+        else if (matches == 0 && !string.IsNullOrEmpty(updated.Id))
+        {
+            // A genuinely new event (the drag-create path) — an ambiguous or blank Id adds
+            // nothing, which is what leaves the stored collection untouched above.
+            _events.Add(committed);
+        }
+        // Recorded BEFORE invoking the parent (Codex review, P1): a controlled parent
+        // re-renders synchronously inside InvokeAsync, so OnParametersSetAsync must
+        // already see this hash as "the value we just pushed" to tell an accepted echo
+        // from a veto. Set afterwards, a parent that REJECTS the edit by handing its old
+        // collection straight back looked like an unrelated change and was adopted — the
+        // rejection silently became the new truth.
+        //
+        // _lastEventsHash is deliberately NOT touched here. It tracks what the Events
+        // PARAMETER last was, and that is what the uncontrolled path compares against:
+        // writing the locally-edited hash into it made the parent's very next re-render —
+        // re-supplying the same collection it always passes, for some unrelated reason —
+        // look like a genuine change, and the user's drag was clawed back. The deleted
+        // deleted JS bridge had this right; the commit path that replaced it did not.
+        _lastPushedEventsHash = ComputeEventsHash(_events);
 
         if (OnEventChange.HasDelegate) await OnEventChange.InvokeAsync(committed);
         if (EventsChanged.HasDelegate) await EventsChanged.InvokeAsync(_events.ToList());
@@ -977,153 +663,39 @@ else
         _ => _fpAnchor.AddDays(7 * direction),
     };
 
-    private async Task PrevAsync()
+    private void PrevAsync()
     {
-        if (Engine == SchedulerEngine.FirstParty)
-        {
-            StepFirstPartyAnchor(-1);
-            RefreshFirstPartyTitle();
-            return;
-        }
-        if (_instanceId is null) return;
-        // The anchor tracks wrapper navigation too (Codex review of this PR, P2), so
-        // switching engines keeps the date the user is looking at. Done here rather
-        // than by reading FullCalendar's own date back, which would need a new
-        // interop channel for a value we can simply keep in step.
         StepFirstPartyAnchor(-1);
-        await Interop.SchedulerPrevAsync(_instanceId);
-        await RefreshTitleAsync();
+        RefreshFirstPartyTitle();
     }
 
-    private async Task NextAsync()
+    private void NextAsync()
     {
-        if (Engine == SchedulerEngine.FirstParty)
-        {
-            StepFirstPartyAnchor(1);
-            RefreshFirstPartyTitle();
-            return;
-        }
-        if (_instanceId is null) return;
         StepFirstPartyAnchor(1);
-        await Interop.SchedulerNextAsync(_instanceId);
-        await RefreshTitleAsync();
+        RefreshFirstPartyTitle();
     }
 
     private async Task TodayAsync()
     {
-        if (Engine == SchedulerEngine.FirstParty)
-        {
-            // The BROWSER's date, not the server's (Codex review of this PR, P2).
-            // On a Blazor Server circuit the two can be different calendar days, so
-            // "Today" jumped to the wrong day for anyone whose timezone is ahead of
-            // or behind the host. Reuses the existing GanttV3GetLocalDateAsync
-            // channel rather than opening a second one; DateTime.Today remains the
-            // documented fallback when interop is unavailable (prerender, torn-down
-            // circuit, a custom service that no-ops).
-            // An explicit display zone is more specific than the browser's own clock, so it
-            // wins: "Today" in Europe/Berlin must be Berlin's today even for a viewer in Tokyo.
-            _fpAnchor = _displayZone is not null
-                ? SchedulerTimeZoneProjection.TodayIn(_displayZone)
-                : await ResolveBrowserTodayAsync();
-            RefreshFirstPartyTitle();
-            return;
-        }
-        if (_instanceId is null) return;
-        _fpAnchor = DateTime.Today;
-        await Interop.SchedulerTodayAsync(_instanceId);
-        await RefreshTitleAsync();
+        // An explicit display zone is more specific than the browser's own clock, so it
+        // wins: "Today" in Europe/Berlin must be Berlin's today even for a viewer in Tokyo.
+        // Failing that, the BROWSER's date rather than the host's — on a Blazor Server
+        // circuit the two can be different calendar days, so "Today" jumped to the wrong
+        // day for anyone whose timezone is ahead of or behind the server. DateTime.Today
+        // stays the documented fallback when interop is unavailable at all (prerender, a
+        // torn-down circuit, a custom service that no-ops).
+        _fpAnchor = _displayZone is not null
+            ? SchedulerTimeZoneProjection.TodayIn(_displayZone)
+            : await ResolveBrowserTodayAsync();
+        RefreshFirstPartyTitle();
     }
 
-    private async Task OnViewChangedAsync(string? v)
+    private void OnViewChangedAsync(string? v)
     {
         if (string.IsNullOrEmpty(v)) return;
         if (!Enum.TryParse<SchedulerView>(v, out var parsed)) return;
-
-        if (Engine == SchedulerEngine.FirstParty)
-        {
-            _currentView = parsed;
-            RefreshFirstPartyTitle();
-            return;
-        }
-
-        if (_instanceId is null) return;
         _currentView = parsed;
-        await Interop.SchedulerChangeViewAsync(_instanceId, v);
-        await RefreshTitleAsync();
+        RefreshFirstPartyTitle();
     }
 
-    private async Task RefreshTitleAsync()
-    {
-        if (_instanceId is null) return;
-        _title = await Interop.SchedulerGetTitleAsync(_instanceId);
-        StateHasChanged();
-    }
-
-    [JSInvokable]
-    public async Task JsOnEventClick(SchedulerEvent ev)
-    {
-        if (OnEventClick.HasDelegate) await OnEventClick.InvokeAsync(ev);
-    }
-
-    [JSInvokable]
-    public async Task JsOnDateSelect(SchedulerDateRange range)
-    {
-        if (OnDateSelect.HasDelegate) await OnDateSelect.InvokeAsync(range);
-    }
-
-    [JSInvokable]
-    public async Task JsOnEventChange(SchedulerEvent ev)
-    {
-        // A drag/resize only changes the time window (Start/End/AllDay). The JS
-        // payload (eventToJson) carries only id/title/start/end/allDay/color/url/
-        // extendedProps, so wholesale-replacing the stored event flattened every
-        // field it omits — DaysOfWeek/RecurrenceEnd/ExceptionDates/ResourceId/
-        // ClassNames — turning a recurring event into a one-off. Merge the new
-        // window onto the existing record so the rest of the rule survives.
-        //
-        // Reconcile by Id, but only when the Id resolves UNAMBIGUOUSLY. A blank Id can't
-        // identify a unique record (a plain FindIndex would match the first blank-Id event,
-        // or none), and a duplicate Id is genuinely ambiguous — silently mutating the first
-        // match would corrupt the wrong record. In both cases skip the in-place merge and
-        // surface only the JS payload, leaving the stored collection untouched.
-        var matches = 0;
-        var idx = -1;
-        if (!string.IsNullOrEmpty(ev.Id))
-        {
-            for (var i = 0; i < _events.Count; i++)
-            {
-                if (_events[i].Id == ev.Id)
-                {
-                    matches++;
-                    if (idx < 0) idx = i;
-                }
-            }
-        }
-
-        if (idx >= 0 && matches == 1)
-        {
-            var existing = _events[idx];
-            ev = existing with { Start = ev.Start, End = ev.End, AllDay = ev.AllDay };
-            _events[idx] = ev;
-        }
-
-        // Record _lastPushedEventsHash BEFORE invoking EventsChanged: a controlled parent
-        // re-renders synchronously inside InvokeAsync, so OnParametersSetAsync must already
-        // see this hash as "the value we just pushed" to distinguish an accepted echo (keep
-        // in-flight state) from a veto (parent kept its old collection → roll back).
-        _lastPushedEventsHash = ComputeEventsHash(_events);
-
-        if (OnEventChange.HasDelegate) await OnEventChange.InvokeAsync(ev);
-        if (EventsChanged.HasDelegate) await EventsChanged.InvokeAsync(_events.ToList());
-    }
-
-    public async ValueTask DisposeAsync()
-    {
-        if (_instanceId is not null)
-        {
-            try { await Interop.SchedulerDestroyAsync(_instanceId); }
-            catch (Microsoft.JSInterop.JSDisconnectedException) { }
-        }
-        _selfRef?.Dispose();
-    }
 }

@@ -28,7 +28,6 @@ public class SchedulerMultiDayViewTests : IAsyncLifetime
     private IRenderedComponent<L.Scheduler> Render(int? visibleDays, L.SchedulerView view = L.SchedulerView.MultiDay) =>
         _ctx.Render<L.Scheduler>(p =>
         {
-            p.Add(c => c.Engine, L.SchedulerEngine.FirstParty);
             p.Add(c => c.InitialView, view);
             p.Add(c => c.InitialDate, Day);
             if (visibleDays is not null) p.Add(c => c.VisibleDays, visibleDays);
@@ -134,25 +133,9 @@ public class SchedulerMultiDayViewTests : IAsyncLifetime
         // Same pre-existing bug, wider than this view: the agenda opened on the month name
         // too. Pinned here because MultiDay is what exposed it.
         var agenda = _ctx.Render<L.Scheduler>(p => p
-            .Add(c => c.Engine, L.SchedulerEngine.FirstParty)
             .Add(c => c.InitialView, L.SchedulerView.List)
             .Add(c => c.InitialDate, Day));
 
         Assert.DoesNotContain("March 2026", agenda.Find(".text-center").TextContent, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public void The_Wrapper_Engine_Falls_Back_Instead_Of_Sending_An_Unknown_View()
-    {
-        // FullCalendar has no custom-duration view registered here. Sending "MultiDay"
-        // across would resolve to nothing at all, so it degrades to the nearest view the
-        // wrapper does have.
-        var cut = _ctx.Render<L.Scheduler>(p => p
-            .Add(c => c.InitialView, L.SchedulerView.MultiDay)
-            .Add(c => c.InitialDate, Day)
-            .Add(c => c.VisibleDays, 3));
-
-        // The wrapper path renders no first-party grid at all.
-        Assert.Empty(cut.FindAll("[data-daycol]"));
     }
 }

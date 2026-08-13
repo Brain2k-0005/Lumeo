@@ -1,113 +1,99 @@
+using System.Globalization;
 using Bunit;
-using Lumeo.Tests.Helpers;
+using Microsoft.AspNetCore.Components;
 using Xunit;
+using Lumeo.Tests.Helpers;
 using L = Lumeo;
 
 namespace Lumeo.Tests.Components.Scheduler;
 
 /// <summary>
-/// Regression test for the wave-1b integration item the kernel report flagged: §4.2's
-/// <c>ComputeEventsHash</c> needed a <c>Recurrence</c> fold, mirroring the existing
-/// <c>DaysOfWeek</c>-by-value fold this file's sibling (<see cref="SchedulerEventsHashTests"/>)
-/// already regression-tests. Before the fix, editing only <see cref="L.SchedulerEvent.Recurrence"/>
-/// (e.g. flipping <c>Interval</c> from 1 to 2) produced an identical hash — same reference-vs-value
-/// bug class as the original DaysOfWeek report ("missed edits that swap days without changing
-/// the count") — so the JS layer was never told and the calendar never re-rendered the change.
+/// Recurrence-rule coverage of the Events change-detection hash — the companion to
+/// <see cref="SchedulerEventsHashTests"/>, which explains the shape of these.
+///
+/// <para>
+/// A rule field the hash ignores is a rule edit the component silently drops. These change
+/// exactly one field and check that a later edit is committed against the NEW rule, which is
+/// only true if the change was adopted.
+/// </para>
 /// </summary>
 public class SchedulerRecurrenceHashTests : IAsyncLifetime
 {
-    private const string ModulePath = "./_content/Lumeo.Scheduler/js/scheduler.js";
-    private const string InstanceId = "sched-instance-recurrence";
-
     private readonly BunitContext _ctx = new();
-    private BunitJSModuleInterop _module = null!;
 
     public Task InitializeAsync()
     {
         _ctx.AddLumeoServices();
-
-        _module = _ctx.JSInterop.SetupModule(ModulePath);
-        _module.Mode = JSRuntimeMode.Loose;
-        _module.Setup<string>("scheduler.init", _ => true).SetResult(InstanceId);
-        _module.Setup<string>("scheduler.getTitle", _ => true).SetResult("June 2026");
-
         return Task.CompletedTask;
     }
 
     public async Task DisposeAsync() => await _ctx.DisposeAsync();
 
-    private static int SetEventsCount(BunitJSModuleInterop module) =>
-        module.Invocations.Count(i => i.Identifier == "scheduler.setEvents");
+    private static readonly DateTime Anchor = new(2026, 6, 15);
+    private static readonly DateTime Day = new(2026, 6, 15);
+    private static readonly DateTime Target = new(2026, 6, 22);
+
+    private async Task<L.SchedulerEvent> AdoptThenEdit(L.SchedulerEvent before, L.SchedulerEvent after)
+    {
+        IEnumerable<L.SchedulerEvent>? emitted = null;
+        var sink = EventCallback.Factory.Create<IEnumerable<L.SchedulerEvent>>(this, (IEnumerable<L.SchedulerEvent> e) => emitted = e);
+
+        var cut = _ctx.Render<L.Scheduler>(p => p
+            .Add(c => c.InitialDate, Anchor)
+            .Add(c => c.Events, new[] { before })
+            .Add(c => c.EventsChanged, sink));
+
+        cut.Render(p => p
+            .Add(c => c.InitialDate, Anchor)
+            .Add(c => c.Events, new[] { after })
+            .Add(c => c.EventsChanged, sink));
+
+        await cut.InvokeAsync(() => cut.FindComponent<L.SchedulerMonthView>().Instance
+            .CommitDrag(after.Id, Target.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)));
+
+        Assert.NotNull(emitted);
+        return Assert.Single(emitted!);
+    }
+
+    private static L.SchedulerEvent Sync =>
+        new("r1", "Sync", Day.AddHours(9), Day.AddHours(9).AddMinutes(30));
 
     [Fact]
-    public void Editing_Recurrence_Interval_repushes_events()
+    public async Task Editing_Recurrence_Interval_is_adopted()
     {
-        var start = DateTime.Today.AddHours(9);
-        var end = start.AddMinutes(30);
+        var before = Sync with { Recurrence = new L.SchedulerRecurrenceRule(L.SchedulerRecurrenceFrequency.Weekly, Interval: 1) };
+        var after = before with { Recurrence = before.Recurrence! with { Interval = 2 } };
 
-        var before = new L.SchedulerEvent(Id: "r1", Title: "Sync", Start: start, End: end)
-        {
-            Recurrence = new L.SchedulerRecurrenceRule(L.SchedulerRecurrenceFrequency.Weekly, Interval: 1)
-        };
+        var stored = await AdoptThenEdit(before, after);
 
-        var cut = _ctx.Render<L.Scheduler>(p => p.Add(c => c.Events, new[] { before }));
-
-        var after = before with
-        {
-            Recurrence = before.Recurrence! with { Interval = 2 }
-        };
-        cut.Render(p => p.Add(c => c.Events, new[] { after }));
-
-        Assert.True(
-            SetEventsCount(_module) > 0,
-            "Changing Recurrence.Interval must re-push events via scheduler.setEvents.");
+        Assert.Equal(2, stored.Recurrence!.Interval);
     }
 
     [Fact]
-    public void Editing_Recurrence_ByDay_without_changing_count_repushes_events()
+    public async Task Editing_Recurrence_ByDay_without_changing_count_is_adopted()
     {
-        var start = DateTime.Today.AddHours(9);
-        var end = start.AddMinutes(30);
-
-        var before = new L.SchedulerEvent(Id: "r2", Title: "Standup", Start: start, End: end)
+        // Same count, different day — the trap a count-only hash falls into.
+        var before = Sync with
         {
-            Recurrence = new L.SchedulerRecurrenceRule(
-                L.SchedulerRecurrenceFrequency.Weekly,
-                ByDay: new[] { new L.SchedulerByDayRule(DayOfWeek.Monday) })
+            Recurrence = new L.SchedulerRecurrenceRule(L.SchedulerRecurrenceFrequency.Weekly,
+                ByDay: new[] { new L.SchedulerByDayRule(DayOfWeek.Monday) }),
         };
+        var after = before with { Recurrence = before.Recurrence! with { ByDay = new[] { new L.SchedulerByDayRule(DayOfWeek.Tuesday) } } };
 
-        var cut = _ctx.Render<L.Scheduler>(p => p.Add(c => c.Events, new[] { before }));
+        var stored = await AdoptThenEdit(before, after);
 
-        // Same ByDay.Count (1 -> 1), different day — exactly the class of bug the
-        // original DaysOfWeek report caught (count-only folding misses this).
-        var after = before with
-        {
-            Recurrence = before.Recurrence! with { ByDay = new[] { new L.SchedulerByDayRule(DayOfWeek.Tuesday) } }
-        };
-        cut.Render(p => p.Add(c => c.Events, new[] { after }));
-
-        Assert.True(
-            SetEventsCount(_module) > 0,
-            "Changing Recurrence.ByDay (same count) must re-push events via scheduler.setEvents.");
+        Assert.Equal(DayOfWeek.Tuesday, Assert.Single(stored.Recurrence!.ByDay!).Day);
     }
 
     [Fact]
-    public void Adding_Recurrence_To_A_Plain_Event_repushes_events()
+    public async Task Adding_Recurrence_To_A_Plain_Event_is_adopted()
     {
-        var start = DateTime.Today.AddHours(9);
-        var end = start.AddMinutes(30);
+        var before = Sync;
+        var after = before with { Recurrence = new L.SchedulerRecurrenceRule(L.SchedulerRecurrenceFrequency.Daily) };
 
-        var before = new L.SchedulerEvent(Id: "r3", Title: "One-off", Start: start, End: end);
-        var cut = _ctx.Render<L.Scheduler>(p => p.Add(c => c.Events, new[] { before }));
+        var stored = await AdoptThenEdit(before, after);
 
-        var after = before with
-        {
-            Recurrence = new L.SchedulerRecurrenceRule(L.SchedulerRecurrenceFrequency.Daily)
-        };
-        cut.Render(p => p.Add(c => c.Events, new[] { after }));
-
-        Assert.True(
-            SetEventsCount(_module) > 0,
-            "Adding a Recurrence rule to a previously non-recurring event must re-push events.");
+        Assert.NotNull(stored.Recurrence);
+        Assert.Equal(L.SchedulerRecurrenceFrequency.Daily, stored.Recurrence!.Freq);
     }
 }

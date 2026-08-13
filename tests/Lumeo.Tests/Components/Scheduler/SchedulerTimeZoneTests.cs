@@ -158,7 +158,6 @@ public class SchedulerTimeZoneTests : IAsyncLifetime
         };
 
         var cut = _ctx.Render<L.Scheduler>(p => p
-            .Add(c => c.Engine, L.SchedulerEngine.FirstParty)
             .Add(c => c.InitialView, L.SchedulerView.Day)
             .Add(c => c.InitialDate, new DateTime(2026, 3, 11))
             .Add(c => c.TimeZone, "Asia/Tokyo")
@@ -183,7 +182,6 @@ public class SchedulerTimeZoneTests : IAsyncLifetime
         IRenderedComponent<L.Scheduler> RenderWith(string? tz) =>
             _ctx.Render<L.Scheduler>(p =>
             {
-                p.Add(c => c.Engine, L.SchedulerEngine.FirstParty);
                 p.Add(c => c.InitialView, L.SchedulerView.Day);
                 p.Add(c => c.InitialDate, new DateTime(2026, 3, 11));
                 p.Add(c => c.Events, events);

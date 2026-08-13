@@ -47,12 +47,6 @@ public static class CdnDeps
         // wwwroot/lib/lumeo-vendor/ for its demo; that is a docs concern, not a CLI one.)
 
         // ── Lumeo.Scheduler ─────────────────────────────────────────────────────
-        // scheduler.js: _cdn('fullCalendarCore' | 'fullCalendarDaygrid' | ...)
-        new("fullCalendarCore",        "@fullcalendar/core",        "6",       "https://esm.sh/@fullcalendar/core@6",                                 "Lumeo.Scheduler"),
-        new("fullCalendarDaygrid",     "@fullcalendar/daygrid",     "6",       "https://esm.sh/@fullcalendar/daygrid@6",                              "Lumeo.Scheduler"),
-        new("fullCalendarTimegrid",    "@fullcalendar/timegrid",    "6",       "https://esm.sh/@fullcalendar/timegrid@6",                             "Lumeo.Scheduler"),
-        new("fullCalendarList",        "@fullcalendar/list",        "6",       "https://esm.sh/@fullcalendar/list@6",                                 "Lumeo.Scheduler"),
-        new("fullCalendarInteraction", "@fullcalendar/interaction", "6",       "https://esm.sh/@fullcalendar/interaction@6",                          "Lumeo.Scheduler"),
 
         // ── Lumeo.CodeEditor ────────────────────────────────────────────────────
         // code-editor.js: _cdn('codeMirrorBase', 'https://esm.sh')
