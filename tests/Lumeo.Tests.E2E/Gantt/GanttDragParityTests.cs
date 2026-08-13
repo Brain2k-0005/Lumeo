@@ -578,9 +578,23 @@ public class GanttDragParityTests : GanttParityTestBase
         await Page.Mouse.MoveAsync(start.X, start.Y);
         await Page.Mouse.DownAsync();
         await Page.Mouse.MoveAsync(start.X - DayPxDay * 4, start.Y); // -4 days: Start 03-04, invalid (< blackout 03-05)
+        // data-drop-invalid (styling-hooks audit — ReUI's own attribute
+        // name/shape, presence-only; see gantt-v3.js's setGhostInvalid).
+        await Assertions.Expect(ghost).ToHaveAttributeAsync("data-drop-invalid", "", new() { Timeout = 5000 });
+        // ...and the legacy data-invalid="true" alias ALONGSIDE it (Codex
+        // review of this PR, P2). The first pass renamed the attribute; that
+        // would have silently broken every consumer override built on the hook
+        // this file's own comment had called "stable". Asserting the exact
+        // "true" VALUE, not just presence, because pre-existing selectors may
+        // well be written as [data-invalid="true"].
         await Assertions.Expect(ghost).ToHaveAttributeAsync("data-invalid", "true", new() { Timeout = 5000 });
 
         await Page.Mouse.MoveAsync(start.X - DayPxDay * 3, start.Y); // -3 days: Start 03-05, valid (boundary)
+        await Assertions.Expect(ghost).Not.ToHaveAttributeAsync("data-drop-invalid", "", new() { Timeout = 5000 });
+        // Both clear together — also the regression guard for the pending-key
+        // repaint added in this round: if pendingKeys ever leaked (a key left
+        // in the set after its verdict settled), revisiting this already-valid
+        // position would wrongly repaint the ghost invalid and fail here.
         await Assertions.Expect(ghost).Not.ToHaveAttributeAsync("data-invalid", "true", new() { Timeout = 5000 });
 
         await Page.Mouse.UpAsync();
@@ -600,7 +614,7 @@ public class GanttDragParityTests : GanttParityTestBase
         await Page.Mouse.MoveAsync(start.X, start.Y);
         await Page.Mouse.DownAsync();
         await Page.Mouse.MoveAsync(start.X - DayPxDay * 4, start.Y); // invalid position
-        await Assertions.Expect(ghost).ToHaveAttributeAsync("data-invalid", "true", new() { Timeout = 5000 });
+        await Assertions.Expect(ghost).ToHaveAttributeAsync("data-drop-invalid", "", new() { Timeout = 5000 });
         await Page.Mouse.UpAsync();
 
         await Assertions.Expect(ghost).ToHaveCountAsync(0, new() { Timeout = 5000 }); // cleanup still runs on revert
@@ -637,7 +651,7 @@ public class GanttDragParityTests : GanttParityTestBase
         // The failed (thrown) validation must paint the ghost invalid too —
         // the SAME cached promise checkCanDrop's own .then() and onPointerUp's
         // commit-time await both read (see the JS fix's own remarks).
-        await Assertions.Expect(ghost).ToHaveAttributeAsync("data-invalid", "true", new() { Timeout = 5000 });
+        await Assertions.Expect(ghost).ToHaveAttributeAsync("data-drop-invalid", "", new() { Timeout = 5000 });
         await Page.Mouse.UpAsync();
 
         await Assertions.Expect(ghost).ToHaveCountAsync(0, new() { Timeout = 5000 }); // cleanup still runs on revert
@@ -1062,5 +1076,107 @@ public class GanttDragParityTests : GanttParityTestBase
         Assert.Equal("be3", ParseTask(clickJson).Id);
         // ...and the NEXT genuine click fires exactly once, not twice.
         Assert.Equal("1", await ReadSinkRawAsync("event-sink-click-count"));
+    }
+
+    // ── L: data-dragging (styling-hooks audit) ───────────────────────────────
+
+    [Fact]
+    public async Task Data_past_on_the_move_ghost_tracks_the_candidate_dates_not_the_cloned_value()
+    {
+        // Codex review of this PR, P2: makeGhost clones the bar, so the ghost
+        // carried the ORIGINAL task's data-past for the whole gesture.
+        //
+        // COVERAGE LIMIT, stated rather than papered over: the interesting
+        // transition is a drag that CROSSES today, and this suite's fixtures
+        // cannot express it. GanttParityFixtures pins every task to
+        // 2026-02-23..2026-04-03 (deliberately — dozens of date-exact
+        // assertions in this file depend on those constants), so relative to
+        // any real run date after that window they are all permanently past,
+        // and reaching a non-past candidate would need a ~150-day drag, i.e.
+        // thousands of pixels across scroll boundaries. What IS asserted here
+        // is the direction that regresses silently: refreshGhostPast runs on
+        // every move and agrees with the candidate, instead of leaving a
+        // frozen clone or spuriously clearing the hook.
+        await GotoHost("/e2e/gantt-v3?infiniteScroll=0");
+        await WaitV3ReadyAsync();
+        var bar = Page.Locator($"{V3Root} [data-task-id='fe3']");
+        var ghost = Page.Locator(".lumeo-gantt-v3-drag-ghost");
+        var start = await CenterAsync(bar);
+
+        // fe3 is 2026-03-08..2026-03-15 — past for any run after that window.
+        await Assertions.Expect(bar).ToHaveAttributeAsync("data-past", "", new() { Timeout = 5000 });
+
+        await Page.Mouse.MoveAsync(start.X, start.Y);
+        await Page.Mouse.DownAsync();
+        await Page.Mouse.MoveAsync(start.X + DayPxDay * 3, start.Y); // +3 days, still past
+        await Assertions.Expect(ghost).ToHaveAttributeAsync("data-past", "", new() { Timeout = 5000 });
+
+        await Page.Mouse.UpAsync();
+        await WaitForSinkChangeAsync("event-sink-taskupdate", null);
+    }
+
+    [Fact]
+    public async Task Data_dragging_appears_once_the_drag_threshold_is_crossed_and_disappears_on_release()
+    {
+        // gantt-v3.js's drag engine is pure pointer-event/DOM-ghost JS with no
+        // Blazor round trip while a gesture is live (see this file's own
+        // Move_drag_* specs' remarks) — data-dragging is set/cleared directly
+        // on the bar element by that engine. A bUnit test setting a `Dragging`
+        // parameter directly would prove nothing about this wiring (GanttBar
+        // has no such parameter at all — the attribute never comes from
+        // Blazor); only a real pointer gesture against the live JS exercises
+        // the actual wiring gap this hook closes.
+        await GotoHost("/e2e/gantt-v3?infiniteScroll=0");
+        await WaitV3ReadyAsync();
+        var bar = Page.Locator($"{V3Root} [data-task-id='fe3']");
+        var start = await CenterAsync(bar);
+
+        // Predicted-wrong baseline: before any gesture, the attribute must be
+        // entirely ABSENT (not merely falsy) — a disable-check that already
+        // finds it present would prove the fixture, not the wiring.
+        await Assertions.Expect(bar).Not.ToHaveAttributeAsync("data-dragging", "", new() { Timeout = 5000 });
+
+        await Page.Mouse.MoveAsync(start.X, start.Y);
+        await Page.Mouse.DownAsync();
+        // Comfortably past DRAG_THRESHOLD_PX (3px) so dragInitiated definitely
+        // flips and the ghost/attribute pair is created.
+        await Page.Mouse.MoveAsync(start.X + DayPxDay * 2, start.Y);
+        await Assertions.Expect(bar).ToHaveAttributeAsync("data-dragging", "", new() { Timeout = 5000 });
+
+        await Page.Mouse.UpAsync();
+        await WaitForSinkChangeAsync("event-sink-taskupdate", null); // commit settles before asserting cleanup ran
+        await Assertions.Expect(bar).Not.ToHaveAttributeAsync("data-dragging", "", new() { Timeout = 5000 });
+    }
+
+    [Fact]
+    public async Task Data_dragging_never_appears_for_a_below_threshold_click()
+    {
+        // A below-threshold interaction never crosses into dragInitiated at
+        // all (see gantt-v3.js's own "below threshold falls back to a click"
+        // remarks) — data-dragging must never appear, not merely disappear
+        // quickly. Predicted-wrong value if the wiring were broken open-loop
+        // (e.g. set unconditionally on pointerdown): "true"/present here.
+        await GotoHost("/e2e/gantt-v3?infiniteScroll=0");
+        await WaitV3ReadyAsync();
+        var bar = Page.Locator($"{V3Root} [data-task-id='fe3']");
+        var start = await CenterAsync(bar);
+
+        await Page.Mouse.MoveAsync(start.X, start.Y);
+        await Page.Mouse.DownAsync();
+        await Page.Mouse.MoveAsync(start.X + 1, start.Y); // 1px — below DRAG_THRESHOLD_PX (3px)
+
+        // Assert DURING the gesture, pointer still down (Codex review of this
+        // PR): asserting only after MouseUp would also pass for a regression
+        // that sets the attribute on the below-threshold move and then clears
+        // it in cleanup() — i.e. the exact "never appears" claim this test
+        // exists to make would go unchecked. Short timeout on purpose: this is
+        // a "must already be absent" check, not something to wait for.
+        await Assertions.Expect(bar).Not.ToHaveAttributeAsync("data-dragging", "", new() { Timeout = 1000 });
+
+        await Page.Mouse.UpAsync();
+        var json = await WaitForSinkChangeAsync("event-sink-click", null);
+        Assert.Equal("fe3", ParseTask(json).Id); // proves this really was the click fallback, not a swallowed gesture
+
+        await Assertions.Expect(bar).Not.ToHaveAttributeAsync("data-dragging", "", new() { Timeout = 2000 });
     }
 }

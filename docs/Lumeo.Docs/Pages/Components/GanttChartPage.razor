@@ -325,6 +325,7 @@
                 <TableRow><TableCell Class="font-mono text-xs">IsMilestone</TableCell><TableCell Class="font-mono text-xs">bool</TableCell><TableCell>When true, renders as a diamond at the Start date. End is clamped to Start.</TableCell></TableRow>
                 <TableRow><TableCell Class="font-mono text-xs">GroupLabel</TableCell><TableCell Class="font-mono text-xs">string?</TableCell><TableCell>Optional swim-lane label — cluster with <code>GroupBy</code>.</TableCell></TableRow>
                 <TableRow><TableCell Class="font-mono text-xs">ParentId</TableCell><TableCell Class="font-mono text-xs">string?</TableCell><TableCell><code>GanttChart</code>-only: set to another task's Id to build real parent/child hierarchy and enable the tree pane by default.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">IsRecurring</TableCell><TableCell Class="font-mono text-xs">bool</TableCell><TableCell>Marks the bar as part of a series you generated yourself — see <a href="#styling-hooks" class="text-primary hover:underline">Styling hooks</a>' <code>data-recurring</code>.</TableCell></TableRow>
             </TableBody>
         </Table>
     </div>
@@ -367,6 +368,54 @@
             </TableBody>
         </Table>
     </div>
+</div>
+
+<div class="mt-16">
+    <Heading Id="styling-hooks" Level="2" Class="scroll-mt-20">Styling hooks (data-*)</Heading>
+    <Lumeo.Text Size="base" Color="muted" Leading="relaxed" Class="mt-3">
+        A rendered bar, grid cell, or drag ghost carries plain <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">data-*</code>
+        attributes for its own state — no class-string parsing required. Boolean states are presence-only
+        (the attribute is either there or it isn't, so <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">[data-selected]</code>
+        is a valid selector on its own); <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">data-progress</code>
+        is the one exception and carries the clamped 0–100 value.
+    </Lumeo.Text>
+
+    <div class="overflow-x-auto mt-4">
+        <Table>
+            <TableHeader>
+                <TableRow>
+                    <TableHead Class="w-[160px]">Attribute</TableHead>
+                    <TableHead Class="w-[140px]">Element</TableHead>
+                    <TableHead Class="w-[130px]">Shape</TableHead>
+                    <TableHead>Meaning</TableHead>
+                </TableRow>
+            </TableHeader>
+            <TableBody>
+                <TableRow><TableCell Class="font-mono text-xs">data-selected</TableCell><TableCell>Bar</TableCell><TableCell>presence</TableCell><TableCell>The task's id is in <code>SelectedIds</code> (e.g. checked via a row checkbox).</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">data-dragging</TableCell><TableCell>Bar</TableCell><TableCell>presence</TableCell><TableCell>A move/resize/progress drag gesture is live on this bar (set by the drag engine, not by a re-render).</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">data-progress</TableCell><TableCell>Bar</TableCell><TableCell>0–100</TableCell><TableCell>The task's clamped completion percentage — the same value the progress fill's width uses.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">data-completed</TableCell><TableCell>Bar</TableCell><TableCell>presence</TableCell><TableCell>Progress is exactly 100.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">data-past</TableCell><TableCell>Bar</TableCell><TableCell>presence</TableCell><TableCell>The task's End is before "now" (the browser's current time, not the server's).</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">data-recurring</TableCell><TableCell>Bar</TableCell><TableCell>presence</TableCell><TableCell><code>GanttTask.IsRecurring</code> is set — for a consumer generating its own repeating occurrences.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">data-off</TableCell><TableCell>Header cell / canvas band</TableCell><TableCell>presence</TableCell><TableCell>An off-day column under <code>MarkOffDays</code>/<code>OffDays</code> — on the header date cell and the canvas tint behind it.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">data-drop-invalid</TableCell><TableCell>Drag ghost</TableCell><TableCell>presence</TableCell><TableCell>The current drag position fails <code>CanDrop</code> — including while a verdict is still in flight (fail-closed).</TableCell></TableRow>
+            </TableBody>
+        </Table>
+    </div>
+
+    <Lumeo.Text Size="sm" Color="muted" Leading="relaxed" Class="mt-6">
+        One example per family — a boolean bar state, the value-carrying one, and the grid/drag hooks:
+    </Lumeo.Text>
+    <pre class="mt-3 overflow-x-auto rounded-md border border-border bg-muted/40 p-4 text-xs font-mono leading-relaxed"><code>/* Boolean bar state — outline the selected task */
+[data-selected] &#123; outline: 2px solid var(--color-primary); &#125;
+
+/* Value-carrying — a completion badge past 80% */
+[data-progress] &#123; --p: attr(data-progress number); &#125;
+[data-progress]:is([data-completed]) &#123; opacity: 0.7; &#125;
+
+/* Grid / drag ghost */
+[data-off] &#123; background: color-mix(in oklab, var(--color-muted) 60%, transparent); &#125;
+[data-drop-invalid] &#123; border-color: var(--color-destructive); &#125;</code></pre>
 </div>
 
 <div class="mt-12">

@@ -390,15 +390,26 @@ public class GanttV3Phase3T2Tests : IAsyncLifetime
     {
         // Design spec Phase 3, T2 — GanttV3GetLocalDateTimeAsync extends the
         // same GanttV3Get* browser-clock family GanttV3GetLocalDateAsync
-        // already established. Gated on NowIndicator: a chart that never
-        // enables the feature must not pay the extra interop round-trip.
+        // already established.
+        //
+        // CONTRACT CHANGE (Codex review of the styling-hooks PR, P2): this
+        // used to additionally assert that a chart with NowIndicator=false
+        // paid NO round trip at all. That cost gate was correct while the
+        // visual now-line was the browser clock's ONLY consumer. It is not
+        // any more: the data-past styling hook renders on EVERY bar and is
+        // not gated on NowIndicator (which defaults to false), so gating the
+        // resolve left data-past evaluating the SERVER clock on a Blazor
+        // Server circuit — a wrong past/not-past state for any user in a
+        // different time zone. The resolve is therefore unconditional now,
+        // and the assertion below pins the value being available rather than
+        // the call being skipped.
         _interop.GanttV3LocalDateTimeToReturn = "2026-01-15T14:30:00";
 
         var cutWithout = _ctx.Render<L.GanttChart>(p => p
             .Add(c => c.Tasks, new List<L.GanttTask> { new("t1", "Design", D(2026, 1, 2), D(2026, 1, 6)) })
             .Add(c => c.NowIndicator, false));
         await cutWithout.InvokeAsync(() => { });
-        Assert.Equal(0, _interop.GanttV3GetLocalDateTimeCallCount);
+        Assert.True(_interop.GanttV3GetLocalDateTimeCallCount >= 1);
 
         var cutWith = _ctx.Render<L.GanttChart>(p => p
             .Add(c => c.Tasks, new List<L.GanttTask> { new("t1", "Design", D(2026, 1, 2), D(2026, 1, 6)) })
@@ -443,7 +454,12 @@ public class GanttV3Phase3T2Tests : IAsyncLifetime
             .Add(c => c.ViewMode, L.GanttViewMode.QuarterDay)
             .Add(c => c.NowIndicator, false));
         await cut.InvokeAsync(() => { });
-        Assert.Equal(0, _interop.GanttV3GetLocalDateTimeCallCount); // sanity: disabled at mount pays no interop cost
+        // Contract change — see the sibling test's own remarks: the browser
+        // clock is resolved even with the indicator off, because data-past
+        // depends on it. The line itself must still stay unrendered, which is
+        // what the surrounding assertions actually prove.
+        Assert.True(_interop.GanttV3GetLocalDateTimeCallCount >= 1);
+        Assert.Empty(cut.FindAll(".lumeo-gantt-v3-now-line"));
 
         // Enable post-mount — the false->true transition this fix reacts to.
         cut.Render(p => p

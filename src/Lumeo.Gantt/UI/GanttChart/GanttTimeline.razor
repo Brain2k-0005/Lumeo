@@ -102,8 +102,12 @@
                     var label = LowerLabels[i];
                     @* Today column accent label (design spec Phase 3, T2) —
                        IsTodayColumn(i) gates only the CSS class, same column
-                       cell markup otherwise. *@
-                    <div class="@ColumnCellClass(i)" style="@ColumnCellStyle">@label</div>
+                       cell markup otherwise. data-off (styling-hooks audit,
+                       ReUI parity) — presence-only, same IsOffDayCell gate the
+                       canvas backdrop tint below already uses, so the header
+                       cell and the canvas band directly beneath it can never
+                       disagree about which columns are "off". *@
+                    <div class="@ColumnCellClass(i)" style="@ColumnCellStyle" data-off="@(IsOffDayCell(i) ? string.Empty : null)">@label</div>
                 }
             </div>
 
@@ -153,7 +157,12 @@
                 {
                     if (IsOffDayColumn(i))
                     {
-                        <div class="lumeo-gantt-v3-off-day pointer-events-none absolute inset-y-0 bg-muted/40" style="@OffDayColumnStyle(i)"></div>
+                        @* data-off (styling-hooks audit, ReUI parity) — unconditional
+                           here: this div only ever renders for a column IsOffDayColumn
+                           already confirmed true (the @if above), unlike the header
+                           cell's own data-off (every cell renders, off or not, so THAT
+                           one still needs the conditional). *@
+                        <div class="lumeo-gantt-v3-off-day pointer-events-none absolute inset-y-0 bg-muted/40" style="@OffDayColumnStyle(i)" data-off=""></div>
                     }
                 }
             }
@@ -353,11 +362,20 @@
                                    block is already gated on AllowCreate && !Readonly. *@
                                 <div class="absolute touch-pan-y" data-gantt-row-track="true" data-row-key="@("task:" + row.Task.Id)" style="@RowTrackStyle(row.RowIndex)"></div>
                             }
+                            @* data-selected is LEAF-ONLY (Codex review of the styling-hooks
+                               PR, P2). A plain membership test disagrees with the tree for a
+                               row that USED to be a leaf and became a parent on a later task
+                               update: task replacement does not normalize SelectedIds, so the
+                               stale id survives, while GanttSelectionModel derives a parent's
+                               checkbox purely from its descendant leaves and can legitimately
+                               show it unchecked — data-selected would then contradict the
+                               checkbox on the very same row. *@
                             <GanttBar Task="row.Task" X="row.X" Width="row.Width" RowIndex="row.RowIndex"
                                       BarHeight="EffectiveBarHeight" Color="@row.Color" BarTemplate="BarTemplate"
                                       DragGhostTemplate="DragGhostTemplate"
                                       Readonly="@Readonly" OnTaskClick="OnTaskClick"
                                       SuppressPointerClick="@_dragConfirmed"
+                                      Selected="@(!row.IsParent && SelectedIds.Contains(row.Task.Id))" Now="@EffectiveNow"
                                       FocusedTaskId="@EffectiveFocusedTaskId" OnKeyNavigation="HandleBarKeyNavigationAsync" />
                             @* Design spec Phase 3, T3 — a hierarchy-parent Task row (HasChildren)
                                renders BOTH its own GanttBar above (the task's own dates) AND this
@@ -675,6 +693,21 @@
 
     /// <summary>Raised when a bar is activated via click or keyboard (Enter/Space) — forwarded from every rendered <see cref="GanttBar"/> (Codex round 4, P2 #5). Same contract as v2's <c>Gantt.OnTaskClick</c>.</summary>
     [Parameter] public EventCallback<GanttTask> OnTaskClick { get; set; }
+
+    /// <summary>
+    /// The selected LEAF task ids (styling-hooks audit — ReUI parity's
+    /// <c>data-selected</c>). <c>GanttChart</c> forwards its own <see
+    /// cref="GanttV3.GanttState.SelectedIds"/> here — the SAME set <see
+    /// cref="GanttTree"/>'s row checkboxes already read/write (design spec
+    /// Phase 3, T6) — so a bar's <c>data-selected</c> attribute can never
+    /// disagree with the tree pane's own checkbox state for the identical
+    /// task. Default empty (no <see cref="GanttChart"/> wrapping — or a
+    /// standalone <see cref="GanttTimeline"/> that never wires this — renders
+    /// every bar unselected, matching every existing render before this
+    /// parameter existed: no caller ever set it, so <c>GanttBar.Selected</c>
+    /// was never true anywhere in the tree, byte-identical to today).
+    /// </summary>
+    [Parameter] public IReadOnlySet<string> SelectedIds { get; set; } = EmptySelectedIds;
 
     /// <summary>Additional CSS classes merged onto the root scroll container.</summary>
     [Parameter] public string? Class { get; set; }
@@ -1451,7 +1484,85 @@
 
     private DayOfWeek EffectiveFirstDayOfWeek => FirstDayOfWeek ?? CultureInfo.CurrentCulture.DateTimeFormat.FirstDayOfWeek;
     private IReadOnlySet<DayOfWeek> EffectiveOffDays => OffDays ?? GanttScale.DefaultOffDays(CultureInfo.CurrentCulture);
-    private DateTime EffectiveNow => Now ?? DateTime.Now;
+    // Bug fix (Codex review of the styling-hooks PR, P2): the fallback used to
+    // be a bare DateTime.Now, i.e. the SERVER clock on a Blazor Server circuit.
+    // That is invisible in the normal composition — GanttChart resolves the
+    // browser clock and passes Now down — but this component is public and
+    // usable on its own, and a standalone timeline therefore handed every bar a
+    // server-clock data-past while the hook's own documentation promises
+    // browser time. _selfResolvedNow closes exactly that gap: it is populated
+    // ONLY when no Now was supplied (see ResolveOwnBrowserNowAsync), so the
+    // hosted path costs no extra interop and a controlled Now still wins
+    // outright.
+    private DateTime EffectiveNow => Now ?? _selfResolvedNow ?? DateTime.Now;
+
+    private DateTime? _selfResolvedNow;
+
+    /// <summary>
+    /// Resolves the BROWSER's current time for a standalone timeline (one with
+    /// no <see cref="Now"/> supplied and therefore no host feeding it one).
+    /// No-ops entirely when <see cref="Now"/> is set, so the GanttChart-hosted
+    /// path — which already resolves this once and passes it down — never pays
+    /// a second round trip.
+    /// </summary>
+    private async Task ResolveOwnBrowserNowAsync()
+    {
+        // Bug fix (CI, caught on this PR): the guard used to be
+        // "_selfResolvedNow is not null", which only trips on a SUCCESSFUL
+        // resolve. Whenever the interop legitimately yields nothing —
+        // prerendering, a torn-down circuit, a custom IComponentInteropService
+        // whose default no-op returns null — the field stayed null, so this ran
+        // again on EVERY subsequent render: an unbounded per-render interop
+        // call whose awaits kept dispatching further render/registration
+        // cycles. It surfaced as an extra prevent-default registration in
+        // GanttV3KeyboardNavigationTests, which passed locally and failed in
+        // CI — a timing-dependent symptom of an unconditional call, not a
+        // flaky test.
+        //
+        // Tracking the ATTEMPT rather than the outcome is what bounds it, and
+        // the flag is claimed BEFORE the await, not after: on a Server circuit
+        // a second render dispatches while the first is still awaiting interop,
+        // reads a flag set only afterwards, and proceeds too (the guard-before-
+        // await rule this component has been bitten by twice already).
+        // A controlled Now takes over: drop the self-resolved value AND the
+        // attempt flag, so returning to uncontrolled mode re-queries instead of
+        // restoring a clock cached before the handover (Codex review of this
+        // PR, P2 — a timeline left mounted for days would otherwise resurrect a
+        // days-old "now" for data-past and the now indicator).
+        if (Now is not null)
+        {
+            _selfResolvedNow = null;
+            _browserNowResolveAttempted = false;
+            return;
+        }
+        if (_browserNowResolveAttempted) return;
+        _browserNowResolveAttempted = true;
+
+        string? iso;
+        try
+        {
+            iso = await Interop.GanttV3GetLocalDateTimeAsync();
+        }
+        catch (Exception)
+        {
+            return; // prerendering / torn-down circuit — EffectiveNow keeps its documented fallback
+        }
+        if (_disposed || iso is null) return;
+        if (!DateTime.TryParseExact(iso, "yyyy-MM-ddTHH:mm:ss", CultureInfo.InvariantCulture, DateTimeStyles.None, out var browserNow)) return;
+        _selfResolvedNow = browserNow;
+        StateHasChanged();
+    }
+
+    private bool _browserNowResolveAttempted;
+
+    // Styling-hooks audit — SelectedIds' own default value. A `static readonly`
+    // field (not a `new HashSet<string>()` inline default expression) so every
+    // unselected chart shares the ONE empty instance rather than allocating a
+    // fresh empty set per component instance — mirrors GanttTree's own
+    // identical EmptySelectedIds precedent (that field is private to GanttTree,
+    // so this is a deliberate, small duplication rather than a cross-component
+    // reference).
+    private static readonly IReadOnlySet<string> EmptySelectedIds = new HashSet<string>();
 
     // Bug fix (Codex review wave): must pass EffectiveColumnWidth explicitly —
     // DateToPixel defaults to the mode's own config width when no override is
@@ -1492,12 +1603,19 @@
     // canvas's own independently-layered today-tint/off-day-tint divs.
     private string ColumnCellClass(int index)
     {
-        var isOffDay = MarkOffDays && SupportsOffDayMarking && IsOffDayColumn(index);
+        var isOffDay = IsOffDayCell(index);
         var textColor = IsTodayColumn(index)
             ? "font-bold text-primary"
             : isOffDay ? "text-muted-foreground/70" : "text-muted-foreground";
         return Cx.Merge("shrink-0 text-center text-xs", textColor, isOffDay ? "bg-muted/50" : null);
     }
+
+    // Styling-hooks audit (ReUI parity: data-off) — extracted so the header
+    // cell's CSS class AND its data-off attribute (markup above) read the
+    // EXACT same gate as this method's own prior inline calculation; a
+    // second, independently-typed copy of "MarkOffDays && SupportsOffDayMarking
+    // && IsOffDayColumn(index)" could silently drift from the class.
+    private bool IsOffDayCell(int index) => MarkOffDays && SupportsOffDayMarking && IsOffDayColumn(index);
 
     // Design spec Phase 3, T2 — "Mark off days". Column tinting only makes
     // visual sense when a single rendered column IS a single calendar day (or
@@ -1734,7 +1852,14 @@
     internal sealed record GanttTimelineRow(
         GanttTask? Task, double X, double Width, int RowIndex, string? Color, string? Label,
         string? GroupRowKey = null, GanttRollup? Rollup = null, double SummaryX = 0, double SummaryWidth = 0,
-        GanttOffscreenDirection Offscreen = GanttOffscreenDirection.None);
+        GanttOffscreenDirection Offscreen = GanttOffscreenDirection.None,
+        // Whether this row is a hierarchy PARENT, copied straight from the
+        // authoritative GanttVisibleRow.HasChildren (Codex review of the
+        // styling-hooks PR, P2). An earlier attempt reconstructed this from the
+        // Tasks parameter — wrong, because `Rows` takes priority over `Tasks`
+        // when a caller supplies it, and `Tasks` is then legitimately empty or
+        // stale. Only consumer today is the data-selected gate.
+        bool IsParent = false);
 
     // Virtualize<TItem>.Items requires ICollection<TItem> (IReadOnlyList doesn't
     // implement it) — List<T> both satisfies that and matches the pattern
@@ -1766,6 +1891,25 @@
             // null ParentId "bucket" under the wrong mode).
             var usesHierarchy = ColorByGroup && GanttRowModel.UsesHierarchy(GanttRowModel.FilterValidDurationTasks(Tasks));
             var visibleWindow = ShowOffscreenIndicators ? VisibleTimelineWindow : null;
+            // Parent-ness for the data-selected gate, derived from the SAME
+            // authoritative row list being rendered — never from the Tasks
+            // parameter, which `Rows` overrides and which is then legitimately
+            // empty or stale (Codex review of the styling-hooks PR, P2).
+            //
+            // Two sources, because neither alone is complete:
+            //  * row.HasChildren — authoritative when a caller supplies Rows,
+            //    and the only way to know about a declared parent whose
+            //    children are not themselves in the list.
+            //  * the rows' own ParentId links — needed because
+            //    BuildFallbackRows (the Rows==null path) hardcodes
+            //    HasChildren:false for every row, so a standalone timeline fed
+            //    through Tasks would otherwise report every parent as a leaf.
+            var parentIds = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var r in visibleRows)
+            {
+                var pid = r.Task?.ParentId;
+                if (!string.IsNullOrEmpty(pid)) parentIds.Add(pid!);
+            }
             var rows = new List<GanttTimelineRow>(visibleRows.Count);
             for (var i = 0; i < visibleRows.Count; i++)
             {
@@ -1793,7 +1937,7 @@
                 var color = BarColor?.Invoke(task) ?? (ColorByGroup ? GanttColorModel.ResolveGroupColorVar(usesHierarchy, task) : null);
                 var (x, width) = GanttScale.BarGeometry(task, ViewMode, Origin, EffectiveColumnWidth, EffectiveBarHeight);
                 var offscreen = visibleWindow is { } w ? ResolveOffscreenDirection(x, width, w) : GanttOffscreenDirection.None;
-                rows.Add(new GanttTimelineRow(task, x, width, i, color, null, null, rollup, summaryX, summaryWidth, offscreen));
+                rows.Add(new GanttTimelineRow(task, x, width, i, color, null, null, rollup, summaryX, summaryWidth, offscreen, row.HasChildren || parentIds.Contains(task.Id)));
             }
             return rows;
         }
@@ -1819,6 +1963,19 @@
     private IReadOnlyDictionary<string, GanttRollup> Rollups => ShowSummaryBars
         ? GanttRollupModel.ComputeRollups(GanttRowModel.FilterValidDurationTasks(Tasks), RollupMath)
         : EmptyRollups;
+
+    /// <summary>
+    /// Ids of tasks that are hierarchy PARENTS (some other task names them via
+    /// <see cref="GanttTask.ParentId"/>). Used only to keep <c>data-selected</c>
+    /// off parent bars — see the GanttBar call site.
+    /// <para>
+    /// Deliberately derived from <see cref="Tasks"/> rather than reusing
+    /// <see cref="Rollups"/>, which looks like the same question and is not:
+    /// Rollups is EMPTY whenever <see cref="ShowSummaryBars"/> is off, so
+    /// keying selection off it would have made a styling hook depend on an
+    /// unrelated display toggle.
+    /// </para>
+    /// </summary>
 
     // A row has a rollup exactly when it's collapsible (HasChildren) AND the
     // Rollups dictionary actually has an entry for its ToggleKey — the second
@@ -1995,6 +2152,7 @@
                 _mountScrollClaim = initialRequestId;
             }
 
+
             // Phase 2, T1/T4 fix — deflake: this MUST run FIRST, before any of
             // master's own scroll/header interop calls below. WaitV3ReadyAsync
             // (the E2E drag-parity suite's own readiness check) only waits for
@@ -2061,6 +2219,19 @@
             // and retried on the same scrollHostChanged transition.
             if (IsScrollHostReady) await RegisterVerticalScrollTrackingAsync();
 
+            // Standalone-timeline browser clock — LAST among this pass's
+            // awaits, deliberately (Codex review of the styling-hooks PR, P2).
+            // Placed before SyncDragRegistrationAsync in the first attempt, it
+            // pushed the delegated pointer listener behind an extra interop
+            // round trip, so a drag begun on an already-painted bar in that
+            // window was silently missed. That also hit the NORMAL GanttChart
+            // composition, contrary to what the first version of this claimed:
+            // GanttChart passes Now="@_browserNow", which is null until its own
+            // resolve lands, so the "hosted path is a no-op" gate did not hold
+            // on the first render. Nothing about data-past is interaction-
+            // critical, so it yields to every registration above it.
+            await ResolveOwnBrowserNowAsync();
+
             // Bug fix (Codex round 3, P2 #1): a caller-supplied ScrollHost's
             // value DURING this render is unavoidably whatever the ancestor's
             // own ref field held when the ANCESTOR's render tree was built —
@@ -2104,6 +2275,15 @@
 
             return;
         }
+
+        // Bug fix (Codex review of the styling-hooks PR, P2): a timeline that
+        // mounted WITH a Now and later has it cleared became eligible for
+        // self-resolution but was never asked again, because the only call site
+        // was the firstRender branch above. EffectiveNow then fell back to the
+        // server clock for the rest of the session. Self-gated the same way, so
+        // this is a plain no-op on every render where Now is still supplied or
+        // the value is already resolved.
+        await ResolveOwnBrowserNowAsync();
 
         // Today (Codex round 2, P2 #9) changing — e.g. GanttChart's browser-date
         // resolution landing a render or two after mount — is treated exactly
@@ -2672,7 +2852,7 @@
         // pure representation swap, not a behavior change (same 5 fields,
         // same gate, same drag-safety story: gantt-v3.js snapshots options at
         // pointerdown regardless of when/whether a re-registration lands).
-        var options = new GanttInteropOptions(EffectiveColumnWidth, PixelsPerDay, CanDrop is not null, AllowCreate, Origin);
+        var options = new GanttInteropOptions(EffectiveColumnWidth, PixelsPerDay, CanDrop is not null, AllowCreate, Origin, EffectiveNow.Date);
         if (_dragRegistered && options == _lastDragOptions) return;
 
         _selfRef ??= DotNetObjectReference.Create(this);
@@ -2920,6 +3100,12 @@
         ["columnWidth"] = options.ColumnWidth,
         ["pixelsPerDay"] = options.PixelsPerDay,
         ["resizeHandlePx"] = 6,
+        // The timeline's EFFECTIVE "now" date (Codex review of the styling-hooks
+        // PR, P2) — see GanttInteropOptions.NowDate's own remarks. The drag
+        // engine refreshes the ghost's data-past from this, never from its own
+        // new Date(), so a consumer-supplied Now (a historical/simulated
+        // timeline) governs the ghost exactly as it already governs the bars.
+        ["nowDate"] = options.NowDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
         // Phase 2, T2 — tells gantt-v3.js whether to bother calling ValidateDrop
         // AT ALL during a move/resize drag. A plain "CanDrop is null on the C#
         // side so just always return true from ValidateDrop" would still let JS

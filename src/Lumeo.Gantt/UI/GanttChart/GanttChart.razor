@@ -133,6 +133,7 @@
                            Readonly="@Readonly"
                            OnTaskUpdate="HandleTaskUpdateAsync"
                            OnTaskClick="OnTaskClick"
+                           SelectedIds="@_state.SelectedIds"
                            CanDrop="CanDrop"
                            AllowCreate="@AllowCreate"
                            ShowSummaryBars="@ShowSummaryBars"
@@ -1487,6 +1488,11 @@
             hash.Add(t.IsMilestone);
             hash.Add(t.GroupLabel);
             hash.Add(t.ParentId);
+            // Same reason ParentId is here (Codex round 2, P1 #1): a change to
+            // ONLY this field must still be seen as a change, or
+            // OnParametersSetAsync keeps the old _state.Tasks and data-recurring
+            // stays stale after the caller toggles the flag.
+            hash.Add(t.IsRecurring);
             if (t.Dependencies is not null)
                 foreach (var d in t.Dependencies) hash.Add(d);
         }
@@ -1907,7 +1913,19 @@
 
     private async Task RefreshBrowserNowAsync()
     {
-        if (!NowIndicator) return;
+        // Bug fix (Codex review of the styling-hooks PR, P2): this used to
+        // early-return unless NowIndicator was on, which was correct while the
+        // visual now-line was the ONLY consumer of _browserNow. The data-past
+        // styling hook is now a SECOND consumer, and it renders on every bar
+        // regardless of NowIndicator (which defaults to FALSE) — so gating the
+        // resolve on the indicator left EffectiveNow falling back to
+        // DateTime.Now, i.e. the SERVER clock on a Blazor Server circuit. A
+        // user in a different time zone from the server then got a data-past
+        // state that contradicted both the documented contract ("browser
+        // time") and what their own timeline showed. Resolving unconditionally
+        // costs one interop round trip at the same call sites that already
+        // perform RefreshBrowserTodayAsync's round trip; it is not a new
+        // schedule or a polling loop.
         var iso = await Interop.GanttV3GetLocalDateTimeAsync();
         if (_disposed) return;
         if (iso is null) return; // interop unavailable — GanttTimeline's own DateTime.Now fallback keeps rendering
