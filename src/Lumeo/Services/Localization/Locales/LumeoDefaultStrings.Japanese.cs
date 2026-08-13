@@ -323,6 +323,7 @@ internal static partial class LumeoDefaultStrings
         ["Scheduler.Month"] = "月",
         ["Scheduler.WeekNumberAbbrev"] = "週",
         ["Scheduler.WeekNumberLabel"] = "第{0}週",
+        ["Scheduler.ResourceGridLabel"] = "{0} のリソース",
         ["Scheduler.List"] = "リスト",
         ["Scheduler.Today"] = "今日",
         ["Scheduler.WeekOf"] = "{0}の週",

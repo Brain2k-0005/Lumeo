@@ -266,6 +266,7 @@ internal static partial class LumeoDefaultStrings
         ["Scheduler.Month"] = "شهر",
         ["Scheduler.WeekNumberAbbrev"] = "أسبوع",
         ["Scheduler.WeekNumberLabel"] = "الأسبوع {0}",
+        ["Scheduler.ResourceGridLabel"] = "الموارد في {0}",
         ["Scheduler.Week"] = "أسبوع",
         ["Scheduler.Day"] = "يوم",
         ["Scheduler.List"] = "قائمة",

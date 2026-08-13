@@ -261,6 +261,7 @@ internal static partial class LumeoDefaultStrings
         ["Scheduler.Month"] = "월",
         ["Scheduler.WeekNumberAbbrev"] = "주",
         ["Scheduler.WeekNumberLabel"] = "{0}주차",
+        ["Scheduler.ResourceGridLabel"] = "{0} 리소스",
         ["Scheduler.Week"] = "주",
         ["Scheduler.Day"] = "일",
         ["Scheduler.List"] = "목록",

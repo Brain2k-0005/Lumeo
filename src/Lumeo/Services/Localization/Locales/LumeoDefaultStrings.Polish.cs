@@ -326,6 +326,7 @@ internal static partial class LumeoDefaultStrings
         ["Scheduler.Month"] = "Miesiąc",
         ["Scheduler.WeekNumberAbbrev"] = "Tydz",
         ["Scheduler.WeekNumberLabel"] = "Tydzień {0}",
+        ["Scheduler.ResourceGridLabel"] = "Zasoby w dniu {0}",
         ["Scheduler.List"] = "Lista",
         ["Scheduler.Today"] = "Dziś",
         ["Scheduler.WeekOf"] = "Tydzień od {0}",
