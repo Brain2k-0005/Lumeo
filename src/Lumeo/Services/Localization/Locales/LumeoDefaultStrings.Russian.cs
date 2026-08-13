@@ -262,6 +262,8 @@ internal static partial class LumeoDefaultStrings
         ["Scheduler.ResourceLegend"] = "Легенда ресурсов",
         ["Scheduler.Today"] = "Сегодня",
         ["Scheduler.Month"] = "Месяц",
+        ["Scheduler.WeekNumberAbbrev"] = "Нед",
+        ["Scheduler.WeekNumberLabel"] = "Неделя {0}",
         ["Scheduler.Week"] = "Неделя",
         ["Scheduler.Day"] = "День",
         ["Scheduler.List"] = "Список",

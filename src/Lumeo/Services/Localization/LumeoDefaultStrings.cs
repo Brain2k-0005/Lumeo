@@ -471,6 +471,9 @@ internal static partial class LumeoDefaultStrings
         ["Scheduler.Day"] = "Day",
         ["Scheduler.Week"] = "Week",
         ["Scheduler.Month"] = "Month",
+        // Column header above the ISO-8601 week-number column (SchedulerMonthView.ShowWeekNumbers).
+        ["Scheduler.WeekNumberAbbrev"] = "Wk",
+        ["Scheduler.WeekNumberLabel"] = "Week {0}",
         ["Scheduler.List"] = "List",
         ["Scheduler.Today"] = "Today",
         ["Scheduler.WeekOf"] = "Week of {0}",
@@ -1071,6 +1074,8 @@ internal static partial class LumeoDefaultStrings
         ["Scheduler.Day"] = "Tag",
         ["Scheduler.Week"] = "Woche",
         ["Scheduler.Month"] = "Monat",
+        ["Scheduler.WeekNumberAbbrev"] = "KW",
+        ["Scheduler.WeekNumberLabel"] = "Kalenderwoche {0}",
         ["Scheduler.List"] = "Liste",
         ["Scheduler.Today"] = "Heute",
         ["Scheduler.WeekOf"] = "Woche vom {0}",
