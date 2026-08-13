@@ -15,64 +15,113 @@
    whole drag/create engine key off the day under the pointer. Overloading them to
    sometimes mean "resource" would fork the interaction layer's most delicate
    code. Sharing the TIME axis and the overlap packer (both pure kernel calls) is
-   where the real duplication would have been, and both are reused here. *@
-<div class="@($"flex flex-col rounded-md border border-border/60 overflow-hidden {Class}".Trim())" @attributes="AdditionalAttributes">
-    <div class="flex border-b border-border/60 bg-card">
-        <div class="flex-none w-14" aria-hidden="true"></div>
-        <div class="flex-1 grid min-w-0" style="grid-template-columns: repeat(@Math.Max(1, _resources.Count), minmax(0, 1fr));">
-            @foreach (var resource in _resources)
-            {
-                <div class="border-l border-border/40 px-2 py-1.5 text-center text-[11px] font-medium text-muted-foreground truncate"
-                     data-resource-id="@resource.Id"
-                     title="@resource.Title">@resource.Title</div>
-            }
-        </div>
-    </div>
+   where the real duplication would have been, and both are reused here.
 
-    <div class="flex" style="max-height: 34rem; overflow-y: auto;">
-        <div class="flex-none w-14">
-            @foreach (var hour in _hours)
-            {
-                <div class="h-12 relative">
-                    <span class="absolute -top-1.5 right-1.5 text-[11px] text-muted-foreground">@FormatHour(hour)</span>
-                </div>
-            }
-        </div>
-        <div class="flex-1 grid min-w-0 relative" role="grid" aria-label="@GridAriaLabel()"
-             style="grid-template-columns: repeat(@Math.Max(1, _resources.Count), minmax(0, 1fr));">
-            @for (var r = 0; r < _resources.Count; r++)
-            {
-                var resourceIndex = r;
-                var resource = _resources[resourceIndex];
-                <div class="relative border-l border-border/40" role="row" data-resourcecol="@resource.Id">
-                    @for (var h = 0; h < _hours.Length; h++)
+   ACCESSIBILITY: deliberately NOT role="grid" (Codex review, P2). The DOM is
+   column-oriented — one element per resource, hours stacked inside it — while the
+   visual grid reads as hours-by-resource, so grid roles reported the two axes
+   swapped. A grid role also promises two-dimensional arrow navigation, which this
+   read-only view does not implement. Each column is a labelled list of bookings,
+   which is what it actually is. *@
+<div class="@($"flex flex-col rounded-md border border-border/60 overflow-hidden {Class}".Trim())"
+     role="group" aria-label="@GridAriaLabel()" @attributes="AdditionalAttributes">
+    @* ONE horizontal scroller wrapping header AND body (Codex review, P2): two
+       separate scrollers drift apart as soon as the resource list outgrows the
+       viewport, putting every column under the wrong heading. *@
+    <div class="overflow-x-auto">
+        <div style="min-width: max-content;">
+            <div class="flex border-b border-border/60 bg-card">
+                <div class="flex-none w-14" aria-hidden="true"></div>
+                <div class="grid" style="@ColumnsStyle">
+                    @foreach (var resource in _resources)
                     {
-                        <div role="gridcell"
-                             tabindex="-1"
-                             data-slot-hour="@_hours[h]"
-                             aria-label="@SlotAriaLabel(resource, _hours[h])"
-                             class="h-12 border-b border-border/30"></div>
-                    }
-                    @foreach (var block in _byResource[resourceIndex])
-                    {
-                        <button type="button"
-                                class="absolute z-10 rounded-sm border-l-2 px-1.5 py-0.5 text-left text-[11px] leading-tight overflow-hidden cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring"
-                                style="@PillStyle(block)"
-                                data-event-id="@block.Instance.EventId"
-                                data-resource-id="@resource.Id"
-                                aria-label="@PillAriaLabel(resource, block)"
-                                @onclick="() => OnEventClickAsync(block.Source)">
-                            <span class="block font-semibold truncate">@block.Source.Title</span>
-                            <span class="block text-[10px] opacity-80">@block.Instance.Start.ToString("t", CultureInfo.CurrentUICulture)</span>
-                        </button>
+                        <div class="border-l border-border/40 px-2 py-1.5 text-center text-[11px] font-medium text-muted-foreground truncate"
+                             data-resource-id="@resource.Id" title="@resource.Title">@resource.Title</div>
                     }
                 </div>
+            </div>
+
+            @if (_anyAllDay)
+            {
+                <div class="flex border-b border-border/60">
+                    <div class="flex-none w-14 pt-1.5 pl-1 text-[10px] text-muted-foreground">@L["Scheduler.AllDay"]</div>
+                    <div class="grid" style="@ColumnsStyle">
+                        @for (var r = 0; r < _resources.Count; r++)
+                        {
+                            var resource = _resources[r];
+                            <div class="border-l border-border/40 p-1 flex flex-col gap-0.5 min-w-0"
+                                 role="list" aria-label="@AllDayListLabel(resource)">
+                                @foreach (var block in _allDayByResource[r])
+                                {
+                                    <button type="button" role="listitem"
+                                            class="@($"{ChipClass} w-full")"
+                                            style="@AllDayChipStyle(block)"
+                                            data-event-id="@block.Source.Id"
+                                            data-resource-id="@resource.Id"
+                                            data-allday="true"
+                                            aria-label="@AllDayAriaLabel(resource, block)"
+                                            @onclick="() => OnEventClickAsync(block.Source)">
+                                        <span class="block truncate font-semibold">@block.Source.Title</span>
+                                    </button>
+                                }
+                            </div>
+                        }
+                    </div>
+                </div>
             }
+
+            <div class="flex" style="max-height: 34rem; overflow-y: auto;">
+                <div class="flex-none w-14">
+                    @foreach (var hour in _hours)
+                    {
+                        <div class="h-12 relative">
+                            <span class="absolute -top-1.5 right-1.5 text-[11px] text-muted-foreground">@FormatHour(hour)</span>
+                        </div>
+                    }
+                </div>
+                <div class="grid relative" style="@ColumnsStyle">
+                    @for (var r = 0; r < _resources.Count; r++)
+                    {
+                        var resourceIndex = r;
+                        var resource = _resources[resourceIndex];
+                        <div class="relative border-l border-border/40"
+                             data-resourcecol="@resource.Id"
+                             role="list" aria-label="@TimedListLabel(resource)">
+                            @foreach (var hour in _hours)
+                            {
+                                <div class="h-12 border-b border-border/30" aria-hidden="true"></div>
+                            }
+                            @foreach (var block in _byResource[resourceIndex])
+                            {
+                                <button type="button" role="listitem"
+                                        class="@($"absolute z-10 {ChipClass}")"
+                                        style="@TimedChipStyle(block)"
+                                        data-event-id="@block.Source.Id"
+                                        data-resource-id="@resource.Id"
+                                        aria-label="@TimedAriaLabel(resource, block)"
+                                        @onclick="() => OnEventClickAsync(block.Source)">
+                                    <span class="block font-semibold truncate">@block.Source.Title</span>
+                                    <span class="block text-[10px] opacity-80">@FormatTime(block.Start)</span>
+                                </button>
+                            }
+                        </div>
+                    }
+                </div>
+            </div>
         </div>
     </div>
 </div>
 
 @code {
+    private const string ChipClass =
+        "rounded-sm border-l-2 px-1.5 py-0.5 text-left text-[11px] leading-tight overflow-hidden cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring";
+
+    /// <summary>Minimum rendered width of a resource column. Below this, headings and chips are unreadable, so the view scrolls horizontally instead of compressing (Codex review, P2).</summary>
+    private const string MinColumnWidth = "8rem";
+
+    /// <summary>Shortest booking the layout can draw legibly — also the floor used for overlap packing, so packing and rendering agree.</summary>
+    private const int MinRenderedMinutes = 20;
+
     /// <summary>The events to place. Only those whose <see cref="SchedulerEvent.ResourceId"/> matches a supplied resource are rendered — see <see cref="Resources"/>.</summary>
     [Parameter] public IEnumerable<SchedulerEvent>? Events { get; set; }
 
@@ -85,19 +134,23 @@
     /// misattribute someone's booking. Callers that want them visible should add a resource to
     /// represent that bucket.
     /// </para>
+    /// <para>
+    /// Duplicate ids resolve to the LAST entry, matching <c>Scheduler</c>'s own resource lookup so
+    /// the two components never disagree about an event's colour.
+    /// </para>
     /// </summary>
     [Parameter] public IReadOnlyList<SchedulerResource>? Resources { get; set; }
 
     /// <summary>The single day this view lays out. Only the date part is read.</summary>
     [Parameter] public DateTime Date { get; set; } = DateTime.Today;
 
-    /// <summary>First hour shown on the time axis. Default 00:00.</summary>
+    /// <summary>First minute shown on the time axis. Default 00:00.</summary>
     [Parameter] public TimeOnly? SlotMinTime { get; set; }
 
-    /// <summary>Last hour shown on the time axis. Default 24:00.</summary>
+    /// <summary>Last minute shown on the time axis. Default end of day.</summary>
     [Parameter] public TimeOnly? SlotMaxTime { get; set; }
 
-    /// <summary>Raised when an event chip is clicked.</summary>
+    /// <summary>Raised when a booking chip is clicked.</summary>
     [Parameter] public EventCallback<SchedulerEvent> OnEventClick { get; set; }
 
     /// <summary>Per-event colour override, matching the other first-party views.</summary>
@@ -107,20 +160,41 @@
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     private IReadOnlyList<SchedulerResource> _resources = Array.Empty<SchedulerResource>();
+    private Dictionary<string, SchedulerResource> _resourceById = new(StringComparer.Ordinal);
     private int[] _hours = Array.Empty<int>();
+    private int _axisAnchorMinute;
     private int _minMinute;
     private int _maxMinute;
-    private List<TimedBlock>[] _byResource = Array.Empty<List<TimedBlock>>();
+    private List<Block>[] _byResource = Array.Empty<List<Block>>();
+    private List<Block>[] _allDayByResource = Array.Empty<List<Block>>();
+    private bool _anyAllDay;
+
+    private string ColumnsStyle =>
+        $"grid-template-columns: repeat({Math.Max(1, _resources.Count)}, minmax({MinColumnWidth}, 1fr));";
 
     protected override void OnParametersSet()
     {
         _resources = Resources ?? Array.Empty<SchedulerResource>();
 
+        // Last-wins, matching Scheduler's own RebuildResourceLookup (Codex review,
+        // P2): with duplicate ids the two components must agree on the colour.
+        _resourceById = new Dictionary<string, SchedulerResource>(StringComparer.Ordinal);
+        foreach (var r in _resources) _resourceById[r.Id] = r;
+
         var min = SlotMinTime ?? new TimeOnly(0, 0);
         var max = SlotMaxTime ?? new TimeOnly(23, 59, 59);
-        _minMinute = min.Hour * 60 + min.Minute;
-        _maxMinute = Math.Max(_minMinute + 60, max.Hour * 60 + max.Minute);
-        var hourStart = _minMinute / 60;
+        _minMinute = Math.Clamp(min.Hour * 60 + min.Minute, 0, 24 * 60 - 1);
+        // Clamped to the end of the day (Codex review, P2): a SlotMinTime of 23:30
+        // pushed the minimum-span rule past midnight, and the resulting hour 24 threw
+        // out of DateTime's constructor while formatting the axis.
+        _maxMinute = Math.Clamp(Math.Max(_minMinute + MinRenderedMinutes, max.Hour * 60 + max.Minute), 0, 24 * 60);
+
+        // Hour rows anchor on the whole hour at or below the start minute, and every
+        // chip is positioned from that SAME anchor (Codex review, P2) — the two used
+        // to disagree for a fractional SlotMinTime such as 08:30, so bookings sat half
+        // an hour away from their own labels.
+        _axisAnchorMinute = _minMinute / 60 * 60;
+        var hourStart = _axisAnchorMinute / 60;
         var hourEnd = (int)Math.Ceiling(_maxMinute / 60.0);
         _hours = Enumerable.Range(hourStart, Math.Max(1, hourEnd - hourStart)).ToArray();
 
@@ -129,67 +203,123 @@
 
     private void BuildBlocks()
     {
-        _byResource = new List<TimedBlock>[_resources.Count];
-        for (var i = 0; i < _byResource.Length; i++) _byResource[i] = new List<TimedBlock>();
+        _byResource = new List<Block>[_resources.Count];
+        _allDayByResource = new List<Block>[_resources.Count];
+        for (var i = 0; i < _resources.Count; i++)
+        {
+            _byResource[i] = new List<Block>();
+            _allDayByResource[i] = new List<Block>();
+        }
+        _anyAllDay = false;
         if (_resources.Count == 0) return;
 
         var events = (Events ?? Enumerable.Empty<SchedulerEvent>()).ToList();
         var byId = new Dictionary<string, SchedulerEvent>(StringComparer.Ordinal);
         foreach (var e in events) byId[e.Id] = e;
 
-        // Same expansion the other views use, so a recurring booking appears here
-        // exactly as it does in the month and time grids.
         var day = Date.Date;
-        var instances = SchedulerRecurrenceExpander.ExpandAll(events, day, day.AddDays(1))
+        var dayEnd = day.AddDays(1);
+        var instances = SchedulerRecurrenceExpander.ExpandAll(events, day, dayEnd)
             .Where(i => byId.ContainsKey(i.EventId))
-            .Where(i => !byId[i.EventId].AllDay && i.Start.Date == day)
             .ToList();
 
         for (var r = 0; r < _resources.Count; r++)
         {
             var id = _resources[r].Id;
-            var mine = instances.Where(i => string.Equals(byId[i.EventId].ResourceId, id, StringComparison.Ordinal)).ToList();
+            var mine = instances
+                .Where(i => string.Equals(byId[i.EventId].ResourceId, id, StringComparison.Ordinal))
+                .ToList();
             if (mine.Count == 0) continue;
 
-            // Overlaps are packed WITHIN a resource column, never across them —
-            // two people booked at the same time are not a conflict, and side-by-
-            // siding them across columns would misread the whole point of the view.
-            var packInput = mine
-                .Select(i => (Id: InstanceKey(i),
-                              StartMinute: (int)i.Start.TimeOfDay.TotalMinutes,
-                              EndMinute: Math.Max((int)i.Start.TimeOfDay.TotalMinutes + 1, (int)i.End.TimeOfDay.TotalMinutes)))
+            var timed = new List<(string Key, DateTime Start, DateTime End, SchedulerEvent Source)>();
+            for (var n = 0; n < mine.Count; n++)
+            {
+                var inst = mine[n];
+                var src = byId[inst.EventId];
+
+                // All-day bookings get their own strip rather than being dropped
+                // (Codex review, P2): the Events contract allows AllDay, and a room
+                // booked for the whole day is an ordinary case that simply vanished.
+                if (src.AllDay)
+                {
+                    _allDayByResource[r].Add(new Block(src, inst.Start, inst.End, 0, 1));
+                    _anyAllDay = true;
+                    continue;
+                }
+
+                // Clipped to THIS day (Codex review, P2): a 22:00-02:00 booking is
+                // returned whole for either day it touches, so without clipping the
+                // second day drew it from 22:00 again instead of from midnight.
+                var start = inst.Start < day ? day : inst.Start;
+                var end = inst.End > dayEnd ? dayEnd : inst.End;
+                if (end <= start) continue;
+
+                // Outside the visible hours entirely — skipped rather than clamped
+                // (Codex review, P2): clamping a 06:00-07:00 booking into an
+                // 08:00-start axis drew a sliver at the top, implying a reservation
+                // that is not actually in view.
+                var startMin = (int)(start - day).TotalMinutes;
+                var endMin = (int)(end - day).TotalMinutes;
+                if (endMin <= _minMinute || startMin >= _maxMinute) continue;
+
+                // Unique per OCCURRENCE, not per (id, start) (Codex review, P2): two
+                // events sharing an id and a start time produced the same key and threw
+                // out of the packer's ToDictionary.
+                timed.Add(($"{inst.EventId}|{n}", start, end, src));
+            }
+
+            if (timed.Count == 0) continue;
+
+            // Packed with the SAME minimum span the renderer draws (Codex review, P2):
+            // a 5-minute booking is drawn 20 minutes tall, so packing it by its real
+            // end let the next booking overlap it on screen.
+            var packInput = timed
+                .Select(t =>
+                {
+                    var s = (int)(t.Start - day).TotalMinutes;
+                    var e = Math.Max(s + MinRenderedMinutes, (int)(t.End - day).TotalMinutes);
+                    return (Id: t.Key, StartMinute: s, EndMinute: e);
+                })
                 .ToList();
             var packed = SchedulerTimeGridLayout.Pack(packInput)
                 .ToDictionary(p => p.Id, p => (p.Column, p.ColumnsInCluster), StringComparer.Ordinal);
 
-            foreach (var inst in mine)
+            foreach (var t in timed)
             {
-                var key = InstanceKey(inst);
-                var (col, cols) = packed.TryGetValue(key, out var p) ? p : (0, 1);
-                _byResource[r].Add(new TimedBlock(inst, byId[inst.EventId], col, cols));
+                var (col, cols) = packed.TryGetValue(t.Key, out var p) ? p : (0, 1);
+                _byResource[r].Add(new Block(t.Source, t.Start, t.End, col, cols));
             }
         }
     }
 
-    private string PillStyle(TimedBlock block)
+    private string ResolveColor(SchedulerEvent ev)
     {
-        var resource = _resources.FirstOrDefault(r => string.Equals(r.Id, block.Source.ResourceId, StringComparison.Ordinal));
-        // Event colour wins, then the resource's own — the precedence
-        // SchedulerResource.Color already documents for the legend.
-        var color = ResolveEventColor?.Invoke(block.Source) ?? block.Source.Color ?? resource?.Color ?? "var(--color-primary)";
+        var resource = ev.ResourceId is { } rid && _resourceById.TryGetValue(rid, out var r) ? r : null;
+        return ResolveEventColor?.Invoke(ev) ?? ev.Color ?? resource?.Color ?? "var(--color-primary)";
+    }
 
-        var startMinute = Math.Clamp((int)block.Instance.Start.TimeOfDay.TotalMinutes, _minMinute, _maxMinute);
-        var rawEndMinute = (int)block.Instance.End.TimeOfDay.TotalMinutes;
-        if (rawEndMinute <= startMinute) rawEndMinute = startMinute + 15;
-        var endMinute = Math.Clamp(rawEndMinute, _minMinute, _maxMinute);
+    private string TimedChipStyle(Block block)
+    {
+        var day = Date.Date;
+        var startMinute = Math.Clamp((int)(block.Start - day).TotalMinutes, _minMinute, _maxMinute);
+        var endMinute = Math.Clamp(
+            Math.Max(startMinute + MinRenderedMinutes, (int)(block.End - day).TotalMinutes),
+            _minMinute, _maxMinute);
 
         const double pxPerMinute = 48.0 / 60.0;
-        var top = (startMinute - _minMinute) * pxPerMinute;
+        var top = (startMinute - _axisAnchorMinute) * pxPerMinute;
         var height = Math.Max(16, (endMinute - startMinute) * pxPerMinute);
-        var width = 100.0 / block.ColumnsInCluster;
+        var width = 100.0 / Math.Max(1, block.ColumnsInCluster);
         var left = block.Column * width;
         var inv = CultureInfo.InvariantCulture;
+        var color = ResolveColor(block.Source);
         return $"top:{top.ToString(inv)}px; height:{height.ToString(inv)}px; left:calc({left.ToString(inv)}% + 2px); width:calc({width.ToString(inv)}% - 4px); background-color: color-mix(in oklab, {color} 18%, transparent); color: {color}; border-left-color: {color};";
+    }
+
+    private string AllDayChipStyle(Block block)
+    {
+        var color = ResolveColor(block.Source);
+        return $"background-color: color-mix(in oklab, {color} 18%, transparent); color: {color}; border-left-color: {color};";
     }
 
     private async Task OnEventClickAsync(SchedulerEvent ev)
@@ -200,18 +330,24 @@
     private string GridAriaLabel() =>
         L["Scheduler.ResourceGridLabel", Date.ToString("D", CultureInfo.CurrentUICulture)];
 
-    /// <summary>Names the RESOURCE as well as the time: a bare hour is meaningless when several columns share one axis.</summary>
-    private string SlotAriaLabel(SchedulerResource resource, int hour) =>
-        $"{resource.Title}, {new DateTime(Date.Year, Date.Month, Date.Day, hour, 0, 0).ToString("t", CultureInfo.CurrentUICulture)}";
+    private static string TimedListLabel(SchedulerResource resource) => resource.Title;
 
-    private string PillAriaLabel(SchedulerResource resource, TimedBlock block) =>
-        $"{block.Source.Title}, {resource.Title}, {block.Instance.Start.ToString("t", CultureInfo.CurrentUICulture)}";
+    private string AllDayListLabel(SchedulerResource resource) =>
+        $"{resource.Title}, {L["Scheduler.AllDay"]}";
 
+    /// <summary>Names the resource AND the full span: chip height is the only visual cue for duration, and a screen reader cannot see it (Codex review, P2).</summary>
+    private static string TimedAriaLabel(SchedulerResource resource, Block block) =>
+        $"{block.Source.Title}, {resource.Title}, {FormatTime(block.Start)} – {FormatTime(block.End)}";
+
+    private string AllDayAriaLabel(SchedulerResource resource, Block block) =>
+        $"{block.Source.Title}, {resource.Title}, {L["Scheduler.AllDay"]}";
+
+    private static string FormatTime(DateTime value) =>
+        value.ToString("t", CultureInfo.CurrentUICulture);
+
+    /// <summary>Hour 24 marks the end of the axis, not a wall-clock hour — rendered as midnight rather than throwing.</summary>
     private static string FormatHour(int hour) =>
         new DateTime(2000, 1, 1, Math.Clamp(hour, 0, 23), 0, 0).ToString("t", CultureInfo.CurrentUICulture);
 
-    private static string InstanceKey(SchedulerEventInstance instance) =>
-        $"{instance.EventId}|{instance.Start:O}";
-
-    private sealed record TimedBlock(SchedulerEventInstance Instance, SchedulerEvent Source, int Column, int ColumnsInCluster);
+    private sealed record Block(SchedulerEvent Source, DateTime Start, DateTime End, int Column, int ColumnsInCluster);
 }

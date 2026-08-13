@@ -173,17 +173,136 @@ public class SchedulerResourceViewTests : IAsyncLifetime
     }
 
     [Fact]
-    public void Slot_Labels_Name_The_Resource_As_Well_As_The_Time()
+    public void Each_Resource_Column_Is_A_Labelled_List_Not_A_Grid()
     {
-        // Several columns share one time axis, so a bare hour identifies nothing.
+        // Codex review, P2: the DOM is column-oriented (one element per resource,
+        // hours stacked inside) while the VISUAL grid reads hours-by-resource, so
+        // role="grid"/"row"/"gridcell" reported the two axes swapped. A grid role
+        // also promises 2-D arrow navigation this read-only view does not implement.
         var cut = _ctx.Render<L.SchedulerResourceView>(p => p
             .Add(c => c.Date, Day)
             .Add(c => c.Resources, Rooms));
 
-        var labels = cut.FindAll("[role='gridcell']").Select(c => c.GetAttribute("aria-label") ?? "").ToList();
-        Assert.NotEmpty(labels);
+        Assert.Empty(cut.FindAll("[role='grid']"));
+        Assert.Empty(cut.FindAll("[role='gridcell']"));
+
+        var labels = cut.FindAll("[role='list']").Select(c => c.GetAttribute("aria-label") ?? "").ToList();
         Assert.Contains(labels, l => l.Contains("Room A", StringComparison.Ordinal));
         Assert.Contains(labels, l => l.Contains("Room B", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void An_All_Day_Booking_Appears_In_Its_Own_Strip()
+    {
+        // Codex review, P2: all-day events were filtered out entirely, so a room
+        // booked for a whole day simply vanished.
+        var ev = new L.SchedulerEvent("e1", "Offsite", Day, Day.AddDays(1), AllDay: true, ResourceId: "r1");
+
+        var cut = _ctx.Render<L.SchedulerResourceView>(p => p
+            .Add(c => c.Date, Day).Add(c => c.Resources, Rooms).Add(c => c.Events, new[] { ev }));
+
+        var chip = cut.Find("[data-event-id='e1']");
+        Assert.Equal("true", chip.GetAttribute("data-allday"));
+        Assert.Contains("Offsite", chip.TextContent);
+    }
+
+    [Fact]
+    public void An_Overnight_Booking_Is_Clipped_To_The_Day_Being_Viewed()
+    {
+        // Codex review, P2: the expander returns a 22:00-02:00 booking whole for
+        // either day it touches, so the SECOND day drew it from 22:00 again.
+        var ev = new L.SchedulerEvent("e1", "Night shift",
+            Day.AddDays(-1).AddHours(22), Day.AddHours(2), ResourceId: "r1");
+
+        var cut = _ctx.Render<L.SchedulerResourceView>(p => p
+            .Add(c => c.Date, Day).Add(c => c.Resources, Rooms).Add(c => c.Events, new[] { ev }));
+
+        // Clipped to midnight, so it starts at the very top of the axis.
+        var style = cut.Find("[data-event-id='e1']").GetAttribute("style")!;
+        Assert.Contains("top:0px", style);
+    }
+
+    [Fact]
+    public void A_Booking_Outside_The_Visible_Hours_Is_Not_Rendered()
+    {
+        // Codex review, P2: clamping drew a sliver at the top of the axis,
+        // implying a reservation that is not in view at all.
+        var cut = _ctx.Render<L.SchedulerResourceView>(p => p
+            .Add(c => c.Date, Day).Add(c => c.Resources, Rooms)
+            .Add(c => c.SlotMinTime, new TimeOnly(8, 0))
+            .Add(c => c.Events, new[] { Booking("e1", "Early", "r1", 6, 7) }));
+
+        Assert.Empty(cut.FindAll("[data-event-id='e1']"));
+    }
+
+    [Fact]
+    public void Two_Events_Sharing_An_Id_And_Start_Do_Not_Crash_The_Packer()
+    {
+        // Codex review, P2: identical instance keys threw out of ToDictionary.
+        var a = Booking("dup", "One", "r1", 9, 10);
+        var b = Booking("dup", "Two", "r1", 9, 10);
+
+        var ex = Record.Exception(() => _ctx.Render<L.SchedulerResourceView>(p => p
+            .Add(c => c.Date, Day).Add(c => c.Resources, Rooms).Add(c => c.Events, new[] { a, b })));
+
+        Assert.Null(ex);
+    }
+
+    [Fact]
+    public void A_Late_SlotMinTime_Does_Not_Throw_On_The_Hour_Axis()
+    {
+        // Codex review, P2: 23:30 pushed the minimum-span rule past midnight and
+        // the resulting hour 24 threw out of DateTime's constructor.
+        var ex = Record.Exception(() => _ctx.Render<L.SchedulerResourceView>(p => p
+            .Add(c => c.Date, Day).Add(c => c.Resources, Rooms)
+            .Add(c => c.SlotMinTime, new TimeOnly(23, 30))));
+
+        Assert.Null(ex);
+    }
+
+    [Fact]
+    public void A_Fractional_SlotMinTime_Keeps_Chips_Aligned_With_Their_Hour_Rows()
+    {
+        // Codex review, P2: hour rows started at 08:00 while chips were positioned
+        // from 08:30, so a 09:00 booking sat half an hour off its own label.
+        var cut = _ctx.Render<L.SchedulerResourceView>(p => p
+            .Add(c => c.Date, Day).Add(c => c.Resources, Rooms)
+            .Add(c => c.SlotMinTime, new TimeOnly(8, 30))
+            .Add(c => c.Events, new[] { Booking("e1", "Standup", "r1", 9, 10) }));
+
+        // One hour past the 08:00 row anchor = 48px, not 24px.
+        var style = cut.Find("[data-event-id='e1']").GetAttribute("style")!;
+        Assert.Contains("top:48px", style);
+    }
+
+    [Fact]
+    public void A_Booking_Announces_Its_Full_Span()
+    {
+        // Chip height is the only visual duration cue, which a screen reader
+        // cannot see (Codex review, P2).
+        var cut = _ctx.Render<L.SchedulerResourceView>(p => p
+            .Add(c => c.Date, Day).Add(c => c.Resources, Rooms)
+            .Add(c => c.Events, new[] { Booking("e1", "Standup", "r1", 9, 11) }));
+
+        var label = cut.Find("[data-event-id='e1']").GetAttribute("aria-label")!;
+        Assert.Contains(Day.AddHours(9).ToString("t"), label);
+        Assert.Contains(Day.AddHours(11).ToString("t"), label);
+    }
+
+    [Fact]
+    public void Columns_Keep_A_Usable_Minimum_Width()
+    {
+        // Codex review, P2: 1fr tracks compressed dozens of resources into the
+        // viewport until headings were a few pixels wide.
+        var many = Enumerable.Range(0, 20)
+            .Select(i => new L.SchedulerResource($"r{i}", $"Room {i}"))
+            .ToList();
+
+        var cut = _ctx.Render<L.SchedulerResourceView>(p => p
+            .Add(c => c.Date, Day).Add(c => c.Resources, many));
+
+        var style = cut.Find("[data-resourcecol='r0']").ParentElement!.GetAttribute("style")!;
+        Assert.Contains("minmax(8rem, 1fr)", style);
     }
 
     [Fact]
