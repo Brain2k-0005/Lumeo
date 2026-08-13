@@ -1,10 +1,10 @@
 {
   "$schema": "https://lumeo.nativ.sh/components-api-schema.json",
   "version": "4.3.3",
-  "generated": "2026-08-13T03:14:34.5610311Z",
+  "generated": "2026-08-13T04:20:36.4767471Z",
   "stats": {
     "componentCount": 165,
-    "totalParameters": 4479,
+    "totalParameters": 4548,
     "totalEnums": 91,
     "totalRecords": 65,
     "serviceCount": 33,
@@ -49818,8 +49818,19 @@
       "nugetPackage": "Lumeo.Scheduler",
       "files": [
         "UI/Scheduler/Scheduler.razor",
+        "UI/Scheduler/SchedulerAgendaView.razor",
+        "UI/Scheduler/SchedulerDateMath.cs",
+        "UI/Scheduler/SchedulerInteractionTypes.cs",
+        "UI/Scheduler/SchedulerMonthLayout.cs",
+        "UI/Scheduler/SchedulerMonthView.razor",
         "UI/Scheduler/SchedulerRRuleParser.cs",
+        "UI/Scheduler/SchedulerRecurrenceExpander.cs",
         "UI/Scheduler/SchedulerRecurrenceRule.cs",
+        "UI/Scheduler/SchedulerResourceView.razor",
+        "UI/Scheduler/SchedulerTimeGridLayout.cs",
+        "UI/Scheduler/SchedulerTimeGridView.razor",
+        "UI/Scheduler/SchedulerTitleFormatter.cs",
+        "UI/Scheduler/SchedulerToolbar.razor",
         "UI/Scheduler/SchedulerTypes.cs"
       ],
       "namespace": "Lumeo",
@@ -50069,12 +50080,17 @@
       "records": [],
       "gotchas": [],
       "cssVars": [
+        "--color-accent",
         "--color-border",
         "--color-card",
         "--color-destructive",
         "--color-foreground",
         "--color-muted",
         "--color-muted-foreground",
+        "--color-popover",
+        "--color-popover-foreground",
+        "--color-primary",
+        "--color-primary-foreground",
         "--radius"
       ],
       "examples": [
@@ -50095,15 +50111,831 @@
           "code": "<SchedulerMonthView Events=\"_events\" CanDrop=\"ValidateDrop\" OnEventChange=\"OnEventChange\" />\n\n@code {\n    private SchedulerDropResult ValidateDrop(SchedulerEvent ev, SchedulerScheduleDropContext ctx)\n    {\n        if (ctx.ProposedStart.Day == 15) return SchedulerDropResult.Reject;\n        if (ctx.ProposedStart.Day == 22)\n        {\n            var snapped = ctx.ProposedStart.AddDays(1);\n            return SchedulerDropResult.AcceptWith(new SchedulerDropAdjustment(\n                Start: snapped, End: snapped + (ctx.ProposedEnd - ctx.ProposedStart)));\n        }\n        return SchedulerDropResult.Accept;\n    }\n}"
         }
       ],
-      "subComponents": {},
+      "subComponents": {
+        "SchedulerAgendaView": {
+          "componentName": "SchedulerAgendaView",
+          "fileName": "SchedulerAgendaView.razor",
+          "namespace": "Lumeo",
+          "inheritsFrom": null,
+          "implements": [],
+          "parameters": [
+            {
+              "name": "Events",
+              "type": "IEnumerable<SchedulerEvent>?",
+              "default": null,
+              "description": null,
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "AnchorDate",
+              "type": "DateTime",
+              "default": "DateTime.Today",
+              "description": "The window's start (inclusive). Default: today.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "DaysToShow",
+              "type": "int",
+              "default": "30",
+              "description": "How many days from AnchorDate to list. Default 30, matching the uploaded demo's \"next 30 days\" agenda.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "OnEventClick",
+              "type": "EventCallback<SchedulerEvent>",
+              "default": null,
+              "description": null,
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "ResolveEventColor",
+              "type": "Func<SchedulerEvent, string?>?",
+              "default": null,
+              "description": null,
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "Class",
+              "type": "string?",
+              "default": null,
+              "description": null,
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "AdditionalAttributes",
+              "type": "Dictionary<string, object>?",
+              "default": null,
+              "description": null,
+              "isCascading": false,
+              "captureUnmatched": true,
+              "isEditorRequired": false
+            }
+          ],
+          "events": [
+            {
+              "name": "OnEventClick",
+              "type": "EventCallback<SchedulerEvent>",
+              "description": null
+            }
+          ],
+          "enums": [],
+          "records": [],
+          "gotchas": [],
+          "parseFailed": false,
+          "parseError": null
+        },
+        "SchedulerMonthView": {
+          "componentName": "SchedulerMonthView",
+          "fileName": "SchedulerMonthView.razor",
+          "namespace": "Lumeo",
+          "inheritsFrom": null,
+          "implements": [
+            "IAsyncDisposable"
+          ],
+          "parameters": [
+            {
+              "name": "Events",
+              "type": "IEnumerable<SchedulerEvent>?",
+              "default": null,
+              "description": "The calendar's events (expanded per occurrence internally via SchedulerRecurrenceExpander).",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "AnchorDate",
+              "type": "DateTime",
+              "default": "DateTime.Today",
+              "description": "The month this grid renders. Only Year/Month are read.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "FirstDayOfWeek",
+              "type": "DayOfWeek",
+              "default": "DayOfWeek.Monday",
+              "description": "First day of the week for grid layout. Default Monday.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "ShowWeekNumbers",
+              "type": "bool",
+              "default": "false",
+              "description": "Renders an extra leading column with each row's ISO-8601 week number (ReUI parity — its event calendar exposes a \"week numbers\" display toggle). Default false: when off, the grid keeps its exact previous 7-column markup, so this cannot shift any existing layout. The number is always the ISO-8601 week (ISOWeek), computed from each row's own THURSDAY. Thursday is ISO's defining day — the week a Thursday falls in IS its ISO week — and every 7-day row contains exactly one Thursday no matter which FirstDayOfWeek the grid starts on. That makes the label independent of the grid's start day, which a naive \"first cell of the row\" reading is not: in a Sunday-start grid the leading Sunday belongs to the PREVIOUS ISO week, so reading the row's first cell would label most rows one week too low.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "HideWeekends",
+              "type": "bool",
+              "default": "false",
+              "description": "Hides the Saturday and Sunday columns (ReUI parity — its event calendar exposes a weekend-hiding toggle). Default false: with it off the grid renders its exact previous seven-column markup. The 42-cell model is untouched; only rendering and keyboard navigation skip the hidden columns. That matters because arrow navigation moves by raw cell index (+/-1, +/-7) — walking that index across a hidden column would put focus on a cell that is not in the DOM, so navigation runs over the VISIBLE cells instead (see VisibleCellIndices).",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "MaxVisibleLanes",
+              "type": "int",
+              "default": "SchedulerMonthLayout.DefaultMaxVisibleLanes",
+              "description": "Max visible pill lanes per day before \"+N more\". Default DefaultMaxVisibleLanes.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "SelectedDate",
+              "type": "DateTime?",
+              "default": null,
+              "description": "The currently selected date (keyboard focus anchor / agenda-strip driver). Controlled via SelectedDateChanged.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "SelectedDateChanged",
+              "type": "EventCallback<DateTime>",
+              "default": null,
+              "description": null,
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "OnEventClick",
+              "type": "EventCallback<SchedulerEvent>",
+              "default": null,
+              "description": "Raised when an event chip is clicked or activated (Enter/Space).",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "OnDateSelect",
+              "type": "EventCallback<SchedulerDateRange>",
+              "default": null,
+              "description": "Raised when the user selects a date (double-click, or Enter/Space on an empty cell).",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "OnRequestPrev",
+              "type": "EventCallback",
+              "default": null,
+              "description": "Bubbles a PageUp (previous month) keyboard request up to the toolbar's own Prev.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "OnRequestNext",
+              "type": "EventCallback",
+              "default": null,
+              "description": "Bubbles a PageDown (next month) keyboard request up to the toolbar's own Next.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "ResolveEventColor",
+              "type": "Func<SchedulerEvent, string?>?",
+              "default": null,
+              "description": "Resolves the effective CSS color for an event chip. Falls back to var(--color-primary).",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "ResolveEventClassNames",
+              "type": "Func<SchedulerEvent, string?>?",
+              "default": null,
+              "description": "Resolves extra CSS class names appended to an event chip.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "Editable",
+              "type": "bool",
+              "default": "true",
+              "description": "Allows events to be dragged to another day. Month has no edge-resize (spec §3.4). Default true.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "CanDrop",
+              "type": "Func<SchedulerEvent, SchedulerScheduleDropContext, SchedulerDropResult>?",
+              "default": null,
+              "description": "Fail-closed validation predicate for a day-move drop (spec §3.2), widened to a three-way reject/accept/accept-with-adjustment contract (mirrors ReUI's onEventUpdate) — see SchedulerDropResult. null (default) means no consumer opted in — JS is told via hasCanDrop: false so zero ValidateDrop interop calls happen per drag.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "Selectable",
+              "type": "bool",
+              "default": "true",
+              "description": "Allows drag-across-cells date-range selection on empty grid background (spec §3.4's Month row — previously entirely absent). Default true.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "BusinessHours",
+              "type": "bool",
+              "default": "false",
+              "description": "Shades non-business days (spec's business-hours regression fix — the first-party views previously had no equivalent at all, unlike the FullCalendar wrapper's BusinessHours toggle). Month has no hour axis, so this shades whole day cells outside BusinessDays. Default false (opt-in, matches the wrapper's own default).",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "BusinessDays",
+              "type": "IReadOnlyList<DayOfWeek>?",
+              "default": null,
+              "description": "Which days of the week count as business days when BusinessHours is true. Default Mon–Fri, matching FullCalendar's own hardcoded default.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "OnEventChange",
+              "type": "EventCallback<SchedulerEvent>",
+              "default": null,
+              "description": "Raised after a day-move drag commits (post-CanDrop validation, ghost already removed).",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "Class",
+              "type": "string?",
+              "default": null,
+              "description": null,
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "AdditionalAttributes",
+              "type": "Dictionary<string, object>?",
+              "default": null,
+              "description": null,
+              "isCascading": false,
+              "captureUnmatched": true,
+              "isEditorRequired": false
+            }
+          ],
+          "events": [
+            {
+              "name": "SelectedDateChanged",
+              "type": "EventCallback<DateTime>",
+              "description": null
+            },
+            {
+              "name": "OnEventClick",
+              "type": "EventCallback<SchedulerEvent>",
+              "description": "Raised when an event chip is clicked or activated (Enter/Space)."
+            },
+            {
+              "name": "OnDateSelect",
+              "type": "EventCallback<SchedulerDateRange>",
+              "description": "Raised when the user selects a date (double-click, or Enter/Space on an empty cell)."
+            },
+            {
+              "name": "OnRequestPrev",
+              "type": "EventCallback",
+              "description": "Bubbles a PageUp (previous month) keyboard request up to the toolbar's own Prev."
+            },
+            {
+              "name": "OnRequestNext",
+              "type": "EventCallback",
+              "description": "Bubbles a PageDown (next month) keyboard request up to the toolbar's own Next."
+            },
+            {
+              "name": "OnEventChange",
+              "type": "EventCallback<SchedulerEvent>",
+              "description": "Raised after a day-move drag commits (post-CanDrop validation, ghost already removed)."
+            }
+          ],
+          "enums": [],
+          "records": [],
+          "gotchas": [],
+          "parseFailed": false,
+          "parseError": null
+        },
+        "SchedulerResourceView": {
+          "componentName": "SchedulerResourceView",
+          "fileName": "SchedulerResourceView.razor",
+          "namespace": "Lumeo",
+          "inheritsFrom": null,
+          "implements": [],
+          "parameters": [
+            {
+              "name": "Events",
+              "type": "IEnumerable<SchedulerEvent>?",
+              "default": null,
+              "description": "The events to place. Only those whose ResourceId matches a supplied resource are rendered — see Resources.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "Resources",
+              "type": "IReadOnlyList<SchedulerResource>?",
+              "default": null,
+              "description": "The bookable resources, one column each, in the given order. An event whose ResourceId matches none of them is NOT rendered, deliberately: inventing an \"unassigned\" column would be a layout decision this view has no basis to make, and silently folding such events into the first column would misattribute someone's booking. Callers that want them visible should add a resource to represent that bucket. Duplicate ids resolve to the LAST entry, matching Scheduler's own resource lookup so the two components never disagree about an event's colour.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "Date",
+              "type": "DateTime",
+              "default": "DateTime.Today",
+              "description": "The single day this view lays out. Only the date part is read.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "SlotMinTime",
+              "type": "TimeOnly?",
+              "default": null,
+              "description": "First minute shown on the time axis. Default 00:00.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "SlotMaxTime",
+              "type": "TimeOnly?",
+              "default": null,
+              "description": "Last minute shown on the time axis. Default end of day.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "OnEventClick",
+              "type": "EventCallback<SchedulerEvent>",
+              "default": null,
+              "description": "Raised when a booking chip is clicked.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "ResolveEventColor",
+              "type": "Func<SchedulerEvent, string?>?",
+              "default": null,
+              "description": "Per-event colour override, matching the other first-party views.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "Class",
+              "type": "string?",
+              "default": null,
+              "description": null,
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "AdditionalAttributes",
+              "type": "Dictionary<string, object>?",
+              "default": null,
+              "description": null,
+              "isCascading": false,
+              "captureUnmatched": true,
+              "isEditorRequired": false
+            }
+          ],
+          "events": [
+            {
+              "name": "OnEventClick",
+              "type": "EventCallback<SchedulerEvent>",
+              "description": "Raised when a booking chip is clicked."
+            }
+          ],
+          "enums": [],
+          "records": [],
+          "gotchas": [],
+          "parseFailed": false,
+          "parseError": null
+        },
+        "SchedulerTimeGridView": {
+          "componentName": "SchedulerTimeGridView",
+          "fileName": "SchedulerTimeGridView.razor",
+          "namespace": "Lumeo",
+          "inheritsFrom": null,
+          "implements": [
+            "IAsyncDisposable"
+          ],
+          "parameters": [
+            {
+              "name": "Events",
+              "type": "IEnumerable<SchedulerEvent>?",
+              "default": null,
+              "description": "The calendar's events (expanded per occurrence internally via SchedulerRecurrenceExpander).",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "AnchorDate",
+              "type": "DateTime",
+              "default": "DateTime.Today",
+              "description": "Anchor date. Week mode (Days == 7) resolves the containing week via FirstDayOfWeek; Day mode (Days == 1) shows this date only.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "Days",
+              "type": "int",
+              "default": "7",
+              "description": "Number of day columns: 7 = Week, 1 = Day (spec §1.1). Any other value renders that many columns starting at AnchorDate (wave-3 N-day groundwork, not yet a public view).",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "FirstDayOfWeek",
+              "type": "DayOfWeek",
+              "default": "DayOfWeek.Monday",
+              "description": null,
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "SlotMinTime",
+              "type": "TimeOnly?",
+              "default": null,
+              "description": "Earliest visible slot. Default 00:00. Never changes the underlying wall-clock grid math (spec §2.3) — purely a visible-range clamp.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "SlotMaxTime",
+              "type": "TimeOnly?",
+              "default": null,
+              "description": "Latest visible slot. Default 24:00.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "OnEventClick",
+              "type": "EventCallback<SchedulerEvent>",
+              "default": null,
+              "description": null,
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "OnDateSelect",
+              "type": "EventCallback<SchedulerDateRange>",
+              "default": null,
+              "description": null,
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "OnRequestPrev",
+              "type": "EventCallback",
+              "default": null,
+              "description": null,
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "OnRequestNext",
+              "type": "EventCallback",
+              "default": null,
+              "description": null,
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "ResolveEventColor",
+              "type": "Func<SchedulerEvent, string?>?",
+              "default": null,
+              "description": null,
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "ResolveEventClassNames",
+              "type": "Func<SchedulerEvent, string?>?",
+              "default": null,
+              "description": null,
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "Editable",
+              "type": "bool",
+              "default": "true",
+              "description": "Allows events to be dragged (move) and edge-resized. Default true.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "Selectable",
+              "type": "bool",
+              "default": "true",
+              "description": "Allows drag-to-create on empty grid background. Default true.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "NowIndicator",
+              "type": "bool",
+              "default": "true",
+              "description": "Shows the browser-local current-time indicator line (spec §2.2 — positioned and refreshed entirely client-side, never a server-computed value). Default true.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "CanDrop",
+              "type": "Func<SchedulerEvent, SchedulerScheduleDropContext, SchedulerDropResult>?",
+              "default": null,
+              "description": "Fail-closed validation predicate for a move/resize drop (spec §3.2), widened to a three-way reject/accept/accept-with-adjustment contract (mirrors ReUI's onEventUpdate) — see SchedulerDropResult. null (default) means no consumer opted in — JS is told via hasCanDrop: false so zero ValidateDrop interop calls happen per drag, not \"always permit\".",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "BusinessHours",
+              "type": "bool",
+              "default": "false",
+              "description": "Shades non-business-hour slots and non-business days (spec's business-hours regression fix — the first-party views previously had no equivalent at all, unlike the FullCalendar wrapper's BusinessHours toggle). Default false (opt-in, matches the wrapper's own default). Grid interval and snap duration remain out of scope for this pass (still hardcoded — see the report).",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "BusinessHoursStart",
+              "type": "TimeOnly",
+              "default": "new(9, 0)",
+              "description": "Earliest business hour (inclusive) when BusinessHours is true. Default 09:00, matching the FullCalendar wrapper's own hardcoded default.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "BusinessHoursEnd",
+              "type": "TimeOnly",
+              "default": "new(17, 0)",
+              "description": "Latest business hour (exclusive) when BusinessHours is true. Default 17:00.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "BusinessDays",
+              "type": "IReadOnlyList<DayOfWeek>?",
+              "default": null,
+              "description": "Which days of the week count as business days when BusinessHours is true. Default Mon–Fri, matching FullCalendar's own hardcoded default.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "OnEventChange",
+              "type": "EventCallback<SchedulerEvent>",
+              "default": null,
+              "description": "Raised after a move/resize drag commits (post-CanDrop validation, ghost already removed).",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "Class",
+              "type": "string?",
+              "default": null,
+              "description": null,
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "AdditionalAttributes",
+              "type": "Dictionary<string, object>?",
+              "default": null,
+              "description": null,
+              "isCascading": false,
+              "captureUnmatched": true,
+              "isEditorRequired": false
+            }
+          ],
+          "events": [
+            {
+              "name": "OnEventClick",
+              "type": "EventCallback<SchedulerEvent>",
+              "description": null
+            },
+            {
+              "name": "OnDateSelect",
+              "type": "EventCallback<SchedulerDateRange>",
+              "description": null
+            },
+            {
+              "name": "OnRequestPrev",
+              "type": "EventCallback",
+              "description": null
+            },
+            {
+              "name": "OnRequestNext",
+              "type": "EventCallback",
+              "description": null
+            },
+            {
+              "name": "OnEventChange",
+              "type": "EventCallback<SchedulerEvent>",
+              "description": "Raised after a move/resize drag commits (post-CanDrop validation, ghost already removed)."
+            }
+          ],
+          "enums": [],
+          "records": [],
+          "gotchas": [],
+          "parseFailed": false,
+          "parseError": null
+        },
+        "SchedulerToolbar": {
+          "componentName": "SchedulerToolbar",
+          "fileName": "SchedulerToolbar.razor",
+          "namespace": "Lumeo",
+          "inheritsFrom": null,
+          "implements": [],
+          "parameters": [
+            {
+              "name": "CurrentView",
+              "type": "SchedulerView",
+              "default": null,
+              "description": "The view currently shown by the caller. Drives the pressed state of the view switcher.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "CurrentViewChanged",
+              "type": "EventCallback<SchedulerView>",
+              "default": null,
+              "description": "Raised when the user picks a different view from the switcher.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "Title",
+              "type": "string",
+              "default": "\"\"",
+              "description": "The formatted title shown between the nav buttons and the view switcher (SchedulerTitleFormatter.Format's output).",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "OnPrev",
+              "type": "EventCallback",
+              "default": null,
+              "description": "Raised when the \"previous\" nav button is clicked.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "OnNext",
+              "type": "EventCallback",
+              "default": null,
+              "description": "Raised when the \"next\" nav button is clicked.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "OnToday",
+              "type": "EventCallback",
+              "default": null,
+              "description": "Raised when the \"today\" button is clicked.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "Class",
+              "type": "string?",
+              "default": null,
+              "description": "Additional CSS classes merged onto the root row.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "AdditionalAttributes",
+              "type": "Dictionary<string, object>?",
+              "default": null,
+              "description": "Additional HTML attributes captured and forwarded to the root row.",
+              "isCascading": false,
+              "captureUnmatched": true,
+              "isEditorRequired": false
+            }
+          ],
+          "events": [
+            {
+              "name": "CurrentViewChanged",
+              "type": "EventCallback<SchedulerView>",
+              "description": "Raised when the user picks a different view from the switcher."
+            },
+            {
+              "name": "OnPrev",
+              "type": "EventCallback",
+              "description": "Raised when the \"previous\" nav button is clicked."
+            },
+            {
+              "name": "OnNext",
+              "type": "EventCallback",
+              "description": "Raised when the \"next\" nav button is clicked."
+            },
+            {
+              "name": "OnToday",
+              "type": "EventCallback",
+              "description": "Raised when the \"today\" button is clicked."
+            }
+          ],
+          "enums": [],
+          "records": [],
+          "gotchas": [],
+          "parseFailed": false,
+          "parseError": null
+        }
+      },
       "a11y": {
-        "roles": [],
-        "ariaAttributes": [
-          "aria-label"
+        "roles": [
+          "dialog",
+          "grid",
+          "gridcell",
+          "group",
+          "list",
+          "listitem",
+          "row",
+          "rowheader"
         ],
-        "keys": [],
-        "keyboardInteractive": false,
-        "focusManaged": false
+        "ariaAttributes": [
+          "aria-atomic",
+          "aria-hidden",
+          "aria-label",
+          "aria-live",
+          "aria-selected"
+        ],
+        "keys": [
+          "ArrowDown",
+          "ArrowLeft",
+          "ArrowRight",
+          "ArrowUp",
+          "End",
+          "Enter",
+          "Escape",
+          "Home",
+          "PageDown",
+          "PageUp",
+          "Space"
+        ],
+        "keyboardInteractive": true,
+        "focusManaged": true
       },
       "parseFailed": false,
       "parseError": null
