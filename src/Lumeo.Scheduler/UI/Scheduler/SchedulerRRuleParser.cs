@@ -31,6 +31,20 @@ namespace Lumeo;
 /// </para>
 ///
 /// <para>
+/// <b>Where the parsed rule actually takes effect.</b> Assign it to
+/// <c>SchedulerEvent.Recurrence</c> and render it through the first-party views
+/// (<c>SchedulerMonthView</c>, <c>SchedulerTimeGridView</c>, <c>SchedulerAgendaView</c>), which
+/// expand it via the recurrence expander. The FullCalendar-backed <c>&lt;Scheduler&gt;</c>
+/// component does <b>not</b> honour it today: its <c>ToJsEvent</c> serializer branches only on
+/// the legacy <c>DaysOfWeek</c> pair, so a <c>Recurrence</c> rule reaches its change-detection
+/// hash but is never translated into anything FullCalendar can expand (Codex review of this PR,
+/// P1). That is a pre-existing limitation of the <c>Recurrence</c> property itself rather than
+/// of this parser — closing it means either expanding occurrences server-side and feeding
+/// FullCalendar concrete events, or adopting its premium rrule plugin — but it is stated here
+/// because the property's own documentation reads as though it applies everywhere.
+/// </para>
+///
+/// <para>
 /// <b>Known divergence, deliberately NOT rejected — a bare <c>FREQ=MONTHLY</c> anchored on
 /// day 29, 30 or 31.</b> RFC 5545 SKIPS months that lack that day (a 31st-anchored rule has no
 /// February occurrence); the expander CLAMPS to the month's last day instead, which is a
@@ -77,7 +91,7 @@ public static class SchedulerRRuleParser
     {
         SchedulerRecurrenceFrequency.Daily => 5_000,
         SchedulerRecurrenceFrequency.Weekly => 800,
-        SchedulerRecurrenceFrequency.Monthly => 150,
+        SchedulerRecurrenceFrequency.Monthly => 50,
         _ => 1,
     };
 

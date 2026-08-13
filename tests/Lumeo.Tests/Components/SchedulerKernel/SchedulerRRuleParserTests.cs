@@ -126,7 +126,7 @@ public class SchedulerRRuleParserTests
     [InlineData("FREQ=DAILY;INTERVAL=2147483647")] // would overflow the expander's AddDays
     [InlineData("FREQ=DAILY;INTERVAL=5001")]      // per-frequency bound: 501 steps must stay in range
     [InlineData("FREQ=WEEKLY;INTERVAL=801")]
-    [InlineData("FREQ=MONTHLY;INTERVAL=151")]     // 501 monthly steps of 151 overflow DateTime
+    [InlineData("FREQ=MONTHLY;INTERVAL=51")]      // sparse BYDAY rules step ~3x more months than they yield
     [InlineData("FREQ=DAILY;COUNT=501")]           // above the expander's own occurrence cap
     [InlineData("FREQ=WEEKLY;BYDAY=MO,")]          // trailing empty term
     [InlineData("FREQ=WEEKLY;BYDAY=,MO")]          // leading empty term
