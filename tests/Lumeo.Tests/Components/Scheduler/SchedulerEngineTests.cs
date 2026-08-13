@@ -203,6 +203,50 @@ public class SchedulerEngineTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task An_Uncontrolled_First_Party_Edit_Sticks()
+    {
+        // Codex review, P1 — and a correction to my OWN previous fix: routing the
+        // edit through a local list repaired the controlled case and left the
+        // documented UNCONTROLLED mode broken, so with no EventsChanged delegate
+        // the chip still snapped back.
+        var cut = _ctx.Render<L.Scheduler>(p => p
+            .Add(c => c.Engine, L.SchedulerEngine.FirstParty)
+            .Add(c => c.InitialView, L.SchedulerView.Month)
+            .Add(c => c.InitialDate, Day)
+            .Add(c => c.Events, Events));
+
+        var month = cut.FindComponent<L.SchedulerMonthView>();
+        await cut.InvokeAsync(() => month.Instance.CommitDrag("e1", "2026-03-12"));
+
+        // The moved chip must be on the 12th, not back on the 10th.
+        var cell = cut.Find("[data-cell-date='2026-03-12']");
+        Assert.Contains("Standup", cell.TextContent);
+    }
+
+    [Fact]
+    public void The_Resource_View_Steps_One_Day_At_A_Time()
+    {
+        // Codex review, P2: Resource renders a single date, so falling through to
+        // the week-sized default skipped six days per click.
+        var rooms = new[] { new L.SchedulerResource("r1", "Room A") };
+        var cut = _ctx.Render<L.Scheduler>(p => p
+            .Add(c => c.Engine, L.SchedulerEngine.FirstParty)
+            .Add(c => c.InitialView, L.SchedulerView.Resource)
+            .Add(c => c.InitialDate, Day)
+            .Add(c => c.Resources, rooms)
+            .Add(c => c.Events, new[] { new L.SchedulerEvent("e1", "Standup", Day.AddDays(1).AddHours(9), Day.AddDays(1).AddHours(10), ResourceId: "r1") }));
+
+        // Nothing on the anchor day...
+        Assert.DoesNotContain("Standup", cut.Find("[data-resourcecol='r1']").TextContent);
+
+        var next = cut.FindAll("button").First(b => (b.GetAttribute("aria-label") ?? "").Contains("Next", StringComparison.OrdinalIgnoreCase));
+        next.Click();
+
+        // ...and exactly one day later it is there.
+        Assert.Contains("Standup", cut.Find("[data-resourcecol='r1']").TextContent);
+    }
+
+    [Fact]
     public void The_First_Party_Engine_Creates_No_JS_Instance()
     {
         // What makes this a genuinely dependency-free path rather than the same

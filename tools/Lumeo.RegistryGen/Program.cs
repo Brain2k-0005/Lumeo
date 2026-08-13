@@ -576,17 +576,11 @@ var cssVarMap = new Dictionary<string, string>
 var componentDirs = uiRoots
     .Where(Directory.Exists)
     .SelectMany(root => Directory.GetDirectories(root))
-    // SchedulerViews (wave 1b — first-party Month/TimeGrid/Agenda/Toolbar view
-    // engine) is work-in-progress: components that ship alongside the
-    // FullCalendar-backed Scheduler but aren't wired into its public API
-    // surface yet, so they have no docs page and must not appear in the
-    // registry (which would otherwise fail the docs-parity check). Delete
-    // once wave 2+ wires these into Scheduler.razor's public parameters and
-    // gives them a docs page.
-    // (The equivalent GanttV3 filter that used to live here was removed —
-    // GanttV3 has been promoted to GanttChart and is a real registered
-    // component now.)
-    .Where(d => !string.Equals(Path.GetFileName(d), "SchedulerViews", StringComparison.OrdinalIgnoreCase))
+    // (The SchedulerViews filter that used to live here is gone: those views moved
+    // into UI/Scheduler/ once Scheduler.razor started rendering them, so they are
+    // part of that component's vendored file list rather than a component of their
+    // own. Leaving them outside would have made `lumeo add scheduler` produce
+    // source that does not compile.)
     .OrderBy(d => Path.GetFileName(d), StringComparer.OrdinalIgnoreCase)
     .ToArray();
 var knownComponentNames = componentDirs.Select(Path.GetFileName).Where(n => !string.IsNullOrEmpty(n)).Select(n => n!).ToHashSet(StringComparer.OrdinalIgnoreCase);

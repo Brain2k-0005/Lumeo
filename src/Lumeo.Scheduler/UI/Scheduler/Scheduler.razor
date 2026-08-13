@@ -385,6 +385,20 @@ else
         // FirstParty -> FullCalendar transition (Codex review of this PR, P2): a
         // component that mounted first-party never ran this block, so flipping back
         // later left _initialized false and no JS instance was ever created.
+        // Switching an ALREADY-INITIALIZED wrapper to the first-party engine must
+        // dispose the JS instance (Codex review of this PR, P2) — the _initialized
+        // guard below returns first, so the old calendar was left alive behind the
+        // new markup, holding its DotNetObjectReference.
+        if (Engine == SchedulerEngine.FirstParty && _initialized && _instanceId is not null)
+        {
+            var dying = _instanceId;
+            _instanceId = null;
+            _initialized = false;
+            _renderedAsFirstParty = true;
+            try { await Interop.SchedulerDestroyAsync(dying); } catch (Exception) { /* circuit gone — nothing to reclaim */ }
+            return;
+        }
+
         var switchedFromFirstParty = _renderedAsFirstParty && Engine == SchedulerEngine.FullCalendar;
         if ((!firstRender && !switchedFromFirstParty) || _initialized) return;
         _renderedAsFirstParty = false;
@@ -427,7 +441,7 @@ else
         // Dictionary instead — identical JSON, no constructor metadata involved.
         var options = new Dictionary<string, object?>
         {
-            ["view"] = InitialView.ToString(),
+            ["view"] = WrapperViewName(InitialView),
             ["initialDate"] = (InitialDate ?? DateTime.Today).ToString("yyyy-MM-dd"),
             ["events"] = _events.Select(ToJsEvent).ToArray(),
             ["editable"] = Editable,
@@ -652,6 +666,15 @@ else
     /// <summary>Recomputes the toolbar title from the first-party anchor. The wrapper reads its title back from FullCalendar; this engine owns it.</summary>
     private void RefreshFirstPartyTitle() => _title = ComputeTitle(_fpAnchor, _currentView);
 
+    /// <summary>
+    /// The view name handed to FullCalendar. <see cref="SchedulerView.Resource"/> has no
+    /// free-plugin equivalent, so it degrades to <see cref="SchedulerView.Day"/> exactly as its
+    /// own documentation promises — sending "Resource" across simply produced an unknown view
+    /// (Codex review of this PR, P2).
+    /// </summary>
+    private static string WrapperViewName(SchedulerView view) =>
+        (view == SchedulerView.Resource ? SchedulerView.Day : view).ToString();
+
     private string ComputeTitle(DateTime date, SchedulerView view) => view switch
     {
         SchedulerView.Month => date.ToString("MMMM yyyy"),
@@ -703,7 +726,12 @@ else
     /// <summary>Set while the component is rendering first-party, so a later switch back to the wrapper can still initialize it exactly once.</summary>
     private bool _renderedAsFirstParty;
 
-    private IEnumerable<SchedulerEvent>? EffectiveEvents => Events;
+    /// <summary>
+    /// What the first-party views render: the component's own working copy, which is
+    /// what makes uncontrolled edits stick. Reading the raw <see cref="Events"/>
+    /// parameter would show the parent's unchanged collection straight back.
+    /// </summary>
+    private IEnumerable<SchedulerEvent>? EffectiveEvents => _events;
 
     /// <summary>
     /// Colour for a first-party chip, preserving the wrapper's own precedence
@@ -738,12 +766,18 @@ else
     /// </summary>
     private async Task OnFirstPartyEventChangeAsync(SchedulerEvent updated)
     {
-        var list = (Events ?? Enumerable.Empty<SchedulerEvent>()).ToList();
-        var idx = list.FindIndex(e => string.Equals(e.Id, updated.Id, StringComparison.Ordinal));
-        if (idx >= 0) list[idx] = updated;
+        // Applied to the component's OWN working copy first (Codex review of this
+        // PR, P1). My previous fix built a local list and pushed it through
+        // EventsChanged — which repaired the controlled case and left the
+        // documented UNCONTROLLED mode broken: with no EventsChanged delegate the
+        // edit went into a temporary list and was dropped, so the chip snapped
+        // back exactly as before.
+        var idx = _events.FindIndex(e => string.Equals(e.Id, updated.Id, StringComparison.Ordinal));
+        if (idx >= 0) _events[idx] = updated; else _events.Add(updated);
+        _lastEventsHash = ComputeEventsHash(_events);
 
         if (OnEventChange.HasDelegate) await OnEventChange.InvokeAsync(updated);
-        if (EventsChanged.HasDelegate) await EventsChanged.InvokeAsync(list);
+        if (EventsChanged.HasDelegate) await EventsChanged.InvokeAsync(_events.ToList());
     }
 
     /// <summary>
@@ -767,7 +801,9 @@ else
     private void StepFirstPartyAnchor(int direction) => _fpAnchor = _currentView switch
     {
         SchedulerView.Month => _fpAnchor.AddMonths(direction),
-        SchedulerView.Day => _fpAnchor.AddDays(direction),
+        // Resource renders a SINGLE date, so a week-sized step skipped six days
+        // (Codex review of this PR, P2).
+        SchedulerView.Day or SchedulerView.Resource => _fpAnchor.AddDays(direction),
         _ => _fpAnchor.AddDays(7 * direction),
     };
 
