@@ -628,19 +628,49 @@ function registerNowIndicator(containerEl, options) {
     const pxPerMinute = options && options.pixelsPerMinute ? options.pixelsPerMinute : 0.8;
     const slotMinMinute = options && options.slotMinMinute ? options.slotMinMinute : 0;
     const dayIso = options && options.dayIso ? options.dayIso : null;
+    const timeZone = options && options.timeZone ? options.timeZone : null;
+
+    // Intl is the only IANA database the browser has, and it is enough: formatToParts gives
+    // the zone's own calendar date and clock reading without any date library. An id Intl
+    // rejects falls back to the browser's clock rather than throwing inside a timer that
+    // would then never be cleaned up.
+    let zoneParts = null;
+    if (timeZone) {
+        try {
+            zoneParts = new Intl.DateTimeFormat('en-US', {
+                timeZone, year: 'numeric', month: '2-digit', day: '2-digit',
+                hour: '2-digit', minute: '2-digit', hour12: false,
+            });
+        } catch (_) { zoneParts = null; }
+    }
+
+    function readClock() {
+        const now = new Date();
+        if (!zoneParts) {
+            return { iso: toIsoDate(now), minutes: now.getHours() * 60 + now.getMinutes() };
+        }
+        const parts = {};
+        for (const part of zoneParts.formatToParts(now)) parts[part.type] = part.value;
+        // hour12:false still yields "24" at midnight in some engines.
+        const hour = parseInt(parts.hour, 10) % 24;
+        return {
+            iso: `${parts.year}-${parts.month}-${parts.day}`,
+            minutes: hour * 60 + parseInt(parts.minute, 10),
+        };
+    }
 
     function update() {
-        const now = new Date();
+        const now = readClock();
         // dayIso is only supplied for a Day view (1 column) — the line is hidden
         // entirely when "today" isn't the visible day, matching every mainstream
         // calendar's now-indicator (it never draws on a non-today column set it
         // can't place unambiguously without per-day iso comparison from the caller).
-        if (dayIso && toIsoDate(now) !== dayIso) {
+        if (dayIso && now.iso !== dayIso) {
             line.style.display = 'none';
             return;
         }
         line.style.display = '';
-        const minutes = now.getHours() * 60 + now.getMinutes();
+        const minutes = now.minutes;
         line.style.top = ((minutes - slotMinMinute) * pxPerMinute) + 'px';
     }
 

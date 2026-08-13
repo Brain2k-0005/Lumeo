@@ -113,7 +113,9 @@
             (<Lumeo.Code>SchedulerView.Resource</Lumeo.Code>, one column per entry in
             <Lumeo.Code>Resources</Lumeo.Code>). It also honours <Lumeo.Code>SlotDuration</Lumeo.Code>,
             with its own <Lumeo.Code>SnapDuration</Lumeo.Code> when drags should be finer than the
-            grid. Not carried across: the JS-side imperative navigation.
+            grid, an N-day view (<Lumeo.Code>SchedulerView.MultiDay</Lumeo.Code> plus
+            <Lumeo.Code>VisibleDays</Lumeo.Code>), and a display <Lumeo.Code>TimeZone</Lumeo.Code>.
+            Not carried across: the JS-side imperative navigation.
         </ChildContent>
     </Alert>
 </div>
@@ -258,6 +260,58 @@
                        InitialView="SchedulerView.Day"
                        SlotDuration="TimeSpan.FromMinutes(15)"
                        Height="560px" />
+        </Stack>
+    </ComponentDemo>
+
+    <ComponentDemo Title="N-day view (SchedulerView.MultiDay)" Code="@_fpMultiDayCode">
+        <Stack Gap="3">
+            <Lumeo.Text Size="sm" Color="muted">
+                A rolling window of <Lumeo.Code>VisibleDays</Lumeo.Code> days. Unlike the week view it
+                does not snap to a week start, and prev/next page by the window's own width, so
+                consecutive pages tile the calendar instead of overlapping. The toolbar button appears
+                only once you have chosen a width — an N-day view with no N is not a view.
+            </Lumeo.Text>
+            <Scheduler Events="_fpMultiDayEvents"
+                       Engine="SchedulerEngine.FirstParty"
+                       InitialView="SchedulerView.MultiDay"
+                       VisibleDays="3"
+                       Height="560px" />
+        </Stack>
+    </ComponentDemo>
+
+    <ComponentDemo Title="Display time zone" Code="@_fpTimeZoneCode">
+        <Stack Gap="3">
+            <Lumeo.Text Size="sm" Color="muted">
+                Both calendars below hold the <em>same</em> events, read in two zones. Only events
+                carrying a real instant move: a <Lumeo.Code>DateTime</Lumeo.Code> with
+                <Lumeo.Code>Kind</Lumeo.Code> of <Lumeo.Code>Utc</Lumeo.Code> or
+                <Lumeo.Code>Local</Lumeo.Code> denotes a point in time and can be re-read elsewhere,
+                while an <Lumeo.Code>Unspecified</Lumeo.Code> value is a wall-clock reading that is
+                already in whatever zone you meant — so setting a zone cannot silently shift existing
+                data. Edits are converted back before they reach
+                <Lumeo.Code>OnEventChange</Lumeo.Code>: what you get out is in the frame you put in.
+                All-day events are dates, not instants, and never move.
+            </Lumeo.Text>
+            @* Stacked, not side by side: two toolbars sharing the width squeeze the title
+               down to an ellipsis, and the times are what this demo is actually about. *@
+            <div class="grid gap-4">
+                <div>
+                    <div class="mb-1 text-sm font-medium">Europe/Berlin</div>
+                    <Scheduler Events="_fpZoneEvents"
+                               Engine="SchedulerEngine.FirstParty"
+                               InitialView="SchedulerView.Day"
+                               TimeZone="Europe/Berlin"
+                               Height="420px" />
+                </div>
+                <div>
+                    <div class="mb-1 text-sm font-medium">Asia/Tokyo</div>
+                    <Scheduler Events="_fpZoneEvents"
+                               Engine="SchedulerEngine.FirstParty"
+                               InitialView="SchedulerView.Day"
+                               TimeZone="Asia/Tokyo"
+                               Height="420px" />
+                </div>
+            </div>
         </Stack>
     </ComponentDemo>
 
@@ -591,6 +645,34 @@
     private List<SchedulerEvent> _fpWrapperEvents = BuildFirstPartyEvents();
 
     private List<SchedulerEvent> _fpSlotEvents = BuildFirstPartyEvents();
+
+    private List<SchedulerEvent> _fpMultiDayEvents = BuildFirstPartyEvents();
+
+    /// <summary>UTC instants on purpose — an Unspecified value would render identically in both zones, which is the point of the guarantee but makes for a dull demo.</summary>
+    private static List<SchedulerEvent> BuildZoneEvents()
+    {
+        var day = DateTime.UtcNow.Date;
+        return new List<SchedulerEvent>
+        {
+            new("z1", "Standup (07:00 UTC)",  DateTime.SpecifyKind(day.AddHours(7),  DateTimeKind.Utc), DateTime.SpecifyKind(day.AddHours(7).AddMinutes(30), DateTimeKind.Utc)),
+            new("z2", "Handover (11:00 UTC)", DateTime.SpecifyKind(day.AddHours(11), DateTimeKind.Utc), DateTime.SpecifyKind(day.AddHours(12), DateTimeKind.Utc)),
+        };
+    }
+
+    private List<SchedulerEvent> _fpZoneEvents = BuildZoneEvents();
+
+    private string _fpMultiDayCode = @"<Scheduler Events=""_events""
+           Engine=""SchedulerEngine.FirstParty""
+           InitialView=""SchedulerView.MultiDay""
+           VisibleDays=""3""
+           Height=""560px"" />";
+
+    private string _fpTimeZoneCode = @"@* Only Utc/Local values move; Unspecified is left alone. *@
+<Scheduler Events=""_events""
+           Engine=""SchedulerEngine.FirstParty""
+           InitialView=""SchedulerView.Day""
+           TimeZone=""Asia/Tokyo""
+           Height=""420px"" />";
 
     private string _fpSlotCode = @"<Scheduler Events=""_events""
            Engine=""SchedulerEngine.FirstParty""

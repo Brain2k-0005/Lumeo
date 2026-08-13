@@ -170,6 +170,21 @@
     /// </summary>
     [Parameter] public TimeSpan? SnapDuration { get; set; }
 
+    /// <summary>
+    /// IANA zone the NOW-INDICATOR is read in. The grid itself stays wall-clock — the wrapper
+    /// has already projected the events it hands down (see SchedulerTimeZoneProjection) — but
+    /// the now line is computed in the browser from the real clock, so without this it would
+    /// sit at the viewer's local time on a grid drawn for somewhere else.
+    /// </summary>
+    [Parameter] public string? NowTimeZoneId { get; set; }
+
+    /// <summary>
+    /// Whether a 7-day grid snaps to the configured week start. True (the default) is the Week
+    /// view. False makes seven days mean "seven days from the anchor" — the rolling N-day
+    /// window, which happens to collide with the Week view at exactly this one width.
+    /// </summary>
+    [Parameter] public bool AlignToWeek { get; set; } = true;
+
     [Parameter] public EventCallback<SchedulerEvent> OnEventClick { get; set; }
     [Parameter] public EventCallback<SchedulerDateRange> OnDateSelect { get; set; }
     [Parameter] public EventCallback OnRequestPrev { get; set; }
@@ -268,7 +283,7 @@
         _slotStarts = Enumerable.Range(0, slotCount).Select(i => firstMinute + i * _slotMinutes).ToArray();
 
         var days = Math.Max(1, Days);
-        if (days == 7)
+        if (days == 7 && AlignToWeek)
         {
             var weekStart = SchedulerDateMath.StartOfWeek(AnchorDate, FirstDayOfWeek);
             _dayColumns = Enumerable.Range(0, 7).Select(i => weekStart.AddDays(i)).ToArray();
@@ -325,7 +340,8 @@
 
     private async Task SyncNowIndicatorAsync()
     {
-        var hash = HashCode.Combine(NowIndicator, _minMinute, string.Join(",", _dayColumns.Select(d => d.ToString("yyyyMMdd"))));
+        var hash = HashCode.Combine(NowIndicator, _minMinute, NowTimeZoneId,
+                                    string.Join(",", _dayColumns.Select(d => d.ToString("yyyyMMdd"))));
         if (hash == _lastNowIndicatorHash) return;
         _lastNowIndicatorHash = hash;
 
@@ -346,6 +362,7 @@
                 ["pixelsPerMinute"] = pxPerMinute,
                 ["slotMinMinute"] = _minMinute,
                 ["dayIso"] = _dayColumns[i].ToString("yyyy-MM-dd"),
+                ["timeZone"] = NowTimeZoneId,
             };
             try { await Interop.SchedulerViewsRegisterNowIndicatorAsync(_dayColumnRefs[i], options); }
             catch (Microsoft.JSInterop.JSDisconnectedException) { }

@@ -173,4 +173,16 @@ public enum SchedulerView
     /// </para>
     /// </summary>
     Resource,
+
+    /// <summary>
+    /// A rolling window of <c>Scheduler.VisibleDays</c> days starting at the current date —
+    /// ReUI's "N-day" view. Unlike <see cref="Week"/> it does not align to a week start, so
+    /// "the next three days" stays the next three days as you page through it.
+    /// <para>
+    /// Only meaningful with <see cref="SchedulerEngine.FirstParty"/>; the wrapper has no
+    /// custom-duration view configured and falls back to <see cref="Week"/>. Added last so
+    /// the existing values keep their numeric identity.
+    /// </para>
+    /// </summary>
+    MultiDay,
 }
