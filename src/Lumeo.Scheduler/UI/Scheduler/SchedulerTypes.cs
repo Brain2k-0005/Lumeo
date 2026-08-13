@@ -162,5 +162,16 @@ public enum SchedulerView
     Month,
     Week,
     Day,
-    List
+    List,
+
+    /// <summary>
+    /// One column per entry in <c>Scheduler.Resources</c>, for a single day.
+    /// <para>
+    /// Only meaningful with <see cref="SchedulerEngine.FirstParty"/> — FullCalendar's own
+    /// resource views are a paid plugin this library does not take a dependency on, so the
+    /// wrapper falls back to <see cref="Day"/> rather than failing. Added last so the existing
+    /// values keep their numeric identity.
+    /// </para>
+    /// </summary>
+    Resource,
 }

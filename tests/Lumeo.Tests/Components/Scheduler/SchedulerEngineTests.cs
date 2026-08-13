@@ -129,6 +129,80 @@ public class SchedulerEngineTests : IAsyncLifetime
     }
 
     [Fact]
+    public void The_Advertised_Month_Flags_Actually_Reach_The_View()
+    {
+        // Codex review, P1-in-spirit: the Engine docs advertised week numbers and
+        // weekend hiding, but no parameters existed for either — the claim was in
+        // the API documentation and not in the code.
+        var cut = _ctx.Render<L.Scheduler>(p => p
+            .Add(c => c.Engine, L.SchedulerEngine.FirstParty)
+            .Add(c => c.InitialView, L.SchedulerView.Month)
+            .Add(c => c.InitialDate, Day)
+            .Add(c => c.ShowWeekNumbers, true)
+            .Add(c => c.HideWeekends, true));
+
+        Assert.Equal(6, cut.FindAll("[role='rowheader']").Count);   // week-number column
+        Assert.Equal(30, cut.FindAll("[data-cell-date]").Count);    // weekends dropped
+    }
+
+    [Fact]
+    public void The_Advertised_Resource_View_Actually_Renders()
+    {
+        // Same finding: the docs promised resource columns, and no branch rendered
+        // SchedulerResourceView at all.
+        var rooms = new[] { new L.SchedulerResource("r1", "Room A") };
+        var cut = _ctx.Render<L.Scheduler>(p => p
+            .Add(c => c.Engine, L.SchedulerEngine.FirstParty)
+            .Add(c => c.InitialView, L.SchedulerView.Resource)
+            .Add(c => c.InitialDate, Day)
+            .Add(c => c.Resources, rooms)
+            .Add(c => c.Events, new[] { new L.SchedulerEvent("e1", "Standup", Day.AddHours(9), Day.AddHours(10), ResourceId: "r1") }));
+
+        Assert.NotEmpty(cut.FindAll("[data-resourcecol='r1']"));
+        Assert.Contains("Standup", cut.Markup);
+    }
+
+    [Fact]
+    public async Task A_First_Party_Edit_Reaches_A_Bind_Events_Consumer()
+    {
+        // Codex review, P1: OnEventChange was forwarded straight to the children,
+        // so EventsChanged never fired — a consumer using @bind-Events without a
+        // separate handler saw the edit reach nobody.
+        IEnumerable<L.SchedulerEvent>? pushed = null;
+        var cut = _ctx.Render<L.Scheduler>(p => p
+            .Add(c => c.Engine, L.SchedulerEngine.FirstParty)
+            .Add(c => c.InitialView, L.SchedulerView.Month)
+            .Add(c => c.InitialDate, Day)
+            .Add(c => c.Events, Events)
+            .Add(c => c.EventsChanged, (IEnumerable<L.SchedulerEvent> e) => { pushed = e; }));
+
+        var month = cut.FindComponent<L.SchedulerMonthView>();
+        await cut.InvokeAsync(() => month.Instance.CommitDrag("e1", "2026-03-12"));
+
+        Assert.NotNull(pushed);
+        Assert.Equal(new DateTime(2026, 3, 12), pushed!.Single().Start.Date);
+    }
+
+    [Fact]
+    public void An_Event_Keeps_Its_Resource_Colour_After_Switching_Engines()
+    {
+        // Codex review, P2: passing EventColor straight through dropped the
+        // resource fallback, so an event carrying only a ResourceId lost its colour
+        // the moment a consumer opted in.
+        var rooms = new[] { new L.SchedulerResource("r1", "Room A", "rgb(1, 2, 3)") };
+        var ev = new L.SchedulerEvent("e1", "Standup", Day.AddHours(9), Day.AddHours(10), ResourceId: "r1");
+
+        var cut = _ctx.Render<L.Scheduler>(p => p
+            .Add(c => c.Engine, L.SchedulerEngine.FirstParty)
+            .Add(c => c.InitialView, L.SchedulerView.Month)
+            .Add(c => c.InitialDate, Day)
+            .Add(c => c.Resources, rooms)
+            .Add(c => c.Events, new[] { ev }));
+
+        Assert.Contains("rgb(1, 2, 3)", cut.Markup);
+    }
+
+    [Fact]
     public void The_First_Party_Engine_Creates_No_JS_Instance()
     {
         // What makes this a genuinely dependency-free path rather than the same
