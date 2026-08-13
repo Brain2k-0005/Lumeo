@@ -322,6 +322,7 @@ internal static partial class LumeoDefaultStrings
         ["Scheduler.Week"] = "週",
         ["Scheduler.Month"] = "月",
         ["Scheduler.WeekNumberAbbrev"] = "週",
+        ["Scheduler.WeekNumberLabel"] = "第{0}週",
         ["Scheduler.Announce.EventMoved"] = "{0} を {1} に移動しました",
         ["Scheduler.Announce.EventRescheduled"] = "{0} は {1} から {2} になりました",
         ["Scheduler.Announce.MoveRejected"] = "{0} を移動できませんでした",

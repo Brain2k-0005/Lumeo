@@ -322,6 +322,7 @@ internal static partial class LumeoDefaultStrings
         ["Scheduler.Week"] = "Semana",
         ["Scheduler.Month"] = "Mês",
         ["Scheduler.WeekNumberAbbrev"] = "Sem",
+        ["Scheduler.WeekNumberLabel"] = "Semana {0}",
         ["Scheduler.Announce.EventMoved"] = "{0} movido para {1}",
         ["Scheduler.Announce.EventRescheduled"] = "{0} agora das {1} às {2}",
         ["Scheduler.Announce.MoveRejected"] = "Não foi possível mover {0}",

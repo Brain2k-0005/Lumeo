@@ -473,7 +473,7 @@ internal static partial class LumeoDefaultStrings
         ["Scheduler.Month"] = "Month",
         // Column header above the ISO-8601 week-number column (SchedulerMonthView.ShowWeekNumbers).
         ["Scheduler.WeekNumberAbbrev"] = "Wk",
-        // Live-region announcements for pointer gestures (ReUI parity).
+        ["Scheduler.WeekNumberLabel"] = "Week {0}",
         ["Scheduler.Announce.EventMoved"] = "{0} moved to {1}",
         ["Scheduler.Announce.EventRescheduled"] = "{0} now {1} to {2}",
         ["Scheduler.Announce.MoveRejected"] = "{0} could not be moved",
@@ -1079,6 +1079,7 @@ internal static partial class LumeoDefaultStrings
         ["Scheduler.Week"] = "Woche",
         ["Scheduler.Month"] = "Monat",
         ["Scheduler.WeekNumberAbbrev"] = "KW",
+        ["Scheduler.WeekNumberLabel"] = "Kalenderwoche {0}",
         ["Scheduler.Announce.EventMoved"] = "{0} verschoben auf {1}",
         ["Scheduler.Announce.EventRescheduled"] = "{0} jetzt {1} bis {2}",
         ["Scheduler.Announce.MoveRejected"] = "{0} konnte nicht verschoben werden",

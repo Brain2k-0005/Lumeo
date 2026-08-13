@@ -263,6 +263,7 @@ internal static partial class LumeoDefaultStrings
         ["Scheduler.Today"] = "Сегодня",
         ["Scheduler.Month"] = "Месяц",
         ["Scheduler.WeekNumberAbbrev"] = "Нед",
+        ["Scheduler.WeekNumberLabel"] = "Неделя {0}",
         ["Scheduler.Announce.EventMoved"] = "{0} перенесено на {1}",
         ["Scheduler.Announce.EventRescheduled"] = "{0} теперь с {1} до {2}",
         ["Scheduler.Announce.MoveRejected"] = "Не удалось перенести {0}",

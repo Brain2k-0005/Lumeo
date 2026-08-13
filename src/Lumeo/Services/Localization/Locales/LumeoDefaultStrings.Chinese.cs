@@ -260,6 +260,7 @@ internal static partial class LumeoDefaultStrings
         ["Scheduler.Today"] = "今天",
         ["Scheduler.Month"] = "月",
         ["Scheduler.WeekNumberAbbrev"] = "周",
+        ["Scheduler.WeekNumberLabel"] = "第 {0} 周",
         ["Scheduler.Announce.EventMoved"] = "{0} 已移至 {1}",
         ["Scheduler.Announce.EventRescheduled"] = "{0} 现在为 {1} 至 {2}",
         ["Scheduler.Announce.MoveRejected"] = "无法移动 {0}",
