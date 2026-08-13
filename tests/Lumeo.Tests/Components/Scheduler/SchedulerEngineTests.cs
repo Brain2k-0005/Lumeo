@@ -158,8 +158,11 @@ public class SchedulerEngineTests : IAsyncLifetime
             .Add(c => c.Resources, rooms)
             .Add(c => c.Events, new[] { new L.SchedulerEvent("e1", "Standup", Day.AddHours(9), Day.AddHours(10), ResourceId: "r1") }));
 
-        Assert.NotEmpty(cut.FindAll("[data-resourcecol='r1']"));
-        Assert.Contains("Standup", cut.Markup);
+        // Scoped to the column, not the whole markup (CodeRabbit review of this PR): the
+        // title also appears in the chip's tooltip and aria-label, so a substring check on
+        // cut.Markup passes even when the event renders outside its resource lane — which is
+        // precisely the binding this test exists to prove.
+        Assert.Contains("Standup", cut.Find("[data-resourcecol='r1']").TextContent, StringComparison.Ordinal);
     }
 
     [Fact]
