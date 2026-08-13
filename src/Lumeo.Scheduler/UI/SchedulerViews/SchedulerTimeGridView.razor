@@ -677,9 +677,11 @@
         // unchanged event states something that did not happen.
         if (updated.Start == src.Start && updated.End == src.End && updated.AllDay == src.AllDay) return;
         if (!OnEventChange.HasDelegate) return;
+        // See SchedulerMonthView's twin: announce only once the handler
+        // has completed, so a faulted persist cannot be heard as success.
+        await OnEventChange.InvokeAsync(updated);
         Announce(L["Scheduler.Announce.EventRescheduled",
             src.Title, FormatAnnounceMoment(updated.Start), FormatAnnounceMoment(updated.End)]);
-        await OnEventChange.InvokeAsync(updated);
     }
 
     // ── Live-region announcements (ReUI parity) ──────────────────────────────

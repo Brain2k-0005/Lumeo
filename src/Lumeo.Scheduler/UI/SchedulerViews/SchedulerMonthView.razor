@@ -717,8 +717,12 @@
         // unchanged event states something that did not happen.
         if (updated.Start == ev.Start && updated.End == ev.End && updated.AllDay == ev.AllDay) return;
         if (!OnEventChange.HasDelegate) return;
-        Announce(L["Scheduler.Announce.EventMoved", ev.Title, FormatAnnounceDate(updated.Start)]);
+        // Announced AFTER the handler completes (Codex review of this PR,
+        // P2): an async OnEventChange that faults — persistence refusing
+        // the update, say — leaves the JS caller catching a failed
+        // CommitDrag while the user has already been told it moved.
         await OnEventChange.InvokeAsync(updated);
+        Announce(L["Scheduler.Announce.EventMoved", ev.Title, FormatAnnounceDate(updated.Start)]);
     }
 
     // ── Live-region announcements (ReUI parity) ──────────────────────────────

@@ -188,6 +188,23 @@ public class SchedulerLiveAnnouncementTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task A_Faulting_OnEventChange_Is_Not_Announced_As_A_Successful_Move()
+    {
+        // Codex review of this PR, P2: announcing before awaiting the handler
+        // meant a persist that throws still told the user the event moved,
+        // while the JS caller quietly caught the failed CommitDrag.
+        var cut = _ctx.Render<L.SchedulerMonthView>(p => p
+            .Add(c => c.AnchorDate, new DateTime(2026, 3, 15))
+            .Add(c => c.Events, new[] { Standup })
+            .Add(c => c.OnEventChange, (L.SchedulerEvent _) => throw new InvalidOperationException("persist failed")));
+
+        await Assert.ThrowsAnyAsync<Exception>(
+            () => cut.InvokeAsync(() => cut.Instance.CommitDrag("e1", "2026-03-12")));
+
+        Assert.Equal(string.Empty, cut.Find("[data-testid='scheduler-live-region']").TextContent.Trim());
+    }
+
+    [Fact]
     public void The_TimeGrid_View_Renders_The_Same_Live_Region()
     {
         var cut = _ctx.Render<L.SchedulerTimeGridView>(p => p

@@ -459,11 +459,19 @@ function registerTimeGridDrag(hostEl, dotNetRef, options) {
                 cleanup();
                 if (!dragInitiated) return;
                 if (!state) return;
-                // A release outside every [data-daycol] leaves no day to commit
-                // to (Codex review of the live-region PR, P2). With no CanDrop
-                // configured the validation branch below is skipped entirely, so
-                // CommitDrag simply returns and the gesture ends in silence.
-                if (!state.dayIso) {
+                // A MOVE released outside every [data-daycol] has no day to
+                // commit to (Codex review of the live-region PR, P2). With no
+                // CanDrop configured the validation branch below is skipped
+                // entirely, so CommitDrag simply returns and the gesture ends in
+                // silence.
+                //
+                // Gated on the mode (Codex review, P1 — a regression this guard
+                // introduced): onPointerMove populates dayIso ONLY for 'move'
+                // and deliberately leaves it null for both resize modes, so an
+                // unconditional check treated every resize as an out-of-grid
+                // drop, announced a rejection and returned before committing —
+                // breaking resize outright.
+                if (state.mode === 'move' && !state.dayIso) {
                     dragDotNet.invokeMethodAsync('NotifyDropRejected', instanceKey, state.mode).catch(() => {});
                     return;
                 }
