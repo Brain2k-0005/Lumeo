@@ -20,9 +20,11 @@
                screen readers announce an empty column header for every row. *@
             <span class="px-1 py-1.5 text-center text-[11px] font-medium text-muted-foreground">@L["Scheduler.WeekNumberAbbrev"]</span>
         }
-        @foreach (var d in _weekdayHeaders)
+        @for (var i = 0; i < _weekdayHeaders.Length; i++)
         {
-            <span class="px-2 py-1.5 text-right text-[11px] font-medium text-muted-foreground">@d</span>
+            var dow = (DayOfWeek)(((int)FirstDayOfWeek + i) % 7);
+            if (HideWeekends && dow is DayOfWeek.Saturday or DayOfWeek.Sunday) { continue; }
+            <span class="px-2 py-1.5 text-right text-[11px] font-medium text-muted-foreground">@_weekdayHeaders[i]</span>
         }
     </div>
     <div class="@GridColsClass" role="grid" aria-label="@L["Scheduler.Month"]" @ref="_hostRef">
@@ -50,6 +52,7 @@
                 {
                     var cellIndex = row * 7 + col;
                     var cell = _cellModels[cellIndex];
+                    if (IsHiddenColumn(cell.Date)) { continue; }
                     var isFocused = cellIndex == _focusedIndex;
                     <div role="gridcell"
                          @ref="_cellRefs[cellIndex]"
@@ -182,6 +185,20 @@
     /// </summary>
     [Parameter] public bool ShowWeekNumbers { get; set; }
 
+    /// <summary>
+    /// Hides the Saturday and Sunday columns (ReUI parity — its event calendar
+    /// exposes a weekend-hiding toggle). Default <c>false</c>: with it off the
+    /// grid renders its exact previous seven-column markup.
+    /// <para>
+    /// The 42-cell model is untouched; only rendering and keyboard navigation
+    /// skip the hidden columns. That matters because arrow navigation moves by
+    /// raw cell index (+/-1, +/-7) — walking that index across a hidden column
+    /// would put focus on a cell that is not in the DOM, so navigation runs over
+    /// the VISIBLE cells instead (see <c>VisibleCellIndices</c>).
+    /// </para>
+    /// </summary>
+    [Parameter] public bool HideWeekends { get; set; }
+
     /// <summary>Max visible pill lanes per day before "+N more". Default <see cref="SchedulerMonthLayout.DefaultMaxVisibleLanes"/>.</summary>
     [Parameter] public int MaxVisibleLanes { get; set; } = SchedulerMonthLayout.DefaultMaxVisibleLanes;
 
@@ -250,7 +267,39 @@
     // build only emits utilities it can SEE in source, so a computed
     // $"grid-cols-{n}" would produce a class with no rule behind it — the
     // "class in the DOM without a rule" trap this repo has hit before.
-    private string GridColsClass => ShowWeekNumbers ? "grid grid-cols-[2.5rem_repeat(7,minmax(0,1fr))]" : "grid grid-cols-7";
+    /// <summary>Whether <paramref name="date"/>'s column is hidden by <see cref="HideWeekends"/>.</summary>
+    private bool IsHiddenColumn(DateTime date) =>
+        HideWeekends && date.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday;
+
+    /// <summary>
+    /// The 0-41 indices actually rendered, in reading order. Arrow navigation
+    /// walks POSITIONS in this list rather than raw indices, so a hidden column
+    /// is stepped over instead of focused.
+    /// </summary>
+    private List<int> VisibleCellIndices
+    {
+        get
+        {
+            var list = new List<int>(42);
+            for (var i = 0; i < 42; i++)
+                if (!IsHiddenColumn(_cells[i].Date)) list.Add(i);
+            return list;
+        }
+    }
+
+    /// <summary>Rendered day columns per row — 5 when weekends are hidden.</summary>
+    private int VisibleColumns => HideWeekends ? 5 : 7;
+
+    // Every combination written out literally: Tailwind v4 only emits utilities
+    // it can see in source, so an interpolated class would land in the DOM with
+    // no rule behind it — a trap this repo has already been bitten by.
+    private string GridColsClass => (ShowWeekNumbers, HideWeekends) switch
+    {
+        (true, true) => "grid grid-cols-[2.5rem_repeat(5,minmax(0,1fr))]",
+        (true, false) => "grid grid-cols-[2.5rem_repeat(7,minmax(0,1fr))]",
+        (false, true) => "grid grid-cols-5",
+        (false, false) => "grid grid-cols-7",
+    };
 
     /// <summary>
     /// The ISO-8601 week number for display row <paramref name="row"/>, read off
@@ -496,15 +545,28 @@
     private async Task OnGridKeyDownAsync(KeyboardEventArgs e, int cellIndex)
     {
         _focusedIndex = cellIndex;
-        int next;
+
+        // Navigation walks POSITIONS in the visible list, not raw 0-41 indices
+        // (HideWeekends): stepping the raw index would move focus onto a cell
+        // that is not rendered. With weekends shown the visible list is the
+        // identity 0..41 and the arithmetic below is exactly what it was —
+        // +/-1 for a day, +/-VisibleColumns for a week, and Home/End snapping to
+        // the row's own first/last VISIBLE column.
+        var visible = VisibleCellIndices;
+        var pos = visible.IndexOf(cellIndex);
+        if (pos < 0) return; // focused cell is hidden — nothing to move from
+
+        var cols = VisibleColumns;
+        var rowStart = pos - (pos % cols);
+        int nextPos;
         switch (e.Key)
         {
-            case "ArrowRight": next = Math.Min(41, cellIndex + 1); break;
-            case "ArrowLeft": next = Math.Max(0, cellIndex - 1); break;
-            case "ArrowDown": next = Math.Min(41, cellIndex + 7); break;
-            case "ArrowUp": next = Math.Max(0, cellIndex - 7); break;
-            case "Home": next = cellIndex - (cellIndex % 7); break;
-            case "End": next = cellIndex - (cellIndex % 7) + 6; break;
+            case "ArrowRight": nextPos = Math.Min(visible.Count - 1, pos + 1); break;
+            case "ArrowLeft": nextPos = Math.Max(0, pos - 1); break;
+            case "ArrowDown": nextPos = Math.Min(visible.Count - 1, pos + cols); break;
+            case "ArrowUp": nextPos = Math.Max(0, pos - cols); break;
+            case "Home": nextPos = rowStart; break;
+            case "End": nextPos = Math.Min(visible.Count - 1, rowStart + cols - 1); break;
             case "PageUp":
                 if (OnRequestPrev.HasDelegate) await OnRequestPrev.InvokeAsync();
                 return;
@@ -519,6 +581,7 @@
                 return;
         }
 
+        var next = visible[nextPos];
         if (next != cellIndex)
         {
             _focusedIndex = next;
