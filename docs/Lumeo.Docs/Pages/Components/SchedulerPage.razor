@@ -102,12 +102,17 @@
     </Lumeo.Text>
     <Alert Variant="Alert.AlertVariant.Warning" ShowIcon="true">
         <ChildContent>
-            <strong>Preview — not the default yet.</strong> <Lumeo.Code>SchedulerMonthView</Lumeo.Code>,
-            <Lumeo.Code>SchedulerTimeGridView</Lumeo.Code>, and <Lumeo.Code>SchedulerAgendaView</Lumeo.Code> are
-            separate, independently-usable components, not drop-in replacements for <Lumeo.Code>Scheduler</Lumeo.Code>
-            — there is no shared <Lumeo.Code>Scheduler</Lumeo.Code> switch to opt into this engine yet. See the
-            comparison table above for the current gap list (no resource lanes, no time zones, no N-day view,
-            English-only i18n).
+            <strong>Opt-in — not the default.</strong> These views are usable on their own, and
+            <Lumeo.Code>Scheduler</Lumeo.Code> can now render them via
+            <Lumeo.Code>Engine="SchedulerEngine.FirstParty"</Lumeo.Code>. The default stays
+            <Lumeo.Code>SchedulerEngine.FullCalendar</Lumeo.Code>, so nothing changes unless you ask for it.
+            <br /><br />
+            Only this engine honours <Lumeo.Code>SchedulerEvent.Recurrence</Lumeo.Code>, and it is the only
+            source of <Lumeo.Code>ShowWeekNumbers</Lumeo.Code>, <Lumeo.Code>HideWeekends</Lumeo.Code>,
+            live-region announcements for drag outcomes, and the resource view
+            (<Lumeo.Code>SchedulerView.Resource</Lumeo.Code>, one column per entry in
+            <Lumeo.Code>Resources</Lumeo.Code>). Not carried across:
+            <Lumeo.Code>SlotDuration</Lumeo.Code> and the JS-side imperative navigation.
         </ChildContent>
     </Alert>
 </div>
@@ -209,6 +214,51 @@
         </Stack>
     </ComponentDemo>
 </Stack>
+
+<div class="mt-16 space-y-3">
+    <Heading Id="first-party-via-scheduler" Level="3" Class="scroll-mt-20">Driving them from <Lumeo.Code>Scheduler</Lumeo.Code></Heading>
+    <Lumeo.Text Size="sm" Color="muted">
+        The views above are standalone components. Setting <Lumeo.Code>Engine</Lumeo.Code> puts the same
+        renderers behind <Lumeo.Code>Scheduler</Lumeo.Code>'s own toolbar, so the surrounding API —
+        <Lumeo.Code>InitialView</Lumeo.Code>, <Lumeo.Code>Height</Lumeo.Code>,
+        <Lumeo.Code>@@bind-Events</Lumeo.Code>, <Lumeo.Code>OnDateSelect</Lumeo.Code>,
+        <Lumeo.Code>OnEventChange</Lumeo.Code>, prev/next/today — stays exactly as it is on the default engine.
+        No FullCalendar CDN fetch happens on this path.
+    </Lumeo.Text>
+</div>
+
+<Stack Gap="8" Class="mt-6">
+    <ComponentDemo Title="Scheduler with Engine=&quot;FirstParty&quot;" Code="@_fpWrapperCode">
+        <Stack Gap="3">
+            <Lumeo.Text Size="sm" Color="muted">
+                Switch views with the toolbar and page with prev/next — the toolbar is
+                <Lumeo.Code>Scheduler</Lumeo.Code>'s, the grid underneath is first-party. Week numbers and
+                hidden weekends are engine features, so they only appear here.
+            </Lumeo.Text>
+            <Scheduler Events="_fpWrapperEvents"
+                       Engine="SchedulerEngine.FirstParty"
+                       InitialView="SchedulerView.Month"
+                       ShowWeekNumbers="true"
+                       Height="640px" />
+        </Stack>
+    </ComponentDemo>
+
+    <ComponentDemo Title="Resource view (engine-only)" Code="@_fpResourceCode">
+        <Stack Gap="3">
+            <Lumeo.Text Size="sm" Color="muted">
+                <Lumeo.Code>SchedulerView.Resource</Lumeo.Code> lays out one column per entry in
+                <Lumeo.Code>Resources</Lumeo.Code> — genuinely separate lanes, not just color-coding. The
+                default engine has no equivalent and falls back to the day view.
+            </Lumeo.Text>
+            <Scheduler Events="_resourceEvents"
+                       Resources="_demoResources"
+                       Engine="SchedulerEngine.FirstParty"
+                       InitialView="SchedulerView.Resource"
+                       Height="560px" />
+        </Stack>
+    </ComponentDemo>
+</Stack>
+
 
 <div class="mt-16 space-y-3">
     <Heading Id="fullcalendar-engine" Level="2" Class="scroll-mt-20">Scheduler (FullCalendar-backed, default)</Heading>
@@ -516,6 +566,23 @@
     }
 
     private List<SchedulerEvent> _fpMonthEvents = BuildFirstPartyEvents();
+
+    // Its own copy: the month demo above mutates _fpMonthEvents through its
+    // drag/create handlers, and a shared list would make one demo's edits
+    // appear in the other.
+    private List<SchedulerEvent> _fpWrapperEvents = BuildFirstPartyEvents();
+
+    private string _fpWrapperCode = @"<Scheduler Events=""_events""
+           Engine=""SchedulerEngine.FirstParty""
+           InitialView=""SchedulerView.Month""
+           ShowWeekNumbers=""true""
+           Height=""640px"" />";
+
+    private string _fpResourceCode = @"<Scheduler Events=""_events""
+           Resources=""_resources""
+           Engine=""SchedulerEngine.FirstParty""
+           InitialView=""SchedulerView.Resource""
+           Height=""560px"" />";
     private List<SchedulerEvent> _fpWeekEvents = BuildFirstPartyEvents();
     private List<SchedulerEvent> _fpAgendaEvents = BuildFirstPartyEvents();
     private string? _fpMonthLog;

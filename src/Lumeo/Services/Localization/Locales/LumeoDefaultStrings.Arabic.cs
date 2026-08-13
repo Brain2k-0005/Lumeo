@@ -267,6 +267,7 @@ internal static partial class LumeoDefaultStrings
         ["Scheduler.WeekNumberAbbrev"] = "أسبوع",
         ["Scheduler.WeekNumberLabel"] = "الأسبوع {0}",
         ["Scheduler.ResourceGridLabel"] = "الموارد في {0}",
+        ["Scheduler.Resources"] = "الموارد",
         ["Scheduler.Announce.EventMoved"] = "تم نقل {0} إلى {1}",
         ["Scheduler.Announce.EventRescheduled"] = "{0} الآن من {1} إلى {2}",
         ["Scheduler.Announce.MoveRejected"] = "تعذر نقل {0}",

@@ -795,8 +795,20 @@ public class TrackingInteropService : IComponentInteropService
     public ValueTask AiDisposeAutoScroll(string elementId) => ValueTask.CompletedTask;
     public ValueTask AiScrollToBottom(string elementId) => ValueTask.CompletedTask;
 
-    public Task<string> SchedulerInitAsync(ElementReference el, object dotNetRef, object options) => Task.FromResult(string.Empty);
-    public Task SchedulerSetEventsAsync(string id, IEnumerable<object> events) => Task.CompletedTask;
+    /// <summary>How many times a Scheduler asked for a JS instance — 0 proves the first-party engine loads no calendar library.</summary>
+    public int SchedulerInitCallCount { get; private set; }
+    public Task<string> SchedulerInitAsync(ElementReference el, object dotNetRef, object options)
+    {
+        SchedulerInitCallCount++;
+        return Task.FromResult(string.Empty);
+    }
+    /// <summary>Ids passed to SchedulerSetEventsAsync — the first-party engine must never reach this at all.</summary>
+    public List<string> SchedulerSetEventsIds { get; } = new();
+    public Task SchedulerSetEventsAsync(string id, IEnumerable<object> events)
+    {
+        SchedulerSetEventsIds.Add(id);
+        return Task.CompletedTask;
+    }
     public Task SchedulerChangeViewAsync(string id, string view) => Task.CompletedTask;
     public Task SchedulerGotoDateAsync(string id, string dateIso) => Task.CompletedTask;
     public Task SchedulerPrevAsync(string id) => Task.CompletedTask;

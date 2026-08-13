@@ -265,6 +265,7 @@ internal static partial class LumeoDefaultStrings
         ["Scheduler.WeekNumberAbbrev"] = "Нед",
         ["Scheduler.WeekNumberLabel"] = "Неделя {0}",
         ["Scheduler.ResourceGridLabel"] = "Ресурсы на {0}",
+        ["Scheduler.Resources"] = "Ресурсы",
         ["Scheduler.Announce.EventMoved"] = "{0} перенесено на {1}",
         ["Scheduler.Announce.EventRescheduled"] = "{0} теперь с {1} до {2}",
         ["Scheduler.Announce.MoveRejected"] = "Не удалось перенести {0}",
