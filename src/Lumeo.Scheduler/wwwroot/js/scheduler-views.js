@@ -459,6 +459,14 @@ function registerTimeGridDrag(hostEl, dotNetRef, options) {
                 cleanup();
                 if (!dragInitiated) return;
                 if (!state) return;
+                // A release outside every [data-daycol] leaves no day to commit
+                // to (Codex review of the live-region PR, P2). With no CanDrop
+                // configured the validation branch below is skipped entirely, so
+                // CommitDrag simply returns and the gesture ends in silence.
+                if (!state.dayIso) {
+                    dragDotNet.invokeMethodAsync('NotifyDropRejected', instanceKey, state.mode).catch(() => {});
+                    return;
+                }
 
                 if (dragOptions.hasCanDrop) {
                     let promise = validationCache.get(state.key);

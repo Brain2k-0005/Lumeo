@@ -133,6 +133,25 @@ public class SchedulerLiveAnnouncementTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task An_Adjustment_That_Changes_Nothing_Is_Not_Announced_As_A_Move()
+    {
+        // Codex review of this PR, P2: CanDrop can accept WITH an adjustment that
+        // snaps the event back to exactly where it started. The earlier no-op
+        // check ran against the PROPOSED values, so this path announced a move
+        // for an event whose committed state is unchanged.
+        var cut = _ctx.Render<L.SchedulerMonthView>(p => p
+            .Add(c => c.AnchorDate, new DateTime(2026, 3, 15))
+            .Add(c => c.Events, new[] { Standup })
+            .Add(c => c.OnEventChange, (L.SchedulerEvent _) => { })
+            .Add(c => c.CanDrop, (L.SchedulerEvent _, L.SchedulerScheduleDropContext _)
+                => L.SchedulerDropResult.AcceptWith(new L.SchedulerDropAdjustment(Standup.Start, Standup.End))));
+
+        await cut.InvokeAsync(() => cut.Instance.CommitDrag("e1", "2026-03-12"));
+
+        Assert.Equal(string.Empty, cut.Find("[data-testid='scheduler-live-region']").TextContent.Trim());
+    }
+
+    [Fact]
     public async Task A_Move_Is_Not_Announced_When_There_Is_No_OnEventChange_Handler()
     {
         // Without a handler the drag is ghost-only: the chip snaps back and

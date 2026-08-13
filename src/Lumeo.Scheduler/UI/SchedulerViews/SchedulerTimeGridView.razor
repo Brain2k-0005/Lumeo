@@ -671,6 +671,11 @@
         // Gated on OnEventChange (Codex review of this PR, P2): with no handler
         // the gesture is ghost-only and the real block snaps back, so announcing
         // a reschedule would describe something that did not persist.
+        // A CanDrop adjustment can snap the event back to exactly where it
+        // started; the earlier no-op check ran against the PROPOSED values,
+        // not these (Codex review of this PR, P2). Announcing a move for an
+        // unchanged event states something that did not happen.
+        if (updated.Start == src.Start && updated.End == src.End && updated.AllDay == src.AllDay) return;
         if (!OnEventChange.HasDelegate) return;
         Announce(L["Scheduler.Announce.EventRescheduled",
             src.Title, FormatAnnounceMoment(updated.Start), FormatAnnounceMoment(updated.End)]);

@@ -711,6 +711,11 @@
         // the drag is ghost-only — the real chip snaps back and Events is
         // untouched — so announcing a move would describe something the user
         // can neither see nor keep.
+        // A CanDrop adjustment can snap the event back to exactly where it
+        // started; the earlier no-op check ran against the PROPOSED values,
+        // not these (Codex review of this PR, P2). Announcing a move for an
+        // unchanged event states something that did not happen.
+        if (updated.Start == ev.Start && updated.End == ev.End && updated.AllDay == ev.AllDay) return;
         if (!OnEventChange.HasDelegate) return;
         Announce(L["Scheduler.Announce.EventMoved", ev.Title, FormatAnnounceDate(updated.Start)]);
         await OnEventChange.InvokeAsync(updated);
