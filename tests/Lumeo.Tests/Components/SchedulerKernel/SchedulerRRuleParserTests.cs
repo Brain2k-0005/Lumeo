@@ -120,7 +120,10 @@ public class SchedulerRRuleParserTests
     [InlineData("FREQ=MONTHLY;BYDAY=6MO")]         // no month has a sixth Monday — would yield an empty series
     [InlineData("FREQ=MONTHLY;BYDAY=-6MO")]
     [InlineData("FREQ=MONTHLY;BYDAY=-2147483648MO")] // Math.Abs(int.MinValue) would THROW from a TryParse
-    [InlineData("FREQ=MONTHLY;BYDAY=1MO,-5MO")]    // same date in any five-Monday month
+    [InlineData("FREQ=MONTHLY;BYDAY=1MO,-5MO")]    // 1+5=6 — same date in any five-Monday month
+    [InlineData("FREQ=MONTHLY;BYDAY=1MO,-4MO")]    // 1+4=5 — same date in any four-Monday month
+    [InlineData("FREQ=DAILY;INTERVAL=2147483647")] // would overflow the expander's AddDays
+    [InlineData("FREQ=DAILY;COUNT=501")]           // above the expander's own occurrence cap
     [InlineData("FREQ=WEEKLY;BYDAY=MO,")]          // trailing empty term
     [InlineData("FREQ=WEEKLY;BYDAY=,MO")]          // leading empty term
     [InlineData("FREQ=WEEKLY;BYDAY=MO,,WE")]       // empty middle term
@@ -144,6 +147,39 @@ public class SchedulerRRuleParserTests
         Assert.False(SchedulerRRuleParser.TryParse(rrule, out var rule));
         Assert.Null(rule);
         Assert.Throws<FormatException>(() => SchedulerRRuleParser.Parse(rrule));
+    }
+
+    [Fact]
+    public void Mixed_Sign_Ordinals_Are_Allowed_When_They_Cannot_Collide()
+    {
+        // Correction to an over-broad rule of mine (Codex review of this PR, P2):
+        // a weekday occurs 4 or 5 times a month, so a positive n and a negative
+        // -j coincide exactly when n + j is 5 or 6. "first and last Monday" sums
+        // to 2 and can never collide, and the expander emits both correctly — so
+        // rejecting it refused a faithful rule.
+        var rule = SchedulerRRuleParser.Parse("FREQ=MONTHLY;BYDAY=1MO,-1MO");
+
+        Assert.Collection(rule.ByDay!,
+            d => Assert.Equal(1, d.Ordinal),
+            d => Assert.Equal(-1, d.Ordinal));
+    }
+
+    [Fact]
+    public void A_First_And_Last_Weekday_Rule_Expands_To_Two_Distinct_Dates_Per_Month()
+    {
+        // The behavioural half: proof the rule the parser now accepts really is
+        // honoured, rather than just structurally representable.
+        var start = new DateTime(2026, 3, 2, 9, 0, 0); // first Monday of March 2026
+        var rule = SchedulerRRuleParser.Parse("FREQ=MONTHLY;BYDAY=1MO,-1MO;COUNT=4");
+        var ev = new SchedulerEvent("ev", "Sync", start, start.AddHours(1)) { Recurrence = rule };
+
+        var instances = SchedulerRecurrenceExpander.Expand(ev, start, start.AddMonths(3));
+
+        Assert.Collection(instances,
+            i => Assert.Equal(new DateTime(2026, 3, 2), i.Start.Date),   // first Monday
+            i => Assert.Equal(new DateTime(2026, 3, 30), i.Start.Date),  // last Monday
+            i => Assert.Equal(new DateTime(2026, 4, 6), i.Start.Date),
+            i => Assert.Equal(new DateTime(2026, 4, 27), i.Start.Date));
     }
 
     // ── The point of the whole thing: the expander accepts what we produce ───

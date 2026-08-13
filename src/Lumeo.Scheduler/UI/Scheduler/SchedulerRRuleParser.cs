@@ -33,6 +33,12 @@ namespace Lumeo;
 public static class SchedulerRRuleParser
 {
     /// <summary>
+    /// Largest accepted <c>INTERVAL</c> — see the INTERVAL branch for why a
+    /// bound is needed at all.
+    /// </summary>
+    private const int MaxInterval = 10_000;
+
+    /// <summary>
     /// Attempts to parse <paramref name="rrule"/>. Returns <c>false</c> (with
     /// <paramref name="rule"/> set to <c>null</c>) for anything malformed or outside the
     /// supported subset — see the type's own remarks for why unsupported parts are a failure
@@ -98,12 +104,25 @@ public static class SchedulerRRuleParser
                     intervalSeen = true;
                     if (!int.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out interval) || interval < 1)
                         return false; // RFC 5545: INTERVAL is a positive integer
+                    // Upper bound (Codex review of this PR, P2): the expander
+                    // advances with DateTime.AddDays/AddMonths and does so BEFORE
+                    // it can notice COUNT is satisfied, so a huge interval throws
+                    // out of a rule the parser had called valid. 10000 steps is
+                    // far past any real calendar (27 years of daily steps, 833
+                    // years of monthly ones) and cannot overflow.
+                    if (interval > MaxInterval) return false;
                     break;
 
                 case "COUNT":
                     if (count is not null || until is not null) return false; // COUNT and UNTIL are mutually exclusive
                     if (!int.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out var parsedCount) || parsedCount < 1)
                         return false;
+                    // The expander stops after OccurrenceCap generated candidates
+                    // regardless of COUNT (Codex review of this PR, P2), so a
+                    // larger COUNT silently yields fewer occurrences than asked
+                    // for — the same accept-then-quietly-do-something-else
+                    // failure this parser exists to refuse.
+                    if (parsedCount > Lumeo.SchedulerKernel.SchedulerRecurrenceExpander.OccurrenceCap) return false;
                     count = parsedCount;
                     break;
 
@@ -271,15 +290,22 @@ public static class SchedulerRRuleParser
             // COUNT on one date. Rejecting matches how duplicate PARTS are
             // handled — an ambiguous rule is not silently resolved.
             if (parsed.Any(t => t.Day == day.Value && t.Ordinal == ordinal)) return false;
-            // ...and reject SEMANTIC overlap too (Codex review of this PR, P2):
-            // "1MO,-5MO" are distinct terms that resolve to the SAME date in any
-            // month with five Mondays, emitting a duplicate instance and burning
-            // COUNT on one date — the same failure the exact-duplicate check
-            // above prevents, just spelled differently. Any mix of a
-            // counts-from-start and a counts-from-end ordinal for one weekday
-            // can collide depending on month length, so the whole combination is
-            // refused rather than accepted for some months and not others.
-            if (ordinal is { } o && parsed.Any(t => t.Day == day.Value && t.Ordinal is { } prev && Math.Sign(prev) != Math.Sign(o)))
+            // ...and reject SEMANTIC overlap too — but only where it can actually
+            // happen (Codex review of this PR, P2, correcting an earlier
+            // over-broad rule of mine that refused ANY mixed-sign pair).
+            //
+            // A weekday occurs 4 or 5 times in a month. Counting from the end,
+            // "-j" is the (k+1-j)-th from the start for a month with k
+            // occurrences, so a positive n and a negative -j land on the same
+            // date exactly when n + j == k + 1, i.e. when n + j is 5 or 6.
+            // "1MO,-1MO" (first and last Monday) sums to 2 and therefore never
+            // collides — every month has at least four Mondays — so it is a
+            // faithful rule the expander emits correctly, and refusing it was
+            // wrong.
+            if (ordinal is { } o && parsed.Any(t =>
+                    t.Day == day.Value && t.Ordinal is { } prev &&
+                    Math.Sign(prev) != Math.Sign(o) &&
+                    (Math.Abs(prev) + Math.Abs(o)) is 5 or 6))
                 return false;
             parsed.Add(new SchedulerByDayRule(day.Value, ordinal));
         }
