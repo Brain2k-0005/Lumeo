@@ -145,9 +145,8 @@ public enum SchedulerEngine
     /// only path to the week-number, weekend-hiding, live-announcement and resource features.
     /// </para>
     /// <para>
-    /// Not carried over yet: <c>SlotDuration</c>, and the JS-side imperative navigation the
-    /// wrapper exposes. Those are listed on <see cref="Scheduler.Engine"/> so the gap is visible
-    /// before the switch, not after.
+    /// Not carried over yet: the JS-side imperative navigation the wrapper exposes. That is
+    /// listed on <see cref="Scheduler.Engine"/> so the gap is visible before the switch, not after.
     /// </para>
     /// </summary>
     FirstParty,
