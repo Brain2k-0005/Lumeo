@@ -520,12 +520,16 @@ function registerTimeGridDrag(hostEl, dotNetRef, options) {
             const dayIso = dayCol ? dayCol.getAttribute('data-daycol') : null;
             if (!dayIso) return;
 
+            // data-slot-minute is the precise row start; data-slot-hour is kept as the
+            // fallback because it is the older contract (E2E selectors and the pointerdown
+            // hit-test below still match on it) and stays correct for a whole-hour grid.
+            const minuteAttr = cellEl.getAttribute('data-slot-minute');
             const startHour = parseInt(cellEl.getAttribute('data-slot-hour'), 10);
             const pointerId = e.pointerId;
             const startClientY = e.clientY;
             const pxPerMinute = dragOptions.pixelsPerMinute || 0.8;
             const snap = dragOptions.snapMinutes || 15;
-            const startMinute = startHour * 60;
+            const startMinute = minuteAttr !== null ? parseInt(minuteAttr, 10) : startHour * 60;
             let ghost = null;
             let dragInitiated = false;
             let endMinute = startMinute + snap;

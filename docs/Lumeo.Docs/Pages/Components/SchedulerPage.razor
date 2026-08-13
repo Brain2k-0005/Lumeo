@@ -111,8 +111,9 @@
             source of <Lumeo.Code>ShowWeekNumbers</Lumeo.Code>, <Lumeo.Code>HideWeekends</Lumeo.Code>,
             live-region announcements for drag outcomes, and the resource view
             (<Lumeo.Code>SchedulerView.Resource</Lumeo.Code>, one column per entry in
-            <Lumeo.Code>Resources</Lumeo.Code>). Not carried across:
-            <Lumeo.Code>SlotDuration</Lumeo.Code> and the JS-side imperative navigation.
+            <Lumeo.Code>Resources</Lumeo.Code>). It also honours <Lumeo.Code>SlotDuration</Lumeo.Code>,
+            with its own <Lumeo.Code>SnapDuration</Lumeo.Code> when drags should be finer than the
+            grid. Not carried across: the JS-side imperative navigation.
         </ChildContent>
     </Alert>
 </div>
@@ -240,6 +241,23 @@
                        InitialView="SchedulerView.Month"
                        ShowWeekNumbers="true"
                        Height="640px" />
+        </Stack>
+    </ComponentDemo>
+
+    <ComponentDemo Title="Grid interval (SlotDuration)" Code="@_fpSlotCode">
+        <Stack Gap="3">
+            <Lumeo.Text Size="sm" Color="muted">
+                A 15-minute grid. The gutter still prints one label per hour and hour boundaries
+                keep the stronger rule, so the day still reads as hours rather than 96 stripes.
+                Drags snap to the grid unless <Lumeo.Code>SnapDuration</Lumeo.Code> says otherwise.
+                Values that do not divide an hour are rounded up to one that does — rows have to
+                tile an hour exactly or the labels drift away from the lines they name.
+            </Lumeo.Text>
+            <Scheduler Events="_fpSlotEvents"
+                       Engine="SchedulerEngine.FirstParty"
+                       InitialView="SchedulerView.Day"
+                       SlotDuration="TimeSpan.FromMinutes(15)"
+                       Height="560px" />
         </Stack>
     </ComponentDemo>
 
@@ -571,6 +589,14 @@
     // drag/create handlers, and a shared list would make one demo's edits
     // appear in the other.
     private List<SchedulerEvent> _fpWrapperEvents = BuildFirstPartyEvents();
+
+    private List<SchedulerEvent> _fpSlotEvents = BuildFirstPartyEvents();
+
+    private string _fpSlotCode = @"<Scheduler Events=""_events""
+           Engine=""SchedulerEngine.FirstParty""
+           InitialView=""SchedulerView.Day""
+           SlotDuration=""TimeSpan.FromMinutes(15)""
+           Height=""560px"" />";
 
     private string _fpWrapperCode = @"<Scheduler Events=""_events""
            Engine=""SchedulerEngine.FirstParty""

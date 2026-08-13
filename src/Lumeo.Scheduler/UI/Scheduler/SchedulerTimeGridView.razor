@@ -66,7 +66,7 @@
 
     <div class="flex" style="max-height: 34rem; overflow-y: auto;" @ref="_scrollRef">
         <div class="flex-none w-14">
-            @foreach (var hour in _hours)
+            @foreach (var hour in _hourLabels)
             {
                 <div class="h-12 relative">
                     <span class="absolute -top-1.5 right-1.5 text-[11px] text-muted-foreground">@FormatHour(hour)</span>
@@ -79,27 +79,30 @@
                 var dayIndex = d;
                 var day = _dayColumns[dayIndex];
                 <div class="relative border-l border-border/40" role="row" data-daycol="@day.ToString("yyyy-MM-dd")" @ref="_dayColumnRefs[dayIndex]">
-                    @for (var h = 0; h < _hours.Length; h++)
+                    @for (var h = 0; h < _slotStarts.Length; h++)
                     {
-                        var hourIndex = h;
-                        var cellLinear = hourIndex * Days + dayIndex;
+                        var slotIndex = h;
+                        var slotStart = _slotStarts[slotIndex];
+                        var cellLinear = slotIndex * Days + dayIndex;
                         var isFocused = cellLinear == _focusedIndex;
                         <div role="gridcell"
                              @ref="_cellRefs[cellLinear]"
                              tabindex="@(isFocused ? "0" : "-1")"
-                             data-slot-hour="@_hours[hourIndex]"
-                             data-off="@(IsOffSlot(day, _hours[hourIndex]) ? "true" : null)"
-                             aria-label="@SlotAriaLabel(day, _hours[hourIndex])"
-                             class="h-12 border-b border-border/30 cursor-crosshair focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring focus-visible:-outline-offset-2"
-                             @onclick="() => OnSlotClickAsync(day, _hours[hourIndex])"
-                             @ondblclick="() => OnSlotDoubleClickAsync(day, _hours[hourIndex])"
-                             @onkeydown="e => OnGridKeyDownAsync(e, dayIndex, hourIndex)">
+                             data-slot-hour="@(slotStart / 60)"
+                             data-slot-minute="@slotStart"
+                             data-off="@(IsOffSlot(day, slotStart) ? "true" : null)"
+                             aria-label="@SlotAriaLabel(day, slotStart)"
+                             style="@SlotCellStyle()"
+                             class="@SlotCellClasses(slotStart)"
+                             @onclick="() => OnSlotClickAsync(day, slotIndex)"
+                             @ondblclick="() => OnSlotDoubleClickAsync(day, slotStart)"
+                             @onkeydown="e => OnGridKeyDownAsync(e, dayIndex, slotIndex)">
                         </div>
                     }
                     @foreach (var block in _timedByDay[dayIndex])
                     {
                         var key = InstanceKey(block.Instance);
-                        var blockHourIndex = HourIndexOf(block.Instance.Start);
+                        var blockHourIndex = SlotIndexOf(block.Instance.Start);
                         <Tooltip ShowDelay="400" Class="static">
                             <TooltipTrigger AsChild="true">
                                 <ChildContentSlot Context="pillSlot">
@@ -147,6 +150,25 @@
 
     /// <summary>Latest visible slot. Default 24:00.</summary>
     [Parameter] public TimeOnly? SlotMaxTime { get; set; }
+
+    /// <summary>
+    /// How long one grid row represents. Default (<c>null</c>) is one hour, which is the
+    /// grid this view has always drawn.
+    /// <para>
+    /// Rows have to tile an hour exactly or the labels in the gutter drift away from the
+    /// lines they name, so a value that does not divide 60 is rounded UP to the next one
+    /// that does (25 minutes becomes 30). Values are clamped to 1..60 minutes.
+    /// </para>
+    /// </summary>
+    [Parameter] public TimeSpan? SlotDuration { get; set; }
+
+    /// <summary>
+    /// How far a drag, resize or drag-create snaps. Defaults to <see cref="SlotDuration"/>
+    /// when that is set — dragging onto a line the grid does not draw is the kind of
+    /// mismatch users read as a bug — and to 15 minutes otherwise, which is what this view
+    /// snapped to before the grid was configurable.
+    /// </summary>
+    [Parameter] public TimeSpan? SnapDuration { get; set; }
 
     [Parameter] public EventCallback<SchedulerEvent> OnEventClick { get; set; }
     [Parameter] public EventCallback<SchedulerDateRange> OnDateSelect { get; set; }
@@ -198,7 +220,11 @@
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     private DateTime[] _dayColumns = Array.Empty<DateTime>();
-    private int[] _hours = Array.Empty<int>();
+    /// <summary>Start of each grid row, in minutes from midnight.</summary>
+    private int[] _slotStarts = Array.Empty<int>();
+    /// <summary>Whole hours covered by the grid — the gutter labels, one per hour regardless of row size.</summary>
+    private int[] _hourLabels = Array.Empty<int>();
+    private int _slotMinutes = 60;
     private int _minMinute;
     private int _maxMinute = 1440;
     private List<TimedBlock>[] _timedByDay = Array.Empty<List<TimedBlock>>();
@@ -227,9 +253,19 @@
         _maxMinute = (int)(SlotMaxTime?.ToTimeSpan().TotalMinutes ?? 1440);
         if (_maxMinute <= _minMinute) _maxMinute = _minMinute + 60;
 
+        _slotMinutes = NormalizeSlotMinutes(SlotDuration);
+
         var hourStart = _minMinute / 60;
         var hourEnd = (int)Math.Ceiling(_maxMinute / 60.0);
-        _hours = Enumerable.Range(hourStart, Math.Max(1, hourEnd - hourStart)).ToArray();
+        _hourLabels = Enumerable.Range(hourStart, Math.Max(1, hourEnd - hourStart)).ToArray();
+
+        // Rows span whole hours even when SlotMinTime/SlotMaxTime fall mid-hour, exactly as
+        // the hour grid did — the gutter is still one label per hour, so the body has to
+        // start and end on the same boundaries or the two columns shear apart.
+        var firstMinute = hourStart * 60;
+        var lastMinute = Math.Max(firstMinute + _slotMinutes, hourEnd * 60);
+        var slotCount = (lastMinute - firstMinute) / _slotMinutes;
+        _slotStarts = Enumerable.Range(0, slotCount).Select(i => firstMinute + i * _slotMinutes).ToArray();
 
         var days = Math.Max(1, Days);
         if (days == 7)
@@ -242,7 +278,7 @@
             _dayColumns = Enumerable.Range(0, days).Select(i => AnchorDate.Date.AddDays(i)).ToArray();
         }
 
-        _cellRefs = new ElementReference[_hours.Length * _dayColumns.Length];
+        _cellRefs = new ElementReference[_slotStarts.Length * _dayColumns.Length];
         _dayColumnRefs = new ElementReference[_dayColumns.Length];
         if (_focusedIndex < 0 || _focusedIndex >= _cellRefs.Length) _focusedIndex = 0;
 
@@ -257,7 +293,10 @@
 
     private async Task SyncDragRegistrationAsync()
     {
-        var hash = HashCode.Combine(Editable, Selectable, CanDrop is not null);
+        // Snap belongs in the hash: it is pushed to JS in the drag options, so a caller
+        // changing SlotDuration/SnapDuration after first render has to re-register or the
+        // grid would draw one interval while dragging at another.
+        var hash = HashCode.Combine(Editable, Selectable, CanDrop is not null, EffectiveSnapMinutes());
         if (_dragRegistered && hash == _lastDragOptionsHash) return;
         _lastDragOptionsHash = hash;
         _selfRef ??= DotNetObjectReference.Create(this);
@@ -279,7 +318,7 @@
             ["allowResize"] = true,
             ["hasCanDrop"] = CanDrop is not null,
             ["pixelsPerMinute"] = pxPerMinute,
-            ["snapMinutes"] = 15,
+            ["snapMinutes"] = EffectiveSnapMinutes(),
             ["slotMinMinute"] = _minMinute,
         };
     }
@@ -407,13 +446,13 @@
         _allDayLaneSlots = perDay;
     }
 
-    /// <summary>Whether <paramref name="day"/>/<paramref name="hour"/> falls outside <see cref="BusinessHoursStart"/>/<see cref="BusinessHoursEnd"/>/<see cref="BusinessDays"/> when <see cref="BusinessHours"/> is enabled.</summary>
-    private bool IsOffSlot(DateTime day, int hour)
+    /// <summary>Whether the row starting <paramref name="startMinute"/> minutes into <paramref name="day"/> falls outside <see cref="BusinessHoursStart"/>/<see cref="BusinessHoursEnd"/>/<see cref="BusinessDays"/> when <see cref="BusinessHours"/> is enabled.</summary>
+    private bool IsOffSlot(DateTime day, int startMinute)
     {
         if (!BusinessHours) return false;
         var businessDays = BusinessDays ?? DefaultBusinessDays;
         if (!businessDays.Contains(day.DayOfWeek)) return true;
-        var slotStart = new TimeOnly(hour % 24, 0);
+        var slotStart = MinuteToTimeOnly(startMinute);
         return slotStart < BusinessHoursStart || slotStart >= BusinessHoursEnd;
     }
 
@@ -448,10 +487,69 @@
 
     private static string FormatHour(int hour) => $"{hour % 24:D2}:00";
 
+    private static TimeOnly MinuteToTimeOnly(int minute) => new((minute / 60) % 24, minute % 60);
+
+    private static string FormatMinute(int minute) => $"{(minute / 60) % 24:D2}:{minute % 60:D2}";
+
+    /// <summary>
+    /// Row height in pixels. The 0.8px-per-minute scale is the same constant the drag and
+    /// now-indicator maths use (48px per hour); deriving the height from it rather than a
+    /// fixed class is what keeps a sub-hour grid aligned with the chips drawn on top of it.
+    /// </summary>
+    private string SlotCellStyle() =>
+        string.Create(CultureInfo.InvariantCulture, $"height:{_slotMinutes * PxPerMinute:0.###}px;");
+
+    /// <summary>
+    /// Hour boundaries keep the full rule; lines inside an hour are drawn fainter, so a
+    /// 15-minute grid still reads as hours at a glance instead of 96 identical stripes.
+    /// </summary>
+    private string SlotCellClasses(int startMinute)
+    {
+        // border/20, not a finer step: the opacity utilities are generated per literal, and
+        // border-border/15 is not one the bundle carries — an ungenerated class silently
+        // leaves border-b on its default colour, which drew the sub-hour lines DARKER than
+        // the hour rules instead of fainter. Caught in the browser; the class name alone
+        // looked right in the DOM.
+        var border = startMinute % 60 == 0 ? "border-border/30" : "border-border/20";
+        return $"border-b {border} cursor-crosshair focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring focus-visible:-outline-offset-2";
+    }
+
+    /// <summary>
+    /// Rounds UP to the next whole-minute divisor of 60 (see <see cref="SlotDuration"/>), so
+    /// every configured grid tiles an hour exactly.
+    /// </summary>
+    private static int NormalizeSlotMinutes(TimeSpan? requested)
+    {
+        if (requested is not { } span) return 60;
+        var minutes = (int)Math.Round(span.TotalMinutes);
+        if (minutes <= 1) return 1;
+        if (minutes >= 60) return 60;
+        foreach (var divisor in SupportedSlotMinutes)
+        {
+            if (divisor >= minutes) return divisor;
+        }
+        return 60;
+    }
+
+    private static readonly int[] SupportedSlotMinutes = { 1, 2, 3, 4, 5, 6, 10, 12, 15, 20, 30, 60 };
+
+    private const double PxPerMinute = 48.0 / 60.0;
+
+    /// <summary>Drag/resize/create granularity — see <see cref="SnapDuration"/> for why it follows the grid.</summary>
+    private int EffectiveSnapMinutes()
+    {
+        if (SnapDuration is { } snap)
+        {
+            var minutes = (int)Math.Round(snap.TotalMinutes);
+            return Math.Clamp(minutes, 1, 60);
+        }
+        return SlotDuration is null ? 15 : _slotMinutes;
+    }
+
     private string GridAriaLabel() => Days == 1 ? L["Scheduler.Day"] : L["Scheduler.Week"];
 
-    private string SlotAriaLabel(DateTime day, int hour) =>
-        $"{day.ToString("D", CultureInfo.CurrentUICulture)}, {FormatHour(hour)}";
+    private string SlotAriaLabel(DateTime day, int startMinute) =>
+        $"{day.ToString("D", CultureInfo.CurrentUICulture)}, {FormatMinute(startMinute)}";
 
     private static string PillAriaLabel(SchedulerEvent ev, SchedulerEventInstance inst) =>
         $"{ev.Title}, {inst.Start:t}–{inst.End:t}";
@@ -497,16 +595,24 @@
         if (OnEventClick.HasDelegate) await OnEventClick.InvokeAsync(ev);
     }
 
-    private void OnSlotClickAsync(DateTime day, int hour)
+    /// <summary>
+    /// Takes the ROW INDEX, not the hour: <see cref="LinearIndex"/> indexes into
+    /// <see cref="_slotStarts"/>, so passing a clock hour put the roving tabindex on the
+    /// wrong cell whenever SlotMinTime moved the grid off midnight.
+    /// </summary>
+    private void OnSlotClickAsync(DateTime day, int slotIndex)
     {
-        _focusedIndex = LinearIndex(Array.IndexOf(_dayColumns, day), hour);
+        _focusedIndex = LinearIndex(Array.IndexOf(_dayColumns, day), slotIndex);
     }
 
-    private async Task OnSlotDoubleClickAsync(DateTime day, int hour)
+    private async Task OnSlotDoubleClickAsync(DateTime day, int startMinute)
     {
         if (!OnDateSelect.HasDelegate) return;
-        var start = day.Date.AddHours(hour);
-        await OnDateSelect.InvokeAsync(new SchedulerDateRange(start, start.AddMinutes(30), false));
+        var start = day.Date.AddMinutes(startMinute);
+        // 30 minutes stays the default so the out-of-the-box behaviour is unchanged; once a
+        // caller has asked for a specific grid, the row they clicked is the obvious range.
+        var length = SlotDuration is null ? 30 : _slotMinutes;
+        await OnDateSelect.InvokeAsync(new SchedulerDateRange(start, start.AddMinutes(length), false));
     }
 
     private async Task OnPillKeyDownAsync(KeyboardEventArgs e, SchedulerEvent ev, int dayIndex, int hourIndex)
@@ -525,11 +631,17 @@
 
     private int LinearIndex(int dayIndex, int hourIndex) => hourIndex * _dayColumns.Length + dayIndex;
 
-    private int HourIndexOf(DateTime instant)
+    /// <summary>The row <paramref name="instant"/> falls in — the LAST row that starts at or before it, since an instant rarely lands exactly on a boundary once rows are shorter than an hour.</summary>
+    private int SlotIndexOf(DateTime instant)
     {
-        var hour = instant.Hour;
-        var idx = Array.IndexOf(_hours, hour);
-        return idx >= 0 ? idx : 0;
+        var minute = (int)instant.TimeOfDay.TotalMinutes;
+        var best = 0;
+        for (var i = 0; i < _slotStarts.Length; i++)
+        {
+            if (_slotStarts[i] > minute) break;
+            best = i;
+        }
+        return best;
     }
 
     /// <summary>Roving-tabindex 2-D grid navigation (spec §5.2's Week/Day column).</summary>
@@ -542,10 +654,10 @@
         {
             case "ArrowRight": nextDay = Math.Min(_dayColumns.Length - 1, dayIndex + 1); break;
             case "ArrowLeft": nextDay = Math.Max(0, dayIndex - 1); break;
-            case "ArrowDown": nextHour = Math.Min(_hours.Length - 1, hourIndex + 1); break;
+            case "ArrowDown": nextHour = Math.Min(_slotStarts.Length - 1, hourIndex + 1); break;
             case "ArrowUp": nextHour = Math.Max(0, hourIndex - 1); break;
             case "Home": nextHour = 0; break;
-            case "End": nextHour = _hours.Length - 1; break;
+            case "End": nextHour = _slotStarts.Length - 1; break;
             case "PageUp":
                 if (OnRequestPrev.HasDelegate) await OnRequestPrev.InvokeAsync();
                 return;
@@ -570,8 +682,14 @@
 
     private async Task ActivateFocusedSlotAsync(int dayIndex, int hourIndex)
     {
+        var slotStart = _slotStarts[hourIndex];
+        var slotEnd = slotStart + _slotMinutes;
         var block = _timedByDay.Length > dayIndex
-            ? _timedByDay[dayIndex].FirstOrDefault(b => (int)b.Instance.Start.TimeOfDay.TotalMinutes / 60 == _hours[hourIndex])
+            ? _timedByDay[dayIndex].FirstOrDefault(b =>
+            {
+                var m = (int)b.Instance.Start.TimeOfDay.TotalMinutes;
+                return m >= slotStart && m < slotEnd;
+            })
             : null;
         if (block is not null)
         {
@@ -584,7 +702,7 @@
         }
         else
         {
-            await OnSlotDoubleClickAsync(_dayColumns[dayIndex], _hours[hourIndex]);
+            await OnSlotDoubleClickAsync(_dayColumns[dayIndex], slotStart);
         }
     }
 
