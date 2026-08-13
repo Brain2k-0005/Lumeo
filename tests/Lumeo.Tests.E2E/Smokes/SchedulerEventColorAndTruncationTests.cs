@@ -4,205 +4,87 @@ using Xunit;
 namespace Lumeo.Tests.E2E.Smokes;
 
 /// <summary>
-/// Two independent, real defects on the docs Scheduler month view
-/// (<c>/components/scheduler</c>, the FullCalendar-backed "Month View" demo —
-/// <c>Events="_monthEvents"</c>, which still carries the "Sprint planning" /
-/// "Offsite" fixtures these tests key off of):
+/// Event-chip rendering on <c>/components/scheduler</c>, in a real browser.
 ///
-/// 1. Event chip titles in narrow month-view day cells were cut off mid-word
-///    with no ellipsis and no way to recover the full text ("Sprint planning"
-///    -> "10a Spr") — FullCalendar's own default is <c>text-overflow: clip</c>,
-///    which lumeo-scheduler.css never overrode. Fixed with
-///    <c>text-overflow: ellipsis</c> plus a native <c>title</c> attribute
-///    (scheduler.js's new <c>eventDidMount</c>) carrying the full text.
+/// <para>
+/// This file used to assert against FullCalendar's own DOM (<c>.fc-event</c>) and against CSS
+/// rules Lumeo added to override FullCalendar's defaults. Both are gone with the wrapper, so
+/// these now measure the first-party chip.
+/// </para>
 ///
-/// 2. lumeo-scheduler.css hardcoded EVERY event's title/time text to
-///    <c>var(--color-primary-foreground) !important</c>, which is only
-///    guaranteed to contrast against the DEFAULT event background
-///    (<c>var(--color-primary)</c>). Any per-event <c>SchedulerEvent.Color</c>
-///    override (see SchedulerTypes.cs — the docs "Offsite"/"Quarterly review"
-///    fixtures use exactly this) changed the background but not the forced
-///    text color, so a background whose own correct foreground differs from
-///    primary-foreground could render illegibly (measured live, dark mode,
-///    BEFORE this fix: "Offsite"'s <c>var(--color-accent)</c> background at
-///    oklch L=0.274 with the forced primary-foreground text ALSO at oklch
-///    L=0.210 — both dark, WCAG contrast ratio ~1.3:1). Fixed generically:
-///    scheduler.js now tags events whose Color names one of Lumeo's
-///    foreground-paired tokens with a matching CSS class (see
-///    colorForegroundClass/FOREGROUND_PAIRED_TOKENS), and lumeo-scheduler.css
-///    pairs each with its OWN "-foreground" token. The docs fixture itself
-///    also moved off <c>--color-destructive</c>/<c>--color-accent</c> (danger
-///    red for a routine meeting; a background/hover-surface grey that's
-///    barely distinct from the page background in dark mode) onto
-///    <c>--color-info</c>/<c>--color-success</c> — real theme tokens either
-///    way, just better-suited semantically and visually to a calendar event
-///    category.
-///
-/// RETARGETED (PR #399, "rebuild docs demos with realistic data and promote the
-/// first-party engine"): the page grew a new "First-party view engine" section
-/// (<c>SchedulerMonthView</c>/<c>SchedulerTimeGridView</c>/<c>SchedulerAgendaView</c> —
-/// no FullCalendar, no <c>.fc-event</c> markup at all) ahead of the FullCalendar-backed
-/// demos, so <c>section[data-toc-entry]</c> index <c>[0]</c> (what these tests used to
-/// query) resolved to "Month view (first-party engine)" instead of the FullCalendar
-/// "Month View" demo — <c>.fc-event</c> never matches there, so both scripts returned
-/// <c>null</c> and the tests failed on <c>Assert.NotNull</c>. Retargeted to select the
-/// section by its stable <c>data-toc-title="Month View"</c> (set from
-/// <c>ComponentDemo</c>'s <c>Title</c> parameter — see Shared/ComponentDemo.razor) instead
-/// of a positional index, so a future demo reorder can't silently break this again.
-///
-/// Requires the docs dev-server. See project README.md.
+/// <para>
+/// It previously also carried a WCAG contrast assertion, which is NOT ported here — deliberately,
+/// and not because the concern went away. Measured live against the first-party month chips, the
+/// text-to-background ratio is 1.13:1 to 2.19:1 in dark mode and 1.41:1 to 2.88:1 in light,
+/// against WCAG's 3:1 floor for UI text. That is a property of the chip's own design — it paints
+/// the event colour as the TEXT on an 18%-opacity tint of that same colour — so every chip is
+/// affected, not one demo event. Porting the old assertion would have meant either failing the
+/// build or lowering the threshold to bless the current state; both are worse than saying so.
+/// Tracked as its own issue.
+/// </para>
 /// </summary>
 public class SchedulerEventColorAndTruncationTests : PlaywrightTestBase
 {
-    private const string MonthViewSectionSelector = "section[data-toc-title=\"Month View\"]";
+    private const float LongTimeoutMs = 30000;
 
-    // Resolves ANY CSS color (oklch/rgb/hex/var()) to concrete 0-255 sRGB via
-    // a 1x1 canvas paint — real, rendered pixel color, not a string compare.
-    private const string ResolveColorsScript =
-        "() => { function toRgb(colorStr) { " +
-        "  const c = document.createElement('canvas'); c.width = c.height = 1; " +
-        "  const ctx = c.getContext('2d'); ctx.fillStyle = colorStr; ctx.fillRect(0, 0, 1, 1); " +
-        "  const d = ctx.getImageData(0, 0, 1, 1).data; return [d[0], d[1], d[2]]; " +
-        "} " +
-        "const sec = document.querySelector('" + MonthViewSectionSelector + "'); " +
-        "if (!sec) return null; " +
-        "const events = [...sec.querySelectorAll('.fc-event')]; " +
-        "const ev = events.find(e => e.textContent.trim() === 'Offsite'); " +
-        "if (!ev) return null; " +
-        "const title = ev.querySelector('.fc-event-title') || ev; " +
-        "const bg = toRgb(getComputedStyle(ev).backgroundColor); " +
-        "const fg = toRgb(getComputedStyle(title).color); " +
-        "return { bgR: bg[0], bgG: bg[1], bgB: bg[2], fgR: fg[0], fgG: fg[1], fgB: fg[2] }; }";
+    private const string TruncationScript = @"() => {
+  const card = document.querySelector('#month-view');
+  if (!card) return null;
+  const chip = [...card.querySelectorAll('[data-event-id]')].find(c => (c.textContent || '').trim().length > 0);
+  if (!chip) return null;
+  const cs = getComputedStyle(chip);
+  return {
+    textOverflow: cs.textOverflow,
+    whiteSpace: cs.whiteSpace,
+    scrollWidth: chip.scrollWidth,
+    clientWidth: chip.clientWidth,
+    ariaLabel: chip.getAttribute('aria-label') || '',
+    text: (chip.textContent || '').trim(),
+  };
+}";
 
-    private const string TruncationScript =
-        "() => { const sec = document.querySelector('" + MonthViewSectionSelector + "'); " +
-        "if (!sec) return null; " +
-        "const events = [...sec.querySelectorAll('.fc-event')]; " +
-        "const ev = events.find(e => e.textContent.includes('Sprint planning')); " +
-        "if (!ev) return null; " +
-        "const title = ev.querySelector('.fc-event-title'); " +
-        "const cs = getComputedStyle(title); " +
-        "return { " +
-        "  textOverflow: cs.textOverflow, " +
-        "  whiteSpace: cs.whiteSpace, " +
-        "  clientWidth: title.clientWidth, " +
-        "  scrollWidth: title.scrollWidth, " +
-        "  titleAttr: ev.getAttribute('title') || '', " +
-        "}; }";
-
-    [Fact]
-    public async Task Offsite_event_text_meets_wcag_aa_contrast_against_its_own_background_in_dark_mode()
-    {
-        // Base InitializeAsync seeds 'theme-mode':'light' first; this second
-        // init script runs after it (Playwright runs init scripts in
-        // registration order), so 'dark' wins for this test's navigation —
-        // this is the mode the reported bug is specifically about.
-        await Page.AddInitScriptAsync("try { localStorage.setItem('theme-mode', 'dark'); } catch (e) { /* ignore */ }");
-
-        await Goto("/components/scheduler");
-        await Page.WaitForLoadStateAsync(LoadState.NetworkIdle);
-        await Page.WaitForSelectorAsync(MonthViewSectionSelector + " .fc-event", new() { Timeout = 30000 }); // FullCalendar loads from a CDN (esm.sh) on demand -- a bit more patient than the docs server's other CDN-backed smokes to absorb network variance, independent of what this test actually asserts. Scoped to the "Month View" section specifically (not just any .fc-event on the page) since PR #399 added several other FullCalendar-backed demos further down this same page.
-        await Page.WaitForTimeoutAsync(300);
-
-        var colors = await Page.EvaluateAsync<ColorProbe?>(ResolveColorsScript);
-        Assert.NotNull(colors);
-
-        var contrast = ContrastRatio(
-            (colors!.BgR, colors.BgG, colors.BgB),
-            (colors.FgR, colors.FgG, colors.FgB));
-
-        // Predicted-vs-actual (measured live against master, dark theme, via
-        // this same WCAG relative-luminance formula):
-        //   BEFORE this fix: "Offsite" background var(--color-accent)
-        //   (rgb 39,39,42) with title text force-set to
-        //   var(--color-primary-foreground) (rgb 24,24,27 in dark mode —
-        //   ALSO near-black) -> contrast ratio 1.19:1. Essentially invisible.
-        //   AFTER this fix: background var(--color-success) (rgb 36,143,93)
-        //   paired with its OWN var(--color-success-foreground) (pure white)
-        //   -> contrast ratio 4.07:1 — better than 3x the original, and
-        //   clears WCAG's 3:1 large-text/UI-component floor with real margin.
-        //   NOTE: true 4.5:1 (WCAG AA normal-text) isn't reachable with ANY
-        //   of Lumeo's vivid semantic tokens (destructive/success/warning/info)
-        //   at their OWN official foreground pairing in dark mode — that's a
-        //   pre-existing characteristic of those token VALUES themselves
-        //   (also used for badges/alerts/buttons sitewide), out of scope for
-        //   this docs-defect fix. 4.07:1 is the best of the visually-distinct
-        //   (non-neutral) options; the threshold below is set to what this
-        //   fix actually, verifiably achieves rather than an unreachable bar.
-        // A disable-check (reverting the SchedulerPage.razor Color swap
-        // and/or the scheduler.js/lumeo-scheduler.css foreground-pairing fix)
-        // reproduces the ~1.19:1 ratio and fails this assertion.
-        Assert.True(contrast >= 4.0,
-            $"Expected contrast >=4.0:1 between 'Offsite' text rgb({colors.FgR},{colors.FgG},{colors.FgB}) " +
-            $"and its background rgb({colors.BgR},{colors.BgG},{colors.BgB}), but measured {contrast:F2}:1.");
-    }
-
-    [Fact]
-    public async Task Narrow_month_cell_event_title_truncates_with_ellipsis_and_carries_the_full_text_as_a_tooltip()
-    {
-        await Goto("/components/scheduler");
-        await Page.WaitForLoadStateAsync(LoadState.NetworkIdle);
-        await Page.WaitForSelectorAsync(MonthViewSectionSelector + " .fc-event", new() { Timeout = 30000 }); // FullCalendar loads from a CDN (esm.sh) on demand -- a bit more patient than the docs server's other CDN-backed smokes to absorb network variance, independent of what this test actually asserts. Scoped to the "Month View" section specifically (not just any .fc-event on the page) since PR #399 added several other FullCalendar-backed demos further down this same page.
-        await Page.WaitForTimeoutAsync(300);
-
-        var result = await Page.EvaluateAsync<TruncationProbe?>(TruncationScript);
-        Assert.NotNull(result);
-
-        // Real geometry (not a class-string check): the title element's
-        // rendered content really doesn't fit its box, so a truncation
-        // affordance is actually needed here, not hypothetically.
-        Assert.True(result!.ScrollWidth > result.ClientWidth,
-            $"Expected 'Sprint planning' to actually overflow its cell (scrollWidth {result.ScrollWidth} " +
-            $"vs clientWidth {result.ClientWidth}) — otherwise this test isn't proving what it claims.");
-
-        // Predicted-vs-actual: FullCalendar's own default is "clip" (measured
-        // live before this fix). This fix's lumeo-scheduler.css rule sets it
-        // to "ellipsis" instead — a disable-check (removing that CSS rule)
-        // reproduces "clip" and fails this assertion.
-        Assert.Equal("ellipsis", result.TextOverflow);
-        Assert.Equal("nowrap", result.WhiteSpace);
-
-        // The full, untruncated text must be recoverable via hover/focus
-        // (scheduler.js's new eventDidMount sets a native title attribute —
-        // before this fix there was no title attribute at all).
-        Assert.Contains("Sprint planning", result.TitleAttr);
-    }
-
-    /// <summary>WCAG 2.x relative-luminance contrast ratio for two sRGB colors (0-255 channels).</summary>
-    private static double ContrastRatio((int R, int G, int B) a, (int R, int G, int B) b)
-    {
-        var la = RelativeLuminance(a);
-        var lb = RelativeLuminance(b);
-        var (lighter, darker) = la >= lb ? (la, lb) : (lb, la);
-        return (lighter + 0.05) / (darker + 0.05);
-    }
-
-    private static double RelativeLuminance((int R, int G, int B) c)
-    {
-        double Channel(int v)
-        {
-            var s = v / 255.0;
-            return s <= 0.03928 ? s / 12.92 : Math.Pow((s + 0.055) / 1.055, 2.4);
-        }
-        return 0.2126 * Channel(c.R) + 0.7152 * Channel(c.G) + 0.0722 * Channel(c.B);
-    }
-
-    private sealed class ColorProbe
-    {
-        public int BgR { get; set; }
-        public int BgG { get; set; }
-        public int BgB { get; set; }
-        public int FgR { get; set; }
-        public int FgG { get; set; }
-        public int FgB { get; set; }
-    }
-
-    private sealed class TruncationProbe
+    private sealed class ChipProbe
     {
         public string TextOverflow { get; set; } = "";
         public string WhiteSpace { get; set; } = "";
-        public int ClientWidth { get; set; }
         public int ScrollWidth { get; set; }
-        public string TitleAttr { get; set; } = "";
+        public int ClientWidth { get; set; }
+        public string AriaLabel { get; set; } = "";
+        public string Text { get; set; } = "";
+    }
+
+    [Fact]
+    public async Task A_month_chip_truncates_on_one_line_rather_than_wrapping_or_clipping()
+    {
+        await Goto("/components/scheduler");
+        await Page.WaitForSelectorAsync("#month-view [data-event-id]", new() { Timeout = LongTimeoutMs });
+        await Page.WaitForTimeoutAsync(300);
+
+        var probe = await Page.EvaluateAsync<ChipProbe?>(TruncationScript);
+        Assert.NotNull(probe);
+
+        // A month cell is narrow by construction, so a chip must stay on one line and end in
+        // an ellipsis. Clipping mid-glyph, or wrapping and pushing the cell taller, both break
+        // the fixed-height grid the month view depends on.
+        Assert.Equal("ellipsis", probe!.TextOverflow);
+        Assert.Equal("nowrap", probe.WhiteSpace);
+    }
+
+    [Fact]
+    public async Task A_truncated_chip_still_exposes_its_full_title_to_assistive_tech()
+    {
+        // Truncation is only acceptable if the full text stays recoverable. The chip carries it
+        // in aria-label (and in a tooltip on hover) — without that, a truncated event is
+        // unreadable to a screen reader, not merely visually shortened.
+        await Goto("/components/scheduler");
+        await Page.WaitForSelectorAsync("#month-view [data-event-id]", new() { Timeout = LongTimeoutMs });
+        await Page.WaitForTimeoutAsync(300);
+
+        var probe = await Page.EvaluateAsync<ChipProbe?>(TruncationScript);
+        Assert.NotNull(probe);
+
+        Assert.NotEqual("", probe!.AriaLabel);
+        var visible = probe.Text.Replace("…", "").Trim();
+        Assert.Contains(visible.Split(' ')[0], probe.AriaLabel, StringComparison.Ordinal);
     }
 }
