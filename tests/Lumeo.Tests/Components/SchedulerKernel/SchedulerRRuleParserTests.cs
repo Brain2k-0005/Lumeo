@@ -64,8 +64,7 @@ public class SchedulerRRuleParserTests
     [Theory]
     [InlineData("FREQ=DAILY;UNTIL=20261231")]
     [InlineData("FREQ=DAILY;UNTIL=20261231T235959")]
-    [InlineData("FREQ=DAILY;UNTIL=20261231T235959Z")]  // the end-of-day idiom real calendars emit
-    [InlineData("freq=daily;until=20261231t235959z")]  // a producer that lowercases the whole line
+    [InlineData("freq=daily;until=20261231t235959")]  // a producer that lowercases the whole line
     public void Parses_Every_Until_Form(string rrule)
     {
         var rule = SchedulerRRuleParser.Parse(rrule);
@@ -126,12 +125,14 @@ public class SchedulerRRuleParserTests
     [InlineData("FREQ=DAILY;INTERVAL=2147483647")] // would overflow the expander's AddDays
     [InlineData("FREQ=DAILY;INTERVAL=5001")]      // per-frequency bound: 501 steps must stay in range
     [InlineData("FREQ=WEEKLY;INTERVAL=801")]
-    [InlineData("FREQ=MONTHLY;INTERVAL=51")]      // sparse BYDAY rules step ~3x more months than they yield
+    [InlineData("FREQ=MONTHLY;INTERVAL=13")]      // sparse BYDAY rules step far more months than they yield
+    [InlineData("FREQ=MONTHLY;INTERVAL=48;BYDAY=5TH;COUNT=500")] // one month every four years
+    [InlineData("FREQ=DAILY;UNTIL=20261231T235959Z")] // UTC cutoff cannot be honoured wall-clock
     [InlineData("FREQ=DAILY;COUNT=501")]           // above the expander's own occurrence cap
     [InlineData("FREQ=WEEKLY;BYDAY=MO,")]          // trailing empty term
     [InlineData("FREQ=WEEKLY;BYDAY=,MO")]          // leading empty term
     [InlineData("FREQ=WEEKLY;BYDAY=MO,,WE")]       // empty middle term
-    [InlineData("FREQ=DAILY;UNTIL=20261231Z")]     // Z belongs to DATE-TIME, not DATE
+    [InlineData("FREQ=DAILY;UNTIL=20261231Z")]     // any UTC cutoff, date-only form included
     [InlineData("FREQ=DAILY;BYDAY=MO")]            // daily expansion ignores ByDay entirely
     [InlineData("FREQ=WEEKLY;BYDAY=2MO")]          // weekly expansion ignores the ordinal
     [InlineData("FREQ=MONTHLY;BYDAY=MO")]          // unqualified monthly term means EVERY Monday

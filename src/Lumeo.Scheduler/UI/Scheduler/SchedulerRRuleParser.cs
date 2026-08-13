@@ -91,7 +91,7 @@ public static class SchedulerRRuleParser
     {
         SchedulerRecurrenceFrequency.Daily => 5_000,
         SchedulerRecurrenceFrequency.Weekly => 800,
-        SchedulerRecurrenceFrequency.Monthly => 50,
+        SchedulerRecurrenceFrequency.Monthly => 12,
         _ => 1,
     };
 
@@ -257,27 +257,38 @@ public static class SchedulerRRuleParser
     /// equivalent; every other value is rejected rather than silently widened to the full day.
     /// </para>
     /// <para>
-    /// The <c>Z</c> suffix is accepted but NOT converted to local time: this scheduler's kernel is
-    /// wall-clock throughout — it never calls <c>ToLocalTime</c>/<c>ToUniversalTime</c> — so
-    /// shifting only this one value would make UNTIL disagree with every other date in the same
-    /// rule.
+    /// A <c>Z</c> (UTC) suffix is <b>rejected</b>. The kernel is wall-clock throughout and the
+    /// parser never sees the target time zone, so a UTC cutoff cannot be honoured without
+    /// silently shifting the series end by up to a day. Importers should convert to local
+    /// wall-clock before parsing.
     /// </para>
     /// </summary>
     private static bool TryParseUntil(string value, out DateTime result)
     {
-        // The Z designator belongs to RFC 5545's DATE-TIME form only, so a
-        // date-only value carrying one is malformed (Codex review of this PR,
-        // P2) — stripping it unconditionally made "20261231Z" parse.
-        // Upper-cased first (Codex review of this PR, P2): the 'T' separator is
-        // matched as a literal, so a producer that lowercases the whole value —
-        // "20261231t235959z" — was rejected even though the contract promises
-        // case-insensitive values, and every other part already honours that.
+        // Upper-cased first: the 'T' separator is matched as a literal, so a
+        // producer that lowercases the whole value ("20261231t235959") must
+        // still parse — the contract promises case-insensitive values.
         var upper = value.ToUpperInvariant();
-        var hasUtcSuffix = upper.EndsWith("Z", StringComparison.Ordinal);
-        var text = hasUtcSuffix ? upper[..^1] : upper;
+
+        // A Z (UTC) suffix is REJECTED outright, reversing an earlier decision
+        // of mine to accept it unconverted (Codex review of this PR, P2).
+        //
+        // Z means UTC and this kernel is wall-clock throughout — it never
+        // converts. For a consumer in UTC+10, "20260812T235959Z" is
+        // 2026-08-13 09:59:59 local, so a daily 09:00 occurrence on the 13th
+        // falls inside the cutoff; parsing the date part alone yields the 12th
+        // and drops it. Accepting the value would move someone's series end by a
+        // day, silently, and the parser cannot do better — it never sees the
+        // target time zone.
+        //
+        // The cost is real: "...T235959Z" is the form most calendars emit, so
+        // importers must convert to local wall-clock first. Worse ergonomics,
+        // better data — the trade this parser makes everywhere else.
+        if (upper.EndsWith("Z", StringComparison.Ordinal)) { result = default; return false; }
+        var text = upper;
 
         if (DateTime.TryParseExact(text, "yyyyMMdd", CultureInfo.InvariantCulture, DateTimeStyles.None, out result))
-            return !hasUtcSuffix;
+            return true;
 
         if (!DateTime.TryParseExact(text, "yyyyMMdd'T'HHmmss", CultureInfo.InvariantCulture, DateTimeStyles.None, out result))
             return false;
