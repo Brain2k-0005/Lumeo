@@ -127,6 +127,80 @@ public class SchedulerMonthViewHideWeekendsTests : IAsyncLifetime
     }
 
     [Fact]
+    public void A_Sunday_First_Grid_Still_Has_A_Focusable_Cell()
+    {
+        // Codex review of this PR, P1: the roving-tabindex anchor defaults to
+        // index 0, which in a Sunday-first grid is a hidden Sunday. A bounds
+        // check alone left every cell at tabindex="-1", dropping the grid out of
+        // the tab order and killing arrow navigation outright.
+        var cut = _ctx.Render<L.SchedulerMonthView>(p => p
+            .Add(c => c.AnchorDate, D(2026, 3, 15))
+            .Add(c => c.FirstDayOfWeek, DayOfWeek.Sunday)
+            .Add(c => c.HideWeekends, true));
+
+        var anchor = Assert.Single(cut.FindAll("[data-cell-date]"), c => c.GetAttribute("tabindex") == "0");
+        Assert.NotEqual(DayOfWeek.Sunday, DateOf(anchor).DayOfWeek);
+        Assert.NotEqual(DayOfWeek.Saturday, DateOf(anchor).DayOfWeek);
+    }
+
+    [Fact]
+    public void Toggling_Weekends_Off_While_A_Weekend_Cell_Is_Focused_Moves_The_Anchor()
+    {
+        var cut = _ctx.Render<L.SchedulerMonthView>(p => p
+            .Add(c => c.AnchorDate, D(2026, 3, 15))
+            .Add(c => c.FirstDayOfWeek, DayOfWeek.Sunday)
+            .Add(c => c.HideWeekends, false));
+
+        cut.Render(p => p
+            .Add(c => c.AnchorDate, D(2026, 3, 15))
+            .Add(c => c.FirstDayOfWeek, DayOfWeek.Sunday)
+            .Add(c => c.HideWeekends, true));
+
+        Assert.Single(cut.FindAll("[data-cell-date]"), c => c.GetAttribute("tabindex") == "0");
+    }
+
+    [Fact]
+    public async Task ArrowUp_In_The_Top_Row_Does_Not_Slide_Sideways()
+    {
+        // Codex review of this PR, P2: clamping the FLATTENED position changes
+        // its column, so ArrowUp from the first row's Friday used to land on
+        // that row's Monday instead of doing nothing.
+        var cut = Render(hideWeekends: true);
+        var cells = cut.FindAll("[data-cell-date]");
+        var topFriday = cells.Take(5).First(c => DateOf(c).DayOfWeek == DayOfWeek.Friday);
+        var before = DateOf(topFriday);
+
+        await cut.InvokeAsync(() => topFriday.KeyDown(new KeyboardEventArgs { Key = "ArrowUp" }));
+
+        var focused = cut.FindAll("[data-cell-date]").First(c => c.GetAttribute("tabindex") == "0");
+        Assert.Equal(before, DateOf(focused));
+    }
+
+    [Fact]
+    public void An_Event_Starting_On_A_Hidden_Saturday_Still_Shows_Its_Title()
+    {
+        // Codex review of this PR, P2: ShowTitle is set only on a run's FIRST
+        // day, so hiding that Saturday removed the one titled segment and every
+        // weekday chip rendered a non-breaking space — an unlabelled bar.
+        // 2026-03-07 is a Saturday; the event runs into the following Tuesday.
+        var ev = new L.SchedulerEvent("e1", "Offsite",
+            new DateTime(2026, 3, 7, 9, 0, 0), new DateTime(2026, 3, 10, 17, 0, 0));
+
+        var cut = _ctx.Render<L.SchedulerMonthView>(p => p
+            .Add(c => c.AnchorDate, D(2026, 3, 15))
+            .Add(c => c.FirstDayOfWeek, DayOfWeek.Monday)
+            .Add(c => c.HideWeekends, true)
+            .Add(c => c.Events, new[] { ev }));
+
+        // Assert the CHIP's own text, not the markup as a whole: the title also
+        // appears in the tooltip and aria-label, so a substring check on the
+        // markup passes even when every visible chip renders a blank.
+        var chips = cut.FindAll("[data-event-id='e1']");
+        Assert.NotEmpty(chips);
+        Assert.Contains(chips, c => c.TextContent.Contains("Offsite", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public void Week_Numbers_And_Hidden_Weekends_Compose()
     {
         // The grid-template must be a literal Tailwind can see for every

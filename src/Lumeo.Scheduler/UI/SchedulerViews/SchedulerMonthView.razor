@@ -333,6 +333,20 @@
         // Keep the roving-tabindex anchor in bounds when the grid changes from under it.
         if (_focusedIndex < 0 || _focusedIndex >= 42)
             _focusedIndex = 0;
+
+        if (IsHiddenColumn(_cells[_focusedIndex].Date))
+        {
+            var firstVisible = VisibleCellIndices;
+            _focusedIndex = firstVisible.Count > 0 ? firstVisible[0] : 0;
+        }
+
+        // ...and on a cell that is actually RENDERED (Codex review of this PR,
+        // P1). A bounds check alone is not enough once HideWeekends exists: a
+        // Sunday-first grid anchors at index 0, which is hidden, and toggling
+        // the option on while a weekend cell holds focus strands it the same
+        // way. Either case leaves every cell at tabindex="-1", so the grid
+        // drops out of the tab order entirely and arrow keys do nothing.
+
     }
 
     private void BuildWeekdayHeaders()
@@ -421,6 +435,39 @@
         }
 
         _cellModels = models;
+        PromoteTitlesOntoVisibleCells();
+    }
+
+    /// <summary>
+    /// Moves a run's title onto its first RENDERED segment when
+    /// <see cref="HideWeekends"/> hides the segment that would normally carry it
+    /// (Codex review of this PR, P2).
+    /// <para>
+    /// <c>ShowTitle</c> is set to <c>!contL</c>, i.e. only the run's first day
+    /// shows the name. For an event starting on a Saturday and continuing into
+    /// the working week, hiding that Saturday removes the ONLY titled segment,
+    /// so every weekday chip renders a non-breaking space and the event appears
+    /// as an unlabelled bar. No-op when weekends are shown.
+    /// </para>
+    /// </summary>
+    private void PromoteTitlesOntoVisibleCells()
+    {
+        if (!HideWeekends) return;
+
+        // One pass in reading order; the first visible segment of each instance
+        // wins, so a run that begins on a visible day is left untouched.
+        var titled = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var cell in _cellModels)
+        {
+            if (cell is null || IsHiddenColumn(cell.Date)) continue;
+            for (var lane = 0; lane < cell.Lanes.Count; lane++)
+            {
+                if (cell.Lanes[lane] is not { } slot) continue;
+                var key = InstanceKey(slot.Instance);
+                if (!titled.Add(key)) continue;
+                if (!slot.ShowTitle) ((IList<PillSlot?>)cell.Lanes)[lane] = slot with { ShowTitle = true };
+            }
+        }
     }
 
     /// <summary>Whether <paramref name="date"/> is a non-business day per <see cref="BusinessDays"/> (default Mon–Fri) when <see cref="BusinessHours"/> is enabled.</summary>
@@ -563,8 +610,12 @@
         {
             case "ArrowRight": nextPos = Math.Min(visible.Count - 1, pos + 1); break;
             case "ArrowLeft": nextPos = Math.Max(0, pos - 1); break;
-            case "ArrowDown": nextPos = Math.Min(visible.Count - 1, pos + cols); break;
-            case "ArrowUp": nextPos = Math.Max(0, pos - cols); break;
+            // Clamped by STAYING PUT, not by pinning to the first/last position
+            // (Codex review of this PR, P2): clamping a flattened position
+            // changes its column, so ArrowUp in the top row used to slide from
+            // Friday to Monday instead of doing nothing.
+            case "ArrowDown": nextPos = pos + cols < visible.Count ? pos + cols : pos; break;
+            case "ArrowUp": nextPos = pos - cols >= 0 ? pos - cols : pos; break;
             case "Home": nextPos = rowStart; break;
             case "End": nextPos = Math.Min(visible.Count - 1, rowStart + cols - 1); break;
             case "PageUp":
