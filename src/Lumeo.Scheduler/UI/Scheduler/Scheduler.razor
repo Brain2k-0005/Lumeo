@@ -37,6 +37,12 @@ else
             <ToggleGroupItem Value="Week">@L["Scheduler.Week"]</ToggleGroupItem>
             <ToggleGroupItem Value="Day">@L["Scheduler.Day"]</ToggleGroupItem>
             <ToggleGroupItem Value="List">@L["Scheduler.List"]</ToggleGroupItem>
+            @if (Engine == SchedulerEngine.FirstParty && VisibleDays is > 0)
+            {
+                @* Labelled with the actual count — "N days" is meaningless as a fixed string,
+                   and this button only exists once a caller has chosen an N. *@
+                <ToggleGroupItem Value="MultiDay">@string.Format(L["Scheduler.NDays"], EffectiveVisibleDays)</ToggleGroupItem>
+            }
             @if (Engine == SchedulerEngine.FirstParty && Resources is { Count: > 0 })
             {
                 @* Offered only where it works: FullCalendar's resource views are a
@@ -88,7 +94,7 @@ else
                 case SchedulerView.Week:
                     <SchedulerTimeGridView Events="@EffectiveEvents" AnchorDate="@_fpAnchor" Days="7"
                                            FirstDayOfWeek="@EffectiveFirstDayOfWeek"
-                                           BusinessHours="@BusinessHours" NowIndicator="@NowIndicator"
+                                           BusinessHours="@BusinessHours" NowIndicator="@NowIndicator" NowTimeZoneId="@SchedulerTimeZoneProjection.JsZoneId(_displayZone)"
                                            SlotMinTime="@SlotMinTime" SlotMaxTime="@SlotMaxTime" SlotDuration="@SlotDuration"
                                            Editable="@Editable" Selectable="@Selectable" CanDrop="@CanDrop"
                                            ResolveEventColor="@ResolveFirstPartyColor"
@@ -100,7 +106,22 @@ else
                 case SchedulerView.Day:
                     <SchedulerTimeGridView Events="@EffectiveEvents" AnchorDate="@_fpAnchor" Days="1"
                                            FirstDayOfWeek="@EffectiveFirstDayOfWeek"
-                                           BusinessHours="@BusinessHours" NowIndicator="@NowIndicator"
+                                           BusinessHours="@BusinessHours" NowIndicator="@NowIndicator" NowTimeZoneId="@SchedulerTimeZoneProjection.JsZoneId(_displayZone)"
+                                           SlotMinTime="@SlotMinTime" SlotMaxTime="@SlotMaxTime" SlotDuration="@SlotDuration"
+                                           Editable="@Editable" Selectable="@Selectable" CanDrop="@CanDrop"
+                                           ResolveEventColor="@ResolveFirstPartyColor"
+                                           ResolveEventClassNames="@ResolveFirstPartyClassNames"
+                                           OnEventClick="@OnEventClick" OnDateSelect="@OnDateSelect"
+                                           OnEventChange="@OnFirstPartyEventChangeAsync"
+                                           OnRequestPrev="@PrevAsync" OnRequestNext="@NextAsync" />
+                    break;
+                case SchedulerView.MultiDay:
+                    @* Days != 7 makes the time grid start at the anchor itself instead of a
+                       week boundary, which is exactly the rolling window this view wants. *@
+                    <SchedulerTimeGridView Events="@EffectiveEvents" AnchorDate="@_fpAnchor" Days="@EffectiveVisibleDays"
+                                           AlignToWeek="false"
+                                           FirstDayOfWeek="@EffectiveFirstDayOfWeek"
+                                           BusinessHours="@BusinessHours" NowIndicator="@NowIndicator" NowTimeZoneId="@SchedulerTimeZoneProjection.JsZoneId(_displayZone)"
                                            SlotMinTime="@SlotMinTime" SlotMaxTime="@SlotMaxTime" SlotDuration="@SlotDuration"
                                            Editable="@Editable" Selectable="@Selectable" CanDrop="@CanDrop"
                                            ResolveEventColor="@ResolveFirstPartyColor"
@@ -231,6 +252,35 @@ else
     /// </summary>
     [Parameter] public TimeSpan? SlotDuration { get; set; }
 
+    /// <summary>
+    /// How many days <see cref="SchedulerView.MultiDay"/> shows, and the step size when paging
+    /// through it. Clamped to 1..14. Leaving this unset hides the view's toolbar button
+    /// entirely — an N-day view with no N is not a view.
+    /// <para>First-party engine only; see <see cref="SchedulerView.MultiDay"/>.</para>
+    /// </summary>
+    [Parameter] public int? VisibleDays { get; set; }
+
+    /// <summary>
+    /// IANA time zone the grid is READ in, e.g. <c>"Europe/Berlin"</c>. Unset renders the
+    /// values exactly as given.
+    /// <para>
+    /// Only events carrying a real instant move — see
+    /// <see cref="SchedulerTimeZoneProjection"/> for why <see cref="DateTimeKind"/> decides,
+    /// and why a caller passing naive wall-clock values (the overwhelming majority) sees no
+    /// change at all. Edits are converted back before they reach
+    /// <see cref="OnEventChange"/>/<see cref="EventsChanged"/>, so what you get out is in the
+    /// frame you put in. An id this host has no data for degrades to "no projection" rather
+    /// than failing the render.
+    /// </para>
+    /// <para>First-party engine only.</para>
+    /// </summary>
+    [Parameter] public string? TimeZone { get; set; }
+
+    private TimeZoneInfo? _displayZone;
+
+    /// <summary>The clamped <see cref="VisibleDays"/>, defaulting to 3 — the window ReUI's own N-day example uses.</summary>
+    private int EffectiveVisibleDays => Math.Clamp(VisibleDays ?? 3, 1, 14);
+
     // ── Resource / color-coding parameters ──────────────────────────────
     /// <summary>
     /// Optional list of resources (people, rooms, equipment). When provided, events
@@ -312,13 +362,20 @@ else
         _lastEventsHash = ComputeEventsHash(_events);
         _lastPushedEventsHash = _lastEventsHash;
         SeedFirstPartyAnchor();
-        _title = ComputeTitle(InitialDate ?? DateTime.Today, _currentView);
+        // The FIRST-PARTY title, not the wrapper-shaped one: ComputeTitle has no branch for
+        // List, Resource or MultiDay, so every one of them opened on the month name and only
+        // corrected itself once the user pressed prev/next. The wrapper path still starts from
+        // ComputeTitle because FullCalendar overwrites the title from JS on mount anyway.
+        _title = Engine == SchedulerEngine.FirstParty
+            ? ComputeFirstPartyTitle()
+            : ComputeTitle(InitialDate ?? DateTime.Today, _currentView);
         _currentLocale = ResolveFullCalendarLocale(System.Globalization.CultureInfo.CurrentUICulture);
         RebuildResourceLookup();
     }
 
     protected override async Task OnParametersSetAsync()
     {
+        _displayZone = SchedulerTimeZoneProjection.Resolve(TimeZone);
         // Rebuild the resource lookup whenever the Resources param changes.
         RebuildResourceLookup();
 
@@ -709,8 +766,15 @@ else
     /// own documentation promises — sending "Resource" across simply produced an unknown view
     /// (Codex review of this PR, P2).
     /// </summary>
-    private static string WrapperViewName(SchedulerView view) =>
-        (view == SchedulerView.Resource ? SchedulerView.Day : view).ToString();
+    private static string WrapperViewName(SchedulerView view) => view switch
+    {
+        SchedulerView.Resource => SchedulerView.Day.ToString(),
+        // No custom-duration view is registered on the wrapper's FullCalendar instance, so an
+        // N-day request degrades to the nearest thing it does have rather than being sent
+        // across as an unknown view name.
+        SchedulerView.MultiDay => SchedulerView.Week.ToString(),
+        _ => view.ToString(),
+    };
 
     /// <summary>
     /// Title for a first-party view. List shows a WEEK from the aligned start and Resource shows
@@ -721,6 +785,8 @@ else
     {
         SchedulerView.List => ComputeTitle(FirstPartyAgendaStart, SchedulerView.Week),
         SchedulerView.Resource => ComputeTitle(_fpAnchor, SchedulerView.Day),
+        // Neither a month nor a week: name both ends, or two adjacent pages are indistinguishable.
+        SchedulerView.MultiDay => MultiDayTitle(),
         var v => ComputeTitle(_fpAnchor, v),
     };
 
@@ -732,6 +798,15 @@ else
         SchedulerView.List => date.ToString("MMMM yyyy"),
         _ => date.ToString("MMMM yyyy")
     };
+
+    private string MultiDayTitle()
+    {
+        var start = _fpAnchor.Date;
+        var end = start.AddDays(EffectiveVisibleDays - 1);
+        return EffectiveVisibleDays == 1
+            ? ComputeTitle(start, SchedulerView.Day)
+            : $"{start:MMM d} – {end:MMM d, yyyy}";
+    }
 
     private DateTime StartOfWeek(DateTime date)
     {
@@ -780,7 +855,15 @@ else
     /// what makes uncontrolled edits stick. Reading the raw <see cref="Events"/>
     /// parameter would show the parent's unchanged collection straight back.
     /// </summary>
-    private IEnumerable<SchedulerEvent>? EffectiveEvents => _events;
+    /// <summary>
+    /// What the first-party views actually render. With no <see cref="TimeZone"/> this is the
+    /// working copy itself; with one it is that copy read in the display zone. The projection
+    /// lives HERE rather than inside the views so they stay pure wall-clock renderers.
+    /// </summary>
+    private IEnumerable<SchedulerEvent>? EffectiveEvents =>
+        _displayZone is null
+            ? _events
+            : _events.Select(e => SchedulerTimeZoneProjection.ToDisplay(e, _displayZone));
 
     /// <summary>
     /// Colour for a first-party chip, preserving the wrapper's own precedence
@@ -822,7 +905,14 @@ else
         // edit went into a temporary list and was dropped, so the chip snapped
         // back exactly as before.
         var idx = _events.FindIndex(e => string.Equals(e.Id, updated.Id, StringComparison.Ordinal));
-        if (idx >= 0) _events[idx] = updated; else _events.Add(updated);
+
+        // Converted back BEFORE it is stored or handed on: the views work in display
+        // wall-clock and cannot know what frame the caller used, so the original event is what
+        // says whether these instants were UTC, local, or naive. Storing the display reading
+        // would quietly rewrite the caller's data into a different frame on every drag.
+        var committed = SchedulerTimeZoneProjection.FromDisplay(updated, idx >= 0 ? _events[idx] : null, _displayZone);
+
+        if (idx >= 0) _events[idx] = committed; else _events.Add(committed);
         _lastEventsHash = ComputeEventsHash(_events);
 
         // Recorded BEFORE invoking the parent (Codex review of this PR, P1) — the
@@ -835,7 +925,7 @@ else
         // the new truth.
         _lastPushedEventsHash = _lastEventsHash;
 
-        if (OnEventChange.HasDelegate) await OnEventChange.InvokeAsync(updated);
+        if (OnEventChange.HasDelegate) await OnEventChange.InvokeAsync(committed);
         if (EventsChanged.HasDelegate) await EventsChanged.InvokeAsync(_events.ToList());
     }
 
@@ -881,6 +971,9 @@ else
         // Resource renders a SINGLE date, so a week-sized step skipped six days
         // (Codex review of this PR, P2).
         SchedulerView.Day or SchedulerView.Resource => _fpAnchor.AddDays(direction),
+        // A rolling window pages by its OWN width, so consecutive pages tile the calendar
+        // instead of overlapping or skipping days.
+        SchedulerView.MultiDay => _fpAnchor.AddDays(EffectiveVisibleDays * direction),
         _ => _fpAnchor.AddDays(7 * direction),
     };
 
@@ -927,7 +1020,11 @@ else
             // channel rather than opening a second one; DateTime.Today remains the
             // documented fallback when interop is unavailable (prerender, torn-down
             // circuit, a custom service that no-ops).
-            _fpAnchor = await ResolveBrowserTodayAsync();
+            // An explicit display zone is more specific than the browser's own clock, so it
+            // wins: "Today" in Europe/Berlin must be Berlin's today even for a viewer in Tokyo.
+            _fpAnchor = _displayZone is not null
+                ? SchedulerTimeZoneProjection.TodayIn(_displayZone)
+                : await ResolveBrowserTodayAsync();
             RefreshFirstPartyTitle();
             return;
         }

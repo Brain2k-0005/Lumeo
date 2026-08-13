@@ -1,10 +1,10 @@
 {
   "$schema": "https://lumeo.nativ.sh/components-api-schema.json",
   "version": "4.3.3",
-  "generated": "2026-08-13T09:57:35.0603820Z",
+  "generated": "2026-08-13T10:24:13.4654740Z",
   "stats": {
     "componentCount": 165,
-    "totalParameters": 4556,
+    "totalParameters": 4560,
     "totalEnums": 92,
     "totalRecords": 65,
     "serviceCount": 33,
@@ -49829,6 +49829,7 @@
         "UI/Scheduler/SchedulerResourceView.razor",
         "UI/Scheduler/SchedulerTimeGridLayout.cs",
         "UI/Scheduler/SchedulerTimeGridView.razor",
+        "UI/Scheduler/SchedulerTimeZoneProjection.cs",
         "UI/Scheduler/SchedulerTitleFormatter.cs",
         "UI/Scheduler/SchedulerToolbar.razor",
         "UI/Scheduler/SchedulerTypes.cs"
@@ -50020,6 +50021,24 @@
           "isEditorRequired": false
         },
         {
+          "name": "VisibleDays",
+          "type": "int?",
+          "default": null,
+          "description": "How many days MultiDay shows, and the step size when paging through it. Clamped to 1..14. Leaving this unset hides the view's toolbar button entirely — an N-day view with no N is not a view. First-party engine only; see MultiDay.",
+          "isCascading": false,
+          "captureUnmatched": false,
+          "isEditorRequired": false
+        },
+        {
+          "name": "TimeZone",
+          "type": "string?",
+          "default": null,
+          "description": "IANA time zone the grid is READ in, e.g. \"Europe/Berlin\". Unset renders the values exactly as given. Only events carrying a real instant move — see SchedulerTimeZoneProjection for why DateTimeKind decides, and why a caller passing naive wall-clock values (the overwhelming majority) sees no change at all. Edits are converted back before they reach OnEventChange/EventsChanged, so what you get out is in the frame you put in. An id this host has no data for degrades to \"no projection\" rather than failing the render. First-party engine only.",
+          "isCascading": false,
+          "captureUnmatched": false,
+          "isEditorRequired": false
+        },
+        {
           "name": "Resources",
           "type": "IReadOnlyList<SchedulerResource>?",
           "default": null,
@@ -50117,7 +50136,8 @@
             "Week",
             "Day",
             "List",
-            "Resource"
+            "Resource",
+            "MultiDay"
           ],
           "description": "Built-in views exposed by the Lumeo scheduler. Maps onto FullCalendar's dayGridMonth / timeGridWeek / timeGridDay / listWeek view names."
         }
@@ -50684,6 +50704,24 @@
               "type": "TimeSpan?",
               "default": null,
               "description": "How far a drag, resize or drag-create snaps. Defaults to SlotDuration when that is set — dragging onto a line the grid does not draw is the kind of mismatch users read as a bug — and to 15 minutes otherwise, which is what this view snapped to before the grid was configurable.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "NowTimeZoneId",
+              "type": "string?",
+              "default": null,
+              "description": "IANA zone the NOW-INDICATOR is read in. The grid itself stays wall-clock — the wrapper has already projected the events it hands down (see SchedulerTimeZoneProjection) — but the now line is computed in the browser from the real clock, so without this it would sit at the viewer's local time on a grid drawn for somewhere else.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "AlignToWeek",
+              "type": "bool",
+              "default": "true",
+              "description": "Whether a 7-day grid snaps to the configured week start. True (the default) is the Week view. False makes seven days mean \"seven days from the anchor\" — the rolling N-day window, which happens to collide with the Week view at exactly this one width.",
               "isCascading": false,
               "captureUnmatched": false,
               "isEditorRequired": false
