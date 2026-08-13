@@ -239,13 +239,9 @@ public class P2LocalizationSweepTests : IAsyncLifetime
         "Scheduler.Today", "Scheduler.WeekOf",
         // ReUI-parity addition — listed so a locale gap fails the sweep rather
         // than silently falling back to English at runtime.
-<<<<<<< HEAD
         "Scheduler.WeekNumberAbbrev", "Scheduler.WeekNumberLabel", "Scheduler.ResourceGridLabel",
-=======
-        "Scheduler.WeekNumberAbbrev", "Scheduler.WeekNumberLabel",
         "Scheduler.Announce.EventMoved", "Scheduler.Announce.EventRescheduled",
         "Scheduler.Announce.MoveRejected", "Scheduler.Announce.ResizeRejected",
->>>>>>> origin/master
     };
 
     [Theory]

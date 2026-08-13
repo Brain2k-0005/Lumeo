@@ -323,14 +323,11 @@ internal static partial class LumeoDefaultStrings
         ["Scheduler.Month"] = "Mês",
         ["Scheduler.WeekNumberAbbrev"] = "Sem",
         ["Scheduler.WeekNumberLabel"] = "Semana {0}",
-<<<<<<< HEAD
         ["Scheduler.ResourceGridLabel"] = "Recursos em {0}",
-=======
         ["Scheduler.Announce.EventMoved"] = "{0} movido para {1}",
         ["Scheduler.Announce.EventRescheduled"] = "{0} agora das {1} às {2}",
         ["Scheduler.Announce.MoveRejected"] = "Não foi possível mover {0}",
         ["Scheduler.Announce.ResizeRejected"] = "Não foi possível redimensionar {0}",
->>>>>>> origin/master
         ["Scheduler.List"] = "Lista",
         ["Scheduler.Today"] = "Hoje",
         ["Scheduler.WeekOf"] = "Semana de {0}",

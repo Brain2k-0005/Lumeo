@@ -261,14 +261,11 @@ internal static partial class LumeoDefaultStrings
         ["Scheduler.Month"] = "월",
         ["Scheduler.WeekNumberAbbrev"] = "주",
         ["Scheduler.WeekNumberLabel"] = "{0}주차",
-<<<<<<< HEAD
         ["Scheduler.ResourceGridLabel"] = "{0} 리소스",
-=======
         ["Scheduler.Announce.EventMoved"] = "{0}이(가) {1}(으)로 이동되었습니다",
         ["Scheduler.Announce.EventRescheduled"] = "{0}이(가) 이제 {1}부터 {2}까지입니다",
         ["Scheduler.Announce.MoveRejected"] = "{0}을(를) 이동할 수 없습니다",
         ["Scheduler.Announce.ResizeRejected"] = "{0}의 길이를 변경할 수 없습니다",
->>>>>>> origin/master
         ["Scheduler.Week"] = "주",
         ["Scheduler.Day"] = "일",
         ["Scheduler.List"] = "목록",

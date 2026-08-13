@@ -474,14 +474,11 @@ internal static partial class LumeoDefaultStrings
         // Column header above the ISO-8601 week-number column (SchedulerMonthView.ShowWeekNumbers).
         ["Scheduler.WeekNumberAbbrev"] = "Wk",
         ["Scheduler.WeekNumberLabel"] = "Week {0}",
-<<<<<<< HEAD
         ["Scheduler.ResourceGridLabel"] = "Resources on {0}",
-=======
         ["Scheduler.Announce.EventMoved"] = "{0} moved to {1}",
         ["Scheduler.Announce.EventRescheduled"] = "{0} now {1} to {2}",
         ["Scheduler.Announce.MoveRejected"] = "{0} could not be moved",
         ["Scheduler.Announce.ResizeRejected"] = "{0} could not be resized",
->>>>>>> origin/master
         ["Scheduler.List"] = "List",
         ["Scheduler.Today"] = "Today",
         ["Scheduler.WeekOf"] = "Week of {0}",
@@ -1084,14 +1081,11 @@ internal static partial class LumeoDefaultStrings
         ["Scheduler.Month"] = "Monat",
         ["Scheduler.WeekNumberAbbrev"] = "KW",
         ["Scheduler.WeekNumberLabel"] = "Kalenderwoche {0}",
-<<<<<<< HEAD
         ["Scheduler.ResourceGridLabel"] = "Ressourcen am {0}",
-=======
         ["Scheduler.Announce.EventMoved"] = "{0} verschoben auf {1}",
         ["Scheduler.Announce.EventRescheduled"] = "{0} jetzt {1} bis {2}",
         ["Scheduler.Announce.MoveRejected"] = "{0} konnte nicht verschoben werden",
         ["Scheduler.Announce.ResizeRejected"] = "{0} konnte nicht in der Dauer geändert werden",
->>>>>>> origin/master
         ["Scheduler.List"] = "Liste",
         ["Scheduler.Today"] = "Heute",
         ["Scheduler.WeekOf"] = "Woche vom {0}",
