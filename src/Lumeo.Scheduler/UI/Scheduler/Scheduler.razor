@@ -384,7 +384,20 @@ else
             {
                 _events = incoming;
                 _lastPushedEventsHash = hash;
-                await Interop.SchedulerSetEventsAsync(_instanceId!, incoming.Select(ToJsEvent).Cast<object>());
+
+                // Only when a FullCalendar instance actually exists (Codex review of this
+                // PR, P2). Opening this block to the first-party engine — my own earlier
+                // fix, without which a replaced Events collection was never adopted — also
+                // let it reach an interop call whose `!` was simply untrue: that engine
+                // never initializes FullCalendar, so _instanceId is null by design. The
+                // JS side no-ops on an unknown id, but the service imports scheduler.js
+                // to get there, which can throw where JS is unavailable at all
+                // (prerender, a torn-down circuit) and take the otherwise pure-Blazor
+                // update down with it.
+                if (_instanceId is not null)
+                {
+                    await Interop.SchedulerSetEventsAsync(_instanceId, incoming.Select(ToJsEvent).Cast<object>());
+                }
             }
 
             // Keep the uncontrolled discriminator pointing at the last Events hash observed.
