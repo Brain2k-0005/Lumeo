@@ -150,6 +150,28 @@ public class SchedulerMonthViewWeekNumbersTests : IAsyncLifetime
     }
 
     [Fact]
+    public void Each_Week_Row_Header_Is_Self_Describing_For_Assistive_Technology()
+    {
+        // Codex review of this PR, P2: the "Wk"/"KW" label lives in the header
+        // strip ABOVE the grid, so it is not a columnheader of this grid and has
+        // no ARIA relationship to these cells — a screen reader walking the grid
+        // would read an unexplained "35". Predicted-wrong value before the fix:
+        // null (no aria-label at all).
+        var cut = _ctx.Render<L.SchedulerMonthView>(p => p
+            .Add(c => c.AnchorDate, new DateTime(2026, 1, 15))
+            .Add(c => c.ShowWeekNumbers, true));
+
+        Assert.All(cut.FindAll("[role='rowheader']"), h =>
+        {
+            var label = h.GetAttribute("aria-label");
+            Assert.False(string.IsNullOrWhiteSpace(label));
+            // Must carry the number AND a word explaining it — not just "35".
+            Assert.Contains(h.TextContent.Trim(), label!);
+            Assert.NotEqual(h.TextContent.Trim(), label!.Trim());
+        });
+    }
+
+    [Fact]
     public void The_Week_Column_Is_Not_A_Gridcell_So_Keyboard_Navigation_Is_Untouched()
     {
         // The month grid's arrow-key navigation walks day cells by index. A
