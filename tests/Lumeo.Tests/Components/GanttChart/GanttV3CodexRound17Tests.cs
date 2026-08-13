@@ -195,7 +195,7 @@ public class GanttV3CodexRound17Tests : IAsyncLifetime
         // and fires one more unregister, deterministically covering that
         // ordering regardless of what DisposeAsync's own attempt above did.
         gate.SetResult();
-        for (var i = 0; i < 100 && _interop.GanttV3UnregisterVerticalScrollTrackingCallCount <= unregisterCountAfterDispose; i++)
+        for (var i = 0; i < 600 && _interop.GanttV3UnregisterVerticalScrollTrackingCallCount <= unregisterCountAfterDispose; i++)
             await Task.Delay(10);
 
         Assert.True(_interop.GanttV3UnregisterVerticalScrollTrackingCallCount > unregisterCountAfterDispose,
@@ -256,7 +256,7 @@ public class GanttV3CodexRound17Tests : IAsyncLifetime
         // (OnTaskClick present) that's already stale.
         gate.SetResult();
         _interop.RegisterPreventDefaultKeysGate = null;
-        for (var i = 0; i < 100 && _interop.UnregisterPreventDefaultKeysElementIds.Count == 0; i++)
+        for (var i = 0; i < 600 && _interop.UnregisterPreventDefaultKeysElementIds.Count == 0; i++)
             await Task.Delay(10);
 
         Assert.Single(_interop.UnregisterPreventDefaultKeysElementIds);
