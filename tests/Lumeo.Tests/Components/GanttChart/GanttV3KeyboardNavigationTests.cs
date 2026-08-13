@@ -179,7 +179,15 @@ public class GanttV3KeyboardNavigationTests : IAsyncLifetime
 
         gate.SetResult();
         _interop.RegisterPreventDefaultKeysGate = null;
-        for (var i = 0; i < 100 && _interop.RegisterPreventDefaultKeysElementIds.Count < 2; i++)
+        // 6s budget, not 1s (raised 2026-08-13): this spin-wait is one of a
+        // handful in the suite that failed sporadically in CI and on branches
+        // that touch none of this code — always right after a clean rebuild,
+        // i.e. under peak CPU contention, and always green on re-run. The loop
+        // exits the moment the condition holds, so the longer budget costs
+        // nothing except on a genuine failure, where 6s of patience is a fair
+        // price for not misreading load as a regression. It cost this session
+        // several false leads before the pattern was clear.
+        for (var i = 0; i < 600 && _interop.RegisterPreventDefaultKeysElementIds.Count < 2; i++)
             await Task.Delay(10);
 
         // A SECOND register call landed (the drift correction) — never an

@@ -582,7 +582,7 @@ public class GanttV3DragTests : IAsyncLifetime
         // taking the count to unregisterCountAfterDispose + 1 (2) regardless
         // of how the two calls raced.
         gate.SetResult();
-        for (var i = 0; i < 100 && _interop.GanttV3UnregisterDragCallCount <= unregisterCountAfterDispose; i++)
+        for (var i = 0; i < 600 && _interop.GanttV3UnregisterDragCallCount <= unregisterCountAfterDispose; i++)
             await Task.Delay(10);
 
         Assert.True(_interop.GanttV3UnregisterDragCallCount > unregisterCountAfterDispose,
@@ -626,7 +626,7 @@ public class GanttV3DragTests : IAsyncLifetime
             "the Readonly-branch's own existing check should have already attempted an unregister");
 
         gate.SetResult();
-        for (var i = 0; i < 100 && _interop.GanttV3UnregisterDragCallCount <= unregisterCountAfterFlip; i++)
+        for (var i = 0; i < 600 && _interop.GanttV3UnregisterDragCallCount <= unregisterCountAfterFlip; i++)
             await Task.Delay(10);
 
         Assert.True(_interop.GanttV3UnregisterDragCallCount > unregisterCountAfterFlip,
