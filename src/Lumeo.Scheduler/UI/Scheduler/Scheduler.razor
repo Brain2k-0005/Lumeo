@@ -55,7 +55,57 @@ else
         </div>
     }
 
-    <div @ref="_hostRef" style="height: @Height;"></div>
+    @if (Engine == SchedulerEngine.FirstParty)
+    {
+        @* No JS host at all in this mode — the interop registration below is
+           skipped too, so a first-party consumer loads no calendar library. *@
+        <div style="max-height: @Height; overflow: auto;">
+            @switch (_currentView)
+            {
+                case SchedulerView.Month:
+                    <SchedulerMonthView Events="@EffectiveEvents" AnchorDate="@_fpAnchor"
+                                        FirstDayOfWeek="@EffectiveFirstDayOfWeek"
+                                        BusinessHours="@BusinessHours"
+                                        Editable="@Editable" Selectable="@Selectable"
+                                        ResolveEventColor="@EventColor"
+                                        OnEventClick="@OnEventClick" OnDateSelect="@OnDateSelect"
+                                        OnEventChange="@OnEventChange"
+                                        OnRequestPrev="@PrevAsync" OnRequestNext="@NextAsync" />
+                    break;
+                case SchedulerView.Week:
+                    <SchedulerTimeGridView Events="@EffectiveEvents" AnchorDate="@_fpAnchor" Days="7"
+                                           FirstDayOfWeek="@EffectiveFirstDayOfWeek"
+                                           BusinessHours="@BusinessHours" NowIndicator="@NowIndicator"
+                                           SlotMinTime="@SlotMinTime" SlotMaxTime="@SlotMaxTime"
+                                           Editable="@Editable" Selectable="@Selectable"
+                                           ResolveEventColor="@EventColor"
+                                           OnEventClick="@OnEventClick" OnDateSelect="@OnDateSelect"
+                                           OnEventChange="@OnEventChange" />
+                    break;
+                case SchedulerView.Day:
+                    <SchedulerTimeGridView Events="@EffectiveEvents" AnchorDate="@_fpAnchor" Days="1"
+                                           FirstDayOfWeek="@EffectiveFirstDayOfWeek"
+                                           BusinessHours="@BusinessHours" NowIndicator="@NowIndicator"
+                                           SlotMinTime="@SlotMinTime" SlotMaxTime="@SlotMaxTime"
+                                           Editable="@Editable" Selectable="@Selectable"
+                                           ResolveEventColor="@EventColor"
+                                           OnEventClick="@OnEventClick" OnDateSelect="@OnDateSelect"
+                                           OnEventChange="@OnEventChange" />
+                    break;
+                default:
+                    @* List maps to the agenda view — the same "flat, chronological"
+                       reading FullCalendar's listWeek gives. *@
+                    <SchedulerAgendaView Events="@EffectiveEvents" AnchorDate="@_fpAnchor" DaysToShow="7"
+                                         ResolveEventColor="@EventColor"
+                                         OnEventClick="@OnEventClick" />
+                    break;
+            }
+        </div>
+    }
+    else
+    {
+        <div @ref="_hostRef" style="height: @Height;"></div>
+    }
 </div>
 }
 
@@ -64,6 +114,25 @@ else
     /// <summary>The calendar's events. Controlled when <see cref="EventsChanged"/> has a delegate — the
     /// caller owns the collection and must apply drag/resize/click edits back onto it; otherwise the
     /// component manages its own working copy internally, seeded from this value.</summary>
+    /// <summary>
+    /// Which engine renders the calendar. Defaults to <see cref="SchedulerEngine.FullCalendar"/>,
+    /// so a consumer that never sets this is completely unaffected.
+    /// <para>
+    /// <see cref="SchedulerEngine.FirstParty"/> renders Lumeo's own Blazor views and loads no
+    /// third-party calendar JS. It is the only mode that honours
+    /// <see cref="SchedulerEvent.Recurrence"/> — the wrapper's serializer branches solely on the
+    /// legacy <see cref="SchedulerEvent.DaysOfWeek"/> pair — and the only one with week numbers,
+    /// weekend hiding, live-region announcements and resource columns.
+    /// </para>
+    /// <para>
+    /// Parameters NOT yet carried across, stated up front rather than discovered later:
+    /// <see cref="SlotDuration"/> is ignored, and the JS-side imperative navigation has no
+    /// equivalent (the toolbar moves an internal anchor date instead). Everything else on this
+    /// component maps.
+    /// </para>
+    /// </summary>
+    [Parameter] public SchedulerEngine Engine { get; set; } = SchedulerEngine.FullCalendar;
+
     [Parameter] public IEnumerable<SchedulerEvent>? Events { get; set; }
     /// <summary>Invoked with the updated event collection after a drag, resize, or other edit. Binding
     /// this makes <see cref="Events"/> controlled.</summary>
@@ -195,6 +264,7 @@ else
         _events = Events?.ToList() ?? new List<SchedulerEvent>();
         _lastEventsHash = ComputeEventsHash(_events);
         _lastPushedEventsHash = _lastEventsHash;
+        SeedFirstPartyAnchor();
         _title = ComputeTitle(InitialDate ?? DateTime.Today, _currentView);
         _currentLocale = ResolveFullCalendarLocale(System.Globalization.CultureInfo.CurrentUICulture);
         RebuildResourceLookup();
@@ -264,6 +334,12 @@ else
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (!firstRender || _initialized) return;
+
+        // The first-party engine touches no JS at all: no instance to create, no
+        // library to load, nothing to dispose. Returning here is what makes
+        // Engine=FirstParty a genuinely dependency-free path rather than the same
+        // wrapper with different markup.
+        if (Engine == SchedulerEngine.FirstParty) return;
 
         _selfRef = DotNetObjectReference.Create(this);
 
@@ -515,6 +591,9 @@ else
         return hash.ToHashCode();
     }
 
+    /// <summary>Recomputes the toolbar title from the first-party anchor. The wrapper reads its title back from FullCalendar; this engine owns it.</summary>
+    private void RefreshFirstPartyTitle() => _title = ComputeTitle(_fpAnchor, _currentView);
+
     private string ComputeTitle(DateTime date, SchedulerView view) => view switch
     {
         SchedulerView.Month => date.ToString("MMMM yyyy"),
@@ -556,8 +635,40 @@ else
         };
     }
 
+    // ── First-party engine state ─────────────────────────────────────────
+    // The wrapper delegates navigation to FullCalendar; the first-party views are
+    // pure Blazor and need an anchor date of our own. Seeded once from InitialDate
+    // so both engines start on the same day.
+    private DateTime _fpAnchor = DateTime.Today;
+    private bool _fpAnchorSeeded;
+
+    private IEnumerable<SchedulerEvent>? EffectiveEvents => Events;
+
+    private DayOfWeek EffectiveFirstDayOfWeek => (DayOfWeek)Math.Clamp(FirstDayOfWeek, 0, 6);
+
+    private void SeedFirstPartyAnchor()
+    {
+        if (_fpAnchorSeeded) return;
+        _fpAnchor = (InitialDate ?? DateTime.Today).Date;
+        _fpAnchorSeeded = true;
+    }
+
+    /// <summary>Steps the first-party anchor by one view-sized unit. Month moves whole months, Week/List a week, Day a day.</summary>
+    private void StepFirstPartyAnchor(int direction) => _fpAnchor = _currentView switch
+    {
+        SchedulerView.Month => _fpAnchor.AddMonths(direction),
+        SchedulerView.Day => _fpAnchor.AddDays(direction),
+        _ => _fpAnchor.AddDays(7 * direction),
+    };
+
     private async Task PrevAsync()
     {
+        if (Engine == SchedulerEngine.FirstParty)
+        {
+            StepFirstPartyAnchor(-1);
+            RefreshFirstPartyTitle();
+            return;
+        }
         if (_instanceId is null) return;
         await Interop.SchedulerPrevAsync(_instanceId);
         await RefreshTitleAsync();
@@ -565,6 +676,12 @@ else
 
     private async Task NextAsync()
     {
+        if (Engine == SchedulerEngine.FirstParty)
+        {
+            StepFirstPartyAnchor(1);
+            RefreshFirstPartyTitle();
+            return;
+        }
         if (_instanceId is null) return;
         await Interop.SchedulerNextAsync(_instanceId);
         await RefreshTitleAsync();
@@ -572,6 +689,12 @@ else
 
     private async Task TodayAsync()
     {
+        if (Engine == SchedulerEngine.FirstParty)
+        {
+            _fpAnchor = DateTime.Today;
+            RefreshFirstPartyTitle();
+            return;
+        }
         if (_instanceId is null) return;
         await Interop.SchedulerTodayAsync(_instanceId);
         await RefreshTitleAsync();
@@ -579,8 +702,17 @@ else
 
     private async Task OnViewChangedAsync(string? v)
     {
-        if (_instanceId is null || string.IsNullOrEmpty(v)) return;
+        if (string.IsNullOrEmpty(v)) return;
         if (!Enum.TryParse<SchedulerView>(v, out var parsed)) return;
+
+        if (Engine == SchedulerEngine.FirstParty)
+        {
+            _currentView = parsed;
+            RefreshFirstPartyTitle();
+            return;
+        }
+
+        if (_instanceId is null) return;
         _currentView = parsed;
         await Interop.SchedulerChangeViewAsync(_instanceId, v);
         await RefreshTitleAsync();

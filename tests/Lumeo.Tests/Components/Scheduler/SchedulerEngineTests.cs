@@ -1,0 +1,148 @@
+using Bunit;
+using Lumeo.Tests.Helpers;
+using Microsoft.Extensions.DependencyInjection;
+using Xunit;
+using L = Lumeo;
+
+namespace Lumeo.Tests.Components.Scheduler;
+
+/// <summary>
+/// Closes the last ReUI-comparison gap that was reachable without a product decision: the
+/// first-party views existed, were tested, and were shown on the docs page — but the shipped
+/// <c>&lt;Scheduler&gt;</c> could not render them, so a consumer using the public component had no
+/// way to get week numbers, weekend hiding, live announcements, resource columns, or
+/// <c>SchedulerEvent.Recurrence</c> (which the FullCalendar wrapper ignores entirely).
+///
+/// <para>
+/// Deliberately an OPT-IN, not a switch of the default. Flipping the default would change what
+/// every existing consumer renders on an upgrade — that is the owner's call, not a cleanup. The
+/// first test below is the one that matters most: with <c>Engine</c> unset, nothing changes.
+/// </para>
+/// </summary>
+public class SchedulerEngineTests : IAsyncLifetime
+{
+    private readonly BunitContext _ctx = new();
+
+    public SchedulerEngineTests() => _ctx.AddLumeoServices();
+    public Task InitializeAsync() => Task.CompletedTask;
+    public async Task DisposeAsync() => await _ctx.DisposeAsync();
+
+    private static readonly DateTime Day = new(2026, 3, 10);
+
+    private static readonly L.SchedulerEvent[] Events =
+    [
+        new("e1", "Standup", Day.AddHours(9), Day.AddHours(10)),
+    ];
+
+    [Fact]
+    public void The_Default_Engine_Is_Still_The_FullCalendar_Wrapper()
+    {
+        // The whole point of the opt-in: an existing consumer that never sets
+        // Engine must render exactly what it rendered before — a JS host element,
+        // and none of the first-party view markup.
+        var cut = _ctx.Render<L.Scheduler>(p => p.Add(c => c.Events, Events));
+
+        Assert.Empty(cut.FindAll("[role='grid']"));            // month/time-grid views expose one
+        Assert.Empty(cut.FindAll("[data-testid='scheduler-live-region']"));
+    }
+
+    [Fact]
+    public void The_First_Party_Engine_Renders_Lumeos_Own_Month_View()
+    {
+        var cut = _ctx.Render<L.Scheduler>(p => p
+            .Add(c => c.Engine, L.SchedulerEngine.FirstParty)
+            .Add(c => c.InitialView, L.SchedulerView.Month)
+            .Add(c => c.InitialDate, Day)
+            .Add(c => c.Events, Events));
+
+        // 42-cell month grid is the first-party view's signature.
+        Assert.Equal(42, cut.FindAll("[data-cell-date]").Count);
+    }
+
+    [Fact]
+    public void The_First_Party_Engine_Honours_Recurrence_Which_The_Wrapper_Ignores()
+    {
+        // The sharpest reason this opt-in exists. Scheduler.razor's ToJsEvent
+        // branches solely on the legacy DaysOfWeek pair, so a structured
+        // Recurrence rule reaches its change-detection hash and nothing else.
+        var rule = new L.SchedulerRecurrenceRule(L.SchedulerRecurrenceFrequency.Daily);
+        var ev = new L.SchedulerEvent("e1", "Daily standup",
+            Day.AddDays(-3).AddHours(9), Day.AddDays(-3).AddHours(10))
+        { Recurrence = rule };
+
+        var cut = _ctx.Render<L.Scheduler>(p => p
+            .Add(c => c.Engine, L.SchedulerEngine.FirstParty)
+            .Add(c => c.InitialView, L.SchedulerView.Month)
+            .Add(c => c.InitialDate, Day)
+            .Add(c => c.Events, new[] { ev }));
+
+        // Expanded onto days it was never explicitly scheduled for.
+        Assert.Contains("Daily standup", cut.Markup);
+    }
+
+    [Theory]
+    [InlineData(L.SchedulerView.Week)]
+    [InlineData(L.SchedulerView.Day)]
+    public void The_Time_Grid_Views_Map_Onto_The_First_Party_Engine(L.SchedulerView view)
+    {
+        var cut = _ctx.Render<L.Scheduler>(p => p
+            .Add(c => c.Engine, L.SchedulerEngine.FirstParty)
+            .Add(c => c.InitialView, view)
+            .Add(c => c.InitialDate, Day)
+            .Add(c => c.Events, Events));
+
+        Assert.NotEmpty(cut.FindAll("[data-daycol]"));
+    }
+
+    [Fact]
+    public void The_List_View_Maps_To_The_Agenda_View()
+    {
+        var cut = _ctx.Render<L.Scheduler>(p => p
+            .Add(c => c.Engine, L.SchedulerEngine.FirstParty)
+            .Add(c => c.InitialView, L.SchedulerView.List)
+            .Add(c => c.InitialDate, Day)
+            .Add(c => c.Events, Events));
+
+        // The agenda view is a list, not a grid.
+        Assert.Empty(cut.FindAll("[data-cell-date]"));
+        Assert.Contains("Standup", cut.Markup);
+    }
+
+    [Fact]
+    public async Task Toolbar_Navigation_Moves_The_Anchor_Without_Any_Interop()
+    {
+        // The wrapper delegates Prev/Next to FullCalendar; this engine owns an
+        // anchor date instead. Predicted-wrong behaviour if it were still routed
+        // through interop: nothing moves, because there is no JS instance at all.
+        var cut = _ctx.Render<L.Scheduler>(p => p
+            .Add(c => c.Engine, L.SchedulerEngine.FirstParty)
+            .Add(c => c.InitialView, L.SchedulerView.Month)
+            .Add(c => c.InitialDate, Day));
+
+        var before = cut.FindAll("[data-cell-date]")[10].GetAttribute("data-cell-date");
+
+        var next = cut.FindAll("button").First(b => (b.GetAttribute("aria-label") ?? "").Contains("Next", StringComparison.OrdinalIgnoreCase));
+        await next.ClickAsync(new());
+
+        var after = cut.FindAll("[data-cell-date]")[10].GetAttribute("data-cell-date");
+        Assert.NotEqual(before, after);
+    }
+
+    [Fact]
+    public void The_First_Party_Engine_Creates_No_JS_Instance()
+    {
+        // What makes this a genuinely dependency-free path rather than the same
+        // wrapper with different markup: no init call, so no calendar library.
+        var interop = new TrackingInteropService();
+        using var ctx = new BunitContext();
+        ctx.AddLumeoServices();
+        ctx.Services.AddSingleton<Lumeo.Services.IComponentInteropService>(interop);
+
+        ctx.Render<L.Scheduler>(p => p
+            .Add(c => c.Engine, L.SchedulerEngine.FirstParty)
+            .Add(c => c.InitialDate, Day)
+            .Add(c => c.Events, Events));
+
+        Assert.Equal(0, interop.SchedulerInitCallCount);
+    }
+}

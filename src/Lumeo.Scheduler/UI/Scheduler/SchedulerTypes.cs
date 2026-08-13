@@ -124,6 +124,36 @@ public record SchedulerDateRange(DateTime Start, DateTime End, bool AllDay)
 }
 
 /// <summary>
+/// Which rendering engine <see cref="Scheduler"/> uses.
+/// </summary>
+public enum SchedulerEngine
+{
+    /// <summary>
+    /// The FullCalendar-backed wrapper. The default, and unchanged from every previous release —
+    /// an existing consumer that never sets <c>Engine</c> renders byte-identically.
+    /// </summary>
+    FullCalendar,
+
+    /// <summary>
+    /// Lumeo's own Blazor views (<c>SchedulerMonthView</c>, <c>SchedulerTimeGridView</c>,
+    /// <c>SchedulerAgendaView</c>) — no third-party calendar JS at all.
+    /// <para>
+    /// Opt-in on purpose. The two engines are not pixel-identical and do not support exactly the
+    /// same parameter set, so switching is a decision a consumer makes deliberately rather than
+    /// inherits from an upgrade. What the first-party engine adds: it honours
+    /// <see cref="SchedulerEvent.Recurrence"/> (the wrapper ignores it entirely), and it is the
+    /// only path to the week-number, weekend-hiding, live-announcement and resource features.
+    /// </para>
+    /// <para>
+    /// Not carried over yet: <c>SlotDuration</c>, and the JS-side imperative navigation the
+    /// wrapper exposes. Those are listed on <see cref="Scheduler.Engine"/> so the gap is visible
+    /// before the switch, not after.
+    /// </para>
+    /// </summary>
+    FirstParty,
+}
+
+/// <summary>
 /// Built-in views exposed by the Lumeo scheduler. Maps onto FullCalendar's
 /// dayGridMonth / timeGridWeek / timeGridDay / listWeek view names.
 /// </summary>
