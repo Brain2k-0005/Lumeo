@@ -802,7 +802,13 @@ public class TrackingInteropService : IComponentInteropService
         SchedulerInitCallCount++;
         return Task.FromResult(string.Empty);
     }
-    public Task SchedulerSetEventsAsync(string id, IEnumerable<object> events) => Task.CompletedTask;
+    /// <summary>Ids passed to SchedulerSetEventsAsync — the first-party engine must never reach this at all.</summary>
+    public List<string> SchedulerSetEventsIds { get; } = new();
+    public Task SchedulerSetEventsAsync(string id, IEnumerable<object> events)
+    {
+        SchedulerSetEventsIds.Add(id);
+        return Task.CompletedTask;
+    }
     public Task SchedulerChangeViewAsync(string id, string view) => Task.CompletedTask;
     public Task SchedulerGotoDateAsync(string id, string dateIso) => Task.CompletedTask;
     public Task SchedulerPrevAsync(string id) => Task.CompletedTask;

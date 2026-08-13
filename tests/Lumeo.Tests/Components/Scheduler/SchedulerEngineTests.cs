@@ -263,4 +263,40 @@ public class SchedulerEngineTests : IAsyncLifetime
 
         Assert.Equal(0, interop.SchedulerInitCallCount);
     }
+
+    [Fact]
+    public void Replacing_Events_In_First_Party_Mode_Touches_No_JS_At_All()
+    {
+        // Codex review of this PR, P2. Adoption had to be opened to the first-party engine
+        // (otherwise a parent replacing its collection was never picked up), and that also
+        // let it reach an interop call guarded only by a null-forgiving `!` — untrue here,
+        // because this engine never creates a FullCalendar instance. The JS side no-ops on
+        // an unknown id, but getting there imports scheduler.js, which can throw wherever
+        // JS is unavailable at all and take the pure-Blazor update down with it.
+        var interop = new TrackingInteropService();
+        using var ctx = new BunitContext();
+        ctx.AddLumeoServices();
+        ctx.Services.AddSingleton<Lumeo.Services.IComponentInteropService>(interop);
+
+        var cut = ctx.Render<L.Scheduler>(p => p
+            .Add(c => c.Engine, L.SchedulerEngine.FirstParty)
+            .Add(c => c.InitialView, L.SchedulerView.Month)
+            .Add(c => c.InitialDate, Day)
+            .Add(c => c.Events, Events));
+
+        var replaced = new[]
+        {
+            new L.SchedulerEvent("e2", "Retro", Day.AddHours(14), Day.AddHours(15)),
+        };
+        cut.Render(p => p
+            .Add(c => c.Engine, L.SchedulerEngine.FirstParty)
+            .Add(c => c.InitialView, L.SchedulerView.Month)
+            .Add(c => c.InitialDate, Day)
+            .Add(c => c.Events, replaced));
+
+        // The replacement is adopted...
+        Assert.Contains("Retro", cut.Markup, StringComparison.Ordinal);
+        // ...without ever reaching the JS bridge.
+        Assert.Empty(interop.SchedulerSetEventsIds);
+    }
 }
