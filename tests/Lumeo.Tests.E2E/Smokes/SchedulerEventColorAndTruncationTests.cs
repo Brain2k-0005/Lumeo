@@ -13,14 +13,18 @@ namespace Lumeo.Tests.E2E.Smokes;
 /// </para>
 ///
 /// <para>
-/// It previously also carried a WCAG contrast assertion, which is NOT ported here — deliberately,
-/// and not because the concern went away. Measured live against the first-party month chips, the
-/// text-to-background ratio is 1.13:1 to 2.19:1 in dark mode and 1.41:1 to 2.88:1 in light,
-/// against WCAG's 3:1 floor for UI text. That is a property of the chip's own design — it paints
-/// the event colour as the TEXT on an 18%-opacity tint of that same colour — so every chip is
-/// affected, not one demo event. Porting the old assertion would have meant either failing the
-/// build or lowering the threshold to bless the current state; both are worse than saying so.
-/// Tracked as its own issue.
+/// The WCAG contrast assertion this file used to carry is back, measured on the first-party
+/// chip. Before the fix it was 1.13:1 to 2.19:1 in dark mode and 1.41:1 to 2.88:1 in light,
+/// because the chip painted the event colour as TEXT on an 18% tint of that same colour.
+/// Mixing the text toward an anchor that flips with the theme now gives 3.01:1 to 6.44:1 dark
+/// and 5.33:1 to 9.74:1 light.
+/// </para>
+/// <para>
+/// The floor asserted below is 3.0, not 4.5, because of one residual case the mix cannot
+/// reach: an event coloured <c>--color-primary</c> renders near-white in dark mode, so its
+/// text and its own 18% tint are the same hue and mixing toward white moves neither. Every
+/// other colour clears 4.5:1. Raising the tint opacity would fix that last case at the cost
+/// of changing how every chip looks, which is a design decision, not a test's to make.
 /// </para>
 /// </summary>
 public class SchedulerEventColorAndTruncationTests : PlaywrightTestBase
@@ -51,6 +55,50 @@ public class SchedulerEventColorAndTruncationTests : PlaywrightTestBase
         public int ClientWidth { get; set; }
         public string AriaLabel { get; set; } = "";
         public string Text { get; set; } = "";
+    }
+
+    private const string ContrastScript = @"() => {
+  const cv = document.createElement('canvas'); cv.width = cv.height = 1;
+  const ctx = cv.getContext('2d', { willReadFrequently: true });
+  const paint = layers => { ctx.clearRect(0,0,1,1);
+    for (const c of layers) { ctx.fillStyle = c; ctx.fillRect(0,0,1,1); }
+    const d = ctx.getImageData(0,0,1,1).data; return [d[0], d[1], d[2]]; };
+  const lum = c => { const f = v => { v/=255; return v<=0.03928 ? v/12.92 : Math.pow((v+0.055)/1.055, 2.4); };
+                     return 0.2126*f(c[0])+0.7152*f(c[1])+0.0722*f(c[2]); };
+  const opaqueBehind = el => { let n = el.parentElement;
+    while (n) { const c = getComputedStyle(n).backgroundColor;
+                if (c && !/transparent|rgba\(0, 0, 0, 0\)/.test(c)) return c; n = n.parentElement; }
+    return getComputedStyle(document.body).backgroundColor; };
+  let worst = 99;
+  for (const chip of document.querySelectorAll('#month-view [data-event-id]')) {
+    if (!(chip.textContent || '').trim()) continue;
+    const cs = getComputedStyle(chip);
+    const bg = paint([opaqueBehind(chip), cs.backgroundColor]);
+    const fg = paint([cs.color]);
+    const L1 = lum(fg), L2 = lum(bg);
+    const r = (Math.max(L1,L2) + 0.05) / (Math.min(L1,L2) + 0.05);
+    if (r < worst) worst = r;
+  }
+  return worst === 99 ? null : worst;
+}";
+
+    [Theory]
+    [InlineData("light")]
+    [InlineData("dark")]
+    public async Task Every_month_chip_clears_the_contrast_floor_against_its_own_background(string mode)
+    {
+        // Painted through a canvas so oklab/oklch/color-mix output becomes real sRGB bytes and
+        // the chip's translucent tint composites against whatever surface is behind it — a
+        // class-string check would have passed throughout the period this was 1.13:1.
+        await Page.AddInitScriptAsync($"try {{ localStorage.setItem('theme-mode', '{mode}'); }} catch (e) {{ }}");
+        await Goto("/components/scheduler");
+        await Page.WaitForSelectorAsync("#month-view [data-event-id]", new() { Timeout = LongTimeoutMs });
+        await Page.WaitForTimeoutAsync(500);
+
+        var worst = await Page.EvaluateAsync<double?>(ContrastScript);
+        Assert.NotNull(worst);
+        Assert.True(worst >= 3.0,
+            $"Worst chip contrast in {mode} mode was {worst:F2}:1, below the 3:1 floor.");
     }
 
     [Fact]
