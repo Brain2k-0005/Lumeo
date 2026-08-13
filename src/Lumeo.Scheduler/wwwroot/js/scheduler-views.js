@@ -611,7 +611,11 @@ function unregisterTimeGridDrag(hostEl) {
 // ============================================================
 
 function registerNowIndicator(containerEl, options) {
-    if (!containerEl) return;
+    // A Blazor ElementReference that was never bound still arrives as an object, so a
+    // plain falsy check let it through and `containerEl.appendChild is not a function`
+    // surfaced as an unhandled render exception. The caller no longer produces one, but
+    // the guard is cheap and this runs inside an interval that would never be cleaned up.
+    if (!containerEl || typeof containerEl.appendChild !== 'function') return;
     unregisterNowIndicator(containerEl);
 
     const line = document.createElement('div');
@@ -627,6 +631,9 @@ function registerNowIndicator(containerEl, options) {
 
     const pxPerMinute = options && options.pixelsPerMinute ? options.pixelsPerMinute : 0.8;
     const slotMinMinute = options && options.slotMinMinute ? options.slotMinMinute : 0;
+    // The line spans the whole grid; `days` says which dates are on screen, so it can be
+    // hidden when none of them is today. dayIso is the older single-column contract.
+    const days = options && Array.isArray(options.days) ? options.days : null;
     const dayIso = options && options.dayIso ? options.dayIso : null;
     const timeZone = options && options.timeZone ? options.timeZone : null;
 
@@ -665,7 +672,8 @@ function registerNowIndicator(containerEl, options) {
         // entirely when "today" isn't the visible day, matching every mainstream
         // calendar's now-indicator (it never draws on a non-today column set it
         // can't place unambiguously without per-day iso comparison from the caller).
-        if (dayIso && now.iso !== dayIso) {
+        const offScreen = days ? !days.includes(now.iso) : (dayIso && now.iso !== dayIso);
+        if (offScreen) {
             line.style.display = 'none';
             return;
         }
