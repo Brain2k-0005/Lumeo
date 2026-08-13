@@ -559,23 +559,6 @@ public interface IComponentInteropService : IAsyncDisposable, IDisposable
     /// <see cref="AiObserveScrollButton{T}"/>. Default no-op.</summary>
     ValueTask AiDisposeScrollButton(string elementId) => ValueTask.CompletedTask;
 
-    // Scheduler (FullCalendar wrapper)
-    Task<string> SchedulerInitAsync(Microsoft.AspNetCore.Components.ElementReference el, object dotNetRef, object options);
-    Task SchedulerSetEventsAsync(string id, IEnumerable<object> events);
-    Task SchedulerChangeViewAsync(string id, string view);
-    Task SchedulerGotoDateAsync(string id, string dateIso);
-    Task SchedulerPrevAsync(string id);
-    Task SchedulerNextAsync(string id);
-    Task SchedulerTodayAsync(string id);
-    /// <summary>Pushes an updated locale onto an already-live FullCalendar instance
-    /// (wave-0 i18n fix — locale is now also threaded through the init options).
-    /// Default no-op so pre-existing external implementers of this interface aren't
-    /// broken by the addition (see <c>ComponentInteropServiceInterfaceCompatTests</c>'s
-    /// additive-evolution convention).</summary>
-    Task SchedulerSetLocaleAsync(string id, string locale) => Task.CompletedTask;
-    Task<string> SchedulerGetTitleAsync(string id);
-    Task SchedulerDestroyAsync(string id);
-
     // Gantt (Frappe Gantt wrapper)
     Task<string> GanttInitAsync(Microsoft.AspNetCore.Components.ElementReference el, object dotNetRef, object options);
     Task GanttSetTasksAsync(string id, IEnumerable<object> tasks);
@@ -922,9 +905,8 @@ public interface IComponentInteropService : IAsyncDisposable, IDisposable
     Task GanttV3ScrollToOffsetAsync(Microsoft.AspNetCore.Components.ElementReference el, double targetX, double offsetPx) => Task.CompletedTask;
 
     // --- Scheduler first-party view engine (wave 1b) ---
-    // Own module (scheduler-views.js), separate from the FullCalendar wrapper
-    // (scheduler.js) above — the first-party Month/TimeGrid views ship alongside
-    // FullCalendar (spec §0/§6 wave 1), not replacing it yet, so this is additive
+    // Own module (scheduler-views.js): drag, resize, drag-create and the now-indicator
+    // for the Scheduler's Blazor-rendered views.
     // surface loaded lazily like every other Scheduler/Gantt module here.
 
     /// <summary>

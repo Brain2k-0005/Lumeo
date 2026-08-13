@@ -260,16 +260,6 @@ public class AffixDisposeLifecycleTests : IAsyncLifetime
         public ValueTask AiObserveAutoScroll(string elementId) => _inner.AiObserveAutoScroll(elementId);
         public ValueTask AiDisposeAutoScroll(string elementId) => _inner.AiDisposeAutoScroll(elementId);
         public ValueTask AiScrollToBottom(string elementId) => _inner.AiScrollToBottom(elementId);
-        public Task<string> SchedulerInitAsync(ElementReference el, object dotNetRef, object options) => _inner.SchedulerInitAsync(el, dotNetRef, options);
-        public Task SchedulerSetEventsAsync(string id, IEnumerable<object> events) => _inner.SchedulerSetEventsAsync(id, events);
-        public Task SchedulerChangeViewAsync(string id, string view) => _inner.SchedulerChangeViewAsync(id, view);
-        public Task SchedulerGotoDateAsync(string id, string dateIso) => _inner.SchedulerGotoDateAsync(id, dateIso);
-        public Task SchedulerPrevAsync(string id) => _inner.SchedulerPrevAsync(id);
-        public Task SchedulerNextAsync(string id) => _inner.SchedulerNextAsync(id);
-        public Task SchedulerTodayAsync(string id) => _inner.SchedulerTodayAsync(id);
-        public Task SchedulerSetLocaleAsync(string id, string locale) => _inner.SchedulerSetLocaleAsync(id, locale);
-        public Task<string> SchedulerGetTitleAsync(string id) => _inner.SchedulerGetTitleAsync(id);
-        public Task SchedulerDestroyAsync(string id) => _inner.SchedulerDestroyAsync(id);
         public Task<string> GanttInitAsync(ElementReference el, object dotNetRef, object options) => _inner.GanttInitAsync(el, dotNetRef, options);
         public Task GanttSetTasksAsync(string id, IEnumerable<object> tasks) => _inner.GanttSetTasksAsync(id, tasks);
         public Task GanttChangeViewModeAsync(string id, string mode) => _inner.GanttChangeViewModeAsync(id, mode);

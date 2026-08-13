@@ -1455,115 +1455,6 @@ public sealed class ComponentInteropService : IComponentInteropService
         return $"{url}?v={_jsModuleVersion}";
     }
 
-    // --- Scheduler (FullCalendar wrapper) ---
-    // Scheduler ships its own JS module (scheduler.js) loaded lazily on first
-    // use; the library is hefty (>200KB gzip) and many apps never touch it.
-
-    private IJSObjectReference? _schedulerModule;
-
-    private async Task<IJSObjectReference> GetSchedulerModuleAsync()
-    {
-        _schedulerModule ??= await _jsRuntime.InvokeAsync<IJSObjectReference>(
-            "import", "./_content/Lumeo.Scheduler/js/scheduler.js");
-        return _schedulerModule;
-    }
-
-    public async Task<string> SchedulerInitAsync(Microsoft.AspNetCore.Components.ElementReference el, object dotNetRef, object options)
-    {
-        var module = await GetSchedulerModuleAsync();
-        return await module.InvokeAsync<string>("scheduler.init", el, dotNetRef, options);
-    }
-
-    public async Task SchedulerSetEventsAsync(string id, IEnumerable<object> events)
-    {
-        try
-        {
-            var module = await GetSchedulerModuleAsync();
-            await module.InvokeVoidAsync("scheduler.setEvents", id, events);
-        }
-        catch (JSDisconnectedException) { }
-    }
-
-    public async Task SchedulerChangeViewAsync(string id, string view)
-    {
-        try
-        {
-            var module = await GetSchedulerModuleAsync();
-            await module.InvokeVoidAsync("scheduler.changeView", id, view);
-        }
-        catch (JSDisconnectedException) { }
-    }
-
-    public async Task SchedulerGotoDateAsync(string id, string dateIso)
-    {
-        try
-        {
-            var module = await GetSchedulerModuleAsync();
-            await module.InvokeVoidAsync("scheduler.gotoDate", id, dateIso);
-        }
-        catch (JSDisconnectedException) { }
-    }
-
-    public async Task SchedulerPrevAsync(string id)
-    {
-        try
-        {
-            var module = await GetSchedulerModuleAsync();
-            await module.InvokeVoidAsync("scheduler.prev", id);
-        }
-        catch (JSDisconnectedException) { }
-    }
-
-    public async Task SchedulerNextAsync(string id)
-    {
-        try
-        {
-            var module = await GetSchedulerModuleAsync();
-            await module.InvokeVoidAsync("scheduler.next", id);
-        }
-        catch (JSDisconnectedException) { }
-    }
-
-    public async Task SchedulerTodayAsync(string id)
-    {
-        try
-        {
-            var module = await GetSchedulerModuleAsync();
-            await module.InvokeVoidAsync("scheduler.today", id);
-        }
-        catch (JSDisconnectedException) { }
-    }
-
-    public async Task SchedulerSetLocaleAsync(string id, string locale)
-    {
-        try
-        {
-            var module = await GetSchedulerModuleAsync();
-            await module.InvokeVoidAsync("scheduler.setLocale", id, locale);
-        }
-        catch (JSDisconnectedException) { }
-    }
-
-    public async Task<string> SchedulerGetTitleAsync(string id)
-    {
-        try
-        {
-            var module = await GetSchedulerModuleAsync();
-            return await module.InvokeAsync<string>("scheduler.getTitle", id) ?? string.Empty;
-        }
-        catch (JSDisconnectedException) { return string.Empty; }
-    }
-
-    public async Task SchedulerDestroyAsync(string id)
-    {
-        try
-        {
-            if (_schedulerModule is null) return;
-            await _schedulerModule.InvokeVoidAsync("scheduler.destroy", id);
-        }
-        catch (JSDisconnectedException) { }
-    }
-
     // --- Gantt (Frappe Gantt wrapper) ---
     // Frappe Gantt is a small SVG-based lib (~20KB gzip) but we still lazy-load
     // it so apps without a Gantt anywhere don't pay the bundle cost.
@@ -1859,7 +1750,7 @@ public sealed class ComponentInteropService : IComponentInteropService
     }
 
     // --- Scheduler first-party view engine (wave 1b) — its own module
-    // (scheduler-views.js), separate from the FullCalendar wrapper module above.
+    // (scheduler-views.js) — drag, resize, drag-create and the now-indicator.
 
     private IJSObjectReference? _schedulerViewsModule;
 
@@ -2156,18 +2047,6 @@ public sealed class ComponentInteropService : IComponentInteropService
             try
             {
                 await _motionModule.DisposeAsync();
-            }
-            catch (JSDisconnectedException)
-            {
-                // Circuit disconnected, safe to ignore
-            }
-        }
-
-        if (_schedulerModule is not null)
-        {
-            try
-            {
-                await _schedulerModule.DisposeAsync();
             }
             catch (JSDisconnectedException)
             {

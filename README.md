@@ -33,7 +33,7 @@
 - **AI primitives** — `PromptInput`, `StreamingText`, `AgentMessageList`, `ToolCallCard`, `ReasoningDisplay`
 - **Motion primitives** — `Marquee`, `NumberTicker`, `TextReveal`, `BlurFade`, `BorderBeam`, `ShimmerButton`, `Sparkles`, `Sparkline`
 - **Dashboard tiles** — `KpiCard`, `SparkCard`, `Delta`, `Bento`, `BentoTile`, `PickList<T>`
-- **Scheduler + Gantt + RichTextEditor** — FullCalendar + Frappe Gantt + TipTap wrappers, lazy-loaded
+- **Scheduler** — a first-party Blazor calendar, no third-party JS. **Gantt + RichTextEditor** — Frappe Gantt + TipTap wrappers, lazy-loaded
 - **14 locales + RTL** — EN/DE/ES/FR/IT/PT/NL/PL/JA/ZH-CN/KO/AR/RU/TR via `ILumeoLocalizer`; `IThemeService.SetDirectionAsync()` for RTL
 - **Excel / PDF / CSV export** — `IDataGridExportService` (ClosedXML + QuestPDF)
 - **`[LumeoForm]` source generator** — annotate a POCO, get a fully-bound Form for free
@@ -369,7 +369,7 @@ await Theme.ToggleModeAsync();              // Toggle current
   (`lumeo-page`/`lumeo-form`/`lumeo-component` are item templates and inherit
   your project's own TFM).
 - Tailwind CSS v4
-- ECharts for charts, FullCalendar for Scheduler, Frappe Gantt for Gantt, TipTap for RichTextEditor
+- ECharts for charts, Frappe Gantt for Gantt, TipTap for RichTextEditor
 - ClosedXML + QuestPDF for DataGrid export
 - First-party `Lumeo.Icons.*` packs (Lucide, Tabler, Phosphor, …) for icons
 

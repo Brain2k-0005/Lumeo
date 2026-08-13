@@ -221,16 +221,6 @@ internal sealed class NoopInteropService : IComponentInteropService
     public ValueTask AiScrollToBottom(string elementId) => ValueTask.CompletedTask;
 
     // Scheduler
-    public Task<string> SchedulerInitAsync(ElementReference el, object dotNetRef, object options) => Task.FromResult(string.Empty);
-    public Task SchedulerSetEventsAsync(string id, IEnumerable<object> events) => Task.CompletedTask;
-    public Task SchedulerChangeViewAsync(string id, string view) => Task.CompletedTask;
-    public Task SchedulerGotoDateAsync(string id, string dateIso) => Task.CompletedTask;
-    public Task SchedulerPrevAsync(string id) => Task.CompletedTask;
-    public Task SchedulerNextAsync(string id) => Task.CompletedTask;
-    public Task SchedulerTodayAsync(string id) => Task.CompletedTask;
-    public Task SchedulerSetLocaleAsync(string id, string locale) => Task.CompletedTask;
-    public Task<string> SchedulerGetTitleAsync(string id) => Task.FromResult(string.Empty);
-    public Task SchedulerDestroyAsync(string id) => Task.CompletedTask;
 
     // Gantt
     public Task<string> GanttInitAsync(ElementReference el, object dotNetRef, object options) => Task.FromResult(string.Empty);

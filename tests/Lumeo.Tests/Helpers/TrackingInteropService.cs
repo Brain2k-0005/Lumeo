@@ -795,29 +795,6 @@ public class TrackingInteropService : IComponentInteropService
     public ValueTask AiDisposeAutoScroll(string elementId) => ValueTask.CompletedTask;
     public ValueTask AiScrollToBottom(string elementId) => ValueTask.CompletedTask;
 
-    /// <summary>How many times a Scheduler asked for a JS instance — 0 proves the first-party engine loads no calendar library.</summary>
-    public int SchedulerInitCallCount { get; private set; }
-    public Task<string> SchedulerInitAsync(ElementReference el, object dotNetRef, object options)
-    {
-        SchedulerInitCallCount++;
-        return Task.FromResult(string.Empty);
-    }
-    /// <summary>Ids passed to SchedulerSetEventsAsync — the first-party engine must never reach this at all.</summary>
-    public List<string> SchedulerSetEventsIds { get; } = new();
-    public Task SchedulerSetEventsAsync(string id, IEnumerable<object> events)
-    {
-        SchedulerSetEventsIds.Add(id);
-        return Task.CompletedTask;
-    }
-    public Task SchedulerChangeViewAsync(string id, string view) => Task.CompletedTask;
-    public Task SchedulerGotoDateAsync(string id, string dateIso) => Task.CompletedTask;
-    public Task SchedulerPrevAsync(string id) => Task.CompletedTask;
-    public Task SchedulerNextAsync(string id) => Task.CompletedTask;
-    public Task SchedulerTodayAsync(string id) => Task.CompletedTask;
-    public Task SchedulerSetLocaleAsync(string id, string locale) => Task.CompletedTask;
-    public Task<string> SchedulerGetTitleAsync(string id) => Task.FromResult(string.Empty);
-    public Task SchedulerDestroyAsync(string id) => Task.CompletedTask;
-
     public Task<string> GanttInitAsync(ElementReference el, object dotNetRef, object options) => Task.FromResult(string.Empty);
     public Task GanttSetTasksAsync(string id, IEnumerable<object> tasks) => Task.CompletedTask;
     public Task GanttChangeViewModeAsync(string id, string mode) => Task.CompletedTask;
