@@ -67,7 +67,10 @@ else
     {
         @* No JS host at all in this mode — the interop registration below is
            skipped too, so a first-party consumer loads no calendar library. *@
-        <div style="max-height: @Height; overflow: auto;">
+        @* Height bounds the SCROLL viewport (Codex review of this PR, P2): applied
+           only as an outer max-height it left the inner views free to grow past it,
+           so a tall month rendered outside the box the caller asked for. *@
+        <div style="height: @Height; max-height: @Height; overflow: auto;">
             @switch (_currentView)
             {
                 case SchedulerView.Month:
@@ -111,6 +114,7 @@ else
                                            Resources="@Resources"
                                            SlotMinTime="@SlotMinTime" SlotMaxTime="@SlotMaxTime"
                                            ResolveEventColor="@ResolveFirstPartyColor"
+                                           ResolveEventClassNames="@ResolveFirstPartyClassNames"
                                            OnEventClick="@OnEventClick" />
                     break;
                 default:
@@ -808,6 +812,16 @@ else
         if (idx >= 0) _events[idx] = updated; else _events.Add(updated);
         _lastEventsHash = ComputeEventsHash(_events);
 
+        // Recorded BEFORE invoking the parent (Codex review of this PR, P1) — the
+        // same discipline the wrapper's own commit path already follows. A
+        // controlled parent re-renders synchronously inside InvokeAsync, so
+        // OnParametersSetAsync must already see this hash as "the value we just
+        // pushed" to tell an accepted echo from a veto. Set afterwards, a parent
+        // that REJECTS the edit by handing its old collection straight back looked
+        // like an unrelated change and was adopted — the rejection silently became
+        // the new truth.
+        _lastPushedEventsHash = _lastEventsHash;
+
         if (OnEventChange.HasDelegate) await OnEventChange.InvokeAsync(updated);
         if (EventsChanged.HasDelegate) await EventsChanged.InvokeAsync(_events.ToList());
     }
@@ -821,6 +835,24 @@ else
         SchedulerDateMath.StartOfWeek(_fpAnchor, EffectiveFirstDayOfWeek);
 
     private DayOfWeek EffectiveFirstDayOfWeek => (DayOfWeek)Math.Clamp(FirstDayOfWeek, 0, 6);
+
+    /// <summary>The browser's calendar date, falling back to the server's when interop yields nothing.</summary>
+    private async Task<DateTime> ResolveBrowserTodayAsync()
+    {
+        try
+        {
+            var iso = await Interop.GanttV3GetLocalDateAsync();
+            if (!string.IsNullOrEmpty(iso)
+                && DateTime.TryParseExact(iso, "yyyy-MM-dd",
+                                          System.Globalization.CultureInfo.InvariantCulture,
+                                          System.Globalization.DateTimeStyles.None, out var browserToday))
+            {
+                return browserToday.Date;
+            }
+        }
+        catch (Exception) { /* prerender / torn-down circuit — fall through */ }
+        return DateTime.Today;
+    }
 
     private void SeedFirstPartyAnchor()
     {
@@ -848,6 +880,11 @@ else
             return;
         }
         if (_instanceId is null) return;
+        // The anchor tracks wrapper navigation too (Codex review of this PR, P2), so
+        // switching engines keeps the date the user is looking at. Done here rather
+        // than by reading FullCalendar's own date back, which would need a new
+        // interop channel for a value we can simply keep in step.
+        StepFirstPartyAnchor(-1);
         await Interop.SchedulerPrevAsync(_instanceId);
         await RefreshTitleAsync();
     }
@@ -861,6 +898,7 @@ else
             return;
         }
         if (_instanceId is null) return;
+        StepFirstPartyAnchor(1);
         await Interop.SchedulerNextAsync(_instanceId);
         await RefreshTitleAsync();
     }
@@ -869,11 +907,19 @@ else
     {
         if (Engine == SchedulerEngine.FirstParty)
         {
-            _fpAnchor = DateTime.Today;
+            // The BROWSER's date, not the server's (Codex review of this PR, P2).
+            // On a Blazor Server circuit the two can be different calendar days, so
+            // "Today" jumped to the wrong day for anyone whose timezone is ahead of
+            // or behind the host. Reuses the existing GanttV3GetLocalDateAsync
+            // channel rather than opening a second one; DateTime.Today remains the
+            // documented fallback when interop is unavailable (prerender, torn-down
+            // circuit, a custom service that no-ops).
+            _fpAnchor = await ResolveBrowserTodayAsync();
             RefreshFirstPartyTitle();
             return;
         }
         if (_instanceId is null) return;
+        _fpAnchor = DateTime.Today;
         await Interop.SchedulerTodayAsync(_instanceId);
         await RefreshTitleAsync();
     }
