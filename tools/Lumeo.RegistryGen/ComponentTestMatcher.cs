@@ -185,6 +185,8 @@ public static class ComponentTestMatcher
         // Inside a markup tag, element and attribute NAMES are what a reference looks like;
         // outside one, the same characters are prose.
         var inTag = false;
+        // Set while the tag being read opens a raw-text element, so its body can be blanked.
+        string? rawText = null;
 
         while (i < text.Length)
         {
@@ -226,10 +228,28 @@ public static class ComponentTestMatcher
                     // The ELEMENT NAME is the reference; everything after it in the tag is not.
                     var nameEnd = EndOfElementName(text, i);
                     sb.Append(text[i..nameEnd]);
+                    rawText = RawTextElement(text, i, nameEnd);
                     i = nameEnd;
                     continue;
                 }
-                if (c == '>') { inTag = false; sb.Append(c); i++; continue; }
+                if (c == '>')
+                {
+                    inTag = false;
+                    sb.Append(c);
+                    i++;
+
+                    // <script>, <style>, <textarea>, <title>: their bodies are DATA, so markup
+                    // inside them is a sample rather than a component. Without this the generic
+                    // '<' branch kept `const s = " + '"' + "<Sheet />" + '"' + "` as an element name
+                    // and published false coverage (Codex review round 13).
+                    if (rawText is not null)
+                    {
+                        var close = text.IndexOf("</" + rawText, i, StringComparison.OrdinalIgnoreCase);
+                        i = BlankTo(sb, text, i, close < 0 ? text.Length : close);
+                        rawText = null;
+                    }
+                    continue;
+                }
 
                 if (inTag)
                 {
@@ -243,7 +263,11 @@ public static class ComponentTestMatcher
                         // round 12). Recognised by the @typeparam naming convention — T, or T
                         // followed by an uppercase letter — because nothing here knows the
                         // component's declared parameters.
-                        i = IsTypeParameterAttribute(text, i)
+                        // A DIRECTIVE attribute (@key, @onclick, @ref, @bind, @attributes) parses
+                        // its value as C# even without a leading '@' on the value itself, so
+                        // `<div @key=" + '"' + "typeof(Lumeo.Sheet)" + '"' + ">` is a real reference
+                        // (Codex review round 13).
+                        i = IsTypeParameterAttribute(text, i) || IsDirectiveAttribute(text, i)
                             ? AppendTypeAttribute(sb, text, i)
                             : AppendMarkupAttribute(sb, text, i);
                         continue;
@@ -359,6 +383,14 @@ public static class ComponentTestMatcher
             // A body-level Razor expression carries C#, where '<' is a comparison rather than an
             // element — `@(1 < 2 ? "x" : "y")` opened a phantom tag that swallowed the real
             // closing one (Codex review round 12).
+            // A Razor comment first: EndOfRazorExpression makes no progress on '@*', so a
+            // sample tag inside one was counted as a live element and the root never balanced
+            // (Codex review round 13).
+            if (text[i] == '@' && Next(text, i) == '*')
+            {
+                i = Find(text, "*@", i + 2, after: true);
+                continue;
+            }
             if (text[i] == '@')
             {
                 var expr = EndOfRazorExpression(text, i);
@@ -487,8 +519,8 @@ public static class ComponentTestMatcher
             if (c == '\'' && IsCharLiteral(text, i)) { i = EndOfCharLiteral(text, i); continue; }
             if (c is '"' or '$' or '@')
             {
-                var (quote, _, verbatim) = ReadStringPrefix(text, i);
-                if (quote >= 0) { i = EndOfString(text, quote, verbatim); continue; }
+                var (quote, dollars, verbatim) = ReadStringPrefix(text, i);
+                if (quote >= 0) { i = EndOfString(text, quote, verbatim, dollars); continue; }
             }
 
             if (c == '(') depth++;
@@ -520,8 +552,8 @@ public static class ComponentTestMatcher
             if (c == '\'' && IsCharLiteral(text, i)) { i = EndOfCharLiteral(text, i); continue; }
             if (c is '"' or '$' or '@')
             {
-                var (quote, _, verbatim) = ReadStringPrefix(text, i);
-                if (quote >= 0) { i = EndOfString(text, quote, verbatim); continue; }
+                var (quote, dollars, verbatim) = ReadStringPrefix(text, i);
+                if (quote >= 0) { i = EndOfString(text, quote, verbatim, dollars); continue; }
             }
 
             if (c == '[') depth++;
@@ -540,6 +572,21 @@ public static class ComponentTestMatcher
         if (i < text.Length && text[i] == '/') i++;
         while (i < text.Length && (IsIdentifierChar(text[i]) || text[i] == '.' || text[i] == '-')) i++;
         return i;
+    }
+
+    /// <summary>The raw-text element name the tag at [start, nameEnd) opens, or null. Their
+    /// bodies are character data rather than markup.</summary>
+    private static string? RawTextElement(string text, int start, int nameEnd)
+    {
+        var i = start + 1;
+        if (i < text.Length && text[i] == '/') return null;   // a CLOSING tag opens nothing
+
+        var name = text[i..nameEnd];
+        foreach (var raw in new[] { "script", "style", "textarea", "title" })
+        {
+            if (string.Equals(name, raw, StringComparison.OrdinalIgnoreCase)) return raw;
+        }
+        return null;
     }
 
     /// <summary>True when the character before <paramref name="i"/>, skipping whitespace, is
@@ -587,6 +634,16 @@ public static class ComponentTestMatcher
         return name.Length > 0
                && name[0] == 'T'
                && (name.Length == 1 || char.IsUpper(name[1]));
+    }
+
+    /// <summary>True when the attribute whose value opens at <paramref name="quote"/> is a Razor
+    /// DIRECTIVE attribute — its name starts with '@'.</summary>
+    private static bool IsDirectiveAttribute(string text, int quote)
+    {
+        var i = quote - 1;
+        while (i >= 0 && (text[i] == ' ' || text[i] == '=')) i--;
+        while (i >= 0 && (IsIdentifierChar(text[i]) || text[i] == '-' || text[i] == ':')) i--;
+        return i >= 0 && text[i] == '@';
     }
 
     /// <summary>Appends a type-valued attribute, keeping its value as code.</summary>
@@ -867,8 +924,8 @@ public static class ComponentTestMatcher
             if (c == '\'' && IsCharLiteral(text, i)) { i = EndOfCharLiteral(text, i); continue; }
             if (c is '"' or '$' or '@')
             {
-                var (quote, _, verbatim) = ReadStringPrefix(text, i);
-                if (quote >= 0) { i = EndOfString(text, quote, verbatim); continue; }
+                var (quote, dollars, verbatim) = ReadStringPrefix(text, i);
+                if (quote >= 0) { i = EndOfString(text, quote, verbatim, dollars); continue; }
             }
             if (c == '{') depth++;
             else if (c == '}' && --depth == 0) return i;
@@ -879,7 +936,7 @@ public static class ComponentTestMatcher
 
     /// <summary>End of a literal whose opening quote is at <paramref name="quote"/>, used only to
     /// skip past it.</summary>
-    private static int EndOfString(string text, int quote, bool verbatim)
+    private static int EndOfString(string text, int quote, bool verbatim, int dollars = 0)
     {
         var fence = 0;
         while (quote + fence < text.Length && text[quote + fence] == '"') fence++;
@@ -902,7 +959,12 @@ public static class ComponentTestMatcher
         }
 
         var i = quote + 1;
+        // Holes exist only in an INTERPOLATED literal. Tracking them unconditionally read the
+        // brace in `Check(" + '"' + "{" + '"' + ")` as a hole opener, after which the closing quote
+        // looked like a nested literal and the scan ran to the end of the file — a regression
+        // from the round-12 change, which is the one I shipped without a test (round 13).
         var holeDepth = 0;
+        var interpolated = dollars > 0;
         while (i < text.Length)
         {
             if (!verbatim && text[i] == '\\') { i += 2; continue; }
@@ -911,22 +973,22 @@ public static class ComponentTestMatcher
             // `$"{Get(" + '"' + "x" + '"' + ")}"` ended at the inner quote and the rest of the
             // expression was rescanned as text (Codex review round 12). Tracked by depth rather
             // than parsed, which is enough to know whether a quote can close the literal.
-            if (text[i] == '{')
+            if (interpolated && text[i] == '{')
             {
                 if (Next(text, i) == '{' && holeDepth == 0) { i += 2; continue; }
                 holeDepth++;
                 i++;
                 continue;
             }
-            if (text[i] == '}' && holeDepth > 0) { holeDepth--; i++; continue; }
+            if (interpolated && text[i] == '}' && holeDepth > 0) { holeDepth--; i++; continue; }
 
             if (text[i] == '"')
             {
                 if (verbatim && Next(text, i) == '"') { i += 2; continue; }
                 if (holeDepth > 0)
                 {
-                    var (q2, _, v2) = ReadStringPrefix(text, i);
-                    i = q2 >= 0 ? EndOfString(text, q2, v2) : i + 1;
+                    var (q2, d2, v2) = ReadStringPrefix(text, i);
+                    i = q2 >= 0 ? EndOfString(text, q2, v2, d2) : i + 1;
                     continue;
                 }
                 return i + 1;

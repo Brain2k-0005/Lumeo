@@ -1031,4 +1031,82 @@ public class ComponentTestMatcherTests
 
         Assert.False(ok);
     }
+
+    // ----- round 13 -----
+
+    [Fact]
+    public void A_brace_in_a_plain_string_is_not_an_interpolation_hole()
+    {
+        // Round 12 added hole tracking to the string skipper unconditionally, so the brace here
+        // opened a phantom hole, the closing quote looked like a nested literal, and the scan ran
+        // off the end — blanking the reference. This is the regression the round-12 change caused,
+        // and it is the discriminating case I could not construct back then (Codex review round 13).
+        var ok = ComponentTestMatcher.IsCoverage(
+            "Sheet", "tests/Lumeo.Tests/Misc/DrawerHost.razor",
+            @"<Host Value=""@(Check(""{"") && typeof(Lumeo.Sheet) != null)"" />",
+            KnownNames);
+
+        Assert.True(ok);
+    }
+
+    [Fact]
+    public void A_razor_comment_inside_an_inline_template_is_skipped()
+    {
+        // '@*' makes no progress through the expression scanner, so the sample tag inside the
+        // comment was counted as a live element and the root never balanced.
+        var ok = ComponentTestMatcher.IsCoverage(
+            "Sheet", "tests/Lumeo.Tests/Misc/DrawerHost.razor",
+            @"@code { void A() { Render(@<div>@* <span> *@</div>); var t = typeof(Lumeo.Sheet); } }",
+            KnownNames);
+
+        Assert.True(ok);
+    }
+
+    [Fact]
+    public void Markup_inside_a_script_element_is_data()
+    {
+        // Razor treats a raw-text element's body as character data, so the tag in it is a sample
+        // rather than an instantiated component.
+        var ok = ComponentTestMatcher.IsCoverage(
+            "Sheet", "tests/Lumeo.Tests/Misc/DrawerHost.razor",
+            @"<div><script>const sample = ""<Sheet />"";</script></div>",
+            KnownNames);
+
+        Assert.False(ok);
+    }
+
+    [Fact]
+    public void A_component_after_a_script_element_is_still_a_reference()
+    {
+        // Blanking the body must stop at the closing tag.
+        var ok = ComponentTestMatcher.IsCoverage(
+            "Sheet", "tests/Lumeo.Tests/Misc/DrawerHost.razor",
+            @"<div><script>var x = 1;</script><Sheet /></div>",
+            KnownNames);
+
+        Assert.True(ok);
+    }
+
+    [Fact]
+    public void A_directive_attribute_value_is_code()
+    {
+        // Razor parses a directive attribute's value as C# even with no leading '@' on the value.
+        var ok = ComponentTestMatcher.IsCoverage(
+            "Sheet", "tests/Lumeo.Tests/Misc/DrawerHost.razor",
+            @"<div @key=""typeof(Lumeo.Sheet)""></div>",
+            KnownNames);
+
+        Assert.True(ok);
+    }
+
+    [Fact]
+    public void A_plain_attribute_next_to_a_directive_one_is_still_text()
+    {
+        var ok = ComponentTestMatcher.IsCoverage(
+            "Sheet", "tests/Lumeo.Tests/Misc/DrawerHost.razor",
+            @"<div @key=""1"" title=""Sheet""></div>",
+            KnownNames);
+
+        Assert.False(ok);
+    }
 }
