@@ -32,16 +32,12 @@ namespace Lumeo;
 ///
 /// <para>
 /// <b>Where the parsed rule actually takes effect.</b> Assign it to
-/// <c>SchedulerEvent.Recurrence</c> and render it through the first-party views
-/// (<c>SchedulerMonthView</c>, <c>SchedulerTimeGridView</c>, <c>SchedulerAgendaView</c>), which
-/// expand it via the recurrence expander. The FullCalendar-backed <c>&lt;Scheduler&gt;</c>
-/// component does <b>not</b> honour it today: its <c>ToJsEvent</c> serializer branches only on
-/// the legacy <c>DaysOfWeek</c> pair, so a <c>Recurrence</c> rule reaches its change-detection
-/// hash but is never translated into anything FullCalendar can expand (Codex review of this PR,
-/// P1). That is a pre-existing limitation of the <c>Recurrence</c> property itself rather than
-/// of this parser — closing it means either expanding occurrences server-side and feeding
-/// FullCalendar concrete events, or adopting its premium rrule plugin — but it is stated here
-/// because the property's own documentation reads as though it applies everywhere.
+/// <c>SchedulerEvent.Recurrence</c>. Every view expands it through the recurrence expander,
+/// whether reached directly (<c>SchedulerMonthView</c>, <c>SchedulerTimeGridView</c>,
+/// <c>SchedulerAgendaView</c>) or through <c>&lt;Scheduler&gt;</c>, which renders those same views. This used to hold for the first-party views only: the
+/// wrapper serialized events to a JS calendar that branched on the legacy <c>DaysOfWeek</c>
+/// pair alone, so a <c>Recurrence</c> rule reached its change-detection hash and stopped there
+/// (Codex review, P1). Removing the wrapper closed that gap rather than the parser changing.
 /// </para>
 ///
 /// <para>
