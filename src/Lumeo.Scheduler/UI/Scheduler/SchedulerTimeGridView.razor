@@ -11,7 +11,7 @@
    SchedulerRecurrenceExpander for occurrence expansion, and SchedulerTimeGridLayout for
    overlapping-event column packing. Internal building block — see SchedulerMonthView's own
    remarks for the "Scheduler.razor is the only component with public parameters" note. *@
-<div class="@($"flex flex-col rounded-md border border-border/60 overflow-hidden {Class}".Trim())" @attributes="AdditionalAttributes">
+<div class="@($"flex flex-col w-full rounded-md border border-border/60 overflow-hidden {Class}".Trim())" @attributes="AdditionalAttributes">
     @* See SchedulerMonthView's own live-region remarks — rendered empty at
        mount so assistive tech is already observing the node. *@
     <span class="sr-only" aria-live="polite" aria-atomic="true"
@@ -329,7 +329,11 @@
         return new Dictionary<string, object?>
         {
             ["editable"] = Editable,
-            ["selectable"] = Selectable,
+            // Gated on there being a listener, not just on the flag: JS drew a
+            // drag-create ghost, the user released, and CommitCreate dropped it because
+            // OnDateSelect had no delegate. Offering a gesture that cannot do anything
+            // reads as a broken component, which is exactly how it was reported.
+            ["selectable"] = Selectable && OnDateSelect.HasDelegate,
             ["allowResize"] = true,
             ["hasCanDrop"] = CanDrop is not null,
             ["pixelsPerMinute"] = pxPerMinute,
@@ -354,20 +358,29 @@
 
         if (!NowIndicator) return;
 
-        const double pxPerMinute = 48.0 / 60.0;
-        for (var i = 0; i < _dayColumns.Length && i < _dayColumnRefs.Length; i++)
+        // ONE line on the grid host, not one per day column. Two reasons:
+        //
+        // Appearance — a line inside a column can only ever be that column wide, so
+        // "now" showed as a stub over today instead of a rule across the grid, which is
+        // what every calendar draws and what it was reported as.
+        //
+        // Robustness — the per-column loop indexed _dayColumnRefs, an array rebuilt on
+        // every parameter set. A ref that had not been bound yet reached JS as an object
+        // with no appendChild and threw an unhandled render exception. The host ref is the
+        // element the grid itself is bound to, so there is no unbound-index case left.
+        var options = new Dictionary<string, object?>
         {
-            var options = new Dictionary<string, object?>
-            {
-                ["pixelsPerMinute"] = pxPerMinute,
-                ["slotMinMinute"] = _minMinute,
-                ["dayIso"] = _dayColumns[i].ToString("yyyy-MM-dd"),
-                ["timeZone"] = NowTimeZoneId,
-            };
-            try { await Interop.SchedulerViewsRegisterNowIndicatorAsync(_dayColumnRefs[i], options); }
-            catch (Microsoft.JSInterop.JSDisconnectedException) { }
+            ["pixelsPerMinute"] = PxPerMinute,
+            ["slotMinMinute"] = _minMinute,
+            ["days"] = _dayColumns.Select(d => d.ToString("yyyy-MM-dd")).ToArray(),
+            ["timeZone"] = NowTimeZoneId,
+        };
+        try
+        {
+            await Interop.SchedulerViewsRegisterNowIndicatorAsync(_hostRef, options);
+            _registeredNowIndicatorRefs = new[] { _hostRef };
         }
-        _registeredNowIndicatorRefs = _dayColumnRefs.ToArray();
+        catch (Microsoft.JSInterop.JSDisconnectedException) { }
     }
 
     private void BuildEventLayout()
