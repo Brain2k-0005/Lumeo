@@ -1264,4 +1264,149 @@ public class ComponentTestMatcherTests
 
         Assert.False(ok);
     }
+
+    // ----- round 16 -----
+
+    [Fact]
+    public void An_escaped_transition_inside_an_attribute_is_literal_too()
+    {
+        // The escape was handled only in the text path, so attributes still published prose.
+        var ok = ComponentTestMatcher.IsCoverage(
+            "Sheet", "tests/Lumeo.Tests/Misc/DrawerHost.razor",
+            @"<Host Title=""@@typeof(Lumeo.Sheet)"" />",
+            KnownNames);
+
+        Assert.False(ok);
+    }
+
+    [Fact]
+    public void A_brace_in_a_literal_does_not_end_a_control_body()
+    {
+        var ok = ComponentTestMatcher.IsCoverage(
+            "Sheet", "tests/Lumeo.Tests/Misc/DrawerHost.razor",
+            @"@if (ready) { var s = ""}""; var t = typeof(Lumeo.Sheet); }",
+            KnownNames);
+
+        Assert.True(ok);
+    }
+
+    [Fact]
+    public void An_else_branch_is_still_code()
+    {
+        // Returning after the first body left the unprefixed branch to the markup scanner.
+        var ok = ComponentTestMatcher.IsCoverage(
+            "Sheet", "tests/Lumeo.Tests/Misc/DrawerHost.razor",
+            @"@if (ready) { <Drawer /> } else { var t = typeof(Lumeo.Sheet); }",
+            KnownNames);
+
+        Assert.True(ok);
+    }
+
+    [Fact]
+    public void A_markup_attribute_may_wrap_onto_the_next_line()
+    {
+        // Ending the value at the newline left the tag open, so markup inside the still-quoted
+        // value read as a live component.
+        var ok = ComponentTestMatcher.IsCoverage(
+            "Sheet", "tests/Lumeo.Tests/Misc/DrawerHost.razor",
+            "<Host Title=\"sample\n<Sheet />\" />",
+            KnownNames);
+
+        Assert.False(ok);
+    }
+
+    [Fact]
+    public void An_end_tag_inside_a_razor_comment_does_not_close_a_raw_text_body()
+    {
+        var ok = ComponentTestMatcher.IsCoverage(
+            "Sheet", "tests/Lumeo.Tests/Misc/DrawerHost.razor",
+            @"<script>@* </script><Sheet /> *@</script>",
+            KnownNames);
+
+        Assert.False(ok);
+    }
+
+    [Fact]
+    public void A_literal_line_in_a_control_body_is_markup()
+    {
+        // '@:' emits text rather than an element, and only <...> runs were treated as markup.
+        var ok = ComponentTestMatcher.IsCoverage(
+            "Sheet", "tests/Lumeo.Tests/Misc/DrawerHost.razor",
+            "@if (ready) {\n@:Sheet\n}",
+            KnownNames);
+
+        Assert.False(ok);
+    }
+
+    [Fact]
+    public void A_null_forgiving_operator_continues_the_chain()
+    {
+        var ok = ComponentTestMatcher.IsCoverage(
+            "Sheet", "tests/Lumeo.Tests/Misc/DrawerHost.razor",
+            @"<Host Value=""@Provider!.Render(typeof(Lumeo.Sheet))"" />",
+            KnownNames);
+
+        Assert.True(ok);
+    }
+
+    [Fact]
+    public void An_awaited_implicit_expression_keeps_its_operand()
+    {
+        // Razor's implicit await allows the space that normally ends an implicit expression.
+        var ok = ComponentTestMatcher.IsCoverage(
+            "Sheet", "tests/Lumeo.Tests/Misc/DrawerHost.razor",
+            @"<div>@await RenderAsync(typeof(Lumeo.Sheet))</div>",
+            KnownNames);
+
+        Assert.True(ok);
+    }
+
+    [Fact]
+    public void A_typeof_shaped_parameter_value_is_code()
+    {
+        // A component parameter can carry an expression with no leading '@' — this repo writes
+        // NotFoundPage="typeof(Pages.NotFound)".
+        var ok = ComponentTestMatcher.IsCoverage(
+            "Sheet", "tests/Lumeo.Tests/Misc/DrawerHost.razor",
+            @"<Host ComponentType=""typeof(Lumeo.Sheet)"" />",
+            KnownNames);
+
+        Assert.True(ok);
+    }
+
+    [Fact]
+    public void A_plain_caption_is_still_not_code()
+    {
+        // The shape rule must stay narrow: only a form that cannot be display text counts.
+        var ok = ComponentTestMatcher.IsCoverage(
+            "Sheet", "tests/Lumeo.Tests/Misc/DrawerHost.razor",
+            @"<Host ComponentType=""Lumeo.Sheet"" />",
+            KnownNames);
+
+        Assert.False(ok);
+    }
+
+    [Fact]
+    public void A_code_block_inside_a_raw_text_body_is_evaluated()
+    {
+        var ok = ComponentTestMatcher.IsCoverage(
+            "Sheet", "tests/Lumeo.Tests/Misc/DrawerHost.razor",
+            @"<script>@{ var t = typeof(Lumeo.Sheet); }</script>",
+            KnownNames);
+
+        Assert.True(ok);
+    }
+
+    [Fact]
+    public void A_comparison_in_a_control_body_island_is_not_a_tag()
+    {
+        // The island balancer repeated the raw '<' scan, so the comparison ran the island through
+        // the statement behind it.
+        var ok = ComponentTestMatcher.IsCoverage(
+            "Sheet", "tests/Lumeo.Tests/Misc/DrawerHost.razor",
+            @"@if (ready) { <div>@(1 < 2 ? ""x"" : ""y"")</div> var t = typeof(Lumeo.Sheet); }",
+            KnownNames);
+
+        Assert.True(ok);
+    }
 }

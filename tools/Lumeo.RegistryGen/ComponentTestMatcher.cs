@@ -268,6 +268,7 @@ public static class ComponentTestMatcher
                         // `<div @key=" + '"' + "typeof(Lumeo.Sheet)" + '"' + ">` is a real reference
                         // (Codex review round 13).
                         i = IsTypeParameterAttribute(text, i) || IsDirectiveAttribute(text, i)
+                            || IsUnambiguouslyCSharpValue(text, i)
                             ? AppendTypeAttribute(sb, text, i)
                             : AppendMarkupAttribute(sb, text, i);
                         continue;
@@ -300,14 +301,14 @@ public static class ComponentTestMatcher
                 // '@@' is an escape: Razor renders a literal '@' and what follows is TEXT.
                 // Blanking one character at a time let the second '@' open a transition, so
                 // `<p>@@typeof(Lumeo.Sheet)</p>` published prose as a reference (round 15).
-                if (c == '@' && Next(text, i) == '@')
+                if (c == '@' && Next(text, i) is '@' or '*' or ':')
                 {
-                    i = BlankTo(sb, text, i, i + 2);
+                    i = BlankTo(sb, text, i, EndOfTransition(text, i));
                     continue;
                 }
                 if (c == '@')
                 {
-                    var expr = EndOfRazorExpression(text, i);
+                    var expr = EndOfTransition(text, i);
                     if (expr > i)
                     {
                         sb.Append(StripNonCode(text[i..expr]));
@@ -362,7 +363,7 @@ public static class ComponentTestMatcher
                 // (Codex review round 7).
                 if (c == '@' && Next(text, i) == '<')
                 {
-                    var end = EndOfInlineTemplate(text, i);
+                    var end = EndOfElementSubtree(text, i);
                     sb.Append(' ');                                     // the '@' itself
                     sb.Append(StripNonCode(text[(i + 1)..end], razor: true));
                     i = end;
@@ -381,72 +382,87 @@ public static class ComponentTestMatcher
     }
 
     /// <summary>
-    /// End of the inline Razor template whose '@' sits at <paramref name="start"/>. The fragment
-    /// runs to the close of its own root element, so element depth decides — not the enclosing
-    /// C# braces, which is what the code-region counter would otherwise have used.
+    /// End of ANY Razor transition starting at <paramref name="i"/>, or <paramref name="i"/> when
+    /// there is none: the <c>@@</c> escape, a <c>@* *@</c> comment, a <c>@{ }</c> code block, a
+    /// <c>@:</c> line, an explicit <c>@(...)</c> expression, or an implicit member chain.
+    ///
+    /// <para>
+    /// One place, because the alternative kept costing review rounds: every scanner that walks
+    /// markup — the element-subtree walker, raw-text close discovery, attribute values, control
+    /// bodies — has to step over transitions, and each of them had grown its own partial version.
+    /// A fix applied to one of them left the others reading a comparison operator as a tag or an
+    /// end tag inside a comment as a real close.
+    /// </para>
     /// </summary>
-    private static int EndOfInlineTemplate(string text, int start)
+    private static int EndOfTransition(string text, int i)
+    {
+        if (i >= text.Length || text[i] != '@') return i;
+
+        var next = Next(text, i);
+        if (next == '@') return i + 2;                                  // escape
+        if (next == '*') return Find(text, "*@", i + 2, after: true);   // comment
+        if (next == ':')                                                // literal line
+        {
+            var nl = text.IndexOf('\n', i);
+            return nl < 0 ? text.Length : nl;
+        }
+        if (next == '{')                                                // code block
+        {
+            var depth = 0;
+            for (var k = i + 1; k < text.Length; k++)
+            {
+                if (text[k] == '{') depth++;
+                else if (text[k] == '}' && --depth == 0) return k + 1;
+            }
+            return text.Length;
+        }
+
+        return EndOfRazorExpression(text, i);
+    }
+
+    /// <summary>
+    /// End of the element subtree that begins at <paramref name="start"/> — the '@' of an inline
+    /// <c>@&lt;...&gt;</c> template, or the '&lt;' of a markup island inside a control body.
+    /// Element depth decides, not the enclosing C# braces.
+    ///
+    /// <para>
+    /// ONE implementation for both. They were separate near-copies, and every fix — Razor
+    /// transitions, HTML comments, raw-text bodies, void elements, quoted '&gt;' — had to be made
+    /// twice or the second site kept the bug.
+    /// </para>
+    /// </summary>
+    private static int EndOfElementSubtree(string text, int start)
     {
         var depth = 0;
-        var i = start + 1;
+        var i = text[start] == '@' ? start + 1 : start;
 
         while (i < text.Length)
         {
-            // A body-level Razor expression carries C#, where '<' is a comparison rather than an
-            // element — `@(1 < 2 ? "x" : "y")` opened a phantom tag that swallowed the real
-            // closing one (Codex review round 12).
-            // A Razor comment first: EndOfRazorExpression makes no progress on '@*', so a
-            // sample tag inside one was counted as a live element and the root never balanced
-            // (Codex review round 13).
-            if (text[i] == '@' && Next(text, i) == '*')
-            {
-                i = Find(text, "*@", i + 2, after: true);
-                continue;
-            }
             if (text[i] == '@')
             {
-                var expr = EndOfRazorExpression(text, i);
-                if (expr > i) { i = expr; continue; }
+                var t = EndOfTransition(text, i);
+                if (t > i) { i = t; continue; }
             }
-            if (text[i] == '<' && text.AsSpan(i).StartsWith("<!--"))
+            if (text[i] != '<') { i++; continue; }
+            if (text.AsSpan(i).StartsWith("<!--")) { i = Find(text, "-->", i + 4, after: true); continue; }
+
+            var closing = Next(text, i) == '/';
+            var gt = EndOfTag(text, i);
+            if (gt < 0) return text.Length;
+
+            var raw = RawTextElement(text, i, EndOfElementName(text, i));
+            if (raw is not null)
             {
-                i = Find(text, "-->", i + 4, after: true);
+                depth++;
+                i = EndOfRawTextBody(text, gt + 1, raw);
                 continue;
             }
-            if (text[i] == '<')
-            {
-                if (Next(text, i) == '/')
-                {
-                    var close = text.IndexOf('>', i);
-                    if (close < 0) return text.Length;
-                    if (--depth <= 0) return close + 1;
-                    i = close + 1;
-                    continue;
-                }
 
-                var gt = EndOfTag(text, i);
-                if (gt < 0) return text.Length;
+            if (closing) { if (--depth <= 0) return gt + 1; }
+            else if (text[gt - 1] != '/' && !IsVoidElement(text, i)) depth++;
+            else if (depth == 0) return gt + 1;
 
-                // A raw-text body is DATA here too: counting `<span>` inside a <script> as an
-                // opener meant the real closing tags could never balance the template
-                // (Codex review round 14).
-                var raw = RawTextElement(text, i, EndOfElementName(text, i));
-                if (raw is not null)
-                {
-                    i = EndOfRawTextBody(text, gt + 1, raw);
-                    depth++;
-                    continue;
-                }
-                // A self-closing tag opens and closes in one go — and so does an HTML VOID
-                // element written without the slash. Counting <br> as an opener meant the root's
-                // </div> never balanced, so the scanner ate the rest of the enclosing C# block as
-                // markup and blanked real references in it (Codex review round 9).
-                if (text[gt - 1] != '/' && !IsVoidElement(text, i)) depth++;
-                if (depth == 0) return gt + 1;
-                i = gt + 1;
-                continue;
-            }
-            i++;
+            i = gt + 1;
         }
         return text.Length;
     }
@@ -587,6 +603,24 @@ public static class ComponentTestMatcher
         return fallback;
     }
 
+    /// <summary>Scans an implicit expression starting at <paramref name="j"/> as though the
+    /// '@' were there — used for the operand of Razor's implicit <c>await</c>.</summary>
+    private static int InsertedTransition(string text, int j)
+    {
+        // EndOfRazorExpression expects the '@' at its index, so hand it j-1 only when that
+        // really is one; otherwise scan the identifier chain directly from j.
+        var k = j;
+        while (k < text.Length && (IsIdentifierChar(text[k]) || text[k] == '.')) k++;
+
+        while (k < text.Length && (text[k] == '(' || text[k] == '['))
+        {
+            var close = text[k] == '(' ? EndOfBalancedParens(text, k, k) : EndOfBalancedBrackets(text, k, k);
+            if (close <= k) break;
+            k = close;
+        }
+        return k;
+    }
+
     /// <summary>End of the element name that opens at the '&lt;' at <paramref name="start"/>,
     /// including the '&lt;' and any '/' of a closing tag.</summary>
     private static int EndOfElementName(string text, int start)
@@ -609,16 +643,15 @@ public static class ComponentTestMatcher
 
         while (true)
         {
-            // A Razor transition inside the body carries C#, and an end tag spelled inside one
-            // of its literals is string data — selecting it resumed markup mode in the middle
-            // of the expression (Codex review round 15).
-            at = SkipTransitionsBefore(text, at);
-
             at = text.IndexOf(needle, at, StringComparison.OrdinalIgnoreCase);
             if (at < 0) return text.Length;
 
-            var overExpression = SkipTransitionsBefore(text, at);
-            if (overExpression > at) { at = overExpression; continue; }
+            // An end tag spelled inside a Razor transition — a literal, a COMMENT, a code
+            // block — is data, not the close. Walking the body forward through the one
+            // transition skipper covers all of them; the earlier version only knew about
+            // expressions, so `@* </script> *@` still ended the body (Codex review round 16).
+            var over = SkipTransitionsUpTo(text, from, at);
+            if (over > at) { at = over; continue; }
 
             var after = at + needle.Length;
             if (after >= text.Length) return text.Length;
@@ -628,16 +661,22 @@ public static class ComponentTestMatcher
         }
     }
 
-    /// <summary>Advances past any Razor expression that STARTS at or before <paramref name="at"/>
-    /// and extends beyond it, so its literals are not mistaken for markup.</summary>
-    private static int SkipTransitionsBefore(string text, int at)
+    /// <summary>Walks from <paramref name="from"/> and returns the end of the first Razor
+    /// transition that CONTAINS <paramref name="at"/>, or <paramref name="at"/> when none
+    /// does.</summary>
+    private static int SkipTransitionsUpTo(string text, int from, int at)
     {
-        var i = at;
-        while (i > 0 && text[i - 1] != '@') i--;
-        if (i == 0 || i > at) return at;
+        var i = from;
+        while (i < at)
+        {
+            if (text[i] != '@') { i++; continue; }
 
-        var expr = EndOfRazorExpression(text, i - 1);
-        return expr > at ? expr : at;
+            var end = EndOfTransition(text, i);
+            if (end <= i) { i++; continue; }
+            if (end > at) return end;
+            i = end;
+        }
+        return at;
     }
 
     /// <summary>Appends a raw-text body: its markup-like text is DATA, but a Razor transition
@@ -647,18 +686,20 @@ public static class ComponentTestMatcher
         var i = from;
         while (i < to)
         {
-            if (text[i] == '@' && Next(text, i) == '*')
+            if (text[i] == '@' && Next(text, i) is '*' or '@')
             {
-                i = BlankTo(sb, text, i, Math.Min(to, Find(text, "*@", i + 2, after: true)));
+                i = BlankTo(sb, text, i, Math.Min(to, EndOfTransition(text, i)));
                 continue;
             }
             if (text[i] == '@')
             {
-                var expr = EndOfRazorExpression(text, i);
-                if (expr > i && expr <= to)
+                // Expressions AND code blocks: `<script>@{ var t = typeof(X); }</script>` is
+                // evaluated by Razor, and only expressions were recognised (round 16).
+                var end = EndOfTransition(text, i);
+                if (end > i && end <= to)
                 {
-                    sb.Append(StripNonCode(text[i..expr]));
-                    i = expr;
+                    sb.Append(StripNonCode(text[i..end]));
+                    i = end;
                     continue;
                 }
             }
@@ -687,6 +728,32 @@ public static class ComponentTestMatcher
             if (string.Equals(name, raw, StringComparison.OrdinalIgnoreCase)) return raw;
         }
         return null;
+    }
+
+    /// <summary>End of an <c>else</c> / <c>else if (...)</c> / <c>catch (...)</c> /
+    /// <c>finally</c> that continues the construct just closed at <paramref name="from"/>, or
+    /// <paramref name="from"/> when the construct really has ended.</summary>
+    private static int StartOfChainedBranch(string text, int from)
+    {
+        var i = from;
+        while (i < text.Length && char.IsWhiteSpace(text[i])) i++;
+
+        var wordStart = i;
+        while (i < text.Length && char.IsLetter(text[i])) i++;
+        var word = text[wordStart..i];
+
+        if (word is not ("else" or "catch" or "finally")) return from;
+
+        // `else if (...)` and `catch (...)` carry a parenthesised part that is C# as well.
+        var j = i;
+        while (j < text.Length && char.IsWhiteSpace(text[j])) j++;
+        if (word == "else" && text.AsSpan(j).StartsWith("if")) { j += 2; while (j < text.Length && char.IsWhiteSpace(text[j])) j++; }
+        if (j < text.Length && text[j] == '(')
+        {
+            var close = EndOfBalancedParens(text, j, i);
+            if (close > j) return close;
+        }
+        return i;
     }
 
     /// <summary>Index of the '{' opening a control directive's body after the expression that
@@ -718,14 +785,43 @@ public static class ComponentTestMatcher
         {
             var c = text[i];
 
+            // '@:' emits a literal line — markup, not a statement — and letting the code
+            // scanner have it preserved its text as a reference (Codex review round 16).
+            if (c == '@' && Next(text, i) == ':')
+            {
+                sb.Append(StripNonCode(text[codeFrom..i]));
+                var lineEnd = EndOfTransition(text, i);
+                BlankTo(sb, text, i, lineEnd);
+                i = lineEnd;
+                codeFrom = i;
+                continue;
+            }
+
             if (c == '<' && i + 1 < text.Length && (char.IsLetter(text[i + 1]) || text[i + 1] == '/'))
             {
                 sb.Append(StripNonCode(text[codeFrom..i]));
-                var end = EndOfMarkupIsland(text, i);
+                var end = EndOfElementSubtree(text, i);
                 sb.Append(StripNonCode(text[i..end], razor: true));
                 i = end;
                 codeFrom = i;
                 continue;
+            }
+
+            // A brace inside a literal or a comment is not structure — counting one returned
+            // from the body early and the statements after it were blanked as markup
+            // (Codex review round 16).
+            if (c == '/' && Next(text, i) == '/')
+            {
+                var nl = text.IndexOf('\n', i);
+                i = nl < 0 ? text.Length : nl;
+                continue;
+            }
+            if (c == '/' && Next(text, i) == '*') { i = Find(text, "*/", i + 2, after: true); continue; }
+            if (c == '\'' && IsCharLiteral(text, i)) { i = EndOfCharLiteral(text, i); continue; }
+            if (c is '"' or '$' or '@')
+            {
+                var (quote, dollars, verbatim) = ReadStringPrefix(text, i);
+                if (quote >= 0) { i = EndOfString(text, quote, verbatim, dollars); continue; }
             }
 
             if (c == '{') { depth++; i++; continue; }
@@ -735,6 +831,19 @@ public static class ComponentTestMatcher
                 {
                     sb.Append(StripNonCode(text[codeFrom..i]));
                     sb.Append('}');
+
+                    // `else`, `else if`, `catch`, `finally` continue the same construct, and
+                    // returning here left those unprefixed branches to the markup scanner,
+                    // which blanked their statements (Codex review round 16).
+                    var chained = StartOfChainedBranch(text, i + 1);
+                    if (chained > i + 1)
+                    {
+                        sb.Append(StripNonCode(text[(i + 1)..chained]));
+                        var nextBrace = StartOfControlBody(text, chained);
+                        return nextBrace > chained
+                            ? AppendRazorControlBody(sb, text, chained, nextBrace)
+                            : chained;
+                    }
                     return i + 1;
                 }
                 i++;
@@ -745,38 +854,6 @@ public static class ComponentTestMatcher
         }
 
         sb.Append(StripNonCode(text[codeFrom..]));
-        return text.Length;
-    }
-
-    /// <summary>End of the element subtree starting at the '&lt;' at <paramref name="start"/>.</summary>
-    private static int EndOfMarkupIsland(string text, int start)
-    {
-        var depth = 0;
-        var i = start;
-
-        while (i < text.Length)
-        {
-            if (text[i] != '<') { i++; continue; }
-            if (text.AsSpan(i).StartsWith("<!--")) { i = Find(text, "-->", i + 4, after: true); continue; }
-
-            var closing = Next(text, i) == '/';
-            var gt = EndOfTag(text, i);
-            if (gt < 0) return text.Length;
-
-            var raw = RawTextElement(text, i, EndOfElementName(text, i));
-            if (raw is not null)
-            {
-                depth++;
-                i = EndOfRawTextBody(text, gt + 1, raw);
-                continue;
-            }
-
-            if (closing) { if (--depth <= 0) return gt + 1; }
-            else if (text[gt - 1] != '/' && !IsVoidElement(text, i)) depth++;
-            else if (depth == 0) return gt + 1;
-
-            i = gt + 1;
-        }
         return text.Length;
     }
 
@@ -825,6 +902,24 @@ public static class ComponentTestMatcher
         return name.Length > 0
                && name[0] == 'T'
                && (name.Length == 1 || char.IsUpper(name[1]));
+    }
+
+    /// <summary>
+    /// True when the value is C# by SHAPE rather than by the attribute's name. A Blazor
+    /// component parameter can carry an expression with no leading '@' — this repo writes
+    /// <c>NotFoundPage="typeof(Pages.NotFound)"</c> — and nothing here knows a component's
+    /// declared parameter types, so only a form that cannot be display text counts
+    /// (Codex review round 16).
+    /// </summary>
+    private static bool IsUnambiguouslyCSharpValue(string text, int quote)
+    {
+        var delimiter = text[quote];
+        var end = quote + 1;
+        while (end < text.Length && text[end] != delimiter && text[end] != '\n') end++;
+        if (end >= text.Length || text[end] != delimiter) return false;
+
+        var value = text[(quote + 1)..end].Trim();
+        return value.StartsWith("typeof(", StringComparison.Ordinal) && value.EndsWith(")", StringComparison.Ordinal);
     }
 
     /// <summary>True when the attribute whose value opens at <paramref name="quote"/> is a Razor
@@ -887,13 +982,20 @@ public static class ComponentTestMatcher
         var i = start + 1;
         while (i < text.Length && text[i] != delimiter)
         {
-            // A markup attribute never spans a line in practice, and treating an unbalanced
-            // quote as one would blank the rest of the file.
-            if (text[i] == '\n') return BlankTo(sb, text, start + 1, i);
+            // Across newlines: a Razor attribute value may wrap, and ending it at the break
+            // left the tag open so markup inside the still-quoted value read as live
+            // (Codex review round 16).
 
+            // The SAME escape rule as markup text: `Title="@@typeof(X)"` is literal, and
+            // handling it only in the text path left attributes publishing prose (round 16).
+            if (text[i] == '@' && Next(text, i) is '@' or '*')
+            {
+                i = BlankTo(sb, text, i, EndOfTransition(text, i));
+                continue;
+            }
             if (text[i] == '@')
             {
-                var expr = EndOfRazorExpression(text, i);
+                var expr = EndOfTransition(text, i);
                 if (expr > i)
                 {
                     sb.Append(StripNonCode(text[i..expr]));
@@ -1061,6 +1163,16 @@ public static class ComponentTestMatcher
         // The BODY stays markup, which is what it is.
         var keyword = text[wordStart..i];
 
+        // Razor's implicit await allows the space that normally ENDS an implicit expression,
+        // so `@await RenderAsync(typeof(X))` stopped at the keyword (Codex review round 16).
+        if (keyword == "await")
+        {
+            var j = i;
+            while (j < text.Length && (text[j] == ' ' || text[j] == '\t')) j++;
+            if (j < text.Length && (char.IsLetter(text[j]) || text[j] == '_'))
+                return EndOfRazorExpression(text, j - 1 >= 0 && text[j - 1] == '@' ? j - 1 : InsertedTransition(text, j));
+        }
+
         // A file directive's ARGUMENT is a type, and the implicit-expression scan stopped at the
         // space before it: `@inherits TestHost<Lumeo.Sheet>` and `@inject Lumeo.Sheet Subject`
         // kept only the keyword while the type itself was blanked as markup prose (Codex review
@@ -1101,6 +1213,11 @@ public static class ComponentTestMatcher
                 i = close;
                 continue;
             }
+
+            // The null-forgiving '!' binds tighter than the member access after it, so it sits
+            // between the identifier and the '.' — `@Provider!.Render(...)` ended at Provider
+            // without this (Codex review round 16).
+            if (text[j] == '!' && j + 1 < text.Length && text[j + 1] != '=') { i = j + 1; continue; }
 
             // '.' or '?.' — conditional access is a member chain too, and stopping before the
             // '?' ended `@Provider?.Render(...)` at the identifier (Codex review round 12).
