@@ -581,9 +581,11 @@
         var cols = SchedulerTimelineScale.BuildColumns(TimelineUnit, origin, EffectiveTimelineColumns);
         // A saturated advance is DateTime.MaxValue — a later instant on the SAME final day, so
         // it compares as progress while not being a real exclusive end. Subtracting a day from
-        // it read the title backwards; the last column IS the last visible day there.
+        // it read the title backwards. The last VISIBLE day is then the last representable date,
+        // not the final column's start: a month column titled "Dec 1 – Dec 1, 9999" while the
+        // axis draws through the 31st is just as wrong (Codex review round 7).
         var exclusiveEnd = SchedulerTimelineScale.Advance(TimelineUnit, cols[^1], 1);
-        var last = exclusiveEnd == DateTime.MaxValue ? cols[^1] : exclusiveEnd.AddDays(-1);
+        var last = exclusiveEnd == DateTime.MaxValue ? DateTime.MaxValue.Date : exclusiveEnd.AddDays(-1);
         return $"{origin.ToString("MMM d", Ui)} – {last.ToString("MMM d, yyyy", Ui)}";
     }
 

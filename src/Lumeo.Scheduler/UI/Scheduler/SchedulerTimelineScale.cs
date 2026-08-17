@@ -98,11 +98,16 @@ public static class SchedulerTimelineScale
         _ => 0,
     };
 
-    /// <summary>Total width in pixels of <paramref name="count"/> columns.</summary>
+    /// <summary>Total width in pixels of the columns actually drawn from <paramref name="origin"/>.</summary>
     public static double TotalWidth(SchedulerTimelineUnit unit, DateTime origin, int count, int columnWidth)
     {
-        var cols = BuildColumns(unit, origin, count);
-        return DateToPixel(unit, origin, Advance(unit, cols[^1], 1), columnWidth);
+        // Whole columns, because that is what the headers and grid rules paint. Measuring the
+        // pixel position of the exclusive end instead disagreed with them wherever that end was
+        // clamped: a week running off the calendar is about 5/7 of a column wide by date, while
+        // its header still occupies a full one, and the surplus showed as phantom days past the
+        // end of the range (Codex review round 7). Dropping the column is not the answer — the
+        // first one is the caller's own anchor, and removing it would leave nothing on screen.
+        return BuildColumns(unit, origin, count).Count * (double)columnWidth;
     }
 
     /// <summary>

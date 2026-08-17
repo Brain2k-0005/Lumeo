@@ -296,7 +296,7 @@ public class SchedulerRecurrenceExpanderTests
         var rule = new SchedulerRecurrenceRule(SchedulerRecurrenceFrequency.Daily, Interval: 1);
 
         Assert.Equal(SchedulerRecurrenceExpander.OccurrenceCap,
-                     SchedulerRecurrenceExpander.EffectiveCandidateCap(rule, Monday, Monday.AddDays(3)));
+                     SchedulerRecurrenceExpander.EffectiveCandidateCap(rule, Monday, Monday, Monday.AddDays(3)));
     }
 
     // ── EXDATE / ExceptionDates ──────────────────────────────────────────────
@@ -549,5 +549,51 @@ public class SchedulerRecurrenceExpanderTests
         // occurrence inside the range is Sunday 2020-06-28 — and that is the one an
         // under-budgeted cap drops.
         Assert.Contains(result, r => r.Start.Date == new DateTime(2020, 6, 28));
+    }
+
+    [Fact]
+    public void A_Series_Started_Decades_Ago_Still_Shows_Up_Today()
+    {
+        // The budget counted candidates from the series' own start, so a daily standup defined
+        // in 1970 needed 20 454 of them to reach 2026 and rendered as NOTHING — not truncated,
+        // absent. The scan seeks past the run-up now (CodeRabbit, PR #424).
+        var start = new DateTime(1970, 1, 1, 9, 0, 0);
+        var ev = Base(start: start, end: start.AddHours(1),
+                      recurrence: new SchedulerRecurrenceRule(SchedulerRecurrenceFrequency.Daily, Interval: 1));
+
+        var result = SchedulerRecurrenceExpander.Expand(ev, new DateTime(2026, 1, 1), new DateTime(2026, 1, 8));
+
+        Assert.Equal(7, result.Count);
+        Assert.Equal(new DateTime(2026, 1, 1, 9, 0, 0), result[0].Start);
+    }
+
+    [Fact]
+    public void Seeking_Never_Skips_An_Occurrence_That_Overlaps_The_Window()
+    {
+        // The seek must be an UNDERESTIMATE: a long booking that started before the window but
+        // runs into it is exactly what a resource view must not lose.
+        var start = new DateTime(1990, 1, 1, 22, 0, 0);
+        var ev = Base(start: start, end: start.AddHours(6),   // crosses midnight
+                      recurrence: new SchedulerRecurrenceRule(SchedulerRecurrenceFrequency.Daily, Interval: 1));
+
+        var window = new DateTime(2026, 3, 10, 0, 0, 0);      // inside the previous night's booking
+        var result = SchedulerRecurrenceExpander.Expand(ev, window, window.AddHours(1));
+
+        Assert.Single(result);
+        Assert.Equal(new DateTime(2026, 3, 9, 22, 0, 0), result[0].Start);
+    }
+
+    [Fact]
+    public void A_Count_Bounded_Rule_Keeps_Its_Raw_Series_Position()
+    {
+        // COUNT is measured over the raw generated series, so its position has to be counted
+        // rather than computed — seeking is skipped entirely for such rules.
+        var start = new DateTime(2026, 1, 1, 9, 0, 0);
+        var ev = Base(start: start, end: start.AddHours(1),
+                      recurrence: new SchedulerRecurrenceRule(SchedulerRecurrenceFrequency.Daily, Interval: 1, Count: 3));
+
+        var result = SchedulerRecurrenceExpander.Expand(ev, start.AddDays(1), start.AddDays(10));
+
+        Assert.Equal(2, result.Count);   // occurrences 2 and 3 of 3
     }
 }

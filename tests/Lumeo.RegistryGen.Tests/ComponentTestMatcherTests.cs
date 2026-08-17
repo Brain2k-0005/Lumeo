@@ -518,12 +518,26 @@ public class ComponentTestMatcherTests
     }
 
     [Fact]
-    public void A_real_char_literal_is_still_treated_as_one()
+    public void A_real_char_literal_is_consumed_without_eating_what_follows()
     {
-        // The shape check must not swing the other way: 'X' here is a literal, not a reference.
+        // This used to assert False against a fixture that never contained the token at all, so
+        // it passed for any scanner behaviour whatsoever (CodeRabbit, PR #424 round 7). The real
+        // property is that an escaped-quote char literal is consumed EXACTLY, leaving the
+        // reference after it visible.
+        var ok = ComponentTestMatcher.IsCoverage(
+            "Sheet", "tests/Lumeo.Tests/Misc/DrawerTests.cs",
+            @"public class DrawerTests { void A() { var d = '\''; Render<Lumeo.Sheet>(); } }",
+            KnownNames);
+
+        Assert.True(ok);
+    }
+
+    [Fact]
+    public void A_char_literal_holding_a_component_name_is_not_a_reference()
+    {
         var ok = ComponentTestMatcher.IsCoverage(
             "Text", "tests/Lumeo.Tests/Misc/DrawerTests.cs",
-            @"public class DrawerTests { void A() { var c = 'T'; var d = '\''; } }",
+            @"public class DrawerTests { void A() { var c = 'T'; var s = ""Text""; } }",
             KnownNames);
 
         Assert.False(ok);
@@ -655,11 +669,66 @@ public class ComponentTestMatcherTests
     }
 
     [Fact]
-    public void A_char_literal_inside_a_razor_code_block_is_still_a_char_literal()
+    public void A_char_literal_inside_a_razor_code_block_does_not_eat_what_follows()
+    {
+        // Same vacuous shape as above: the fixture never named the component, so the assertion
+        // held regardless of how the char literal was scanned.
+        var ok = ComponentTestMatcher.IsCoverage(
+            "Sheet", "tests/Lumeo.Tests/Misc/DrawerHost.razor",
+            "<div></div>\n@code { char c = 'T'; void A() { Render<Lumeo.Sheet>(); } }\n",
+            KnownNames);
+
+        Assert.True(ok);
+    }
+
+    // ----- round 7 -----
+
+    [Fact]
+    public void An_inline_razor_template_inside_a_code_block_is_markup()
+    {
+        // Render(@<Collapsible>Toggle</Collapsible>) steps back into markup for the length of
+        // the fragment. Staying in C# mode left its caption reading as code — which is why
+        // toggle.json claimed CollapsibleTests.razor purely for the word on a trigger button
+        // (Codex review, PR #424 round 7).
+        var ok = ComponentTestMatcher.IsCoverage(
+            "Sheet", "tests/Lumeo.Tests/Misc/DrawerHost.razor",
+            "@code { void A() { Render(@<Drawer>My Sheet Button</Drawer>); } }\n",
+            KnownNames);
+
+        Assert.False(ok);
+    }
+
+    [Fact]
+    public void A_component_tag_inside_an_inline_template_still_counts()
+    {
+        // Markup mode must not blank the fragment wholesale: the TAGS in it are real usage.
+        var ok = ComponentTestMatcher.IsCoverage(
+            "Sheet", "tests/Lumeo.Tests/Misc/DrawerHost.razor",
+            "@code { void A() { Render(@<Drawer><Sheet /></Drawer>); } }\n",
+            KnownNames);
+
+        Assert.True(ok);
+    }
+
+    [Fact]
+    public void Code_after_an_inline_template_is_still_scanned()
     {
         var ok = ComponentTestMatcher.IsCoverage(
-            "Text", "tests/Lumeo.Tests/Misc/DrawerHost.razor",
-            "<div></div>\n@code { char c = 'T'; }\n",
+            "Sheet", "tests/Lumeo.Tests/Misc/DrawerHost.razor",
+            "@code { void A() { Render(@<Drawer>Text</Drawer>); Render<Lumeo.Sheet>(); } }\n",
+            KnownNames);
+
+        Assert.True(ok);
+    }
+
+    [Fact]
+    public void A_string_inside_a_razor_attribute_expression_is_still_text()
+    {
+        // Aborting on the inner quote made AppendMarkupAttribute treat it as the attribute's
+        // terminator, so the argument leaked out as code.
+        var ok = ComponentTestMatcher.IsCoverage(
+            "Sheet", "tests/Lumeo.Tests/Misc/DrawerHost.razor",
+            "<Host Value=\"@(Get(\'Sheet\'))\" />\n".Replace('\'', '\"'),
             KnownNames);
 
         Assert.False(ok);

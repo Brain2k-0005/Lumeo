@@ -517,4 +517,73 @@ public class SchedulerTimelineReviewTests : IAsyncLifetime
         Assert.Empty(cut.FindAll("[data-timeline-bar='ghost']"));
         Assert.Single(cut.FindAll("[data-timeline-bar='e1']"));
     }
+
+    // ── Review round 7 ───────────────────────────────────────────────────────
+
+    [Fact]
+    public void A_saturated_month_title_names_the_last_visible_day()
+    {
+        // The final column's START is not its last visible day: a December axis drawing through
+        // the 31st was titled "Dec 1 – Dec 1, 9999".
+        var cut = _ctx.Render<L.Scheduler>(p => p
+            .Add(c => c.InitialView, L.SchedulerView.Timeline)
+            .Add(c => c.TimelineUnit, L.SchedulerTimelineUnit.Month)
+            .Add(c => c.InitialDate, DateTime.MaxValue.Date)
+            .Add(c => c.Resources, Rooms));
+
+        Assert.Contains("Dec 31", cut.Find(".text-center").TextContent, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void The_track_is_as_wide_as_the_columns_it_draws()
+    {
+        // A week running off the end of the calendar is about 5/7 of a column wide BY DATE,
+        // while its header and grid rule still paint a full one. Measuring the track from the
+        // clamped end date made the two disagree and the surplus showed as phantom days.
+        const int w = 120;
+        var cols = L.SchedulerTimelineScale.BuildColumns(
+            L.SchedulerTimelineUnit.Week, new DateTime(9999, 12, 27), 3);
+
+        Assert.Equal(cols.Count * (double)w,
+            L.SchedulerTimelineScale.TotalWidth(L.SchedulerTimelineUnit.Week, new DateTime(9999, 12, 27), 3, w));
+    }
+
+    [Fact]
+    public void A_bar_with_a_url_renders_as_a_link()
+    {
+        // SchedulerEvent.Url documents that the URL is opened; the bar was a button either way,
+        // so a URL-backed booking was inert when no callback was registered.
+        var ev = new L.SchedulerEvent("e1", "Booking", Start, Start.AddDays(1),
+                                      ResourceId: "alice", Url: "https://example.test/booking");
+
+        var bar = Render(new[] { ev }, columns: 3).Find("[data-timeline-bar='e1']");
+
+        Assert.Equal("A", bar.TagName, ignoreCase: true);
+        Assert.Equal("https://example.test/booking", bar.GetAttribute("href"));
+    }
+
+    [Fact]
+    public void A_bar_without_a_url_stays_a_button()
+    {
+        var ev = new L.SchedulerEvent("e1", "Booking", Start, Start.AddDays(1), ResourceId: "alice");
+
+        Assert.Equal("BUTTON", Render(new[] { ev }, columns: 3)
+            .Find("[data-timeline-bar='e1']").TagName, ignoreCase: true);
+    }
+
+    [Fact]
+    public void A_short_booking_at_the_right_edge_stays_inside_the_track()
+    {
+        // The minimum width is a floor, and applying it to a booking that ends exactly at the
+        // axis edge pushed the bar into a day that does not exist, stretching the scrollable
+        // area past the advertised range.
+        var last = Start.AddDays(2);                       // final column of a 3-column axis
+        var ev = new L.SchedulerEvent("e1", "Late", last.AddHours(23.5), last.AddHours(24),
+                                      ResourceId: "alice");
+
+        var style = Render(new[] { ev }, columns: 3).Find("[data-timeline-bar='e1']").GetAttribute("style")!;
+
+        Assert.True(Px(style, "left") + Px(style, "width") <= 3 * ColW + 0.01,
+            $"bar ends at {Px(style, "left") + Px(style, "width")}px, track is {3 * ColW}px");
+    }
 }

@@ -182,6 +182,9 @@ public static class ComponentTestMatcher
         // enters code only through an explicit block.
         var inCode = !razor;
         var codeDepth = 0;
+        // Inside a markup tag, element and attribute NAMES are what a reference looks like;
+        // outside one, the same characters are prose.
+        var inTag = false;
 
         while (i < text.Length)
         {
@@ -197,7 +200,8 @@ public static class ComponentTestMatcher
 
             if (razor && !inCode)
             {
-                // Entering a code region: @code { … }, @functions { … }, @{ … }.
+                // Entering a code region: @code { … }, @functions { … }, @{ … }. Checked before
+                // '@' is read as an expression, or the block header would be eaten as one.
                 var open = RazorCodeBlockStart(text, i);
                 if (open > i)
                 {
@@ -208,19 +212,42 @@ public static class ComponentTestMatcher
                     continue;
                 }
 
-                // A markup attribute value, single- or double-quoted. Its text is not code —
-                // <Host Title='Sheet' /> must not read as a Sheet reference — but any
-                // @-expression inside it is. The quote must FOLLOW an '=' to be a delimiter:
-                // an apostrophe in ordinary markup text (<p>don't</p>) is punctuation, and
-                // treating it as one blanked the rest of the line.
-                if ((c is '"' or '\'') && FollowsAnEquals(text, i))
+                if (c == '<') { inTag = true; sb.Append(c); i++; continue; }
+                if (c == '>') { inTag = false; sb.Append(c); i++; continue; }
+
+                if (inTag)
                 {
-                    i = AppendMarkupAttribute(sb, text, i);
+                    // An attribute value's text is not code — <Host Title='Sheet' /> must not
+                    // read as a Sheet reference — but any @-expression inside it is. The quote
+                    // must FOLLOW an '=' to be a delimiter.
+                    if ((c is '"' or '\'') && FollowsAnEquals(text, i))
+                    {
+                        i = AppendMarkupAttribute(sb, text, i);
+                        continue;
+                    }
+
+                    // Everything else inside the tag — element and attribute NAMES — is kept:
+                    // a reference in markup is a tag, and this is where it lives.
+                    sb.Append(c);
+                    i++;
                     continue;
                 }
 
-                sb.Append(c);
-                i++;
+                // Markup TEXT. Blanked, because a reference in markup is a <Sheet /> tag and
+                // never prose: a trigger captioned "Toggle" was claiming Toggle coverage for
+                // CollapsibleTests.razor (Codex review round 7). Embedded @-expressions are code.
+                if (c == '@')
+                {
+                    var expr = EndOfRazorExpression(text, i);
+                    if (expr > i)
+                    {
+                        sb.Append(StripNonCode(text[i..expr]));
+                        i = expr;
+                        continue;
+                    }
+                }
+
+                i = BlankTo(sb, text, i, i + 1);
                 continue;
             }
 
@@ -255,6 +282,20 @@ public static class ComponentTestMatcher
 
             if (razor && inCode)
             {
+                // An inline Razor template — Render(@<Collapsible>Toggle</Collapsible>) — steps
+                // back into MARKUP for the length of the fragment, and staying in C# mode left
+                // its label text reading as code. That is a live defect: toggle.json currently
+                // claims CollapsibleTests.razor purely because "Toggle" is the trigger's caption
+                // (Codex review round 7).
+                if (c == '@' && Next(text, i) == '<')
+                {
+                    var end = EndOfInlineTemplate(text, i);
+                    sb.Append(' ');                                     // the '@' itself
+                    sb.Append(StripNonCode(text[(i + 1)..end], razor: true));
+                    i = end;
+                    continue;
+                }
+
                 if (c == '{') codeDepth++;
                 else if (c == '}' && --codeDepth == 0) inCode = false;
             }
@@ -264,6 +305,42 @@ public static class ComponentTestMatcher
         }
 
         return sb.ToString();
+    }
+
+    /// <summary>
+    /// End of the inline Razor template whose '@' sits at <paramref name="start"/>. The fragment
+    /// runs to the close of its own root element, so element depth decides — not the enclosing
+    /// C# braces, which is what the code-region counter would otherwise have used.
+    /// </summary>
+    private static int EndOfInlineTemplate(string text, int start)
+    {
+        var depth = 0;
+        var i = start + 1;
+
+        while (i < text.Length)
+        {
+            if (text[i] == '<')
+            {
+                if (Next(text, i) == '/')
+                {
+                    var close = text.IndexOf('>', i);
+                    if (close < 0) return text.Length;
+                    if (--depth <= 0) return close + 1;
+                    i = close + 1;
+                    continue;
+                }
+
+                var gt = text.IndexOf('>', i);
+                if (gt < 0) return text.Length;
+                // A self-closing tag opens and closes in one go.
+                if (text[gt - 1] != '/') depth++;
+                if (depth == 0) return gt + 1;
+                i = gt + 1;
+                continue;
+            }
+            i++;
+        }
+        return text.Length;
     }
 
     /// <summary>True when the character before <paramref name="i"/>, skipping whitespace, is
@@ -471,11 +548,23 @@ public static class ComponentTestMatcher
         if (text[i] == '(')
         {
             var depth = 0;
-            for (; i < text.Length; i++)
+            while (i < text.Length)
             {
-                if (text[i] == '(') depth++;
-                else if (text[i] == ')' && --depth == 0) return i + 1;
-                else if (text[i] == '"') return start;   // ran into the attribute's own delimiter
+                var c = text[i];
+                // Literals inside the expression are skipped rather than aborting the scan.
+                // Bailing out on the first quote made AppendMarkupAttribute read that quote as
+                // the attribute's terminator, so `@(Get("Sheet"))` leaked its argument as code
+                // (Codex review round 7).
+                if (c == '\'' && IsCharLiteral(text, i)) { i = EndOfCharLiteral(text, i); continue; }
+                if (c is '"' or '$' or '@')
+                {
+                    var (quote, _, verbatim) = ReadStringPrefix(text, i);
+                    if (quote >= 0) { i = EndOfString(text, quote, verbatim); continue; }
+                }
+
+                if (c == '(') depth++;
+                else if (c == ')' && --depth == 0) return i + 1;
+                i++;
             }
             return start;
         }

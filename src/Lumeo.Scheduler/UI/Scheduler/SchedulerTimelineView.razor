@@ -78,15 +78,32 @@
 
                         @foreach (var bar in row.Bars)
                         {
-                            <button type="button"
-                                    class="@BarClasses(bar)"
-                                    style="@BarStyle(bar, row.Resource)"
-                                    data-event-id="@bar.Source.Id"
-                                    data-timeline-bar="@bar.Source.Id"
-                                    aria-label="@BarAriaLabel(row.Resource, bar)"
-                                    @onclick="() => OnEventClickAsync(bar.Source)">
-                                <span class="truncate">@bar.Source.Title</span>
-                            </button>
+                            @* A Url turns the bar into a link, exactly as SchedulerEvent.Url
+                               documents and the other views behave — a URL-backed booking was
+                               inert here when no callback was registered (Codex review round 7). *@
+                            @if (!string.IsNullOrEmpty(bar.Source.Url))
+                            {
+                                <a href="@bar.Source.Url"
+                                   class="@BarClasses(bar)"
+                                   style="@BarStyle(bar, row.Resource)"
+                                   data-event-id="@bar.Source.Id"
+                                   data-timeline-bar="@bar.Source.Id"
+                                   aria-label="@BarAriaLabel(row.Resource, bar)">
+                                    <span class="truncate">@bar.Source.Title</span>
+                                </a>
+                            }
+                            else
+                            {
+                                <button type="button"
+                                        class="@BarClasses(bar)"
+                                        style="@BarStyle(bar, row.Resource)"
+                                        data-event-id="@bar.Source.Id"
+                                        data-timeline-bar="@bar.Source.Id"
+                                        aria-label="@BarAriaLabel(row.Resource, bar)"
+                                        @onclick="() => OnEventClickAsync(bar.Source)">
+                                    <span class="truncate">@bar.Source.Title</span>
+                                </button>
+                            }
                         }
                     </div>
                 }
@@ -271,6 +288,13 @@
                 var to = i.End > axisEnd ? axisEnd : i.End;
                 var left = SchedulerTimelineScale.DateToPixel(Unit, _origin, from, ColumnWidthPx);
                 var width = Math.Max(MinBarWidthPx, SchedulerTimelineScale.DateToPixel(Unit, _origin, to, ColumnWidthPx) - left);
+
+                // The minimum width must not push the bar past the end of the track. A short
+                // booking finishing at midnight on the last column was floored to six pixels and
+                // rendered into a day that does not exist, stretching the scrollable area beyond
+                // the advertised range (Codex review round 7). Shifted back rather than clipped,
+                // so the hit target survives.
+                if (left + width > _totalWidth) left = Math.Max(0, _totalWidth - width);
                 var right = left + width;
 
                 var lane = laneRight.FindIndex(r => r <= left);

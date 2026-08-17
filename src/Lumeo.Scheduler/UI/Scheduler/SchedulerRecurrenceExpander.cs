@@ -70,7 +70,8 @@ internal static class SchedulerRecurrenceExpander
     /// Estimated per frequency, always rounding in the direction that over-counts (a month is
     /// treated as its shortest possible length), because under-counting is what truncates.
     /// </summary>
-    internal static int EffectiveCandidateCap(SchedulerRecurrenceRule rule, DateTime dtstart, DateTime rangeEnd)
+    internal static int EffectiveCandidateCap(SchedulerRecurrenceRule rule, DateTime dtstart,
+                                              DateTime rangeStart, DateTime rangeEnd)
     {
         if (rangeEnd <= dtstart) return OccurrenceCap;
 
@@ -100,7 +101,13 @@ internal static class SchedulerRecurrenceExpander
             SchedulerRecurrenceFrequency.Monthly => perMonth,
             _ => 1,
         };
-        var needed = (rangeEnd - dtstart).TotalDays / Math.Max(0.5, daysPerCandidate) + burst + 2;
+        // Measured over the REQUESTED WINDOW, not from the series' start. Counting the run-up
+        // meant a rule whose DTSTART sits far in the past exhausted the budget before reaching
+        // the window at all: a daily standup defined in 1970 needs 20 454 candidates to reach
+        // 2026 and rendered as nothing (CodeRabbit, PR #424). ExpandRule now seeks past the
+        // run-up, so the budget only has to cover what is actually on screen.
+        var from = rangeStart > dtstart ? rangeStart : dtstart;
+        var needed = (rangeEnd - from).TotalDays / Math.Max(0.5, daysPerCandidate) + burst + 2;
         return (int)Math.Clamp(needed, OccurrenceCap, AbsoluteCandidateCap);
     }
 
@@ -191,16 +198,24 @@ internal static class SchedulerRecurrenceExpander
                 exceptionDates.Add(d.Date);
         }
 
-        var instances = new List<SchedulerEventInstance>();
-        var index = 0;
-        var cap = EffectiveCandidateCap(rule, ev.Start, rangeEnd);
+        // Skip the candidates that end before the window opens. They cannot contribute an
+        // instance, and walking them was what made a long-lived series vanish entirely.
+        //
+        // Only when COUNT is absent: COUNT is measured over the raw generated series, so its
+        // position has to be counted rather than computed. A COUNT-bounded rule is small by
+        // construction (the parser rejects anything larger), so there is nothing to skip.
+        var seek = rule.Count.HasValue ? 0 : FirstIntersectingIndex(rule, ev.Start, duration, rangeStart);
 
-        foreach (var candidateStart in GenerateCandidates(rule, ev.Start))
+        var instances = new List<SchedulerEventInstance>();
+        var index = seek;
+        var cap = EffectiveCandidateCap(rule, ev.Start, rangeStart, rangeEnd);
+
+        foreach (var candidateStart in GenerateCandidates(rule, ev.Start, seek))
         {
             index++;
 
-            // Safety cap: total RRULE-generated candidates examined, independent of COUNT/UNTIL.
-            if (index > cap) break;
+            // Safety cap: candidates examined FROM the seek point, independent of COUNT/UNTIL.
+            if (index - seek > cap) break;
 
             // UNTIL is inclusive of its own calendar date (spec §2.5).
             if (rule.Until.HasValue && candidateStart.Date > rule.Until.Value.Date) break;
@@ -238,18 +253,49 @@ internal static class SchedulerRecurrenceExpander
     /// (<see cref="SchedulerEvent.Start"/>). Unbounded — callers apply COUNT/UNTIL/the occurrence
     /// cap themselves (see <see cref="ExpandRule"/>).
     /// </summary>
-    private static IEnumerable<DateTime> GenerateCandidates(SchedulerRecurrenceRule rule, DateTime dtstart) => rule.Freq switch
+    /// <summary>
+    /// A SAFE UNDERESTIMATE of how many generated candidates end before <paramref name="rangeStart"/>
+    /// and can therefore be skipped. Deliberately conservative — one whole period is subtracted —
+    /// because starting too early only costs a few iterations while starting too late would drop
+    /// a real occurrence.
+    /// </summary>
+    internal static int FirstIntersectingIndex(SchedulerRecurrenceRule rule, DateTime dtstart,
+                                               TimeSpan duration, DateTime rangeStart)
     {
-        SchedulerRecurrenceFrequency.Daily => DailyCandidates(rule, dtstart),
-        SchedulerRecurrenceFrequency.Weekly => WeeklyCandidates(rule, dtstart),
-        SchedulerRecurrenceFrequency.Monthly => MonthlyCandidates(rule, dtstart),
+        var reach = rangeStart > DateTime.MinValue + duration ? rangeStart - duration : DateTime.MinValue;
+        if (reach <= dtstart) return 0;
+
+        var interval = Math.Max(1, rule.Interval);
+        var perPeriod = rule.ByDay is { Count: > 0 } ? rule.ByDay.Count : 1;
+
+        double periods = rule.Freq switch
+        {
+            SchedulerRecurrenceFrequency.Daily => (reach - dtstart).TotalDays / interval,
+            SchedulerRecurrenceFrequency.Weekly => (reach - dtstart).TotalDays / (7.0 * interval),
+            SchedulerRecurrenceFrequency.Monthly =>
+                ((reach.Year - dtstart.Year) * 12.0 + (reach.Month - dtstart.Month)) / interval,
+            _ => 0,
+        };
+
+        var skippable = (periods - 1) * (rule.Freq == SchedulerRecurrenceFrequency.Daily ? 1 : perPeriod);
+        return skippable <= 0 ? 0 : (int)Math.Min(skippable, int.MaxValue / 2);
+    }
+
+    private static IEnumerable<DateTime> GenerateCandidates(SchedulerRecurrenceRule rule, DateTime dtstart, int skip) => rule.Freq switch
+    {
+        SchedulerRecurrenceFrequency.Daily => DailyCandidates(rule, dtstart, skip),
+        SchedulerRecurrenceFrequency.Weekly => WeeklyCandidates(rule, dtstart, skip),
+        SchedulerRecurrenceFrequency.Monthly => MonthlyCandidates(rule, dtstart, skip),
         _ => throw new ArgumentOutOfRangeException(nameof(rule), rule.Freq, "Unsupported SchedulerRecurrenceFrequency."),
     };
 
-    private static IEnumerable<DateTime> DailyCandidates(SchedulerRecurrenceRule rule, DateTime dtstart)
+    private static IEnumerable<DateTime> DailyCandidates(SchedulerRecurrenceRule rule, DateTime dtstart, int skip)
     {
         var interval = Math.Max(1, rule.Interval);
-        var current = dtstart;
+        // Jumped to, not iterated to: the point of seeking is to not walk the run-up.
+        var offset = (long)skip * interval;
+        if (offset > (DateTime.MaxValue - dtstart).TotalDays) yield break;
+        var current = dtstart.AddDays(offset);
         while (true)
         {
             yield return current;
@@ -267,7 +313,7 @@ internal static class SchedulerRecurrenceExpander
     // month/week GRID visually starts on) — conflating the two would make a rule's occurrence
     // dates shift if a consumer merely changed their calendar's display setting, which would be
     // a real, surprising bug.
-    private static IEnumerable<DateTime> WeeklyCandidates(SchedulerRecurrenceRule rule, DateTime dtstart)
+    private static IEnumerable<DateTime> WeeklyCandidates(SchedulerRecurrenceRule rule, DateTime dtstart, int skip)
     {
         var interval = Math.Max(1, rule.Interval);
         var days = rule.ByDay is { Count: > 0 }
@@ -275,7 +321,9 @@ internal static class SchedulerRecurrenceExpander
             : new[] { dtstart.DayOfWeek };
 
         var anchorWeekStart = dtstart.Date.AddDays(-IsoWeekdayIndex(dtstart.DayOfWeek));
-        var weekOffset = 0;
+        // Whole weeks only. The remainder is left to the loop: a partial week costs at most
+        // days.Length iterations, and rounding down keeps the skip an underestimate.
+        var weekOffset = days.Length > 0 ? skip / days.Length : 0;
         while (true)
         {
             var offsetDays = weekOffset * 7L * interval;
@@ -299,10 +347,11 @@ internal static class SchedulerRecurrenceExpander
         }
     }
 
-    private static IEnumerable<DateTime> MonthlyCandidates(SchedulerRecurrenceRule rule, DateTime dtstart)
+    private static IEnumerable<DateTime> MonthlyCandidates(SchedulerRecurrenceRule rule, DateTime dtstart, int skip)
     {
         var interval = Math.Max(1, rule.Interval);
-        var monthOffset = 0;
+        var perMonth = rule.ByDay is { Count: > 0 } ? rule.ByDay.Count : 1;
+        var monthOffset = skip / Math.Max(1, perMonth);
         while (true)
         {
             // AddMonths on a day-1 anchor sidesteps the "Jan 31 + 1 month" overflow trap —
