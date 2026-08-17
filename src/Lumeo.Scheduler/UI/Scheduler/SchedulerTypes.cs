@@ -1,13 +1,12 @@
 namespace Lumeo;
 
 /// <summary>
-/// A calendar/scheduler event. Used as the data contract between Blazor and the
-/// FullCalendar JS wrapper.
+/// A calendar/scheduler event — the data contract every Scheduler view renders from.
 /// </summary>
 /// <param name="Id">Stable identifier used to reconcile edits back into the caller's collection.</param>
 /// <param name="Title">The label rendered on the event chip.</param>
 /// <param name="Start">Start timestamp (inclusive).</param>
-/// <param name="End">End timestamp (exclusive, per FullCalendar convention).</param>
+/// <param name="End">End timestamp (exclusive: an event ending 10:00 does not occupy the 10:00 slot).</param>
 /// <param name="AllDay">When true the event is rendered in the all-day lane.</param>
 /// <param name="Color">CSS color or variable reference, e.g. "var(--color-primary)".</param>
 /// <param name="Url">Optional link opened on click instead of firing OnEventClick.</param>
@@ -125,8 +124,8 @@ public record SchedulerDateRange(DateTime Start, DateTime End, bool AllDay)
 
 
 /// <summary>
-/// Built-in views exposed by the Lumeo scheduler. Maps onto FullCalendar's
-/// dayGridMonth / timeGridWeek / timeGridDay / listWeek view names.
+/// Built-in views exposed by the Lumeo scheduler, each rendered by a first-party
+/// Blazor view component — no third-party calendar library is involved.
 /// </summary>
 public enum SchedulerView
 {
