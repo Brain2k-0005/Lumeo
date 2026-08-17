@@ -1761,6 +1761,16 @@ public sealed class ComponentInteropService : IComponentInteropService
         return _schedulerViewsModule;
     }
 
+    public async Task<string?> SchedulerViewsGetLocalDateAsync()
+    {
+        try
+        {
+            var module = await GetSchedulerViewsModuleAsync();
+            return await module.InvokeAsync<string>("schedulerViews.getLocalDateIso");
+        }
+        catch (JSDisconnectedException) { return null; }
+    }
+
     public async Task SchedulerViewsRegisterMonthDragAsync<[System.Diagnostics.CodeAnalysis.DynamicallyAccessedMembers(System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicMethods)] T>(Microsoft.AspNetCore.Components.ElementReference el, DotNetObjectReference<T> dotNetRef, object options) where T : class
     {
         try

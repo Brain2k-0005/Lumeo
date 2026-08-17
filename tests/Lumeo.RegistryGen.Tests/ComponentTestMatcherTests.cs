@@ -851,4 +851,32 @@ public class ComponentTestMatcherTests
 
         Assert.False(ok);
     }
+
+    // ----- round 10 -----
+
+    [Fact]
+    public void An_implicit_expression_keeps_its_invocation_arguments()
+    {
+        // The contract on EndOfRazorExpression already promised @Foo.Bar(...), but it stopped at
+        // the identifier, so the argument was blanked as attribute text (Codex review round 10).
+        var ok = ComponentTestMatcher.IsCoverage(
+            "Sheet", "tests/Lumeo.Tests/Misc/DrawerHost.razor",
+            "<Host Value=\"@Get(typeof(Lumeo.Sheet))\" />\n",
+            KnownNames);
+
+        Assert.True(ok);
+    }
+
+    [Fact]
+    public void A_greater_than_inside_a_quoted_attribute_is_not_the_tag_end()
+    {
+        // Taking the first '>' left the inline template unbalanced, so the scanner consumed the
+        // C# after it as markup and lost the reference.
+        var ok = ComponentTestMatcher.IsCoverage(
+            "Sheet", "tests/Lumeo.Tests/Misc/DrawerHost.razor",
+            "@code { void A() { Render(@<Host Title=\"a > b\" />); var t = typeof(Lumeo.Sheet); } }\n",
+            KnownNames);
+
+        Assert.True(ok);
+    }
 }

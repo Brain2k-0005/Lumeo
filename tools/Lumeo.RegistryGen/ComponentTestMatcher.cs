@@ -352,7 +352,7 @@ public static class ComponentTestMatcher
                     continue;
                 }
 
-                var gt = text.IndexOf('>', i);
+                var gt = EndOfTag(text, i);
                 if (gt < 0) return text.Length;
                 // A self-closing tag opens and closes in one go — and so does an HTML VOID
                 // element written without the slash. Counting <br> as an opener meant the root's
@@ -366,6 +366,32 @@ public static class ComponentTestMatcher
             i++;
         }
         return text.Length;
+    }
+
+    /// <summary>
+    /// Index of the '&gt;' closing the tag that opens at <paramref name="start"/>, skipping
+    /// quoted attribute values. `&lt;Host Title="a &gt; b" /&gt;` closes at the LAST one, and
+    /// taking the first left the inline template unbalanced so the scanner consumed the C#
+    /// after it as markup (Codex review round 10).
+    /// </summary>
+    private static int EndOfTag(string text, int start)
+    {
+        var i = start;
+        while (i < text.Length)
+        {
+            var c = text[i];
+            if (c is '"' or '\'')
+            {
+                var delimiter = c;
+                i++;
+                while (i < text.Length && text[i] != delimiter && text[i] != '\n') i++;
+                if (i < text.Length && text[i] == delimiter) i++;
+                continue;
+            }
+            if (c == '>') return i;
+            i++;
+        }
+        return -1;
     }
 
     /// <summary>True when the tag opening at <paramref name="start"/> names an HTML void
@@ -671,6 +697,17 @@ public static class ComponentTestMatcher
             var j = i;
             while (j < text.Length && char.IsWhiteSpace(text[j])) j++;
             if (j < text.Length && text[j] == '(') return EndOfBalancedParens(text, j, i);
+        }
+
+        // An implicit expression may CALL something, and this method's own contract says
+        // @Foo.Bar(...) — but it stopped at the identifier, so `@Get(typeof(Lumeo.Sheet))` left
+        // its argument to be blanked as attribute text (Codex review round 10).
+        var afterName = i;
+        while (afterName < text.Length && (text[afterName] == ' ' || text[afterName] == '\t')) afterName++;
+        if (afterName < text.Length && text[afterName] == '(')
+        {
+            var call = EndOfBalancedParens(text, afterName, i);
+            if (call > i) return call;
         }
 
         return i;

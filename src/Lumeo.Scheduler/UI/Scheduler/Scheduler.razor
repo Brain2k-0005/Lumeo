@@ -749,7 +749,11 @@
     {
         try
         {
-            var iso = await Interop.GanttV3GetLocalDateAsync();
+            // The SCHEDULER's own asset, not the Gantt's: Lumeo.Scheduler does not reference
+            // Lumeo.Gantt, so in a standalone install that module 404s and this silently returned
+            // the server's date — exactly the case this resolution exists for (Codex review
+            // round 10).
+            var iso = await Interop.SchedulerViewsGetLocalDateAsync();
             if (!string.IsNullOrEmpty(iso)
                 && DateTime.TryParseExact(iso, "yyyy-MM-dd",
                                           System.Globalization.CultureInfo.InvariantCulture,
@@ -809,9 +813,18 @@
         // day for anyone whose timezone is ahead of or behind the server. DateTime.Today
         // stays the documented fallback when interop is unavailable at all (prerender, a
         // torn-down circuit, a custom service that no-ops).
-        _fpAnchor = _displayZone is not null
-            ? SchedulerTimeZoneProjection.TodayIn(_displayZone)
-            : await ResolveBrowserTodayAsync();
+        if (_displayZone is not null)
+        {
+            _fpAnchor = SchedulerTimeZoneProjection.TodayIn(_displayZone);
+        }
+        else
+        {
+            // Refreshed, not read from the first-render cache: a circuit that stays connected
+            // across the browser's local midnight would otherwise move the axis to the new day
+            // while still handing the timeline yesterday (Codex review round 10).
+            _browserToday = await ResolveBrowserTodayAsync();
+            _fpAnchor = _browserToday.Value;
+        }
         RefreshFirstPartyTitle();
     }
 

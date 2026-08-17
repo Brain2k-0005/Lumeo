@@ -910,6 +910,13 @@ public interface IComponentInteropService : IAsyncDisposable, IDisposable
     // surface loaded lazily like every other Scheduler/Gantt module here.
 
     /// <summary>
+    /// The browser's calendar date as <c>yyyy-MM-dd</c>, from the Scheduler's OWN asset so a
+    /// standalone install (no Lumeo.Gantt) can still resolve it. Null when interop is
+    /// unavailable — prerender, a torn-down circuit, a custom no-op service.
+    /// </summary>
+    Task<string?> SchedulerViewsGetLocalDateAsync() => Task.FromResult<string?>(null);
+
+    /// <summary>
     /// Registers the Month view's whole-day ghost-drag engine (spec §3.1/§3.4) on
     /// <paramref name="el"/> (the grid's <c>role="grid"</c> host). Delegated
     /// <c>pointerdown</c> on any <c>[data-event-instance]</c> chip underneath; drop

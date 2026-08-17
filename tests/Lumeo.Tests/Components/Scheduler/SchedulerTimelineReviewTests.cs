@@ -603,4 +603,26 @@ public class SchedulerTimelineReviewTests : IAsyncLifetime
 
         Assert.NotNull(view.Instance.Today);
     }
+
+    [Fact]
+    public void The_browser_date_is_resolved_through_the_schedulers_own_asset()
+    {
+        // It used to come from GanttV3GetLocalDateAsync, whose module lives in Lumeo.Gantt — a
+        // package Lumeo.Scheduler does not reference. In the documented standalone install that
+        // import 404s, the failure is swallowed, and the marker silently falls back to the
+        // SERVER's date: the very case the resolution exists for (Codex review round 10).
+        var source = System.IO.File.ReadAllText(SchedulerSourcePath());
+
+        Assert.Contains("SchedulerViewsGetLocalDateAsync", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("GanttV3GetLocalDateAsync", source, StringComparison.Ordinal);
+    }
+
+    private static string SchedulerSourcePath()
+    {
+        var dir = AppContext.BaseDirectory;
+        while (dir is not null && !File.Exists(Path.Combine(dir, "Lumeo.slnx")))
+            dir = Path.GetDirectoryName(dir);
+        Assert.NotNull(dir);
+        return Path.Combine(dir!, "src", "Lumeo.Scheduler", "UI", "Scheduler", "Scheduler.razor");
+    }
 }
