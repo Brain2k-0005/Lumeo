@@ -119,6 +119,34 @@ public class SchedulerDependencyGuardTests
     }
 
     [Fact]
+    public void The_Published_Component_Summary_Claims_No_Calendar_Library()
+    {
+        // The longest-lived surface of all, and the one the csproj check does not reach: this
+        // single string is regenerated into the docs catalog, the search index, the MCP
+        // registry and the AI-facing skill catalog. Restoring "wrapping FullCalendar" there
+        // passed every other test in this class (Codex review, PR #425).
+        var root = RepoRoot();
+        var program = Path.Combine(root, "tools", "Lumeo.RegistryGen", "Program.cs");
+        var text = File.ReadAllText(program);
+
+        // EVERY ["Scheduler"] = "..." entry, not the first one found. Program.cs keeps several
+        // keyed maps, and the first is the package assignment (= "Lumeo.Scheduler") — anchoring
+        // on it made this test pass while the summary map still said "wrapping FullCalendar",
+        // which its own disable-check caught.
+        const string key = "[\"Scheduler\"] = \"";
+        var entries = new List<string>();
+        for (var at = text.IndexOf(key, StringComparison.Ordinal); at >= 0;
+             at = text.IndexOf(key, at + key.Length, StringComparison.Ordinal))
+        {
+            var end = text.IndexOf('\n', at);
+            entries.Add(text[at..(end < 0 ? text.Length : end)]);
+        }
+
+        Assert.NotEmpty(entries);
+        Assert.All(entries, e => Assert.DoesNotContain(Banned, e, StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
     public void The_Docs_Host_Page_Self_Hosts_No_Calendar_Library()
     {
         // The docs site vendored the five packages to keep the page free of third-party requests.
