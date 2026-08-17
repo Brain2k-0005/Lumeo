@@ -1109,4 +1109,81 @@ public class ComponentTestMatcherTests
 
         Assert.False(ok);
     }
+
+    // ----- round 14: the consequences of round 13's raw-text and directive handling -----
+
+    [Fact]
+    public void A_self_closing_raw_text_element_has_no_body()
+    {
+        // Razor accepts <textarea />, and this repo writes it that way. Treating it as opening a
+        // body made the absent end tag swallow the rest of the file (Codex review round 14).
+        var ok = ComponentTestMatcher.IsCoverage(
+            "Sheet", "tests/Lumeo.Tests/Misc/DrawerHost.razor",
+            @"<div><textarea /> <Sheet /></div>",
+            KnownNames);
+
+        Assert.True(ok);
+    }
+
+    [Fact]
+    public void A_razor_transition_inside_a_raw_text_body_is_still_code()
+    {
+        // Razor evaluates the expression even though the surrounding script text is data.
+        var ok = ComponentTestMatcher.IsCoverage(
+            "Sheet", "tests/Lumeo.Tests/Misc/DrawerHost.razor",
+            @"<script>const n = '@(typeof(Lumeo.Sheet).Name)';</script>",
+            KnownNames);
+
+        Assert.True(ok);
+    }
+
+    [Fact]
+    public void A_similar_looking_end_tag_does_not_close_a_raw_text_body()
+    {
+        // </scripture> is not </script>, and stopping there let the sample tag after it read as
+        // live markup.
+        var ok = ComponentTestMatcher.IsCoverage(
+            "Sheet", "tests/Lumeo.Tests/Misc/DrawerHost.razor",
+            @"<script>const s = ""</scripture><Sheet />"";</script>",
+            KnownNames);
+
+        Assert.False(ok);
+    }
+
+    [Fact]
+    public void A_directive_attribute_value_may_contain_its_own_strings()
+    {
+        // The value is C#, so the terminator has to be found the C# way — stopping at the first
+        // nested quote processed the rest as markup and blanked the reference.
+        var ok = ComponentTestMatcher.IsCoverage(
+            "Sheet", "tests/Lumeo.Tests/Misc/DrawerHost.razor",
+            @"<div @onclick=""@(() => { Log(""x""); Use(typeof(Lumeo.Sheet)); })""></div>",
+            KnownNames);
+
+        Assert.True(ok);
+    }
+
+    [Fact]
+    public void A_brace_in_a_char_literal_does_not_close_an_interpolation_hole()
+    {
+        var ok = ComponentTestMatcher.IsCoverage(
+            "Sheet", "tests/Lumeo.Tests/Misc/DrawerHost.razor",
+            @"<div @key=""@(Check($""{Test('}') && Get(""x"")}"") && typeof(Lumeo.Sheet) != null)""></div>",
+            KnownNames);
+
+        Assert.True(ok);
+    }
+
+    [Fact]
+    public void A_raw_text_body_inside_an_inline_template_is_data()
+    {
+        // Counting <span> inside the script as an opener meant the real closing tags could never
+        // balance the template, so the C# after it was consumed as markup.
+        var ok = ComponentTestMatcher.IsCoverage(
+            "Sheet", "tests/Lumeo.Tests/Misc/DrawerHost.razor",
+            @"@code { void A() { Render(@<div><script>const sample = ""<span>"";</script></div>); var t = typeof(Lumeo.Sheet); } }",
+            KnownNames);
+
+        Assert.True(ok);
+    }
 }

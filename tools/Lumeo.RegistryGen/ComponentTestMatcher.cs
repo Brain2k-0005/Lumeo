@@ -244,8 +244,8 @@ public static class ComponentTestMatcher
                     // and published false coverage (Codex review round 13).
                     if (rawText is not null)
                     {
-                        var close = text.IndexOf("</" + rawText, i, StringComparison.OrdinalIgnoreCase);
-                        i = BlankTo(sb, text, i, close < 0 ? text.Length : close);
+                        var close = EndOfRawTextBody(text, i, rawText);
+                        i = AppendRawTextBody(sb, text, i, close);
                         rawText = null;
                     }
                     continue;
@@ -414,6 +414,17 @@ public static class ComponentTestMatcher
 
                 var gt = EndOfTag(text, i);
                 if (gt < 0) return text.Length;
+
+                // A raw-text body is DATA here too: counting `<span>` inside a <script> as an
+                // opener meant the real closing tags could never balance the template
+                // (Codex review round 14).
+                var raw = RawTextElement(text, i, EndOfElementName(text, i));
+                if (raw is not null)
+                {
+                    i = EndOfRawTextBody(text, gt + 1, raw);
+                    depth++;
+                    continue;
+                }
                 // A self-closing tag opens and closes in one go — and so does an HTML VOID
                 // element written without the slash. Counting <br> as an opener meant the root's
                 // </div> never balanced, so the scanner ate the rest of the enclosing C# block as
@@ -574,12 +585,69 @@ public static class ComponentTestMatcher
         return i;
     }
 
+    /// <summary>
+    /// Index of the closing tag that ends <paramref name="name"/>'s raw-text body, or the end
+    /// of the input. The name must be followed by whitespace, '/' or '>' — a plain substring
+    /// search let `&lt;/scripture&gt;` end a &lt;script&gt; body (Codex review round 14).
+    /// </summary>
+    private static int EndOfRawTextBody(string text, int from, string name)
+    {
+        var needle = "</" + name;
+        var at = from;
+
+        while (true)
+        {
+            at = text.IndexOf(needle, at, StringComparison.OrdinalIgnoreCase);
+            if (at < 0) return text.Length;
+
+            var after = at + needle.Length;
+            if (after >= text.Length) return text.Length;
+            if (char.IsWhiteSpace(text[after]) || text[after] == '/' || text[after] == '>') return at;
+
+            at = after;
+        }
+    }
+
+    /// <summary>Appends a raw-text body: its markup-like text is DATA, but a Razor transition
+    /// inside it is still evaluated by Razor and therefore still code.</summary>
+    private static int AppendRawTextBody(StringBuilder sb, string text, int from, int to)
+    {
+        var i = from;
+        while (i < to)
+        {
+            if (text[i] == '@' && Next(text, i) == '*')
+            {
+                i = BlankTo(sb, text, i, Math.Min(to, Find(text, "*@", i + 2, after: true)));
+                continue;
+            }
+            if (text[i] == '@')
+            {
+                var expr = EndOfRazorExpression(text, i);
+                if (expr > i && expr <= to)
+                {
+                    sb.Append(StripNonCode(text[i..expr]));
+                    i = expr;
+                    continue;
+                }
+            }
+
+            i = BlankTo(sb, text, i, i + 1);
+        }
+        return to;
+    }
+
     /// <summary>The raw-text element name the tag at [start, nameEnd) opens, or null. Their
     /// bodies are character data rather than markup.</summary>
     private static string? RawTextElement(string text, int start, int nameEnd)
     {
         var i = start + 1;
         if (i < text.Length && text[i] == '/') return null;   // a CLOSING tag opens nothing
+
+        // Nor does a SELF-CLOSING one. Razor accepts `<textarea />`, and this repo writes it
+        // that way, so treating it as opening a body made the missing end tag swallow the
+        // rest of the file (Codex review round 14).
+        var gt = EndOfTag(text, start);
+        if (gt > start && text[gt - 1] == '/') return null;
 
         var name = text[i..nameEnd];
         foreach (var raw in new[] { "script", "style", "textarea", "title" })
@@ -652,8 +720,35 @@ public static class ComponentTestMatcher
         var delimiter = text[start];
         BlankTo(sb, text, start, start + 1);
 
+        // Skipping nested literals while looking for the terminator: a C# string inside the
+        // value carries the same quote, and stopping at it processed the rest as markup —
+        // `@onclick=" + '"' + "@(() => { Log(" + '"' + "x" + '"' + "); })" + '"' + "`
+        // lost everything after Log's argument (Codex review round 14).
         var i = start + 1;
-        while (i < text.Length && text[i] != delimiter) i++;
+        var depth = 0;
+        while (i < text.Length)
+        {
+            // The attribute's own terminator is the delimiter at BRACKET DEPTH ZERO. Inside
+            // the expression the same character opens an ordinary C# string, and requiring a
+            // $/@ prefix to tell them apart was wrong — a nested literal is usually bare
+            // (Codex review round 14).
+            if (text[i] == delimiter && depth == 0) break;
+            if (text[i] == '/' && Next(text, i) == '/')
+            {
+                var nl = text.IndexOf('\n', i);
+                i = nl < 0 ? text.Length : nl;
+                continue;
+            }
+            if (text[i] == '/' && Next(text, i) == '*') { i = Find(text, "*/", i + 2, after: true); continue; }
+            if (text[i] == '\'' && IsCharLiteral(text, i)) { i = EndOfCharLiteral(text, i); continue; }
+
+            var (q, d, v) = ReadStringPrefix(text, i);
+            if (q >= 0) { i = EndOfString(text, q, v, d); continue; }
+
+            if (text[i] is '(' or '{' or '[') depth++;
+            else if (text[i] is ')' or '}' or ']') depth--;
+            i++;
+        }
 
         sb.Append(StripNonCode(text[(start + 1)..i]));
         return i < text.Length ? BlankTo(sb, text, i, i + 1) : text.Length;
@@ -973,6 +1068,13 @@ public static class ComponentTestMatcher
             // `$"{Get(" + '"' + "x" + '"' + ")}"` ended at the inner quote and the rest of the
             // expression was rescanned as text (Codex review round 12). Tracked by depth rather
             // than parsed, which is enough to know whether a quote can close the literal.
+            // A brace inside a char literal is not a hole delimiter — `Test('\''}'\'')` closed one
+            // early and the next quote was mistaken for the outer string's end (round 14).
+            if (interpolated && holeDepth > 0 && text[i] == '\'' && IsCharLiteral(text, i))
+            {
+                i = EndOfCharLiteral(text, i);
+                continue;
+            }
             if (interpolated && text[i] == '{')
             {
                 if (Next(text, i) == '{' && holeDepth == 0) { i += 2; continue; }
