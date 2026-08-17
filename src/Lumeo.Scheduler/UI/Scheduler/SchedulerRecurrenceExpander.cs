@@ -71,7 +71,8 @@ internal static class SchedulerRecurrenceExpander
     /// treated as its shortest possible length), because under-counting is what truncates.
     /// </summary>
     internal static int EffectiveCandidateCap(SchedulerRecurrenceRule rule, DateTime dtstart,
-                                              DateTime rangeStart, DateTime rangeEnd)
+                                              DateTime rangeStart, DateTime rangeEnd,
+                                              TimeSpan duration = default)
     {
         if (rangeEnd <= dtstart) return OccurrenceCap;
 
@@ -106,7 +107,14 @@ internal static class SchedulerRecurrenceExpander
         // the window at all: a daily standup defined in 1970 needs 20 454 candidates to reach
         // 2026 and rendered as nothing (CodeRabbit, PR #424). ExpandRule now seeks past the
         // run-up, so the budget only has to cover what is actually on screen.
-        var from = rangeStart > dtstart ? rangeStart : dtstart;
+        // Measured from where the SEEK starts, not from rangeStart. The seek deliberately reaches
+        // back by the event's duration so an occurrence crossing the left edge survives, and those
+        // earlier candidates spend the same budget: a 30-day event over a 730-day window begins
+        // about 31 candidates early and ran out roughly 28 days short of the end, leaving the tail
+        // of the axis free (Codex review round 8).
+        var lookback = duration > TimeSpan.Zero ? duration : TimeSpan.Zero;
+        var seekFrom = rangeStart - DateTime.MinValue > lookback ? rangeStart - lookback : DateTime.MinValue;
+        var from = seekFrom > dtstart ? seekFrom : dtstart;
         var needed = (rangeEnd - from).TotalDays / Math.Max(0.5, daysPerCandidate) + burst + 2;
         return (int)Math.Clamp(needed, OccurrenceCap, AbsoluteCandidateCap);
     }
@@ -208,7 +216,7 @@ internal static class SchedulerRecurrenceExpander
 
         var instances = new List<SchedulerEventInstance>();
         var index = seek;
-        var cap = EffectiveCandidateCap(rule, ev.Start, rangeStart, rangeEnd);
+        var cap = EffectiveCandidateCap(rule, ev.Start, rangeStart, rangeEnd, duration);
 
         foreach (var candidateStart in GenerateCandidates(rule, ev.Start, seek))
         {
@@ -262,11 +270,23 @@ internal static class SchedulerRecurrenceExpander
     internal static int FirstIntersectingIndex(SchedulerRecurrenceRule rule, DateTime dtstart,
                                                TimeSpan duration, DateTime rangeStart)
     {
-        var reach = rangeStart > DateTime.MinValue + duration ? rangeStart - duration : DateTime.MinValue;
+        // A negative duration is malformed input — SchedulerEvent does not validate End >= Start —
+        // and it used to be laid out or discarded harmlessly. Subtracting it here reached FORWARD
+        // and threw, taking down every view on the page (Codex review round 8).
+        var lookback = duration > TimeSpan.Zero ? duration : TimeSpan.Zero;
+        var reach = rangeStart - DateTime.MinValue > lookback ? rangeStart - lookback : DateTime.MinValue;
         if (reach <= dtstart) return 0;
 
         var interval = Math.Max(1, rule.Interval);
-        var perPeriod = rule.ByDay is { Count: > 0 } ? rule.ByDay.Count : 1;
+        // WeeklyCandidates collapses ByDay with Distinct(), so a list naming Monday twice — which
+        // the legacy DaysOfWeek pair can produce — yields ONE candidate that week, not two.
+        // Counting raw entries seeks about twice as far as it should and can land past rangeEnd
+        // (Codex review round 8). Monthly resolves each entry separately, so it counts them all.
+        var perPeriod = rule.ByDay is { Count: > 0 }
+            ? (rule.Freq == SchedulerRecurrenceFrequency.Weekly
+                ? rule.ByDay.Select(b => b.Day).Distinct().Count()
+                : rule.ByDay.Count)
+            : 1;
 
         double periods = rule.Freq switch
         {

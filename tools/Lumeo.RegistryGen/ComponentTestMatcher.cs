@@ -212,7 +212,15 @@ public static class ComponentTestMatcher
                     continue;
                 }
 
-                if (c == '<') { inTag = true; sb.Append(c); i++; continue; }
+                if (c == '<')
+                {
+                    inTag = true;
+                    // The ELEMENT NAME is the reference; everything after it in the tag is not.
+                    var nameEnd = EndOfElementName(text, i);
+                    sb.Append(text[i..nameEnd]);
+                    i = nameEnd;
+                    continue;
+                }
                 if (c == '>') { inTag = false; sb.Append(c); i++; continue; }
 
                 if (inTag)
@@ -226,10 +234,24 @@ public static class ComponentTestMatcher
                         continue;
                     }
 
-                    // Everything else inside the tag — element and attribute NAMES — is kept:
-                    // a reference in markup is a tag, and this is where it lives.
-                    sb.Append(c);
-                    i++;
+                    // An @-expression as an attribute value is code.
+                    if (c == '@')
+                    {
+                        var expr = EndOfRazorExpression(text, i);
+                        if (expr > i)
+                        {
+                            sb.Append(StripNonCode(text[i..expr]));
+                            i = expr;
+                            continue;
+                        }
+                    }
+
+                    // Everything else inside the tag is an ATTRIBUTE NAME, which is a parameter,
+                    // not a type. Keeping them published false coverage: label.json claimed
+                    // MegaMenuDisabledHost.razor for `<MegaMenuItem Label="Products">`, and
+                    // text.json claimed SplitButtonRotationTests.razor for `Text="Save"`
+                    // (Codex review round 8).
+                    i = BlankTo(sb, text, i, i + 1);
                     continue;
                 }
 
@@ -341,6 +363,16 @@ public static class ComponentTestMatcher
             i++;
         }
         return text.Length;
+    }
+
+    /// <summary>End of the element name that opens at the '&lt;' at <paramref name="start"/>,
+    /// including the '&lt;' and any '/' of a closing tag.</summary>
+    private static int EndOfElementName(string text, int start)
+    {
+        var i = start + 1;
+        if (i < text.Length && text[i] == '/') i++;
+        while (i < text.Length && (IsIdentifierChar(text[i]) || text[i] == '.' || text[i] == '-')) i++;
+        return i;
     }
 
     /// <summary>True when the character before <paramref name="i"/>, skipping whitespace, is
@@ -570,7 +602,30 @@ public static class ComponentTestMatcher
         }
 
         if (!char.IsLetter(text[i]) && text[i] != '_') return start;
+
+        var wordStart = i;
         while (i < text.Length && (IsIdentifierChar(text[i]) || text[i] == '.')) i++;
+
+        // A control directive's CONDITION is C#, and stopping at the keyword left it to be
+        // blanked as prose — `@if (typeof(Lumeo.Sheet) != null) { <Drawer /> }` lost a real
+        // reference the same expression in an @code block would have kept (Codex review round 8).
+        // The BODY stays markup, which is what it is.
+        string[] directives = ["if", "else", "foreach", "for", "while", "switch", "lock", "using", "do"];
+        if (Array.IndexOf(directives, text[wordStart..i]) >= 0)
+        {
+            var j = i;
+            while (j < text.Length && char.IsWhiteSpace(text[j])) j++;
+            if (j < text.Length && text[j] == '(')
+            {
+                var depth = 0;
+                for (var k = j; k < text.Length; k++)
+                {
+                    if (text[k] == '(') depth++;
+                    else if (text[k] == ')' && --depth == 0) return k + 1;
+                }
+            }
+        }
+
         return i;
     }
 

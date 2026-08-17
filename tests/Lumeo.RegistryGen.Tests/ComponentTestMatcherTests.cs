@@ -733,4 +733,57 @@ public class ComponentTestMatcherTests
 
         Assert.False(ok);
     }
+
+    // ----- round 8 -----
+
+    [Fact]
+    public void An_attribute_name_is_not_a_component_reference()
+    {
+        // A parameter is not a type. Keeping attribute names published false coverage:
+        // label.json claimed MegaMenuDisabledHost.razor for `<MegaMenuItem Label="Products">`
+        // and text.json claimed SplitButtonRotationTests.razor for `Text="Save"`
+        // (Codex review, PR #424 round 8).
+        var ok = ComponentTestMatcher.IsCoverage(
+            "Text", "tests/Lumeo.Tests/Misc/DrawerHost.razor",
+            "<Drawer Text=\"Save\" />\n",
+            KnownNames);
+
+        Assert.False(ok);
+    }
+
+    [Fact]
+    public void An_element_name_is_still_a_component_reference()
+    {
+        // The other direction: blanking the tag's interior must not take the element name.
+        var ok = ComponentTestMatcher.IsCoverage(
+            "Sheet", "tests/Lumeo.Tests/Misc/DrawerHost.razor",
+            "<Sheet Title=\"Anything\" />\n",
+            KnownNames);
+
+        Assert.True(ok);
+    }
+
+    [Fact]
+    public void A_razor_control_directive_condition_is_code()
+    {
+        // Stopping at the keyword left the condition to be blanked as prose, so a reference the
+        // same expression would keep inside @code was lost out here.
+        var ok = ComponentTestMatcher.IsCoverage(
+            "Sheet", "tests/Lumeo.Tests/Misc/DrawerHost.razor",
+            "@if (typeof(Lumeo.Sheet) != null) { <Drawer /> }\n",
+            KnownNames);
+
+        Assert.True(ok);
+    }
+
+    [Fact]
+    public void A_control_directive_body_is_still_markup()
+    {
+        var ok = ComponentTestMatcher.IsCoverage(
+            "Sheet", "tests/Lumeo.Tests/Misc/DrawerHost.razor",
+            "@if (true) { <Drawer>Sheet</Drawer> }\n",
+            KnownNames);
+
+        Assert.False(ok);
+    }
 }

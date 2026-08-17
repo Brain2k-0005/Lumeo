@@ -596,4 +596,58 @@ public class SchedulerRecurrenceExpanderTests
 
         Assert.Equal(2, result.Count);   // occurrences 2 and 3 of 3
     }
+
+    [Fact]
+    public void A_Weekly_Rule_Listing_A_Weekday_Twice_Seeks_The_Right_Distance()
+    {
+        // WeeklyCandidates collapses ByDay with Distinct(), so a duplicated weekday yields ONE
+        // candidate that week. Counting raw entries seeks about twice as far as it should and
+        // can land past the window entirely (Codex review of PR #424).
+        var byDay = new[]
+        {
+            new SchedulerByDayRule(DayOfWeek.Monday),
+            new SchedulerByDayRule(DayOfWeek.Monday),
+        };
+        var start = new DateTime(1990, 1, 1, 9, 0, 0);          // a Monday
+        var ev = Base(start: start, end: start.AddHours(1),
+                      recurrence: new SchedulerRecurrenceRule(
+                          SchedulerRecurrenceFrequency.Weekly, Interval: 1, ByDay: byDay));
+
+        var window = new DateTime(2026, 3, 9);                   // also a Monday
+        var result = SchedulerRecurrenceExpander.Expand(ev, window, window.AddDays(7));
+
+        Assert.Single(result);
+        Assert.Equal(window.Date, result[0].Start.Date);
+    }
+
+    [Fact]
+    public void A_Reversed_Event_Does_Not_Take_Down_The_Render()
+    {
+        // SchedulerEvent does not validate End >= Start, and a negative duration used to be laid
+        // out or discarded harmlessly. Subtracting it during the seek reached FORWARD and threw.
+        var start = new DateTime(2026, 3, 9, 12, 0, 0);
+        var ev = Base(start: start, end: start.AddHours(-2),
+                      recurrence: new SchedulerRecurrenceRule(SchedulerRecurrenceFrequency.Daily, Interval: 1));
+
+        var result = SchedulerRecurrenceExpander.Expand(ev, start, start.AddDays(3));
+
+        Assert.NotNull(result);
+    }
+
+    [Fact]
+    public void A_Long_Event_Keeps_Its_Occurrences_To_The_End_Of_The_Window()
+    {
+        // The seek reaches back by the event's duration so an occurrence crossing the left edge
+        // survives, and those earlier candidates spend the same budget. Measuring the budget from
+        // rangeStart instead left the tail of a long window free.
+        var start = new DateTime(2020, 1, 1, 9, 0, 0);
+        var ev = Base(start: start, end: start.AddDays(30),
+                      recurrence: new SchedulerRecurrenceRule(SchedulerRecurrenceFrequency.Daily, Interval: 1));
+
+        var from = new DateTime(2026, 1, 1);
+        var to = from.AddDays(730);
+        var result = SchedulerRecurrenceExpander.Expand(ev, from, to);
+
+        Assert.Contains(result, r => r.Start.Date >= to.AddDays(-2).Date);
+    }
 }
