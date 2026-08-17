@@ -31,7 +31,7 @@ internal static class SchedulerDateMath
     /// Faithful port of <c>Scheduler.razor</c>'s existing <c>StartOfWeek</c> (int-typed
     /// <c>FirstDayOfWeek</c>, 0-6 Sun-Sat) — same formula, <see cref="DayOfWeek"/>-typed here
     /// since the kernel is a fresh implementation, not a byte-for-byte extraction of the
-    /// FullCalendar-era component (which stays untouched, see the wave-1a task's own scope note).
+    /// FullCalendar-era component that has since been removed.
     /// </summary>
     internal static DateTime StartOfWeek(DateTime date, DayOfWeek firstDayOfWeek)
     {

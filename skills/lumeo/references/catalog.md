@@ -47,7 +47,7 @@ Satellite packages: a component tagged **[Charts]** needs `Lumeo.Charts`, **[Dat
 - **PdfViewer** **[PdfViewer]** — Inline PDF document viewer powered by pdf.js — page navigation, zoom controls, optional text search, and download.
 - **PivotGrid** — Cross-tab / pivot table that summarizes flat data into rows x columns x aggregated measures.
 - **QRCode** — Renders a QR code SVG for a string payload.
-- **Scheduler** **[Scheduler]** — Calendar/agenda scheduler wrapping FullCalendar. _(sub-components: SchedulerAgendaView, SchedulerMonthView, SchedulerResourceView, SchedulerTimeGridView, SchedulerToolbar)_
+- **Scheduler** **[Scheduler]** — Calendar and agenda scheduler with month, week, day, N-day, agenda and resource views. _(sub-components: SchedulerAgendaView, SchedulerMonthView, SchedulerResourceView, SchedulerTimeGridView, SchedulerToolbar)_
 - **Sparkline** — Inline SVG trend chart primitive — line, area, or bars for tables and KPI strips.
 - **Statistic** — Big-number statistic display with label and unit.
 - **Steps** — Numbered step indicator for wizards and progress flows. _(sub-components: StepsItem)_
