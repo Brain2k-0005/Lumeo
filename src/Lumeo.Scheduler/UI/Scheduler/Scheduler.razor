@@ -115,7 +115,12 @@
                                            OnRequestPrev="@PrevAsync" OnRequestNext="@NextAsync" />
                     break;
                 case SchedulerView.Timeline when Resources is { Count: > 0 }:
+                    @* Today comes from the DISPLAY zone (Codex review, P2): events are
+                       projected into it, so letting the view fall back to the host's
+                       DateTime.Today highlighted a different column than the data sits in —
+                       and disagreed with this wrapper's own Today button. *@
                     <SchedulerTimelineView Events="@EffectiveEvents" Resources="@Resources"
+                                           Today="@(_displayZone is not null ? SchedulerTimeZoneProjection.TodayIn(_displayZone) : null)"
                                            RangeStart="@_fpAnchor" Columns="@EffectiveTimelineColumns"
                                            Unit="@TimelineUnit" FirstDayOfWeek="@EffectiveFirstDayOfWeek"
                                            ResolveEventColor="@ResolveFirstPartyColor"
@@ -256,6 +261,9 @@
 
     private int EffectiveTimelineColumns => Math.Clamp(TimelineColumns ?? 14, 1, 366);
 
+    private int _lastTimelineShape;
+    private bool _titleSeeded;
+
     /// <summary>
     /// IANA time zone the grid is READ in, e.g. <c>"Europe/Berlin"</c>. Unset renders the
     /// values exactly as given.
@@ -349,6 +357,7 @@
         // ComputeTitle has no branch for List, Resource or MultiDay, so all three used to
         // open on the month name and only corrected themselves once the user navigated.
         _title = ComputeFirstPartyTitle();
+        _titleSeeded = true;
         _currentLocale = System.Globalization.CultureInfo.CurrentUICulture.Name;
         RebuildResourceLookup();
     }
@@ -356,6 +365,16 @@
     protected override void OnParametersSet()
     {
         _displayZone = SchedulerTimeZoneProjection.Resolve(TimeZone);
+
+        // The timeline rebuilds its columns from these immediately, but the toolbar title is
+        // cached and was only refreshed by navigation or a culture change — so it kept naming
+        // the old end date until the user pressed something (Codex review, P2).
+        var timelineShape = HashCode.Combine(TimelineUnit, EffectiveTimelineColumns);
+        if (timelineShape != _lastTimelineShape)
+        {
+            _lastTimelineShape = timelineShape;
+            if (_titleSeeded) RefreshFirstPartyTitle();
+        }
         // Rebuild the resource lookup whenever the Resources param changes.
         RebuildResourceLookup();
 
@@ -497,7 +516,7 @@
     /// a single day, neither of which ComputeTitle's wrapper-shaped branches describe (Codex
     /// review of this PR, P2) — List fell through to the month name, Resource to a week.
     /// </summary>
-    private string ComputeFirstPartyTitle() => _currentView switch
+    private string ComputeFirstPartyTitle() => EffectiveView switch
     {
         SchedulerView.List => ComputeTitle(FirstPartyAgendaStart, SchedulerView.Week),
         SchedulerView.Resource => ComputeTitle(_fpAnchor, SchedulerView.Day),
@@ -532,6 +551,17 @@
             ? ComputeTitle(start, SchedulerView.Day)
             : $"{start:MMM d} – {end:MMM d, yyyy}";
     }
+
+    /// <summary>
+    /// What the view effectively is. Resource and Timeline both need <see cref="Resources"/>;
+    /// without it they render the day grid — and the toolbar has to agree (Codex review, P2).
+    /// Previously only the RENDERER fell back, so the title still described a timeline range
+    /// and prev/next still jumped by TimelineColumns while a single day was on screen.
+    /// </summary>
+    private SchedulerView EffectiveView =>
+        _currentView is SchedulerView.Resource or SchedulerView.Timeline && Resources is not { Count: > 0 }
+            ? SchedulerView.Day
+            : _currentView;
 
     private string TimelineTitle()
     {
@@ -706,7 +736,7 @@
     }
 
     /// <summary>Steps the first-party anchor by one view-sized unit. Month moves whole months, Week/List a week, Day a day.</summary>
-    private void StepFirstPartyAnchor(int direction) => _fpAnchor = _currentView switch
+    private void StepFirstPartyAnchor(int direction) => _fpAnchor = EffectiveView switch
     {
         SchedulerView.Month => _fpAnchor.AddMonths(direction),
         // Resource renders a SINGLE date, so a week-sized step skipped six days

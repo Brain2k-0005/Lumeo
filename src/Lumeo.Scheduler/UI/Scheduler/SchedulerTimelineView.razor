@@ -1,5 +1,6 @@
 @namespace Lumeo
 @using System.Globalization
+@using Lumeo.SchedulerKernel
 @inject Lumeo.Services.Localization.ILumeoLocalizer L
 
 @* Resource timeline: rows are resources, the time axis runs HORIZONTALLY across days,
@@ -9,6 +10,11 @@
 <div class="@($"flex flex-col w-full rounded-md border border-border/60 overflow-hidden {Class}".Trim())"
      @attributes="AdditionalAttributes">
 
+    @* Deliberately NOT role="grid" (Codex review, P2). The gutter and the scrolling track
+       are separate subtrees and the bars are absolutely positioned, so row/columnheader roles
+       here were orphaned — assistive tech could not associate a date header with a resource
+       row. A labelled group plus a list of resources, with each bar naming its own resource
+       and time range, states only what the markup can actually deliver. *@
     <div class="flex" role="group" aria-label="@L["Scheduler.Resources"]">
 
         @* Resource gutter — outside the horizontal scroller so it stays put while the axis
@@ -33,14 +39,18 @@
         </div>
 
         <div class="flex-1 min-w-0 overflow-x-auto">
-            <div class="relative" style="@TrackStyle()">
+            @* direction:ltr pins the time axis (Codex review, P1). The header row is
+               flex, so under RTL it puts the first date on the right while the bars,
+               rules and today marker keep positioning from the physical left — the
+               bookings would sit under the wrong dates. The labels inside stay
+               localised; only the axis direction is fixed. *@
+            <div class="relative" style="@TrackStyle()" dir="ltr">
 
                 @* Axis header *@
-                <div class="flex h-9 border-b border-border/60 bg-muted/30" role="row">
+                <div class="flex h-9 border-b border-border/60 bg-muted/30" aria-hidden="true">
                     @foreach (var col in _columns)
                     {
-                        <div role="columnheader"
-                             class="@ColumnHeaderClasses(col)"
+                        <div class="@ColumnHeaderClasses(col)"
                              style="@ColumnStyle()"
                              data-timeline-column="@col.ToString("yyyy-MM-dd")">
                             @SchedulerTimelineScale.ColumnLabel(Unit, col, CultureInfo.CurrentUICulture)
@@ -51,7 +61,7 @@
                 @for (var r = 0; r < _rows.Count; r++)
                 {
                     var row = _rows[r];
-                    <div class="relative border-b border-border/60" style="@RowStyle(r)" role="row"
+                    <div class="relative border-b border-border/60" style="@RowStyle(r)"
                          data-timeline-row="@row.Resource.Id">
 
                         @* Column rules, drawn behind the bars so a booking can cross them. *@
@@ -66,7 +76,7 @@
                         {
                             <button type="button"
                                     class="@BarClasses(bar)"
-                                    style="@BarStyle(bar)"
+                                    style="@BarStyle(bar, row.Resource)"
                                     data-event-id="@bar.Source.Id"
                                     data-timeline-bar="@bar.Source.Id"
                                     aria-label="@BarAriaLabel(row.Resource, bar)"
@@ -141,7 +151,7 @@
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
-    private sealed record Bar(SchedulerEvent Source, double Left, double Width, int Lane);
+    private sealed record Bar(SchedulerEvent Source, SchedulerEventInstance Instance, double Left, double Width, int Lane);
     private sealed record Row(SchedulerResource Resource, IReadOnlyList<Bar> Bars, int Lanes);
 
     private List<Row> _rows = new();
@@ -152,7 +162,21 @@
 
     private static readonly CultureInfo Inv = CultureInfo.InvariantCulture;
 
-    private int ColumnWidthPx => ColumnWidth ?? SchedulerTimelineScale.DefaultColumnWidth(Unit);
+    /// <summary>Smallest rendered bar width — a zero-length booking still has to be hittable.</summary>
+    private const double MinBarWidthPx = 6;
+
+    /// <summary>
+    /// A nonpositive width collapses the track and piles every bar at the same offset, and a
+    /// caller binding a not-yet-measured container width will hand us exactly that
+    /// (Codex review, P2). Falls back to the unit's own default rather than guessing.
+    /// </summary>
+    private int ColumnWidthPx => ColumnWidth is > 0 ? ColumnWidth.Value : SchedulerTimelineScale.DefaultColumnWidth(Unit);
+
+    /// <summary>
+    /// Bars are drawn LaneHeight-4 tall, so anything at or below 4 renders a zero or negative
+    /// box — invisible, or several lanes stacked at the same top (Codex review, P2).
+    /// </summary>
+    private int LaneHeightPx => Math.Max(12, LaneHeight);
     private int EffectiveColumns => Math.Clamp(Columns, 1, 366);
 
     protected override void OnParametersSet()
@@ -179,39 +203,56 @@
         var axisStart = _origin;
         var axisEnd = AxisEnd();
 
+        // Recurrences are EXPANDED over the visible axis, exactly as every other view does
+        // (Codex review, P1). Laying out the series' own Start/End instead rendered a
+        // recurring booking once and dropped a series entirely when its first occurrence
+        // preceded the window — a resource that is booked every Tuesday read as free.
+        var byId = new Dictionary<string, SchedulerEvent>(StringComparer.Ordinal);
+        foreach (var e in events) byId[e.Id] = e;
+        // Expanded from a tick BEFORE the axis: the expander filters on End > rangeStart, so a
+        // zero-length booking sitting exactly on the origin never reached this view at all —
+        // a midnight marker vanished precisely when its date was the first visible column.
+        // The view's own clamping below still decides what is actually on screen.
+        var instances = SchedulerRecurrenceExpander.ExpandAll(events, axisStart.AddTicks(-1), axisEnd);
+
         foreach (var res in resources)
         {
-            // Only what overlaps the visible axis, and only for this resource. An overlapping
-            // booking is CLAMPED to the axis rather than dropped, so one running in from
-            // before the window still shows the resource as busy instead of vanishing.
-            var mine = events
-                .Where(e => !string.IsNullOrEmpty(e.ResourceId)
-                            && string.Equals(e.ResourceId, res.Id, StringComparison.Ordinal)
-                            && e.End > axisStart && e.Start < axisEnd)
-                .OrderBy(e => e.Start)
+            var mine = instances
+                // No IsNullOrEmpty guard (Codex review, P2): a blank resource id is
+                // legitimate — RebuildResourceLookup and the resource view both honour it —
+                // so the ordinal comparison alone decides.
+                .Where(i => byId.TryGetValue(i.EventId, out var src)
+                            && string.Equals(src.ResourceId, res.Id, StringComparison.Ordinal))
+                // A zero-length booking sitting exactly on the axis origin is kept
+                // (Codex review, P2): a strict End > start dropped a midnight marker on the
+                // first visible column, contradicting this view's own support for them.
+                .Where(i => i.Start < axisEnd && (i.End > axisStart || (i.End == i.Start && i.Start >= axisStart)))
+                .OrderBy(i => i.Start)
                 .ToList();
 
-            // Lane packing: the first lane whose previous booking has already ended. Without
-            // it a double booking would draw on top of itself and read as a single one, which
-            // is precisely the conflict this view exists to surface.
-            var laneEnds = new List<DateTime>();
+            // Lanes are packed by RENDERED GEOMETRY, not by time (Codex review, P2). Every bar
+            // is floored to a visible minimum width, and at day scale an hour is four pixels —
+            // so two back-to-back hour bookings share a lane by the clock while overlapping on
+            // screen, the later button covering the earlier one.
+            var laneRight = new List<double>();
             var bars = new List<Bar>(mine.Count);
-            foreach (var e in mine)
+            foreach (var i in mine)
             {
-                var lane = laneEnds.FindIndex(end => end <= e.Start);
-                if (lane < 0) { laneEnds.Add(e.End); lane = laneEnds.Count - 1; }
-                else laneEnds[lane] = e.End;
-
-                var from = e.Start < axisStart ? axisStart : e.Start;
-                var to = e.End > axisEnd ? axisEnd : e.End;
+                var src = byId[i.EventId];
+                var from = i.Start < axisStart ? axisStart : i.Start;
+                var to = i.End > axisEnd ? axisEnd : i.End;
                 var left = SchedulerTimelineScale.DateToPixel(Unit, _origin, from, ColumnWidthPx);
-                var right = SchedulerTimelineScale.DateToPixel(Unit, _origin, to, ColumnWidthPx);
+                var width = Math.Max(MinBarWidthPx, SchedulerTimelineScale.DateToPixel(Unit, _origin, to, ColumnWidthPx) - left);
+                var right = left + width;
 
-                // A zero-length or sub-pixel booking still has to be visible and clickable.
-                bars.Add(new Bar(e, left, Math.Max(6, right - left), lane));
+                var lane = laneRight.FindIndex(r => r <= left);
+                if (lane < 0) { laneRight.Add(right); lane = laneRight.Count - 1; }
+                else laneRight[lane] = right;
+
+                bars.Add(new Bar(src, i, left, width, lane));
             }
 
-            _rows.Add(new Row(res, bars, Math.Max(1, laneEnds.Count)));
+            _rows.Add(new Row(res, bars, Math.Max(1, laneRight.Count)));
         }
     }
 
@@ -241,7 +282,7 @@
     private string RowStyle(int index)
     {
         var lanes = _rows[index].Lanes;
-        return string.Create(Inv, $"height:{lanes * LaneHeight + 8}px;");
+        return string.Create(Inv, $"height:{lanes * LaneHeightPx + 8}px;");
     }
 
     private string ColumnHeaderClasses(DateTime col)
@@ -267,12 +308,15 @@
         return classes;
     }
 
-    private string BarStyle(Bar bar)
+    private string BarStyle(Bar bar, SchedulerResource res)
     {
-        var color = ResolveEventColor?.Invoke(bar.Source) ?? bar.Source.Color ?? "var(--color-primary)";
-        var top = 4 + bar.Lane * LaneHeight;
+        // callback, then the event's own colour, then the RESOURCE's — the order
+        // SchedulerResourceView uses. Without the last step a direct caller saw a gutter full
+        // of distinct colours and a timeline entirely in the primary one (Codex review, P2).
+        var color = ResolveEventColor?.Invoke(bar.Source) ?? bar.Source.Color ?? res.Color ?? "var(--color-primary)";
+        var top = 4 + bar.Lane * LaneHeightPx;
         var style = string.Create(Inv,
-            $"left:{bar.Left.ToString("0.##", Inv)}px; width:{bar.Width.ToString("0.##", Inv)}px; top:{top}px; height:{LaneHeight - 4}px; ");
+            $"left:{bar.Left.ToString("0.##", Inv)}px; width:{bar.Width.ToString("0.##", Inv)}px; top:{top}px; height:{LaneHeightPx - 4}px; ");
 
         // The same contrast treatment as every other view: the colour as an 18% tint, the text
         // mixed toward an anchor that flips with the theme. The raw colour stays on the left
@@ -283,8 +327,11 @@
         return style;
     }
 
+    // The END matters (Codex review, P2): a bar's width conveys duration visually, and without
+    // it two bookings starting at the same time are indistinguishable to a screen reader.
     private string BarAriaLabel(SchedulerResource res, Bar bar) =>
-        $"{bar.Source.Title}, {res.Title}, {bar.Source.Start.ToString("g", CultureInfo.CurrentUICulture)}";
+        $"{bar.Source.Title}, {res.Title}, {bar.Instance.Start.ToString("g", CultureInfo.CurrentUICulture)}"
+        + $" – {bar.Instance.End.ToString("g", CultureInfo.CurrentUICulture)}";
 
     private async Task OnEventClickAsync(SchedulerEvent ev)
     {
