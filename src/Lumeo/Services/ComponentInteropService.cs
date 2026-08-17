@@ -1756,8 +1756,13 @@ public sealed class ComponentInteropService : IComponentInteropService
 
     private async Task<IJSObjectReference> GetSchedulerViewsModuleAsync()
     {
+        // Through AppendVersion, like the core modules: SchedulerViewsGetLocalDateAsync depends
+        // on an export this file only gained in this release, so a browser holding the previous
+        // copy would find getLocalDateIso missing, the call would reject, and the browser-date
+        // resolution would fall back to the SERVER's date without saying so — the same silent
+        // defeat the Gantt-module dependency caused (CodeRabbit, PR #424).
         _schedulerViewsModule ??= await _jsRuntime.InvokeAsync<IJSObjectReference>(
-            "import", "./_content/Lumeo.Scheduler/js/scheduler-views.js");
+            "import", AppendVersion("./_content/Lumeo.Scheduler/js/scheduler-views.js"));
         return _schedulerViewsModule;
     }
 

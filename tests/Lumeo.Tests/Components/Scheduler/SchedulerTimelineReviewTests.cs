@@ -625,4 +625,32 @@ public class SchedulerTimelineReviewTests : IAsyncLifetime
         Assert.NotNull(dir);
         return Path.Combine(dir!, "src", "Lumeo.Scheduler", "UI", "Scheduler", "Scheduler.razor");
     }
+
+    [Fact]
+    public void The_scheduler_view_module_is_cache_busted()
+    {
+        // The browser-date resolution depends on an export this file only gained in this
+        // release. Without the version query a browser holding the previous copy finds
+        // getLocalDateIso missing, the call rejects, and the marker falls back to the SERVER's
+        // date without saying so — the same silent defeat the Gantt-module dependency caused
+        // (CodeRabbit, PR #424).
+        var root = RepoRoot();
+        var source = File.ReadAllText(Path.Combine(root, "src", "Lumeo", "Services", "ComponentInteropService.cs"));
+
+        // The exact import expression, not a nearby line: an earlier COMMENT also names the
+        // file, and anchoring on the first mention inspected that comment instead.
+        const string url = "\"./_content/Lumeo.Scheduler/js/scheduler-views.js\"";
+
+        Assert.Contains($"AppendVersion({url})", source, StringComparison.Ordinal);
+        Assert.DoesNotContain($"\"import\", {url}", source, StringComparison.Ordinal);
+    }
+
+    private static string RepoRoot()
+    {
+        var dir = AppContext.BaseDirectory;
+        while (dir is not null && !File.Exists(Path.Combine(dir, "Lumeo.slnx")))
+            dir = Path.GetDirectoryName(dir);
+        Assert.NotNull(dir);
+        return dir!;
+    }
 }
