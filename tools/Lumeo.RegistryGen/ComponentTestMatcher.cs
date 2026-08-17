@@ -31,9 +31,12 @@ namespace Lumeo.RegistryGen;
 ///      construction.
 ///
 ///   2. A REAL TYPE REFERENCE in the file's code (block/line/XML-doc
-///      comments stripped first, so prose mentions — e.g. a doc comment
-///      noting "same pattern already fixed for Sheet/Drawer/Dialog" — never
-///      count):
+///      comments AND string literals stripped first, so neither prose
+///      mentions — e.g. a doc comment noting "same pattern already fixed
+///      for Sheet/Drawer/Dialog" — nor quoted words — an expected button
+///      caption, a bUnit parameter NAME passed as a string, a component
+///      name inside an embedded JSON payload — ever count. Interpolation
+///      holes are exempt: `$"{typeof(Sheet).Name}"` is code, not text):
 ///
 ///        a) An EXACT identifier match (word boundary on both sides) that is
 ///           not a member/property/method access on some unrelated receiver.
@@ -139,7 +142,84 @@ public static class ComponentTestMatcher
     private static string StripComments(string text)
     {
         var codeOnly = BlockComment.Replace(text, " ");
-        return LineComment.Replace(codeOnly, " ");
+        codeOnly = LineComment.Replace(codeOnly, " ");
+
+        // ...AND STRING LITERALS, despite the name. A quoted word is not a type reference, and
+        // counting one published false coverage: a Scheduler test asserting that a toolbar
+        // button reads == "Timeline" was filed under the unrelated Timeline component, pointing
+        // registry and MCP consumers at a suite that never renders it (review of PR #424).
+        // The same shape produced ~150 other bogus links across the registry — "Card body"
+        // fixture text, an AddAttribute(1, "Label", ...) parameter NAME, even a "Progress":20
+        // field inside an embedded JSON payload.
+        //
+        // Order matters, widest quoting form first, or one form eats another's delimiters:
+        // raw ("""...""") strings may contain lone quotes, verbatim (@"...") strings escape by
+        // doubling and ignore backslashes, and regular ones escape with a backslash.
+        codeOnly = RawString.Replace(codeOnly, Blank);
+        // Interpolated strings keep their {...} holes: a hole is real code, and blanking
+        // $"{typeof(Sheet).Name}" would trade this false positive for a false negative.
+        codeOnly = InterpolatedVerbatimString.Replace(codeOnly, BlankOutsideHoles);
+        codeOnly = InterpolatedString.Replace(codeOnly, BlankOutsideHoles);
+        codeOnly = VerbatimString.Replace(codeOnly, Blank);
+        return RegularString.Replace(codeOnly, Blank);
+    }
+
+    /// <summary>"""...""" — opens with three or more quotes, closes on the same count.</summary>
+    private static readonly Regex RawString =
+        new(@"(""{3,})[\s\S]*?\1", RegexOptions.Compiled);
+
+    /// <summary>$@"..." / @$"..." — doubled quotes escape, backslashes do not.</summary>
+    private static readonly Regex InterpolatedVerbatimString =
+        new(@"(?:\$@|@\$)""(?:[^""]|"""")*""", RegexOptions.Compiled | RegexOptions.Singleline);
+
+    /// <summary>$"..." — backslash escapes, never spans a line.</summary>
+    private static readonly Regex InterpolatedString =
+        new(@"\$""(?:\\.|[^""\\\n])*""", RegexOptions.Compiled);
+
+    /// <summary>@"..." — doubled quotes escape, backslashes do not.</summary>
+    private static readonly Regex VerbatimString =
+        new(@"@""(?:[^""]|"""")*""", RegexOptions.Compiled | RegexOptions.Singleline);
+
+    /// <summary>"..." — backslash escapes, never spans a line.</summary>
+    private static readonly Regex RegularString =
+        new(@"""(?:\\.|[^""\\\n])*""", RegexOptions.Compiled);
+
+    /// <summary>Blank a literal out, keeping its newlines so the line-based LineComment pass
+    /// and any future line-anchored diagnostics still see the original line structure.</summary>
+    private static string Blank(Match m) => Blank(m.Value);
+
+    private static string Blank(string s)
+    {
+        var chars = s.ToCharArray();
+        for (var i = 0; i < chars.Length; i++)
+        {
+            if (chars[i] != '\n' && chars[i] != '\r') chars[i] = ' ';
+        }
+        return new string(chars);
+    }
+
+    /// <summary>Blank an interpolated literal's text but leave its {...} holes intact.
+    /// "{{" and "}}" are escaped braces — literal text, not a hole.</summary>
+    private static string BlankOutsideHoles(Match m)
+    {
+        var s = m.Value;
+        var result = new System.Text.StringBuilder(s.Length);
+        var depth = 0;
+        for (var i = 0; i < s.Length; i++)
+        {
+            var c = s[i];
+            if (depth == 0 && (c == '{' || c == '}') && i + 1 < s.Length && s[i + 1] == c)
+            {
+                result.Append("  ");   // escaped brace pair: literal text
+                i++;
+                continue;
+            }
+            if (c == '{') { depth++; result.Append(c); continue; }
+            if (c == '}' && depth > 0) { depth--; result.Append(c); continue; }
+            if (depth > 0 || c == '\n' || c == '\r') result.Append(c);
+            else result.Append(' ');
+        }
+        return result.ToString();
     }
 
     private static bool HasRealTypeReference(string codeOnly, string componentName)

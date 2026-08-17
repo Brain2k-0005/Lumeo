@@ -318,4 +318,95 @@ public class ComponentTestMatcherTests
 
         Assert.False(ok);
     }
+
+    // ----- string literals are text, not type references (PR #424 review) -----
+    //
+    // A Scheduler test asserting a toolbar button reads == "Timeline" was published as
+    // coverage for the unrelated Timeline component. The same shape produced ~150 other
+    // bogus links: fixture text, bUnit parameter NAMES passed as strings, and component
+    // names inside embedded JSON payloads.
+
+    [Fact]
+    public void Component_named_only_in_a_string_literal_does_not_count()
+    {
+        var ok = ComponentTestMatcher.IsCoverage(
+            "Sheet", "tests/Lumeo.Tests/Misc/DrawerTests.cs",
+            @"public class DrawerTests { void A() { Assert.Equal(""Sheet"", b.TextContent); } }",
+            KnownNames);
+
+        Assert.False(ok);
+    }
+
+    [Fact]
+    public void Component_named_only_inside_a_verbatim_string_does_not_count()
+    {
+        var ok = ComponentTestMatcher.IsCoverage(
+            "Sheet", "tests/Lumeo.Tests/Misc/DrawerTests.cs",
+            @"public class DrawerTests { void A() { var m = @""<div>Sheet</div>""; } }",
+            KnownNames);
+
+        Assert.False(ok);
+    }
+
+    [Fact]
+    public void A_doubled_quote_does_not_end_a_verbatim_string_early()
+    {
+        // If it did, the scan would resume inside the literal and read its text as code.
+        var ok = ComponentTestMatcher.IsCoverage(
+            "Sheet", "tests/Lumeo.Tests/Misc/DrawerTests.cs",
+            @"public class DrawerTests { void A() { var m = @""he said """"Sheet"""" once""; } }",
+            KnownNames);
+
+        Assert.False(ok);
+    }
+
+    [Fact]
+    public void Component_named_only_inside_a_raw_string_payload_does_not_count()
+    {
+        // The registry linked "Progress" to a Gantt test purely because of a {"Progress":20}
+        // field in an embedded JSON fixture.
+        var ok = ComponentTestMatcher.IsCoverage(
+            "Sheet", "tests/Lumeo.Tests/Misc/DrawerTests.cs",
+            "public class DrawerTests { const string J = \"\"\"\n{\"Component\":\"Sheet\"}\n\"\"\"; }",
+            KnownNames);
+
+        Assert.False(ok);
+    }
+
+    [Fact]
+    public void A_type_reference_inside_an_interpolation_hole_still_counts()
+    {
+        // The other direction: a hole is code. Blanking it would trade the false positive
+        // for a false negative.
+        var ok = ComponentTestMatcher.IsCoverage(
+            "Sheet", "tests/Lumeo.Tests/Misc/DrawerTests.cs",
+            @"public class DrawerTests { void A() { var s = $""name: {typeof(Lumeo.Sheet).Name}""; } }",
+            KnownNames);
+
+        Assert.True(ok);
+    }
+
+    [Fact]
+    public void An_escaped_brace_in_an_interpolated_string_stays_text()
+    {
+        var ok = ComponentTestMatcher.IsCoverage(
+            "Sheet", "tests/Lumeo.Tests/Misc/DrawerTests.cs",
+            @"public class DrawerTests { void A() { var s = $""{{Sheet}} literal""; } }",
+            KnownNames);
+
+        Assert.False(ok);
+    }
+
+    [Fact]
+    public void Code_following_a_string_literal_is_still_scanned()
+    {
+        // Blanking must consume exactly the literal — an escaped quote inside it used to be
+        // read as the closing one, swallowing the real reference that came after.
+        var ok = ComponentTestMatcher.IsCoverage(
+            "Sheet", "tests/Lumeo.Tests/Misc/DrawerTests.cs",
+            @"public class DrawerTests { void A() { Log(""a \"" b""); Render<Lumeo.Sheet>(); } }",
+            KnownNames);
+
+        Assert.True(ok);
+    }
 }
