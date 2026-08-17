@@ -297,13 +297,25 @@ public static class ComponentTestMatcher
                 // Markup TEXT. Blanked, because a reference in markup is a <Sheet /> tag and
                 // never prose: a trigger captioned "Toggle" was claiming Toggle coverage for
                 // CollapsibleTests.razor (Codex review round 7). Embedded @-expressions are code.
+                // '@@' is an escape: Razor renders a literal '@' and what follows is TEXT.
+                // Blanking one character at a time let the second '@' open a transition, so
+                // `<p>@@typeof(Lumeo.Sheet)</p>` published prose as a reference (round 15).
+                if (c == '@' && Next(text, i) == '@')
+                {
+                    i = BlankTo(sb, text, i, i + 2);
+                    continue;
+                }
                 if (c == '@')
                 {
                     var expr = EndOfRazorExpression(text, i);
                     if (expr > i)
                     {
                         sb.Append(StripNonCode(text[i..expr]));
-                        i = expr;
+
+                        // A control directive's BODY mixes C# statements with markup islands,
+                        // and treating it all as markup blanked the statements (round 15).
+                        var body = StartOfControlBody(text, expr);
+                        i = body > expr ? AppendRazorControlBody(sb, text, expr, body) : expr;
                         continue;
                     }
                 }
@@ -597,8 +609,16 @@ public static class ComponentTestMatcher
 
         while (true)
         {
+            // A Razor transition inside the body carries C#, and an end tag spelled inside one
+            // of its literals is string data — selecting it resumed markup mode in the middle
+            // of the expression (Codex review round 15).
+            at = SkipTransitionsBefore(text, at);
+
             at = text.IndexOf(needle, at, StringComparison.OrdinalIgnoreCase);
             if (at < 0) return text.Length;
+
+            var overExpression = SkipTransitionsBefore(text, at);
+            if (overExpression > at) { at = overExpression; continue; }
 
             var after = at + needle.Length;
             if (after >= text.Length) return text.Length;
@@ -606,6 +626,18 @@ public static class ComponentTestMatcher
 
             at = after;
         }
+    }
+
+    /// <summary>Advances past any Razor expression that STARTS at or before <paramref name="at"/>
+    /// and extends beyond it, so its literals are not mistaken for markup.</summary>
+    private static int SkipTransitionsBefore(string text, int at)
+    {
+        var i = at;
+        while (i > 0 && text[i - 1] != '@') i--;
+        if (i == 0 || i > at) return at;
+
+        var expr = EndOfRazorExpression(text, i - 1);
+        return expr > at ? expr : at;
     }
 
     /// <summary>Appends a raw-text body: its markup-like text is DATA, but a Razor transition
@@ -655,6 +687,97 @@ public static class ComponentTestMatcher
             if (string.Equals(name, raw, StringComparison.OrdinalIgnoreCase)) return raw;
         }
         return null;
+    }
+
+    /// <summary>Index of the '{' opening a control directive's body after the expression that
+    /// ends at <paramref name="from"/>, or <paramref name="from"/> when there is none.</summary>
+    private static int StartOfControlBody(string text, int from)
+    {
+        var i = from;
+        while (i < text.Length && char.IsWhiteSpace(text[i])) i++;
+        return i < text.Length && text[i] == '{' ? i : from;
+    }
+
+    /// <summary>
+    /// Appends a Razor control body — <c>@if (…) { … }</c> and friends. Razor allows C#
+    /// STATEMENTS there alongside markup, so the body is scanned as code with markup islands:
+    /// a run starting at '&lt;' is an element and goes through the markup scanner, everything
+    /// else through the code one. Treating the whole body as markup blanked real statements;
+    /// treating it all as code would resurrect every caption inside it.
+    /// </summary>
+    private static int AppendRazorControlBody(StringBuilder sb, string text, int from, int brace)
+    {
+        sb.Append(text[from..brace]);
+        sb.Append('{');
+
+        var i = brace + 1;
+        var depth = 1;
+        var codeFrom = i;
+
+        while (i < text.Length)
+        {
+            var c = text[i];
+
+            if (c == '<' && i + 1 < text.Length && (char.IsLetter(text[i + 1]) || text[i + 1] == '/'))
+            {
+                sb.Append(StripNonCode(text[codeFrom..i]));
+                var end = EndOfMarkupIsland(text, i);
+                sb.Append(StripNonCode(text[i..end], razor: true));
+                i = end;
+                codeFrom = i;
+                continue;
+            }
+
+            if (c == '{') { depth++; i++; continue; }
+            if (c == '}')
+            {
+                if (--depth == 0)
+                {
+                    sb.Append(StripNonCode(text[codeFrom..i]));
+                    sb.Append('}');
+                    return i + 1;
+                }
+                i++;
+                continue;
+            }
+
+            i++;
+        }
+
+        sb.Append(StripNonCode(text[codeFrom..]));
+        return text.Length;
+    }
+
+    /// <summary>End of the element subtree starting at the '&lt;' at <paramref name="start"/>.</summary>
+    private static int EndOfMarkupIsland(string text, int start)
+    {
+        var depth = 0;
+        var i = start;
+
+        while (i < text.Length)
+        {
+            if (text[i] != '<') { i++; continue; }
+            if (text.AsSpan(i).StartsWith("<!--")) { i = Find(text, "-->", i + 4, after: true); continue; }
+
+            var closing = Next(text, i) == '/';
+            var gt = EndOfTag(text, i);
+            if (gt < 0) return text.Length;
+
+            var raw = RawTextElement(text, i, EndOfElementName(text, i));
+            if (raw is not null)
+            {
+                depth++;
+                i = EndOfRawTextBody(text, gt + 1, raw);
+                continue;
+            }
+
+            if (closing) { if (--depth <= 0) return gt + 1; }
+            else if (text[gt - 1] != '/' && !IsVoidElement(text, i)) depth++;
+            else if (depth == 0) return gt + 1;
+
+            i = gt + 1;
+        }
+        return text.Length;
     }
 
     /// <summary>True when the character before <paramref name="i"/>, skipping whitespace, is
@@ -1070,6 +1193,19 @@ public static class ComponentTestMatcher
             // than parsed, which is enough to know whether a quote can close the literal.
             // A brace inside a char literal is not a hole delimiter — `Test('\''}'\'')` closed one
             // early and the next quote was mistaken for the outer string's end (round 14).
+            if (interpolated && holeDepth > 0 && text[i] == '/' && Next(text, i) == '/')
+            {
+                var nl = text.IndexOf('\n', i);
+                i = nl < 0 ? text.Length : nl;
+                continue;
+            }
+            if (interpolated && holeDepth > 0 && text[i] == '/' && Next(text, i) == '*')
+            {
+                // A brace in a comment is not a hole delimiter, the same way it is not a
+                // bracket for the balancers (Codex review round 15).
+                i = Find(text, "*/", i + 2, after: true);
+                continue;
+            }
             if (interpolated && holeDepth > 0 && text[i] == '\'' && IsCharLiteral(text, i))
             {
                 i = EndOfCharLiteral(text, i);

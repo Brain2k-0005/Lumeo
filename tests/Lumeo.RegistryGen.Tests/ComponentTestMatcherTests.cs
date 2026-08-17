@@ -1186,4 +1186,82 @@ public class ComponentTestMatcherTests
 
         Assert.True(ok);
     }
+
+    // ----- round 15 -----
+
+    [Fact]
+    public void An_escaped_transition_is_literal_text()
+    {
+        // '@@' renders a literal '@' and what follows is TEXT. Blanking one character at a time
+        // let the second '@' open a transition (Codex review round 15).
+        var ok = ComponentTestMatcher.IsCoverage(
+            "Sheet", "tests/Lumeo.Tests/Misc/DrawerHost.razor",
+            @"<p>@@typeof(Lumeo.Sheet)</p>",
+            KnownNames);
+
+        Assert.False(ok);
+    }
+
+    [Fact]
+    public void A_statement_in_a_control_body_is_code()
+    {
+        // Razor allows C# statements alongside markup inside a control body, and treating the
+        // whole body as markup blanked them.
+        var ok = ComponentTestMatcher.IsCoverage(
+            "Sheet", "tests/Lumeo.Tests/Misc/DrawerHost.razor",
+            @"@if (ready) { var type = typeof(Lumeo.Sheet); }",
+            KnownNames);
+
+        Assert.True(ok);
+    }
+
+    [Fact]
+    public void Markup_in_a_control_body_is_still_markup()
+    {
+        // The other half: a caption inside the body must not be resurrected as code by treating
+        // the body as C#.
+        var ok = ComponentTestMatcher.IsCoverage(
+            "Sheet", "tests/Lumeo.Tests/Misc/DrawerHost.razor",
+            @"@if (ready) { <Drawer>Sheet</Drawer> }",
+            KnownNames);
+
+        Assert.False(ok);
+    }
+
+    [Fact]
+    public void A_component_tag_in_a_control_body_still_counts()
+    {
+        var ok = ComponentTestMatcher.IsCoverage(
+            "Sheet", "tests/Lumeo.Tests/Misc/DrawerHost.razor",
+            @"@if (ready) { <Sheet /> }",
+            KnownNames);
+
+        Assert.True(ok);
+    }
+
+    [Fact]
+    public void A_brace_in_a_comment_does_not_hold_an_interpolation_hole_open()
+    {
+        // holeDepth stayed nonzero past the real closing brace, the string skip ran past the
+        // attribute delimiter, and the markup after it was processed as C# — publishing prose.
+        var ok = ComponentTestMatcher.IsCoverage(
+            "Sheet", "tests/Lumeo.Tests/Misc/DrawerHost.razor",
+            @"<div @key=""@($""{Get(/* { */)}"")""></div><Sheet />",
+            KnownNames);
+
+        Assert.True(ok);
+    }
+
+    [Fact]
+    public void An_end_tag_inside_a_razor_literal_does_not_close_a_raw_text_body()
+    {
+        // The end tag is string data. Selecting it resumed markup mode in the middle of the
+        // expression, so the sample tag behind it read as live.
+        var ok = ComponentTestMatcher.IsCoverage(
+            "Sheet", "tests/Lumeo.Tests/Misc/DrawerHost.razor",
+            @"<script>@(""</script><Sheet />"")</script>",
+            KnownNames);
+
+        Assert.False(ok);
+    }
 }
