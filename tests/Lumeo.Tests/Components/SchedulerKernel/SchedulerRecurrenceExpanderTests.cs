@@ -478,4 +478,55 @@ public class SchedulerRecurrenceExpanderTests
             legacyInstances.Select(i => (i.Start, i.End)),
             structuredInstances.Select(i => (i.Start, i.End)));
     }
+
+    [Fact]
+    public void A_Monthly_Rule_With_Several_Ordinals_Of_One_Weekday_Fills_A_Long_Axis()
+    {
+        // MonthlyCandidates resolves each ByDay ENTRY, so first-through-fourth Monday is four
+        // occurrences a month. Budgeting by DISTINCT weekday counted one, left the cap at its
+        // floor, and stopped a long axis a third of the way in (Codex review of PR #424).
+        var byDay = new[]
+        {
+            new SchedulerByDayRule(DayOfWeek.Monday, 1),
+            new SchedulerByDayRule(DayOfWeek.Monday, 2),
+            new SchedulerByDayRule(DayOfWeek.Monday, 3),
+            new SchedulerByDayRule(DayOfWeek.Monday, 4),
+        };
+        var ev = Base(recurrence: new SchedulerRecurrenceRule(
+            SchedulerRecurrenceFrequency.Monthly, Interval: 1, ByDay: byDay));
+
+        var result = SchedulerRecurrenceExpander.Expand(ev, Monday, Monday.AddMonths(300));
+
+        Assert.True(result.Count > 1_000,
+            $"300 months x 4 Mondays should be ~1200 occurrences, got {result.Count}.");
+    }
+
+    [Fact]
+    public void A_Monthly_Series_Starting_In_The_Final_Year_Still_Advances()
+    {
+        // The overflow bound counted whole years only, so every month inside 9999 read as
+        // "no room left" and the series yielded its first occurrence alone.
+        var start = new DateTime(9999, 1, 15, 9, 0, 0);
+        var ev = Base(start: start, end: start.AddHours(1),
+                      recurrence: new SchedulerRecurrenceRule(SchedulerRecurrenceFrequency.Monthly, Interval: 1));
+
+        var result = SchedulerRecurrenceExpander.Expand(ev, start, new DateTime(9999, 4, 1));
+
+        Assert.Equal(3, result.Count);   // January, February, March
+    }
+
+    [Fact]
+    public void An_Occurrence_At_The_End_Of_Time_Clamps_Its_End_Instead_Of_Throwing()
+    {
+        // With the budget able to reach the last representable day, candidateStart + duration
+        // overflowed. The old flat cap stopped decades short of it.
+        var start = DateTime.MaxValue.AddDays(-3).AddHours(-2);
+        var ev = Base(start: start, end: start.AddHours(4),
+                      recurrence: new SchedulerRecurrenceRule(SchedulerRecurrenceFrequency.Daily, Interval: 1));
+
+        var result = SchedulerRecurrenceExpander.Expand(ev, start, DateTime.MaxValue);
+
+        Assert.NotEmpty(result);
+        Assert.All(result, r => Assert.True(r.End <= DateTime.MaxValue));
+    }
 }

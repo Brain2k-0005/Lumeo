@@ -331,4 +331,20 @@ public class SchedulerTimelineReviewTests : IAsyncLifetime
         Assert.True(cut.FindAll("[data-timeline-bar='d']").Count > 700,
             "Every day of the drawn axis is booked, so the tail must not render as free.");
     }
+
+    [Fact]
+    public void A_range_starting_at_the_minimum_date_renders_instead_of_throwing()
+    {
+        // DateTime.MinValue is a common "unset" sentinel for a public parameter, and the
+        // one-tick lookback before the axis underflowed before a single row rendered.
+        var cut = _ctx.Render<L.SchedulerTimelineView>(p =>
+        {
+            p.Add(c => c.Resources, Rooms);
+            p.Add(c => c.RangeStart, DateTime.MinValue);
+            p.Add(c => c.Columns, 3);
+            p.Add(c => c.Today, DateTime.MinValue.AddDays(1));
+        });
+
+        Assert.NotEmpty(cut.FindAll("[data-timeline-column]"));
+    }
 }

@@ -206,6 +206,10 @@
         var events = (Events ?? Enumerable.Empty<SchedulerEvent>()).ToList();
         var axisStart = _origin;
         var axisEnd = AxisEnd();
+        // One tick before the axis, unless there is no tick before it: DateTime.MinValue is a
+        // common "unset" sentinel for a public RangeStart, and subtracting from it threw before
+        // a single row rendered (Codex review round 3).
+        var expandFrom = axisStart > DateTime.MinValue ? axisStart.AddTicks(-1) : axisStart;
 
         // Recurrences are EXPANDED over the visible axis, exactly as every other view does
         // (Codex review, P1). Laying out the series' own Start/End instead rendered a
@@ -225,7 +229,7 @@
         var expanded = events
             .Select(e => (src: e,
                           instances: SchedulerRecurrenceExpander.ExpandAll(
-                              new[] { e }, axisStart.AddTicks(-1), axisEnd)))
+                              new[] { e }, expandFrom, axisEnd)))
             .ToList();
 
         foreach (var res in resources)

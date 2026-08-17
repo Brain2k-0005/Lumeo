@@ -75,12 +75,18 @@ internal static class SchedulerRecurrenceExpander
         if (rangeEnd <= dtstart) return OccurrenceCap;
 
         var interval = Math.Max(1, rule.Interval);
+        // Weekly collapses BYDAY to distinct weekdays — one occurrence per weekday per week.
+        // Monthly does NOT: MonthlyCandidates resolves each ByDay ENTRY separately, so "first
+        // through fourth Monday" is four candidates a month, not one. Counting distinct days
+        // there left the budget at its floor and stopped a 366-month axis after ~125 months
+        // (Codex review round 3).
         var perWeek = rule.ByDay is { Count: > 0 } ? rule.ByDay.Select(b => b.Day).Distinct().Count() : 1;
+        var perMonth = rule.ByDay is { Count: > 0 } ? rule.ByDay.Count : 1;
         var daysPerCandidate = rule.Freq switch
         {
             SchedulerRecurrenceFrequency.Daily => (double)interval,
             SchedulerRecurrenceFrequency.Weekly => 7.0 * interval / Math.Max(1, perWeek),
-            SchedulerRecurrenceFrequency.Monthly => 28.0 * interval / Math.Max(1, perWeek),
+            SchedulerRecurrenceFrequency.Monthly => 28.0 * interval / Math.Max(1, perMonth),
             _ => interval,
         };
 
@@ -203,7 +209,12 @@ internal static class SchedulerRecurrenceExpander
             var excluded = exceptionDates is not null && exceptionDates.Contains(candidateStart.Date);
             if (excluded) continue;
 
-            var candidateEnd = candidateStart + duration;
+            // Clamped rather than added blind: a positive-duration series can now be budgeted
+            // far enough to reach the last representable day, where the addition itself threw.
+            // The old flat cap stopped decades short of it (Codex review round 3).
+            var candidateEnd = duration > DateTime.MaxValue - candidateStart
+                ? DateTime.MaxValue
+                : candidateStart + duration;
             if (candidateEnd > rangeStart && candidateStart < rangeEnd)
                 instances.Add(new SchedulerEventInstance(ev.Id, candidateStart, candidateEnd));
         }
@@ -288,7 +299,12 @@ internal static class SchedulerRecurrenceExpander
             // SchedulerDateMath.StartOfMonth documents the identical concern for the month grid.
             var anchor = new DateTime(dtstart.Year, dtstart.Month, 1);
             var months = (long)monthOffset * interval;
-            if (months > (DateTime.MaxValue.Year - anchor.Year) * 12L) yield break;
+            // Whole years alone under-counts by up to eleven months: a series starting in
+            // January 9999 has eleven representable steps left, and comparing years only
+            // treated zero as its maximum, so it yielded January and stopped (Codex review
+            // round 3).
+            var monthsLeft = (DateTime.MaxValue.Year - anchor.Year) * 12L + (DateTime.MaxValue.Month - anchor.Month);
+            if (months > monthsLeft) yield break;
             var monthAnchor = anchor.AddMonths((int)months);
             var year = monthAnchor.Year;
             var month = monthAnchor.Month;

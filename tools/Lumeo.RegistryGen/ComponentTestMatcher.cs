@@ -183,8 +183,13 @@ public static class ComponentTestMatcher
                 i = BlankTo(sb, text, i, Find(text, "*/", i + 2, after: true));
                 continue;
             }
-            // A char literal, so that '"' does not open a string and swallow the file.
-            if (c == '\'')
+            // A char literal, so that '"' does not open a string and swallow the file — but
+            // only when it really is one. .razor hosts are scanned too, and an apostrophe in
+            // ordinary markup text (`<p>don't</p><Lumeo.Sheet />`) read as an unterminated
+            // literal blanked the rest of the line, taking a real component tag with it.
+            // Recognising Razor code regions properly would mean parsing Razor; the literal's
+            // own shape is the cheaper and sufficient discriminator.
+            if (c == '\'' && IsCharLiteral(text, i))
             {
                 i = BlankTo(sb, text, i, EndOfCharLiteral(text, i));
                 continue;
@@ -228,6 +233,28 @@ public static class ComponentTestMatcher
             j++;
         }
         return j < text.Length && text[j] == '"' ? (j, dollars, verbatim) : (-1, 0, false);
+    }
+
+    /// <summary>True when the quote at <paramref name="start"/> opens something shaped like a
+    /// C# char literal: a single character, or a backslash escape, closed before the line ends.
+    /// Anything longer is prose.</summary>
+    private static bool IsCharLiteral(string text, int start)
+    {
+        var i = start + 1;
+        if (i >= text.Length) return false;
+
+        if (text[i] == '\\')
+        {
+            // '\\n', '\\'', '\\u1234' — eight characters inside the quotes is the longest legal form.
+            for (var j = i + 1; j < text.Length && j <= i + 8; j++)
+            {
+                if (text[j] == '\'') return true;
+                if (text[j] == '\n') return false;
+            }
+            return false;
+        }
+
+        return text[i] != '\n' && i + 1 < text.Length && text[i + 1] == '\'';
     }
 
     private static int EndOfCharLiteral(string text, int start)
@@ -316,7 +343,17 @@ public static class ComponentTestMatcher
         while (i < text.Length)
         {
             var c = text[i];
-            if (c == '\'') { i = EndOfCharLiteral(text, i); continue; }
+            // Comments first, with the same precedence StripNonCode gives them: a brace inside
+            // one is text, and reading it as the hole's terminator blanked the expression that
+            // followed — `$"{ /* } */ typeof(Lumeo.Sheet) }"` lost its reference.
+            if (c == '/' && Next(text, i) == '/')
+            {
+                var nl = text.IndexOf('\n', i);
+                i = nl < 0 ? text.Length : nl;
+                continue;
+            }
+            if (c == '/' && Next(text, i) == '*') { i = Find(text, "*/", i + 2, after: true); continue; }
+            if (c == '\'' && IsCharLiteral(text, i)) { i = EndOfCharLiteral(text, i); continue; }
             if (c is '"' or '$' or '@')
             {
                 var (quote, _, verbatim) = ReadStringPrefix(text, i);

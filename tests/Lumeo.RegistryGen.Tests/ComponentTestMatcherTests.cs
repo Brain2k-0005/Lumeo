@@ -490,4 +490,42 @@ public class ComponentTestMatcherTests
 
         Assert.False(ok);
     }
+
+    // ----- round 3: the scanner's own blind spots -----
+
+    [Fact]
+    public void A_brace_inside_a_comment_does_not_close_an_interpolation_hole()
+    {
+        var ok = ComponentTestMatcher.IsCoverage(
+            "Sheet", "tests/Lumeo.Tests/Misc/DrawerTests.cs",
+            @"public class DrawerTests { void A() { var s = $""{ /* } */ typeof(Lumeo.Sheet) }""; } }",
+            KnownNames);
+
+        Assert.True(ok);
+    }
+
+    [Fact]
+    public void An_apostrophe_in_razor_markup_does_not_blank_the_rest_of_the_line()
+    {
+        // Treating it as an unterminated char literal took the component tag on the same line
+        // with it (Codex review, PR #424 round 3).
+        var ok = ComponentTestMatcher.IsCoverage(
+            "Sheet", "tests/Lumeo.Tests/Misc/DrawerHost.razor",
+            "<p>don't</p><Lumeo.Sheet />\n",
+            KnownNames);
+
+        Assert.True(ok);
+    }
+
+    [Fact]
+    public void A_real_char_literal_is_still_treated_as_one()
+    {
+        // The shape check must not swing the other way: 'X' here is a literal, not a reference.
+        var ok = ComponentTestMatcher.IsCoverage(
+            "Text", "tests/Lumeo.Tests/Misc/DrawerTests.cs",
+            @"public class DrawerTests { void A() { var c = 'T'; var d = '\''; } }",
+            KnownNames);
+
+        Assert.False(ok);
+    }
 }
