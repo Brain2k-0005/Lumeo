@@ -264,19 +264,30 @@ public class SchedulerTimeGridViewTests : IAsyncLifetime
         Assert.Equal(true, options["hasCanDrop"]);
     }
 
-    // ── Now-indicator: one registration per visible day column, never gated on
-    // a server-computed "today" (spec §2.2 — the browser decides which column,
-    // if any, actually shows the line; see scheduler-views.js's own dayIso check). ──
+    // ── Now-indicator: ONE registration on the grid host, never gated on a
+    // server-computed "today" (spec §2.2 — the browser decides whether the line shows,
+    // from the visible dates it is handed). ──
 
     [Fact]
-    public void NowIndicator_True_Registers_One_Line_Per_Day_Column()
+    public void NowIndicator_True_Registers_Once_For_The_Whole_Grid()
     {
+        // This asserted one registration PER DAY COLUMN until the line was reported as
+        // spanning only today's column instead of the grid. A line appended into a column
+        // can only ever be that column wide, so seven columns grew seven stubs. It is now
+        // one line on the grid host, which also removes the unbound-ElementReference case
+        // that surfaced as "containerEl.appendChild is not a function".
         _ctx.Render<L.SchedulerTimeGridView>(p => p
             .Add(c => c.AnchorDate, D(2026, 3, 11))
             .Add(c => c.Days, 7)
             .Add(c => c.NowIndicator, true));
 
-        Assert.Equal(7, _interop.SchedulerViewsRegisterNowIndicatorCallCount);
+        Assert.Equal(1, _interop.SchedulerViewsRegisterNowIndicatorCallCount);
+
+        // It needs every visible date, not one: that is how it decides whether today is on
+        // screen at all.
+        var options = Assert.IsType<Dictionary<string, object?>>(
+            Assert.Single(_interop.SchedulerViewsNowIndicatorOptions));
+        Assert.Equal(7, Assert.IsType<string[]>(options["days"]).Length);
     }
 
     [Fact]
