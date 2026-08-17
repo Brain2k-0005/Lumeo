@@ -528,4 +528,30 @@ public class ComponentTestMatcherTests
 
         Assert.False(ok);
     }
+
+    [Fact]
+    public void An_even_run_of_braces_is_escaped_text_all_the_way_down()
+    {
+        // Only a run of exactly two counted as escaped, so $"{{{{Sheet}}}}" — literal text —
+        // was read as a hole and published as Sheet coverage (Codex review, PR #424 round 4).
+        var ok = ComponentTestMatcher.IsCoverage(
+            "Sheet", "tests/Lumeo.Tests/Misc/DrawerTests.cs",
+            @"public class DrawerTests { void A() { var s = $""{{{{Sheet}}}}""; } }",
+            KnownNames);
+
+        Assert.False(ok);
+    }
+
+    [Fact]
+    public void An_odd_run_of_braces_still_opens_a_hole()
+    {
+        // The parity rule must not swing the other way: three braces are an escaped pair plus
+        // a hole opener, and the expression inside is real code.
+        var ok = ComponentTestMatcher.IsCoverage(
+            "Sheet", "tests/Lumeo.Tests/Misc/DrawerTests.cs",
+            @"public class DrawerTests { void A() { var s = $""{{{typeof(Lumeo.Sheet).Name}""; } }",
+            KnownNames);
+
+        Assert.True(ok);
+    }
 }

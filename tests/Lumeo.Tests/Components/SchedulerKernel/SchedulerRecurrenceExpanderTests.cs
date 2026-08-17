@@ -529,4 +529,25 @@ public class SchedulerRecurrenceExpanderTests
         Assert.NotEmpty(result);
         Assert.All(result, r => Assert.True(r.End <= DateTime.MaxValue));
     }
+
+    [Fact]
+    public void A_Weekly_Burst_At_The_Range_Boundary_Is_Fully_Budgeted()
+    {
+        // Weekly candidates arrive in a cluster per active week, so an average-based estimate
+        // plus a flat margin can fall short when the range ends partway through one — dropping
+        // the last occupied day and rendering it free (Codex review of PR #424).
+        var everyWeekday = Enum.GetValues<DayOfWeek>().Select(d => new SchedulerByDayRule(d)).ToArray();
+        var start = new DateTime(1990, 1, 1, 9, 0, 0);          // a Monday
+        var ev = Base(start: start, end: start.AddHours(1),
+                      recurrence: new SchedulerRecurrenceRule(
+                          SchedulerRecurrenceFrequency.Weekly, Interval: 2, ByDay: everyWeekday));
+
+        var rangeEnd = new DateTime(2020, 7, 1);                 // a Wednesday, mid-week
+        var result = SchedulerRecurrenceExpander.Expand(ev, start, rangeEnd);
+
+        // 2020-06-29 opens an INACTIVE week for this every-other-week rule, so the last
+        // occurrence inside the range is Sunday 2020-06-28 — and that is the one an
+        // under-budgeted cap drops.
+        Assert.Contains(result, r => r.Start.Date == new DateTime(2020, 6, 28));
+    }
 }

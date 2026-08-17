@@ -309,9 +309,11 @@ public static class ComponentTestMatcher
             {
                 var run = 0;
                 while (i + run < text.Length && text[i + run] == '{') run++;
-                // In a $"..." literal "{{" is an escaped brace; in a $$"""...""" one a hole
-                // needs as many braces as there are dollars.
-                var opensHole = dollars == 1 ? run != 2 : run >= dollars;
+                // PARITY, not "a run of exactly two": every even-length run is escaped text
+                // all the way down, so $"{{{{Sheet}}}}" is literal and must not be read as a
+                // hole (Codex review round 4). One hole costs `dollars` braces, so the run
+                // opens a hole when it contains an odd number of them.
+                var opensHole = run >= dollars && (run / dollars) % 2 == 1;
                 if (opensHole)
                 {
                     var end = EndOfHole(text, i + dollars);

@@ -97,14 +97,34 @@ public static class SchedulerTimelineScale
     public static double TotalWidth(SchedulerTimelineUnit unit, DateTime origin, int count, int columnWidth)
     {
         var cols = BuildColumns(unit, origin, count);
-        var end = unit switch
+        return DateToPixel(unit, origin, Advance(unit, cols[^1], 1), columnWidth);
+    }
+
+    /// <summary>
+    /// Moves <paramref name="from"/> forward by <paramref name="units"/> columns, stopping at
+    /// <see cref="DateTime.MaxValue"/> rather than throwing. A caller may legitimately anchor a
+    /// timeline in the last representable column — <c>RangeStart</c> is public — and the
+    /// exclusive end of that column does not exist (Codex review of PR #424).
+    /// </summary>
+    internal static DateTime Advance(SchedulerTimelineUnit unit, DateTime from, int units)
+    {
+        if (units <= 0) return from;
+
+        switch (unit)
         {
-            SchedulerTimelineUnit.Day => cols[^1].AddDays(1),
-            SchedulerTimelineUnit.Week => cols[^1].AddDays(7),
-            SchedulerTimelineUnit.Month => cols[^1].AddMonths(1),
-            _ => cols[^1].AddDays(1),
-        };
-        return DateToPixel(unit, origin, end, columnWidth);
+            case SchedulerTimelineUnit.Week:
+            {
+                var days = (long)units * 7;
+                return days > (DateTime.MaxValue - from).TotalDays ? DateTime.MaxValue : from.AddDays(days);
+            }
+            case SchedulerTimelineUnit.Month:
+            {
+                var monthsLeft = (DateTime.MaxValue.Year - from.Year) * 12L + (DateTime.MaxValue.Month - from.Month);
+                return units > monthsLeft ? DateTime.MaxValue : from.AddMonths(units);
+            }
+            default:
+                return units > (DateTime.MaxValue - from).TotalDays ? DateTime.MaxValue : from.AddDays(units);
+        }
     }
 
     /// <summary>Header label for a column, at the granularity that column represents.</summary>

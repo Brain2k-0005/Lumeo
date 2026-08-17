@@ -90,7 +90,17 @@ internal static class SchedulerRecurrenceExpander
             _ => interval,
         };
 
-        var needed = (rangeEnd - dtstart).TotalDays / Math.Max(0.5, daysPerCandidate) + 2;
+        // The margin is a whole boundary burst, not a flat 2: weekly and monthly candidates
+        // arrive in clusters, so a range ending partway through an active week or month leaves
+        // an average-based estimate short by up to that cluster — enough to drop the last
+        // occupied day and render it free (Codex review round 4).
+        var burst = rule.Freq switch
+        {
+            SchedulerRecurrenceFrequency.Weekly => perWeek,
+            SchedulerRecurrenceFrequency.Monthly => perMonth,
+            _ => 1,
+        };
+        var needed = (rangeEnd - dtstart).TotalDays / Math.Max(0.5, daysPerCandidate) + burst + 2;
         return (int)Math.Clamp(needed, OccurrenceCap, AbsoluteCandidateCap);
     }
 

@@ -347,4 +347,39 @@ public class SchedulerTimelineReviewTests : IAsyncLifetime
 
         Assert.NotEmpty(cut.FindAll("[data-timeline-column]"));
     }
+
+    [Fact]
+    public void An_axis_anchored_at_the_last_representable_day_renders()
+    {
+        // RangeStart is public, and the exclusive end of the final column does not exist, so
+        // advancing past it threw while measuring the track (Codex review round 4).
+        var cut = _ctx.Render<L.SchedulerTimelineView>(p =>
+        {
+            p.Add(c => c.Resources, Rooms);
+            p.Add(c => c.RangeStart, DateTime.MaxValue.Date);
+            p.Add(c => c.Columns, 1);
+            p.Add(c => c.Today, DateTime.MaxValue.Date);
+        });
+
+        Assert.NotEmpty(cut.FindAll("[data-timeline-column]"));
+    }
+
+    [Fact]
+    public void An_event_for_a_resource_that_is_not_shown_is_never_expanded()
+    {
+        // A caller may render a subset of one shared feed. Expanding an orphan in full before
+        // the per-resource filter discards it is pure waste — on a long axis an unbounded daily
+        // orphan alone allocates thousands of instances that can never reach the screen.
+        var orphan = new L.SchedulerEvent("ghost", "Elsewhere", Start, Start.AddHours(1),
+                                          ResourceId: "carol")
+        {
+            Recurrence = new L.SchedulerRecurrenceRule(L.SchedulerRecurrenceFrequency.Daily, Interval: 1),
+        };
+        var mine = new L.SchedulerEvent("e1", "Booking", Start, Start.AddDays(1), ResourceId: "alice");
+
+        var cut = Render(new[] { orphan, mine }, columns: 5);
+
+        Assert.Empty(cut.FindAll("[data-timeline-bar='ghost']"));
+        Assert.Single(cut.FindAll("[data-timeline-bar='e1']"));
+    }
 }

@@ -226,7 +226,14 @@
         // zero-length booking sitting exactly on the origin never reached this view at all —
         // a midnight marker vanished precisely when its date was the first visible column.
         // The view's own clamping below still decides what is actually on screen.
+        // Filtered to the displayed resources BEFORE expanding (Codex review round 4). A
+        // caller may pass one shared feed and render a subset of it, and every orphan was
+        // expanded and materialised in full before the per-resource filter discarded it — on a
+        // long axis an unbounded daily orphan alone allocates thousands of instances that can
+        // never reach the screen.
+        var shown = new HashSet<string>(resources.Select(r => r.Id), StringComparer.Ordinal);
         var expanded = events
+            .Where(e => shown.Contains(e.ResourceId ?? string.Empty))
             .Select(e => (src: e,
                           instances: SchedulerRecurrenceExpander.ExpandAll(
                               new[] { e }, expandFrom, axisEnd)))
@@ -273,13 +280,9 @@
         }
     }
 
-    private DateTime AxisEnd() => Unit switch
-    {
-        SchedulerTimelineUnit.Day => _origin.AddDays(EffectiveColumns),
-        SchedulerTimelineUnit.Week => _origin.AddDays(EffectiveColumns * 7),
-        SchedulerTimelineUnit.Month => _origin.AddMonths(EffectiveColumns),
-        _ => _origin.AddDays(EffectiveColumns),
-    };
+    // Clamped at DateTime.MaxValue rather than advancing blind: RangeStart is public, and an
+    // axis anchored in the last representable column has no exclusive end (Codex review round 4).
+    private DateTime AxisEnd() => SchedulerTimelineScale.Advance(Unit, _origin, EffectiveColumns);
 
     private string TrackStyle() =>
         string.Create(Inv, $"width:{_totalWidth.ToString("0.##", Inv)}px;");
