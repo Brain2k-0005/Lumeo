@@ -932,4 +932,103 @@ public class ComponentTestMatcherTests
 
         Assert.True(ok);
     }
+
+    // ----- round 12 -----
+
+    [Fact]
+    public void Whitespace_ends_an_implicit_expression()
+    {
+        // Razor stops at the space, so the parenthesised text after it is display text — the
+        // suffix chain must not reach across and keep it as code (Codex review round 12).
+        var ok = ComponentTestMatcher.IsCoverage(
+            "Sheet", "tests/Lumeo.Tests/Misc/DrawerHost.razor",
+            @"<div title=""@Get() (Sheet)""></div>",
+            KnownNames);
+
+        Assert.False(ok);
+    }
+
+    [Fact]
+    public void Conditional_access_continues_the_expression()
+    {
+        var ok = ComponentTestMatcher.IsCoverage(
+            "Sheet", "tests/Lumeo.Tests/Misc/DrawerHost.razor",
+            @"<Host Value=""@Provider?.Render(typeof(Lumeo.Sheet))"" />",
+            KnownNames);
+
+        Assert.True(ok);
+    }
+
+    [Fact]
+    public void A_bracket_inside_a_comment_does_not_close_an_indexer()
+    {
+        var ok = ComponentTestMatcher.IsCoverage(
+            "Sheet", "tests/Lumeo.Tests/Misc/DrawerHost.razor",
+            @"<Host Value=""@Items[/* ] */0].Render(typeof(Lumeo.Sheet))"" />",
+            KnownNames);
+
+        Assert.True(ok);
+    }
+
+    [Fact]
+    public void A_quoted_attribute_value_may_span_lines()
+    {
+        // Ending the value at the line break made the '>' on the continuation look like the
+        // tag's end, leaving the template open through the C# after it.
+        var ok = ComponentTestMatcher.IsCoverage(
+            "Sheet", "tests/Lumeo.Tests/Misc/DrawerHost.razor",
+            "@code { void A() { Render(@<Host Title=\"a\n> b\" />); var t = typeof(Lumeo.Sheet); } }",
+            KnownNames);
+
+        Assert.True(ok);
+    }
+
+    [Fact]
+    public void A_tag_inside_an_html_comment_is_a_sample_not_a_reference()
+    {
+        var ok = ComponentTestMatcher.IsCoverage(
+            "Sheet", "tests/Lumeo.Tests/Misc/DrawerHost.razor",
+            @"<div><!-- use <Sheet /> here --></div>",
+            KnownNames);
+
+        Assert.False(ok);
+    }
+
+    [Fact]
+    public void A_less_than_operator_in_a_template_body_is_not_a_tag()
+    {
+        // The comparison opened a phantom element that swallowed the real closing tag, leaving
+        // the template unbalanced through the C# that followed.
+        var ok = ComponentTestMatcher.IsCoverage(
+            "Sheet", "tests/Lumeo.Tests/Misc/DrawerHost.razor",
+            @"@code { void A() { Render(@<div>@(1 < 2 ? ""x"" : ""y"")</div>); var t = typeof(Lumeo.Sheet); } }",
+            KnownNames);
+
+        Assert.True(ok);
+    }
+
+    [Fact]
+    public void A_generic_type_parameter_attribute_carries_a_type()
+    {
+        // TItem takes type syntax rather than display text, so this is a real reference.
+        var ok = ComponentTestMatcher.IsCoverage(
+            "Sheet", "tests/Lumeo.Tests/Misc/DrawerHost.razor",
+            @"<Grid TItem=""Lumeo.Sheet"" />",
+            KnownNames);
+
+        Assert.True(ok);
+    }
+
+    [Fact]
+    public void An_ordinary_attribute_is_still_display_text()
+    {
+        // The type-parameter allowance keys on the @typeparam naming convention, so a plain
+        // caption must not be dragged in with it.
+        var ok = ComponentTestMatcher.IsCoverage(
+            "Sheet", "tests/Lumeo.Tests/Misc/DrawerHost.razor",
+            @"<Grid Title=""Lumeo.Sheet"" />",
+            KnownNames);
+
+        Assert.False(ok);
+    }
 }

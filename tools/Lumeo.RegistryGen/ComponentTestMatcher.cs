@@ -212,6 +212,14 @@ public static class ComponentTestMatcher
                     continue;
                 }
 
+                // <!-- ... --> is text. Sample markup in a comment is not an instantiated
+                // component, and keeping the element name inside it published false coverage
+                // (Codex review round 12).
+                if (c == '<' && text.AsSpan(i).StartsWith("<!--"))
+                {
+                    i = BlankTo(sb, text, i, Find(text, "-->", i + 4, after: true));
+                    continue;
+                }
                 if (c == '<')
                 {
                     inTag = true;
@@ -230,7 +238,14 @@ public static class ComponentTestMatcher
                     // must FOLLOW an '=' to be a delimiter.
                     if ((c is '"' or '\'') && FollowsAnEquals(text, i))
                     {
-                        i = AppendMarkupAttribute(sb, text, i);
+                        // A generic component's type parameter takes TYPE SYNTAX, not display
+                        // text: <Grid TItem="Lumeo.Sheet" /> is a real reference (Codex review
+                        // round 12). Recognised by the @typeparam naming convention — T, or T
+                        // followed by an uppercase letter — because nothing here knows the
+                        // component's declared parameters.
+                        i = IsTypeParameterAttribute(text, i)
+                            ? AppendTypeAttribute(sb, text, i)
+                            : AppendMarkupAttribute(sb, text, i);
                         continue;
                     }
 
@@ -341,6 +356,19 @@ public static class ComponentTestMatcher
 
         while (i < text.Length)
         {
+            // A body-level Razor expression carries C#, where '<' is a comparison rather than an
+            // element — `@(1 < 2 ? "x" : "y")` opened a phantom tag that swallowed the real
+            // closing one (Codex review round 12).
+            if (text[i] == '@')
+            {
+                var expr = EndOfRazorExpression(text, i);
+                if (expr > i) { i = expr; continue; }
+            }
+            if (text[i] == '<' && text.AsSpan(i).StartsWith("<!--"))
+            {
+                i = Find(text, "-->", i + 4, after: true);
+                continue;
+            }
             if (text[i] == '<')
             {
                 if (Next(text, i) == '/')
@@ -384,7 +412,10 @@ public static class ComponentTestMatcher
             {
                 var delimiter = c;
                 i++;
-                while (i < text.Length && text[i] != delimiter && text[i] != '\n')
+                // Across newlines: a Razor attribute value may wrap, and ending it at the line
+                // break made a '>' on the continuation look like the tag's end (Codex review
+                // round 12).
+                while (i < text.Length && text[i] != delimiter)
                 {
                     // A Razor expression inside the value carries its own literals, and one of
                     // them may hold the delimiter or a '>' — `Title="@($\"a > b\")"`. Stopping at
@@ -477,6 +508,15 @@ public static class ComponentTestMatcher
         while (i < text.Length)
         {
             var c = text[i];
+            // Comments too, exactly as the paren twin does: a ']' inside one is text, and
+            // reading it as the indexer's close truncated the expression (Codex review round 12).
+            if (c == '/' && Next(text, i) == '/')
+            {
+                var nl = text.IndexOf('\n', i);
+                i = nl < 0 ? text.Length : nl;
+                continue;
+            }
+            if (c == '/' && Next(text, i) == '*') { i = Find(text, "*/", i + 2, after: true); continue; }
             if (c == '\'' && IsCharLiteral(text, i)) { i = EndOfCharLiteral(text, i); continue; }
             if (c is '"' or '$' or '@')
             {
@@ -531,6 +571,35 @@ public static class ComponentTestMatcher
             if (k < text.Length && text[k] == '{') return k + 1;
         }
         return i;
+    }
+
+    /// <summary>True when the attribute whose value opens at <paramref name="quote"/> is named
+    /// like a generic type parameter: exactly <c>T</c>, or <c>T</c> followed by an uppercase
+    /// letter (TItem, TValue, TKey — the @typeparam convention).</summary>
+    private static bool IsTypeParameterAttribute(string text, int quote)
+    {
+        var i = quote - 1;
+        while (i >= 0 && (text[i] == ' ' || text[i] == '=')) i--;
+        var end = i + 1;
+        while (i >= 0 && IsIdentifierChar(text[i])) i--;
+
+        var name = text[(i + 1)..end];
+        return name.Length > 0
+               && name[0] == 'T'
+               && (name.Length == 1 || char.IsUpper(name[1]));
+    }
+
+    /// <summary>Appends a type-valued attribute, keeping its value as code.</summary>
+    private static int AppendTypeAttribute(StringBuilder sb, string text, int start)
+    {
+        var delimiter = text[start];
+        BlankTo(sb, text, start, start + 1);
+
+        var i = start + 1;
+        while (i < text.Length && text[i] != delimiter) i++;
+
+        sb.Append(StripNonCode(text[(start + 1)..i]));
+        return i < text.Length ? BlankTo(sb, text, i, i + 1) : text.Length;
     }
 
     /// <summary>Appends a markup attribute value, blanked except for the Razor expressions
@@ -744,8 +813,10 @@ public static class ComponentTestMatcher
         // (round 11).
         while (true)
         {
+            // CONTIGUOUS only. Razor ends an implicit expression at whitespace, so skipping it
+            // read `@Get() (Sheet)` as a second invocation and kept the display text as code
+            // (Codex review round 12).
             var j = i;
-            while (j < text.Length && (text[j] == ' ' || text[j] == '\t')) j++;
             if (j >= text.Length) break;
 
             if (text[j] == '(' || text[j] == '[')
@@ -756,9 +827,13 @@ public static class ComponentTestMatcher
                 continue;
             }
 
-            if (text[j] == '.' && j + 1 < text.Length && (char.IsLetter(text[j + 1]) || text[j + 1] == '_'))
+            // '.' or '?.' — conditional access is a member chain too, and stopping before the
+            // '?' ended `@Provider?.Render(...)` at the identifier (Codex review round 12).
+            var dot = text[j] == '?' && j + 1 < text.Length && text[j + 1] == '.' ? j + 1 : j;
+            if (text[dot] == '.' && dot + 1 < text.Length
+                && (char.IsLetter(text[dot + 1]) || text[dot + 1] == '_'))
             {
-                var k = j + 1;
+                var k = dot + 1;
                 while (k < text.Length && IsIdentifierChar(text[k])) k++;
                 i = k;
                 continue;
@@ -827,12 +902,33 @@ public static class ComponentTestMatcher
         }
 
         var i = quote + 1;
+        var holeDepth = 0;
         while (i < text.Length)
         {
             if (!verbatim && text[i] == '\\') { i += 2; continue; }
+
+            // Interpolation holes are CODE, and a literal inside one has its own quotes:
+            // `$"{Get(" + '"' + "x" + '"' + ")}"` ended at the inner quote and the rest of the
+            // expression was rescanned as text (Codex review round 12). Tracked by depth rather
+            // than parsed, which is enough to know whether a quote can close the literal.
+            if (text[i] == '{')
+            {
+                if (Next(text, i) == '{' && holeDepth == 0) { i += 2; continue; }
+                holeDepth++;
+                i++;
+                continue;
+            }
+            if (text[i] == '}' && holeDepth > 0) { holeDepth--; i++; continue; }
+
             if (text[i] == '"')
             {
                 if (verbatim && Next(text, i) == '"') { i += 2; continue; }
+                if (holeDepth > 0)
+                {
+                    var (q2, _, v2) = ReadStringPrefix(text, i);
+                    i = q2 >= 0 ? EndOfString(text, q2, v2) : i + 1;
+                    continue;
+                }
                 return i + 1;
             }
             i++;
