@@ -120,7 +120,7 @@
                        DateTime.Today highlighted a different column than the data sits in —
                        and disagreed with this wrapper's own Today button. *@
                     <SchedulerTimelineView Events="@EffectiveEvents" Resources="@Resources"
-                                           Today="@(_displayZone is not null ? SchedulerTimeZoneProjection.TodayIn(_displayZone) : null)"
+                                           Today="@(_displayZone is not null ? SchedulerTimeZoneProjection.TodayIn(_displayZone) : _browserToday)"
                                            RangeStart="@_fpAnchor" Columns="@EffectiveTimelineColumns"
                                            Unit="@TimelineUnit" FirstDayOfWeek="@EffectiveFirstDayOfWeek"
                                            ResolveEventColor="@ResolveFirstPartyColor"
@@ -601,6 +601,26 @@
     // The views are pure Blazor renderers of a date range, so the toolbar owns the
     // anchor date. Seeded once from InitialDate.
     private DateTime _fpAnchor = DateTime.Today;
+
+    /// <summary>
+    /// The browser's calendar date, resolved once interop is available. Without it the timeline
+    /// marked the HOST's today while this wrapper's own Today button jumped to the browser's —
+    /// on a Blazor Server circuit those can be different days, so after clicking Today the axis
+    /// moved and the marker stayed behind or left the range entirely (Codex review round 9).
+    /// Null until the first render completes, which is the documented prerender fallback.
+    /// </summary>
+    private DateTime? _browserToday;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+
+        var resolved = await ResolveBrowserTodayAsync();
+        if (resolved == _browserToday) return;
+
+        _browserToday = resolved;
+        StateHasChanged();
+    }
     private bool _fpAnchorSeeded;
 
 

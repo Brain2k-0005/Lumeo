@@ -354,8 +354,11 @@ public static class ComponentTestMatcher
 
                 var gt = text.IndexOf('>', i);
                 if (gt < 0) return text.Length;
-                // A self-closing tag opens and closes in one go.
-                if (text[gt - 1] != '/') depth++;
+                // A self-closing tag opens and closes in one go — and so does an HTML VOID
+                // element written without the slash. Counting <br> as an opener meant the root's
+                // </div> never balanced, so the scanner ate the rest of the enclosing C# block as
+                // markup and blanked real references in it (Codex review round 9).
+                if (text[gt - 1] != '/' && !IsVoidElement(text, i)) depth++;
                 if (depth == 0) return gt + 1;
                 i = gt + 1;
                 continue;
@@ -363,6 +366,67 @@ public static class ComponentTestMatcher
             i++;
         }
         return text.Length;
+    }
+
+    /// <summary>True when the tag opening at <paramref name="start"/> names an HTML void
+    /// element, which has no closing tag whether or not it is written self-closing.</summary>
+    private static bool IsVoidElement(string text, int start)
+    {
+        string[] voids =
+        [
+            "area", "base", "br", "col", "embed", "hr", "img", "input",
+            "link", "meta", "param", "source", "track", "wbr",
+        ];
+
+        var i = start + 1;
+        var nameStart = i;
+        while (i < text.Length && (char.IsLetterOrDigit(text[i]) || text[i] == '-')) i++;
+        var name = text[nameStart..i];
+
+        foreach (var v in voids)
+        {
+            if (string.Equals(name, v, StringComparison.OrdinalIgnoreCase)) return true;
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// End of the parenthesised run opening at <paramref name="open"/>, or
+    /// <paramref name="fallback"/> when it never closes. Literals and comments inside it are
+    /// SKIPPED rather than counted: a parenthesis in a string is not a bracket, and counting one
+    /// truncated the condition at it — `@if (Check(")") &amp;&amp; typeof(Lumeo.Sheet) != null)`
+    /// kept only the prefix and the reference after it was blanked as prose (Codex review
+    /// rounds 7 and 9).
+    /// </summary>
+    private static int EndOfBalancedParens(string text, int open, int fallback)
+    {
+        var depth = 0;
+        var i = open;
+
+        while (i < text.Length)
+        {
+            var c = text[i];
+
+            if (c == '/' && Next(text, i) == '/')
+            {
+                var nl = text.IndexOf('\n', i);
+                i = nl < 0 ? text.Length : nl;
+                continue;
+            }
+            if (c == '/' && Next(text, i) == '*') { i = Find(text, "*/", i + 2, after: true); continue; }
+            if (c == '\'' && IsCharLiteral(text, i)) { i = EndOfCharLiteral(text, i); continue; }
+            if (c is '"' or '$' or '@')
+            {
+                var (quote, _, verbatim) = ReadStringPrefix(text, i);
+                if (quote >= 0) { i = EndOfString(text, quote, verbatim); continue; }
+            }
+
+            if (c == '(') depth++;
+            else if (c == ')' && --depth == 0) return i + 1;
+            i++;
+        }
+
+        return fallback;
     }
 
     /// <summary>End of the element name that opens at the '&lt;' at <paramref name="start"/>,
@@ -577,29 +641,7 @@ public static class ComponentTestMatcher
         var i = start + 1;
         if (i >= text.Length || text[i] == '@') return start;
 
-        if (text[i] == '(')
-        {
-            var depth = 0;
-            while (i < text.Length)
-            {
-                var c = text[i];
-                // Literals inside the expression are skipped rather than aborting the scan.
-                // Bailing out on the first quote made AppendMarkupAttribute read that quote as
-                // the attribute's terminator, so `@(Get("Sheet"))` leaked its argument as code
-                // (Codex review round 7).
-                if (c == '\'' && IsCharLiteral(text, i)) { i = EndOfCharLiteral(text, i); continue; }
-                if (c is '"' or '$' or '@')
-                {
-                    var (quote, _, verbatim) = ReadStringPrefix(text, i);
-                    if (quote >= 0) { i = EndOfString(text, quote, verbatim); continue; }
-                }
-
-                if (c == '(') depth++;
-                else if (c == ')' && --depth == 0) return i + 1;
-                i++;
-            }
-            return start;
-        }
+        if (text[i] == '(') return EndOfBalancedParens(text, i, start);
 
         if (!char.IsLetter(text[i]) && text[i] != '_') return start;
 
@@ -610,20 +652,25 @@ public static class ComponentTestMatcher
         // blanked as prose — `@if (typeof(Lumeo.Sheet) != null) { <Drawer /> }` lost a real
         // reference the same expression in an @code block would have kept (Codex review round 8).
         // The BODY stays markup, which is what it is.
+        var keyword = text[wordStart..i];
+
+        // A file directive's ARGUMENT is a type, and the implicit-expression scan stopped at the
+        // space before it: `@inherits TestHost<Lumeo.Sheet>` and `@inject Lumeo.Sheet Subject`
+        // kept only the keyword while the type itself was blanked as markup prose (Codex review
+        // round 9). The rest of the line is C#.
+        string[] typeBearing = ["inherits", "inject", "implements", "typeparam", "attribute", "namespace", "layout", "model", "page", "preservewhitespace"];
+        if (Array.IndexOf(typeBearing, keyword) >= 0)
+        {
+            var nl = text.IndexOf('\n', i);
+            return nl < 0 ? text.Length : nl;
+        }
+
         string[] directives = ["if", "else", "foreach", "for", "while", "switch", "lock", "using", "do"];
-        if (Array.IndexOf(directives, text[wordStart..i]) >= 0)
+        if (Array.IndexOf(directives, keyword) >= 0)
         {
             var j = i;
             while (j < text.Length && char.IsWhiteSpace(text[j])) j++;
-            if (j < text.Length && text[j] == '(')
-            {
-                var depth = 0;
-                for (var k = j; k < text.Length; k++)
-                {
-                    if (text[k] == '(') depth++;
-                    else if (text[k] == ')' && --depth == 0) return k + 1;
-                }
-            }
+            if (j < text.Length && text[j] == '(') return EndOfBalancedParens(text, j, i);
         }
 
         return i;

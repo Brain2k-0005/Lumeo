@@ -786,4 +786,69 @@ public class ComponentTestMatcherTests
 
         Assert.False(ok);
     }
+
+    // ----- round 9 -----
+
+    [Fact]
+    public void A_parenthesis_inside_a_literal_does_not_truncate_a_directive_condition()
+    {
+        // Counting it closed the condition at Check's paren, leaving the reference after it to
+        // be blanked as prose (Codex review, PR #424 round 9).
+        var ok = ComponentTestMatcher.IsCoverage(
+            "Sheet", "tests/Lumeo.Tests/Misc/DrawerHost.razor",
+            "@if (Check(\")\") && typeof(Lumeo.Sheet) != null) { <Drawer /> }\n",
+            KnownNames);
+
+        Assert.True(ok);
+    }
+
+    [Fact]
+    public void An_html_void_element_does_not_swallow_an_inline_template()
+    {
+        // <br> has no closing tag, so counting it as an opener meant the root </div> never
+        // balanced and the scanner ate the rest of the C# block as markup.
+        var ok = ComponentTestMatcher.IsCoverage(
+            "Sheet", "tests/Lumeo.Tests/Misc/DrawerHost.razor",
+            "@code { void A() { Render(@<div><br><Drawer /></div>); var t = typeof(Lumeo.Sheet); } }\n",
+            KnownNames);
+
+        Assert.True(ok);
+    }
+
+    [Fact]
+    public void A_type_in_an_inherits_directive_counts()
+    {
+        // The implicit-expression scan stopped at the space, so only the keyword survived and
+        // the type was blanked as markup prose.
+        var ok = ComponentTestMatcher.IsCoverage(
+            "Sheet", "tests/Lumeo.Tests/Misc/DrawerHost.razor",
+            "@inherits TestHost<Lumeo.Sheet>\n<div></div>\n",
+            KnownNames);
+
+        Assert.True(ok);
+    }
+
+    [Fact]
+    public void A_type_in_an_inject_directive_counts()
+    {
+        var ok = ComponentTestMatcher.IsCoverage(
+            "Sheet", "tests/Lumeo.Tests/Misc/DrawerHost.razor",
+            "@inject Lumeo.Sheet Subject\n<div></div>\n",
+            KnownNames);
+
+        Assert.True(ok);
+    }
+
+    [Fact]
+    public void A_directive_allowance_does_not_leak_past_its_own_line()
+    {
+        // The rest of the LINE is C#, not the rest of the file: markup on the next line stays
+        // markup.
+        var ok = ComponentTestMatcher.IsCoverage(
+            "Sheet", "tests/Lumeo.Tests/Misc/DrawerHost.razor",
+            "@inject IServiceProvider Sp\n<Drawer>Sheet</Drawer>\n",
+            KnownNames);
+
+        Assert.False(ok);
+    }
 }

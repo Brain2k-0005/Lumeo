@@ -586,4 +586,21 @@ public class SchedulerTimelineReviewTests : IAsyncLifetime
         Assert.True(Px(style, "left") + Px(style, "width") <= 3 * ColW + 0.01,
             $"bar ends at {Px(style, "left") + Px(style, "width")}px, track is {3 * ColW}px");
     }
+
+    [Fact]
+    public void The_wrapper_hands_the_timeline_a_resolved_today_rather_than_null()
+    {
+        // Passing null let the view fall back to the HOST's DateTime.Today while this wrapper's
+        // own Today button resolves the BROWSER's date. On a Blazor Server circuit those can be
+        // different days, so after clicking Today the axis moved and the marker stayed behind.
+        var cut = _ctx.Render<L.Scheduler>(p => p
+            .Add(c => c.InitialView, L.SchedulerView.Timeline)
+            .Add(c => c.InitialDate, Start)
+            .Add(c => c.Resources, Rooms)
+            .Add(c => c.TimelineColumns, 7));
+
+        var view = cut.FindComponent<L.SchedulerTimelineView>();
+
+        Assert.NotNull(view.Instance.Today);
+    }
 }
