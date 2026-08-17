@@ -61,9 +61,14 @@ public class SchedulerDependencyGuardTests
         // long before anything else in this file noticed.
         var root = RepoRoot();
         var wwwroot = Path.Combine(root, "src", "Lumeo.Scheduler", "wwwroot");
+        // The PATH counts as well as the content. A restored vendor bundle
+        // (wwwroot/lib/fullcalendar/index.global.min.js) is minified UMD and need not contain
+        // any of the reference forms below, so checking only what is inside it would let the
+        // asset ship unnoticed (CodeRabbit, PR #425).
         var offenders = Directory.EnumerateFiles(wwwroot, "*.*", SearchOption.AllDirectories)
-            .Where(f => FindReference(File.ReadAllText(f)) is not null)
             .Select(f => Path.GetRelativePath(root, f).Replace('\\', '/'))
+            .Where(rel => rel.Contains(Banned, StringComparison.OrdinalIgnoreCase)
+                          || FindReference(File.ReadAllText(Path.Combine(root, rel))) is not null)
             .ToList();
 
         Assert.True(offenders.Count == 0,
@@ -154,8 +159,13 @@ public class SchedulerDependencyGuardTests
         // that still ships on every page load.
         var root = RepoRoot();
         var indexHtml = Path.Combine(root, "docs", "Lumeo.Docs", "wwwroot", "index.html");
+        var text = File.ReadAllText(indexHtml);
 
-        Assert.Null(FindReference(File.ReadAllText(indexHtml)));
+        Assert.Null(FindReference(text));
+        // preact rode along as FullCalendar core's renderer, and an import-map entry naming it
+        // carries none of the reference forms above (CodeRabbit, PR #425). Matched as a vendor
+        // PATH rather than as the bare word, so a future first-party use would not trip this.
+        Assert.DoesNotContain("lumeo-vendor/preact", text, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -165,14 +175,16 @@ public class SchedulerDependencyGuardTests
         var vendor = Path.Combine(root, "docs", "Lumeo.Docs", "wwwroot", "lib", "lumeo-vendor");
         if (!Directory.Exists(vendor)) return;
 
-        var offenders = Directory.EnumerateDirectories(vendor)
-            .Select(d => Path.GetFileName(d)!)
-            // preact was vendored only as FullCalendar core's own rendering dependency.
-            .Where(n => n.Contains(Banned, StringComparison.OrdinalIgnoreCase)
-                        || n.StartsWith("preact", StringComparison.OrdinalIgnoreCase))
+        // Every path under the vendor root, not just its immediate directories: a flat
+        // preact.mjs or one nested a level deeper would otherwise pass (CodeRabbit, PR #425).
+        // preact was vendored only as FullCalendar core's own renderer.
+        var offenders = Directory.EnumerateFileSystemEntries(vendor, "*", SearchOption.AllDirectories)
+            .Select(e => Path.GetRelativePath(vendor, e).Replace('\\', '/'))
+            .Where(rel => rel.Contains(Banned, StringComparison.OrdinalIgnoreCase)
+                          || rel.Contains("preact", StringComparison.OrdinalIgnoreCase))
             .ToList();
 
         Assert.True(offenders.Count == 0,
-            "Vendored directories left behind by the FullCalendar removal: " + string.Join(", ", offenders));
+            "Vendored paths left behind by the FullCalendar removal: " + string.Join(", ", offenders));
     }
 }

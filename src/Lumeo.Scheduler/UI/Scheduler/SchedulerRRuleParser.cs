@@ -34,7 +34,9 @@ namespace Lumeo;
 /// <b>Where the parsed rule actually takes effect.</b> Assign it to
 /// <c>SchedulerEvent.Recurrence</c>. Every view expands it through the recurrence expander,
 /// whether reached directly (<c>SchedulerMonthView</c>, <c>SchedulerTimeGridView</c>,
-/// <c>SchedulerAgendaView</c>) or through <c>&lt;Scheduler&gt;</c>, which renders those same views. This used to hold for the first-party views only: the
+/// <c>SchedulerAgendaView</c>, <c>SchedulerResourceView</c>) or through
+/// <c>&lt;Scheduler&gt;</c>, which renders those same views. This used to hold for the
+/// first-party views only: the
 /// wrapper serialized events to a JS calendar that branched on the legacy <c>DaysOfWeek</c>
 /// pair alone, so a <c>Recurrence</c> rule reached its change-detection hash and stopped there
 /// (Codex review, P1). Removing the wrapper closed that gap rather than the parser changing.
