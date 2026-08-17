@@ -384,7 +384,20 @@ public static class ComponentTestMatcher
             {
                 var delimiter = c;
                 i++;
-                while (i < text.Length && text[i] != delimiter && text[i] != '\n') i++;
+                while (i < text.Length && text[i] != delimiter && text[i] != '\n')
+                {
+                    // A Razor expression inside the value carries its own literals, and one of
+                    // them may hold the delimiter or a '>' — `Title="@($\"a > b\")"`. Stopping at
+                    // the next matching quote ended the attribute early and the '>' in that
+                    // string was read as the tag's end, leaving the template open through the
+                    // C# that followed (Codex review round 11).
+                    if (text[i] == '@')
+                    {
+                        var expr = EndOfRazorExpression(text, i);
+                        if (expr > i) { i = expr; continue; }
+                    }
+                    i++;
+                }
                 if (i < text.Length && text[i] == delimiter) i++;
                 continue;
             }
@@ -449,6 +462,30 @@ public static class ComponentTestMatcher
 
             if (c == '(') depth++;
             else if (c == ')' && --depth == 0) return i + 1;
+            i++;
+        }
+
+        return fallback;
+    }
+
+    /// <summary>Bracket twin of <see cref="EndOfBalancedParens"/>, for an indexer suffix.</summary>
+    private static int EndOfBalancedBrackets(string text, int open, int fallback)
+    {
+        var depth = 0;
+        var i = open;
+
+        while (i < text.Length)
+        {
+            var c = text[i];
+            if (c == '\'' && IsCharLiteral(text, i)) { i = EndOfCharLiteral(text, i); continue; }
+            if (c is '"' or '$' or '@')
+            {
+                var (quote, _, verbatim) = ReadStringPrefix(text, i);
+                if (quote >= 0) { i = EndOfString(text, quote, verbatim); continue; }
+            }
+
+            if (c == '[') depth++;
+            else if (c == ']' && --depth == 0) return i + 1;
             i++;
         }
 
@@ -701,13 +738,33 @@ public static class ComponentTestMatcher
 
         // An implicit expression may CALL something, and this method's own contract says
         // @Foo.Bar(...) — but it stopped at the identifier, so `@Get(typeof(Lumeo.Sheet))` left
-        // its argument to be blanked as attribute text (Codex review round 10).
-        var afterName = i;
-        while (afterName < text.Length && (text[afterName] == ' ' || text[afterName] == '\t')) afterName++;
-        if (afterName < text.Length && text[afterName] == '(')
+        // its argument to be blanked as attribute text (Codex review round 10). The suffix is a
+        // CHAIN, not a single call: `@Get().Render(typeof(Lumeo.Sheet))` continues past the
+        // first pair of parentheses, and stopping there dropped the reference in the second
+        // (round 11).
+        while (true)
         {
-            var call = EndOfBalancedParens(text, afterName, i);
-            if (call > i) return call;
+            var j = i;
+            while (j < text.Length && (text[j] == ' ' || text[j] == '\t')) j++;
+            if (j >= text.Length) break;
+
+            if (text[j] == '(' || text[j] == '[')
+            {
+                var close = text[j] == '(' ? EndOfBalancedParens(text, j, i) : EndOfBalancedBrackets(text, j, i);
+                if (close <= i) break;
+                i = close;
+                continue;
+            }
+
+            if (text[j] == '.' && j + 1 < text.Length && (char.IsLetter(text[j + 1]) || text[j + 1] == '_'))
+            {
+                var k = j + 1;
+                while (k < text.Length && IsIdentifierChar(text[k])) k++;
+                i = k;
+                continue;
+            }
+
+            break;
         }
 
         return i;

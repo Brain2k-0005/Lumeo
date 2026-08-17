@@ -879,4 +879,57 @@ public class ComponentTestMatcherTests
 
         Assert.True(ok);
     }
+
+    // ----- round 11 -----
+
+    [Fact]
+    public void A_razor_expression_inside_an_attribute_does_not_end_the_tag_early()
+    {
+        // The expression carries its own literals, and one of them holds both the delimiter and
+        // a '>'. Stopping at the next matching quote ended the attribute early, so the '>' in
+        // that string was read as the tag's end and the template stayed open through the C#
+        // after it (Codex review, PR #424 round 11).
+        var ok = ComponentTestMatcher.IsCoverage(
+            "Sheet", "tests/Lumeo.Tests/Misc/DrawerHost.razor",
+            @"@code { void A() { Render(@<Host Title=""@($""a > b"")"" />); var t = typeof(Lumeo.Sheet); } }",
+            KnownNames);
+
+        Assert.True(ok);
+    }
+
+    [Fact]
+    public void An_implicit_expression_follows_its_whole_suffix_chain()
+    {
+        // `@Get().Render(...)` continues past the first pair of parentheses; stopping there
+        // blanked the reference in the second.
+        var ok = ComponentTestMatcher.IsCoverage(
+            "Sheet", "tests/Lumeo.Tests/Misc/DrawerHost.razor",
+            @"<Host Value=""@Get().Render(typeof(Lumeo.Sheet))"" />",
+            KnownNames);
+
+        Assert.True(ok);
+    }
+
+    [Fact]
+    public void An_implicit_expression_stops_where_it_actually_ends()
+    {
+        // The chain must not run on into the attribute's own text.
+        var ok = ComponentTestMatcher.IsCoverage(
+            "Sheet", "tests/Lumeo.Tests/Misc/DrawerHost.razor",
+            @"<Host Value=""@Get() Sheet"" />",
+            KnownNames);
+
+        Assert.False(ok);
+    }
+
+    [Fact]
+    public void An_indexer_suffix_is_part_of_the_expression_too()
+    {
+        var ok = ComponentTestMatcher.IsCoverage(
+            "Sheet", "tests/Lumeo.Tests/Misc/DrawerHost.razor",
+            @"<Host Value=""@Items[0].Render(typeof(Lumeo.Sheet))"" />",
+            KnownNames);
+
+        Assert.True(ok);
+    }
 }
