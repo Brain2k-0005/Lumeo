@@ -41,7 +41,17 @@ namespace Lumeo.RegistryGen;
 ///      an embedded JSON payload — ever count. Interpolation holes are
 ///      exempt in every literal form, raw ones included:
 ///      <c>$"{typeof(Sheet).Name}"</c> is code, not text (and a literal
-///      nested back inside such a hole is text again):
+///      nested back inside such a hole is text again).
+///
+///      A <c>.razor</c> file is scanned as what it is: MARKUP regions
+///      alternating with C# CODE regions (<c>@code { }</c>,
+///      <c>@functions { }</c>, <c>@{ }</c>). The same character means
+///      different things on each side — in markup, a quote after '=' opens
+///      an attribute value whose text is not code (except the
+///      <c>@</c>-expressions embedded in it, which are), and an apostrophe
+///      is punctuation; in a code region those quotes delimit ordinary C#
+///      literals whose content is text throughout, and an apostrophe opens
+///      a char literal:
 ///
 ///        a) An EXACT identifier match (word boundary on both sides) that is
 ///           not a member/property/method access on some unrelated receiver.
@@ -154,25 +164,66 @@ public static class ComponentTestMatcher
     /// eats a commented-out string's opening quote and runs on to the next one. A scanner
     /// has no ordering to get wrong.
     ///
+    /// A <c>.razor</c> file is scanned as what it is: an alternation of MARKUP regions and
+    /// C# CODE regions (<c>@code { }</c>, <c>@functions { }</c>, <c>@{ }</c>). The distinction
+    /// is not cosmetic — the same character means different things on each side. In markup an
+    /// attribute value is delimited by <c>"</c> or <c>'</c> and its content is text, except for
+    /// the <c>@</c>-expressions embedded in it, which are code. In a code region those same
+    /// quotes delimit ordinary C# literals whose content is text all the way through, and an
+    /// apostrophe is a char literal rather than punctuation in a sentence.
+    ///
     /// Newlines survive so the result stays line-aligned with the input.
     /// </summary>
     private static string StripNonCode(string text, bool razor = false)
     {
         var sb = new StringBuilder(text.Length);
         var i = 0;
+        // A .cs file is code from the first character. A .razor file starts in markup and
+        // enters code only through an explicit block.
+        var inCode = !razor;
+        var codeDepth = 0;
 
         while (i < text.Length)
         {
             var c = text[i];
 
-            // Razor comment. .razor test files are scanned too, and @* *@ is not a C# block
-            // comment: a "(state-on-data-change, Gantt-class)" note in a Scrollspy host was
-            // published as Gantt coverage until this case existed.
+            // Razor comment. @* *@ is not a C# block comment, and a "(state-on-data-change,
+            // Gantt-class)" note in a Scrollspy host was published as Gantt coverage.
             if (c == '@' && Next(text, i) == '*')
             {
                 i = BlankTo(sb, text, i, Find(text, "*@", i + 2, after: true));
                 continue;
             }
+
+            if (razor && !inCode)
+            {
+                // Entering a code region: @code { … }, @functions { … }, @{ … }.
+                var open = RazorCodeBlockStart(text, i);
+                if (open > i)
+                {
+                    sb.Append(text[i..open]);
+                    i = open;
+                    inCode = true;
+                    codeDepth = 1;
+                    continue;
+                }
+
+                // A markup attribute value, single- or double-quoted. Its text is not code —
+                // <Host Title='Sheet' /> must not read as a Sheet reference — but any
+                // @-expression inside it is. The quote must FOLLOW an '=' to be a delimiter:
+                // an apostrophe in ordinary markup text (<p>don't</p>) is punctuation, and
+                // treating it as one blanked the rest of the line.
+                if ((c is '"' or '\'') && FollowsAnEquals(text, i))
+                {
+                    i = AppendMarkupAttribute(sb, text, i);
+                    continue;
+                }
+
+                sb.Append(c);
+                i++;
+                continue;
+            }
+
             if (c == '/' && Next(text, i) == '/')
             {
                 var nl = text.IndexOf('\n', i);
@@ -184,12 +235,7 @@ public static class ComponentTestMatcher
                 i = BlankTo(sb, text, i, Find(text, "*/", i + 2, after: true));
                 continue;
             }
-            // A char literal, so that '"' does not open a string and swallow the file — but
-            // only when it really is one. .razor hosts are scanned too, and an apostrophe in
-            // ordinary markup text (`<p>don't</p><Lumeo.Sheet />`) read as an unterminated
-            // literal blanked the rest of the line, taking a real component tag with it.
-            // Recognising Razor code regions properly would mean parsing Razor; the literal's
-            // own shape is the cheaper and sufficient discriminator.
+            // A char literal, so that '"' does not open a string and swallow the file.
             if (c == '\'' && IsCharLiteral(text, i))
             {
                 i = BlankTo(sb, text, i, EndOfCharLiteral(text, i));
@@ -200,9 +246,17 @@ public static class ComponentTestMatcher
                 var (quote, dollars, verbatim) = ReadStringPrefix(text, i);
                 if (quote >= 0)
                 {
-                    i = AppendStringLiteral(sb, text, i, quote, dollars, verbatim, razor);
+                    // Inside a code region a literal is a literal, Razor file or not: a
+                    // const string that merely LOOKS like markup is still string data.
+                    i = AppendStringLiteral(sb, text, i, quote, dollars, verbatim);
                     continue;
                 }
+            }
+
+            if (razor && inCode)
+            {
+                if (c == '{') codeDepth++;
+                else if (c == '}' && --codeDepth == 0) inCode = false;
             }
 
             sb.Append(c);
@@ -210,6 +264,69 @@ public static class ComponentTestMatcher
         }
 
         return sb.ToString();
+    }
+
+    /// <summary>True when the character before <paramref name="i"/>, skipping whitespace, is
+    /// an '=' — the only place a quote opens a markup attribute value.</summary>
+    private static bool FollowsAnEquals(string text, int i)
+    {
+        var j = i - 1;
+        while (j >= 0 && (text[j] == ' ' || text[j] == '	')) j--;
+        return j >= 0 && text[j] == '=';
+    }
+
+    /// <summary>Index just past the opening brace of an <c>@code</c> / <c>@functions</c> /
+    /// <c>@{</c> block starting at <paramref name="i"/>, or <paramref name="i"/> when there
+    /// is none.</summary>
+    private static int RazorCodeBlockStart(string text, int i)
+    {
+        if (text[i] != '@' || i + 1 >= text.Length) return i;
+
+        var j = i + 1;
+        if (text[j] == '{') return j + 1;
+
+        foreach (var keyword in new[] { "code", "functions" })
+        {
+            if (j + keyword.Length > text.Length) continue;
+            if (!text.AsSpan(j, keyword.Length).SequenceEqual(keyword)) continue;
+
+            var k = j + keyword.Length;
+            while (k < text.Length && char.IsWhiteSpace(text[k])) k++;
+            if (k < text.Length && text[k] == '{') return k + 1;
+        }
+        return i;
+    }
+
+    /// <summary>Appends a markup attribute value, blanked except for the Razor expressions
+    /// inside it, and returns the index just past its closing quote.</summary>
+    private static int AppendMarkupAttribute(StringBuilder sb, string text, int start)
+    {
+        var delimiter = text[start];
+        BlankTo(sb, text, start, start + 1);
+
+        var i = start + 1;
+        while (i < text.Length && text[i] != delimiter)
+        {
+            // A markup attribute never spans a line in practice, and treating an unbalanced
+            // quote as one would blank the rest of the file.
+            if (text[i] == '\n') return BlankTo(sb, text, start + 1, i);
+
+            if (text[i] == '@')
+            {
+                var expr = EndOfRazorExpression(text, i);
+                if (expr > i)
+                {
+                    sb.Append(StripNonCode(text[i..expr]));
+                    i = expr;
+                    continue;
+                }
+            }
+
+            BlankTo(sb, text, i, i + 1);
+            i++;
+        }
+
+        return i < text.Length ? BlankTo(sb, text, i, i + 1) : text.Length;
     }
 
     private static char Next(string text, int i) => i + 1 < text.Length ? text[i + 1] : '\0';
@@ -274,7 +391,7 @@ public static class ComponentTestMatcher
     /// <summary>Appends one string literal, blanked except for its interpolation holes, and
     /// returns the index just past it.</summary>
     private static int AppendStringLiteral(StringBuilder sb, string text, int start, int quote,
-                                           int dollars, bool verbatim, bool razor = false)
+                                           int dollars, bool verbatim)
     {
         BlankTo(sb, text, start, quote);           // the $ / @ prefix itself
 
@@ -321,7 +438,7 @@ public static class ComponentTestMatcher
                     BlankTo(sb, text, i, i + dollars);
                     // The hole is code, so it gets the same treatment rather than being kept
                     // verbatim — a literal nested inside it is still text.
-                    sb.Append(StripNonCode(text[(i + dollars)..end], razor));
+                    sb.Append(StripNonCode(text[(i + dollars)..end]));
                     i = end;
                     continue;
                 }
@@ -330,23 +447,11 @@ public static class ComponentTestMatcher
                 continue;
             }
 
-            // In .razor, an ordinary markup attribute is delimited by the same quote a C#
-            // string uses, so blanking the whole value discarded the Razor expression inside
-            // it — `<Host Value="@(typeof(Lumeo.Sheet))" />` lost its reference (Codex review
-            // round 5). Telling markup from code properly means parsing Razor; keeping the
-            // @-expression itself is the cheaper equivalent, and the surrounding text is still
-            // blanked.
-            if (razor && text[i] == '@')
-            {
-                var expr = EndOfRazorExpression(text, i);
-                if (expr > i)
-                {
-                    sb.Append(StripNonCode(text[i..expr], razor: true));
-                    i = expr;
-                    continue;
-                }
-            }
-
+            // No Razor allowance here. This is a C# literal — reached either from a .cs file or
+            // from inside a .razor CODE region — and its content is text all the way through,
+            // even when it happens to look like markup: `@code { const string E = "@(typeof(
+            // Lumeo.Sheet))"; }` is string data, not a reference (Codex review round 6).
+            // Markup attribute values take AppendMarkupAttribute instead.
             BlankTo(sb, text, i, i + 1);
             i++;
         }

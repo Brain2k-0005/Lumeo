@@ -601,4 +601,67 @@ public class ComponentTestMatcherTests
 
         Assert.False(ok);
     }
+
+    // ----- round 6: a .razor file is markup AND code, and they differ -----
+
+    [Fact]
+    public void A_literal_inside_a_razor_code_block_is_text_even_if_it_looks_like_markup()
+    {
+        // The Razor allowance was file-wide, so a const string that merely LOOKS like an
+        // attribute expression counted as a reference (Codex review, PR #424 round 6).
+        var ok = ComponentTestMatcher.IsCoverage(
+            "Sheet", "tests/Lumeo.Tests/Misc/DrawerHost.razor",
+            "<div></div>\n@code { const string Example = \"@(typeof(Lumeo.Sheet))\"; }\n",
+            KnownNames);
+
+        Assert.False(ok);
+    }
+
+    [Fact]
+    public void A_real_reference_inside_a_razor_code_block_still_counts()
+    {
+        // The region model must not blank code: inside @code this is ordinary C#.
+        var ok = ComponentTestMatcher.IsCoverage(
+            "Sheet", "tests/Lumeo.Tests/Misc/DrawerHost.razor",
+            "<div></div>\n@code { void A() { Render<Lumeo.Sheet>(); } }\n",
+            KnownNames);
+
+        Assert.True(ok);
+    }
+
+    [Fact]
+    public void A_single_quoted_markup_attribute_is_text()
+    {
+        // IsCharLiteral rejects the apostrophe because the value is longer than one character,
+        // and the scanner then left the whole attribute as code — while the double-quoted
+        // equivalent was correctly blanked (Codex review, PR #424 round 6).
+        var ok = ComponentTestMatcher.IsCoverage(
+            "Sheet", "tests/Lumeo.Tests/Misc/DrawerHost.razor",
+            "<Host Title='Sheet' />\n",
+            KnownNames);
+
+        Assert.False(ok);
+    }
+
+    [Fact]
+    public void A_single_quoted_attribute_keeps_its_razor_expression()
+    {
+        var ok = ComponentTestMatcher.IsCoverage(
+            "Sheet", "tests/Lumeo.Tests/Misc/DrawerHost.razor",
+            "<Host Value='@(typeof(Lumeo.Sheet))' />\n",
+            KnownNames);
+
+        Assert.True(ok);
+    }
+
+    [Fact]
+    public void A_char_literal_inside_a_razor_code_block_is_still_a_char_literal()
+    {
+        var ok = ComponentTestMatcher.IsCoverage(
+            "Text", "tests/Lumeo.Tests/Misc/DrawerHost.razor",
+            "<div></div>\n@code { char c = 'T'; }\n",
+            KnownNames);
+
+        Assert.False(ok);
+    }
 }

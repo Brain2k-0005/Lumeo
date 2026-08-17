@@ -231,9 +231,13 @@
         // expanded and materialised in full before the per-resource filter discarded it — on a
         // long axis an unbounded daily orphan alone allocates thousands of instances that can
         // never reach the screen.
+        // Null is NOT the empty id. A blank id is a supported resource, and coercing null to it
+        // let every unassigned event through the prefilter only for the ordinal comparison
+        // below to discard it — the exact waste this filter exists to prevent (Codex review
+        // round 6).
         var shown = new HashSet<string>(resources.Select(r => r.Id), StringComparer.Ordinal);
         var expanded = events
-            .Where(e => shown.Contains(e.ResourceId ?? string.Empty))
+            .Where(e => e.ResourceId is not null && shown.Contains(e.ResourceId))
             .Select(e => (src: e,
                           instances: SchedulerRecurrenceExpander.ExpandAll(
                               new[] { e }, expandFrom, axisEnd)))
@@ -280,9 +284,11 @@
         }
     }
 
-    // Clamped at DateTime.MaxValue rather than advancing blind: RangeStart is public, and an
-    // axis anchored in the last representable column has no exclusive end (Codex review round 4).
-    private DateTime AxisEnd() => SchedulerTimelineScale.Advance(Unit, _origin, EffectiveColumns);
+    // Derived from the columns actually built, not from the requested count: near the end of the
+    // calendar the axis truncates, and an end computed from the request would claim range the
+    // view never draws (Codex review rounds 4 and 6).
+    private DateTime AxisEnd() =>
+        _columns.Count > 0 ? SchedulerTimelineScale.Advance(Unit, _columns[^1], 1) : _origin;
 
     private string TrackStyle() =>
         string.Create(Inv, $"width:{_totalWidth.ToString("0.##", Inv)}px;");

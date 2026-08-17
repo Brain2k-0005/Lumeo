@@ -428,4 +428,93 @@ public class SchedulerTimelineReviewTests : IAsyncLifetime
 
         Assert.NotNull(cut.Find(".text-center"));
     }
+
+    // ── Review round 6 ───────────────────────────────────────────────────────
+
+    [Fact]
+    public void An_axis_that_reaches_the_end_of_the_calendar_is_shorter_not_repeated()
+    {
+        // Clamping each step to DateTime.MaxValue produced a run of identical final columns —
+        // the same date drawn over and over, headers overflowing a track measured for one.
+        var cut = _ctx.Render<L.SchedulerTimelineView>(p =>
+        {
+            p.Add(c => c.Resources, Rooms);
+            p.Add(c => c.RangeStart, DateTime.MaxValue.Date);
+            p.Add(c => c.Columns, 5);
+            p.Add(c => c.Today, DateTime.MaxValue.Date);
+        });
+
+        var labels = cut.FindAll("[data-timeline-column]").Select(e => e.TextContent.Trim()).ToList();
+
+        Assert.Single(labels);
+        Assert.Equal(labels.Count, labels.Distinct().Count());
+    }
+
+    [Fact]
+    public void Paging_a_boundary_timeline_does_not_crash_it()
+    {
+        // A view that renders must not be crashable by its own toolbar: Next at the upper
+        // boundary, and Previous at the lower one, both stepped with a raw Add.
+        var cut = _ctx.Render<L.Scheduler>(p => p
+            .Add(c => c.InitialView, L.SchedulerView.Timeline)
+            .Add(c => c.InitialDate, DateTime.MaxValue.Date)
+            .Add(c => c.Resources, Rooms));
+
+        cut.FindAll("button")
+           .First(b => b.GetAttribute("aria-label")?.Contains("Next", StringComparison.OrdinalIgnoreCase) == true)
+           .Click();
+
+        Assert.NotNull(cut.Find(".text-center"));
+    }
+
+    [Fact]
+    public void The_title_of_a_boundary_timeline_reads_forwards()
+    {
+        // exclusiveEnd saturates at the boundary, and subtracting a day from it turned the
+        // title around: "Dec 31 – Dec 30, 9999".
+        var cut = _ctx.Render<L.Scheduler>(p => p
+            .Add(c => c.InitialView, L.SchedulerView.Timeline)
+            .Add(c => c.InitialDate, DateTime.MaxValue.Date)
+            .Add(c => c.Resources, Rooms));
+
+        var title = cut.Find(".text-center").TextContent;
+
+        Assert.DoesNotContain("Dec 31 – Dec 30", title, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Clicking_the_fallback_day_commits_it_as_the_selected_view()
+    {
+        // A single-select ToggleGroup emits null when the pressed item is clicked again, so the
+        // fallback only LOOKED selected: _currentView stayed on Timeline and that hidden view
+        // came back as soon as Resources was repopulated.
+        var cut = _ctx.Render<L.Scheduler>(p => p
+            .Add(c => c.InitialView, L.SchedulerView.Timeline)
+            .Add(c => c.InitialDate, Start));      // no Resources -> falls back to Day
+
+        cut.FindAll("button").First(b => b.TextContent.Trim() == "Day").Click();
+
+        cut.Render(p => p
+            .Add(c => c.InitialView, L.SchedulerView.Timeline)
+            .Add(c => c.InitialDate, Start)
+            .Add(c => c.Resources, Rooms));        // resources come back
+
+        Assert.Empty(cut.FindAll("[data-timeline-column]"));
+    }
+
+    [Fact]
+    public void An_unassigned_event_is_not_expanded_for_a_blank_resource()
+    {
+        // A blank id is a supported resource, but null is not the same value. Coercing one to
+        // the other let every unassigned event through the prefilter, only for the ordinal
+        // comparison to discard it — the exact waste the prefilter exists to prevent.
+        var res = new[] { new L.SchedulerResource("", "Unassigned") };
+        var unassigned = new L.SchedulerEvent("ghost", "No resource", Start, Start.AddHours(1));
+        var blank = new L.SchedulerEvent("e1", "Blank id", Start, Start.AddDays(1), ResourceId: "");
+
+        var cut = Render(new[] { unassigned, blank }, columns: 3, resources: res);
+
+        Assert.Empty(cut.FindAll("[data-timeline-bar='ghost']"));
+        Assert.Single(cut.FindAll("[data-timeline-bar='e1']"));
+    }
 }

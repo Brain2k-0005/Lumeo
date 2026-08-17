@@ -575,12 +575,15 @@
     private string TimelineTitle()
     {
         var origin = SchedulerTimelineScale.AlignOrigin(TimelineUnit, _fpAnchor, EffectiveFirstDayOfWeek);
-        // The title describes the same axis the view draws, so it needs the same clamped
-        // advance — near the upper calendar boundary it threw during OnInitialized while the
-        // view itself rendered fine (Codex review round 5). One column short of the exclusive
-        // end is the last day IN the range.
-        var exclusiveEnd = SchedulerTimelineScale.Advance(TimelineUnit, origin, EffectiveTimelineColumns);
-        var last = exclusiveEnd > DateTime.MinValue ? exclusiveEnd.AddDays(-1) : exclusiveEnd;
+        // Derived from the columns actually built, not from the requested count: near the end
+        // of the calendar the axis is truncated, and subtracting a day from a saturated
+        // endpoint read the title backwards — "Dec 31 – Dec 30, 9999" (Codex review round 6).
+        var cols = SchedulerTimelineScale.BuildColumns(TimelineUnit, origin, EffectiveTimelineColumns);
+        // A saturated advance is DateTime.MaxValue — a later instant on the SAME final day, so
+        // it compares as progress while not being a real exclusive end. Subtracting a day from
+        // it read the title backwards; the last column IS the last visible day there.
+        var exclusiveEnd = SchedulerTimelineScale.Advance(TimelineUnit, cols[^1], 1);
+        var last = exclusiveEnd == DateTime.MaxValue ? cols[^1] : exclusiveEnd.AddDays(-1);
         return $"{origin.ToString("MMM d", Ui)} – {last.ToString("MMM d, yyyy", Ui)}";
     }
 
@@ -756,12 +759,10 @@
         SchedulerView.MultiDay => _fpAnchor.AddDays(EffectiveVisibleDays * direction),
         // Pages by the WHOLE axis, in whatever unit its columns are — a month-per-column
         // timeline stepping by days would barely move.
-        SchedulerView.Timeline => TimelineUnit switch
-        {
-            SchedulerTimelineUnit.Week => _fpAnchor.AddDays(7 * EffectiveTimelineColumns * direction),
-            SchedulerTimelineUnit.Month => _fpAnchor.AddMonths(EffectiveTimelineColumns * direction),
-            _ => _fpAnchor.AddDays(EffectiveTimelineColumns * direction),
-        },
+        // Clamped in both directions: an axis at either calendar boundary renders, so its own
+        // Next/Previous must not be able to crash it (Codex review round 6).
+        SchedulerView.Timeline =>
+            SchedulerTimelineScale.Step(TimelineUnit, _fpAnchor, EffectiveTimelineColumns * direction),
         _ => _fpAnchor.AddDays(7 * direction),
     };
 
@@ -794,7 +795,20 @@
 
     private void OnViewChangedAsync(string? v)
     {
-        if (string.IsNullOrEmpty(v)) return;
+        // A single-select ToggleGroup emits null when the already-pressed item is clicked, so
+        // ignoring null used to leave _currentView on the hidden Timeline/Resource selection
+        // while Day was shown — and that hidden view came back the moment Resources was
+        // repopulated. Normalising to what is actually on screen makes the fallback a real
+        // state change rather than a display trick (Codex review round 6).
+        if (string.IsNullOrEmpty(v))
+        {
+            if (_currentView != EffectiveView)
+            {
+                _currentView = EffectiveView;
+                RefreshFirstPartyTitle();
+            }
+            return;
+        }
         if (!Enum.TryParse<SchedulerView>(v, out var parsed)) return;
         _currentView = parsed;
         RefreshFirstPartyTitle();

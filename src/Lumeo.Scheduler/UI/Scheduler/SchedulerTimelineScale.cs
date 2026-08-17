@@ -61,11 +61,20 @@ public static class SchedulerTimelineScale
     {
         var n = Math.Max(1, count);
         var cols = new List<DateTime>(n);
-        for (var i = 0; i < n; i++)
+        cols.Add(origin);
+        for (var i = 1; i < n; i++)
         {
-            // Through Advance, not a raw Add: clamping only the endpoints left this loop
-            // throwing first for any count above one (Codex review round 5).
-            cols.Add(Advance(unit, origin, i));
+            // Truncate, do not saturate (Codex review round 6). Clamping each step to
+            // DateTime.MaxValue produced a run of identical final columns: the same date drawn
+            // over and over, headers and rules overflowing a track measured for one column.
+            // An axis that reaches the end of the calendar is simply shorter.
+            //
+            // Stepping from the PREVIOUS column rather than recomputing from the origin is what
+            // makes the saturation visible: Advance returns DateTime.MaxValue itself, which is
+            // a later instant on the same final day and so compares as genuine progress.
+            var next = Advance(unit, cols[^1], 1);
+            if (next == DateTime.MaxValue || next <= cols[^1]) break;
+            cols.Add(next);
         }
         return cols;
     }
@@ -122,6 +131,38 @@ public static class SchedulerTimelineScale
                 return units > (DateTime.MaxValue - from).TotalDays ? DateTime.MaxValue : from.AddDays(units);
         }
     }
+
+    /// <summary>
+    /// Moves <paramref name="from"/> BACKWARD by <paramref name="units"/> columns, stopping at
+    /// <see cref="DateTime.MinValue"/>. The toolbar pages an axis that may already sit on the
+    /// lower boundary, and a view that renders must not be crashable by its own Previous button
+    /// (Codex review of PR #424).
+    /// </summary>
+    internal static DateTime Retreat(SchedulerTimelineUnit unit, DateTime from, int units)
+    {
+        if (units <= 0) return from;
+
+        switch (unit)
+        {
+            case SchedulerTimelineUnit.Week:
+            {
+                var days = (long)units * 7;
+                return days > (from - DateTime.MinValue).TotalDays ? DateTime.MinValue : from.AddDays(-days);
+            }
+            case SchedulerTimelineUnit.Month:
+            {
+                var monthsBack = (from.Year - DateTime.MinValue.Year) * 12L + (from.Month - DateTime.MinValue.Month);
+                return units > monthsBack ? DateTime.MinValue : from.AddMonths(-units);
+            }
+            default:
+                return units > (from - DateTime.MinValue).TotalDays ? DateTime.MinValue : from.AddDays(-units);
+        }
+    }
+
+    /// <summary>Steps <paramref name="from"/> by <paramref name="units"/> columns in either
+    /// direction, clamped to the representable range.</summary>
+    internal static DateTime Step(SchedulerTimelineUnit unit, DateTime from, int units) =>
+        units >= 0 ? Advance(unit, from, units) : Retreat(unit, from, -units);
 
     /// <summary>Header label for a column, at the granularity that column represents.</summary>
     public static string ColumnLabel(SchedulerTimelineUnit unit, DateTime column, CultureInfo culture) => unit switch
