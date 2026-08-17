@@ -63,13 +63,9 @@ public static class SchedulerTimelineScale
         var cols = new List<DateTime>(n);
         for (var i = 0; i < n; i++)
         {
-            cols.Add(unit switch
-            {
-                SchedulerTimelineUnit.Day => origin.AddDays(i),
-                SchedulerTimelineUnit.Week => origin.AddDays(i * 7),
-                SchedulerTimelineUnit.Month => origin.AddMonths(i),
-                _ => origin.AddDays(i),
-            });
+            // Through Advance, not a raw Add: clamping only the endpoints left this loop
+            // throwing first for any count above one (Codex review round 5).
+            cols.Add(Advance(unit, origin, i));
         }
         return cols;
     }
@@ -140,7 +136,8 @@ public static class SchedulerTimelineScale
     public static bool IsCurrentColumn(SchedulerTimelineUnit unit, DateTime column, DateTime today) => unit switch
     {
         SchedulerTimelineUnit.Day => column.Date == today.Date,
-        SchedulerTimelineUnit.Week => today.Date >= column.Date && today.Date < column.Date.AddDays(7),
+        SchedulerTimelineUnit.Week => today.Date >= column.Date
+                                      && today.Date < Advance(SchedulerTimelineUnit.Week, column.Date, 1),
         SchedulerTimelineUnit.Month => column.Year == today.Year && column.Month == today.Month,
         _ => false,
     };
@@ -151,6 +148,9 @@ public static class SchedulerTimelineScale
     private static DateTime StartOfWeek(DateTime date, DayOfWeek firstDayOfWeek)
     {
         var diff = (7 + (date.DayOfWeek - firstDayOfWeek)) % 7;
-        return date.Date.AddDays(-diff);
+        // A caller may anchor at DateTime.MinValue, and with a week start other than the one
+        // that date happens to fall on, this step goes below the representable range
+        // (Codex review round 5).
+        return diff > (date.Date - DateTime.MinValue).TotalDays ? DateTime.MinValue : date.Date.AddDays(-diff);
     }
 }

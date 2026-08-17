@@ -575,12 +575,12 @@
     private string TimelineTitle()
     {
         var origin = SchedulerTimelineScale.AlignOrigin(TimelineUnit, _fpAnchor, EffectiveFirstDayOfWeek);
-        var last = TimelineUnit switch
-        {
-            SchedulerTimelineUnit.Week => origin.AddDays(7 * EffectiveTimelineColumns - 1),
-            SchedulerTimelineUnit.Month => origin.AddMonths(EffectiveTimelineColumns).AddDays(-1),
-            _ => origin.AddDays(EffectiveTimelineColumns - 1),
-        };
+        // The title describes the same axis the view draws, so it needs the same clamped
+        // advance — near the upper calendar boundary it threw during OnInitialized while the
+        // view itself rendered fine (Codex review round 5). One column short of the exclusive
+        // end is the last day IN the range.
+        var exclusiveEnd = SchedulerTimelineScale.Advance(TimelineUnit, origin, EffectiveTimelineColumns);
+        var last = exclusiveEnd > DateTime.MinValue ? exclusiveEnd.AddDays(-1) : exclusiveEnd;
         return $"{origin.ToString("MMM d", Ui)} – {last.ToString("MMM d, yyyy", Ui)}";
     }
 

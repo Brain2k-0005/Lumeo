@@ -382,4 +382,50 @@ public class SchedulerTimelineReviewTests : IAsyncLifetime
         Assert.Empty(cut.FindAll("[data-timeline-bar='ghost']"));
         Assert.Single(cut.FindAll("[data-timeline-bar='e1']"));
     }
+
+    [Fact]
+    public void A_multi_column_axis_at_the_upper_boundary_renders()
+    {
+        // Clamping only the endpoints left BuildColumns throwing first for any count above one.
+        var cut = _ctx.Render<L.SchedulerTimelineView>(p =>
+        {
+            p.Add(c => c.Resources, Rooms);
+            p.Add(c => c.RangeStart, DateTime.MaxValue.Date);
+            p.Add(c => c.Columns, 2);
+            p.Add(c => c.Today, DateTime.MaxValue.Date);
+        });
+
+        Assert.NotEmpty(cut.FindAll("[data-timeline-column]"));
+    }
+
+    [Fact]
+    public void A_week_axis_at_the_minimum_date_aligns_without_underflowing()
+    {
+        // AlignOrigin steps BACK to the week start, and with a first weekday other than the one
+        // DateTime.MinValue falls on, that step went below the representable range.
+        var cut = _ctx.Render<L.SchedulerTimelineView>(p =>
+        {
+            p.Add(c => c.Resources, Rooms);
+            p.Add(c => c.RangeStart, DateTime.MinValue);
+            p.Add(c => c.Unit, L.SchedulerTimelineUnit.Week);
+            p.Add(c => c.FirstDayOfWeek, DayOfWeek.Sunday);
+            p.Add(c => c.Columns, 2);
+            p.Add(c => c.Today, DateTime.MinValue);
+        });
+
+        Assert.NotEmpty(cut.FindAll("[data-timeline-column]"));
+    }
+
+    [Fact]
+    public void The_wrapper_opens_a_timeline_at_the_upper_boundary_without_throwing()
+    {
+        // The title describes the same axis and formatted it with unchecked advances, so it
+        // threw during OnInitialized while the view itself was already safe.
+        var cut = _ctx.Render<L.Scheduler>(p => p
+            .Add(c => c.InitialView, L.SchedulerView.Timeline)
+            .Add(c => c.InitialDate, DateTime.MaxValue.Date)
+            .Add(c => c.Resources, Rooms));
+
+        Assert.NotNull(cut.Find(".text-center"));
+    }
 }

@@ -554,4 +554,51 @@ public class ComponentTestMatcherTests
 
         Assert.True(ok);
     }
+
+    [Fact]
+    public void A_reference_inside_a_razor_attribute_expression_still_counts()
+    {
+        // A markup attribute uses the same quote a C# string does, so blanking the whole value
+        // discarded the Razor expression inside it (Codex review, PR #424 round 5).
+        var ok = ComponentTestMatcher.IsCoverage(
+            "Sheet", "tests/Lumeo.Tests/Misc/DrawerHost.razor",
+            "<Host Value=\"@(typeof(Lumeo.Sheet))\" />\n",
+            KnownNames);
+
+        Assert.True(ok);
+    }
+
+    [Fact]
+    public void An_implicit_razor_expression_counts_too()
+    {
+        var ok = ComponentTestMatcher.IsCoverage(
+            "Sheet", "tests/Lumeo.Tests/Misc/DrawerHost.razor",
+            "<Host Title=\"@Lumeo.Sheet.Name\" />\n",
+            KnownNames);
+
+        Assert.True(ok);
+    }
+
+    [Fact]
+    public void Plain_attribute_text_in_razor_is_still_text()
+    {
+        // The Razor allowance must not turn every attribute value back into code.
+        var ok = ComponentTestMatcher.IsCoverage(
+            "Sheet", "tests/Lumeo.Tests/Misc/DrawerHost.razor",
+            "<Host Title=\"Sheet\" />\n",
+            KnownNames);
+
+        Assert.False(ok);
+    }
+
+    [Fact]
+    public void A_string_literal_in_a_cs_file_is_unaffected_by_the_razor_allowance()
+    {
+        var ok = ComponentTestMatcher.IsCoverage(
+            "Sheet", "tests/Lumeo.Tests/Misc/DrawerTests.cs",
+            @"public class DrawerTests { void A() { var m = ""@(typeof(Lumeo.Sheet))""; } }",
+            KnownNames);
+
+        Assert.False(ok);
+    }
 }

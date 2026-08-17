@@ -90,7 +90,8 @@ public static class ComponentTestMatcher
     {
         if (OwnsDedicatedFolder(repoRelativePath, componentName)) return true;
 
-        var codeOnly = StripNonCode(fileContent);
+        var codeOnly = StripNonCode(fileContent,
+            razor: repoRelativePath.EndsWith(".razor", StringComparison.OrdinalIgnoreCase));
 
         if (HasRealTypeReference(codeOnly, componentName)) return true;
 
@@ -155,7 +156,7 @@ public static class ComponentTestMatcher
     ///
     /// Newlines survive so the result stays line-aligned with the input.
     /// </summary>
-    private static string StripNonCode(string text)
+    private static string StripNonCode(string text, bool razor = false)
     {
         var sb = new StringBuilder(text.Length);
         var i = 0;
@@ -199,7 +200,7 @@ public static class ComponentTestMatcher
                 var (quote, dollars, verbatim) = ReadStringPrefix(text, i);
                 if (quote >= 0)
                 {
-                    i = AppendStringLiteral(sb, text, i, quote, dollars, verbatim);
+                    i = AppendStringLiteral(sb, text, i, quote, dollars, verbatim, razor);
                     continue;
                 }
             }
@@ -273,7 +274,7 @@ public static class ComponentTestMatcher
     /// <summary>Appends one string literal, blanked except for its interpolation holes, and
     /// returns the index just past it.</summary>
     private static int AppendStringLiteral(StringBuilder sb, string text, int start, int quote,
-                                           int dollars, bool verbatim)
+                                           int dollars, bool verbatim, bool razor = false)
     {
         BlankTo(sb, text, start, quote);           // the $ / @ prefix itself
 
@@ -320,7 +321,7 @@ public static class ComponentTestMatcher
                     BlankTo(sb, text, i, i + dollars);
                     // The hole is code, so it gets the same treatment rather than being kept
                     // verbatim — a literal nested inside it is still text.
-                    sb.Append(StripNonCode(text[(i + dollars)..end]));
+                    sb.Append(StripNonCode(text[(i + dollars)..end], razor));
                     i = end;
                     continue;
                 }
@@ -329,11 +330,54 @@ public static class ComponentTestMatcher
                 continue;
             }
 
+            // In .razor, an ordinary markup attribute is delimited by the same quote a C#
+            // string uses, so blanking the whole value discarded the Razor expression inside
+            // it — `<Host Value="@(typeof(Lumeo.Sheet))" />` lost its reference (Codex review
+            // round 5). Telling markup from code properly means parsing Razor; keeping the
+            // @-expression itself is the cheaper equivalent, and the surrounding text is still
+            // blanked.
+            if (razor && text[i] == '@')
+            {
+                var expr = EndOfRazorExpression(text, i);
+                if (expr > i)
+                {
+                    sb.Append(StripNonCode(text[i..expr], razor: true));
+                    i = expr;
+                    continue;
+                }
+            }
+
             BlankTo(sb, text, i, i + 1);
             i++;
         }
 
         return text.Length;
+    }
+
+    /// <summary>End of the Razor expression starting at the '@' at <paramref name="start"/>:
+    /// an explicit <c>@(...)</c> with balanced parentheses, or an implicit <c>@Foo.Bar(...)</c>
+    /// member chain. Returns <paramref name="start"/> when this is not one (a stray '@', or the
+    /// '@@' escape).</summary>
+    private static int EndOfRazorExpression(string text, int start)
+    {
+        var i = start + 1;
+        if (i >= text.Length || text[i] == '@') return start;
+
+        if (text[i] == '(')
+        {
+            var depth = 0;
+            for (; i < text.Length; i++)
+            {
+                if (text[i] == '(') depth++;
+                else if (text[i] == ')' && --depth == 0) return i + 1;
+                else if (text[i] == '"') return start;   // ran into the attribute's own delimiter
+            }
+            return start;
+        }
+
+        if (!char.IsLetter(text[i]) && text[i] != '_') return start;
+        while (i < text.Length && (IsIdentifierChar(text[i]) || text[i] == '.')) i++;
+        return i;
     }
 
     /// <summary>Scans from just inside a hole to its closing brace, skipping over literals so a
