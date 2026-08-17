@@ -539,10 +539,37 @@
         return classes;
     }
 
+    /// <summary>
+    /// A day cell pads its content by <c>p-1</c> (4px) and carries a 1px right border, so two
+    /// segments of the SAME run sat 9px apart and a multi-day event read as a row of separate
+    /// bars — the continuation days looking like empty stubs, since only the first segment
+    /// carries the title. A continued segment therefore bleeds out to the cell's border box on
+    /// the side it continues, which closes the gap exactly and makes the run render as one
+    /// bar. The rounded corners were already dropped on those sides for this reason; only the
+    /// spacing was missing.
+    /// </summary>
+    private const double CellPadPx = 4;
+    private const double CellBorderPx = 1;
+
     private string PillStyle(PillSlot slot)
     {
         var color = ResolveEventColor?.Invoke(slot.Source) ?? slot.Source.Color ?? "var(--color-primary)";
-        return $"background-color: color-mix(in oklab, {color} 18%, transparent); color: color-mix(in oklab, {color} 38%, var(--lumeo-event-fg-anchor));";
+        var style = $"background-color: color-mix(in oklab, {color} 18%, transparent); color: color-mix(in oklab, {color} 38%, var(--lumeo-event-fg-anchor));";
+
+        // Left bleed is only the padding — the border belongs to the PREVIOUS cell and is
+        // already covered by that cell's own segment bleeding right.
+        var left = slot.ContL ? CellPadPx : 0;
+        var right = slot.ContR ? CellPadPx + CellBorderPx : 0;
+        if (left == 0 && right == 0) return style;
+
+        // The pill is w-full, i.e. width:100%. A negative margin alone only SHIFTS that box,
+        // it does not widen it, so the first attempt closed 4px of the 9px gap and left a
+        // visible seam. The width has to grow by the same amount it bleeds.
+        var inv = CultureInfo.InvariantCulture;
+        if (left > 0) style += $" margin-left: -{left.ToString(inv)}px;";
+        if (right > 0) style += $" margin-right: -{right.ToString(inv)}px;";
+        style += $" width: calc(100% + {(left + right).ToString(inv)}px);";
+        return style;
     }
 
     private string CellAriaLabel(MonthCellModel cell)
