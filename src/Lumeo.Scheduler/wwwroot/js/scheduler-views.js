@@ -695,7 +695,20 @@ function unregisterNowIndicator(containerEl) {
     nowIndicators.delete(containerEl);
 }
 
+// The BROWSER's calendar date as yyyy-MM-dd. Lives here, in the Scheduler's own asset, rather
+// than being borrowed from the Gantt's module: Lumeo.Scheduler does not reference Lumeo.Gantt,
+// so in a standalone install that import 404s and the caller silently falls back to the SERVER's
+// date — defeating the timezone fix it exists for (Codex review of PR #424).
+function getLocalDateIso() {
+    const d = new Date();
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+}
+
 export const schedulerViews = {
+    getLocalDateIso,
     registerMonthDrag,
     unregisterMonthDrag,
     registerTimeGridDrag,

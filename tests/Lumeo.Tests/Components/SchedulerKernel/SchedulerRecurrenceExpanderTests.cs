@@ -248,12 +248,55 @@ public class SchedulerRecurrenceExpanderTests
     }
 
     [Fact]
-    public void OccurrenceCap_Stops_At_500_Even_With_No_Count_Or_Until()
+    public void A_Window_Longer_Than_The_Floor_Is_Filled_Completely()
     {
+        // The cap used to be a flat 500 ceiling, which truncated any window longer than itself.
+        // Candidates are counted from the series' own start, so a resource timeline drawing 24
+        // months asked for 730 daily occurrences and got 500 — the last eight months of an axis
+        // it had already drawn rendered as free (Codex review of PR #424).
         var ev = Base(recurrence: new SchedulerRecurrenceRule(SchedulerRecurrenceFrequency.Daily, Interval: 1));
-        var result = SchedulerRecurrenceExpander.Expand(ev, Monday, Monday.AddDays(10_000));
 
-        Assert.Equal(SchedulerRecurrenceExpander.OccurrenceCap, result.Count);
+        var result = SchedulerRecurrenceExpander.Expand(ev, Monday, Monday.AddDays(2_000));
+
+        Assert.Equal(2_000, result.Count);
+    }
+
+    [Fact]
+    public void A_Runaway_Rule_Still_Stops_At_The_Absolute_Ceiling()
+    {
+        // The budget scales with the window, so the safety net moved rather than disappeared:
+        // a COUNT-less, UNTIL-less rule against an absurd range stops at the ceiling.
+        var ev = Base(recurrence: new SchedulerRecurrenceRule(SchedulerRecurrenceFrequency.Daily, Interval: 1));
+
+        var result = SchedulerRecurrenceExpander.Expand(ev, Monday, Monday.AddDays(100_000));
+
+        Assert.Equal(SchedulerRecurrenceExpander.AbsoluteCandidateCap, result.Count);
+    }
+
+    [Theory]
+    [InlineData(SchedulerRecurrenceFrequency.Daily)]
+    [InlineData(SchedulerRecurrenceFrequency.Weekly)]
+    [InlineData(SchedulerRecurrenceFrequency.Monthly)]
+    public void A_Series_Near_The_End_Of_Time_Advances_Without_Overflowing(SchedulerRecurrenceFrequency freq)
+    {
+        // The generators used to lean on the flat 500 to stay inside DateTime's range. With the
+        // budget able to run far longer, each advance has to guard its own overflow instead.
+        var start = DateTime.MaxValue.AddDays(-40);
+        var ev = Base(start: start, end: start.AddHours(1),
+                      recurrence: new SchedulerRecurrenceRule(freq, Interval: 1));
+
+        var result = SchedulerRecurrenceExpander.Expand(ev, start, DateTime.MaxValue);
+
+        Assert.NotEmpty(result);
+    }
+
+    [Fact]
+    public void The_Budget_Never_Drops_Below_Its_Floor_For_A_Tiny_Window()
+    {
+        var rule = new SchedulerRecurrenceRule(SchedulerRecurrenceFrequency.Daily, Interval: 1);
+
+        Assert.Equal(SchedulerRecurrenceExpander.OccurrenceCap,
+                     SchedulerRecurrenceExpander.EffectiveCandidateCap(rule, Monday, Monday, Monday.AddDays(3)));
     }
 
     // ── EXDATE / ExceptionDates ──────────────────────────────────────────────
@@ -434,5 +477,177 @@ public class SchedulerRecurrenceExpanderTests
         Assert.Equal(
             legacyInstances.Select(i => (i.Start, i.End)),
             structuredInstances.Select(i => (i.Start, i.End)));
+    }
+
+    [Fact]
+    public void A_Monthly_Rule_With_Several_Ordinals_Of_One_Weekday_Fills_A_Long_Axis()
+    {
+        // MonthlyCandidates resolves each ByDay ENTRY, so first-through-fourth Monday is four
+        // occurrences a month. Budgeting by DISTINCT weekday counted one, left the cap at its
+        // floor, and stopped a long axis a third of the way in (Codex review of PR #424).
+        var byDay = new[]
+        {
+            new SchedulerByDayRule(DayOfWeek.Monday, 1),
+            new SchedulerByDayRule(DayOfWeek.Monday, 2),
+            new SchedulerByDayRule(DayOfWeek.Monday, 3),
+            new SchedulerByDayRule(DayOfWeek.Monday, 4),
+        };
+        var ev = Base(recurrence: new SchedulerRecurrenceRule(
+            SchedulerRecurrenceFrequency.Monthly, Interval: 1, ByDay: byDay));
+
+        var result = SchedulerRecurrenceExpander.Expand(ev, Monday, Monday.AddMonths(300));
+
+        Assert.True(result.Count > 1_000,
+            $"300 months x 4 Mondays should be ~1200 occurrences, got {result.Count}.");
+    }
+
+    [Fact]
+    public void A_Monthly_Series_Starting_In_The_Final_Year_Still_Advances()
+    {
+        // The overflow bound counted whole years only, so every month inside 9999 read as
+        // "no room left" and the series yielded its first occurrence alone.
+        var start = new DateTime(9999, 1, 15, 9, 0, 0);
+        var ev = Base(start: start, end: start.AddHours(1),
+                      recurrence: new SchedulerRecurrenceRule(SchedulerRecurrenceFrequency.Monthly, Interval: 1));
+
+        var result = SchedulerRecurrenceExpander.Expand(ev, start, new DateTime(9999, 4, 1));
+
+        Assert.Equal(3, result.Count);   // January, February, March
+    }
+
+    [Fact]
+    public void An_Occurrence_At_The_End_Of_Time_Clamps_Its_End_Instead_Of_Throwing()
+    {
+        // With the budget able to reach the last representable day, candidateStart + duration
+        // overflowed. The old flat cap stopped decades short of it.
+        var start = DateTime.MaxValue.AddDays(-3).AddHours(-2);
+        var ev = Base(start: start, end: start.AddHours(4),
+                      recurrence: new SchedulerRecurrenceRule(SchedulerRecurrenceFrequency.Daily, Interval: 1));
+
+        var result = SchedulerRecurrenceExpander.Expand(ev, start, DateTime.MaxValue);
+
+        Assert.NotEmpty(result);
+        Assert.All(result, r => Assert.True(r.End <= DateTime.MaxValue));
+    }
+
+    [Fact]
+    public void A_Weekly_Burst_At_The_Range_Boundary_Is_Fully_Budgeted()
+    {
+        // Weekly candidates arrive in a cluster per active week, so an average-based estimate
+        // plus a flat margin can fall short when the range ends partway through one — dropping
+        // the last occupied day and rendering it free (Codex review of PR #424).
+        var everyWeekday = Enum.GetValues<DayOfWeek>().Select(d => new SchedulerByDayRule(d)).ToArray();
+        var start = new DateTime(1990, 1, 1, 9, 0, 0);          // a Monday
+        var ev = Base(start: start, end: start.AddHours(1),
+                      recurrence: new SchedulerRecurrenceRule(
+                          SchedulerRecurrenceFrequency.Weekly, Interval: 2, ByDay: everyWeekday));
+
+        var rangeEnd = new DateTime(2020, 7, 1);                 // a Wednesday, mid-week
+        var result = SchedulerRecurrenceExpander.Expand(ev, start, rangeEnd);
+
+        // 2020-06-29 opens an INACTIVE week for this every-other-week rule, so the last
+        // occurrence inside the range is Sunday 2020-06-28 — and that is the one an
+        // under-budgeted cap drops.
+        Assert.Contains(result, r => r.Start.Date == new DateTime(2020, 6, 28));
+    }
+
+    [Fact]
+    public void A_Series_Started_Decades_Ago_Still_Shows_Up_Today()
+    {
+        // The budget counted candidates from the series' own start, so a daily standup defined
+        // in 1970 needed 20 454 of them to reach 2026 and rendered as NOTHING — not truncated,
+        // absent. The scan seeks past the run-up now (CodeRabbit, PR #424).
+        var start = new DateTime(1970, 1, 1, 9, 0, 0);
+        var ev = Base(start: start, end: start.AddHours(1),
+                      recurrence: new SchedulerRecurrenceRule(SchedulerRecurrenceFrequency.Daily, Interval: 1));
+
+        var result = SchedulerRecurrenceExpander.Expand(ev, new DateTime(2026, 1, 1), new DateTime(2026, 1, 8));
+
+        Assert.Equal(7, result.Count);
+        Assert.Equal(new DateTime(2026, 1, 1, 9, 0, 0), result[0].Start);
+    }
+
+    [Fact]
+    public void Seeking_Never_Skips_An_Occurrence_That_Overlaps_The_Window()
+    {
+        // The seek must be an UNDERESTIMATE: a long booking that started before the window but
+        // runs into it is exactly what a resource view must not lose.
+        var start = new DateTime(1990, 1, 1, 22, 0, 0);
+        var ev = Base(start: start, end: start.AddHours(6),   // crosses midnight
+                      recurrence: new SchedulerRecurrenceRule(SchedulerRecurrenceFrequency.Daily, Interval: 1));
+
+        var window = new DateTime(2026, 3, 10, 0, 0, 0);      // inside the previous night's booking
+        var result = SchedulerRecurrenceExpander.Expand(ev, window, window.AddHours(1));
+
+        Assert.Single(result);
+        Assert.Equal(new DateTime(2026, 3, 9, 22, 0, 0), result[0].Start);
+    }
+
+    [Fact]
+    public void A_Count_Bounded_Rule_Keeps_Its_Raw_Series_Position()
+    {
+        // COUNT is measured over the raw generated series, so its position has to be counted
+        // rather than computed — seeking is skipped entirely for such rules.
+        var start = new DateTime(2026, 1, 1, 9, 0, 0);
+        var ev = Base(start: start, end: start.AddHours(1),
+                      recurrence: new SchedulerRecurrenceRule(SchedulerRecurrenceFrequency.Daily, Interval: 1, Count: 3));
+
+        var result = SchedulerRecurrenceExpander.Expand(ev, start.AddDays(1), start.AddDays(10));
+
+        Assert.Equal(2, result.Count);   // occurrences 2 and 3 of 3
+    }
+
+    [Fact]
+    public void A_Weekly_Rule_Listing_A_Weekday_Twice_Seeks_The_Right_Distance()
+    {
+        // WeeklyCandidates collapses ByDay with Distinct(), so a duplicated weekday yields ONE
+        // candidate that week. Counting raw entries seeks about twice as far as it should and
+        // can land past the window entirely (Codex review of PR #424).
+        var byDay = new[]
+        {
+            new SchedulerByDayRule(DayOfWeek.Monday),
+            new SchedulerByDayRule(DayOfWeek.Monday),
+        };
+        var start = new DateTime(1990, 1, 1, 9, 0, 0);          // a Monday
+        var ev = Base(start: start, end: start.AddHours(1),
+                      recurrence: new SchedulerRecurrenceRule(
+                          SchedulerRecurrenceFrequency.Weekly, Interval: 1, ByDay: byDay));
+
+        var window = new DateTime(2026, 3, 9);                   // also a Monday
+        var result = SchedulerRecurrenceExpander.Expand(ev, window, window.AddDays(7));
+
+        Assert.Single(result);
+        Assert.Equal(window.Date, result[0].Start.Date);
+    }
+
+    [Fact]
+    public void A_Reversed_Event_Does_Not_Take_Down_The_Render()
+    {
+        // SchedulerEvent does not validate End >= Start, and a negative duration used to be laid
+        // out or discarded harmlessly. Subtracting it during the seek reached FORWARD and threw.
+        var start = new DateTime(2026, 3, 9, 12, 0, 0);
+        var ev = Base(start: start, end: start.AddHours(-2),
+                      recurrence: new SchedulerRecurrenceRule(SchedulerRecurrenceFrequency.Daily, Interval: 1));
+
+        var result = SchedulerRecurrenceExpander.Expand(ev, start, start.AddDays(3));
+
+        Assert.NotNull(result);
+    }
+
+    [Fact]
+    public void A_Long_Event_Keeps_Its_Occurrences_To_The_End_Of_The_Window()
+    {
+        // The seek reaches back by the event's duration so an occurrence crossing the left edge
+        // survives, and those earlier candidates spend the same budget. Measuring the budget from
+        // rangeStart instead left the tail of a long window free.
+        var start = new DateTime(2020, 1, 1, 9, 0, 0);
+        var ev = Base(start: start, end: start.AddDays(30),
+                      recurrence: new SchedulerRecurrenceRule(SchedulerRecurrenceFrequency.Daily, Interval: 1));
+
+        var from = new DateTime(2026, 1, 1);
+        var to = from.AddDays(730);
+        var result = SchedulerRecurrenceExpander.Expand(ev, from, to);
+
+        Assert.Contains(result, r => r.Start.Date >= to.AddDays(-2).Date);
     }
 }

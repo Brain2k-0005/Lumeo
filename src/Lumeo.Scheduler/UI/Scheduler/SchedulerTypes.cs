@@ -147,4 +147,17 @@ public enum SchedulerView
     /// <c>Scheduler.VisibleDays</c> to choose the width.
     /// </summary>
     MultiDay,
+
+    /// <summary>
+    /// One ROW per entry in <c>Scheduler.Resources</c> with the time axis running
+    /// horizontally across days, weeks or months — a resource timeline.
+    /// <para>
+    /// Not a variant of <see cref="Resource"/>: that lays out a single day with a column per
+    /// resource and a vertical clock ("who is where today"), while this answers "how is this
+    /// resource booked over the coming stretch". Requires <c>Resources</c>; without it the
+    /// view falls back to <see cref="Day"/>. Added last so the existing values keep their
+    /// numeric identity.
+    /// </para>
+    /// </summary>
+    Timeline,
 }

@@ -263,6 +263,7 @@ internal static partial class LumeoDefaultStrings
         ["Scheduler.WeekNumberLabel"] = "{0}. hafta",
         ["Scheduler.ResourceGridLabel"] = "{0} kaynakları",
         ["Scheduler.Resources"] = "Kaynaklar",
+        ["Scheduler.Timeline"] = "Zaman çizelgesi",
         ["Scheduler.NDays"] = "{0} gün",
         ["Scheduler.Announce.EventMoved"] = "{0} {1} tarihine taşındı",
         ["Scheduler.Announce.EventRescheduled"] = "{0} artık {1} - {2}",

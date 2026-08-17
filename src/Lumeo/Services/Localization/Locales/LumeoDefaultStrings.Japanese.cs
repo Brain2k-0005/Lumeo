@@ -325,6 +325,7 @@ internal static partial class LumeoDefaultStrings
         ["Scheduler.WeekNumberLabel"] = "第{0}週",
         ["Scheduler.ResourceGridLabel"] = "{0} のリソース",
         ["Scheduler.Resources"] = "リソース",
+        ["Scheduler.Timeline"] = "タイムライン",
         ["Scheduler.NDays"] = "{0}日間",
         ["Scheduler.Announce.EventMoved"] = "{0} を {1} に移動しました",
         ["Scheduler.Announce.EventRescheduled"] = "{0} は {1} から {2} になりました",

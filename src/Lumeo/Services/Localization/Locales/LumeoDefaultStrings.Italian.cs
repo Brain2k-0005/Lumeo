@@ -325,6 +325,7 @@ internal static partial class LumeoDefaultStrings
         ["Scheduler.WeekNumberLabel"] = "Settimana {0}",
         ["Scheduler.ResourceGridLabel"] = "Risorse il {0}",
         ["Scheduler.Resources"] = "Risorse",
+        ["Scheduler.Timeline"] = "Cronologia",
         ["Scheduler.NDays"] = "{0} giorni",
         ["Scheduler.Announce.EventMoved"] = "{0} spostato al {1}",
         ["Scheduler.Announce.EventRescheduled"] = "{0} ora dalle {1} alle {2}",

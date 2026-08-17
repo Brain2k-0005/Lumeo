@@ -263,6 +263,7 @@ internal static partial class LumeoDefaultStrings
         ["Scheduler.WeekNumberLabel"] = "{0}주차",
         ["Scheduler.ResourceGridLabel"] = "{0} 리소스",
         ["Scheduler.Resources"] = "리소스",
+        ["Scheduler.Timeline"] = "타임라인",
         ["Scheduler.NDays"] = "{0}일",
         ["Scheduler.Announce.EventMoved"] = "{0}이(가) {1}(으)로 이동되었습니다",
         ["Scheduler.Announce.EventRescheduled"] = "{0}이(가) 이제 {1}부터 {2}까지입니다",
