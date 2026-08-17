@@ -409,4 +409,85 @@ public class ComponentTestMatcherTests
 
         Assert.True(ok);
     }
+
+    // ----- scanning order: comments and literals are not separate passes (review round 2) -----
+
+    [Fact]
+    public void A_line_comment_marker_inside_a_string_does_not_hide_the_rest_of_the_line()
+    {
+        // Stripping comments before literals loses everything after the quoted "//", including
+        // the real reference that follows it on the same line.
+        var ok = ComponentTestMatcher.IsCoverage(
+            "Sheet", "tests/Lumeo.Tests/Misc/DrawerTests.cs",
+            @"public class DrawerTests { void A() { var sep = ""//""; Render<Lumeo.Sheet>(); } }",
+            KnownNames);
+
+        Assert.True(ok);
+    }
+
+    [Fact]
+    public void A_quote_inside_a_commented_out_line_does_not_open_a_string()
+    {
+        // The mirror image: stripping literals first would treat the comment's lone quote as an
+        // opening delimiter and blank the code up to the next quote anywhere in the file.
+        var ok = ComponentTestMatcher.IsCoverage(
+            "Sheet", "tests/Lumeo.Tests/Misc/DrawerTests.cs",
+            "public class DrawerTests { void A() {\n" +
+            "    // was: Assert.Equal(\"x\n" +
+            "    Render<Lumeo.Sheet>();\n} }",
+            KnownNames);
+
+        Assert.True(ok);
+    }
+
+    [Fact]
+    public void A_char_literal_holding_a_quote_does_not_open_a_string()
+    {
+        var ok = ComponentTestMatcher.IsCoverage(
+            "Sheet", "tests/Lumeo.Tests/Misc/DrawerTests.cs",
+            @"public class DrawerTests { void A() { var q = '""'; Render<Lumeo.Sheet>(); } }",
+            KnownNames);
+
+        Assert.True(ok);
+    }
+
+    [Fact]
+    public void A_type_reference_inside_an_interpolated_raw_string_hole_still_counts()
+    {
+        // A raw literal is blanked as one unit, so its holes have to be recognised before that
+        // happens rather than by a later interpolation-aware pass.
+        var ok = ComponentTestMatcher.IsCoverage(
+            "Sheet", "tests/Lumeo.Tests/Misc/DrawerTests.cs",
+            "public class DrawerTests { void A() { var s = $\"\"\"name: {typeof(Lumeo.Sheet).Name}\"\"\"; } }",
+            KnownNames);
+
+        Assert.True(ok);
+    }
+
+    [Fact]
+    public void A_component_named_only_in_a_razor_comment_does_not_count()
+    {
+        // .razor test files are scanned too, and @* *@ is not a C# block comment. A
+        // "(state-on-data-change, Gantt-class)" note in a Scrollspy host was published as Gantt
+        // coverage (CodeRabbit, PR #424 round 2).
+        var ok = ComponentTestMatcher.IsCoverage(
+            "Sheet", "tests/Lumeo.Tests/Misc/DrawerHost.razor",
+            "@* Regression host for triage #99 (state-on-data-change, Sheet-class). *@\n<Drawer />",
+            KnownNames);
+
+        Assert.False(ok);
+    }
+
+    [Fact]
+    public void A_nested_literal_inside_an_interpolation_hole_is_still_text()
+    {
+        // The hole is code and is rescanned as code — which means a string sitting inside it
+        // gets blanked in turn, rather than being kept verbatim because it was in a hole.
+        var ok = ComponentTestMatcher.IsCoverage(
+            "Sheet", "tests/Lumeo.Tests/Misc/DrawerTests.cs",
+            @"public class DrawerTests { void A() { var s = $""{Label(""Sheet"")}""; } }",
+            KnownNames);
+
+        Assert.False(ok);
+    }
 }

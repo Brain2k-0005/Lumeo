@@ -248,12 +248,55 @@ public class SchedulerRecurrenceExpanderTests
     }
 
     [Fact]
-    public void OccurrenceCap_Stops_At_500_Even_With_No_Count_Or_Until()
+    public void A_Window_Longer_Than_The_Floor_Is_Filled_Completely()
     {
+        // The cap used to be a flat 500 ceiling, which truncated any window longer than itself.
+        // Candidates are counted from the series' own start, so a resource timeline drawing 24
+        // months asked for 730 daily occurrences and got 500 — the last eight months of an axis
+        // it had already drawn rendered as free (Codex review of PR #424).
         var ev = Base(recurrence: new SchedulerRecurrenceRule(SchedulerRecurrenceFrequency.Daily, Interval: 1));
-        var result = SchedulerRecurrenceExpander.Expand(ev, Monday, Monday.AddDays(10_000));
 
-        Assert.Equal(SchedulerRecurrenceExpander.OccurrenceCap, result.Count);
+        var result = SchedulerRecurrenceExpander.Expand(ev, Monday, Monday.AddDays(2_000));
+
+        Assert.Equal(2_000, result.Count);
+    }
+
+    [Fact]
+    public void A_Runaway_Rule_Still_Stops_At_The_Absolute_Ceiling()
+    {
+        // The budget scales with the window, so the safety net moved rather than disappeared:
+        // a COUNT-less, UNTIL-less rule against an absurd range stops at the ceiling.
+        var ev = Base(recurrence: new SchedulerRecurrenceRule(SchedulerRecurrenceFrequency.Daily, Interval: 1));
+
+        var result = SchedulerRecurrenceExpander.Expand(ev, Monday, Monday.AddDays(100_000));
+
+        Assert.Equal(SchedulerRecurrenceExpander.AbsoluteCandidateCap, result.Count);
+    }
+
+    [Theory]
+    [InlineData(SchedulerRecurrenceFrequency.Daily)]
+    [InlineData(SchedulerRecurrenceFrequency.Weekly)]
+    [InlineData(SchedulerRecurrenceFrequency.Monthly)]
+    public void A_Series_Near_The_End_Of_Time_Advances_Without_Overflowing(SchedulerRecurrenceFrequency freq)
+    {
+        // The generators used to lean on the flat 500 to stay inside DateTime's range. With the
+        // budget able to run far longer, each advance has to guard its own overflow instead.
+        var start = DateTime.MaxValue.AddDays(-40);
+        var ev = Base(start: start, end: start.AddHours(1),
+                      recurrence: new SchedulerRecurrenceRule(freq, Interval: 1));
+
+        var result = SchedulerRecurrenceExpander.Expand(ev, start, DateTime.MaxValue);
+
+        Assert.NotEmpty(result);
+    }
+
+    [Fact]
+    public void The_Budget_Never_Drops_Below_Its_Floor_For_A_Tiny_Window()
+    {
+        var rule = new SchedulerRecurrenceRule(SchedulerRecurrenceFrequency.Daily, Interval: 1);
+
+        Assert.Equal(SchedulerRecurrenceExpander.OccurrenceCap,
+                     SchedulerRecurrenceExpander.EffectiveCandidateCap(rule, Monday, Monday.AddDays(3)));
     }
 
     // ── EXDATE / ExceptionDates ──────────────────────────────────────────────

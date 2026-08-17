@@ -256,4 +256,79 @@ public class SchedulerTimelineReviewTests : IAsyncLifetime
 
         Assert.Contains("Mar 18", cut.Find(".text-center").TextContent, StringComparison.Ordinal);
     }
+
+    // ── Review round 2 ───────────────────────────────────────────────────────
+
+    [Fact]
+    public void Two_events_sharing_an_id_stay_on_their_own_resources()
+    {
+        // Ids are caller-supplied and need not be unique; the resource view already treats
+        // duplicates as legitimate input. Joining expanded instances back through a
+        // dictionary keyed on Id kept only the last event, so one resource read as free while
+        // the other collected the bars of both.
+        var a = new L.SchedulerEvent("shared", "Alice's", Start, Start.AddDays(1), ResourceId: "alice");
+        var b = new L.SchedulerEvent("shared", "Bob's", Start, Start.AddDays(1), ResourceId: "bob");
+
+        var bars = Render(new[] { a, b }, columns: 3).FindAll("[data-timeline-bar='shared']");
+
+        Assert.Equal(2, bars.Count);
+        // One per resource track, rather than both piled into the last resource's row.
+        Assert.NotSame(bars[0].ParentElement, bars[1].ParentElement);
+    }
+
+    [Fact]
+    public void A_bar_reports_the_source_that_actually_owns_it()
+    {
+        // The other half of the same defect: both bars carried the last event's title.
+        var a = new L.SchedulerEvent("shared", "Alice's", Start, Start.AddDays(1), ResourceId: "alice");
+        var b = new L.SchedulerEvent("shared", "Bob's", Start, Start.AddDays(1), ResourceId: "bob");
+
+        var titles = Render(new[] { a, b }, columns: 3)
+            .FindAll("[data-timeline-bar='shared']")
+            .Select(e => e.GetAttribute("aria-label") ?? "")
+            .ToList();
+
+        Assert.Contains(titles, t => t.Contains("Alice's", StringComparison.Ordinal));
+        Assert.Contains(titles, t => t.Contains("Bob's", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void The_horizontal_scroller_owns_the_left_to_right_origin()
+    {
+        // Pinning only the track inside it left the overflow container RTL, so in an Arabic UI
+        // a timeline wider than its viewport opened at the far end with RangeStart off screen.
+        var cut = Render(columns: 30);
+
+        var track = cut.Find("[data-timeline-column]").ParentElement!.ParentElement!;
+        var scroller = track.ParentElement!;
+
+        Assert.Contains("overflow-x-auto", scroller.GetAttribute("class") ?? "", StringComparison.Ordinal);
+        Assert.Equal("ltr", scroller.GetAttribute("dir"));
+    }
+
+    [Fact]
+    public void A_daily_series_fills_an_axis_longer_than_the_old_occurrence_cap()
+    {
+        // Candidates are counted from the series' own start, and the flat 500 stopped short of
+        // any window longer than itself: a 24-month axis is 730 daily occurrences, so its last
+        // eight months rendered as free on a resource booked every single day.
+        // Recurrence is an init-only body property, not a positional parameter.
+        var daily = new L.SchedulerEvent("d", "Daily", Start, Start.AddHours(1), ResourceId: "alice")
+        {
+            Recurrence = new L.SchedulerRecurrenceRule(L.SchedulerRecurrenceFrequency.Daily, Interval: 1),
+        };
+
+        var cut = _ctx.Render<L.SchedulerTimelineView>(p =>
+        {
+            p.Add(c => c.Resources, Rooms);
+            p.Add(c => c.RangeStart, Start);
+            p.Add(c => c.Unit, L.SchedulerTimelineUnit.Month);
+            p.Add(c => c.Columns, 24);
+            p.Add(c => c.Today, Start);
+            p.Add(c => c.Events, new[] { daily });
+        });
+
+        Assert.True(cut.FindAll("[data-timeline-bar='d']").Count > 700,
+            "Every day of the drawn axis is booked, so the tail must not render as free.");
+    }
 }

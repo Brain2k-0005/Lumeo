@@ -38,7 +38,11 @@
             }
         </div>
 
-        <div class="flex-1 min-w-0 overflow-x-auto">
+        @* dir on the SCROLLER, not only on the track inside it (Codex review round 2, P2):
+           an RTL document gives this overflow container an RTL scroll origin, so a timeline
+           wider than its viewport opened at the far end of the range with RangeStart off
+           screen — even with the track's own geometry already pinned LTR. *@
+        <div class="flex-1 min-w-0 overflow-x-auto" dir="ltr">
             @* direction:ltr pins the time axis (Codex review, P1). The header row is
                flex, so under RTL it puts the first date on the right while the bars,
                rules and today marker keep positioning from the physical left — the
@@ -207,27 +211,37 @@
         // (Codex review, P1). Laying out the series' own Start/End instead rendered a
         // recurring booking once and dropped a series entirely when its first occurrence
         // preceded the window — a resource that is booked every Tuesday read as free.
-        var byId = new Dictionary<string, SchedulerEvent>(StringComparer.Ordinal);
-        foreach (var e in events) byId[e.Id] = e;
+        // Expanded PER SOURCE EVENT rather than expanding everything and joining the instances
+        // back by EventId (Codex review round 2, P2). Ids are caller-supplied and need not be
+        // unique — SchedulerResourceView already treats duplicates as legitimate read-only
+        // input — and a lookup keyed on Id keeps only the last event of each pair, so both
+        // events' instances were attributed to it: one resource read as free while the other
+        // grew duplicate, mislabelled bars that reported the wrong source on click.
+        //
         // Expanded from a tick BEFORE the axis: the expander filters on End > rangeStart, so a
         // zero-length booking sitting exactly on the origin never reached this view at all —
         // a midnight marker vanished precisely when its date was the first visible column.
         // The view's own clamping below still decides what is actually on screen.
-        var instances = SchedulerRecurrenceExpander.ExpandAll(events, axisStart.AddTicks(-1), axisEnd);
+        var expanded = events
+            .Select(e => (src: e,
+                          instances: SchedulerRecurrenceExpander.ExpandAll(
+                              new[] { e }, axisStart.AddTicks(-1), axisEnd)))
+            .ToList();
 
         foreach (var res in resources)
         {
-            var mine = instances
+            var mine = expanded
                 // No IsNullOrEmpty guard (Codex review, P2): a blank resource id is
                 // legitimate — RebuildResourceLookup and the resource view both honour it —
                 // so the ordinal comparison alone decides.
-                .Where(i => byId.TryGetValue(i.EventId, out var src)
-                            && string.Equals(src.ResourceId, res.Id, StringComparison.Ordinal))
+                .Where(p => string.Equals(p.src.ResourceId, res.Id, StringComparison.Ordinal))
+                .SelectMany(p => p.instances.Select(i => (p.src, i)))
                 // A zero-length booking sitting exactly on the axis origin is kept
                 // (Codex review, P2): a strict End > start dropped a midnight marker on the
                 // first visible column, contradicting this view's own support for them.
-                .Where(i => i.Start < axisEnd && (i.End > axisStart || (i.End == i.Start && i.Start >= axisStart)))
-                .OrderBy(i => i.Start)
+                .Where(t => t.i.Start < axisEnd
+                            && (t.i.End > axisStart || (t.i.End == t.i.Start && t.i.Start >= axisStart)))
+                .OrderBy(t => t.i.Start)
                 .ToList();
 
             // Lanes are packed by RENDERED GEOMETRY, not by time (Codex review, P2). Every bar
@@ -236,9 +250,8 @@
             // screen, the later button covering the earlier one.
             var laneRight = new List<double>();
             var bars = new List<Bar>(mine.Count);
-            foreach (var i in mine)
+            foreach (var (src, i) in mine)
             {
-                var src = byId[i.EventId];
                 var from = i.Start < axisStart ? axisStart : i.Start;
                 var to = i.End > axisEnd ? axisEnd : i.End;
                 var left = SchedulerTimelineScale.DateToPixel(Unit, _origin, from, ColumnWidthPx);

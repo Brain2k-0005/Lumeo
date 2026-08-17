@@ -254,8 +254,9 @@
 
     /// <summary>
     /// How many columns <see cref="SchedulerView.Timeline"/> spans. Default 14. Kept separate
-    /// from <see cref="VisibleDays"/> because they are different units — a timeline column can
-    /// be a month, an N-day window's is always a day.
+    /// from <see cref="VisibleDays"/> because the two count different things: a timeline column
+    /// is one <see cref="TimelineUnit"/> — a day, a week or a month — while
+    /// <see cref="VisibleDays"/> always counts days.
     /// </summary>
     [Parameter] public int? TimelineColumns { get; set; }
 
@@ -322,7 +323,10 @@
 
     private int _lastEventsHash;
     private SchedulerView _currentView;
-    private string _currentViewValue => _currentView.ToString();
+    // EffectiveView, not _currentView: with Timeline selected and no resources the Timeline
+    // item is hidden while the day grid renders, so binding the raw selection left every
+    // visible item — Day included — unpressed (Codex review round 2, P2).
+    private string _currentViewValue => EffectiveView.ToString();
     private string _title = "";
 
     // The UI culture the cached title was last formatted for.
@@ -369,7 +373,12 @@
         // The timeline rebuilds its columns from these immediately, but the toolbar title is
         // cached and was only refreshed by navigation or a culture change — so it kept naming
         // the old end date until the user pressed something (Codex review, P2).
-        var timelineShape = HashCode.Combine(TimelineUnit, EffectiveTimelineColumns);
+        // EffectiveFirstDayOfWeek moves a week timeline's column origin, and resource presence
+        // decides EffectiveView outright — gaining or losing Resources swaps the day grid for the
+        // timeline. Both change what the title should read without touching unit or column count
+        // (Codex review round 2, P2).
+        var timelineShape = HashCode.Combine(TimelineUnit, EffectiveTimelineColumns,
+                                             EffectiveFirstDayOfWeek, EffectiveView);
         if (timelineShape != _lastTimelineShape)
         {
             _lastTimelineShape = timelineShape;

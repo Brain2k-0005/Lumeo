@@ -107,7 +107,7 @@ public class SchedulerTimelineViewTests : IAsyncLifetime
     [Fact]
     public void A_part_day_booking_lands_inside_its_column()
     {
-        // 09:00–12:00 on the second day: a quarter of the way in, an eighth wide.
+        // 06:00–12:00 on the second day: a quarter of the way into the column, a quarter wide.
         var ev = new L.SchedulerEvent("e1", "Booking",
             Start.AddDays(1).AddHours(6), Start.AddDays(1).AddHours(12), ResourceId: "alice");
 

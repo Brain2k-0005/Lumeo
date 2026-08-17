@@ -41,13 +41,52 @@ internal readonly record struct SchedulerEventInstance(string EventId, DateTime 
 internal static class SchedulerRecurrenceExpander
 {
     /// <summary>
-    /// Hard safety cap on the number of RRULE-generated candidate occurrences examined for a
-    /// single event, independent of (and in addition to) any <see cref="SchedulerRecurrenceRule.Count"/>/
+    /// FLOOR for the number of RRULE-generated candidate occurrences examined for a single
+    /// event, independent of (and in addition to) any <see cref="SchedulerRecurrenceRule.Count"/>/
     /// <see cref="SchedulerRecurrenceRule.Until"/> the caller supplied. Mirrors the uploaded
     /// demo's <c>guard++ &lt; 500</c> (spec §2.5) — the safety net for a <c>COUNT</c>-less,
-    /// <c>UNTIL</c>-less rule expanded against an unbounded/very large date range.
+    /// <c>UNTIL</c>-less rule.
     /// </summary>
+    /// <remarks>
+    /// It used to be a flat ceiling, and that truncated windows longer than itself. Candidates
+    /// are generated from the series' own DTSTART, not from <c>rangeStart</c>, so a resource
+    /// timeline showing 24 months asks for 730 daily candidates and stopped 230 days short —
+    /// the tail of an axis it had already drawn rendered as free (Codex review of PR #424).
+    /// The budget now scales with the requested window via <see cref="EffectiveCandidateCap"/>,
+    /// with this value as its floor and <see cref="AbsoluteCandidateCap"/> as its ceiling.
+    /// </remarks>
     internal const int OccurrenceCap = 500;
+
+    /// <summary>
+    /// Ceiling on candidates examined for one event, whatever the window. Reached only by a
+    /// rule whose DTSTART sits far enough before the window that the run-up alone exhausts the
+    /// budget — the expansion loop itself already stops at <c>rangeEnd</c>.
+    /// </summary>
+    internal const int AbsoluteCandidateCap = 20_000;
+
+    /// <summary>
+    /// Candidate budget for one expansion: enough to REACH the far edge of the requested
+    /// window, clamped between <see cref="OccurrenceCap"/> and <see cref="AbsoluteCandidateCap"/>.
+    /// Estimated per frequency, always rounding in the direction that over-counts (a month is
+    /// treated as its shortest possible length), because under-counting is what truncates.
+    /// </summary>
+    internal static int EffectiveCandidateCap(SchedulerRecurrenceRule rule, DateTime dtstart, DateTime rangeEnd)
+    {
+        if (rangeEnd <= dtstart) return OccurrenceCap;
+
+        var interval = Math.Max(1, rule.Interval);
+        var perWeek = rule.ByDay is { Count: > 0 } ? rule.ByDay.Select(b => b.Day).Distinct().Count() : 1;
+        var daysPerCandidate = rule.Freq switch
+        {
+            SchedulerRecurrenceFrequency.Daily => (double)interval,
+            SchedulerRecurrenceFrequency.Weekly => 7.0 * interval / Math.Max(1, perWeek),
+            SchedulerRecurrenceFrequency.Monthly => 28.0 * interval / Math.Max(1, perWeek),
+            _ => interval,
+        };
+
+        var needed = (rangeEnd - dtstart).TotalDays / Math.Max(0.5, daysPerCandidate) + 2;
+        return (int)Math.Clamp(needed, OccurrenceCap, AbsoluteCandidateCap);
+    }
 
     /// <summary>
     /// Expands <paramref name="ev"/> into every occurrence whose span intersects the half-open
@@ -138,13 +177,14 @@ internal static class SchedulerRecurrenceExpander
 
         var instances = new List<SchedulerEventInstance>();
         var index = 0;
+        var cap = EffectiveCandidateCap(rule, ev.Start, rangeEnd);
 
         foreach (var candidateStart in GenerateCandidates(rule, ev.Start))
         {
             index++;
 
             // Safety cap: total RRULE-generated candidates examined, independent of COUNT/UNTIL.
-            if (index > OccurrenceCap) break;
+            if (index > cap) break;
 
             // UNTIL is inclusive of its own calendar date (spec §2.5).
             if (rule.Until.HasValue && candidateStart.Date > rule.Until.Value.Date) break;
@@ -192,6 +232,9 @@ internal static class SchedulerRecurrenceExpander
         while (true)
         {
             yield return current;
+            // The step count is no longer bounded by a flat 500, so the advance has to guard
+            // its own overflow rather than borrow that bound (Codex review of PR #424).
+            if ((DateTime.MaxValue - current).TotalDays < interval) yield break;
             current = current.AddDays(interval);
         }
     }
@@ -214,10 +257,20 @@ internal static class SchedulerRecurrenceExpander
         var weekOffset = 0;
         while (true)
         {
-            var weekStart = anchorWeekStart.AddDays(weekOffset * 7L * interval);
+            var offsetDays = weekOffset * 7L * interval;
+            if (offsetDays > (DateTime.MaxValue - anchorWeekStart).TotalDays) yield break;
+            var weekStart = anchorWeekStart.AddDays(offsetDays);
             foreach (var day in days)
             {
-                var candidate = weekStart.AddDays(IsoWeekdayIndex(day)) + dtstart.TimeOfDay;
+                // The day offset and the time-of-day are each an advance of their own, and the
+                // last week before DateTime.MaxValue overflows on one of them rather than on the
+                // week step guarded above.
+                var dayOffset = IsoWeekdayIndex(day);
+                if (dayOffset > (DateTime.MaxValue - weekStart).TotalDays) yield break;
+                var atMidnight = weekStart.AddDays(dayOffset);
+                if (dtstart.TimeOfDay > DateTime.MaxValue - atMidnight) yield break;
+
+                var candidate = atMidnight + dtstart.TimeOfDay;
                 if (candidate >= dtstart)
                     yield return candidate;
             }
@@ -233,7 +286,10 @@ internal static class SchedulerRecurrenceExpander
         {
             // AddMonths on a day-1 anchor sidesteps the "Jan 31 + 1 month" overflow trap —
             // SchedulerDateMath.StartOfMonth documents the identical concern for the month grid.
-            var monthAnchor = new DateTime(dtstart.Year, dtstart.Month, 1).AddMonths(monthOffset * interval);
+            var anchor = new DateTime(dtstart.Year, dtstart.Month, 1);
+            var months = (long)monthOffset * interval;
+            if (months > (DateTime.MaxValue.Year - anchor.Year) * 12L) yield break;
+            var monthAnchor = anchor.AddMonths((int)months);
             var year = monthAnchor.Year;
             var month = monthAnchor.Month;
 
@@ -262,6 +318,10 @@ internal static class SchedulerRecurrenceExpander
 
             foreach (var date in datesThisMonth)
             {
+                // Same shape as the weekly generator: the time-of-day is its own advance, and
+                // the month anchor can already sit on the last representable day.
+                if (dtstart.TimeOfDay > DateTime.MaxValue - date.Date) yield break;
+
                 var candidate = date.Date + dtstart.TimeOfDay;
                 if (candidate >= dtstart)
                     yield return candidate;

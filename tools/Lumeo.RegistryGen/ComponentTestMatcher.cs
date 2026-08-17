@@ -1,3 +1,4 @@
+using System.Text;
 using System.Text.RegularExpressions;
 
 namespace Lumeo.RegistryGen;
@@ -30,13 +31,17 @@ namespace Lumeo.RegistryGen;
 ///      in a component's own folder is coverage for that component by
 ///      construction.
 ///
-///   2. A REAL TYPE REFERENCE in the file's code (block/line/XML-doc
-///      comments AND string literals stripped first, so neither prose
-///      mentions — e.g. a doc comment noting "same pattern already fixed
-///      for Sheet/Drawer/Dialog" — nor quoted words — an expected button
-///      caption, a bUnit parameter NAME passed as a string, a component
-///      name inside an embedded JSON payload — ever count. Interpolation
-///      holes are exempt: `$"{typeof(Sheet).Name}"` is code, not text):
+///   2. A REAL TYPE REFERENCE in the file's code. Everything that is not
+///      code is blanked first by a single left-to-right scanner: C#
+///      block/line/XML-doc comments, Razor <c>@* *@</c> comments, and the
+///      text of every string and char literal. So neither prose mentions
+///      — a doc comment noting "same pattern already fixed for
+///      Sheet/Drawer/Dialog" — nor quoted words — an expected button caption,
+///      a bUnit parameter NAME passed as a string, a component name inside
+///      an embedded JSON payload — ever count. Interpolation holes are
+///      exempt in every literal form, raw ones included:
+///      <c>$"{typeof(Sheet).Name}"</c> is code, not text (and a literal
+///      nested back inside such a hole is text again):
 ///
 ///        a) An EXACT identifier match (word boundary on both sides) that is
 ///           not a member/property/method access on some unrelated receiver.
@@ -70,8 +75,6 @@ namespace Lumeo.RegistryGen;
 /// </summary>
 public static class ComponentTestMatcher
 {
-    private static readonly Regex BlockComment = new(@"/\*[\s\S]*?\*/", RegexOptions.Compiled);
-    private static readonly Regex LineComment = new(@"//[^\n]*", RegexOptions.Compiled);
     private static readonly Regex ClassNameRegex = new(@"\bclass\s+(\w+)", RegexOptions.Compiled);
 
     /// <summary>
@@ -87,7 +90,7 @@ public static class ComponentTestMatcher
     {
         if (OwnsDedicatedFolder(repoRelativePath, componentName)) return true;
 
-        var codeOnly = StripComments(fileContent);
+        var codeOnly = StripNonCode(fileContent);
 
         if (HasRealTypeReference(codeOnly, componentName)) return true;
 
@@ -139,87 +142,237 @@ public static class ComponentTestMatcher
 
     // ----- (2a) real type reference in code -----
 
-    private static string StripComments(string text)
+    /// <summary>
+    /// Blank out everything in a test file that is NOT code — comments and literal text —
+    /// leaving the code, and the holes inside interpolated strings, to be scanned.
+    ///
+    /// One left-to-right pass, because the alternative (a pipeline of regexes, one per
+    /// construct) cannot express "whichever opens FIRST wins", and that is exactly where it
+    /// breaks: stripping line comments before literals loses the reference in
+    /// <c>var sep = "//"; Render&lt;Lumeo.Sheet&gt;();</c>, while stripping literals first
+    /// eats a commented-out string's opening quote and runs on to the next one. A scanner
+    /// has no ordering to get wrong.
+    ///
+    /// Newlines survive so the result stays line-aligned with the input.
+    /// </summary>
+    private static string StripNonCode(string text)
     {
-        var codeOnly = BlockComment.Replace(text, " ");
-        codeOnly = LineComment.Replace(codeOnly, " ");
+        var sb = new StringBuilder(text.Length);
+        var i = 0;
 
-        // ...AND STRING LITERALS, despite the name. A quoted word is not a type reference, and
-        // counting one published false coverage: a Scheduler test asserting that a toolbar
-        // button reads == "Timeline" was filed under the unrelated Timeline component, pointing
-        // registry and MCP consumers at a suite that never renders it (review of PR #424).
-        // The same shape produced ~150 other bogus links across the registry — "Card body"
-        // fixture text, an AddAttribute(1, "Label", ...) parameter NAME, even a "Progress":20
-        // field inside an embedded JSON payload.
-        //
-        // Order matters, widest quoting form first, or one form eats another's delimiters:
-        // raw ("""...""") strings may contain lone quotes, verbatim (@"...") strings escape by
-        // doubling and ignore backslashes, and regular ones escape with a backslash.
-        codeOnly = RawString.Replace(codeOnly, Blank);
-        // Interpolated strings keep their {...} holes: a hole is real code, and blanking
-        // $"{typeof(Sheet).Name}" would trade this false positive for a false negative.
-        codeOnly = InterpolatedVerbatimString.Replace(codeOnly, BlankOutsideHoles);
-        codeOnly = InterpolatedString.Replace(codeOnly, BlankOutsideHoles);
-        codeOnly = VerbatimString.Replace(codeOnly, Blank);
-        return RegularString.Replace(codeOnly, Blank);
-    }
-
-    /// <summary>"""...""" — opens with three or more quotes, closes on the same count.</summary>
-    private static readonly Regex RawString =
-        new(@"(""{3,})[\s\S]*?\1", RegexOptions.Compiled);
-
-    /// <summary>$@"..." / @$"..." — doubled quotes escape, backslashes do not.</summary>
-    private static readonly Regex InterpolatedVerbatimString =
-        new(@"(?:\$@|@\$)""(?:[^""]|"""")*""", RegexOptions.Compiled | RegexOptions.Singleline);
-
-    /// <summary>$"..." — backslash escapes, never spans a line.</summary>
-    private static readonly Regex InterpolatedString =
-        new(@"\$""(?:\\.|[^""\\\n])*""", RegexOptions.Compiled);
-
-    /// <summary>@"..." — doubled quotes escape, backslashes do not.</summary>
-    private static readonly Regex VerbatimString =
-        new(@"@""(?:[^""]|"""")*""", RegexOptions.Compiled | RegexOptions.Singleline);
-
-    /// <summary>"..." — backslash escapes, never spans a line.</summary>
-    private static readonly Regex RegularString =
-        new(@"""(?:\\.|[^""\\\n])*""", RegexOptions.Compiled);
-
-    /// <summary>Blank a literal out, keeping its newlines so the line-based LineComment pass
-    /// and any future line-anchored diagnostics still see the original line structure.</summary>
-    private static string Blank(Match m) => Blank(m.Value);
-
-    private static string Blank(string s)
-    {
-        var chars = s.ToCharArray();
-        for (var i = 0; i < chars.Length; i++)
+        while (i < text.Length)
         {
-            if (chars[i] != '\n' && chars[i] != '\r') chars[i] = ' ';
-        }
-        return new string(chars);
-    }
+            var c = text[i];
 
-    /// <summary>Blank an interpolated literal's text but leave its {...} holes intact.
-    /// "{{" and "}}" are escaped braces — literal text, not a hole.</summary>
-    private static string BlankOutsideHoles(Match m)
-    {
-        var s = m.Value;
-        var result = new System.Text.StringBuilder(s.Length);
-        var depth = 0;
-        for (var i = 0; i < s.Length; i++)
-        {
-            var c = s[i];
-            if (depth == 0 && (c == '{' || c == '}') && i + 1 < s.Length && s[i + 1] == c)
+            // Razor comment. .razor test files are scanned too, and @* *@ is not a C# block
+            // comment: a "(state-on-data-change, Gantt-class)" note in a Scrollspy host was
+            // published as Gantt coverage until this case existed.
+            if (c == '@' && Next(text, i) == '*')
             {
-                result.Append("  ");   // escaped brace pair: literal text
-                i++;
+                i = BlankTo(sb, text, i, Find(text, "*@", i + 2, after: true));
                 continue;
             }
-            if (c == '{') { depth++; result.Append(c); continue; }
-            if (c == '}' && depth > 0) { depth--; result.Append(c); continue; }
-            if (depth > 0 || c == '\n' || c == '\r') result.Append(c);
-            else result.Append(' ');
+            if (c == '/' && Next(text, i) == '/')
+            {
+                var nl = text.IndexOf('\n', i);
+                i = BlankTo(sb, text, i, nl < 0 ? text.Length : nl);
+                continue;
+            }
+            if (c == '/' && Next(text, i) == '*')
+            {
+                i = BlankTo(sb, text, i, Find(text, "*/", i + 2, after: true));
+                continue;
+            }
+            // A char literal, so that '"' does not open a string and swallow the file.
+            if (c == '\'')
+            {
+                i = BlankTo(sb, text, i, EndOfCharLiteral(text, i));
+                continue;
+            }
+            if (c is '"' or '$' or '@')
+            {
+                var (quote, dollars, verbatim) = ReadStringPrefix(text, i);
+                if (quote >= 0)
+                {
+                    i = AppendStringLiteral(sb, text, i, quote, dollars, verbatim);
+                    continue;
+                }
+            }
+
+            sb.Append(c);
+            i++;
         }
-        return result.ToString();
+
+        return sb.ToString();
+    }
+
+    private static char Next(string text, int i) => i + 1 < text.Length ? text[i + 1] : '\0';
+
+    private static int Find(string text, string needle, int from, bool after)
+    {
+        var at = text.IndexOf(needle, Math.Min(from, text.Length), StringComparison.Ordinal);
+        return at < 0 ? text.Length : (after ? at + needle.Length : at);
+    }
+
+    /// <summary>Reads an optional <c>$</c>/<c>@</c> prefix run starting at <paramref name="i"/>.
+    /// Returns the index of the opening quote, or -1 when this is not a string literal at all
+    /// (a lone <c>@</c> before an identifier, a <c>$</c> in some other position).</summary>
+    private static (int quote, int dollars, bool verbatim) ReadStringPrefix(string text, int i)
+    {
+        var j = i;
+        var dollars = 0;
+        var verbatim = false;
+        while (j < text.Length && (text[j] == '$' || text[j] == '@'))
+        {
+            if (text[j] == '$') dollars++; else verbatim = true;
+            j++;
+        }
+        return j < text.Length && text[j] == '"' ? (j, dollars, verbatim) : (-1, 0, false);
+    }
+
+    private static int EndOfCharLiteral(string text, int start)
+    {
+        var i = start + 1;
+        while (i < text.Length)
+        {
+            if (text[i] == '\\') { i += 2; continue; }
+            if (text[i] == '\'') return i + 1;
+            if (text[i] == '\n') return i;          // unterminated — do not run past the line
+            i++;
+        }
+        return text.Length;
+    }
+
+    /// <summary>Appends one string literal, blanked except for its interpolation holes, and
+    /// returns the index just past it.</summary>
+    private static int AppendStringLiteral(StringBuilder sb, string text, int start, int quote,
+                                           int dollars, bool verbatim)
+    {
+        BlankTo(sb, text, start, quote);           // the $ / @ prefix itself
+
+        var fence = 0;
+        while (quote + fence < text.Length && text[quote + fence] == '"') fence++;
+        // Raw strings open with three or more quotes and never carry the verbatim @.
+        var raw = !verbatim && fence >= 3;
+        var delimiter = raw ? fence : 1;
+
+        BlankTo(sb, text, quote, quote + delimiter);
+        var i = quote + delimiter;
+
+        while (i < text.Length)
+        {
+            // Closing delimiter?
+            if (text[i] == '"')
+            {
+                if (raw)
+                {
+                    var run = 0;
+                    while (i + run < text.Length && text[i + run] == '"') run++;
+                    if (run >= delimiter) return BlankTo(sb, text, i, i + run);
+                    BlankTo(sb, text, i, i + run);
+                    i += run;
+                    continue;
+                }
+                if (verbatim && Next(text, i) == '"') { BlankTo(sb, text, i, i + 2); i += 2; continue; }
+                return BlankTo(sb, text, i, i + 1);
+            }
+            if (!raw && !verbatim && text[i] == '\\') { BlankTo(sb, text, i, Math.Min(i + 2, text.Length)); i += 2; continue; }
+
+            if (dollars > 0 && text[i] == '{')
+            {
+                var run = 0;
+                while (i + run < text.Length && text[i + run] == '{') run++;
+                // In a $"..." literal "{{" is an escaped brace; in a $$"""...""" one a hole
+                // needs as many braces as there are dollars.
+                var opensHole = dollars == 1 ? run != 2 : run >= dollars;
+                if (opensHole)
+                {
+                    var end = EndOfHole(text, i + dollars);
+                    BlankTo(sb, text, i, i + dollars);
+                    // The hole is code, so it gets the same treatment rather than being kept
+                    // verbatim — a literal nested inside it is still text.
+                    sb.Append(StripNonCode(text[(i + dollars)..end]));
+                    i = end;
+                    continue;
+                }
+                BlankTo(sb, text, i, i + run);
+                i += run;
+                continue;
+            }
+
+            BlankTo(sb, text, i, i + 1);
+            i++;
+        }
+
+        return text.Length;
+    }
+
+    /// <summary>Scans from just inside a hole to its closing brace, skipping over literals so a
+    /// brace inside one does not close it early.</summary>
+    private static int EndOfHole(string text, int start)
+    {
+        var depth = 1;
+        var i = start;
+        while (i < text.Length)
+        {
+            var c = text[i];
+            if (c == '\'') { i = EndOfCharLiteral(text, i); continue; }
+            if (c is '"' or '$' or '@')
+            {
+                var (quote, _, verbatim) = ReadStringPrefix(text, i);
+                if (quote >= 0) { i = EndOfString(text, quote, verbatim); continue; }
+            }
+            if (c == '{') depth++;
+            else if (c == '}' && --depth == 0) return i;
+            i++;
+        }
+        return text.Length;
+    }
+
+    /// <summary>End of a literal whose opening quote is at <paramref name="quote"/>, used only to
+    /// skip past it.</summary>
+    private static int EndOfString(string text, int quote, bool verbatim)
+    {
+        var fence = 0;
+        while (quote + fence < text.Length && text[quote + fence] == '"') fence++;
+        if (!verbatim && fence >= 3)
+        {
+            var close = quote + fence;
+            while (close < text.Length)
+            {
+                if (text[close] == '"')
+                {
+                    var run = 0;
+                    while (close + run < text.Length && text[close + run] == '"') run++;
+                    if (run >= fence) return close + run;
+                    close += run;
+                    continue;
+                }
+                close++;
+            }
+            return text.Length;
+        }
+
+        var i = quote + 1;
+        while (i < text.Length)
+        {
+            if (!verbatim && text[i] == '\\') { i += 2; continue; }
+            if (text[i] == '"')
+            {
+                if (verbatim && Next(text, i) == '"') { i += 2; continue; }
+                return i + 1;
+            }
+            i++;
+        }
+        return text.Length;
+    }
+
+    /// <summary>Appends text[from..to) as blanks (newlines kept) and returns <paramref name="to"/>.</summary>
+    private static int BlankTo(StringBuilder sb, string text, int from, int to)
+    {
+        to = Math.Min(to, text.Length);
+        for (var i = from; i < to; i++) sb.Append(text[i] is '\n' or '\r' ? text[i] : ' ');
+        return to;
     }
 
     private static bool HasRealTypeReference(string codeOnly, string componentName)
