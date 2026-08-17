@@ -251,6 +251,29 @@
         </Stack>
     </ComponentDemo>
 
+    <ComponentDemo Title="Resource timeline" Code="@_fpTimelineCode">
+        <Stack Gap="3">
+            <Lumeo.Text Size="sm" Color="muted">
+                <Lumeo.Code>SchedulerView.Timeline</Lumeo.Code> puts one <em>row</em> per resource and
+                runs the time axis <strong>horizontally</strong> across days, weeks or months — the
+                shape Outlook's scheduling assistant has. A different question from the resource view
+                below: this one shows how a resource is booked over a stretch, that one shows who is
+                where on a single day.
+                <br /><br />
+                Overlapping bookings stack into their own lanes rather than drawing over each other,
+                so a double booking is visible instead of hidden, and the row grows to fit. A booking
+                running in from before the window is clamped to the edge, not dropped — a resource
+                that is busy must never read as free.
+            </Lumeo.Text>
+            <Scheduler Events="_timelineEvents"
+                       Resources="_demoResources"
+                       InitialView="SchedulerView.Timeline"
+                       TimelineUnit="SchedulerTimelineUnit.Day"
+                       TimelineColumns="10"
+                       Height="320px" />
+        </Stack>
+    </ComponentDemo>
+
     <ComponentDemo Title="Resource view" Code="@_fpResourceCode">
         <Stack Gap="3">
             <Lumeo.Text Size="sm" Color="muted">
@@ -509,6 +532,35 @@
            InitialView=""SchedulerView.Month""
            ShowWeekNumbers=""true""
            Height=""640px"" />";
+
+    /// <summary>
+    /// Multi-day bookings, because that is what a resource timeline is for. The hour-long
+    /// meetings the other demos use render as four-pixel slivers on a day-per-column axis —
+    /// correct, and useless.
+    /// </summary>
+    private static List<SchedulerEvent> BuildTimelineEvents()
+    {
+        var d = DateTime.Today;
+        return new List<SchedulerEvent>
+        {
+            new("t1", "Berlin offsite",   d.AddDays(1),  d.AddDays(4),  ResourceId: "alice"),
+            new("t2", "Client workshop",  d.AddDays(5),  d.AddDays(7),  ResourceId: "alice"),
+            // Overlaps t1 — the double booking the lane packing exists to surface.
+            new("t3", "Recruiting panel", d.AddDays(2),  d.AddDays(3),  ResourceId: "alice"),
+            new("t4", "Platform sprint",  d.AddDays(-2), d.AddDays(3),  ResourceId: "bob"),
+            new("t5", "On call",          d.AddDays(4),  d.AddDays(9),  ResourceId: "bob"),
+            new("t6", "Design residency", d,             d.AddDays(6),  ResourceId: "carol"),
+        };
+    }
+
+    private List<SchedulerEvent> _timelineEvents = BuildTimelineEvents();
+
+    private string _fpTimelineCode = @"<Scheduler Events=""_events""
+           Resources=""_resources""
+           InitialView=""SchedulerView.Timeline""
+           TimelineUnit=""SchedulerTimelineUnit.Day""
+           TimelineColumns=""10""
+           Height=""320px"" />";
 
     private string _fpResourceCode = @"<Scheduler Events=""_events""
            Resources=""_resources""

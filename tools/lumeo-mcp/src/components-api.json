@@ -1,11 +1,11 @@
 {
   "$schema": "https://lumeo.nativ.sh/components-api-schema.json",
   "version": "4.3.3",
-  "generated": "2026-08-17T06:14:27.2096336Z",
+  "generated": "2026-08-17T06:45:44.0374481Z",
   "stats": {
     "componentCount": 165,
-    "totalParameters": 4558,
-    "totalEnums": 91,
+    "totalParameters": 4574,
+    "totalEnums": 92,
     "totalRecords": 65,
     "serviceCount": 33,
     "thinFallbacks": []
@@ -49710,6 +49710,8 @@
         "UI/Scheduler/SchedulerTimeGridLayout.cs",
         "UI/Scheduler/SchedulerTimeGridView.razor",
         "UI/Scheduler/SchedulerTimeZoneProjection.cs",
+        "UI/Scheduler/SchedulerTimelineScale.cs",
+        "UI/Scheduler/SchedulerTimelineView.razor",
         "UI/Scheduler/SchedulerTitleFormatter.cs",
         "UI/Scheduler/SchedulerToolbar.razor",
         "UI/Scheduler/SchedulerTypes.cs"
@@ -49899,6 +49901,24 @@
           "isEditorRequired": false
         },
         {
+          "name": "TimelineUnit",
+          "type": "SchedulerTimelineUnit",
+          "default": "SchedulerTimelineUnit.Day",
+          "description": "Column granularity for Timeline — a day, a week, or a calendar month per column. Default: days.",
+          "isCascading": false,
+          "captureUnmatched": false,
+          "isEditorRequired": false
+        },
+        {
+          "name": "TimelineColumns",
+          "type": "int?",
+          "default": null,
+          "description": "How many columns Timeline spans. Default 14. Kept separate from VisibleDays because they are different units — a timeline column can be a month, an N-day window's is always a day.",
+          "isCascading": false,
+          "captureUnmatched": false,
+          "isEditorRequired": false
+        },
+        {
           "name": "TimeZone",
           "type": "string?",
           "default": null,
@@ -49977,6 +49997,15 @@
       ],
       "enums": [
         {
+          "name": "SchedulerTimelineUnit",
+          "values": [
+            "Day",
+            "Week",
+            "Month"
+          ],
+          "description": "The granularity of one column on a SchedulerTimelineView's horizontal axis."
+        },
+        {
           "name": "SchedulerView",
           "values": [
             "Month",
@@ -49984,7 +50013,8 @@
             "Day",
             "List",
             "Resource",
-            "MultiDay"
+            "MultiDay",
+            "Timeline"
           ],
           "description": "Built-in views exposed by the Lumeo scheduler. Maps onto FullCalendar's dayGridMonth / timeGridWeek / timeGridDay / listWeek view names."
         }
@@ -49995,6 +50025,7 @@
         "--color-accent",
         "--color-border",
         "--color-card",
+        "--color-destructive",
         "--color-foreground",
         "--color-muted",
         "--color-muted-foreground",
@@ -50759,6 +50790,153 @@
           "parseFailed": false,
           "parseError": null
         },
+        "SchedulerTimelineView": {
+          "componentName": "SchedulerTimelineView",
+          "fileName": "SchedulerTimelineView.razor",
+          "namespace": "Lumeo",
+          "inheritsFrom": null,
+          "implements": [],
+          "parameters": [
+            {
+              "name": "Resources",
+              "type": "IReadOnlyList<SchedulerResource>?",
+              "default": null,
+              "description": "The resources to lay out, one row each. An event without a matching ResourceId is not rendered.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "Events",
+              "type": "IEnumerable<SchedulerEvent>?",
+              "default": null,
+              "description": "The events to place.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "RangeStart",
+              "type": "DateTime",
+              "default": "DateTime.Today",
+              "description": "First date on the axis. Snapped to the start of its column — a week axis starting mid-week would offset every bar on it by the remainder.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "Columns",
+              "type": "int",
+              "default": "14",
+              "description": "How many columns the axis spans. Clamped to 1..366.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "Unit",
+              "type": "SchedulerTimelineUnit",
+              "default": "SchedulerTimelineUnit.Day",
+              "description": "Column granularity: a day, a week, or a calendar month per column.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "ColumnWidth",
+              "type": "int?",
+              "default": null,
+              "description": "Column width in pixels; defaults per unit. The axis scrolls horizontally rather than squeezing columns, so a long range stays readable instead of collapsing.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "LaneHeight",
+              "type": "int",
+              "default": "22",
+              "description": "Height of one lane inside a row. A row grows to fit its overlapping bookings.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "FirstDayOfWeek",
+              "type": "DayOfWeek",
+              "default": "DayOfWeek.Monday",
+              "description": "Which day a week column starts on. Only read when Unit is Week.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "Today",
+              "type": "DateTime?",
+              "default": null,
+              "description": "Marks the column containing this date. Defaults to today; a caller can pin it so a test or a screenshot renders deterministically.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "OnEventClick",
+              "type": "EventCallback<SchedulerEvent>",
+              "default": null,
+              "description": "Raised when a booking bar is clicked.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "ResolveEventColor",
+              "type": "Func<SchedulerEvent, string?>?",
+              "default": null,
+              "description": "Per-event colour override, matching the other views' resolver.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "ResolveEventClassNames",
+              "type": "Func<SchedulerEvent, string?>?",
+              "default": null,
+              "description": "Extra CSS classes per bar, matching the other views' resolver.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "Class",
+              "type": "string?",
+              "default": null,
+              "description": null,
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "AdditionalAttributes",
+              "type": "Dictionary<string, object>?",
+              "default": null,
+              "description": null,
+              "isCascading": false,
+              "captureUnmatched": true,
+              "isEditorRequired": false
+            }
+          ],
+          "events": [
+            {
+              "name": "OnEventClick",
+              "type": "EventCallback<SchedulerEvent>",
+              "description": "Raised when a booking bar is clicked."
+            }
+          ],
+          "enums": [],
+          "records": [],
+          "gotchas": [],
+          "parseFailed": false,
+          "parseError": null
+        },
         "SchedulerToolbar": {
           "componentName": "SchedulerToolbar",
           "fileName": "SchedulerToolbar.razor",
@@ -50870,6 +51048,7 @@
       },
       "a11y": {
         "roles": [
+          "columnheader",
           "dialog",
           "grid",
           "gridcell",

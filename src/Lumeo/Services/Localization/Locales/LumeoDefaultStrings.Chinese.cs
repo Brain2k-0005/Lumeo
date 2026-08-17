@@ -263,6 +263,7 @@ internal static partial class LumeoDefaultStrings
         ["Scheduler.WeekNumberLabel"] = "第 {0} 周",
         ["Scheduler.ResourceGridLabel"] = "{0} 的资源",
         ["Scheduler.Resources"] = "资源",
+        ["Scheduler.Timeline"] = "时间轴",
         ["Scheduler.NDays"] = "{0} 天",
         ["Scheduler.Announce.EventMoved"] = "{0} 已移至 {1}",
         ["Scheduler.Announce.EventRescheduled"] = "{0} 现在为 {1} 至 {2}",

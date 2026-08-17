@@ -1,0 +1,293 @@
+@namespace Lumeo
+@using System.Globalization
+@inject Lumeo.Services.Localization.ILumeoLocalizer L
+
+@* Resource timeline: rows are resources, the time axis runs HORIZONTALLY across days,
+   weeks or months. Distinct from SchedulerResourceView, which lays out a single day with
+   one column per resource and a vertical clock — that one answers "who is where today",
+   this one answers "how is this resource booked over the coming stretch". *@
+<div class="@($"flex flex-col w-full rounded-md border border-border/60 overflow-hidden {Class}".Trim())"
+     @attributes="AdditionalAttributes">
+
+    <div class="flex" role="group" aria-label="@L["Scheduler.Resources"]">
+
+        @* Resource gutter — outside the horizontal scroller so it stays put while the axis
+           scrolls. Its rows must match the timeline's row heights exactly or the two halves
+           shear apart, which is why both read the same RowStyle. *@
+        <div class="flex-none w-40 border-e border-border/60" role="list">
+            <div class="h-9 border-b border-border/60 bg-muted/30 px-2 flex items-center text-[11px] font-medium text-muted-foreground">
+                @L["Scheduler.Resources"]
+            </div>
+            @for (var r = 0; r < _rows.Count; r++)
+            {
+                var row = _rows[r];
+                <div role="listitem"
+                     class="border-b border-border/60 px-2 flex items-center gap-1.5 text-xs"
+                     style="@RowStyle(r)"
+                     data-timeline-resource="@row.Resource.Id">
+                    <span class="inline-block h-2.5 w-2.5 flex-none rounded-[calc(var(--radius)*2)]"
+                          style="background: @(row.Resource.Color ?? "var(--color-primary)")" aria-hidden="true"></span>
+                    <span class="truncate">@row.Resource.Title</span>
+                </div>
+            }
+        </div>
+
+        <div class="flex-1 min-w-0 overflow-x-auto">
+            <div class="relative" style="@TrackStyle()">
+
+                @* Axis header *@
+                <div class="flex h-9 border-b border-border/60 bg-muted/30" role="row">
+                    @foreach (var col in _columns)
+                    {
+                        <div role="columnheader"
+                             class="@ColumnHeaderClasses(col)"
+                             style="@ColumnStyle()"
+                             data-timeline-column="@col.ToString("yyyy-MM-dd")">
+                            @SchedulerTimelineScale.ColumnLabel(Unit, col, CultureInfo.CurrentUICulture)
+                        </div>
+                    }
+                </div>
+
+                @for (var r = 0; r < _rows.Count; r++)
+                {
+                    var row = _rows[r];
+                    <div class="relative border-b border-border/60" style="@RowStyle(r)" role="row"
+                         data-timeline-row="@row.Resource.Id">
+
+                        @* Column rules, drawn behind the bars so a booking can cross them. *@
+                        @foreach (var col in _columns)
+                        {
+                            <div class="@GridLineClasses(col)"
+                                 style="@ColumnRuleStyle(col)"
+                                 aria-hidden="true"></div>
+                        }
+
+                        @foreach (var bar in row.Bars)
+                        {
+                            <button type="button"
+                                    class="@BarClasses(bar)"
+                                    style="@BarStyle(bar)"
+                                    data-event-id="@bar.Source.Id"
+                                    data-timeline-bar="@bar.Source.Id"
+                                    aria-label="@BarAriaLabel(row.Resource, bar)"
+                                    @onclick="() => OnEventClickAsync(bar.Source)">
+                                <span class="truncate">@bar.Source.Title</span>
+                            </button>
+                        }
+                    </div>
+                }
+
+                @if (_todayLeft is not null)
+                {
+                    @* One rule down the whole track, not a stub per row — the same shape the
+                       time grid's now-indicator settled on after it was reported as spanning
+                       only a single column. *@
+                    <div data-timeline-today
+                         class="pointer-events-none absolute top-9 bottom-0 border-l-2 border-destructive"
+                         style="@TodayStyle()"
+                         aria-hidden="true"></div>
+                }
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    /// <summary>The resources to lay out, one row each. An event without a matching <see cref="SchedulerEvent.ResourceId"/> is not rendered.</summary>
+    [Parameter] public IReadOnlyList<SchedulerResource>? Resources { get; set; }
+
+    /// <summary>The events to place.</summary>
+    [Parameter] public IEnumerable<SchedulerEvent>? Events { get; set; }
+
+    /// <summary>
+    /// First date on the axis. Snapped to the start of its column — a week axis starting
+    /// mid-week would offset every bar on it by the remainder.
+    /// </summary>
+    [Parameter] public DateTime RangeStart { get; set; } = DateTime.Today;
+
+    /// <summary>How many columns the axis spans. Clamped to 1..366.</summary>
+    [Parameter] public int Columns { get; set; } = 14;
+
+    /// <summary>Column granularity: a day, a week, or a calendar month per column.</summary>
+    [Parameter] public SchedulerTimelineUnit Unit { get; set; } = SchedulerTimelineUnit.Day;
+
+    /// <summary>
+    /// Column width in pixels; defaults per unit. The axis scrolls horizontally rather than
+    /// squeezing columns, so a long range stays readable instead of collapsing.
+    /// </summary>
+    [Parameter] public int? ColumnWidth { get; set; }
+
+    /// <summary>Height of one lane inside a row. A row grows to fit its overlapping bookings.</summary>
+    [Parameter] public int LaneHeight { get; set; } = 22;
+
+    /// <summary>Which day a week column starts on. Only read when <see cref="Unit"/> is Week.</summary>
+    [Parameter] public DayOfWeek FirstDayOfWeek { get; set; } = DayOfWeek.Monday;
+
+    /// <summary>
+    /// Marks the column containing this date. Defaults to today; a caller can pin it so a
+    /// test or a screenshot renders deterministically.
+    /// </summary>
+    [Parameter] public DateTime? Today { get; set; }
+
+    /// <summary>Raised when a booking bar is clicked.</summary>
+    [Parameter] public EventCallback<SchedulerEvent> OnEventClick { get; set; }
+
+    /// <summary>Per-event colour override, matching the other views' resolver.</summary>
+    [Parameter] public Func<SchedulerEvent, string?>? ResolveEventColor { get; set; }
+
+    /// <summary>Extra CSS classes per bar, matching the other views' resolver.</summary>
+    [Parameter] public Func<SchedulerEvent, string?>? ResolveEventClassNames { get; set; }
+
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private sealed record Bar(SchedulerEvent Source, double Left, double Width, int Lane);
+    private sealed record Row(SchedulerResource Resource, IReadOnlyList<Bar> Bars, int Lanes);
+
+    private List<Row> _rows = new();
+    private IReadOnlyList<DateTime> _columns = Array.Empty<DateTime>();
+    private DateTime _origin;
+    private double _totalWidth;
+    private double? _todayLeft;
+
+    private static readonly CultureInfo Inv = CultureInfo.InvariantCulture;
+
+    private int ColumnWidthPx => ColumnWidth ?? SchedulerTimelineScale.DefaultColumnWidth(Unit);
+    private int EffectiveColumns => Math.Clamp(Columns, 1, 366);
+
+    protected override void OnParametersSet()
+    {
+        _origin = SchedulerTimelineScale.AlignOrigin(Unit, RangeStart, FirstDayOfWeek);
+        _columns = SchedulerTimelineScale.BuildColumns(Unit, _origin, EffectiveColumns);
+        _totalWidth = SchedulerTimelineScale.TotalWidth(Unit, _origin, EffectiveColumns, ColumnWidthPx);
+
+        var today = Today ?? DateTime.Today;
+        _todayLeft = _columns.Any(c => SchedulerTimelineScale.IsCurrentColumn(Unit, c, today))
+            ? SchedulerTimelineScale.DateToPixel(Unit, _origin, today, ColumnWidthPx)
+            : null;
+
+        BuildRows();
+    }
+
+    private void BuildRows()
+    {
+        _rows = new List<Row>();
+        var resources = Resources ?? Array.Empty<SchedulerResource>();
+        if (resources.Count == 0) return;
+
+        var events = (Events ?? Enumerable.Empty<SchedulerEvent>()).ToList();
+        var axisStart = _origin;
+        var axisEnd = AxisEnd();
+
+        foreach (var res in resources)
+        {
+            // Only what overlaps the visible axis, and only for this resource. An overlapping
+            // booking is CLAMPED to the axis rather than dropped, so one running in from
+            // before the window still shows the resource as busy instead of vanishing.
+            var mine = events
+                .Where(e => !string.IsNullOrEmpty(e.ResourceId)
+                            && string.Equals(e.ResourceId, res.Id, StringComparison.Ordinal)
+                            && e.End > axisStart && e.Start < axisEnd)
+                .OrderBy(e => e.Start)
+                .ToList();
+
+            // Lane packing: the first lane whose previous booking has already ended. Without
+            // it a double booking would draw on top of itself and read as a single one, which
+            // is precisely the conflict this view exists to surface.
+            var laneEnds = new List<DateTime>();
+            var bars = new List<Bar>(mine.Count);
+            foreach (var e in mine)
+            {
+                var lane = laneEnds.FindIndex(end => end <= e.Start);
+                if (lane < 0) { laneEnds.Add(e.End); lane = laneEnds.Count - 1; }
+                else laneEnds[lane] = e.End;
+
+                var from = e.Start < axisStart ? axisStart : e.Start;
+                var to = e.End > axisEnd ? axisEnd : e.End;
+                var left = SchedulerTimelineScale.DateToPixel(Unit, _origin, from, ColumnWidthPx);
+                var right = SchedulerTimelineScale.DateToPixel(Unit, _origin, to, ColumnWidthPx);
+
+                // A zero-length or sub-pixel booking still has to be visible and clickable.
+                bars.Add(new Bar(e, left, Math.Max(6, right - left), lane));
+            }
+
+            _rows.Add(new Row(res, bars, Math.Max(1, laneEnds.Count)));
+        }
+    }
+
+    private DateTime AxisEnd() => Unit switch
+    {
+        SchedulerTimelineUnit.Day => _origin.AddDays(EffectiveColumns),
+        SchedulerTimelineUnit.Week => _origin.AddDays(EffectiveColumns * 7),
+        SchedulerTimelineUnit.Month => _origin.AddMonths(EffectiveColumns),
+        _ => _origin.AddDays(EffectiveColumns),
+    };
+
+    private string TrackStyle() =>
+        string.Create(Inv, $"width:{_totalWidth.ToString("0.##", Inv)}px;");
+
+    private string ColumnStyle() =>
+        string.Create(Inv, $"width:{ColumnWidthPx}px; flex:0 0 {ColumnWidthPx}px;");
+
+    private string ColumnRuleStyle(DateTime column)
+    {
+        var left = SchedulerTimelineScale.DateToPixel(Unit, _origin, column, ColumnWidthPx);
+        return string.Create(Inv, $"position:absolute; top:0; bottom:0; left:{left.ToString("0.##", Inv)}px; width:{ColumnWidthPx}px;");
+    }
+
+    private string TodayStyle() =>
+        string.Create(Inv, $"left:{(_todayLeft ?? 0).ToString("0.##", Inv)}px;");
+
+    private string RowStyle(int index)
+    {
+        var lanes = _rows[index].Lanes;
+        return string.Create(Inv, $"height:{lanes * LaneHeight + 8}px;");
+    }
+
+    private string ColumnHeaderClasses(DateTime col)
+    {
+        var classes = "flex items-center justify-center border-e border-border/40 text-[11px] text-muted-foreground";
+        if (SchedulerTimelineScale.IsCurrentColumn(Unit, col, Today ?? DateTime.Today))
+            classes += " font-semibold text-foreground";
+        return classes;
+    }
+
+    private string GridLineClasses(DateTime col)
+    {
+        var classes = "border-e border-border/25";
+        if (SchedulerTimelineScale.IsCurrentColumn(Unit, col, Today ?? DateTime.Today)) classes += " bg-accent/20";
+        return classes;
+    }
+
+    private string BarClasses(Bar bar)
+    {
+        var classes = "absolute flex items-center rounded px-1.5 text-[11px] font-medium leading-tight text-left border-0 cursor-pointer select-none overflow-hidden";
+        var extra = ResolveEventClassNames?.Invoke(bar.Source);
+        if (!string.IsNullOrEmpty(extra)) classes += " " + extra;
+        return classes;
+    }
+
+    private string BarStyle(Bar bar)
+    {
+        var color = ResolveEventColor?.Invoke(bar.Source) ?? bar.Source.Color ?? "var(--color-primary)";
+        var top = 4 + bar.Lane * LaneHeight;
+        var style = string.Create(Inv,
+            $"left:{bar.Left.ToString("0.##", Inv)}px; width:{bar.Width.ToString("0.##", Inv)}px; top:{top}px; height:{LaneHeight - 4}px; ");
+
+        // The same contrast treatment as every other view: the colour as an 18% tint, the text
+        // mixed toward an anchor that flips with the theme. The raw colour stays on the left
+        // border, which is the bar's colour identity.
+        style += $"background-color: color-mix(in oklab, {color} 18%, transparent);";
+        style += $" color: color-mix(in oklab, {color} 38%, var(--lumeo-event-fg-anchor));";
+        style += $" border-left: 2px solid {color};";
+        return style;
+    }
+
+    private string BarAriaLabel(SchedulerResource res, Bar bar) =>
+        $"{bar.Source.Title}, {res.Title}, {bar.Source.Start.ToString("g", CultureInfo.CurrentUICulture)}";
+
+    private async Task OnEventClickAsync(SchedulerEvent ev)
+    {
+        if (OnEventClick.HasDelegate) await OnEventClick.InvokeAsync(ev);
+    }
+}

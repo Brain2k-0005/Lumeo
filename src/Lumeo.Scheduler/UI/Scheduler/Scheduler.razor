@@ -36,6 +36,7 @@
             @if (Resources is { Count: > 0 })
             {
                 <ToggleGroupItem Value="Resource">@L["Scheduler.Resources"]</ToggleGroupItem>
+                <ToggleGroupItem Value="Timeline">@L["Scheduler.Timeline"]</ToggleGroupItem>
             }
         </ToggleGroup>
     </div>
@@ -113,6 +114,14 @@
                                            OnEventChange="@OnFirstPartyEventChangeAsync"
                                            OnRequestPrev="@PrevAsync" OnRequestNext="@NextAsync" />
                     break;
+                case SchedulerView.Timeline when Resources is { Count: > 0 }:
+                    <SchedulerTimelineView Events="@EffectiveEvents" Resources="@Resources"
+                                           RangeStart="@_fpAnchor" Columns="@EffectiveTimelineColumns"
+                                           Unit="@TimelineUnit" FirstDayOfWeek="@EffectiveFirstDayOfWeek"
+                                           ResolveEventColor="@ResolveFirstPartyColor"
+                                           ResolveEventClassNames="@ResolveFirstPartyClassNames"
+                                           OnEventClick="@OnEventClick" />
+                    break;
                 case SchedulerView.Resource when Resources is { Count: > 0 }:
                     <SchedulerResourceView Events="@EffectiveEvents" Date="@_fpAnchor"
                                            Resources="@Resources"
@@ -120,6 +129,24 @@
                                            ResolveEventColor="@ResolveFirstPartyColor"
                                            ResolveEventClassNames="@ResolveFirstPartyClassNames"
                                            OnEventClick="@OnEventClick" />
+                    break;
+                case SchedulerView.Resource:
+                case SchedulerView.Timeline:
+                    @* Both views need Resources to mean anything. Their documentation has
+                       always said they degrade to the day view; without this case they fell
+                       through to `default`, i.e. the AGENDA — a flat list, which is not what
+                       was promised and not the nearest thing either. Caught by a test written
+                       against the documented behaviour. *@
+                    <SchedulerTimeGridView Events="@EffectiveEvents" AnchorDate="@_fpAnchor" Days="1"
+                                           FirstDayOfWeek="@EffectiveFirstDayOfWeek"
+                                           BusinessHours="@BusinessHours" NowIndicator="@NowIndicator" NowTimeZoneId="@SchedulerTimeZoneProjection.JsZoneId(_displayZone)"
+                                           SlotMinTime="@SlotMinTime" SlotMaxTime="@SlotMaxTime" SlotDuration="@SlotDuration"
+                                           Editable="@Editable" Selectable="@Selectable" CanDrop="@CanDrop"
+                                           ResolveEventColor="@ResolveFirstPartyColor"
+                                           ResolveEventClassNames="@ResolveFirstPartyClassNames"
+                                           OnEventClick="@OnEventClick" OnDateSelect="@OnDateSelect"
+                                           OnEventChange="@OnFirstPartyEventChangeAsync"
+                                           OnRequestPrev="@PrevAsync" OnRequestNext="@NextAsync" />
                     break;
                 default:
                     @* List maps to the agenda view — the same "flat, chronological"
@@ -213,6 +240,21 @@
     /// <para>First-party engine only; see <see cref="SchedulerView.MultiDay"/>.</para>
     /// </summary>
     [Parameter] public int? VisibleDays { get; set; }
+
+    /// <summary>
+    /// Column granularity for <see cref="SchedulerView.Timeline"/> — a day, a week, or a
+    /// calendar month per column. Default: days.
+    /// </summary>
+    [Parameter] public SchedulerTimelineUnit TimelineUnit { get; set; } = SchedulerTimelineUnit.Day;
+
+    /// <summary>
+    /// How many columns <see cref="SchedulerView.Timeline"/> spans. Default 14. Kept separate
+    /// from <see cref="VisibleDays"/> because they are different units — a timeline column can
+    /// be a month, an N-day window's is always a day.
+    /// </summary>
+    [Parameter] public int? TimelineColumns { get; set; }
+
+    private int EffectiveTimelineColumns => Math.Clamp(TimelineColumns ?? 14, 1, 366);
 
     /// <summary>
     /// IANA time zone the grid is READ in, e.g. <c>"Europe/Berlin"</c>. Unset renders the
@@ -461,6 +503,7 @@
         SchedulerView.Resource => ComputeTitle(_fpAnchor, SchedulerView.Day),
         // Neither a month nor a week: name both ends, or two adjacent pages are indistinguishable.
         SchedulerView.MultiDay => MultiDayTitle(),
+        SchedulerView.Timeline => TimelineTitle(),
         var v => ComputeTitle(_fpAnchor, v),
     };
 
@@ -488,6 +531,18 @@
         return EffectiveVisibleDays == 1
             ? ComputeTitle(start, SchedulerView.Day)
             : $"{start:MMM d} – {end:MMM d, yyyy}";
+    }
+
+    private string TimelineTitle()
+    {
+        var origin = SchedulerTimelineScale.AlignOrigin(TimelineUnit, _fpAnchor, EffectiveFirstDayOfWeek);
+        var last = TimelineUnit switch
+        {
+            SchedulerTimelineUnit.Week => origin.AddDays(7 * EffectiveTimelineColumns - 1),
+            SchedulerTimelineUnit.Month => origin.AddMonths(EffectiveTimelineColumns).AddDays(-1),
+            _ => origin.AddDays(EffectiveTimelineColumns - 1),
+        };
+        return $"{origin.ToString("MMM d", Ui)} – {last.ToString("MMM d, yyyy", Ui)}";
     }
 
     private DateTime StartOfWeek(DateTime date)
@@ -660,6 +715,14 @@
         // A rolling window pages by its OWN width, so consecutive pages tile the calendar
         // instead of overlapping or skipping days.
         SchedulerView.MultiDay => _fpAnchor.AddDays(EffectiveVisibleDays * direction),
+        // Pages by the WHOLE axis, in whatever unit its columns are — a month-per-column
+        // timeline stepping by days would barely move.
+        SchedulerView.Timeline => TimelineUnit switch
+        {
+            SchedulerTimelineUnit.Week => _fpAnchor.AddDays(7 * EffectiveTimelineColumns * direction),
+            SchedulerTimelineUnit.Month => _fpAnchor.AddMonths(EffectiveTimelineColumns * direction),
+            _ => _fpAnchor.AddDays(EffectiveTimelineColumns * direction),
+        },
         _ => _fpAnchor.AddDays(7 * direction),
     };
 
