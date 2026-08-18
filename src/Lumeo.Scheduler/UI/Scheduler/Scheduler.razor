@@ -112,7 +112,7 @@
                                         Editable="@Editable" Selectable="@Selectable" CanDrop="@CanDrop"
                                         ResolveEventColor="@ResolveFirstPartyColor"
                                         ResolveEventClassNames="@ResolveFirstPartyClassNames"
-                                        OnEventClick="@OnEventClick" OnDateSelect="@OnDateSelect"
+                                        OnEventClick="@OnEventClickInternalAsync" OnDateSelect="@OnDateSelectInternalAsync"
                                         OnEventChange="@OnFirstPartyEventChangeAsync"
                                         OnRequestPrev="@PrevAsync" OnRequestNext="@NextAsync" />
                     break;
@@ -124,7 +124,7 @@
                                            Editable="@Editable" Selectable="@Selectable" CanDrop="@CanDrop"
                                            ResolveEventColor="@ResolveFirstPartyColor"
                                            ResolveEventClassNames="@ResolveFirstPartyClassNames"
-                                           OnEventClick="@OnEventClick" OnDateSelect="@OnDateSelect"
+                                           OnEventClick="@OnEventClickInternalAsync" OnDateSelect="@OnDateSelectInternalAsync"
                                            OnEventChange="@OnFirstPartyEventChangeAsync"
                                            OnRequestPrev="@PrevAsync" OnRequestNext="@NextAsync" />
                     break;
@@ -136,7 +136,7 @@
                                            Editable="@Editable" Selectable="@Selectable" CanDrop="@CanDrop"
                                            ResolveEventColor="@ResolveFirstPartyColor"
                                            ResolveEventClassNames="@ResolveFirstPartyClassNames"
-                                           OnEventClick="@OnEventClick" OnDateSelect="@OnDateSelect"
+                                           OnEventClick="@OnEventClickInternalAsync" OnDateSelect="@OnDateSelectInternalAsync"
                                            OnEventChange="@OnFirstPartyEventChangeAsync"
                                            OnRequestPrev="@PrevAsync" OnRequestNext="@NextAsync" />
                     break;
@@ -151,7 +151,7 @@
                                            Editable="@Editable" Selectable="@Selectable" CanDrop="@CanDrop"
                                            ResolveEventColor="@ResolveFirstPartyColor"
                                            ResolveEventClassNames="@ResolveFirstPartyClassNames"
-                                           OnEventClick="@OnEventClick" OnDateSelect="@OnDateSelect"
+                                           OnEventClick="@OnEventClickInternalAsync" OnDateSelect="@OnDateSelectInternalAsync"
                                            OnEventChange="@OnFirstPartyEventChangeAsync"
                                            OnRequestPrev="@PrevAsync" OnRequestNext="@NextAsync" />
                     break;
@@ -166,7 +166,7 @@
                                            Unit="@TimelineUnit" FirstDayOfWeek="@EffectiveFirstDayOfWeek"
                                            ResolveEventColor="@ResolveFirstPartyColor"
                                            ResolveEventClassNames="@ResolveFirstPartyClassNames"
-                                           OnEventClick="@OnEventClick" />
+                                           OnEventClick="@OnEventClickInternalAsync" />
                     break;
                 case SchedulerView.Resource when Resources is { Count: > 0 }:
                     <SchedulerResourceView Events="@paneEvents" Date="@_fpAnchor"
@@ -174,7 +174,7 @@
                                            SlotMinTime="@SlotMinTime" SlotMaxTime="@SlotMaxTime" SlotDuration="@SlotDuration"
                                            ResolveEventColor="@ResolveFirstPartyColor"
                                            ResolveEventClassNames="@ResolveFirstPartyClassNames"
-                                           OnEventClick="@OnEventClick" />
+                                           OnEventClick="@OnEventClickInternalAsync" />
                     break;
                 case SchedulerView.Resource:
                 case SchedulerView.Timeline:
@@ -190,7 +190,7 @@
                                            Editable="@Editable" Selectable="@Selectable" CanDrop="@CanDrop"
                                            ResolveEventColor="@ResolveFirstPartyColor"
                                            ResolveEventClassNames="@ResolveFirstPartyClassNames"
-                                           OnEventClick="@OnEventClick" OnDateSelect="@OnDateSelect"
+                                           OnEventClick="@OnEventClickInternalAsync" OnDateSelect="@OnDateSelectInternalAsync"
                                            OnEventChange="@OnFirstPartyEventChangeAsync"
                                            OnRequestPrev="@PrevAsync" OnRequestNext="@NextAsync" />
                     break;
@@ -200,7 +200,7 @@
                     <SchedulerAgendaView Events="@paneEvents" AnchorDate="@FirstPartyAgendaStart" DaysToShow="7"
                                          ResolveEventColor="@ResolveFirstPartyColor"
                                          ResolveEventClassNames="@ResolveFirstPartyClassNames"
-                                         OnEventClick="@OnEventClick" />
+                                         OnEventClick="@OnEventClickInternalAsync" />
                     break;
             }
         </text>;
@@ -241,6 +241,87 @@
         }
     </div>
 </div>
+
+@* Opt-in only. With BuiltInEventDialog off this renders nothing at all, so a caller with its own
+   appointment form pays neither markup nor behaviour for a feature it does not use. *@
+@if (BuiltInEventDialog)
+{
+    <Dialog @bind-Open="_dialogOpen">
+        <DialogContent data-scheduler-dialog="@(DialogIsEdit ? "edit" : "create")">
+            <DialogHeader>
+                <DialogTitle>@(DialogIsEdit ? L["Scheduler.EditEvent"] : L["Scheduler.NewEvent"])</DialogTitle>
+            </DialogHeader>
+
+            <div class="flex flex-col gap-3 py-2">
+                <div class="flex flex-col gap-1.5">
+                    <Label For="scheduler-dialog-title">@L["Scheduler.EventTitle"]</Label>
+                    @* OnInput rather than @bind-Value:event, which only applies to HTML
+                       elements: the Save button is disabled while the title is empty, and
+                       waiting for blur to notice would leave it dead under the user's hands. *@
+                    <Input id="scheduler-dialog-title" data-scheduler-dialog-title
+                           Value="@_dialogTitle"
+                           OnInput="@(e => _dialogTitle = e.Value?.ToString())" />
+                </div>
+
+                <div class="flex items-center gap-2">
+                    <Switch id="scheduler-dialog-allday" @bind-Checked="_dialogAllDay" data-scheduler-dialog-allday />
+                    <Label For="scheduler-dialog-allday">@L["Scheduler.AllDay"]</Label>
+                </div>
+
+                <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <div class="flex flex-col gap-1.5">
+                        <Label For="scheduler-dialog-start">@L["Scheduler.Starts"]</Label>
+                        <input id="scheduler-dialog-start" data-scheduler-dialog-start
+                               type="@(_dialogAllDay ? "date" : "datetime-local")"
+                               class="flex h-9 w-full rounded-[var(--radius)] border border-input bg-transparent px-3 py-1 text-sm shadow-xs outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
+                               value="@FormatForInput(_dialogStart)"
+                               @onchange="@(e => _dialogStart = ParseFromInput(e.Value?.ToString(), _dialogStart))" />
+                    </div>
+                    <div class="flex flex-col gap-1.5">
+                        <Label For="scheduler-dialog-end">@L["Scheduler.Ends"]</Label>
+                        <input id="scheduler-dialog-end" data-scheduler-dialog-end
+                               type="@(_dialogAllDay ? "date" : "datetime-local")"
+                               class="flex h-9 w-full rounded-[var(--radius)] border border-input bg-transparent px-3 py-1 text-sm shadow-xs outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
+                               value="@FormatForInput(_dialogEnd)"
+                               @onchange="@(e => _dialogEnd = ParseFromInput(e.Value?.ToString(), _dialogEnd))" />
+                    </div>
+                </div>
+
+                @if (Calendars is { Count: > 0 })
+                {
+                    <div class="flex flex-col gap-1.5">
+                        <Label For="scheduler-dialog-calendar">@L["Scheduler.Calendars"]</Label>
+                        <select id="scheduler-dialog-calendar" data-scheduler-dialog-calendar
+                                class="flex h-9 w-full rounded-[var(--radius)] border border-input bg-transparent px-3 py-1 text-sm shadow-xs outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
+                                value="@(_dialogCalendarId ?? string.Empty)"
+                                @onchange="@(e => _dialogCalendarId = string.IsNullOrEmpty(e.Value?.ToString()) ? null : e.Value!.ToString())">
+                            @* An explicit "no calendar" entry, because null is a real choice here:
+                               an event filed nowhere is the one thing a visibility toggle can
+                               never hide. *@
+                            <option value="">@L["Scheduler.NoCalendar"]</option>
+                            @foreach (var cal in Calendars)
+                            {
+                                <option value="@cal.Id" selected="@(cal.Id == _dialogCalendarId)">@cal.Name</option>
+                            }
+                        </select>
+                    </div>
+                }
+            </div>
+
+            <DialogFooter>
+                @if (DialogIsEdit)
+                {
+                    <Button Variant="Button.ButtonVariant.Destructive" OnClick="DeleteDialogAsync"
+                            data-scheduler-dialog-delete>@L["Scheduler.Delete"]</Button>
+                }
+                <Button Variant="Button.ButtonVariant.Outline" OnClick="@(() => _dialogOpen = false)"
+                        data-scheduler-dialog-cancel>@L["Scheduler.Cancel"]</Button>
+                <Button OnClick="SaveDialogAsync" Disabled="@string.IsNullOrWhiteSpace(_dialogTitle)"
+                        data-scheduler-dialog-save>@L["Scheduler.Save"]</Button>
+            </DialogFooter>
+        </DialogContent>
+    </Dialog>
+}
 
 @code {
     // ── Core parameters ──────────────────────────────────────────────────
@@ -391,6 +472,22 @@
 
     /// <summary>Raised when the user switches modes with the toolbar's own control.</summary>
     [Parameter] public EventCallback<SchedulerPaneMode> PaneModeChanged { get; set; }
+
+    /// <summary>
+    /// Opt into the built-in create/edit dialog. OFF by default, and deliberately so: most
+    /// callers already have their own appointment form, wired through
+    /// <see cref="OnDateSelect"/> and <see cref="OnEventClick"/>, and a dialog that appeared on
+    /// its own would fight it.
+    /// </summary>
+    /// <remarks>
+    /// It never DISPLACES that workflow. <see cref="OnDateSelect"/> and
+    /// <see cref="OnEventClick"/> still fire exactly as they do with the dialog off — the dialog
+    /// is additive, so a caller can keep its own handlers for logging, navigation or analytics
+    /// and still get the form for free. Saving raises <see cref="OnEventChange"/> and
+    /// <see cref="EventsChanged"/>, the same pair a drag already uses, so nothing downstream has
+    /// to learn a new channel.
+    /// </remarks>
+    [Parameter] public bool BuiltInEventDialog { get; set; }
 
     // ── Event styling callbacks ──────────────────────────────────────────
     /// <summary>
@@ -795,6 +892,133 @@
     /// overlay wearing a column header, and with none it is an empty box.
     /// </summary>
     private bool ShowsPanes => _paneMode == SchedulerPaneMode.SideBySide && VisibleCalendars.Count > 1;
+
+    // ── Built-in dialog ──────────────────────────────────────────────────
+    private bool _dialogOpen;
+
+    /// <summary>The event being edited, or null when the dialog is creating a new one.</summary>
+    private SchedulerEvent? _dialogSource;
+
+    // string? rather than string: Input.Value is nullable, and a non-nullable field
+    // makes the two-way binding's EventCallback types disagree.
+    private string? _dialogTitle;
+    private DateTime _dialogStart;
+    private DateTime _dialogEnd;
+    private bool _dialogAllDay;
+    private string? _dialogCalendarId;
+
+    private bool DialogIsEdit => _dialogSource is not null;
+
+    /// <summary>
+    /// Runs BEFORE the caller's own handler and never in place of it: the dialog is additive, so
+    /// a consumer keeps whatever it already does with the selection.
+    /// </summary>
+    private async Task OnDateSelectInternalAsync(SchedulerDateRange range)
+    {
+        if (BuiltInEventDialog)
+        {
+            _dialogSource = null;
+            _dialogTitle = string.Empty;
+            _dialogStart = range.Start;
+            _dialogEnd = range.End;
+            _dialogAllDay = range.AllDay;
+            // A new event lands in the first VISIBLE calendar rather than the first declared one,
+            // or it would be created straight into something the user cannot see.
+            _dialogCalendarId = VisibleCalendars.FirstOrDefault()?.Id;
+            _dialogOpen = true;
+        }
+
+        if (OnDateSelect.HasDelegate) await OnDateSelect.InvokeAsync(range);
+    }
+
+    private async Task OnEventClickInternalAsync(SchedulerEvent ev)
+    {
+        if (BuiltInEventDialog)
+        {
+            _dialogSource = ev;
+            _dialogTitle = ev.Title;
+            _dialogStart = ev.Start;
+            _dialogEnd = ev.End;
+            _dialogAllDay = ev.AllDay;
+            _dialogCalendarId = ev.CalendarId;
+            _dialogOpen = true;
+        }
+
+        if (OnEventClick.HasDelegate) await OnEventClick.InvokeAsync(ev);
+    }
+
+    private async Task SaveDialogAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_dialogTitle)) return;
+
+        // An end before its start is the one input the form itself can produce, and every
+        // downstream consumer — layout, recurrence, the expander's seek — assumes otherwise.
+        var end = _dialogEnd > _dialogStart ? _dialogEnd : _dialogStart;
+
+        var saved = _dialogSource is { } existing
+            ? existing with
+            {
+                Title = _dialogTitle.Trim(),
+                Start = _dialogStart,
+                End = end,
+                AllDay = _dialogAllDay,
+                CalendarId = _dialogCalendarId,
+            }
+            : new SchedulerEvent(
+                Id: Guid.NewGuid().ToString("n"),
+                Title: _dialogTitle.Trim(),
+                Start: _dialogStart,
+                End: end,
+                AllDay: _dialogAllDay)
+            {
+                CalendarId = _dialogCalendarId,
+            };
+
+        if (_dialogSource is null) _events.Add(saved);
+        else
+        {
+            var idx = _events.FindIndex(e => ReferenceEquals(e, _dialogSource));
+            if (idx >= 0) _events[idx] = saved;
+        }
+
+        _dialogOpen = false;
+        _dialogSource = null;
+
+        // The SAME pair a drag raises, so nothing downstream has to learn a new channel.
+        _lastPushedEventsHash = ComputeEventsHash(_events);
+        if (OnEventChange.HasDelegate) await OnEventChange.InvokeAsync(saved);
+        if (EventsChanged.HasDelegate) await EventsChanged.InvokeAsync(_events.ToList());
+    }
+
+    /// <summary>
+    /// The value shape an &lt;input type="date"/"datetime-local"&gt; expects. Invariant on
+    /// purpose: this is a wire format the browser parses, not something a user reads, so a
+    /// culture with a different separator would simply make the control ignore the value.
+    /// </summary>
+    private string FormatForInput(DateTime value) =>
+        _dialogAllDay
+            ? value.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture)
+            : value.ToString("yyyy-MM-ddTHH:mm", System.Globalization.CultureInfo.InvariantCulture);
+
+    /// <summary>Keeps the previous value when the control hands back something unparseable,
+    /// which an empty date field does on every keystroke while it is being retyped.</summary>
+    private static DateTime ParseFromInput(string? raw, DateTime fallback) =>
+        DateTime.TryParse(raw, System.Globalization.CultureInfo.InvariantCulture,
+                          System.Globalization.DateTimeStyles.None, out var parsed)
+            ? parsed
+            : fallback;
+
+    private async Task DeleteDialogAsync()
+    {
+        if (_dialogSource is not { } victim) return;
+
+        _events.RemoveAll(e => ReferenceEquals(e, victim));
+        _dialogOpen = false;
+        _dialogSource = null;
+
+        _lastPushedEventsHash = ComputeEventsHash(_events);
+        if (EventsChanged.HasDelegate) await EventsChanged.InvokeAsync(_events.ToList());
+    }
 
     private IEnumerable<SchedulerEvent>? EffectiveEvents => EventsFor(calendarId: null);
 
