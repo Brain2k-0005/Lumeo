@@ -287,6 +287,23 @@
         </Stack>
     </ComponentDemo>
 
+    <ComponentDemo Title="Built-in appointment dialog (opt-in)" Code="@_fpDialogCode">
+        <Stack Gap="3">
+            <Lumeo.Text Size="sm" Color="muted">
+                <Lumeo.Code>BuiltInEventDialog</Lumeo.Code> is off by default, because most apps already have their
+                own appointment form wired through <Lumeo.Code>OnDateSelect</Lumeo.Code> and
+                <Lumeo.Code>OnEventClick</Lumeo.Code>. Turning it on never displaces that: both callbacks still fire
+                exactly as before, so the dialog is additive. Double-click a day to create, click an event to edit;
+                saving reports through <Lumeo.Code>EventsChanged</Lumeo.Code> — the same channel a drag uses.
+            </Lumeo.Text>
+            <Scheduler @bind-Events="_dialogEvents"
+                       Calendars="_demoCalendars"
+                       BuiltInEventDialog="true"
+                       InitialView="SchedulerView.Month"
+                       Height="560px" />
+        </Stack>
+    </ComponentDemo>
+
     <ComponentDemo Title="Calendars, overlaid and side by side" Code="@_fpCalendarCode">
         <Stack Gap="3">
             <Lumeo.Text Size="sm" Color="muted">
@@ -762,6 +779,23 @@
     ];
 
     private List<SchedulerEvent> _calendarEvents = BuildCalendarEvents();
+
+    // Its OWN copy: the dialog demo mutates the list, and sharing it would let edits here rewrite
+    // the calendar demo above them on the same page.
+    // IEnumerable, not List: that is what @bind-Events round-trips, and a List field makes the
+    // two-way binding's callback types disagree.
+    private IEnumerable<SchedulerEvent> _dialogEvents = BuildCalendarEvents();
+
+    private const string _fpDialogCode = """
+        <Scheduler @bind-Events="_events"
+                   Calendars="_calendars"
+                   BuiltInEventDialog="true"
+                   InitialView="SchedulerView.Month"
+                   Height="560px" />
+
+        @* Off by default. Turning it on does NOT replace your own workflow: OnDateSelect and
+           OnEventClick still fire, so existing handlers keep working alongside the dialog. *@
+        """;
 
     private static List<SchedulerEvent> BuildCalendarEvents()
     {
