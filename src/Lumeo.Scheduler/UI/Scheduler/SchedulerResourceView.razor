@@ -23,13 +23,18 @@
    swapped. A grid role also promises two-dimensional arrow navigation, which this
    read-only view does not implement. Each column is a labelled list of bookings,
    which is what it actually is. *@
-<div class="@($"flex flex-col w-full rounded-md border border-border/60 overflow-hidden {Class}".Trim())"
+<div class="@RootClasses"
      role="group" aria-label="@GridAriaLabel()" @attributes="AdditionalAttributes">
     @* ONE horizontal scroller wrapping header AND body (Codex review, P2): two
        separate scrollers drift apart as soon as the resource list outgrows the
        viewport, putting every column under the wrong heading. *@
-    <div class="overflow-x-auto">
+    <div class="@HorizontalScrollerClasses">
         <div style="min-width: max-content;">
+            @* Sticky, so handing the vertical scroll to the scheduler's shared box does not
+               carry the resource names away with the hours: they sat OUTSIDE the body
+               scroller before, which is what kept them in place (Codex review of PR #427).
+               A no-op while this view scrolls itself, because then nothing above them moves. *@
+            <div class="sticky top-0 z-20 bg-card">
             <div class="flex border-b border-border/60 bg-card">
                 <div class="flex-none w-14" aria-hidden="true"></div>
                 <div class="grid" style="@ColumnsStyle">
@@ -69,6 +74,7 @@
                     </div>
                 </div>
             }
+            </div>
 
             <div class="flex" style="@ScrollerStyle">
                 <div class="flex-none w-14">
@@ -121,6 +127,19 @@
     [Parameter] public bool SelfScrolling { get; set; } = true;
 
     private string? ScrollerStyle => SelfScrolling ? "max-height: 34rem; overflow-y: auto;" : null;
+
+    /// <summary>
+    /// <c>overflow-hidden</c> clips to the rounded border and makes this element a SCROLL
+    /// CONTAINER, which a sticky heading is then positioned against. Once the scrolling belongs to
+    /// the scheduler's shared box, that container no longer moves; <c>overflow: clip</c> clips the
+    /// same way without being one.
+    /// </summary>
+    private string RootClasses => SelfScrolling
+        ? $"flex flex-col w-full rounded-md border border-border/60 overflow-hidden {Class}".Trim()
+        : $"flex flex-col w-full rounded-md border border-border/60 overflow-clip {Class}".Trim();
+
+    /// <summary>Horizontal scrolling stays; the vertical axis must not become a scrollport of its own.</summary>
+    private string HorizontalScrollerClasses => SelfScrolling ? "overflow-x-auto" : "overflow-x-auto overflow-y-clip";
 
     private const string ChipClass =
         "rounded-sm border-l-2 px-1.5 py-0.5 text-left text-[11px] leading-tight overflow-hidden cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring";

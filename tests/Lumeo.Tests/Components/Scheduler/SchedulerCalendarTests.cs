@@ -329,4 +329,43 @@ public class SchedulerCalendarTests : IAsyncLifetime
            })
            .ToList();
 
+    [Fact]
+    public void Panes_reserve_the_same_all_day_height_so_their_hours_line_up()
+    {
+        // One box scrolls them both by the same pixels, so an offset that differs per pane never
+        // closes — the same hour would sit at two heights, which defeats the comparison the mode
+        // exists for (Codex review, PR #427).
+        var day = Anchor;
+        var calendars = new[]
+        {
+            new L.SchedulerCalendar("team", "Team"),
+            new L.SchedulerCalendar("personal", "Personal"),
+        };
+
+        var cut = _ctx.Render<L.Scheduler>(p => p
+            .Add(c => c.InitialView, L.SchedulerView.Week)
+            .Add(c => c.InitialDate, day)
+            .Add(c => c.Calendars, calendars)
+            .Add(c => c.PaneMode, L.SchedulerPaneMode.SideBySide)
+            .Add(c => c.Events, new[]
+            {
+                // Only the team calendar has anything all-day.
+                new L.SchedulerEvent("a1", "Offsite", day, day.AddDays(1)) { AllDay = true, CalendarId = "team" },
+                new L.SchedulerEvent("t1", "Gym", day.AddHours(7), day.AddHours(8)) { CalendarId = "personal" },
+            }));
+
+        var strips = cut.FindAll("[data-testid='timegrid-allday-strip']");
+        Assert.Equal(2, strips.Count);
+
+        // Both panes hold the strip open to the same number of lanes.
+        var reserved = strips.Select(s => s.GetAttribute("data-reserved-lanes")).Distinct().ToList();
+        Assert.Single(reserved);
+
+        var lanesPerPane = cut.FindAll("[data-scheduler-pane]")
+            .Select(p => p.QuerySelectorAll("[data-testid='timegrid-allday-strip'] [data-lane]").Length)
+            .Distinct()
+            .ToList();
+        Assert.Single(lanesPerPane);
+    }
+
 }

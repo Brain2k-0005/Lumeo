@@ -296,7 +296,6 @@ internal static partial class LumeoDefaultStrings
         ["Scheduler.NoEvents"] = "لا توجد مواعيد",
         ["Scheduler.MoreEvents"] = "{0} إضافي",
         ["Scheduler.MoreEvents.One"] = "{0} إضافي",
-        ["Scheduler.MoreEvents.Two"] = "{0} إضافيان",
         ["Scheduler.MoreEvents.Few"] = "{0} إضافية",
         ["Scheduler.MoreEvents.Many"] = "{0} إضافيًا",
         ["Scheduler.MoreEvents.Other"] = "{0} إضافي",

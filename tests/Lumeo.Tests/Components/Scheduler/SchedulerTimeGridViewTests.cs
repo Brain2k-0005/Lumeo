@@ -1013,4 +1013,75 @@ public class SchedulerTimeGridViewTests : IAsyncLifetime
         }
     }
 
+    // -- review round 6: what the shared scroller changed ----------------------
+
+    [Fact]
+    public void Handing_the_scroll_away_stops_the_root_being_a_scrollport()
+    {
+        // overflow-hidden clips to the rounded border AND makes the root a scroll container, which
+        // is what a sticky header is positioned against. Once the scrolling belongs to the
+        // scheduler's shared box, that container never moves, so the header travelled up with the
+        // content. overflow: clip clips identically without being one (Codex review, PR #427).
+        var self = _ctx.Render<L.SchedulerTimeGridView>(p => p
+            .Add(c => c.AnchorDate, D(2026, 4, 15)).Add(c => c.Days, 7)
+            .Add(c => c.Events, Array.Empty<L.SchedulerEvent>()));
+        Assert.Contains("overflow-hidden", self.Find("div").GetAttribute("class"));
+
+        var shared = _ctx.Render<L.SchedulerTimeGridView>(p => p
+            .Add(c => c.AnchorDate, D(2026, 4, 15)).Add(c => c.Days, 7)
+            .Add(c => c.SelfScrolling, false)
+            .Add(c => c.Events, Array.Empty<L.SchedulerEvent>()));
+        var cls = shared.Find("div").GetAttribute("class") ?? string.Empty;
+        Assert.Contains("overflow-clip", cls);
+        Assert.DoesNotContain("overflow-hidden", cls);
+    }
+
+    [Fact]
+    public void A_reserved_lane_floor_gives_an_empty_pane_the_same_height()
+    {
+        // Panes scroll as ONE box, so a pane with all-day lanes starts its hours lower than a pane
+        // with none — and the same hour can never line up, which is what side by side is for.
+        var day = D(2026, 4, 15);
+
+        var empty = _ctx.Render<L.SchedulerTimeGridView>(p => p
+            .Add(c => c.AnchorDate, day).Add(c => c.Days, 7)
+            .Add(c => c.ReservedAllDayLanes, 2)
+            .Add(c => c.Events, Array.Empty<L.SchedulerEvent>()));
+
+        // The strip renders even with nothing in it, holding the reserved lanes open.
+        var strip = empty.Find("[data-testid='timegrid-allday-strip']");
+        Assert.Equal("2", strip.GetAttribute("data-reserved-lanes"));
+        Assert.Equal(7 * 2, empty.FindAll("[data-testid='timegrid-allday-strip'] [data-lane]").Count);
+
+        // And without the floor there is no strip at all — which is the height difference.
+        var unreserved = _ctx.Render<L.SchedulerTimeGridView>(p => p
+            .Add(c => c.AnchorDate, day).Add(c => c.Days, 7)
+            .Add(c => c.Events, Array.Empty<L.SchedulerEvent>()));
+        Assert.Empty(unreserved.FindAll("[data-testid='timegrid-allday-strip']"));
+    }
+
+    [Fact]
+    public void An_events_refresh_that_removes_the_overflow_closes_its_dialog()
+    {
+        // The dialog would otherwise leave the DOM with its click-outside registration live —
+        // nothing can invoke the callback any more, and if the overflow returns it reopens by
+        // itself, with no user action behind it.
+        var day = D(2026, 4, 15);
+        var many = Enumerable.Range(0, 6)
+            .Select(i => new L.SchedulerEvent($"a{i}", $"All day {i}", day, day.AddDays(1)) { AllDay = true })
+            .ToArray();
+
+        var cut = _ctx.Render<L.SchedulerTimeGridView>(p => p
+            .Add(c => c.AnchorDate, day).Add(c => c.Days, 7).Add(c => c.Events, many));
+
+        cut.Find("[data-testid='allday-more']").Click();
+        var popoverId = cut.Find("[data-testid='allday-more-popover']").Id;
+
+        // A refresh drops the day back under the cap.
+        cut.Render(p => p.Add(c => c.Events, many.Take(2).ToArray()));
+
+        Assert.Empty(cut.FindAll("[data-testid='allday-more-popover']"));
+        Assert.Contains(popoverId, _interop.ClickOutsideUnregistrations);
+    }
+
 }

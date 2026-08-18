@@ -122,6 +122,7 @@
                     break;
                 case SchedulerView.Week:
                     <SchedulerTimeGridView Events="@pane.Events" AnchorDate="@_fpAnchor" Days="7"
+                                           ReservedAllDayLanes="@SharedAllDayLanes"
                                            SelfScrolling="@(!ShowsPanes)"
                                            Today="@(_displayZone is not null ? SchedulerTimeZoneProjection.TodayIn(_displayZone) : _browserToday)"
                                            FirstDayOfWeek="@EffectiveFirstDayOfWeek"
@@ -136,6 +137,7 @@
                     break;
                 case SchedulerView.Day:
                     <SchedulerTimeGridView Events="@pane.Events" AnchorDate="@_fpAnchor" Days="1"
+                                           ReservedAllDayLanes="@SharedAllDayLanes"
                                            SelfScrolling="@(!ShowsPanes)"
                                            Today="@(_displayZone is not null ? SchedulerTimeZoneProjection.TodayIn(_displayZone) : _browserToday)"
                                            FirstDayOfWeek="@EffectiveFirstDayOfWeek"
@@ -152,6 +154,7 @@
                     @* Days != 7 makes the time grid start at the anchor itself instead of a
                        week boundary, which is exactly the rolling window this view wants. *@
                     <SchedulerTimeGridView Events="@pane.Events" AnchorDate="@_fpAnchor" Days="@EffectiveVisibleDays"
+                                           ReservedAllDayLanes="@SharedAllDayLanes"
                                            SelfScrolling="@(!ShowsPanes)"
                                            Today="@(_displayZone is not null ? SchedulerTimeZoneProjection.TodayIn(_displayZone) : _browserToday)"
                                            AlignToWeek="false"
@@ -195,6 +198,7 @@
                        was promised and not the nearest thing either. Caught by a test written
                        against the documented behaviour. *@
                     <SchedulerTimeGridView Events="@pane.Events" AnchorDate="@_fpAnchor" Days="1"
+                                           ReservedAllDayLanes="@SharedAllDayLanes"
                                            SelfScrolling="@(!ShowsPanes)"
                                            Today="@(_displayZone is not null ? SchedulerTimeZoneProjection.TodayIn(_displayZone) : _browserToday)"
                                            FirstDayOfWeek="@EffectiveFirstDayOfWeek"
@@ -976,6 +980,33 @@
     /// overlay wearing a column header, and with none it is an empty box.
     /// </summary>
     private bool ShowsPanes => _paneMode == SchedulerPaneMode.SideBySide && VisibleCalendars.Count > 1;
+
+    /// <summary>
+    /// The all-day lane floor every pane shares. They scroll as ONE box, so a pane with three
+    /// all-day lanes would start its hours lower than a pane with none and the same hour could
+    /// never line up — the one thing side by side exists to make possible (Codex review of
+    /// PR #427).
+    ///
+    /// An upper bound rather than an exact count: this counts all-day EVENTS, where the strip
+    /// packs overlapping ones into shared lanes and knows which fall in the visible range. It
+    /// can therefore reserve a row nobody needs. Equal offsets are worth more here than a tight
+    /// fit, and the view clamps it to its own maximum either way.
+    /// </summary>
+    private int SharedAllDayLanes
+    {
+        get
+        {
+            if (!ShowsPanes) return 0;
+
+            var most = 0;
+            foreach (var cal in VisibleCalendars)
+            {
+                var allDay = EventsFor(cal.Id)?.Count(e => e.AllDay) ?? 0;
+                if (allDay > most) most = allDay;
+            }
+            return most;
+        }
+    }
 
     // ── Built-in dialog ──────────────────────────────────────────────────
     private bool _dialogOpen;
