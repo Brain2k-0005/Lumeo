@@ -317,6 +317,17 @@
                             {
                                 <option value="@cal.Id" selected="@(cal.Id == _dialogCalendarId)">@cal.Name</option>
                             }
+                            @* The parent can drop a calendar while the dialog stands open on an
+                               event filed there. With no option of its own the browser falls back
+                               to "no calendar" while the field still holds the removed id, so
+                               saving without touching the select committed something other than
+                               what the form showed. Keeping the id visible refiles nothing
+                               (Codex review of PR #426). *@
+                            @if (_dialogCalendarId is { Length: > 0 } orphan
+                                 && !Calendars.Any(c => c.Id == orphan))
+                            {
+                                <option value="@orphan" selected="true">@orphan</option>
+                            }
                         </select>
                     </div>
                 }
@@ -866,9 +877,32 @@
     /// undo what the user chose with the toolbar control in the meantime.</summary>
     private SchedulerPaneMode _lastPaneModeParameter;
 
-    private IReadOnlyList<SchedulerCalendar> VisibleCalendars =>
-        Calendars is null ? Array.Empty<SchedulerCalendar>()
-                          : Calendars.Where(c => !_hiddenCalendars.Contains(c.Id)).ToList();
+    /// <summary>
+    /// The calendars a view should draw, hidden ones removed and each id appearing ONCE. Nothing
+    /// stops a caller handing over a merged list carrying the same id twice, and since the panes
+    /// are keyed by that id a repeat threw a duplicate-key exception and took the whole component
+    /// down — a caller's imperfect list should degrade, not crash (Codex review of PR #426). The
+    /// first entry wins, so a caller's own order is what survives.
+    /// </summary>
+    private IReadOnlyList<SchedulerCalendar> VisibleCalendars
+    {
+        get
+        {
+            if (Calendars is null) return Array.Empty<SchedulerCalendar>();
+
+            var seen = new HashSet<string>(StringComparer.Ordinal);
+            var result = new List<SchedulerCalendar>(Calendars.Count);
+            foreach (var cal in Calendars)
+            {
+                var id = cal.Id ?? string.Empty;
+                if (_hiddenCalendars.Contains(id)) continue;
+                if (!seen.Add(id)) continue;
+                result.Add(cal);
+            }
+
+            return result;
+        }
+    }
 
     private void SeedCalendarVisibility()
     {
@@ -921,6 +955,14 @@
     private bool _dialogAllDay;
     private bool _dialogStartValid = true;
     private bool _dialogEndValid = true;
+
+    /// <summary>
+    /// The zone the form's wall-clock values were READ in. Converting them back through whatever
+    /// <see cref="TimeZone"/> happens to say at save time reinterprets numbers the user never
+    /// retyped: a 09:00Z event opened as 10:00 in Berlin and saved after the parameter moved to
+    /// Tokyo came back as 01:00Z on a title-only edit (Codex review of PR #426).
+    /// </summary>
+    private TimeZoneInfo? _dialogZone;
     private string? _dialogCalendarId;
 
     private bool DialogIsEdit => _dialogSource is not null;
@@ -1000,6 +1042,7 @@
             // something the user cannot see.
             _dialogCalendarId = paneCalendarId ?? VisibleCalendars.FirstOrDefault()?.Id;
             _dialogStartValid = _dialogEndValid = true;
+            _dialogZone = _displayZone;
             _dialogOpen = true;
         }
 
@@ -1024,6 +1067,7 @@
             _dialogAllDay = ev.AllDay;
             _dialogCalendarId = ev.CalendarId;
             _dialogStartValid = _dialogEndValid = true;
+            _dialogZone = _displayZone;
             _dialogOpen = true;
         }
 
@@ -1033,6 +1077,12 @@
     private void OnDialogAllDayChanged(bool allDay)
     {
         _dialogAllDay = allDay;
+
+        // Both controls are re-rendered from the retained bounds, so whatever was cleared is
+        // showing a real date again — leaving its flag false kept Save disabled over a form
+        // with nothing wrong with it (Codex review of PR #426).
+        _dialogStartValid = _dialogEndValid = true;
+
         if (!allDay) return;
 
         _dialogStart = _dialogStart.Date;
@@ -1047,7 +1097,7 @@
     /// (Codex review of PR #426). Naive bounds are what those readings were all along.
     /// </summary>
     private SchedulerEvent Unprojected(SchedulerEvent saved) =>
-        _displayZone is null || saved.AllDay
+        _dialogZone is null || saved.AllDay
             ? saved
             : saved with
             {
@@ -1084,7 +1134,20 @@
             ? _dialogEnd
             : _dialogAllDay ? NextMidnight(_dialogStart) : _dialogStart;
 
-        var saved = _dialogSource is { } existing
+        // Resolved the way the drag path resolves it: only an Id matching EXACTLY one stored
+        // event identifies anything. A blank or duplicated Id is ambiguous, and acting on the
+        // first match corrupts the wrong record.
+        var (idx, matches) = ResolveUnambiguously(_dialogSource?.Id);
+        var original = idx >= 0 ? _events[idx] : null;
+
+        // Built on the CURRENT stored record, not on the snapshot the dialog opened with. A
+        // parent that refreshes while the form stands open — a poll landing new ExtendedProps, a
+        // colour, a recurrence — has already been adopted into _events, and rebuilding from the
+        // stale copy silently reverted every one of those properties on a title-only save, none
+        // of which the dialog even shows (Codex review of PR #426).
+        var basis = original ?? _dialogSource;
+
+        var saved = basis is { } existing
             ? existing with
             {
                 Title = title,
@@ -1103,12 +1166,6 @@
                 CalendarId = _dialogCalendarId,
             };
 
-        // Resolved the way the drag path resolves it: only an Id matching EXACTLY one stored
-        // event identifies anything. A blank or duplicated Id is ambiguous, and acting on the
-        // first match corrupts the wrong record.
-        var (idx, matches) = ResolveUnambiguously(_dialogSource?.Id);
-        var original = idx >= 0 ? _events[idx] : null;
-
         // The dialog was populated from the DISPLAY copy, so its wall-clock values have to be
         // read back through the same projection the drag path uses. Without it even a title-only
         // edit stored the shifted reading as an Unspecified instant and quietly rewrote the
@@ -1116,10 +1173,11 @@
         //
         // Unless the source was ALL-DAY: ToDisplay leaves those instants untouched, so they were
         // never projected, and inverting one moves the event a day when the user did nothing but
-        // switch all-day off.
-        var committed = original is { AllDay: true }
+        // switch all-day off. That reads _dialogSource, not the current record: whether these
+        // numbers were projected is a fact about the moment the form was FILLED.
+        var committed = _dialogSource is { AllDay: true }
             ? Unprojected(saved)
-            : SchedulerTimeZoneProjection.FromDisplay(saved, original, _displayZone);
+            : SchedulerTimeZoneProjection.FromDisplay(saved, original, _dialogZone);
 
         if (_dialogSource is not null && idx < 0)
         {

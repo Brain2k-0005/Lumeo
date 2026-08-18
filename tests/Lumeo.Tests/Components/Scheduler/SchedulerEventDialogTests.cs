@@ -697,4 +697,149 @@ public class SchedulerEventDialogTests : IAsyncLifetime
         Assert.Equal("team", cut.FindAll("[data-scheduler-pane]")[1].GetAttribute("data-scheduler-pane"));
         Assert.Equal(opened, teamPane.QuerySelector("[data-testid='month-more-popover']")?.Id);
     }
+
+    // -- review round 5 --------------------------------------------------------
+
+    [Fact]
+    public void A_title_only_save_keeps_what_the_parent_changed_underneath_it()
+    {
+        // The parent's refresh has already been adopted into the working copy, so rebuilding the
+        // event from the snapshot the dialog opened with silently reverted every property the
+        // form does not even show (Codex review, PR #426).
+        var start = new DateTime(2026, 3, 9, 9, 0, 0);
+        var opened = new L.SchedulerEvent("e1", "Standup", start, start.AddHours(1)) { Color = "red" };
+        var refreshed = opened with { Color = "blue" };
+
+        IEnumerable<L.SchedulerEvent>? pushed = null;
+        var cut = _ctx.Render<L.Scheduler>(p => p
+            .Add(c => c.InitialView, L.SchedulerView.Month)
+            .Add(c => c.InitialDate, start.Date)
+            .Add(c => c.Events, new[] { opened })
+            .Add(c => c.BuiltInEventDialog, true)
+            .Add(c => c.EventsChanged, (IEnumerable<L.SchedulerEvent> e) => pushed = e));
+
+        cut.Find("[data-event-instance]").Click();
+        cut.Find("input[data-scheduler-dialog-title]").Input("Renamed");
+
+        // A poll lands while the form stands open.
+        cut.Render(p => p.Add(c => c.Events, new[] { refreshed }));
+
+        cut.Find("[data-scheduler-dialog-save]").Click();
+
+        var saved = pushed!.Single();
+        Assert.Equal("Renamed", saved.Title);
+        Assert.Equal("blue", saved.Color);
+    }
+
+    [Fact]
+    public void The_dialog_saves_in_the_zone_it_was_opened_in()
+    {
+        // The form holds wall-clock numbers read in one zone. Converting them back through
+        // whatever TimeZone says at save time reinterprets digits the user never retyped.
+        var utcStart = new DateTime(2026, 3, 9, 9, 0, 0, DateTimeKind.Utc);
+        var ev = new L.SchedulerEvent("e1", "Standup", utcStart, utcStart.AddHours(1));
+
+        IEnumerable<L.SchedulerEvent>? pushed = null;
+        var cut = _ctx.Render<L.Scheduler>(p => p
+            .Add(c => c.InitialView, L.SchedulerView.Week)
+            .Add(c => c.InitialDate, utcStart.Date)
+            .Add(c => c.Events, new[] { ev })
+            .Add(c => c.TimeZone, "Europe/Berlin")
+            .Add(c => c.BuiltInEventDialog, true)
+            .Add(c => c.EventsChanged, (IEnumerable<L.SchedulerEvent> e) => pushed = e));
+
+        cut.Find("[data-event-instance]").Click();
+        cut.Find("input[data-scheduler-dialog-title]").Input("Renamed");
+
+        // The parameter moves underneath the open form.
+        cut.Render(p => p.Add(c => c.TimeZone, "Asia/Tokyo"));
+
+        cut.Find("[data-scheduler-dialog-save]").Click();
+
+        Assert.Equal(utcStart, pushed!.Single().Start);
+    }
+
+    [Fact]
+    public void Toggling_all_day_releases_a_save_a_cleared_field_had_blocked()
+    {
+        // Both controls are re-rendered from the retained bounds, so what was cleared is showing
+        // a real date again — leaving its flag false kept Save disabled over a valid form.
+        var start = new DateTime(2026, 3, 9, 9, 0, 0);
+        var ev = new L.SchedulerEvent("e1", "Standup", start, start.AddHours(1));
+
+        var cut = _ctx.Render<L.Scheduler>(p => p
+            .Add(c => c.InitialView, L.SchedulerView.Month)
+            .Add(c => c.InitialDate, start.Date)
+            .Add(c => c.Events, new[] { ev })
+            .Add(c => c.BuiltInEventDialog, true));
+
+        cut.Find("[data-event-instance]").Click();
+        cut.Find("[data-scheduler-dialog-start]").Change(string.Empty);
+        Assert.True(cut.Find("[data-scheduler-dialog-save]").HasAttribute("disabled"));
+
+        cut.Find("[data-scheduler-dialog-allday]").Click();
+
+        Assert.False(cut.Find("[data-scheduler-dialog-save]").HasAttribute("disabled"));
+    }
+
+    [Fact]
+    public void A_calendar_removed_underneath_the_dialog_keeps_an_option_of_its_own()
+    {
+        // With no option carrying the id the browser falls back to "no calendar" while the field
+        // still holds it, so saving untouched committed something other than what was shown.
+        var start = new DateTime(2026, 3, 9, 9, 0, 0);
+        var ev = new L.SchedulerEvent("e1", "Standup", start, start.AddHours(1)) { CalendarId = "team" };
+        var calendars = new[]
+        {
+            new L.SchedulerCalendar("team", "Team"),
+            new L.SchedulerCalendar("personal", "Personal"),
+        };
+
+        IEnumerable<L.SchedulerEvent>? pushed = null;
+        var cut = _ctx.Render<L.Scheduler>(p => p
+            .Add(c => c.InitialView, L.SchedulerView.Month)
+            .Add(c => c.InitialDate, start.Date)
+            .Add(c => c.Events, new[] { ev })
+            .Add(c => c.Calendars, calendars)
+            .Add(c => c.BuiltInEventDialog, true)
+            .Add(c => c.EventsChanged, (IEnumerable<L.SchedulerEvent> e) => pushed = e));
+
+        cut.Find("[data-event-instance]").Click();
+
+        // The parent drops the calendar this event belongs to.
+        cut.Render(p => p.Add(c => c.Calendars, new[] { calendars[1] }));
+
+        var selected = cut.FindAll("[data-scheduler-dialog-calendar] option")
+                          .Single(o => o.HasAttribute("selected"));
+        Assert.Equal("team", selected.GetAttribute("value"));
+
+        cut.Find("[data-scheduler-dialog-save]").Click();
+        Assert.Equal("team", pushed!.Single().CalendarId);
+    }
+
+    [Fact]
+    public void A_repeated_calendar_id_draws_one_pane_rather_than_crashing()
+    {
+        // The panes are keyed by id, so a merged list carrying the same id twice threw a
+        // duplicate-key exception and took the component down. A caller's imperfect list should
+        // degrade, not crash.
+        var calendars = new[]
+        {
+            new L.SchedulerCalendar("team", "Team"),
+            new L.SchedulerCalendar("team", "Team (again)"),
+            new L.SchedulerCalendar("personal", "Personal"),
+        };
+
+        var cut = _ctx.Render<L.Scheduler>(p => p
+            .Add(c => c.InitialView, L.SchedulerView.Month)
+            .Add(c => c.InitialDate, Anchor)
+            .Add(c => c.Events, Array.Empty<L.SchedulerEvent>())
+            .Add(c => c.Calendars, calendars)
+            .Add(c => c.PaneMode, L.SchedulerPaneMode.SideBySide));
+
+        var panes = cut.FindAll("[data-scheduler-pane]");
+        Assert.Equal(2, panes.Count);
+        Assert.Equal(new[] { "team", "personal" },
+                     panes.Select(p => p.GetAttribute("data-scheduler-pane")).ToArray());
+    }
 }
