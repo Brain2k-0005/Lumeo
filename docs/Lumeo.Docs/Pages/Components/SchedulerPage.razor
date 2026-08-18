@@ -286,6 +286,45 @@
                        Height="560px" />
         </Stack>
     </ComponentDemo>
+
+    <ComponentDemo Title="Built-in appointment dialog (opt-in)" Code="@_fpDialogCode">
+        <Stack Gap="3">
+            <Lumeo.Text Size="sm" Color="muted">
+                <Lumeo.Code>BuiltInEventDialog</Lumeo.Code> is off by default, because most apps already have their
+                own appointment form wired through <Lumeo.Code>OnDateSelect</Lumeo.Code> and
+                <Lumeo.Code>OnEventClick</Lumeo.Code>. Turning it on never displaces that: both callbacks still fire
+                exactly as before, so the dialog is additive. Double-click a day to create, click an event to edit;
+                saving reports through <Lumeo.Code>EventsChanged</Lumeo.Code> — the same channel a drag uses.
+            </Lumeo.Text>
+            <Scheduler @bind-Events="_dialogEvents"
+                       Calendars="_demoCalendars"
+                       BuiltInEventDialog="true"
+                       InitialView="SchedulerView.Month"
+                       Height="560px" />
+        </Stack>
+    </ComponentDemo>
+
+    <ComponentDemo Title="Calendars, overlaid and side by side" Code="@_fpCalendarCode">
+        <Stack Gap="3">
+            <Lumeo.Text Size="sm" Color="muted">
+                A <Lumeo.Code>SchedulerCalendar</Lumeo.Code> is which FEED an event came from, where a
+                <Lumeo.Code>SchedulerResource</Lumeo.Code> is what it consumes — so calendars decide whether an
+                event is shown at all. Click a chip to hide one; the button beside them splits the visible
+                calendars into their own panes and merges them back. An event with no
+                <Lumeo.Code>CalendarId</Lumeo.Code> belongs to no calendar and is never hidden.
+            </Lumeo.Text>
+            <Lumeo.Text Size="sm" Color="muted">
+                A selection drawn in a pane reports that pane on
+                <Lumeo.Code>SchedulerDateRange.CalendarId</Lumeo.Code>, so your own appointment form can file the
+                new event into the column the user drew it in. It is <Lumeo.Code>null</Lumeo.Code> while the
+                calendars are overlaid, where no single one owns the gesture.
+            </Lumeo.Text>
+            <Scheduler Events="_calendarEvents"
+                       Calendars="_demoCalendars"
+                       InitialView="SchedulerView.Week"
+                       Height="560px" />
+        </Stack>
+    </ComponentDemo>
 </Stack>
 
 
@@ -737,6 +776,71 @@
     };
 
     private List<SchedulerEvent> _resourceEvents = BuildResourceEvents();
+
+    private readonly List<SchedulerCalendar> _demoCalendars =
+    [
+        new("team", "Team", "var(--color-chart-1)"),
+        new("personal", "Personal", "var(--color-chart-3)"),
+        new("holidays", "Holidays", "var(--color-chart-5)", Visible: false),
+    ];
+
+    private List<SchedulerEvent> _calendarEvents = BuildCalendarEvents();
+
+    // Its OWN copy: the dialog demo mutates the list, and sharing it would let edits here rewrite
+    // the calendar demo above them on the same page.
+    // IEnumerable, not List: that is what @bind-Events round-trips, and a List field makes the
+    // two-way binding's callback types disagree.
+    private IEnumerable<SchedulerEvent> _dialogEvents = BuildCalendarEvents();
+
+    private const string _fpDialogCode = """
+        <Scheduler @bind-Events="_events"
+                   Calendars="_calendars"
+                   BuiltInEventDialog="true"
+                   InitialView="SchedulerView.Month"
+                   Height="560px" />
+
+        @* Off by default. Turning it on does NOT replace your own workflow: OnDateSelect and
+           OnEventClick still fire, so existing handlers keep working alongside the dialog. *@
+        """;
+
+    private static List<SchedulerEvent> BuildCalendarEvents()
+    {
+        // Anchored on the current week so the demo is never empty, and deliberately mixed: two
+        // feeds that overlap in time, one calendar off by default, and one unfiled event to show
+        // that hiding a calendar cannot swallow it.
+        var monday = DateTime.Today.AddDays(-(int)DateTime.Today.DayOfWeek + 1);
+
+        return
+        [
+            new("t1", "Standup", monday.AddHours(9), monday.AddHours(9).AddMinutes(30)) { CalendarId = "team" },
+            new("t2", "Sprint review", monday.AddDays(2).AddHours(14), monday.AddDays(2).AddHours(15)) { CalendarId = "team" },
+            new("t3", "1:1", monday.AddDays(3).AddHours(11), monday.AddDays(3).AddHours(11).AddMinutes(45)) { CalendarId = "team" },
+            new("p1", "Gym", monday.AddHours(7), monday.AddHours(8)) { CalendarId = "personal" },
+            new("p2", "Dentist", monday.AddDays(2).AddHours(14).AddMinutes(30), monday.AddDays(2).AddHours(15).AddMinutes(30)) { CalendarId = "personal" },
+            new("h1", "Public holiday", monday.AddDays(4), monday.AddDays(5), AllDay: true) { CalendarId = "holidays" },
+            new("x1", "Unfiled note", monday.AddDays(1).AddHours(16), monday.AddDays(1).AddHours(17)),
+        ];
+    }
+
+    private const string _fpCalendarCode = """
+        <Scheduler Events="_events" Calendars="_calendars" InitialView="SchedulerView.Week" Height="560px" />
+
+        @code {
+            private readonly List<SchedulerCalendar> _calendars =
+            [
+                new("team", "Team", "var(--color-chart-1)"),
+                new("personal", "Personal", "var(--color-chart-3)"),
+                new("holidays", "Holidays", "var(--color-chart-5)", Visible: false),
+            ];
+
+            private readonly List<SchedulerEvent> _events =
+            [
+                new("t1", "Standup", start, end) { CalendarId = "team" },
+                new("p1", "Gym", start, end) { CalendarId = "personal" },
+                new("x1", "Unfiled note", start, end),   // no CalendarId: never hidden
+            ];
+        }
+        """;
 
     private static List<SchedulerEvent> BuildResourceEvents()
     {

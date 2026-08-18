@@ -50,10 +50,16 @@ public class SchedulerViewsDragTests : PlaywrightTestBase
         var pill = monthSection.Locator("[data-event-id='e2e-1']").First;
         await pill.ScrollIntoViewIfNeededAsync();
 
-        // Drag to the 20th of the currently-shown month — a plain day well away
-        // from the seeded events and never day 15 (the fail-closed test's own
-        // reserved target, see the sibling test below).
-        var targetCell = monthSection.Locator("[data-cell-date$='-20']").First;
+        // A day the event is NOT already on. The 20th was hard-coded while the seed is
+        // relative — `e2e-1` sits on DateTime.Today.AddDays(2) — so on the 18th of any month
+        // the two coincide, CommitDrag sees newStart == ev.Start and returns without
+        // committing, and this test failed on that date alone. Day 15 stays reserved for the
+        // fail-closed sibling below.
+        var sourceDay = await pill.EvaluateAsync<string>(
+            "el => el.closest('[data-cell-date]')?.getAttribute('data-cell-date') ?? ''");
+        var targetDay = sourceDay.EndsWith("-20", StringComparison.Ordinal) ? "-21" : "-20";
+
+        var targetCell = monthSection.Locator($"[data-cell-date$='{targetDay}']").First;
         await targetCell.ScrollIntoViewIfNeededAsync();
 
         var from = await CenterOf(pill);
