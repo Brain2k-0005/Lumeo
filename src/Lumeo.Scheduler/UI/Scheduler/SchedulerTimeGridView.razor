@@ -126,12 +126,21 @@
                                    that keeps two views on one page from sharing a click-outside
                                    registration. *@
                                 <div class="relative">
+                                    @* The trigger carries an id and its own Escape handler. Without the id
+                                       the document-level mousedown reads a second press as an OUTSIDE
+                                       click and closes the popover before @onclick runs, so the click
+                                       reopened it and the button never closed anything; and a keyboard
+                                       user who opens with Enter still holds focus HERE, where the
+                                       dialog's own keydown cannot hear Escape (Codex review of PR #427). *@
                                     <button type="button"
+                                            id="@AllDayMoreTriggerId(dayIndex)"
                                             class="px-0.5 text-left text-[11px] text-muted-foreground hover:text-foreground hover:underline cursor-pointer"
                                             data-testid="allday-more"
                                             data-hidden-count="@hiddenCount"
+                                            aria-expanded="@((_openAllDayMoreDay == dayIndex).ToString().ToLowerInvariant())"
                                             @onclick="() => ToggleAllDayMoreAsync(dayIndex)"
-                                            @onclick:stopPropagation="true">
+                                            @onclick:stopPropagation="true"
+                                            @onkeydown="e => OnAllDayMoreKeyDown(e, dayIndex)">
                                         @moreLabel
                                     </button>
                                     @if (_openAllDayMoreDay == dayIndex)
@@ -139,7 +148,7 @@
                                         <div id="@AllDayMorePopoverId(dayIndex)"
                                              role="dialog"
                                              aria-label="@moreLabel"
-                                             class="absolute left-0 top-full mt-1 z-50 w-56 rounded-md border border-border/60 bg-popover text-popover-foreground shadow-lg p-2"
+                                             class="@AllDayMorePopoverClasses(dayIndex)"
                                              data-testid="allday-more-popover"
                                              @onclick:stopPropagation="true"
                                              @onkeydown="e => OnAllDayMoreKeyDown(e, dayIndex)">
@@ -380,6 +389,23 @@
     /// register the same id twice and dismiss each other's popover.
     /// </summary>
     private string AllDayMorePopoverId(int dayIndex) => $"scheduler-timegrid-allday-more-{_instanceId}-{dayIndex}";
+
+    private string AllDayMoreTriggerId(int dayIndex) => $"scheduler-timegrid-allday-trigger-{_instanceId}-{dayIndex}";
+
+    /// <summary>
+    /// Whole literal class strings, chosen rather than composed: the Tailwind v4 build only
+    /// emits utilities it can SEE in source, and a ternary written inline in the attribute does
+    /// not survive Razor's nested quotes either — it rendered an EMPTY class.
+    ///
+    /// The trailing columns open inward. A 14rem panel is far wider than a day column, so hung
+    /// off the last one it lands past the grid's right edge inside a scroller that clips, and
+    /// part of the list is reachable only by discovering a horizontal scrollbar (Codex review
+    /// of PR #427).
+    /// </summary>
+    private string AllDayMorePopoverClasses(int dayIndex) =>
+        dayIndex >= Days - 2
+            ? "absolute right-0 top-full mt-1 z-50 w-56 rounded-md border border-border/60 bg-popover text-popover-foreground shadow-lg p-2"
+            : "absolute left-0 top-full mt-1 z-50 w-56 rounded-md border border-border/60 bg-popover text-popover-foreground shadow-lg p-2";
 
     private readonly string _instanceId = Guid.NewGuid().ToString("n")[..8];
 
@@ -718,10 +744,17 @@
 
         try
         {
-            await Interop.RegisterClickOutside(AllDayMorePopoverId(idx), null, async () =>
+            // The TRIGGER is named, so pressing it again reads as inside and the click closes
+            // rather than reopens. And the dismissal unregisters itself: clearing only the flag
+            // left the JS handler map and the interop dictionary holding a callback for a dialog
+            // that had left the DOM, with no later close path able to reach it (Codex review of
+            // PR #427).
+            await Interop.RegisterClickOutside(AllDayMorePopoverId(idx), AllDayMoreTriggerId(idx), async () =>
             {
                 _allDayMoreClickOutsideRegistered = false;
                 _openAllDayMoreDay = null;
+                try { await Interop.UnregisterClickOutside(AllDayMorePopoverId(idx)); }
+                catch (Microsoft.JSInterop.JSDisconnectedException) { }
                 await InvokeAsync(StateHasChanged);
             });
             _allDayMoreClickOutsideRegistered = true;

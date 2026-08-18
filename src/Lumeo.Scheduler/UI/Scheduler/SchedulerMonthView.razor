@@ -124,11 +124,19 @@
                                pattern — same RegisterClickOutside/UnregisterClickOutside lifecycle, just scoped
                                to this cell instead of a column id.) *@
                             <div class="relative">
+                                @* Same four fixes the time grid's copy of this popover took in
+                                   review (PR #427): the trigger needs an id or a second press reads
+                                   as an outside click and reopens what it meant to close, and a
+                                   keyboard user who opens with Enter still holds focus here, where
+                                   the dialog's own keydown cannot hear Escape. *@
                                 <button type="button"
+                                        id="@MoreTriggerId(cellIndex)"
                                         class="px-0.5 text-left text-[11px] text-muted-foreground hover:text-foreground hover:underline cursor-pointer"
                                         data-testid="month-more-events"
+                                        aria-expanded="@((_openMoreCellIndex == cellIndex).ToString().ToLowerInvariant())"
                                         @onclick="() => ToggleMorePopoverAsync(cellIndex)"
-                                        @onclick:stopPropagation="true">
+                                        @onclick:stopPropagation="true"
+                                        @onkeydown="e => OnMorePopoverKeyDown(e, cellIndex)">
                                     @L[LumeoPlurals.PluralKey(cell.HiddenCount, "Scheduler.MoreEvents", CultureInfo.CurrentUICulture), cell.HiddenCount]
                                 </button>
                                 @if (_openMoreCellIndex == cellIndex)
@@ -136,7 +144,7 @@
                                     <div id="@MorePopoverId(cellIndex)"
                                          role="dialog"
                                          aria-label="@L[LumeoPlurals.PluralKey(cell.HiddenCount, "Scheduler.MoreEvents", CultureInfo.CurrentUICulture), cell.HiddenCount]"
-                                         class="absolute left-0 top-full mt-1 z-50 w-56 rounded-md border border-border/60 bg-popover text-popover-foreground shadow-lg p-2"
+                                         class="@MorePopoverClasses(cellIndex)"
                                          data-testid="month-more-popover"
                                          @onclick:stopPropagation="true"
                                          @onkeydown="e => OnMorePopoverKeyDown(e, cellIndex)">
@@ -758,10 +766,12 @@
         {
             try
             {
-                await Interop.RegisterClickOutside(MorePopoverId(idx), null, async () =>
+                await Interop.RegisterClickOutside(MorePopoverId(idx), MoreTriggerId(idx), async () =>
                 {
                     _moreClickOutsideRegistered = false;
                     _openMoreCellIndex = null;
+                    try { await Interop.UnregisterClickOutside(MorePopoverId(idx)); }
+                    catch (Microsoft.JSInterop.JSDisconnectedException) { }
                     await InvokeAsync(StateHasChanged);
                 });
                 _moreClickOutsideRegistered = true;
@@ -790,6 +800,18 @@
     /// be dismissed at all (Codex review of PR #426).
     /// </summary>
     private string MorePopoverId(int cellIndex) => $"scheduler-month-more-{_instanceId}-{cellIndex}";
+
+    private string MoreTriggerId(int cellIndex) => $"scheduler-month-more-trigger-{_instanceId}-{cellIndex}";
+
+    /// <summary>
+    /// Whole literal class strings, chosen rather than composed - see the same helper in
+    /// SchedulerTimeGridView. The last two columns of a week open inward, or a 14rem panel
+    /// hung off Sunday lands past the grid's right edge (Codex review of PR #427).
+    /// </summary>
+    private string MorePopoverClasses(int cellIndex) =>
+        cellIndex % 7 >= 5
+            ? "absolute right-0 top-full mt-1 z-50 w-56 rounded-md border border-border/60 bg-popover text-popover-foreground shadow-lg p-2"
+            : "absolute left-0 top-full mt-1 z-50 w-56 rounded-md border border-border/60 bg-popover text-popover-foreground shadow-lg p-2";
 
     private readonly string _instanceId = Guid.NewGuid().ToString("n")[..8];
 

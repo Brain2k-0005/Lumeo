@@ -1,4 +1,5 @@
 using Bunit;
+using Microsoft.AspNetCore.Components.Web;
 using System.Globalization;
 using Lumeo.Services;
 using Lumeo.Tests.Helpers;
@@ -832,6 +833,98 @@ public class SchedulerTimeGridViewTests : IAsyncLifetime
         var b = second.Find("[data-testid='allday-more-popover']").Id;
 
         Assert.NotEqual(a, b);
+    }
+
+    // -- review round 4: the overflow popover's lifecycle ----------------------
+
+    private L.SchedulerTimeGridView RenderOverflowGrid(out IRenderedComponent<L.SchedulerTimeGridView> cut)
+    {
+        var day = D(2026, 4, 15);
+        var events = Enumerable.Range(0, 6)
+            .Select(i => new L.SchedulerEvent($"a{i}", $"All day {i}", day, day.AddDays(1)) { AllDay = true })
+            .ToArray();
+
+        cut = _ctx.Render<L.SchedulerTimeGridView>(p => p
+            .Add(c => c.AnchorDate, day)
+            .Add(c => c.Days, 7)
+            .Add(c => c.Events, events));
+        return cut.Instance;
+    }
+
+    [Fact]
+    public void The_overflow_registration_names_its_trigger()
+    {
+        // Without it the document-level mousedown reads a second press on the button as an
+        // OUTSIDE click and closes the popover before @onclick runs — so the click reopened what
+        // it meant to close, and the button never closed anything.
+        RenderOverflowGrid(out var cut);
+        var trigger = cut.Find("[data-testid='allday-more']");
+        var triggerId = trigger.Id;
+        Assert.False(string.IsNullOrEmpty(triggerId), "the trigger has no id to register");
+
+        trigger.Click();
+
+        var registration = _interop.ClickOutsideRegistrations
+            .Single(r => r.ElementId == cut.Find("[data-testid='allday-more-popover']").Id);
+        Assert.Equal(triggerId, registration.TriggerElementId);
+    }
+
+    [Fact]
+    public async Task Dismissing_from_outside_unregisters_the_handler()
+    {
+        // Clearing only the bookkeeping flag left the JS handler map and the interop dictionary
+        // holding a callback for a dialog that had left the DOM — and with the flag cleared, no
+        // later close path could reach it.
+        RenderOverflowGrid(out var cut);
+        cut.Find("[data-testid='allday-more']").Click();
+
+        var popoverId = cut.Find("[data-testid='allday-more-popover']").Id;
+        var registration = _interop.ClickOutsideRegistrations.Single(r => r.ElementId == popoverId);
+
+        await cut.InvokeAsync(() => registration.Handler());
+
+        Assert.Contains(popoverId, _interop.ClickOutsideUnregistrations);
+        Assert.Empty(cut.FindAll("[data-testid='allday-more-popover']"));
+    }
+
+    [Fact]
+    public void Escape_on_the_trigger_closes_the_popover()
+    {
+        // A keyboard user who opens with Enter still holds focus on the BUTTON, where the
+        // dialog's own keydown handler cannot hear anything.
+        RenderOverflowGrid(out var cut);
+        var trigger = cut.Find("[data-testid='allday-more']");
+        trigger.Click();
+        Assert.Single(cut.FindAll("[data-testid='allday-more-popover']"));
+
+        cut.Find("[data-testid='allday-more']").KeyDown(new KeyboardEventArgs { Key = "Escape" });
+
+        Assert.Empty(cut.FindAll("[data-testid='allday-more-popover']"));
+    }
+
+    [Fact]
+    public void The_last_columns_popover_opens_towards_the_inside()
+    {
+        // A 14rem panel hung off the last day column lands past the grid's right edge, inside a
+        // scroller that clips — so part of the list is only reachable by discovering a horizontal
+        // scrollbar.
+        var day = D(2026, 4, 15);
+        var lastDay = day.AddDays(4);   // the anchor week's Sunday, with the overflow on it
+        var events = Enumerable.Range(0, 6)
+            .Select(i => new L.SchedulerEvent($"z{i}", $"All day {i}", lastDay, lastDay.AddDays(1)) { AllDay = true })
+            .ToArray();
+
+        var cut = _ctx.Render<L.SchedulerTimeGridView>(p => p
+            .Add(c => c.AnchorDate, day)
+            .Add(c => c.Days, 7)
+            .Add(c => c.FirstDayOfWeek, DayOfWeek.Monday)
+            .Add(c => c.Events, events));
+
+        cut.Find("[data-testid='allday-more']").Click();
+
+        var cls = cut.Find("[data-testid='allday-more-popover']").GetAttribute("class") ?? string.Empty;
+        Assert.Contains("right-0", cls);
+        Assert.DoesNotContain("left-0", cls);
     }
 
 }
