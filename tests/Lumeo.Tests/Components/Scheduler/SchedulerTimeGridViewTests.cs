@@ -682,4 +682,79 @@ public class SchedulerTimeGridViewTests : IAsyncLifetime
         Assert.Contains("top-0", sticky.GetAttribute("class") ?? string.Empty);
     }
 
+    // -- review round 2 --------------------------------------------------------
+
+    [Fact]
+    public void Today_is_announced_and_not_only_coloured()
+    {
+        // The marker was CSS classes and a data- attribute, so a screen reader read today as the
+        // same weekday and number as every other column.
+        var cut = _ctx.Render<L.SchedulerTimeGridView>(p => p
+            .Add(c => c.AnchorDate, D(2026, 4, 15))
+            .Add(c => c.Days, 7)
+            .Add(c => c.Today, D(2026, 4, 15))
+            .Add(c => c.Events, Array.Empty<L.SchedulerEvent>()));
+
+        var current = cut.FindAll("[data-dayheader][aria-current]");
+        Assert.Single(current);
+        Assert.Equal("date", current[0].GetAttribute("aria-current"));
+        Assert.Equal("2026-04-15", current[0].GetAttribute("data-dayheader"));
+
+        // And nothing else claims it — aria-current on every column would announce nothing.
+        Assert.Equal(7, cut.FindAll("[data-dayheader]").Count);
+    }
+
+    [Fact]
+    public void The_day_number_follows_the_cultures_own_calendar()
+    {
+        // DateTime.Day is always the GREGORIAN day. Under a non-Gregorian calendar the header
+        // printed a number that disagreed with the culture-formatted title above it.
+        var previous = CultureInfo.CurrentUICulture;
+        try
+        {
+            var arabic = new CultureInfo("ar-SA");
+            CultureInfo.CurrentUICulture = arabic;
+
+            var day = D(2026, 4, 15);
+            var cut = _ctx.Render<L.SchedulerTimeGridView>(p => p
+                .Add(c => c.AnchorDate, day)
+                .Add(c => c.Days, 1)
+                .Add(c => c.Events, Array.Empty<L.SchedulerEvent>()));
+
+            var expected = day.ToString("%d", arabic);
+            Assert.Contains(expected, cut.Find("[data-dayheader]").TextContent);
+
+            // Only meaningful if the culture's calendar actually disagrees with the Gregorian
+            // one — otherwise this test would pass against the bug it exists for.
+            Assert.NotEqual(day.Day.ToString(CultureInfo.InvariantCulture), expected);
+        }
+        finally
+        {
+            CultureInfo.CurrentUICulture = previous;
+        }
+    }
+
+    [Fact]
+    public void A_tall_all_day_strip_scrolls_instead_of_covering_the_grid()
+    {
+        // The strip grows a lane per overlapping all-day event. Inside a sticky block that grew
+        // past the viewport it covered the timed rows for the whole scroll range, leaving every
+        // slot behind it invisible and unclickable.
+        var day = D(2026, 4, 15);
+        var events = Enumerable.Range(0, 24)
+            .Select(i => new L.SchedulerEvent($"a{i}", $"All day {i}", day, day.AddDays(1)) { AllDay = true })
+            .ToArray();
+
+        var cut = _ctx.Render<L.SchedulerTimeGridView>(p => p
+            .Add(c => c.AnchorDate, day)
+            .Add(c => c.Days, 7)
+            .Add(c => c.Events, events));
+
+        var strip = cut.Find("[data-testid='timegrid-allday-strip']");
+        var cls = strip.GetAttribute("class") ?? string.Empty;
+
+        Assert.Contains("max-h-", cls);
+        Assert.Contains("overflow-y-auto", cls);
+    }
+
 }

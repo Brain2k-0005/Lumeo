@@ -855,7 +855,16 @@
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (!firstRender) return;
+        // Re-resolved on every render, not cached from the first one. A circuit that stays
+        // connected across the browser's local midnight otherwise keeps marking yesterday, and
+        // the time-grid header inherited that the moment it started reading this date (Codex
+        // review of PR #427). Skipped when a display zone is configured, because then nothing
+        // reads this value.
+        //
+        // The cost is one small interop per render in the default configuration. The scheduler
+        // renders on user actions rather than continuously - a drag runs in JS and commits once -
+        // so that is a handful of calls, against a marker that is otherwise wrong for a day.
+        if (_displayZone is not null) return;
 
         var resolved = await ResolveBrowserTodayAsync();
         if (resolved == _browserToday) return;
