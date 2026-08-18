@@ -64,7 +64,11 @@
                 </button>
             }
 
-            @if (Calendars.Count > 1)
+            @* Visible, not declared: with everything but one switched off the split has
+               nothing to put side by side, and ShowsPanes refuses it. A control still offered
+               there changes the mode and flips its own label to "Merge panes" while the layout
+               stays overlaid, promising a state it cannot reach (Codex review of PR #426). *@
+            @if (VisibleCalendars.Count > 1)
             {
                 <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Sm"
                         OnClick="@(() => SetPaneModeAsync(_paneMode == SchedulerPaneMode.SideBySide ? SchedulerPaneMode.Overlay : SchedulerPaneMode.SideBySide))"
@@ -1095,18 +1099,24 @@
             ? Unprojected(saved)
             : SchedulerTimeZoneProjection.FromDisplay(saved, original, _displayZone);
 
-        if (matches > 1)
+        if (_dialogSource is not null && idx < 0)
         {
-            // Nothing stored, nothing reported — but the dialog still closes. Returning with
-            // it open would leave the user pressing Save against a form that can never
-            // commit, with no way to tell that from a slow render.
+            // Every edit that does not resolve, not only the duplicated one: a blank id, or a
+            // parent that removed the event while the dialog stood open, lands here too. The
+            // old guard let those through to report the edit on OnEventChange while
+            // EventsChanged carried the unchanged collection — two notifications contradicting
+            // each other about an edit that had gone nowhere (Codex review of PR #426).
+            //
+            // Nothing stored, nothing reported — but the dialog still closes. Returning with it
+            // open would leave the user pressing Save against a form that can never commit,
+            // with no way to tell that from a slow render.
             _dialogOpen = false;
             _dialogSource = null;
             return;
         }
 
         if (_dialogSource is null) _events.Add(committed);
-        else if (idx >= 0) _events[idx] = committed;
+        else _events[idx] = committed;
 
         _dialogOpen = false;
         _dialogSource = null;

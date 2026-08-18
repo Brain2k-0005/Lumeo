@@ -545,4 +545,67 @@ public class SchedulerEventDialogTests : IAsyncLifetime
         Assert.Equal("Renamed", saved.Title);
         Assert.Equal(end, saved.End);
     }
+
+    // -- review round 3 --------------------------------------------------------
+
+    [Fact]
+    public void An_edit_that_resolves_to_nothing_reports_nothing()
+    {
+        // The parent can drop the event while the dialog stands open on it — a poll landing, a
+        // sibling deleting it. The edit then lands nowhere, and reporting it on OnEventChange
+        // while EventsChanged carried the unchanged collection told consumers two contradictory
+        // things about an edit that had gone nowhere (Codex review, PR #426).
+        var start = new DateTime(2026, 3, 9, 9, 0, 0);
+        var ev = new L.SchedulerEvent("e1", "Standup", start, start.AddHours(1));
+        var survivor = new L.SchedulerEvent("e2", "Retro", start.AddDays(1), start.AddDays(1).AddHours(1));
+
+        IEnumerable<L.SchedulerEvent>? pushed = null;
+        L.SchedulerEvent? reported = null;
+        var cut = _ctx.Render<L.Scheduler>(p => p
+            .Add(c => c.InitialView, L.SchedulerView.Month)
+            .Add(c => c.InitialDate, start.Date)
+            .Add(c => c.Events, new[] { ev, survivor })
+            .Add(c => c.BuiltInEventDialog, true)
+            .Add(c => c.OnEventChange, (L.SchedulerEvent e) => reported = e)
+            .Add(c => c.EventsChanged, (IEnumerable<L.SchedulerEvent> e) => pushed = e));
+
+        cut.Find("[data-event-id='e1']").Click();
+        cut.Find("input[data-scheduler-dialog-title]").Input("Renamed");
+
+        // It goes away underneath the open form.
+        cut.Render(p => p.Add(c => c.Events, new[] { survivor }));
+
+        cut.Find("[data-scheduler-dialog-save]").Click();
+
+        Assert.Null(reported);
+        Assert.Null(pushed);
+        Assert.Equal("false", cut.Find("[role='dialog']").GetAttribute("aria-modal"));
+    }
+
+    [Fact]
+    public void The_split_control_needs_two_VISIBLE_calendars_not_two_declared_ones()
+    {
+        // ShowsPanes refuses a split with one visible calendar, so offering the control there
+        // flips its own label to "Merge panes" over a layout that never splits.
+        var calendars = new[]
+        {
+            new L.SchedulerCalendar("team", "Team"),
+            new L.SchedulerCalendar("personal", "Personal", Visible: false),
+        };
+
+        var cut = _ctx.Render<L.Scheduler>(p => p
+            .Add(c => c.InitialView, L.SchedulerView.Month)
+            .Add(c => c.InitialDate, Anchor)
+            .Add(c => c.Events, Array.Empty<L.SchedulerEvent>())
+            .Add(c => c.Calendars, calendars)
+            .Add(c => c.PaneMode, L.SchedulerPaneMode.SideBySide));
+
+        Assert.Empty(cut.FindAll("[data-scheduler-pane-toggle]"));
+        Assert.Empty(cut.FindAll("[data-scheduler-pane]"));
+
+        // Switching the second one back on brings both the panes and the control with it.
+        cut.Find("[data-scheduler-calendar='personal']").Click();
+        Assert.Single(cut.FindAll("[data-scheduler-pane-toggle]"));
+        Assert.Equal(2, cut.FindAll("[data-scheduler-pane]").Count);
+    }
 }
