@@ -517,4 +517,32 @@ public class SchedulerEventDialogTests : IAsyncLifetime
         // aria state, not the presence of the markup.
         Assert.Equal("false", cut.Find("[role='dialog']").GetAttribute("aria-modal"));
     }
+
+    [Fact]
+    public void A_title_only_edit_leaves_an_all_day_end_exactly_as_the_caller_set_it()
+    {
+        // The one-day floor exists for the case where the end would otherwise be EMPTY. Applying
+        // it to an end the caller already set — an all-day event carrying a same-day afternoon
+        // end, which the layout reads as one day either way — re-dates their data on an edit
+        // that never touched it, which is the same defect as shifting a start.
+        var start = new DateTime(2026, 3, 9, 9, 0, 0);
+        var end = new DateTime(2026, 3, 9, 17, 0, 0);
+        var ev = new L.SchedulerEvent("e1", "Offsite", start, end) { AllDay = true };
+
+        IEnumerable<L.SchedulerEvent>? pushed = null;
+        var cut = _ctx.Render<L.Scheduler>(p => p
+            .Add(c => c.InitialView, L.SchedulerView.Month)
+            .Add(c => c.InitialDate, start.Date)
+            .Add(c => c.Events, new[] { ev })
+            .Add(c => c.BuiltInEventDialog, true)
+            .Add(c => c.EventsChanged, (IEnumerable<L.SchedulerEvent> e) => pushed = e));
+
+        cut.Find("[data-event-instance]").Click();
+        cut.Find("input[data-scheduler-dialog-title]").Input("Renamed");
+        cut.Find("[data-scheduler-dialog-save]").Click();
+
+        var saved = pushed!.Single();
+        Assert.Equal("Renamed", saved.Title);
+        Assert.Equal(end, saved.End);
+    }
 }

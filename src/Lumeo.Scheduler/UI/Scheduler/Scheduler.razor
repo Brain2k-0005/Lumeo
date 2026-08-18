@@ -1014,16 +1014,9 @@
         if (!allDay) return;
 
         _dialogStart = _dialogStart.Date;
-        _dialogEnd = AllDayEnd(_dialogStart, _dialogEnd);
+        _dialogEnd = _dialogEnd.Date > _dialogStart ? _dialogEnd.Date : NextMidnight(_dialogStart);
     }
 
-    /// <summary>
-    /// An all-day end is EXCLUSIVE — the convention <c>SchedulerMonthLayout.DayCellSpan</c> and
-    /// the expander's <c>End &gt; rangeStart</c> overlap check both read — so a single day ends
-    /// at the NEXT midnight. Collapsing both bounds to the same midnight produced a zero-length
-    /// event that vanished the moment it was saved on the first visible day (Codex review of
-    /// PR #426).
-    /// </summary>
     /// <summary>
     /// The bounds an all-day source hands back, in the frame the dialog actually SHOWED them in.
     /// ToDisplay leaves all-day instants alone, so the form displayed them raw; keeping a UTC or
@@ -1040,11 +1033,16 @@
                 End = DateTime.SpecifyKind(saved.End, DateTimeKind.Unspecified),
             };
 
-    private static DateTime AllDayEnd(DateTime start, DateTime end)
-    {
-        var normalised = end.Date;
-        return normalised > start.Date ? normalised : start.Date.AddDays(1);
-    }
+    /// <summary>
+    /// An all-day end is EXCLUSIVE — the convention <c>SchedulerMonthLayout.DayCellSpan</c> and
+    /// the expander's <c>End &gt; rangeStart</c> overlap check both read — so a single day ends
+    /// at the NEXT midnight. Collapsing both bounds to the same midnight produced a zero-length
+    /// event that vanished the moment it was saved on the first visible day (Codex review of
+    /// PR #426). Applied only where the end would otherwise be empty: an end a caller already
+    /// set is left exactly as it is, even when it carries a time, because re-dating it on a
+    /// title-only edit is the same defect as shifting a start.
+    /// </summary>
+    private static DateTime NextMidnight(DateTime start) => start.Date.AddDays(1);
 
     private async Task SaveDialogAsync()
     {
@@ -1052,11 +1050,13 @@
 
         // An end before its start is the one input the form itself can produce, and every
         // downstream consumer — layout, recurrence, the expander's seek — assumes otherwise.
-        // The all-day branch also covers a user picking the same date twice, which reads as a
-        // one-day event and has to be stored as the exclusive end that means one.
-        var end = _dialogAllDay
-            ? AllDayEnd(_dialogStart, _dialogEnd)
-            : _dialogEnd > _dialogStart ? _dialogEnd : _dialogStart;
+        // An all-day event cannot fall back to the start, because the two bounds being equal
+        // is exactly the zero-length case the expander drops; it takes the next midnight
+        // instead. That covers the toggle and a user picking the same date twice, which reads
+        // as one day.
+        var end = _dialogEnd > _dialogStart
+            ? _dialogEnd
+            : _dialogAllDay ? NextMidnight(_dialogStart) : _dialogStart;
 
         var saved = _dialogSource is { } existing
             ? existing with
