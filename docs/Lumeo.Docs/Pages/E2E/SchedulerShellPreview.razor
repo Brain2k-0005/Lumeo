@@ -1,0 +1,82 @@
+@page "/e2e/scheduler-shell-preview"
+
+@* E2E harness for the Scheduler WRAPPER — calendars, panes and the opt-in appointment
+   dialog. Deliberately NOT linked in navigation. SchedulerViewsPreview.razor next door
+   drives the view components directly; this one drives the public component, because the
+   three things below only exist at that level: the chips and the pane split live in the
+   wrapper's chrome, and the dialog is the wrapper's own overlay. bUnit covers the state
+   transitions; this covers what only a real browser has — a Dialog that actually opens,
+   focus that actually moves, and a select the browser itself populates. *@
+
+<PageTitle>Scheduler shell preview — Lumeo</PageTitle>
+
+<PageHeader Title="Scheduler shell (calendars, panes, dialog)"
+            Description="E2E harness for the public Scheduler component's calendar chips, side-by-side panes and built-in appointment dialog." />
+
+<Stack Gap="8" Class="mt-8">
+    <div class="space-y-3" data-testid="dialog-section">
+        <Heading Id="dialog" Level="2" Class="scroll-mt-20">Built-in dialog, opted in</Heading>
+        <p data-testid="dialog-count-log">Events: @_dialogEvents.Count()</p>
+        <p data-testid="dialog-change-log">Last change: @(_lastDialogChange ?? "(none)")</p>
+        <Scheduler @bind-Events="_dialogEvents"
+                   Calendars="_calendars"
+                   InitialView="SchedulerView.Month"
+                   InitialDate="_anchor"
+                   BuiltInEventDialog="true"
+                   OnEventChange="@(ev => _lastDialogChange = $"{ev.Id}: {ev.Title}")"
+                   Height="520px" />
+    </div>
+
+    <div class="space-y-3" data-testid="optout-section">
+        <Heading Id="optout" Level="2" Class="scroll-mt-20">Dialog off — the caller keeps the click</Heading>
+        <p data-testid="optout-click-log">Last clicked: @(_lastOptOutClick ?? "(none)")</p>
+        <Scheduler Events="_optOutEvents"
+                   InitialView="SchedulerView.Month"
+                   InitialDate="_anchor"
+                   OnEventClick="@(ev => _lastOptOutClick = $"clicked {ev.Id}")"
+                   Height="420px" />
+    </div>
+
+    <div class="space-y-3" data-testid="panes-section">
+        <Heading Id="panes" Level="2" Class="scroll-mt-20">Side-by-side panes</Heading>
+        <Scheduler Events="_paneEvents"
+                   Calendars="_calendars"
+                   PaneMode="SchedulerPaneMode.SideBySide"
+                   InitialView="SchedulerView.Month"
+                   InitialDate="_anchor"
+                   Height="520px" />
+    </div>
+</Stack>
+
+@code {
+    // Fixed, not DateTime.Today: a harness whose seed moves with the calendar produces tests
+    // that pass every day but one — the lesson from the month-drag test that collided with
+    // its own hard-coded target day.
+    private static readonly DateTime _anchor = new(2026, 4, 15);
+
+    private readonly List<SchedulerCalendar> _calendars =
+    [
+        new("team", "Team", "#3b82f6"),
+        new("personal", "Personal", "#f97316"),
+    ];
+
+    // IEnumerable, not List: @bind-Events writes back the parameter's own type.
+    private IEnumerable<SchedulerEvent> _dialogEvents =
+    [
+        new("shell-1", "Standup", _anchor.AddDays(1).AddHours(9), _anchor.AddDays(1).AddHours(10)) { CalendarId = "team" },
+    ];
+
+    private readonly List<SchedulerEvent> _optOutEvents =
+    [
+        new("optout-1", "Untouched", _anchor.AddDays(1).AddHours(9), _anchor.AddDays(1).AddHours(10)),
+    ];
+
+    private readonly List<SchedulerEvent> _paneEvents =
+    [
+        new("pane-team", "Team sync", _anchor.AddDays(2).AddHours(9), _anchor.AddDays(2).AddHours(10)) { CalendarId = "team" },
+        new("pane-personal", "Dentist", _anchor.AddDays(2).AddHours(14), _anchor.AddDays(2).AddHours(15)) { CalendarId = "personal" },
+    ];
+
+    private string? _lastDialogChange;
+    private string? _lastOptOutClick;
+}

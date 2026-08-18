@@ -944,6 +944,28 @@
             ? EventCallback.Factory.Create<SchedulerEvent>(this, OnEventClickInternalAsync)
             : default;
 
+    /// <summary>
+    /// The index of the one stored event carrying <paramref name="id"/>, or -1 when the id is
+    /// blank or borne by more than one — see the drag path's remarks for why ambiguity is
+    /// refused rather than resolved to the first match. <c>Matches</c> tells the two apart:
+    /// zero means "not here yet", more than one means "here, but unidentifiable".
+    /// </summary>
+    private (int Index, int Matches) ResolveUnambiguously(string? id)
+    {
+        if (string.IsNullOrEmpty(id)) return (-1, 0);
+
+        var matches = 0;
+        var idx = -1;
+        for (var i = 0; i < _events.Count; i++)
+        {
+            if (!string.Equals(_events[i].Id, id, StringComparison.Ordinal)) continue;
+            matches++;
+            if (idx < 0) idx = i;
+        }
+
+        return (matches > 1 ? -1 : idx, matches);
+    }
+
     private async Task OnDateSelectInternalAsync(SchedulerDateRange range, string? paneCalendarId = null)
     {
         if (BuiltInEventDialog)
@@ -960,7 +982,14 @@
             _dialogOpen = true;
         }
 
-        if (OnDateSelect.HasDelegate) await OnDateSelect.InvokeAsync(range);
+        // The pane travels to the CALLER too, not just to the built-in dialog. A custom
+        // creation workflow sees one selection shape from every pane otherwise, so it cannot
+        // file the new event into the column the user drew it in (Codex review of PR #426).
+        if (OnDateSelect.HasDelegate)
+        {
+            await OnDateSelect.InvokeAsync(
+                paneCalendarId is null ? range : range with { CalendarId = paneCalendarId });
+        }
     }
 
     private async Task OnEventClickInternalAsync(SchedulerEvent ev)
@@ -985,7 +1014,20 @@
         if (!allDay) return;
 
         _dialogStart = _dialogStart.Date;
-        _dialogEnd = _dialogEnd.Date;
+        _dialogEnd = AllDayEnd(_dialogStart, _dialogEnd);
+    }
+
+    /// <summary>
+    /// An all-day end is EXCLUSIVE — the convention <c>SchedulerMonthLayout.DayCellSpan</c> and
+    /// the expander's <c>End &gt; rangeStart</c> overlap check both read — so a single day ends
+    /// at the NEXT midnight. Collapsing both bounds to the same midnight produced a zero-length
+    /// event that vanished the moment it was saved on the first visible day (Codex review of
+    /// PR #426).
+    /// </summary>
+    private static DateTime AllDayEnd(DateTime start, DateTime end)
+    {
+        var normalised = end.Date;
+        return normalised > start.Date ? normalised : start.Date.AddDays(1);
     }
 
     private async Task SaveDialogAsync()
@@ -994,7 +1036,11 @@
 
         // An end before its start is the one input the form itself can produce, and every
         // downstream consumer — layout, recurrence, the expander's seek — assumes otherwise.
-        var end = _dialogEnd > _dialogStart ? _dialogEnd : _dialogStart;
+        // The all-day branch also covers a user picking the same date twice, which reads as a
+        // one-day event and has to be stored as the exclusive end that means one.
+        var end = _dialogAllDay
+            ? AllDayEnd(_dialogStart, _dialogEnd)
+            : _dialogEnd > _dialogStart ? _dialogEnd : _dialogStart;
 
         var saved = _dialogSource is { } existing
             ? existing with
@@ -1015,16 +1061,27 @@
                 CalendarId = _dialogCalendarId,
             };
 
+        // Resolved the way the drag path resolves it: only an Id matching EXACTLY one stored
+        // event identifies anything. A blank or duplicated Id is ambiguous, and acting on the
+        // first match corrupts the wrong record.
+        var (idx, matches) = ResolveUnambiguously(_dialogSource?.Id);
+        var original = idx >= 0 ? _events[idx] : null;
+
         // The dialog was populated from the DISPLAY copy, so its wall-clock values have to be
         // read back through the same projection the drag path uses. Without it even a title-only
         // edit stored the shifted reading as an Unspecified instant and quietly rewrote the
         // caller's data into a different frame (Codex review of PR #426).
-        var idx = _dialogSource is null ? -1 : _events.FindIndex(e => e.Id == _dialogSource.Id);
-        var original = idx >= 0 ? _events[idx] : null;
-        var committed = SchedulerTimeZoneProjection.FromDisplay(saved, original, _displayZone);
+        //
+        // Unless the source was ALL-DAY: ToDisplay leaves those instants untouched, so they were
+        // never projected, and inverting one moves the event a day when the user did nothing but
+        // switch all-day off.
+        var committed = original is { AllDay: true }
+            ? saved
+            : SchedulerTimeZoneProjection.FromDisplay(saved, original, _displayZone);
 
         if (_dialogSource is null) _events.Add(committed);
         else if (idx >= 0) _events[idx] = committed;
+        else if (matches > 1) return;
 
         _dialogOpen = false;
         _dialogSource = null;
@@ -1058,8 +1115,19 @@
         if (_dialogSource is not { } victim) return;
 
         // By id, not by reference: the dialog holds the display PROJECTION of the event, which
-        // is a different instance from the one in the list.
-        _events.RemoveAll(e => e.Id == victim.Id);
+        // is a different instance from the one in the list. And only when that id resolves to
+        // exactly one event: RemoveAll on a duplicated id deleted every record sharing it,
+        // turning the ambiguity the drag path refuses to act on into silent multi-record data
+        // loss (Codex review of PR #426).
+        var (victimIdx, _) = ResolveUnambiguously(victim.Id);
+        if (victimIdx < 0)
+        {
+            _dialogOpen = false;
+            _dialogSource = null;
+            return;
+        }
+
+        _events.RemoveAt(victimIdx);
         _dialogOpen = false;
         _dialogSource = null;
 
@@ -1139,20 +1207,7 @@
         // identifies nothing, and a duplicate Id is genuinely ambiguous; silently merging
         // onto the first match corrupts the wrong record. In both cases the stored
         // collection is left untouched and only the reported event is surfaced.
-        var matches = 0;
-        var idx = -1;
-        if (!string.IsNullOrEmpty(updated.Id))
-        {
-            for (var i = 0; i < _events.Count; i++)
-            {
-                if (string.Equals(_events[i].Id, updated.Id, StringComparison.Ordinal))
-                {
-                    matches++;
-                    if (idx < 0) idx = i;
-                }
-            }
-        }
-        if (matches > 1) idx = -1;
+        var (idx, matches) = ResolveUnambiguously(updated.Id);
 
         // Converted back BEFORE it is stored or handed on: the views work in display
         // wall-clock and cannot know what frame the caller used, so the original event is what

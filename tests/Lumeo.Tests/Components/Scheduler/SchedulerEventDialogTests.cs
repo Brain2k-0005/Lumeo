@@ -345,4 +345,136 @@ public class SchedulerEventDialogTests : IAsyncLifetime
         Assert.Equal(2, ids.Count);
         Assert.Equal(ids.Count, ids.Distinct().Count());
     }
+
+    // -- review round 2 --------------------------------------------------------
+
+    [Fact]
+    public void Turning_all_day_off_does_not_move_the_event_a_day()
+    {
+        // ToDisplay leaves all-day instants untouched, so they were never projected. Inverting
+        // one on save moved a 00:00Z event to the previous date when the user did nothing but
+        // switch all-day off (Codex review, PR #426).
+        var utcMidnight = new DateTime(2026, 3, 9, 0, 0, 0, DateTimeKind.Utc);
+        var ev = new L.SchedulerEvent("e1", "Offsite", utcMidnight, utcMidnight.AddDays(1))
+        {
+            AllDay = true,
+        };
+
+        IEnumerable<L.SchedulerEvent>? pushed = null;
+        var cut = _ctx.Render<L.Scheduler>(p => p
+            .Add(c => c.InitialView, L.SchedulerView.Month)
+            .Add(c => c.InitialDate, utcMidnight.Date)
+            .Add(c => c.Events, new[] { ev })
+            .Add(c => c.TimeZone, "Europe/Berlin")
+            .Add(c => c.BuiltInEventDialog, true)
+            .Add(c => c.EventsChanged, (IEnumerable<L.SchedulerEvent> e) => pushed = e));
+
+        cut.Find("[data-event-instance]").Click();
+        cut.Find("[data-scheduler-dialog-allday]").Click();   // all-day OFF
+        cut.Find("[data-scheduler-dialog-save]").Click();
+
+        var saved = pushed!.Single();
+        Assert.False(saved.AllDay);
+        Assert.Equal(utcMidnight.Date, saved.Start.Date);
+    }
+
+    [Fact]
+    public void An_all_day_event_saved_from_the_dialog_still_renders()
+    {
+        // All-day ends are EXCLUSIVE, so collapsing both bounds to the same midnight produced a
+        // zero-length event that the expander's End > rangeStart check dropped on the spot.
+        var start = new DateTime(2026, 3, 9, 14, 30, 0);
+        var ev = new L.SchedulerEvent("e1", "Standup", start, start.AddHours(1));
+
+        IEnumerable<L.SchedulerEvent>? pushed = null;
+        var cut = _ctx.Render<L.Scheduler>(p => p
+            .Add(c => c.InitialView, L.SchedulerView.Month)
+            .Add(c => c.InitialDate, start.Date)
+            .Add(c => c.Events, new[] { ev })
+            .Add(c => c.BuiltInEventDialog, true)
+            .Add(c => c.EventsChanged, (IEnumerable<L.SchedulerEvent> e) => pushed = e));
+
+        cut.Find("[data-event-instance]").Click();
+        cut.Find("[data-scheduler-dialog-allday]").Click();
+        cut.Find("[data-scheduler-dialog-save]").Click();
+
+        var saved = pushed!.Single();
+        Assert.True(saved.End > saved.Start);
+
+        // And it is still on screen — the assertion the span rule exists for.
+        cut.Render(p => p.Add(c => c.Events, pushed!.ToArray()));
+        Assert.NotEmpty(cut.FindAll("[data-event-instance]"));
+    }
+
+    [Fact]
+    public void Deleting_an_event_whose_id_is_duplicated_removes_nothing()
+    {
+        // RemoveAll turned an ambiguous id — which the drag path refuses to act on — into
+        // silent multi-record data loss.
+        var start = new DateTime(2026, 3, 9, 9, 0, 0);
+        var events = new[]
+        {
+            new L.SchedulerEvent("dup", "First", start, start.AddHours(1)),
+            new L.SchedulerEvent("dup", "Second", start.AddDays(1), start.AddDays(1).AddHours(1)),
+        };
+
+        IEnumerable<L.SchedulerEvent>? pushed = null;
+        var cut = _ctx.Render<L.Scheduler>(p => p
+            .Add(c => c.InitialView, L.SchedulerView.Month)
+            .Add(c => c.InitialDate, start.Date)
+            .Add(c => c.Events, events)
+            .Add(c => c.BuiltInEventDialog, true)
+            .Add(c => c.EventsChanged, (IEnumerable<L.SchedulerEvent> e) => pushed = e));
+
+        cut.FindAll("[data-event-instance]")[0].Click();
+        cut.Find("[data-scheduler-dialog-delete]").Click();
+
+        // Either nothing was pushed at all, or what was pushed still holds both records.
+        Assert.Equal(2, (pushed ?? events).Count());
+    }
+
+    [Fact]
+    public void A_custom_handler_learns_which_pane_the_selection_came_from()
+    {
+        // With the built-in dialog off, a caller running its own creation workflow saw one
+        // selection shape from every pane and could not file the event into the right column.
+        var calendars = new[]
+        {
+            new L.SchedulerCalendar("team", "Team"),
+            new L.SchedulerCalendar("personal", "Personal"),
+        };
+
+        L.SchedulerDateRange? seen = null;
+        var cut = _ctx.Render<L.Scheduler>(p => p
+            .Add(c => c.InitialView, L.SchedulerView.Month)
+            .Add(c => c.InitialDate, Anchor)
+            .Add(c => c.Events, Array.Empty<L.SchedulerEvent>())
+            .Add(c => c.Calendars, calendars)
+            .Add(c => c.PaneMode, L.SchedulerPaneMode.SideBySide)
+            .Add(c => c.OnDateSelect, (L.SchedulerDateRange r) => seen = r));
+
+        var secondPane = cut.FindAll("[data-scheduler-pane]")[1];
+        secondPane.QuerySelector("[data-cell-date]")!.DoubleClick();
+
+        Assert.Equal("personal", seen?.CalendarId);
+    }
+
+    [Fact]
+    public void An_overlaid_selection_carries_no_calendar()
+    {
+        // The counterpart: with the views overlaid no single calendar owns the gesture, and
+        // inventing one would tell the caller something untrue.
+        L.SchedulerDateRange? seen = null;
+        var cut = _ctx.Render<L.Scheduler>(p => p
+            .Add(c => c.InitialView, L.SchedulerView.Month)
+            .Add(c => c.InitialDate, Anchor)
+            .Add(c => c.Events, Array.Empty<L.SchedulerEvent>())
+            .Add(c => c.Calendars, new[] { new L.SchedulerCalendar("team", "Team") })
+            .Add(c => c.OnDateSelect, (L.SchedulerDateRange r) => seen = r));
+
+        cut.FindAll("[data-cell-date]")[0].DoubleClick();
+
+        Assert.NotNull(seen);
+        Assert.Null(seen!.CalendarId);
+    }
 }

@@ -161,6 +161,14 @@ public enum SchedulerPaneMode
 /// </summary>
 public record SchedulerDateRange(DateTime Start, DateTime End, bool AllDay)
 {
+    /// <summary>
+    /// The calendar whose pane the selection was drawn in, or <c>null</c> when the views are
+    /// overlaid and no single calendar owns the gesture. A body property rather than a
+    /// positional one on purpose: adding it to the primary constructor would change the
+    /// synthesized signature and Deconstruct, breaking every existing caller.
+    /// </summary>
+    public string? CalendarId { get; init; }
+
     // Trim safety: this record is deserialized from JS (JsOnDateSelect [JSInvokable]
     // parameter). See SchedulerEvent's parameterless ctor above. Do not remove.
     public SchedulerDateRange() : this(default, default, false) { }
