@@ -16,6 +16,33 @@
        mount so assistive tech is already observing the node. *@
     <span class="sr-only" aria-live="polite" aria-atomic="true"
           data-testid="scheduler-live-region" data-announce-epoch="@_announcementEpoch">@AnnouncementText</span>
+
+    @* Which day each column IS. Week and Day had no header at all: the grid opened straight on
+       the all-day strip, so nothing on screen said whether a column was Monday or Thursday, and
+       the view read as though its top had been cut off. Month has carried its weekday row from
+       the start — this is the same row, plus the date, because a time grid shows one specific
+       week rather than a repeating pattern. *@
+    <div class="flex border-b border-border/60 bg-card" data-testid="timegrid-day-header">
+        <div class="flex-none w-14"></div>
+        <div class="flex-1 grid min-w-0" style="grid-template-columns: repeat(@Days, minmax(0, 1fr));">
+            @for (var d = 0; d < Days; d++)
+            {
+                var headerDay = _dayColumns[d];
+                var isToday = headerDay.Date == DateTime.Today;   // same source the month grid marks today from
+                <div class="border-l border-border/40 px-2 py-1.5 text-center min-w-0"
+                     data-dayheader="@headerDay.ToString("yyyy-MM-dd")"
+                     data-today="@(isToday ? "true" : null)">
+                    <div class="truncate text-[11px] font-medium @(isToday ? "text-primary" : "text-muted-foreground")">
+                        @WeekdayLabel(headerDay)
+                    </div>
+                    <div class="truncate text-sm @(isToday ? "font-semibold text-primary" : "text-foreground")">
+                        @headerDay.Day
+                    </div>
+                </div>
+            }
+        </div>
+    </div>
+
     @if (_allDayInstances.Any())
     {
         <div class="flex border-b border-border/60">
@@ -66,10 +93,15 @@
 
     <div class="flex" style="max-height: 34rem; overflow-y: auto;" @ref="_scrollRef">
         <div class="flex-none w-14">
-            @foreach (var hour in _hourLabels)
+            @* Every label but the first is lifted onto its own gridline, which is what the
+               negative offset is for. The first has no gridline above it — only the scroller's
+               clipping edge — so lifting it cut the digits in half (reported against the live
+               docs). It sits on the top edge instead, where its gridline would be. *@
+            @for (var i = 0; i < _hourLabels.Length; i++)
             {
+                var hour = _hourLabels[i];
                 <div class="h-12 relative">
-                    <span class="absolute -top-1.5 right-1.5 text-[11px] text-muted-foreground">@FormatHour(hour)</span>
+                    <span class="absolute @(i == 0 ? "top-0" : "-top-1.5") right-1.5 text-[11px] text-muted-foreground">@FormatHour(hour)</span>
                 </div>
             }
         </div>
@@ -516,6 +548,14 @@
     private static string InstanceKey(SchedulerEventInstance i) => $"{i.EventId}|{i.Start:O}";
 
     private static string FormatHour(int hour) => $"{hour % 24:D2}:00";
+
+    /// <summary>
+    /// The column header's weekday, abbreviated in the current UI culture — the same source
+    /// <c>SchedulerMonthView.BuildWeekdayHeaders</c> reads, so the two views never disagree
+    /// about what Monday is called.
+    /// </summary>
+    private static string WeekdayLabel(DateTime day) =>
+        CultureInfo.CurrentUICulture.DateTimeFormat.AbbreviatedDayNames[(int)day.DayOfWeek];
 
     private static TimeOnly MinuteToTimeOnly(int minute) => new((minute / 60) % 24, minute % 60);
 

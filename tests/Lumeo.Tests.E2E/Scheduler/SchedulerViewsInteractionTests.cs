@@ -121,4 +121,38 @@ public class SchedulerViewsInteractionTests : PlaywrightTestBase
         // so this is unconditionally > 0 for the month section (BusinessHours="true" there).
         Assert.True(count > 0, "expected weekend cells to carry data-off when BusinessHours=true");
     }
+
+    [Fact]
+    public async Task The_Week_Grid_Shows_Its_Day_Header_And_Does_Not_Clip_The_First_Hour()
+    {
+        // Reported against the live docs as "the week view is cut off at the top": there was no
+        // day header at all, and the first hour label was lifted by a negative offset into the
+        // scroller's clipping edge, so its digits were sliced in half. Both are geometry, which
+        // is why this half lives here rather than in bUnit.
+        await Goto("/e2e/scheduler-views-preview");
+
+        var week = Page.Locator("[data-testid='week-section']");
+        await week.ScrollIntoViewIfNeededAsync();
+
+        var headers = week.Locator("[data-dayheader]");
+        await Assertions.Expect(headers).ToHaveCountAsync(7, new() { Timeout = 5000 });
+
+        // Each header sits above the column it names.
+        var headerDates = await headers.EvaluateAllAsync<string[]>(
+            "els => els.map(e => e.getAttribute('data-dayheader'))");
+        var columnDates = await week.Locator("[data-daycol]").EvaluateAllAsync<string[]>(
+            "els => els.map(e => e.getAttribute('data-daycol'))");
+        Assert.Equal(columnDates, headerDates);
+
+        // And the first hour label is fully inside the scroller rather than half above it.
+        var clipped = await week.Locator("span.absolute").First.EvaluateAsync<bool>(
+            @"el => {
+                const r = el.getBoundingClientRect();
+                let sc = el.parentElement;
+                while (sc && getComputedStyle(sc).overflowY !== 'auto') sc = sc.parentElement;
+                return sc ? r.top < sc.getBoundingClientRect().top : false;
+            }");
+        Assert.False(clipped, "the first hour label is clipped by the scroller's top edge");
+    }
+
 }

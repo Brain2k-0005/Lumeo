@@ -1,4 +1,5 @@
 using Bunit;
+using System.Globalization;
 using Lumeo.Services;
 using Lumeo.Tests.Helpers;
 using Microsoft.Extensions.DependencyInjection;
@@ -493,4 +494,119 @@ public class SchedulerTimeGridViewTests : IAsyncLifetime
         Assert.Single(cut.FindAll("[data-event-id='a']"));
         Assert.Single(cut.FindAll("[data-event-id='c']"));
     }
+
+    // -- the day header, reported missing against the live docs -----------------
+
+    [Fact]
+    public void The_week_grid_labels_every_column_with_its_day()
+    {
+        // Week and Day had no header at all: the grid opened straight on the all-day strip, so
+        // nothing said whether a column was Monday or Thursday, and the view read as though its
+        // top had been cut off. Month has carried its weekday row from the start.
+        var cut = _ctx.Render<L.SchedulerTimeGridView>(p => p
+            .Add(c => c.AnchorDate, D(2026, 4, 15))
+            .Add(c => c.Days, 7)
+            .Add(c => c.FirstDayOfWeek, DayOfWeek.Monday)
+            .Add(c => c.Events, Array.Empty<L.SchedulerEvent>()));
+
+        var headers = cut.FindAll("[data-dayheader]");
+        Assert.Equal(7, headers.Count);
+
+        // The dates the columns actually draw, in order — Monday-first from the anchor's week.
+        Assert.Equal(
+            new[] { "2026-04-13", "2026-04-14", "2026-04-15", "2026-04-16", "2026-04-17", "2026-04-18", "2026-04-19" },
+            headers.Select(h => h.GetAttribute("data-dayheader")).ToArray());
+
+        // And each header carries its day NUMBER, not just a weekday name: a time grid shows one
+        // specific week, where the month grid shows a repeating pattern.
+        Assert.Contains("15", headers[2].TextContent);
+    }
+
+    [Fact]
+    public void A_header_column_lines_up_with_the_grid_column_below_it()
+    {
+        // The header is a separate row from the grid, so the two carry their own column
+        // definitions — the one thing that can silently drift apart.
+        var cut = _ctx.Render<L.SchedulerTimeGridView>(p => p
+            .Add(c => c.AnchorDate, D(2026, 4, 15))
+            .Add(c => c.Days, 7)
+            .Add(c => c.FirstDayOfWeek, DayOfWeek.Monday)
+            .Add(c => c.Events, Array.Empty<L.SchedulerEvent>()));
+
+        var headerDates = cut.FindAll("[data-dayheader]").Select(h => h.GetAttribute("data-dayheader")).ToArray();
+        var columnDates = cut.FindAll("[data-daycol]").Select(c => c.GetAttribute("data-daycol")).ToArray();
+
+        Assert.Equal(columnDates, headerDates);
+    }
+
+    [Fact]
+    public void The_day_view_gets_one_header()
+    {
+        var cut = _ctx.Render<L.SchedulerTimeGridView>(p => p
+            .Add(c => c.AnchorDate, D(2026, 4, 15))
+            .Add(c => c.Days, 1)
+            .Add(c => c.Events, Array.Empty<L.SchedulerEvent>()));
+
+        var headers = cut.FindAll("[data-dayheader]");
+        Assert.Single(headers);
+        Assert.Equal("2026-04-15", headers[0].GetAttribute("data-dayheader"));
+    }
+
+    [Fact]
+    public void Today_is_marked_in_the_header_and_only_today()
+    {
+        var cut = _ctx.Render<L.SchedulerTimeGridView>(p => p
+            .Add(c => c.AnchorDate, DateTime.Today)
+            .Add(c => c.Days, 7)
+            .Add(c => c.Events, Array.Empty<L.SchedulerEvent>()));
+
+        var marked = cut.FindAll("[data-dayheader][data-today='true']");
+        Assert.Single(marked);
+        Assert.Equal(DateTime.Today.ToString("yyyy-MM-dd"), marked[0].GetAttribute("data-dayheader"));
+    }
+
+    [Fact]
+    public void The_header_names_the_weekday_the_way_the_culture_does()
+    {
+        var previous = CultureInfo.CurrentUICulture;
+        try
+        {
+            CultureInfo.CurrentUICulture = new CultureInfo("de-DE");
+            var cut = _ctx.Render<L.SchedulerTimeGridView>(p => p
+                .Add(c => c.AnchorDate, D(2026, 4, 15))
+                .Add(c => c.Days, 1)
+                .Add(c => c.Events, Array.Empty<L.SchedulerEvent>()));
+
+            // 2026-04-15 is a Wednesday; German abbreviates it "Mi".
+            Assert.Contains("Mi", cut.Find("[data-dayheader]").TextContent);
+        }
+        finally
+        {
+            CultureInfo.CurrentUICulture = previous;
+        }
+    }
+
+    [Fact]
+    public void The_first_hour_label_is_not_lifted_above_the_scrollers_edge()
+    {
+        // Every other label is lifted onto its own gridline by a negative offset. The first has
+        // no gridline above it, only the scroller's clipping edge, so the lift cut its digits in
+        // half — which is what "the week view is cut off at the top" turned out to be.
+        var cut = _ctx.Render<L.SchedulerTimeGridView>(p => p
+            .Add(c => c.AnchorDate, D(2026, 4, 15))
+            .Add(c => c.Days, 7)
+            .Add(c => c.Events, Array.Empty<L.SchedulerEvent>()));
+
+        var labels = cut.FindAll("span.absolute.right-1\\.5");
+        Assert.NotEmpty(labels);
+
+        var first = labels[0].GetAttribute("class") ?? string.Empty;
+        Assert.DoesNotContain("-top-1.5", first);
+        Assert.Contains("top-0", first);
+
+        // The rest keep the lift — the fix is for the edge case, not a change of alignment.
+        var second = labels[1].GetAttribute("class") ?? string.Empty;
+        Assert.Contains("-top-1.5", second);
+    }
+
 }
