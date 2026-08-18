@@ -162,4 +162,41 @@ public class SchedulerShellTests : PlaywrightTestBase
             $"the panel is only {panel.Width}px wide - it is being measured against a column");
     }
 
+    [Fact]
+    public async Task The_Month_Overflow_Popover_Keeps_Its_Width_And_Stays_Inside_The_Grid()
+    {
+        // The month grid is six rows deep, so its popover is anchored to the CELL — top-full
+        // against the grid would drop it below the whole month. That rules out max-w-full, which
+        // resolves against one day column and collapses the panel to a strip too narrow to read
+        // (Codex review of PR #427). Both halves of that are geometry, which markup assertions
+        // cannot see: the class-only test passed while the panel was 40px wide.
+        await Page.SetViewportSizeAsync(900, 900);
+        await Goto("/e2e/scheduler-shell-preview");
+
+        var section = Page.Locator("[data-testid='panes-section']");
+        await section.ScrollIntoViewIfNeededAsync();
+
+        var trigger = section.Locator("[data-testid='month-more-events']").First;
+        await Assertions.Expect(trigger).ToBeVisibleAsync(new() { Timeout = 5000 });
+        await trigger.ClickAsync();
+
+        var popover = section.Locator("[data-testid='month-more-popover']").First;
+        await Assertions.Expect(popover).ToBeVisibleAsync(new() { Timeout = 5000 });
+
+        var panel = await popover.BoundingBoxAsync();
+        var pane = await section.Locator("[data-scheduler-pane]").First.BoundingBoxAsync();
+        Assert.NotNull(panel);
+        Assert.NotNull(pane);
+
+        Assert.True(panel!.Width >= 200,
+            $"the panel is only {panel.Width}px wide - it is being measured against a column");
+        Assert.True(panel.X >= pane!.X - 1 && panel.X + panel.Width <= pane.X + pane.Width + 1,
+            $"the panel spans {panel.X}..{panel.X + panel.Width}, outside its pane's {pane.X}..{pane.X + pane.Width}");
+
+        // And it sits under its own trigger rather than below the whole grid.
+        var box = await trigger.BoundingBoxAsync();
+        Assert.True(panel.Y >= box!.Y && panel.Y - box.Y < 60,
+            $"the panel opens {panel.Y - box.Y}px below its trigger");
+    }
+
 }
