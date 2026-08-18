@@ -183,7 +183,6 @@
                     break;
                 case SchedulerView.Resource when Resources is { Count: > 0 }:
                     <SchedulerResourceView Events="@pane.Events" Date="@_fpAnchor"
-                                           SelfScrolling="@(!SharesPaneScroll)"
                                            Resources="@Resources"
                                            SlotMinTime="@SlotMinTime" SlotMaxTime="@SlotMaxTime" SlotDuration="@SlotDuration"
                                            ResolveEventColor="@ResolveFirstPartyColor"
@@ -215,13 +214,41 @@
                     @* List maps to the agenda view — the same "flat, chronological"
                        reading a week-long agenda gives. *@
                     <SchedulerAgendaView Events="@pane.Events" AnchorDate="@FirstPartyAgendaStart" DaysToShow="7"
-                                           SelfScrolling="@(!SharesPaneScroll)"
                                          ResolveEventColor="@ResolveFirstPartyColor"
                                          ResolveEventClassNames="@ResolveFirstPartyClassNames"
                                          OnEventClick="@EffectiveEventClick" />
                     break;
             }
         </text>;
+    }
+
+    @if (ShowsPanes)
+    {
+        @* The pane names sit OUTSIDE the scroller, matching its column geometry. Inside it they
+           scrolled away with the calendars, and the sticky day rows that remain are identical in
+           every pane — so nothing on screen said which calendar a column belonged to (Codex
+           review of PR #427). *@
+        <div class="flex gap-3" data-testid="scheduler-pane-names">
+            @foreach (var cal in VisibleCalendars)
+            {
+                <div @key="cal.Id" class="flex min-w-0 flex-1 items-center justify-between gap-2 border-b border-border/60 pb-1"
+                     data-scheduler-pane-name="@cal.Id">
+                    <span class="flex min-w-0 items-center gap-1.5 text-xs font-medium text-foreground">
+                        <span class="inline-block h-2.5 w-2.5 flex-shrink-0 rounded-[calc(var(--radius)*2)]"
+                              style="background: @(cal.Color ?? "var(--color-primary)")"></span>
+                        <span class="truncate">@cal.Name</span>
+                    </span>
+                    @* Merges ALL panes, not just this one: side by side is a MODE rather than a
+                       per-calendar flag, and a control that looked per-pane would promise
+                       something the mode cannot deliver. *@
+                    <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Sm"
+                            OnClick="@(() => SetPaneModeAsync(SchedulerPaneMode.Overlay))"
+                            aria-label="@L["Scheduler.MergePanes"]" title="@L["Scheduler.MergePanes"]">
+                        <SvgGlyph Svg="@(LumeoIcons.Minimize2)" class="h-4 w-4" />
+                    </Button>
+                </div>
+            }
+        </div>
     }
 
     <div style="height: @Height; max-height: @Height; overflow: auto;">
@@ -236,21 +263,6 @@
                 @foreach (var cal in VisibleCalendars)
                 {
                     <div @key="cal.Id" class="flex min-w-0 flex-1 flex-col gap-1" data-scheduler-pane="@cal.Id">
-                        <div class="flex items-center justify-between gap-2 border-b border-border/60 pb-1">
-                            <span class="flex min-w-0 items-center gap-1.5 text-xs font-medium text-foreground">
-                                <span class="inline-block h-2.5 w-2.5 flex-shrink-0 rounded-[calc(var(--radius)*2)]"
-                                      style="background: @(cal.Color ?? "var(--color-primary)")"></span>
-                                <span class="truncate">@cal.Name</span>
-                            </span>
-                            @* Merges ALL panes, not just this one: side by side is a MODE rather
-                               than a per-calendar flag, and a control that looked per-pane would
-                               promise something the mode cannot deliver. *@
-                            <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Sm"
-                                    OnClick="@(() => SetPaneModeAsync(SchedulerPaneMode.Overlay))"
-                                    aria-label="@L["Scheduler.MergePanes"]" title="@L["Scheduler.MergePanes"]">
-                                <SvgGlyph Svg="@(LumeoIcons.Minimize2)" class="h-4 w-4" />
-                            </Button>
-                        </div>
                         @* No scroller of its own. One per pane meant one scrollbar per
                            calendar, each moving only its own column — so the same hour was
                            never on screen twice, which is the whole point of putting the

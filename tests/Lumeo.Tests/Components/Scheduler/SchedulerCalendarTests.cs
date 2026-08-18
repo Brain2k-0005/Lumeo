@@ -399,4 +399,33 @@ public class SchedulerCalendarTests : IAsyncLifetime
         Assert.Equal(2, cut.FindAll("[data-scheduler-pane] > .overflow-auto").Count);
     }
 
+    [Fact]
+    public void The_pane_names_stay_outside_the_shared_scroller()
+    {
+        // Inside it they scrolled away with the calendars, and the sticky day rows that remain are
+        // identical in every pane — so nothing on screen said which calendar a column belonged to
+        // (Codex review, PR #427).
+        var calendars = new[]
+        {
+            new L.SchedulerCalendar("team", "Team"),
+            new L.SchedulerCalendar("personal", "Personal"),
+        };
+
+        var cut = _ctx.Render<L.Scheduler>(p => p
+            .Add(c => c.InitialView, L.SchedulerView.Week)
+            .Add(c => c.InitialDate, Anchor)
+            .Add(c => c.Events, Array.Empty<L.SchedulerEvent>())
+            .Add(c => c.Calendars, calendars)
+            .Add(c => c.PaneMode, L.SchedulerPaneMode.SideBySide));
+
+        var names = cut.FindAll("[data-scheduler-pane-name]");
+        Assert.Equal(2, names.Count);
+        Assert.Equal(new[] { "team", "personal" },
+                     names.Select(n => n.GetAttribute("data-scheduler-pane-name")).ToArray());
+
+        // None of them sits inside the box that moves.
+        var scroller = ScrollersIn(cut).Single();
+        Assert.Empty(scroller.QuerySelectorAll("[data-scheduler-pane-name]"));
+    }
+
 }

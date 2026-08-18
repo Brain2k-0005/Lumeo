@@ -786,10 +786,16 @@
         await OnEventClickAsync(ev);
     }
 
-    private void OnMorePopoverKeyDown(KeyboardEventArgs e, int cellIndex)
+    private async Task OnMorePopoverKeyDown(KeyboardEventArgs e, int cellIndex)
     {
-        if (e.Key == "Escape" && _openMoreCellIndex == cellIndex)
-            _ = CloseMorePopoverAsync();
+        if (e.Key != "Escape" || _openMoreCellIndex != cellIndex) return;
+
+        // Focus first, THEN close — see the same handler in SchedulerTimeGridView. Escape usually
+        // arrives from a button inside the popover, and closing removes the focused element.
+        try { await Interop.FocusElement(MoreTriggerId(cellIndex)); }
+        catch (Microsoft.JSInterop.JSDisconnectedException) { }
+
+        await CloseMorePopoverAsync();
     }
 
     /// <summary>

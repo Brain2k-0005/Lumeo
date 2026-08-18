@@ -1106,4 +1106,82 @@ public class SchedulerTimeGridViewTests : IAsyncLifetime
         Assert.Equal("2", cut.Find("[data-testid='allday-more']").GetAttribute("data-hidden-count"));
     }
 
+    // -- review round 7 --------------------------------------------------------
+
+    [Fact]
+    public void A_reserved_strip_holds_the_overflow_row_open_too()
+    {
+        // The trigger is a row of its own, so a pane that overflows stands one row taller than a
+        // pane that does not — and the lane floor alone still left their hours offset.
+        var day = D(2026, 4, 15);
+        var few = Enumerable.Range(0, 2)
+            .Select(i => new L.SchedulerEvent($"a{i}", $"All day {i}", day, day.AddDays(1)) { AllDay = true })
+            .ToArray();
+
+        var cut = _ctx.Render<L.SchedulerTimeGridView>(p => p
+            .Add(c => c.AnchorDate, day).Add(c => c.Days, 7)
+            .Add(c => c.ReserveFullAllDayStrip, true)
+            .Add(c => c.Events, few));
+
+        // No overflow on any day, yet every column holds the trigger's row.
+        Assert.Empty(cut.FindAll("[data-testid='allday-more']"));
+        Assert.Equal(7, cut.FindAll("[data-testid='allday-more-placeholder']").Count);
+
+        // And a day that DOES overflow gets the trigger instead of the placeholder, not both.
+        var many = Enumerable.Range(0, 6)
+            .Select(i => new L.SchedulerEvent($"b{i}", $"All day {i}", day, day.AddDays(1)) { AllDay = true })
+            .ToArray();
+        cut.Render(p => p.Add(c => c.Events, many));
+
+        Assert.Single(cut.FindAll("[data-testid='allday-more']"));
+        Assert.Equal(6, cut.FindAll("[data-testid='allday-more-placeholder']").Count);
+    }
+
+    [Fact]
+    public void Navigating_closes_a_popover_whose_column_now_shows_another_day()
+    {
+        // The open popover is keyed by column INDEX, and navigation rebuilds the columns under it
+        // — so an index that still overflows in the new range kept the popover open over a
+        // different day's events (CodeRabbit review, PR #427).
+        var day = D(2026, 4, 15);
+        var week = Enumerable.Range(0, 6)
+            .Select(i => new L.SchedulerEvent($"a{i}", $"All day {i}", day, day.AddDays(1)) { AllDay = true });
+        var nextWeek = Enumerable.Range(0, 6)
+            .Select(i => new L.SchedulerEvent($"n{i}", $"Next {i}", day.AddDays(7), day.AddDays(8)) { AllDay = true });
+        var events = week.Concat(nextWeek).ToArray();
+
+        var cut = _ctx.Render<L.SchedulerTimeGridView>(p => p
+            .Add(c => c.AnchorDate, day).Add(c => c.Days, 7).Add(c => c.Events, events));
+
+        cut.Find("[data-testid='allday-more']").Click();
+        Assert.Single(cut.FindAll("[data-testid='allday-more-popover']"));
+
+        // The very same column index overflows next week too.
+        cut.Render(p => p.Add(c => c.AnchorDate, day.AddDays(7)));
+
+        Assert.Empty(cut.FindAll("[data-testid='allday-more-popover']"));
+    }
+
+    [Fact]
+    public void Escape_puts_focus_back_on_the_trigger_before_closing()
+    {
+        // Escape usually arrives from a button INSIDE the popover, and closing removes the focused
+        // element — which drops focus onto the document body.
+        var day = D(2026, 4, 15);
+        var events = Enumerable.Range(0, 6)
+            .Select(i => new L.SchedulerEvent($"a{i}", $"All day {i}", day, day.AddDays(1)) { AllDay = true })
+            .ToArray();
+
+        var cut = _ctx.Render<L.SchedulerTimeGridView>(p => p
+            .Add(c => c.AnchorDate, day).Add(c => c.Days, 7).Add(c => c.Events, events));
+
+        var triggerId = cut.Find("[data-testid='allday-more']").Id;
+        cut.Find("[data-testid='allday-more']").Click();
+
+        cut.Find("[data-testid='allday-more-popover']").KeyDown(new KeyboardEventArgs { Key = "Escape" });
+
+        Assert.Contains(triggerId, _interop.FocusElementCalls);
+        Assert.Empty(cut.FindAll("[data-testid='allday-more-popover']"));
+    }
+
 }

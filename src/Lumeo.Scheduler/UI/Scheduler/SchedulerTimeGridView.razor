@@ -115,6 +115,16 @@
                                     </Tooltip>
                                 }
                             }
+                            @* The trigger is a row of its own, so a pane that overflows stands
+                               one row taller than a pane that does not — and the reserved lane
+                               floor alone still left their hours offset (Codex review of PR #427).
+                               A pane holding the strip open keeps the row either way. *@
+                            @if (ReserveFullAllDayStrip
+                                 && (dayIndex >= _allDayHiddenCounts.Length || _allDayHiddenCounts[dayIndex] == 0))
+                            {
+                                <span class="px-0.5 text-[11px] invisible" aria-hidden="true"
+                                      data-testid="allday-more-placeholder">&nbsp;</span>
+                            }
                             @if (dayIndex < _allDayHiddenCounts.Length && _allDayHiddenCounts[dayIndex] > 0)
                             {
                                 var hiddenCount = _allDayHiddenCounts[dayIndex];
@@ -400,6 +410,17 @@
     private bool _allDayMoreClickOutsideRegistered;
 
     /// <summary>
+    /// The DATE the open popover belongs to. <see cref="_openAllDayMoreDay"/> is a column index,
+    /// and navigation rebuilds the columns underneath it — so an index that still overflows in the
+    /// new range kept the popover open over a different day's events (CodeRabbit review of
+    /// PR #427).
+    /// </summary>
+    private DateTime? _openAllDayMoreDate;
+
+    /// <summary>The id the live registration was made under, so it can be released without it.</summary>
+    private string _lastRegisteredMoreId = string.Empty;
+
+    /// <summary>
     /// Per-INSTANCE, like the month grid's. The id keys the GLOBAL click-outside registry, so two
     /// time grids on one page — side-by-side calendar panes put them there — would otherwise
     /// register the same id twice and dismiss each other's popover.
@@ -440,15 +461,14 @@
     private const int MaxAllDayLanes = SchedulerMonthLayout.DefaultMaxVisibleLanes;
 
     /// <summary>
-    /// Holds the all-day strip open at its full lane budget, so a set of side-by-side panes agree
-    /// on one height and keep their hours level. Off — the default — sizes the strip to content.
-    ///
-    /// A switch rather than a number on purpose. A caller-supplied count could exceed the view's
-    /// own cap, and it reached <c>Math.Clamp(value, 4, 3)</c> — whose minimum above its maximum
-    /// throws, taking the whole scheduler down (Codex review of PR #427). It also spared the
-    /// caller a count it cannot make correctly: it sees source events where the strip packs
-    /// overlapping ones into shared lanes and expands recurrences into several.
+    /// Holds the all-day strip open at its full lane budget, including the row its overflow
+    /// trigger occupies, so several grids shown side by side keep their timed hours level however
+    /// much all-day content each of them has. Off by default, which sizes the strip to content.
     /// </summary>
+    // A switch rather than a lane count on purpose: a caller-supplied number could exceed this
+    // view's own cap and reach Math.Clamp(value, 4, 3), whose minimum above its maximum throws.
+    // It also spares the caller a count it cannot make correctly, seeing source events where the
+    // strip packs overlapping ones into shared lanes and expands a recurrence into several.
     [Parameter] public bool ReserveFullAllDayStrip { get; set; }
 
     private int ReservedAllDayLanes => ReserveFullAllDayStrip ? MaxAllDayLanes : 0;
@@ -715,9 +735,19 @@
         // then leaves the DOM with its click-outside registration still live — nothing can invoke
         // the callback any more, and if the overflow returns the dialog reopens on its own
         // (Codex review of PR #427).
-        if (_openAllDayMoreDay is { } openDay && (openDay >= hidden.Length || hidden[openDay] == 0))
+        // Closed when the day it belongs to loses its overflow — and when navigation moves that
+        // COLUMN onto a different date, which an index alone cannot notice.
+        // The STATE goes here, synchronously; the registration it left behind is reconciled by
+        // SyncAllDayMoreClickOutsideAsync on the next render. Firing the async close and dropping
+        // its task would leave the failure nowhere to surface.
+        if (_openAllDayMoreDay is { } openDay
+            && (openDay >= hidden.Length
+                || hidden[openDay] == 0
+                || openDay >= _dayColumns.Length
+                || _dayColumns[openDay].Date != _openAllDayMoreDate))
         {
-            _ = CloseAllDayMoreAsync();
+            _openAllDayMoreDay = null;
+            _openAllDayMoreDate = null;
         }
         _allDayHidden = hiddenSlots.Select(h => (IReadOnlyList<AllDaySlot>)h).ToArray();
     }
@@ -778,12 +808,14 @@
 
         if (_openAllDayMoreDay is not null) await CloseAllDayMoreAsync();
         _openAllDayMoreDay = dayIndex;
+        _openAllDayMoreDate = dayIndex < _dayColumns.Length ? _dayColumns[dayIndex].Date : null;
     }
 
     private async Task CloseAllDayMoreAsync()
     {
         var wasOpen = _openAllDayMoreDay;
         _openAllDayMoreDay = null;
+        _openAllDayMoreDate = null;
         if (_allDayMoreClickOutsideRegistered && wasOpen is { } idx)
         {
             _allDayMoreClickOutsideRegistered = false;
@@ -794,6 +826,16 @@
 
     private async Task SyncAllDayMoreClickOutsideAsync()
     {
+        // Closed without going through CloseAllDayMoreAsync — a rebuild that took the overflow
+        // away, or moved the column onto another date — leaves a registration to release.
+        if (_openAllDayMoreDay is null && _allDayMoreClickOutsideRegistered)
+        {
+            _allDayMoreClickOutsideRegistered = false;
+            try { await Interop.UnregisterClickOutside(_lastRegisteredMoreId); }
+            catch (Microsoft.JSInterop.JSDisconnectedException) { }
+            return;
+        }
+
         if (_openAllDayMoreDay is not { } idx || _allDayMoreClickOutsideRegistered) return;
 
         try
@@ -812,6 +854,7 @@
                 await InvokeAsync(StateHasChanged);
             });
             _allDayMoreClickOutsideRegistered = true;
+            _lastRegisteredMoreId = AllDayMorePopoverId(idx);
         }
         catch (Microsoft.JSInterop.JSDisconnectedException) { }
     }
@@ -822,10 +865,17 @@
         await OnEventClickAsync(ev);
     }
 
-    private void OnAllDayMoreKeyDown(KeyboardEventArgs e, int dayIndex)
+    private async Task OnAllDayMoreKeyDown(KeyboardEventArgs e, int dayIndex)
     {
-        if (e.Key == "Escape" && _openAllDayMoreDay == dayIndex)
-            _ = CloseAllDayMoreAsync();
+        if (e.Key != "Escape" || _openAllDayMoreDay != dayIndex) return;
+
+        // Focus first, THEN close. Escape usually arrives from a button inside the popover, and
+        // closing removes the focused element — which drops focus onto the document body and
+        // leaves a keyboard user with nowhere to carry on from (CodeRabbit review of PR #427).
+        try { await Interop.FocusElement(AllDayMoreTriggerId(dayIndex)); }
+        catch (Microsoft.JSInterop.JSDisconnectedException) { }
+
+        await CloseAllDayMoreAsync();
     }
 
     /// <summary>
