@@ -242,6 +242,21 @@ public class P2LocalizationSweepTests : IAsyncLifetime
         "Scheduler.WeekNumberAbbrev", "Scheduler.WeekNumberLabel", "Scheduler.ResourceGridLabel", "Scheduler.Resources",
         "Scheduler.Announce.EventMoved", "Scheduler.Announce.EventRescheduled",
         "Scheduler.Announce.MoveRejected", "Scheduler.Announce.ResizeRejected",
+        // Calendars, panes and the built-in dialog (PR #426), plus the agenda empty state
+        // that had only ever existed in en/de. Listed here so a new locale has to translate
+        // them; Every_Translated_Key_Also_Exists_In_English covers the opposite direction,
+        // which is the one that actually broke.
+        "Scheduler.Calendars", "Scheduler.NoCalendar", "Scheduler.ToggleCalendar",
+        "Scheduler.MergePanes", "Scheduler.SplitPanes",
+        "Scheduler.NewEvent", "Scheduler.EditEvent", "Scheduler.EventTitle",
+        "Scheduler.Starts", "Scheduler.Ends", "Scheduler.AllDay",
+        "Scheduler.Save", "Scheduler.Cancel", "Scheduler.Delete",
+        "Scheduler.NoEvents",
+        // The overflow count, shared by the month grid and the time grid's all-day strip.
+        // Only the categories EVERY locale has: .Few/.Many are Slavic and Arabic forms that
+        // English and the Romance locales legitimately do not define, and
+        // Every_Translated_Key_Also_Exists_In_English exempts them for that reason.
+        "Scheduler.MoreEvents", "Scheduler.MoreEvents.One", "Scheduler.MoreEvents.Other",
     };
 
     [Theory]
@@ -310,4 +325,55 @@ public class P2LocalizationSweepTests : IAsyncLifetime
             Assert.Equal("Ouvrir", localizer["FileManager.Open"]);
         });
     }
+
+    /// <summary>
+    /// English is the fallback every unresolved culture lands on, so a key that exists in a
+    /// TRANSLATION but not in English renders as the raw key for everyone else — which is how
+    /// nine scheduler dialog strings shipped reading "Scheduler.NewEvent" on the live docs while
+    /// German showed them correctly.
+    ///
+    /// Derived rather than listed on purpose. The completeness guard above works off a
+    /// hand-maintained array, so it only checks the keys somebody remembered to add to it — and
+    /// the keys nobody remembers are exactly the ones that break. This one needs no upkeep: it
+    /// reads whatever the tables actually contain.
+    /// </summary>
+    [Fact]
+    public void Every_Translated_Key_Also_Exists_In_English()
+    {
+        var options = new LumeoLocalizationOptions();
+        LumeoDefaultStrings.ApplyDefaults(options);
+
+        Assert.True(options.Translations.TryGetValue("en", out var english), "culture bucket 'en' missing");
+
+        var orphans = new List<string>();
+        foreach (var (culture, bucket) in options.Translations)
+        {
+            if (culture == "en") continue;
+
+            foreach (var key in bucket.Keys)
+            {
+                if (english!.ContainsKey(key)) continue;
+
+                // CLDR plural categories English does not have. Exempt only when the family's
+                // "other" form IS in English, so the exemption cannot swallow a typo in the stem.
+                var dot = key.LastIndexOf('.');
+                var category = dot < 0 ? string.Empty : key[(dot + 1)..];
+                if (PluralOnlyCategories.Contains(category)
+                    && english.ContainsKey($"{key[..dot]}.Other"))
+                {
+                    continue;
+                }
+
+                orphans.Add($"{culture}: {key}");
+            }
+        }
+
+        Assert.True(orphans.Count == 0,
+            "keys translated but missing from the English fallback, so they render as raw keys:"
+            + Environment.NewLine + string.Join(Environment.NewLine, orphans.OrderBy(o => o)));
+    }
+
+    private static readonly HashSet<string> PluralOnlyCategories =
+        new(StringComparer.Ordinal) { "Zero", "Two", "Few", "Many" };
+
 }

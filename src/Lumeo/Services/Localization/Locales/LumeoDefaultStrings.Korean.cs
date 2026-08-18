@@ -288,6 +288,10 @@ internal static partial class LumeoDefaultStrings
         ["Scheduler.List"] = "목록",
         ["Scheduler.WeekOf"] = "{0} 주",
 
+        ["Scheduler.NoEvents"] = "일정 없음",
+        ["Scheduler.MoreEvents"] = "{0}개 더",
+        ["Scheduler.MoreEvents.One"] = "{0}개 더",
+        ["Scheduler.MoreEvents.Other"] = "{0}개 더",
         // Gantt
         ["Gantt.Day"] = "일",
         ["Gantt.Week"] = "주",

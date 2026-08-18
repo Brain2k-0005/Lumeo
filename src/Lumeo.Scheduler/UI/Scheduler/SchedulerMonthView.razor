@@ -124,11 +124,19 @@
                                pattern — same RegisterClickOutside/UnregisterClickOutside lifecycle, just scoped
                                to this cell instead of a column id.) *@
                             <div class="relative">
+                                @* Same four fixes the time grid's copy of this popover took in
+                                   review (PR #427): the trigger needs an id or a second press reads
+                                   as an outside click and reopens what it meant to close, and a
+                                   keyboard user who opens with Enter still holds focus here, where
+                                   the dialog's own keydown cannot hear Escape. *@
                                 <button type="button"
+                                        id="@MoreTriggerId(cellIndex)"
                                         class="px-0.5 text-left text-[11px] text-muted-foreground hover:text-foreground hover:underline cursor-pointer"
                                         data-testid="month-more-events"
+                                        aria-expanded="@((_openMoreCellIndex == cellIndex).ToString().ToLowerInvariant())"
                                         @onclick="() => ToggleMorePopoverAsync(cellIndex)"
-                                        @onclick:stopPropagation="true">
+                                        @onclick:stopPropagation="true"
+                                        @onkeydown="e => OnMorePopoverKeyDown(e, cellIndex)">
                                     @L[LumeoPlurals.PluralKey(cell.HiddenCount, "Scheduler.MoreEvents", CultureInfo.CurrentUICulture), cell.HiddenCount]
                                 </button>
                                 @if (_openMoreCellIndex == cellIndex)
@@ -136,7 +144,7 @@
                                     <div id="@MorePopoverId(cellIndex)"
                                          role="dialog"
                                          aria-label="@L[LumeoPlurals.PluralKey(cell.HiddenCount, "Scheduler.MoreEvents", CultureInfo.CurrentUICulture), cell.HiddenCount]"
-                                         class="absolute left-0 top-full mt-1 z-50 w-56 rounded-md border border-border/60 bg-popover text-popover-foreground shadow-lg p-2"
+                                         class="@MorePopoverClasses(cellIndex)"
                                          data-testid="month-more-popover"
                                          @onclick:stopPropagation="true"
                                          @onkeydown="e => OnMorePopoverKeyDown(e, cellIndex)">
@@ -758,10 +766,12 @@
         {
             try
             {
-                await Interop.RegisterClickOutside(MorePopoverId(idx), null, async () =>
+                await Interop.RegisterClickOutside(MorePopoverId(idx), MoreTriggerId(idx), async () =>
                 {
                     _moreClickOutsideRegistered = false;
                     _openMoreCellIndex = null;
+                    try { await Interop.UnregisterClickOutside(MorePopoverId(idx)); }
+                    catch (Microsoft.JSInterop.JSDisconnectedException) { }
                     await InvokeAsync(StateHasChanged);
                 });
                 _moreClickOutsideRegistered = true;
@@ -776,10 +786,16 @@
         await OnEventClickAsync(ev);
     }
 
-    private void OnMorePopoverKeyDown(KeyboardEventArgs e, int cellIndex)
+    private async Task OnMorePopoverKeyDown(KeyboardEventArgs e, int cellIndex)
     {
-        if (e.Key == "Escape" && _openMoreCellIndex == cellIndex)
-            _ = CloseMorePopoverAsync();
+        if (e.Key != "Escape" || _openMoreCellIndex != cellIndex) return;
+
+        // Focus first, THEN close — see the same handler in SchedulerTimeGridView. Escape usually
+        // arrives from a button inside the popover, and closing removes the focused element.
+        try { await Interop.FocusElement(MoreTriggerId(cellIndex)); }
+        catch (Microsoft.JSInterop.JSDisconnectedException) { }
+
+        await CloseMorePopoverAsync();
     }
 
     /// <summary>
@@ -790,6 +806,43 @@
     /// be dismissed at all (Codex review of PR #426).
     /// </summary>
     private string MorePopoverId(int cellIndex) => $"scheduler-month-more-{_instanceId}-{cellIndex}";
+
+    private string MoreTriggerId(int cellIndex) => $"scheduler-month-more-trigger-{_instanceId}-{cellIndex}";
+
+    /// <summary>
+    /// Whole literal class strings, chosen rather than composed.
+    ///
+    /// Anchored to the CELL, unlike the time grid's all-day strip. The strip is one row, so a
+    /// panel measured against it still lands directly under its trigger; this grid is six rows
+    /// deep, and <c>top-full</c> against it would drop the panel below the whole month. The cell
+    /// therefore stays the containing block — which also rules out <c>max-w-full</c>, since that
+    /// resolves against one day column and collapses the panel to a strip too narrow to read
+    /// (Codex review of PR #427).
+    ///
+    /// Half rather than a column count: the near half opens from the start edge and the far half
+    /// from the end, so the panel stays inside the grid at any width down to about 392px — twice
+    /// its own 14rem less a column. By VISIBLE ordinal, because HideWeekends changes which half a
+    /// cell is in; and LOGICAL insets, because RTL places the columns from the right.
+    /// </summary>
+    private string MorePopoverClasses(int cellIndex) =>
+        VisibleColumnOrdinal(cellIndex) >= (VisibleColumns + 1) / 2
+            ? "absolute end-0 top-full mt-1 z-50 w-56 rounded-md border border-border/60 bg-popover text-popover-foreground shadow-lg p-2"
+            : "absolute start-0 top-full mt-1 z-50 w-56 rounded-md border border-border/60 bg-popover text-popover-foreground shadow-lg p-2";
+
+    /// <summary>Where this cell sits among the columns actually on screen.</summary>
+    private int VisibleColumnOrdinal(int cellIndex)
+    {
+        var dayOfRow = cellIndex % 7;
+        if (!HideWeekends) return dayOfRow;
+
+        var ordinal = 0;
+        for (var i = 0; i < dayOfRow; i++)
+        {
+            var dow = (DayOfWeek)(((int)FirstDayOfWeek + i) % 7);
+            if (dow is not (DayOfWeek.Saturday or DayOfWeek.Sunday)) ordinal++;
+        }
+        return ordinal;
+    }
 
     private readonly string _instanceId = Guid.NewGuid().ToString("n")[..8];
 

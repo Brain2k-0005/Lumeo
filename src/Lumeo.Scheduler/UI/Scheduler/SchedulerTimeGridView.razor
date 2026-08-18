@@ -1,6 +1,7 @@
 @namespace Lumeo
 @using System.Globalization
 @using Lumeo.SchedulerKernel
+@using Lumeo.Services.Localization
 @implements IAsyncDisposable
 @inject Lumeo.Services.IComponentInteropService Interop
 @inject Lumeo.Services.Localization.ILumeoLocalizer L
@@ -11,124 +12,258 @@
    SchedulerRecurrenceExpander for occurrence expansion, and SchedulerTimeGridLayout for
    overlapping-event column packing. Internal building block — see SchedulerMonthView's own
    remarks for the "Scheduler.razor is the only component with public parameters" note. *@
-<div class="@($"flex flex-col w-full rounded-md border border-border/60 overflow-hidden {Class}".Trim())" @attributes="AdditionalAttributes">
+<div class="@RootClasses" @attributes="AdditionalAttributes">
     @* See SchedulerMonthView's own live-region remarks — rendered empty at
        mount so assistive tech is already observing the node. *@
     <span class="sr-only" aria-live="polite" aria-atomic="true"
           data-testid="scheduler-live-region" data-announce-epoch="@_announcementEpoch">@AnnouncementText</span>
-    @if (_allDayInstances.Any())
-    {
-        <div class="flex border-b border-border/60">
-            <div class="flex-none w-14 text-[10px] text-muted-foreground pt-1.5 pl-1">@L["Scheduler.AllDay"]</div>
+
+    @* Header and all-day strip live INSIDE the scroller, as one sticky block.
+       Outside it they were laid out against the full component width while the grid below
+       lost the scrollbar width to it, so on any platform with non-overlay scrollbars every
+       header drifted off the column it labels (Codex review of PR #427). Sharing the
+       scroller makes the widths equal by construction rather than by arithmetic — and a
+       header that survives a scroll through 24 hours is what the view wanted anyway.
+
+       ONE sticky wrapper, not two sticky rows: a second row would need its top offset to
+       equal the first row's rendered height, which nothing here can measure. *@
+    <div class="flex flex-col" style="@ScrollerStyle" @ref="_scrollRef">
+        <div class="sticky top-0 z-20 bg-card">
+        @* Which day each column IS. Week and Day had no header at all: the grid opened straight on
+           the all-day strip, so nothing on screen said whether a column was Monday or Thursday, and
+           the view read as though its top had been cut off. Month has carried its weekday row from
+           the start — this is the same row, plus the date, because a time grid shows one specific
+           week rather than a repeating pattern. *@
+        <div class="flex border-b border-border/60 bg-card" data-testid="timegrid-day-header">
+            <div class="flex-none w-14"></div>
             <div class="flex-1 grid min-w-0" style="grid-template-columns: repeat(@Days, minmax(0, 1fr));">
                 @for (var d = 0; d < Days; d++)
                 {
-                    var dayIndex = d;
-                    var laneSlots = dayIndex < _allDayLaneSlots.Length ? _allDayLaneSlots[dayIndex] : Array.Empty<AllDaySlot?>();
-                    <div class="border-l border-border/40 p-1 flex flex-col gap-0.5 min-w-0">
-                        @for (var lane = 0; lane < laneSlots.Count; lane++)
-                        {
-                            var slot = laneSlots[lane];
-                            if (slot is null)
-                            {
-                                <div class="h-[19px]" data-lane="@lane" aria-hidden="true"></div>
-                            }
-                            else
-                            {
-                                <Tooltip ShowDelay="400" Class="w-full">
-                                    <TooltipTrigger AsChild="true">
-                                        <ChildContentSlot Context="pillSlot">
-                                            <button type="button" class="@AllDayPillClasses(slot)" style="@PillStyle(slot.Source)"
-                                                    data-event-id="@slot.Instance.EventId"
-                                                    data-lane="@lane"
-                                                    @attributes="pillSlot.Attributes"
-                                                    @onclick="() => OnEventClickAsync(slot.Source)">
-                                                @if (slot.ShowTitle)
-                                                {
-                                                    @slot.Source.Title
-                                                }
-                                                else
-                                                {
-                                                    <span aria-hidden="true">&nbsp;</span>
-                                                }
-                                            </button>
-                                        </ChildContentSlot>
-                                    </TooltipTrigger>
-                                    <TooltipContent>@TooltipLabel(slot.Source, slot.Instance)</TooltipContent>
-                                </Tooltip>
-                            }
-                        }
+                    var headerDay = _dayColumns[d];
+                    var isToday = headerDay.Date == EffectiveToday;
+                    @* aria-current, not only the colour: the marker was carried by CSS classes and
+                   a data- attribute, so a screen reader read today as the same weekday and
+                   number as every other column (Codex review of PR #427). *@
+                <div class="border-l border-border/40 px-2 py-1.5 text-center min-w-0"
+                         data-dayheader="@headerDay.ToString("yyyy-MM-dd")"
+                         data-today="@(isToday ? "true" : null)"
+                         aria-current="@(isToday ? "date" : null)">
+                        <div class="truncate text-[11px] font-medium @(isToday ? "text-primary" : "text-muted-foreground")">
+                            @WeekdayLabel(headerDay)
+                        </div>
+                        <div class="truncate text-sm @(isToday ? "font-semibold text-primary" : "text-foreground")">
+                            @DayNumberLabel(headerDay)
+                        </div>
                     </div>
                 }
             </div>
         </div>
-    }
 
-    <div class="flex" style="max-height: 34rem; overflow-y: auto;" @ref="_scrollRef">
-        <div class="flex-none w-14">
-            @foreach (var hour in _hourLabels)
-            {
-                <div class="h-12 relative">
-                    <span class="absolute -top-1.5 right-1.5 text-[11px] text-muted-foreground">@FormatHour(hour)</span>
-                </div>
-            }
-        </div>
-        <div class="flex-1 grid min-w-0 relative" role="grid" aria-label="@GridAriaLabel()" style="grid-template-columns: repeat(@Days, minmax(0, 1fr));" @ref="_hostRef">
-            @for (var d = 0; d < Days; d++)
-            {
-                var dayIndex = d;
-                var day = _dayColumns[dayIndex];
-                <div class="relative border-l border-border/40" role="row" data-daycol="@day.ToString("yyyy-MM-dd")" @ref="_dayColumnRefs[dayIndex]">
-                    @for (var h = 0; h < _slotStarts.Length; h++)
+        @if (_allDayInstances.Any() || ReservedAllDayLanes > 0)
+        {
+            @* Capped by LANES, not by a scrollbar. The strip grows a lane per overlapping
+               all-day event, and inside a sticky block that outgrew the viewport it covered the
+               timed rows for the whole scroll range. Capping it with its own scroller then took
+               the scrollbar's width out of this row alone, so its columns drifted from the header
+               above and the grid below — the same width mismatch one level down (Codex review of
+               PR #427). Hiding the surplus behind a count is what the month grid already does
+               with the same packer, so the strip stays exactly as wide as everything else. *@
+            <div class="flex border-b border-border/60" data-testid="timegrid-allday-strip"
+                 data-reserved-lanes="@ReservedAllDayLanes">
+                <div class="flex-none w-14 text-[10px] text-muted-foreground pt-1.5 pl-1">@L["Scheduler.AllDay"]</div>
+                <div class="flex-1 grid min-w-0 relative" style="grid-template-columns: repeat(@Days, minmax(0, 1fr));">
+                    @for (var d = 0; d < Days; d++)
                     {
-                        var slotIndex = h;
-                        var slotStart = _slotStarts[slotIndex];
-                        var cellLinear = slotIndex * Days + dayIndex;
-                        var isFocused = cellLinear == _focusedIndex;
-                        <div role="gridcell"
-                             @ref="_cellRefs[cellLinear]"
-                             tabindex="@(isFocused ? "0" : "-1")"
-                             data-slot-hour="@(slotStart / 60)"
-                             data-slot-minute="@slotStart"
-                             data-off="@(IsOffSlot(day, slotStart) ? "true" : null)"
-                             aria-label="@SlotAriaLabel(day, slotStart)"
-                             style="@SlotCellStyle()"
-                             class="@SlotCellClasses(slotStart)"
-                             @onclick="() => OnSlotClickAsync(day, slotIndex)"
-                             @ondblclick="() => OnSlotDoubleClickAsync(day, slotStart)"
-                             @onkeydown="e => OnGridKeyDownAsync(e, dayIndex, slotIndex)">
+                        var dayIndex = d;
+                        var laneSlots = dayIndex < _allDayLaneSlots.Length ? _allDayLaneSlots[dayIndex] : Array.Empty<AllDaySlot?>();
+                        <div class="border-l border-border/40 p-1 flex flex-col gap-0.5 min-w-0">
+                            @for (var lane = 0; lane < laneSlots.Count; lane++)
+                            {
+                                @* Copied per iteration. The pill below sits inside Tooltip's
+                                   RenderFragments, which are evaluated after the loop has
+                                   finished — reading the for-variable there stamped every pill
+                                   with the loop's EXIT value rather than its own lane. Same
+                                   reason SchedulerMonthView copies its day index. *@
+                                var laneIndex = lane;
+                                var slot = laneSlots[lane];
+                                if (slot is null)
+                                {
+                                    <div class="h-[19px]" data-lane="@laneIndex" aria-hidden="true"></div>
+                                }
+                                else
+                                {
+                                    <Tooltip ShowDelay="400" Class="w-full">
+                                        <TooltipTrigger AsChild="true">
+                                            <ChildContentSlot Context="pillSlot">
+                                                <button type="button" class="@AllDayPillClasses(slot)" style="@PillStyle(slot.Source)"
+                                                        data-event-id="@slot.Instance.EventId"
+                                                        data-lane="@laneIndex"
+                                                        @attributes="pillSlot.Attributes"
+                                                        @onclick="() => OnEventClickAsync(slot.Source)">
+                                                    @if (slot.ShowTitle)
+                                                    {
+                                                        @slot.Source.Title
+                                                    }
+                                                    else
+                                                    {
+                                                        <span aria-hidden="true">&nbsp;</span>
+                                                    }
+                                                </button>
+                                            </ChildContentSlot>
+                                        </TooltipTrigger>
+                                        <TooltipContent>@TooltipLabel(slot.Source, slot.Instance)</TooltipContent>
+                                    </Tooltip>
+                                }
+                            }
+                            @* The trigger is a row of its own, so a pane that overflows stands
+                               one row taller than a pane that does not — and the reserved lane
+                               floor alone still left their hours offset (Codex review of PR #427).
+                               A pane holding the strip open keeps the row either way. *@
+                            @if (ReserveFullAllDayStrip
+                                 && (dayIndex >= _allDayHiddenCounts.Length || _allDayHiddenCounts[dayIndex] == 0))
+                            {
+                                <span class="px-0.5 text-[11px] invisible" aria-hidden="true"
+                                      data-testid="allday-more-placeholder">&nbsp;</span>
+                            }
+                            @if (dayIndex < _allDayHiddenCounts.Length && _allDayHiddenCounts[dayIndex] > 0)
+                            {
+                                var hiddenCount = _allDayHiddenCounts[dayIndex];
+                                var moreLabel = L[LumeoPlurals.PluralKey(hiddenCount, "Scheduler.MoreEvents", CultureInfo.CurrentUICulture), hiddenCount];
+                                @* A button and a popover, not a bare count. Capping the lanes takes the
+                                   surplus out of the DOM, so a label alone would leave the fourth and
+                                   later appointments unreachable — visible as a number, openable by
+                                   nothing (Codex review of PR #427). Same self-contained popover the
+                                   month grid uses for the same overflow, down to the per-instance id
+                                   that keeps two views on one page from sharing a click-outside
+                                   registration. *@
+                                @* NOT position: relative. The panel is measured against the
+                                   STRIP, not this cell — see AllDayMorePopoverClasses. *@
+                                <div>
+                                    @* The trigger carries an id and its own Escape handler. Without the id
+                                       the document-level mousedown reads a second press as an OUTSIDE
+                                       click and closes the popover before @onclick runs, so the click
+                                       reopened it and the button never closed anything; and a keyboard
+                                       user who opens with Enter still holds focus HERE, where the
+                                       dialog's own keydown cannot hear Escape (Codex review of PR #427). *@
+                                    <button type="button"
+                                            id="@AllDayMoreTriggerId(dayIndex)"
+                                            class="px-0.5 text-left text-[11px] text-muted-foreground hover:text-foreground hover:underline cursor-pointer"
+                                            data-testid="allday-more"
+                                            data-hidden-count="@hiddenCount"
+                                            aria-expanded="@((_openAllDayMoreDay == dayIndex).ToString().ToLowerInvariant())"
+                                            @onclick="() => ToggleAllDayMoreAsync(dayIndex)"
+                                            @onclick:stopPropagation="true"
+                                            @onkeydown="e => OnAllDayMoreKeyDown(e, dayIndex)">
+                                        @moreLabel
+                                    </button>
+                                    @if (_openAllDayMoreDay == dayIndex)
+                                    {
+                                        <div id="@AllDayMorePopoverId(dayIndex)"
+                                             role="dialog"
+                                             aria-label="@moreLabel"
+                                             class="@AllDayMorePopoverClasses(dayIndex)"
+                                             data-testid="allday-more-popover"
+                                             @onclick:stopPropagation="true"
+                                             @onkeydown="e => OnAllDayMoreKeyDown(e, dayIndex)">
+                                            @* Capped and scrolled: the lane cap can hide two
+                                               dozen events, and an uncapped list ran off the
+                                               bottom of a scroller that clips while the sticky
+                                               dialog stayed pinned — so the last entries were
+                                               unreachable (Codex review of PR #427). *@
+                                            <div class="flex flex-col gap-0.5 max-h-64 overflow-y-auto">
+                                                @foreach (var hidden in HiddenAllDayFor(dayIndex))
+                                                {
+                                                    <button type="button"
+                                                            class="flex items-center gap-1.5 w-full text-left text-xs px-1.5 py-1 rounded hover:bg-accent/60"
+                                                            data-event-id="@hidden.Instance.EventId"
+                                                            @onclick="() => OnAllDayMoreEventClickAsync(hidden.Source)">
+                                                        <span class="w-1.5 h-1.5 rounded-[calc(var(--radius)*2)] flex-none" style="background-color: @(ResolveEventColor?.Invoke(hidden.Source) ?? hidden.Source.Color ?? "var(--color-primary)")" aria-hidden="true"></span>
+                                                        <span class="flex-1 min-w-0 truncate">@hidden.Source.Title</span>
+                                                    </button>
+                                                }
+                                            </div>
+                                        </div>
+                                    }
+                                </div>
+                            }
                         </div>
                     }
-                    @foreach (var block in _timedByDay[dayIndex])
-                    {
-                        var key = InstanceKey(block.Instance);
-                        var blockHourIndex = SlotIndexOf(block.Instance.Start);
-                        <Tooltip ShowDelay="400" Class="static">
-                            <TooltipTrigger AsChild="true">
-                                <ChildContentSlot Context="pillSlot">
-                                    <button type="button"
-                                            @ref="_pillRefs[key]"
-                                            class="@TimedPillClasses()"
-                                            style="@TimedPillStyle(block)"
-                                            data-event-instance="@key"
-                                            data-event-id="@block.Instance.EventId"
-                                            data-resizable="@(Editable ? "true" : null)"
-                                            tabindex="-1"
-                                            aria-label="@PillAriaLabel(block.Source, block.Instance)"
-                                            @attributes="pillSlot.Attributes"
-                                            @onclick:stopPropagation="true"
-                                            @onclick="() => OnEventClickAsync(block.Source)"
-                                            @onkeydown="e => OnPillKeyDownAsync(e, block.Source, dayIndex, blockHourIndex)">
-                                        <span class="block font-semibold truncate">@block.Source.Title</span>
-                                        <span class="block text-[10px] opacity-80">@block.Instance.Start.ToString("t", CultureInfo.CurrentUICulture)</span>
-                                    </button>
-                                </ChildContentSlot>
-                            </TooltipTrigger>
-                            <TooltipContent>@TooltipLabel(block.Source, block.Instance)</TooltipContent>
-                        </Tooltip>
-                    }
                 </div>
-            }
+            </div>
+        }
+        </div>
+
+        <div class="flex">
+            <div class="flex-none w-14">
+                @* Every label but the first is lifted onto its own gridline, which is what the
+                   negative offset is for. The first has no gridline above it — only the scroller's
+                   clipping edge — so lifting it cut the digits in half (reported against the live
+                   docs). It sits on the top edge instead, where its gridline would be. *@
+                @for (var i = 0; i < _hourLabels.Length; i++)
+                {
+                    var hour = _hourLabels[i];
+                    <div class="h-12 relative">
+                        <span class="absolute @(i == 0 ? "top-0" : "-top-1.5") right-1.5 text-[11px] text-muted-foreground">@FormatHour(hour)</span>
+                    </div>
+                }
+            </div>
+            <div class="flex-1 grid min-w-0 relative" role="grid" aria-label="@GridAriaLabel()" style="grid-template-columns: repeat(@Days, minmax(0, 1fr));" @ref="_hostRef">
+                @for (var d = 0; d < Days; d++)
+                {
+                    var dayIndex = d;
+                    var day = _dayColumns[dayIndex];
+                    <div class="relative border-l border-border/40" role="row" data-daycol="@day.ToString("yyyy-MM-dd")" @ref="_dayColumnRefs[dayIndex]">
+                        @for (var h = 0; h < _slotStarts.Length; h++)
+                        {
+                            var slotIndex = h;
+                            var slotStart = _slotStarts[slotIndex];
+                            var cellLinear = slotIndex * Days + dayIndex;
+                            var isFocused = cellLinear == _focusedIndex;
+                            <div role="gridcell"
+                                 @ref="_cellRefs[cellLinear]"
+                                 tabindex="@(isFocused ? "0" : "-1")"
+                                 data-slot-hour="@(slotStart / 60)"
+                                 data-slot-minute="@slotStart"
+                                 data-off="@(IsOffSlot(day, slotStart) ? "true" : null)"
+                                 aria-label="@SlotAriaLabel(day, slotStart)"
+                                 style="@SlotCellStyle()"
+                                 class="@SlotCellClasses(slotStart)"
+                                 @onclick="() => OnSlotClickAsync(day, slotIndex)"
+                                 @ondblclick="() => OnSlotDoubleClickAsync(day, slotStart)"
+                                 @onkeydown="e => OnGridKeyDownAsync(e, dayIndex, slotIndex)">
+                            </div>
+                        }
+                        @foreach (var block in _timedByDay[dayIndex])
+                        {
+                            var key = InstanceKey(block.Instance);
+                            var blockHourIndex = SlotIndexOf(block.Instance.Start);
+                            <Tooltip ShowDelay="400" Class="static">
+                                <TooltipTrigger AsChild="true">
+                                    <ChildContentSlot Context="pillSlot">
+                                        <button type="button"
+                                                @ref="_pillRefs[key]"
+                                                class="@TimedPillClasses()"
+                                                style="@TimedPillStyle(block)"
+                                                data-event-instance="@key"
+                                                data-event-id="@block.Instance.EventId"
+                                                data-resizable="@(Editable ? "true" : null)"
+                                                tabindex="-1"
+                                                aria-label="@PillAriaLabel(block.Source, block.Instance)"
+                                                @attributes="pillSlot.Attributes"
+                                                @onclick:stopPropagation="true"
+                                                @onclick="() => OnEventClickAsync(block.Source)"
+                                                @onkeydown="e => OnPillKeyDownAsync(e, block.Source, dayIndex, blockHourIndex)">
+                                            <span class="block font-semibold truncate">@block.Source.Title</span>
+                                            <span class="block text-[10px] opacity-80">@block.Instance.Start.ToString("t", CultureInfo.CurrentUICulture)</span>
+                                        </button>
+                                    </ChildContentSlot>
+                                </TooltipTrigger>
+                                <TooltipContent>@TooltipLabel(block.Source, block.Instance)</TooltipContent>
+                            </Tooltip>
+                        }
+                    </div>
+                }
+            </div>
         </div>
     </div>
 </div>
@@ -177,6 +312,27 @@
     /// sit at the viewer's local time on a grid drawn for somewhere else.
     /// </summary>
     [Parameter] public string? NowTimeZoneId { get; set; }
+
+    /// <summary>
+    /// Whether this view is its own scroll container. Side-by-side calendar panes turn it OFF:
+    /// each pane owning a scroller gave one scrollbar per calendar, and scrolling one left the
+    /// others behind, so the same hour was never on screen twice. With it off the view renders at
+    /// full height and the SCHEDULER's own box does the scrolling, which moves every pane at once
+    /// — and the sticky header, whose offset is relative to the nearest scrollport, then sticks to
+    /// that box, so all the panes' headers line up.
+    /// </summary>
+    [Parameter] public bool SelfScrolling { get; set; } = true;
+
+    /// <summary>
+    /// The date the header marks as today. Defaults to the host's own today, which is only the
+    /// same day when no display zone is in play — the wrapper resolves it from
+    /// <c>TimeZone</c> and passes it, exactly as it already does for the timeline, because a
+    /// scheduler projected into Tokyo can be a day ahead of the server drawing it. A caller can
+    /// also pin it so a screenshot or a test renders deterministically.
+    /// </summary>
+    [Parameter] public DateTime? Today { get; set; }
+
+    private DateTime EffectiveToday => (Today ?? DateTime.Today).Date;
 
     /// <summary>
     /// Whether a 7-day grid snaps to the configured week start. True (the default) is the Week
@@ -245,6 +401,90 @@
     private List<TimedBlock>[] _timedByDay = Array.Empty<List<TimedBlock>>();
     private List<TimedBlock> _allDayInstances = new();
     private IReadOnlyList<AllDaySlot?>[] _allDayLaneSlots = Array.Empty<IReadOnlyList<AllDaySlot?>>();
+
+    /// <summary>Per day, how many all-day events did not fit in <see cref="MaxAllDayLanes"/>.</summary>
+    private int[] _allDayHiddenCounts = Array.Empty<int>();
+
+    /// <summary>Per day, the ones that did not fit — what the overflow popover lists.</summary>
+    private IReadOnlyList<AllDaySlot>[] _allDayHidden = Array.Empty<IReadOnlyList<AllDaySlot>>();
+
+    private int? _openAllDayMoreDay;
+    private bool _allDayMoreClickOutsideRegistered;
+
+    /// <summary>
+    /// The DATE the open popover belongs to. <see cref="_openAllDayMoreDay"/> is a column index,
+    /// and navigation rebuilds the columns underneath it — so an index that still overflows in the
+    /// new range kept the popover open over a different day's events (CodeRabbit review of
+    /// PR #427).
+    /// </summary>
+    private DateTime? _openAllDayMoreDate;
+
+    /// <summary>The id the live registration was made under, so it can be released without it.</summary>
+    private string _lastRegisteredMoreId = string.Empty;
+
+    /// <summary>
+    /// Per-INSTANCE, like the month grid's. The id keys the GLOBAL click-outside registry, so two
+    /// time grids on one page — side-by-side calendar panes put them there — would otherwise
+    /// register the same id twice and dismiss each other's popover.
+    /// </summary>
+    private string AllDayMorePopoverId(int dayIndex) => $"scheduler-timegrid-allday-more-{_instanceId}-{dayIndex}";
+
+    private string AllDayMoreTriggerId(int dayIndex) => $"scheduler-timegrid-allday-trigger-{_instanceId}-{dayIndex}";
+
+    /// <summary>
+    /// Whole literal class strings, chosen rather than composed: the Tailwind v4 build only
+    /// emits utilities it can SEE in source, and a ternary written inline in the attribute does
+    /// not survive Razor's nested quotes either — it rendered an EMPTY class.
+    ///
+    /// The trailing columns open inward. A 14rem panel is far wider than a day column, so hung
+    /// off the last one it lands past the grid's trailing edge inside a scroller that clips, and
+    /// part of the list is reachable only by discovering a horizontal scrollbar (Codex review
+    /// of PR #427).
+    ///
+    /// LOGICAL insets, not left/right. Under an RTL provider the grid places day 0 at the right,
+    /// so a physical left/right test opened both edge popovers outward; start/end follow the
+    /// writing direction, which makes the index test correct in either.
+    /// </summary>
+    /// <summary>
+    /// Anchored to the STRIP's edges rather than the cell's, so the panel cannot overhang the
+    /// grid whatever a column happens to be worth.
+    ///
+    /// Counting columns was the wrong instrument twice over. The panel is a fixed 14rem while a
+    /// column is <c>gridWidth / Days</c> — which changes with the day count AND with the width,
+    /// and side-by-side panes halve the width without touching the day count, so a formula tuned
+    /// for one was wrong for the other (Codex review of PR #427). Against the strip there is
+    /// nothing to estimate: the near half opens from the start edge, the far half from the end,
+    /// and <c>max-w-full</c> keeps a grid narrower than the panel from overhanging either way.
+    /// </summary>
+    private string AllDayMorePopoverClasses(int dayIndex) =>
+        dayIndex >= (Days + 1) / 2
+            ? "absolute end-0 top-full mt-1 z-50 w-56 max-w-full rounded-md border border-border/60 bg-popover text-popover-foreground shadow-lg p-2"
+            : "absolute start-0 top-full mt-1 z-50 w-56 max-w-full rounded-md border border-border/60 bg-popover text-popover-foreground shadow-lg p-2";
+
+    private readonly string _instanceId = Guid.NewGuid().ToString("n")[..8];
+
+    private IReadOnlyList<AllDaySlot> HiddenAllDayFor(int dayIndex) =>
+        dayIndex < _allDayHidden.Length ? _allDayHidden[dayIndex] : Array.Empty<AllDaySlot>();
+
+    /// <summary>
+    /// The tallest the all-day strip may grow. Matches the month grid's own lane budget, since
+    /// both rows are packed by <c>SchedulerMonthLayout.PackRow</c> and a reader moving between
+    /// the two views should not find one of them quietly deeper than the other.
+    /// </summary>
+    private const int MaxAllDayLanes = SchedulerMonthLayout.DefaultMaxVisibleLanes;
+
+    /// <summary>
+    /// Holds the all-day strip open at its full lane budget, including the row its overflow
+    /// trigger occupies, so several grids shown side by side keep their timed hours level however
+    /// much all-day content each of them has. Off by default, which sizes the strip to content.
+    /// </summary>
+    // A switch rather than a lane count on purpose: a caller-supplied number could exceed this
+    // view's own cap and reach Math.Clamp(value, 4, 3), whose minimum above its maximum throws.
+    // It also spares the caller a count it cannot make correctly, seeing source events where the
+    // strip packs overlapping ones into shared lanes and expands a recurrence into several.
+    [Parameter] public bool ReserveFullAllDayStrip { get; set; }
+
+    private int ReservedAllDayLanes => ReserveFullAllDayStrip ? MaxAllDayLanes : 0;
     private int _focusedIndex;
     private ElementReference _scrollRef;
     private ElementReference _hostRef;
@@ -304,6 +544,7 @@
     {
         await SyncDragRegistrationAsync();
         await SyncNowIndicatorAsync();
+        await SyncAllDayMoreClickOutsideAsync();
     }
 
     private async Task SyncDragRegistrationAsync()
@@ -444,7 +685,23 @@
     {
         if (_allDayInstances.Count == 0 || _dayColumns.Length == 0)
         {
-            _allDayLaneSlots = Array.Empty<IReadOnlyList<AllDaySlot?>>();
+            // The same reconciliation the long path ends with. A refresh that removes EVERY
+            // all-day event comes through here, and leaving the state behind meant the dialog
+            // left the DOM with a live registration — and came back on its own if the events did
+            // (Codex review of PR #427).
+            _openAllDayMoreDay = null;
+            _openAllDayMoreDate = null;
+
+            // Empty lanes, not NO lanes, when a floor is reserved: a pane with nothing all-day
+            // still has to start its hours at the same height as the pane beside it.
+            var reserved = Math.Clamp(ReservedAllDayLanes, 0, MaxAllDayLanes);
+            _allDayLaneSlots = reserved > 0 && _dayColumns.Length > 0
+                ? Enumerable.Range(0, _dayColumns.Length)
+                            .Select(_ => (IReadOnlyList<AllDaySlot?>)new AllDaySlot?[reserved])
+                            .ToArray()
+                : Array.Empty<IReadOnlyList<AllDaySlot?>>();
+            _allDayHiddenCounts = new int[_dayColumns.Length];
+            _allDayHidden = Array.Empty<IReadOnlyList<AllDaySlot>>();
             return;
         }
 
@@ -452,11 +709,22 @@
         var packInput = _allDayInstances
             .Select(b => (Id: InstanceKey(b.Instance), StartDate: b.Instance.Start, EndDate: b.Instance.End, AllDay: true))
             .ToList();
-        var lanes = SchedulerMonthLayout.PackRow(rowStart, packInput);
+        var lanes = SchedulerMonthLayout.PackRow(rowStart, packInput, _dayColumns.Length);
         var maxLane = lanes.Count == 0 ? -1 : lanes.Values.Max();
-        var laneCount = maxLane + 1;
+
+        // Capped, so the strip can never grow tall enough to cover the grid it sits above. The
+        // surplus is counted per day rather than scrolled, because a scroller here would narrow
+        // this row alone and pull its columns out from under the header.
+        // Never fewer than the caller reserved. Side-by-side panes scroll as ONE box, so a
+        // pane with three all-day lanes would start its hours lower than a pane with none and the
+        // same hour could never line up across calendars — the one thing the shared scroll exists
+        // to make possible (Codex review of PR #427).
+        var laneCount = Math.Clamp(maxLane + 1, ReservedAllDayLanes, MaxAllDayLanes);
 
         var perDay = new IReadOnlyList<AllDaySlot?>[_dayColumns.Length];
+        var hidden = new int[_dayColumns.Length];
+        var hiddenSlots = new List<AllDaySlot>[_dayColumns.Length];
+        for (var i = 0; i < hiddenSlots.Length; i++) hiddenSlots[i] = new List<AllDaySlot>();
         for (var d = 0; d < _dayColumns.Length; d++)
         {
             var day = _dayColumns[d];
@@ -465,7 +733,14 @@
             {
                 if (!TouchesDay(block.Instance.Start, block.Instance.End, true, day)) continue;
                 var key = InstanceKey(block.Instance);
-                if (!lanes.TryGetValue(key, out var lane) || lane >= laneCount) continue;
+                if (!lanes.TryGetValue(key, out var lane)) continue;
+
+                if (lane >= laneCount)
+                {
+                    hidden[d]++;
+                    hiddenSlots[d].Add(new AllDaySlot(block.Instance, block.Source, false, false, true));
+                    continue;
+                }
 
                 var contL = day.Date > block.Instance.Start.Date;
                 var contR = day.Date < LastTouchedDate(block.Instance.End, true, block.Instance.Start);
@@ -474,6 +749,27 @@
             perDay[d] = daySlots;
         }
         _allDayLaneSlots = perDay;
+        _allDayHiddenCounts = hidden;
+
+        // A refresh can drop the day back under the cap while its dialog stands open. The dialog
+        // then leaves the DOM with its click-outside registration still live — nothing can invoke
+        // the callback any more, and if the overflow returns the dialog reopens on its own
+        // (Codex review of PR #427).
+        // Closed when the day it belongs to loses its overflow — and when navigation moves that
+        // COLUMN onto a different date, which an index alone cannot notice.
+        // The STATE goes here, synchronously; the registration it left behind is reconciled by
+        // SyncAllDayMoreClickOutsideAsync on the next render. Firing the async close and dropping
+        // its task would leave the failure nowhere to surface.
+        if (_openAllDayMoreDay is { } openDay
+            && (openDay >= hidden.Length
+                || hidden[openDay] == 0
+                || openDay >= _dayColumns.Length
+                || _dayColumns[openDay].Date != _openAllDayMoreDate))
+        {
+            _openAllDayMoreDay = null;
+            _openAllDayMoreDate = null;
+        }
+        _allDayHidden = hiddenSlots.Select(h => (IReadOnlyList<AllDaySlot>)h).ToArray();
     }
 
     /// <summary>Whether the row starting <paramref name="startMinute"/> minutes into <paramref name="day"/> falls outside <see cref="BusinessHoursStart"/>/<see cref="BusinessHoursEnd"/>/<see cref="BusinessDays"/> when <see cref="BusinessHours"/> is enabled.</summary>
@@ -516,6 +812,120 @@
     private static string InstanceKey(SchedulerEventInstance i) => $"{i.EventId}|{i.Start:O}";
 
     private static string FormatHour(int hour) => $"{hour % 24:D2}:00";
+
+    /// <summary>
+    /// The column header's weekday, abbreviated in the current UI culture — the same source
+    /// <c>SchedulerMonthView.BuildWeekdayHeaders</c> reads, so the two views never disagree
+    /// about what Monday is called.
+    /// </summary>
+    private async Task ToggleAllDayMoreAsync(int dayIndex)
+    {
+        if (_openAllDayMoreDay == dayIndex)
+        {
+            await CloseAllDayMoreAsync();
+            return;
+        }
+
+        if (_openAllDayMoreDay is not null) await CloseAllDayMoreAsync();
+        _openAllDayMoreDay = dayIndex;
+        _openAllDayMoreDate = dayIndex < _dayColumns.Length ? _dayColumns[dayIndex].Date : null;
+    }
+
+    private async Task CloseAllDayMoreAsync()
+    {
+        var wasOpen = _openAllDayMoreDay;
+        _openAllDayMoreDay = null;
+        _openAllDayMoreDate = null;
+        if (_allDayMoreClickOutsideRegistered && wasOpen is { } idx)
+        {
+            _allDayMoreClickOutsideRegistered = false;
+            try { await Interop.UnregisterClickOutside(AllDayMorePopoverId(idx)); }
+            catch (Microsoft.JSInterop.JSDisconnectedException) { }
+        }
+    }
+
+    private async Task SyncAllDayMoreClickOutsideAsync()
+    {
+        // Closed without going through CloseAllDayMoreAsync — a rebuild that took the overflow
+        // away, or moved the column onto another date — leaves a registration to release.
+        if (_openAllDayMoreDay is null && _allDayMoreClickOutsideRegistered)
+        {
+            _allDayMoreClickOutsideRegistered = false;
+            try { await Interop.UnregisterClickOutside(_lastRegisteredMoreId); }
+            catch (Microsoft.JSInterop.JSDisconnectedException) { }
+            return;
+        }
+
+        if (_openAllDayMoreDay is not { } idx || _allDayMoreClickOutsideRegistered) return;
+
+        try
+        {
+            // The TRIGGER is named, so pressing it again reads as inside and the click closes
+            // rather than reopens. And the dismissal unregisters itself: clearing only the flag
+            // left the JS handler map and the interop dictionary holding a callback for a dialog
+            // that had left the DOM, with no later close path able to reach it (Codex review of
+            // PR #427).
+            await Interop.RegisterClickOutside(AllDayMorePopoverId(idx), AllDayMoreTriggerId(idx), async () =>
+            {
+                _allDayMoreClickOutsideRegistered = false;
+                _openAllDayMoreDay = null;
+                try { await Interop.UnregisterClickOutside(AllDayMorePopoverId(idx)); }
+                catch (Microsoft.JSInterop.JSDisconnectedException) { }
+                await InvokeAsync(StateHasChanged);
+            });
+            _allDayMoreClickOutsideRegistered = true;
+            _lastRegisteredMoreId = AllDayMorePopoverId(idx);
+        }
+        catch (Microsoft.JSInterop.JSDisconnectedException) { }
+    }
+
+    private async Task OnAllDayMoreEventClickAsync(SchedulerEvent ev)
+    {
+        await CloseAllDayMoreAsync();
+        await OnEventClickAsync(ev);
+    }
+
+    private async Task OnAllDayMoreKeyDown(KeyboardEventArgs e, int dayIndex)
+    {
+        if (e.Key != "Escape" || _openAllDayMoreDay != dayIndex) return;
+
+        // Focus first, THEN close. Escape usually arrives from a button inside the popover, and
+        // closing removes the focused element — which drops focus onto the document body and
+        // leaves a keyboard user with nowhere to carry on from (CodeRabbit review of PR #427).
+        try { await Interop.FocusElement(AllDayMoreTriggerId(dayIndex)); }
+        catch (Microsoft.JSInterop.JSDisconnectedException) { }
+
+        await CloseAllDayMoreAsync();
+    }
+
+    /// <summary>
+    /// Built here rather than inline in the attribute: a ternary written there does not survive
+    /// Razor's nested quotes and renders as nothing at all.
+    /// </summary>
+    private string? ScrollerStyle => SelfScrolling ? "max-height: 34rem; overflow-y: auto;" : null;
+
+    /// <summary>
+    /// <c>overflow-hidden</c> clips to the rounded border — and makes this element the nearest
+    /// SCROLL CONTAINER, which is what a sticky header is positioned against. With the scrolling
+    /// handed to the scheduler's shared box that container no longer scrolls, so the header just
+    /// travelled up with the content (Codex review of PR #427). <c>overflow: clip</c> clips
+    /// identically without being a scroll container, so the header reaches the box that does move.
+    /// </summary>
+    private string RootClasses => SelfScrolling
+        ? $"flex flex-col w-full rounded-md border border-border/60 overflow-hidden {Class}".Trim()
+        : $"flex flex-col w-full rounded-md border border-border/60 overflow-clip {Class}".Trim();
+
+    private static string WeekdayLabel(DateTime day) =>
+        CultureInfo.CurrentUICulture.DateTimeFormat.AbbreviatedDayNames[(int)day.DayOfWeek];
+
+    /// <summary>
+    /// The day of the month in the culture's OWN calendar. <c>DateTime.Day</c> is always the
+    /// Gregorian one, so under a non-Gregorian calendar — ar-SA on Um Al Qura, say — the header
+    /// printed a number that disagreed with the culture-formatted title above it (Codex review
+    /// of PR #427).
+    /// </summary>
+    private static string DayNumberLabel(DateTime day) =>
+        day.ToString("%d", CultureInfo.CurrentUICulture);
 
     private static TimeOnly MinuteToTimeOnly(int minute) => new((minute / 60) % 24, minute % 60);
 
@@ -926,6 +1336,12 @@
 
     public async ValueTask DisposeAsync()
     {
+        // A view can be torn down with its overflow dialog OPEN — switching views does exactly
+        // that. Without this the JS handler map and the interop dictionary keep a callback, and
+        // the component instance behind it, for a DOM that no longer exists (Codex review of
+        // PR #427).
+        await CloseAllDayMoreAsync();
+
         if (_dragRegistered)
         {
             try { await Interop.SchedulerViewsUnregisterTimeGridDragAsync(_hostRef); }

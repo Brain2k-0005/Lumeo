@@ -1,7 +1,9 @@
 using System.Globalization;
 using Bunit;
 using Xunit;
+using Lumeo.Services;
 using Lumeo.Tests.Helpers;
+using Microsoft.Extensions.DependencyInjection;
 using L = Lumeo;
 
 namespace Lumeo.Tests.Components.Scheduler;
@@ -71,4 +73,65 @@ public class SchedulerLocaleTests : IAsyncLifetime
 
         Assert.Null(ex);
     }
+
+    /// <summary>
+    /// Hands back a local date the test controls, and counts how often it was asked.
+    /// </summary>
+    // Re-implements the interface on purpose: the member has a DEFAULT interface
+    // implementation, so a derived class that only declares the method never gets
+    // dispatched to - the mapping belongs to whichever class states the interface.
+    private sealed class CountingDateInterop : TrackingInteropService, IComponentInteropService
+    {
+        public string? LocalDate { get; set; }
+        public int Asks { get; private set; }
+
+        public Task<string?> SchedulerViewsGetLocalDateAsync()
+        {
+            Asks++;
+            return Task.FromResult(LocalDate);
+        }
+    }
+
+    [Fact]
+    public async Task The_browser_date_is_re_read_rather_than_cached_from_the_first_render()
+    {
+        // A circuit that stays connected across the browser's local midnight kept marking
+        // yesterday: the date was resolved once, on first render. The header inherited that the
+        // moment it started reading this value (Codex review, PR #427).
+        var ctx = new BunitContext();
+        try
+        {
+            ctx.AddLumeoServices();
+            var interop = new CountingDateInterop { LocalDate = "2026-04-15" };
+            ctx.Services.AddSingleton<IComponentInteropService>(interop);
+
+            var cut = ctx.Render<L.Scheduler>(p => p
+                .Add(c => c.InitialView, L.SchedulerView.Week)
+                .Add(c => c.InitialDate, new DateTime(2026, 4, 15))
+                .Add(c => c.Events, Array.Empty<L.SchedulerEvent>()));
+
+            Assert.True(interop.Asks >= 1, "the date was never resolved at all");
+            var afterFirst = interop.Asks;
+
+            // Midnight passes in the browser while the circuit stays up.
+            interop.LocalDate = "2026-04-16";
+            cut.Render(p => p.Add(c => c.Events, new[]
+            {
+                new L.SchedulerEvent("e1", "Standup",
+                    new DateTime(2026, 4, 16, 9, 0, 0), new DateTime(2026, 4, 16, 10, 0, 0)),
+            }));
+
+            Assert.True(interop.Asks > afterFirst,
+                "the browser date was cached from the first render and never asked for again");
+
+            var marked = cut.FindAll("[data-dayheader][data-today='true']");
+            Assert.Single(marked);
+            Assert.Equal("2026-04-16", marked[0].GetAttribute("data-dayheader"));
+        }
+        finally
+        {
+            await ctx.DisposeAsync();
+        }
+    }
+
 }

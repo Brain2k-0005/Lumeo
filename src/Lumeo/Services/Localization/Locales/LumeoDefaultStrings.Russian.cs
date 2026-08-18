@@ -291,6 +291,12 @@ internal static partial class LumeoDefaultStrings
         ["Scheduler.List"] = "Список",
         ["Scheduler.WeekOf"] = "Неделя от {0}",
 
+        ["Scheduler.NoEvents"] = "Нет событий",
+        ["Scheduler.MoreEvents"] = "ещё {0}",
+        ["Scheduler.MoreEvents.One"] = "ещё {0}",
+        ["Scheduler.MoreEvents.Few"] = "ещё {0}",
+        ["Scheduler.MoreEvents.Many"] = "ещё {0}",
+        ["Scheduler.MoreEvents.Other"] = "ещё {0}",
         // Gantt
         ["Gantt.Day"] = "День",
         ["Gantt.Week"] = "Неделя",

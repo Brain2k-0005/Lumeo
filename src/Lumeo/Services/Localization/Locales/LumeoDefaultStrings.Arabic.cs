@@ -293,6 +293,12 @@ internal static partial class LumeoDefaultStrings
         ["Scheduler.List"] = "قائمة",
         ["Scheduler.WeekOf"] = "أسبوع {0}",
 
+        ["Scheduler.NoEvents"] = "لا توجد مواعيد",
+        ["Scheduler.MoreEvents"] = "{0} إضافي",
+        ["Scheduler.MoreEvents.One"] = "{0} إضافي",
+        ["Scheduler.MoreEvents.Few"] = "{0} إضافية",
+        ["Scheduler.MoreEvents.Many"] = "{0} إضافيًا",
+        ["Scheduler.MoreEvents.Other"] = "{0} إضافي",
         // Gantt
         ["Gantt.Day"] = "يوم",
         ["Gantt.Week"] = "أسبوع",

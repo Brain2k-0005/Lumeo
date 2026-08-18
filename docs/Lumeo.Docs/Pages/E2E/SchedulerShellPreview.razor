@@ -73,8 +73,15 @@
 
     private readonly List<SchedulerEvent> _paneEvents =
     [
-        new("pane-team", "Team sync", _anchor.AddDays(2).AddHours(9), _anchor.AddDays(2).AddHours(10)) { CalendarId = "team" },
-        new("pane-personal", "Dentist", _anchor.AddDays(2).AddHours(14), _anchor.AddDays(2).AddHours(15)) { CalendarId = "personal" },
+        // A day of their own: the all-day block below overflows the lane cap, and sharing its
+        // day would hide these two behind the "+N more" trigger in Month view.
+        new("pane-team", "Team sync", _anchor.AddDays(1).AddHours(9), _anchor.AddDays(1).AddHours(10)) { CalendarId = "team" },
+        new("pane-personal", "Dentist", _anchor.AddDays(1).AddHours(14), _anchor.AddDays(1).AddHours(15)) { CalendarId = "personal" },
+        // Enough all-day events on ONE day to overflow the lane cap, so the overflow popover
+        // has something to open — in a pane, where each grid gets half the width.
+        ..Enumerable.Range(0, 6).Select(i => new SchedulerEvent(
+            $"pane-allday-{i}", $"Holiday {i}",
+            _anchor.AddDays(2), _anchor.AddDays(3)) { AllDay = true, CalendarId = "team" }),
     ];
 
     private string? _lastDialogChange;

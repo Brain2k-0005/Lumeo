@@ -288,6 +288,10 @@ internal static partial class LumeoDefaultStrings
         ["Scheduler.List"] = "Liste",
         ["Scheduler.WeekOf"] = "{0} haftası",
 
+        ["Scheduler.NoEvents"] = "Etkinlik yok",
+        ["Scheduler.MoreEvents"] = "{0} tane daha",
+        ["Scheduler.MoreEvents.One"] = "{0} tane daha",
+        ["Scheduler.MoreEvents.Other"] = "{0} tane daha",
         // Gantt
         ["Gantt.Day"] = "Gün",
         ["Gantt.Week"] = "Hafta",

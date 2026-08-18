@@ -38,7 +38,8 @@ internal static class SchedulerMonthLayout
     /// </remarks>
     internal static IReadOnlyDictionary<string, int> PackRow(
         DateTime weekStart,
-        IReadOnlyList<(string Id, DateTime StartDate, DateTime EndDate, bool AllDay)> events)
+        IReadOnlyList<(string Id, DateTime StartDate, DateTime EndDate, bool AllDay)> events,
+        int rowDays = 7)
     {
         var lanes = new Dictionary<string, int>();
         if (events.Count == 0) return lanes;
@@ -48,7 +49,7 @@ internal static class SchedulerMonthLayout
 
         foreach (var e in events)
         {
-            var span = DayCellSpan(weekStart, e.StartDate, e.EndDate, e.AllDay);
+            var span = DayCellSpan(weekStart, e.StartDate, e.EndDate, e.AllDay, rowDays);
             var isMultiOrAllDay = e.AllDay || (span.EndExclusive - span.Start) > 1;
             (isMultiOrAllDay ? multi : single).Add((e.Id, span, e.StartDate));
         }
@@ -106,21 +107,22 @@ internal static class SchedulerMonthLayout
         DateTime weekStart,
         IReadOnlyDictionary<string, int> lanes,
         IReadOnlyList<(string Id, DateTime StartDate, DateTime EndDate, bool AllDay)> events,
-        int maxVisibleLanes = DefaultMaxVisibleLanes)
+        int maxVisibleLanes = DefaultMaxVisibleLanes,
+        int rowDays = 7)
     {
-        var perDayLanes = new HashSet<int>[7];
-        for (var i = 0; i < 7; i++) perDayLanes[i] = new HashSet<int>();
+        var perDayLanes = new HashSet<int>[rowDays];
+        for (var i = 0; i < rowDays; i++) perDayLanes[i] = new HashSet<int>();
 
         foreach (var e in events)
         {
             if (!lanes.TryGetValue(e.Id, out var lane)) continue;
-            var span = DayCellSpan(weekStart, e.StartDate, e.EndDate, e.AllDay);
+            var span = DayCellSpan(weekStart, e.StartDate, e.EndDate, e.AllDay, rowDays);
             for (var d = span.Start; d < span.EndExclusive; d++)
                 perDayLanes[d].Add(lane);
         }
 
         var result = new Dictionary<DateTime, int>();
-        for (var i = 0; i < 7; i++)
+        for (var i = 0; i < rowDays; i++)
         {
             var day = weekStart.Date.AddDays(i);
             result[day] = Math.Max(0, perDayLanes[i].Count - maxVisibleLanes);
@@ -146,7 +148,7 @@ internal static class SchedulerMonthLayout
     /// defensive fallback, not the primary clipping mechanism.</item>
     /// </list>
     /// </remarks>
-    private static (int Start, int EndExclusive) DayCellSpan(DateTime weekStart, DateTime startDate, DateTime endDate, bool allDay)
+    private static (int Start, int EndExclusive) DayCellSpan(DateTime weekStart, DateTime startDate, DateTime endDate, bool allDay, int rowDays = 7)
     {
         var rowStart = weekStart.Date;
         var startIndex = (int)(startDate.Date - rowStart).TotalDays;
@@ -163,8 +165,14 @@ internal static class SchedulerMonthLayout
             endIndexExclusive = Math.Max(startIndex + 1, lastTouchedIndex + 1);
         }
 
-        var clampedStart = Math.Clamp(startIndex, 0, 7);
-        var clampedEnd = Math.Clamp(endIndexExclusive, clampedStart + 1, 7);
+        // Against the ROW's own width, not a hard-coded seven. The time grid packs windows of
+        // up to fourteen days through here, and clamping a day-eight start to 7 then asked
+        // Math.Clamp for the range [8, 7] — which throws, so the whole view failed to render
+        // (Codex review of PR #427). The last column is rowDays - 1, so a start may reach it and
+        // an exclusive end may reach rowDays.
+        var lastStart = Math.Max(0, rowDays - 1);
+        var clampedStart = Math.Clamp(startIndex, 0, lastStart);
+        var clampedEnd = Math.Clamp(endIndexExclusive, clampedStart + 1, Math.Max(clampedStart + 1, rowDays));
         return (clampedStart, clampedEnd);
     }
 }

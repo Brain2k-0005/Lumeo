@@ -122,6 +122,9 @@
                     break;
                 case SchedulerView.Week:
                     <SchedulerTimeGridView Events="@pane.Events" AnchorDate="@_fpAnchor" Days="7"
+                                           ReserveFullAllDayStrip="@SharesPaneScroll"
+                                           SelfScrolling="@(!SharesPaneScroll)"
+                                           Today="@(_displayZone is not null ? SchedulerTimeZoneProjection.TodayIn(_displayZone) : _browserToday)"
                                            FirstDayOfWeek="@EffectiveFirstDayOfWeek"
                                            BusinessHours="@BusinessHours" NowIndicator="@NowIndicator" NowTimeZoneId="@SchedulerTimeZoneProjection.JsZoneId(_displayZone)"
                                            SlotMinTime="@SlotMinTime" SlotMaxTime="@SlotMaxTime" SlotDuration="@SlotDuration"
@@ -134,6 +137,9 @@
                     break;
                 case SchedulerView.Day:
                     <SchedulerTimeGridView Events="@pane.Events" AnchorDate="@_fpAnchor" Days="1"
+                                           ReserveFullAllDayStrip="@SharesPaneScroll"
+                                           SelfScrolling="@(!SharesPaneScroll)"
+                                           Today="@(_displayZone is not null ? SchedulerTimeZoneProjection.TodayIn(_displayZone) : _browserToday)"
                                            FirstDayOfWeek="@EffectiveFirstDayOfWeek"
                                            BusinessHours="@BusinessHours" NowIndicator="@NowIndicator" NowTimeZoneId="@SchedulerTimeZoneProjection.JsZoneId(_displayZone)"
                                            SlotMinTime="@SlotMinTime" SlotMaxTime="@SlotMaxTime" SlotDuration="@SlotDuration"
@@ -148,6 +154,9 @@
                     @* Days != 7 makes the time grid start at the anchor itself instead of a
                        week boundary, which is exactly the rolling window this view wants. *@
                     <SchedulerTimeGridView Events="@pane.Events" AnchorDate="@_fpAnchor" Days="@EffectiveVisibleDays"
+                                           ReserveFullAllDayStrip="@SharesPaneScroll"
+                                           SelfScrolling="@(!SharesPaneScroll)"
+                                           Today="@(_displayZone is not null ? SchedulerTimeZoneProjection.TodayIn(_displayZone) : _browserToday)"
                                            AlignToWeek="false"
                                            FirstDayOfWeek="@EffectiveFirstDayOfWeek"
                                            BusinessHours="@BusinessHours" NowIndicator="@NowIndicator" NowTimeZoneId="@SchedulerTimeZoneProjection.JsZoneId(_displayZone)"
@@ -188,6 +197,9 @@
                        was promised and not the nearest thing either. Caught by a test written
                        against the documented behaviour. *@
                     <SchedulerTimeGridView Events="@pane.Events" AnchorDate="@_fpAnchor" Days="1"
+                                           ReserveFullAllDayStrip="@SharesPaneScroll"
+                                           SelfScrolling="@(!SharesPaneScroll)"
+                                           Today="@(_displayZone is not null ? SchedulerTimeZoneProjection.TodayIn(_displayZone) : _browserToday)"
                                            FirstDayOfWeek="@EffectiveFirstDayOfWeek"
                                            BusinessHours="@BusinessHours" NowIndicator="@NowIndicator" NowTimeZoneId="@SchedulerTimeZoneProjection.JsZoneId(_displayZone)"
                                            SlotMinTime="@SlotMinTime" SlotMaxTime="@SlotMaxTime" SlotDuration="@SlotDuration"
@@ -210,7 +222,42 @@
         </text>;
     }
 
-    <div style="height: @Height; max-height: @Height; overflow: auto;">
+    @if (ShowsPanes)
+    {
+        @* The pane names sit OUTSIDE the scroller, matching its column geometry. Inside it they
+           scrolled away with the calendars, and the sticky day rows that remain are identical in
+           every pane — so nothing on screen said which calendar a column belonged to (Codex
+           review of PR #427). *@
+        @* The same scrollbar gutter the canvas below reserves. Anything laid out beside a
+           scroller rather than inside it loses that width on platforms with non-overlay
+           scrollbars, and its columns stop lining up with the ones underneath — this is the third
+           place in this component where that happened, so both sides now reserve it explicitly
+           rather than one of them being moved (Codex review of PR #427). *@
+        <div class="flex gap-3" data-testid="scheduler-pane-names"
+             style="overflow-y: hidden; scrollbar-gutter: stable;">
+            @foreach (var cal in VisibleCalendars)
+            {
+                <div @key="cal.Id" class="flex min-w-0 flex-1 items-center justify-between gap-2 border-b border-border/60 pb-1"
+                     data-scheduler-pane-name="@cal.Id">
+                    <span class="flex min-w-0 items-center gap-1.5 text-xs font-medium text-foreground">
+                        <span class="inline-block h-2.5 w-2.5 flex-shrink-0 rounded-[calc(var(--radius)*2)]"
+                              style="background: @(cal.Color ?? "var(--color-primary)")"></span>
+                        <span class="truncate">@cal.Name</span>
+                    </span>
+                    @* Merges ALL panes, not just this one: side by side is a MODE rather than a
+                       per-calendar flag, and a control that looked per-pane would promise
+                       something the mode cannot deliver. *@
+                    <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Sm"
+                            OnClick="@(() => SetPaneModeAsync(SchedulerPaneMode.Overlay))"
+                            aria-label="@L["Scheduler.MergePanes"]" title="@L["Scheduler.MergePanes"]">
+                        <SvgGlyph Svg="@(LumeoIcons.Minimize2)" class="h-4 w-4" />
+                    </Button>
+                </div>
+            }
+        </div>
+    }
+
+    <div style="height: @Height; max-height: @Height; overflow: auto; scrollbar-gutter: stable;">
         @if (ShowsPanes)
         {
             <div class="flex h-full gap-3">
@@ -222,22 +269,13 @@
                 @foreach (var cal in VisibleCalendars)
                 {
                     <div @key="cal.Id" class="flex min-w-0 flex-1 flex-col gap-1" data-scheduler-pane="@cal.Id">
-                        <div class="flex items-center justify-between gap-2 border-b border-border/60 pb-1">
-                            <span class="flex min-w-0 items-center gap-1.5 text-xs font-medium text-foreground">
-                                <span class="inline-block h-2.5 w-2.5 flex-shrink-0 rounded-[calc(var(--radius)*2)]"
-                                      style="background: @(cal.Color ?? "var(--color-primary)")"></span>
-                                <span class="truncate">@cal.Name</span>
-                            </span>
-                            @* Merges ALL panes, not just this one: side by side is a MODE rather
-                               than a per-calendar flag, and a control that looked per-pane would
-                               promise something the mode cannot deliver. *@
-                            <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Sm"
-                                    OnClick="@(() => SetPaneModeAsync(SchedulerPaneMode.Overlay))"
-                                    aria-label="@L["Scheduler.MergePanes"]" title="@L["Scheduler.MergePanes"]">
-                                <SvgGlyph Svg="@(LumeoIcons.Minimize2)" class="h-4 w-4" />
-                            </Button>
-                        </div>
-                        <div class="min-h-0 flex-1 overflow-auto">
+                        @* No scroller of its own. One per pane meant one scrollbar per
+                           calendar, each moving only its own column — so the same hour was
+                           never on screen twice, which is the whole point of putting the
+                           calendars beside each other. The scheduler's own box scrolls them
+                           all together instead, and the views hand their scrolling over via
+                           SelfScrolling. *@
+                        <div class="@(SharesPaneScroll ? "min-h-0 flex-1" : "min-h-0 flex-1 overflow-auto")">
                             @viewFor((EventsFor(cal.Id), cal.Id))
                         </div>
                     </div>
@@ -851,7 +889,16 @@
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (!firstRender) return;
+        // Re-resolved on every render, not cached from the first one. A circuit that stays
+        // connected across the browser's local midnight otherwise keeps marking yesterday, and
+        // the time-grid header inherited that the moment it started reading this date (Codex
+        // review of PR #427). Skipped when a display zone is configured, because then nothing
+        // reads this value.
+        //
+        // The cost is one small interop per render in the default configuration. The scheduler
+        // renders on user actions rather than continuously - a drag runs in JS and commits once -
+        // so that is a handful of calls, against a marker that is otherwise wrong for a day.
+        if (_displayZone is not null) return;
 
         var resolved = await ResolveBrowserTodayAsync();
         if (resolved == _browserToday) return;
@@ -951,6 +998,19 @@
     /// overlay wearing a column header, and with none it is an empty box.
     /// </summary>
     private bool ShowsPanes => _paneMode == SchedulerPaneMode.SideBySide && VisibleCalendars.Count > 1;
+
+    /// <summary>
+    /// Whether the panes give up their own scrollers so this component's box moves them together.
+    ///
+    /// TIME GRIDS only. Their vertical axis is the clock, which is identical in every pane, so one
+    /// scroll offset means the same hour everywhere. Nothing else has that property: a Resource
+    /// pane's rows are its own resources, a Timeline's row heights come from its own overlaps, and
+    /// two agendas of different lengths share no row N — sharing a scroll there moves both panes
+    /// without aligning anything, and costs each of them the headings its own scroller kept in
+    /// place (Codex review of PR #427).
+    /// </summary>
+    private bool SharesPaneScroll =>
+        ShowsPanes && EffectiveView is SchedulerView.Week or SchedulerView.Day or SchedulerView.MultiDay;
 
     // ── Built-in dialog ──────────────────────────────────────────────────
     private bool _dialogOpen;

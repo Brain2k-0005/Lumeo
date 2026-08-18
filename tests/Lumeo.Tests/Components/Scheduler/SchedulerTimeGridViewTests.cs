@@ -1,4 +1,6 @@
 using Bunit;
+using Microsoft.AspNetCore.Components.Web;
+using System.Globalization;
 using Lumeo.Services;
 using Lumeo.Tests.Helpers;
 using Microsoft.Extensions.DependencyInjection;
@@ -493,4 +495,753 @@ public class SchedulerTimeGridViewTests : IAsyncLifetime
         Assert.Single(cut.FindAll("[data-event-id='a']"));
         Assert.Single(cut.FindAll("[data-event-id='c']"));
     }
+
+    // -- the day header, reported missing against the live docs -----------------
+
+    [Fact]
+    public void The_week_grid_labels_every_column_with_its_day()
+    {
+        // Week and Day had no header at all: the grid opened straight on the all-day strip, so
+        // nothing said whether a column was Monday or Thursday, and the view read as though its
+        // top had been cut off. Month has carried its weekday row from the start.
+        var cut = _ctx.Render<L.SchedulerTimeGridView>(p => p
+            .Add(c => c.AnchorDate, D(2026, 4, 15))
+            .Add(c => c.Days, 7)
+            .Add(c => c.FirstDayOfWeek, DayOfWeek.Monday)
+            .Add(c => c.Events, Array.Empty<L.SchedulerEvent>()));
+
+        var headers = cut.FindAll("[data-dayheader]");
+        Assert.Equal(7, headers.Count);
+
+        // The dates the columns actually draw, in order — Monday-first from the anchor's week.
+        Assert.Equal(
+            new[] { "2026-04-13", "2026-04-14", "2026-04-15", "2026-04-16", "2026-04-17", "2026-04-18", "2026-04-19" },
+            headers.Select(h => h.GetAttribute("data-dayheader")).ToArray());
+
+        // And each header carries its day NUMBER, not just a weekday name: a time grid shows one
+        // specific week, where the month grid shows a repeating pattern.
+        Assert.Contains("15", headers[2].TextContent);
+    }
+
+    [Fact]
+    public void A_header_column_lines_up_with_the_grid_column_below_it()
+    {
+        // The header is a separate row from the grid, so the two carry their own column
+        // definitions — the one thing that can silently drift apart.
+        var cut = _ctx.Render<L.SchedulerTimeGridView>(p => p
+            .Add(c => c.AnchorDate, D(2026, 4, 15))
+            .Add(c => c.Days, 7)
+            .Add(c => c.FirstDayOfWeek, DayOfWeek.Monday)
+            .Add(c => c.Events, Array.Empty<L.SchedulerEvent>()));
+
+        var headerDates = cut.FindAll("[data-dayheader]").Select(h => h.GetAttribute("data-dayheader")).ToArray();
+        var columnDates = cut.FindAll("[data-daycol]").Select(c => c.GetAttribute("data-daycol")).ToArray();
+
+        Assert.Equal(columnDates, headerDates);
+    }
+
+    [Fact]
+    public void The_day_view_gets_one_header()
+    {
+        var cut = _ctx.Render<L.SchedulerTimeGridView>(p => p
+            .Add(c => c.AnchorDate, D(2026, 4, 15))
+            .Add(c => c.Days, 1)
+            .Add(c => c.Events, Array.Empty<L.SchedulerEvent>()));
+
+        var headers = cut.FindAll("[data-dayheader]");
+        Assert.Single(headers);
+        Assert.Equal("2026-04-15", headers[0].GetAttribute("data-dayheader"));
+    }
+
+    [Fact]
+    public void Today_is_marked_in_the_header_and_only_today()
+    {
+        var cut = _ctx.Render<L.SchedulerTimeGridView>(p => p
+            .Add(c => c.AnchorDate, DateTime.Today)
+            .Add(c => c.Days, 7)
+            .Add(c => c.Events, Array.Empty<L.SchedulerEvent>()));
+
+        var marked = cut.FindAll("[data-dayheader][data-today='true']");
+        Assert.Single(marked);
+        Assert.Equal(DateTime.Today.ToString("yyyy-MM-dd"), marked[0].GetAttribute("data-dayheader"));
+    }
+
+    [Fact]
+    public void The_header_names_the_weekday_the_way_the_culture_does()
+    {
+        var previous = CultureInfo.CurrentUICulture;
+        try
+        {
+            CultureInfo.CurrentUICulture = new CultureInfo("de-DE");
+            var cut = _ctx.Render<L.SchedulerTimeGridView>(p => p
+                .Add(c => c.AnchorDate, D(2026, 4, 15))
+                .Add(c => c.Days, 1)
+                .Add(c => c.Events, Array.Empty<L.SchedulerEvent>()));
+
+            // 2026-04-15 is a Wednesday; German abbreviates it "Mi".
+            Assert.Contains("Mi", cut.Find("[data-dayheader]").TextContent);
+        }
+        finally
+        {
+            CultureInfo.CurrentUICulture = previous;
+        }
+    }
+
+    [Fact]
+    public void The_first_hour_label_is_not_lifted_above_the_scrollers_edge()
+    {
+        // Every other label is lifted onto its own gridline by a negative offset. The first has
+        // no gridline above it, only the scroller's clipping edge, so the lift cut its digits in
+        // half — which is what "the week view is cut off at the top" turned out to be.
+        var cut = _ctx.Render<L.SchedulerTimeGridView>(p => p
+            .Add(c => c.AnchorDate, D(2026, 4, 15))
+            .Add(c => c.Days, 7)
+            .Add(c => c.Events, Array.Empty<L.SchedulerEvent>()));
+
+        var labels = cut.FindAll("span.absolute.right-1\\.5");
+        Assert.NotEmpty(labels);
+
+        var first = labels[0].GetAttribute("class") ?? string.Empty;
+        Assert.DoesNotContain("-top-1.5", first);
+        Assert.Contains("top-0", first);
+
+        // The rest keep the lift — the fix is for the edge case, not a change of alignment.
+        var second = labels[1].GetAttribute("class") ?? string.Empty;
+        Assert.Contains("-top-1.5", second);
+    }
+
+    // -- review round 1 --------------------------------------------------------
+
+    [Fact]
+    public void The_header_marks_the_day_the_scheduler_is_showing_not_the_hosts_own()
+    {
+        // A scheduler projected into another zone can be a whole day away from the server
+        // drawing it. The timeline already takes its today from the wrapper for exactly this
+        // reason; the header does now too.
+        var elsewhere = DateTime.Today.AddDays(1);
+
+        var cut = _ctx.Render<L.SchedulerTimeGridView>(p => p
+            .Add(c => c.AnchorDate, elsewhere)
+            .Add(c => c.Days, 7)
+            .Add(c => c.Today, elsewhere)
+            .Add(c => c.Events, Array.Empty<L.SchedulerEvent>()));
+
+        var marked = cut.FindAll("[data-dayheader][data-today='true']");
+        Assert.Single(marked);
+        Assert.Equal(elsewhere.ToString("yyyy-MM-dd"), marked[0].GetAttribute("data-dayheader"));
+
+        // And the host's own today is NOT marked, which is the half that would still pass if
+        // the parameter were read but the fallback left in place.
+        Assert.DoesNotContain(
+            DateTime.Today.ToString("yyyy-MM-dd"),
+            marked.Select(m => m.GetAttribute("data-dayheader")));
+    }
+
+    [Fact]
+    public void The_header_and_the_grid_share_one_scroller()
+    {
+        // Laid out against the full component width while the grid below lost the scrollbar
+        // width to it, every header drifted off the column it labels on any platform with
+        // non-overlay scrollbars. Sharing the scroller makes the widths equal by construction,
+        // which no arithmetic in the markup can be trusted to reproduce.
+        var cut = _ctx.Render<L.SchedulerTimeGridView>(p => p
+            .Add(c => c.AnchorDate, D(2026, 4, 15))
+            .Add(c => c.Days, 7)
+            .Add(c => c.Events, new[]
+            {
+                // An all-day event, so the strip renders and is covered by the same assertion.
+                new L.SchedulerEvent("a1", "Offsite", D(2026, 4, 15), D(2026, 4, 16)) { AllDay = true },
+            }));
+
+        // Queried FROM the scroller: bUnit hands back wrapper instances, so comparing
+        // elements by identity across two queries never matches.
+        var scroller = cut.Find("[style*='overflow-y: auto']");
+
+        Assert.NotNull(scroller.QuerySelector("[data-testid='timegrid-day-header']"));
+        Assert.NotNull(scroller.QuerySelector("[data-event-id='a1']"));
+        Assert.NotNull(scroller.QuerySelector("[role='grid']"));
+
+        // And there is exactly ONE scroller, so "inside it" cannot mean two different boxes.
+        Assert.Single(cut.FindAll("[style*='overflow-y: auto']"));
+    }
+
+    [Fact]
+    public void The_header_block_sticks_while_the_hours_scroll()
+    {
+        // The other half of moving it in: a header that scrolls away over 24 hours would answer
+        // the question once and then stop.
+        var cut = _ctx.Render<L.SchedulerTimeGridView>(p => p
+            .Add(c => c.AnchorDate, D(2026, 4, 15))
+            .Add(c => c.Days, 7)
+            .Add(c => c.Events, Array.Empty<L.SchedulerEvent>()));
+
+        var header = cut.Find("[data-testid='timegrid-day-header']");
+        var sticky = header.ParentElement;
+
+        Assert.NotNull(sticky);
+        Assert.Contains("sticky", sticky!.GetAttribute("class") ?? string.Empty);
+        Assert.Contains("top-0", sticky.GetAttribute("class") ?? string.Empty);
+    }
+
+    // -- review round 2 --------------------------------------------------------
+
+    [Fact]
+    public void Today_is_announced_and_not_only_coloured()
+    {
+        // The marker was CSS classes and a data- attribute, so a screen reader read today as the
+        // same weekday and number as every other column.
+        var cut = _ctx.Render<L.SchedulerTimeGridView>(p => p
+            .Add(c => c.AnchorDate, D(2026, 4, 15))
+            .Add(c => c.Days, 7)
+            .Add(c => c.Today, D(2026, 4, 15))
+            .Add(c => c.Events, Array.Empty<L.SchedulerEvent>()));
+
+        var current = cut.FindAll("[data-dayheader][aria-current]");
+        Assert.Single(current);
+        Assert.Equal("date", current[0].GetAttribute("aria-current"));
+        Assert.Equal("2026-04-15", current[0].GetAttribute("data-dayheader"));
+
+        // And nothing else claims it — aria-current on every column would announce nothing.
+        Assert.Equal(7, cut.FindAll("[data-dayheader]").Count);
+    }
+
+    [Fact]
+    public void The_day_number_follows_the_cultures_own_calendar()
+    {
+        // DateTime.Day is always the GREGORIAN day. Under a non-Gregorian calendar the header
+        // printed a number that disagreed with the culture-formatted title above it.
+        var previous = CultureInfo.CurrentUICulture;
+        try
+        {
+            var arabic = new CultureInfo("ar-SA");
+            CultureInfo.CurrentUICulture = arabic;
+
+            var day = D(2026, 4, 15);
+            var cut = _ctx.Render<L.SchedulerTimeGridView>(p => p
+                .Add(c => c.AnchorDate, day)
+                .Add(c => c.Days, 1)
+                .Add(c => c.Events, Array.Empty<L.SchedulerEvent>()));
+
+            var expected = day.ToString("%d", arabic);
+            Assert.Contains(expected, cut.Find("[data-dayheader]").TextContent);
+
+            // Only meaningful if the culture's calendar actually disagrees with the Gregorian
+            // one — otherwise this test would pass against the bug it exists for.
+            Assert.NotEqual(day.Day.ToString(CultureInfo.InvariantCulture), expected);
+        }
+        finally
+        {
+            CultureInfo.CurrentUICulture = previous;
+        }
+    }
+
+    [Fact]
+    public void A_tall_all_day_strip_scrolls_instead_of_covering_the_grid()
+    {
+        // The strip grows a lane per overlapping all-day event. Inside a sticky block that grew
+        // past the viewport it covered the timed rows for the whole scroll range, leaving every
+        // slot behind it invisible and unclickable.
+        var day = D(2026, 4, 15);
+        var events = Enumerable.Range(0, 24)
+            .Select(i => new L.SchedulerEvent($"a{i}", $"All day {i}", day, day.AddDays(1)) { AllDay = true })
+            .ToArray();
+
+        var cut = _ctx.Render<L.SchedulerTimeGridView>(p => p
+            .Add(c => c.AnchorDate, day)
+            .Add(c => c.Days, 7)
+            .Add(c => c.Events, events));
+
+        // Capped by LANES, not by a scrollbar: a scroller here takes its width out of this row
+        // alone, which pulls the strip's columns out from under the header above and the grid
+        // below — the same width mismatch the header fix removed, one level down.
+        var strip = cut.Find("[data-testid='timegrid-allday-strip']");
+        var cls = strip.GetAttribute("class") ?? string.Empty;
+        Assert.DoesNotContain("overflow-y-auto", cls);
+        Assert.DoesNotContain("overflow-auto", cls);
+
+        // Three lanes drawn, the rest counted.
+        var firstDay = cut.FindAll("[data-testid='allday-more']");
+        Assert.NotEmpty(firstDay);
+        Assert.Equal(24 - 3, int.Parse(firstDay[0].GetAttribute("data-hidden-count")!, CultureInfo.InvariantCulture));
+
+        // Every day column shows at most the lane budget.
+        var lanes = cut.FindAll("[data-testid='timegrid-allday-strip'] [data-lane]");
+        Assert.All(lanes, l => Assert.True(
+            int.Parse(l.GetAttribute("data-lane")!, CultureInfo.InvariantCulture) < 3,
+            "an all-day lane was drawn past the budget"));
+    }
+
+    [Fact]
+    public void The_hidden_all_day_events_can_be_opened_and_clicked()
+    {
+        // Capping the lanes takes the surplus out of the DOM. A bare count would leave the fourth
+        // and later appointments visible as a number and openable by nothing (Codex review,
+        // PR #427) — so the overflow is a button with the month grid's own popover behind it.
+        var day = D(2026, 4, 15);
+        var events = Enumerable.Range(0, 6)
+            .Select(i => new L.SchedulerEvent($"a{i}", $"All day {i}", day, day.AddDays(1)) { AllDay = true })
+            .ToArray();
+
+        L.SchedulerEvent? clicked = null;
+        var cut = _ctx.Render<L.SchedulerTimeGridView>(p => p
+            .Add(c => c.AnchorDate, day)
+            .Add(c => c.Days, 7)
+            .Add(c => c.Events, events)
+            .Add(c => c.OnEventClick, (L.SchedulerEvent e) => clicked = e));
+
+        var more = cut.Find("[data-testid='allday-more']");
+        Assert.Equal("3", more.GetAttribute("data-hidden-count"));
+        Assert.Empty(cut.FindAll("[data-testid='allday-more-popover']"));
+
+        more.Click();
+
+        var popover = cut.Find("[data-testid='allday-more-popover']");
+        var listed = popover.QuerySelectorAll("[data-event-id]");
+        Assert.Equal(3, listed.Length);
+
+        // The three the lanes could not hold, and no others.
+        Assert.Equal(
+            new[] { "a3", "a4", "a5" },
+            listed.Select(l => l.GetAttribute("data-event-id")).OrderBy(x => x, StringComparer.Ordinal).ToArray());
+
+        cut.Find("[data-testid='allday-more-popover'] [data-event-id='a4']").Click();
+
+        Assert.Equal("a4", clicked?.Id);
+        // Clicking one closes the popover, the way the month grid's does.
+        Assert.Empty(cut.FindAll("[data-testid='allday-more-popover']"));
+    }
+
+    [Fact]
+    public void Two_time_grids_do_not_share_one_overflow_popover_registration()
+    {
+        // The popover id keys the GLOBAL click-outside registry, and side-by-side calendar panes
+        // put two time grids on one page — the lesson from the month grid's own version.
+        var day = D(2026, 4, 15);
+        var events = Enumerable.Range(0, 6)
+            .Select(i => new L.SchedulerEvent($"a{i}", $"All day {i}", day, day.AddDays(1)) { AllDay = true })
+            .ToArray();
+
+        var first = _ctx.Render<L.SchedulerTimeGridView>(p => p
+            .Add(c => c.AnchorDate, day).Add(c => c.Days, 7).Add(c => c.Events, events));
+        var second = _ctx.Render<L.SchedulerTimeGridView>(p => p
+            .Add(c => c.AnchorDate, day).Add(c => c.Days, 7).Add(c => c.Events, events));
+
+        first.Find("[data-testid='allday-more']").Click();
+        second.Find("[data-testid='allday-more']").Click();
+
+        var a = first.Find("[data-testid='allday-more-popover']").Id;
+        var b = second.Find("[data-testid='allday-more-popover']").Id;
+
+        Assert.NotEqual(a, b);
+    }
+
+    // -- review round 4: the overflow popover's lifecycle ----------------------
+
+    private L.SchedulerTimeGridView RenderOverflowGrid(out IRenderedComponent<L.SchedulerTimeGridView> cut)
+    {
+        var day = D(2026, 4, 15);
+        var events = Enumerable.Range(0, 6)
+            .Select(i => new L.SchedulerEvent($"a{i}", $"All day {i}", day, day.AddDays(1)) { AllDay = true })
+            .ToArray();
+
+        cut = _ctx.Render<L.SchedulerTimeGridView>(p => p
+            .Add(c => c.AnchorDate, day)
+            .Add(c => c.Days, 7)
+            .Add(c => c.Events, events));
+        return cut.Instance;
+    }
+
+    [Fact]
+    public void The_overflow_registration_names_its_trigger()
+    {
+        // Without it the document-level mousedown reads a second press on the button as an
+        // OUTSIDE click and closes the popover before @onclick runs — so the click reopened what
+        // it meant to close, and the button never closed anything.
+        RenderOverflowGrid(out var cut);
+        var trigger = cut.Find("[data-testid='allday-more']");
+        var triggerId = trigger.Id;
+        Assert.False(string.IsNullOrEmpty(triggerId), "the trigger has no id to register");
+
+        trigger.Click();
+
+        var registration = _interop.ClickOutsideRegistrations
+            .Single(r => r.ElementId == cut.Find("[data-testid='allday-more-popover']").Id);
+        Assert.Equal(triggerId, registration.TriggerElementId);
+    }
+
+    [Fact]
+    public async Task Dismissing_from_outside_unregisters_the_handler()
+    {
+        // Clearing only the bookkeeping flag left the JS handler map and the interop dictionary
+        // holding a callback for a dialog that had left the DOM — and with the flag cleared, no
+        // later close path could reach it.
+        RenderOverflowGrid(out var cut);
+        cut.Find("[data-testid='allday-more']").Click();
+
+        var popoverId = cut.Find("[data-testid='allday-more-popover']").Id;
+        var registration = _interop.ClickOutsideRegistrations.Single(r => r.ElementId == popoverId);
+
+        await cut.InvokeAsync(() => registration.Handler());
+
+        Assert.Contains(popoverId, _interop.ClickOutsideUnregistrations);
+        Assert.Empty(cut.FindAll("[data-testid='allday-more-popover']"));
+    }
+
+    [Fact]
+    public void Escape_on_the_trigger_closes_the_popover()
+    {
+        // A keyboard user who opens with Enter still holds focus on the BUTTON, where the
+        // dialog's own keydown handler cannot hear anything.
+        RenderOverflowGrid(out var cut);
+        var trigger = cut.Find("[data-testid='allday-more']");
+        trigger.Click();
+        Assert.Single(cut.FindAll("[data-testid='allday-more-popover']"));
+
+        cut.Find("[data-testid='allday-more']").KeyDown(new KeyboardEventArgs { Key = "Escape" });
+
+        Assert.Empty(cut.FindAll("[data-testid='allday-more-popover']"));
+    }
+
+    [Fact]
+    public void The_last_columns_popover_opens_towards_the_inside()
+    {
+        // A 14rem panel hung off the last day column lands past the grid's right edge, inside a
+        // scroller that clips — so part of the list is only reachable by discovering a horizontal
+        // scrollbar.
+        var day = D(2026, 4, 15);
+        var lastDay = day.AddDays(4);   // the anchor week's Sunday, with the overflow on it
+        var events = Enumerable.Range(0, 6)
+            .Select(i => new L.SchedulerEvent($"z{i}", $"All day {i}", lastDay, lastDay.AddDays(1)) { AllDay = true })
+            .ToArray();
+
+        var cut = _ctx.Render<L.SchedulerTimeGridView>(p => p
+            .Add(c => c.AnchorDate, day)
+            .Add(c => c.Days, 7)
+            .Add(c => c.FirstDayOfWeek, DayOfWeek.Monday)
+            .Add(c => c.Events, events));
+
+        cut.Find("[data-testid='allday-more']").Click();
+
+        var cls = cut.Find("[data-testid='allday-more-popover']").GetAttribute("class") ?? string.Empty;
+        Assert.Contains("end-0", cls);
+        Assert.DoesNotContain("start-0", cls);
+    }
+
+    [Fact]
+    public void A_ten_day_window_renders_an_all_day_event_on_its_ninth_day()
+    {
+        // The all-day strip packs through the MONTH row packer, which is hard-coded to seven
+        // columns: an event starting on the eighth or a later day clamped its start to 7 and then
+        // asked Math.Clamp for a range of [8, 7], which throws — so a supported MultiDay window
+        // failed to render at all as soon as such an event was present (Codex review, PR #427).
+        var start = D(2026, 4, 13);
+        var ninth = start.AddDays(8);
+
+        var cut = _ctx.Render<L.SchedulerTimeGridView>(p => p
+            .Add(c => c.AnchorDate, start)
+            .Add(c => c.Days, 10)
+            .Add(c => c.Events, new[]
+            {
+                new L.SchedulerEvent("late", "Late offsite", ninth, ninth.AddDays(1)) { AllDay = true },
+                new L.SchedulerEvent("later", "Later offsite", ninth.AddDays(1), ninth.AddDays(2)) { AllDay = true },
+            }));
+
+        Assert.Equal(10, cut.FindAll("[data-dayheader]").Count);
+        Assert.Single(cut.FindAll("[data-event-id='late']"));
+
+        // Both on lane 0, which is what packing against the window's real width buys. Days
+        // nine and ten are consecutive and overlap nothing, but a seven-wide packer clamps
+        // every day-eight-or-later start onto the SAME last column — so it reads them as
+        // overlapping and stacks the second onto a lane of its own.
+        Assert.Equal("0", cut.Find("[data-event-id='late']").GetAttribute("data-lane"));
+        Assert.Equal("0", cut.Find("[data-event-id='later']").GetAttribute("data-lane"));
+    }
+
+    [Fact]
+    public void The_overflow_dialog_scrolls_rather_than_running_off_the_bottom()
+    {
+        // The lane cap can hide two dozen events. An uncapped list ran past the bottom of a
+        // scroller that clips while the sticky dialog stayed pinned, so the last entries were
+        // unreachable (Codex review, PR #427).
+        var day = D(2026, 4, 15);
+        var events = Enumerable.Range(0, 24)
+            .Select(i => new L.SchedulerEvent($"a{i}", $"All day {i}", day, day.AddDays(1)) { AllDay = true })
+            .ToArray();
+
+        var cut = _ctx.Render<L.SchedulerTimeGridView>(p => p
+            .Add(c => c.AnchorDate, day).Add(c => c.Days, 7).Add(c => c.Events, events));
+
+        cut.Find("[data-testid='allday-more']").Click();
+
+        var list = cut.Find("[data-testid='allday-more-popover'] div");
+        var cls = list.GetAttribute("class") ?? string.Empty;
+        Assert.Contains("max-h-", cls);
+        Assert.Contains("overflow-y-auto", cls);
+    }
+
+    [Fact]
+    public async Task Disposing_the_grid_releases_an_open_overflow_registration()
+    {
+        // Switching views tears the grid down, dialog and all. Without a teardown path the JS
+        // handler map and the interop dictionary keep the callback - and the component behind it.
+        var day = D(2026, 4, 15);
+        var events = Enumerable.Range(0, 6)
+            .Select(i => new L.SchedulerEvent($"a{i}", $"All day {i}", day, day.AddDays(1)) { AllDay = true })
+            .ToArray();
+
+        var ctx = new BunitContext();
+        var interop = new TrackingInteropService();
+        try
+        {
+            ctx.AddLumeoServices();
+            ctx.Services.AddSingleton<IComponentInteropService>(interop);
+
+            var cut = ctx.Render<L.SchedulerTimeGridView>(p => p
+                .Add(c => c.AnchorDate, day).Add(c => c.Days, 7).Add(c => c.Events, events));
+
+            cut.Find("[data-testid='allday-more']").Click();
+            var popoverId = cut.Find("[data-testid='allday-more-popover']").Id;
+            Assert.DoesNotContain(popoverId, interop.ClickOutsideUnregistrations);
+
+            await cut.Instance.DisposeAsync();
+
+            Assert.Contains(popoverId, interop.ClickOutsideUnregistrations);
+        }
+        finally
+        {
+            await ctx.DisposeAsync();
+        }
+    }
+
+    // -- review round 6: what the shared scroller changed ----------------------
+
+    [Fact]
+    public void Handing_the_scroll_away_stops_the_root_being_a_scrollport()
+    {
+        // overflow-hidden clips to the rounded border AND makes the root a scroll container, which
+        // is what a sticky header is positioned against. Once the scrolling belongs to the
+        // scheduler's shared box, that container never moves, so the header travelled up with the
+        // content. overflow: clip clips identically without being one (Codex review, PR #427).
+        var self = _ctx.Render<L.SchedulerTimeGridView>(p => p
+            .Add(c => c.AnchorDate, D(2026, 4, 15)).Add(c => c.Days, 7)
+            .Add(c => c.Events, Array.Empty<L.SchedulerEvent>()));
+        Assert.Contains("overflow-hidden", self.Find("div").GetAttribute("class"));
+
+        var shared = _ctx.Render<L.SchedulerTimeGridView>(p => p
+            .Add(c => c.AnchorDate, D(2026, 4, 15)).Add(c => c.Days, 7)
+            .Add(c => c.SelfScrolling, false)
+            .Add(c => c.Events, Array.Empty<L.SchedulerEvent>()));
+        var cls = shared.Find("div").GetAttribute("class") ?? string.Empty;
+        Assert.Contains("overflow-clip", cls);
+        Assert.DoesNotContain("overflow-hidden", cls);
+    }
+
+    [Fact]
+    public void A_reserved_lane_floor_gives_an_empty_pane_the_same_height()
+    {
+        // Panes scroll as ONE box, so a pane with all-day lanes starts its hours lower than a pane
+        // with none — and the same hour can never line up, which is what side by side is for.
+        var day = D(2026, 4, 15);
+
+        var empty = _ctx.Render<L.SchedulerTimeGridView>(p => p
+            .Add(c => c.AnchorDate, day).Add(c => c.Days, 7)
+            .Add(c => c.ReserveFullAllDayStrip, true)
+            .Add(c => c.Events, Array.Empty<L.SchedulerEvent>()));
+
+        // The strip renders even with nothing in it, holding the reserved lanes open.
+        var strip = empty.Find("[data-testid='timegrid-allday-strip']");
+        Assert.Equal("3", strip.GetAttribute("data-reserved-lanes"));
+        Assert.Equal(7 * 3, empty.FindAll("[data-testid='timegrid-allday-strip'] [data-lane]").Count);
+
+        // And without the floor there is no strip at all — which is the height difference.
+        var unreserved = _ctx.Render<L.SchedulerTimeGridView>(p => p
+            .Add(c => c.AnchorDate, day).Add(c => c.Days, 7)
+            .Add(c => c.Events, Array.Empty<L.SchedulerEvent>()));
+        Assert.Empty(unreserved.FindAll("[data-testid='timegrid-allday-strip']"));
+    }
+
+    [Fact]
+    public void An_events_refresh_that_removes_the_overflow_closes_its_dialog()
+    {
+        // The dialog would otherwise leave the DOM with its click-outside registration live —
+        // nothing can invoke the callback any more, and if the overflow returns it reopens by
+        // itself, with no user action behind it.
+        var day = D(2026, 4, 15);
+        var many = Enumerable.Range(0, 6)
+            .Select(i => new L.SchedulerEvent($"a{i}", $"All day {i}", day, day.AddDays(1)) { AllDay = true })
+            .ToArray();
+
+        var cut = _ctx.Render<L.SchedulerTimeGridView>(p => p
+            .Add(c => c.AnchorDate, day).Add(c => c.Days, 7).Add(c => c.Events, many));
+
+        cut.Find("[data-testid='allday-more']").Click();
+        var popoverId = cut.Find("[data-testid='allday-more-popover']").Id;
+
+        // A refresh drops the day back under the cap.
+        cut.Render(p => p.Add(c => c.Events, many.Take(2).ToArray()));
+
+        Assert.Empty(cut.FindAll("[data-testid='allday-more-popover']"));
+        Assert.Contains(popoverId, _interop.ClickOutsideUnregistrations);
+    }
+
+    [Fact]
+    public void Reserving_the_strip_survives_a_day_that_overflows_it()
+    {
+        // The floor used to be a caller-supplied COUNT, and the wrapper handed it the number of
+        // all-day events — so four of them reached Math.Clamp(x, 4, 3), whose minimum above its
+        // maximum throws and took the whole scheduler down (Codex review, PR #427). A switch
+        // cannot express a floor above the cap.
+        var day = D(2026, 4, 15);
+        var events = Enumerable.Range(0, 5)
+            .Select(i => new L.SchedulerEvent($"a{i}", $"All day {i}", day, day.AddDays(1)) { AllDay = true })
+            .ToArray();
+
+        var cut = _ctx.Render<L.SchedulerTimeGridView>(p => p
+            .Add(c => c.AnchorDate, day)
+            .Add(c => c.Days, 7)
+            .Add(c => c.ReserveFullAllDayStrip, true)
+            .Add(c => c.Events, events));
+
+        Assert.Equal("3", cut.Find("[data-testid='timegrid-allday-strip']").GetAttribute("data-reserved-lanes"));
+        Assert.Equal("2", cut.Find("[data-testid='allday-more']").GetAttribute("data-hidden-count"));
+    }
+
+    // -- review round 7 --------------------------------------------------------
+
+    [Fact]
+    public void A_reserved_strip_holds_the_overflow_row_open_too()
+    {
+        // The trigger is a row of its own, so a pane that overflows stands one row taller than a
+        // pane that does not — and the lane floor alone still left their hours offset.
+        var day = D(2026, 4, 15);
+        var few = Enumerable.Range(0, 2)
+            .Select(i => new L.SchedulerEvent($"a{i}", $"All day {i}", day, day.AddDays(1)) { AllDay = true })
+            .ToArray();
+
+        var cut = _ctx.Render<L.SchedulerTimeGridView>(p => p
+            .Add(c => c.AnchorDate, day).Add(c => c.Days, 7)
+            .Add(c => c.ReserveFullAllDayStrip, true)
+            .Add(c => c.Events, few));
+
+        // No overflow on any day, yet every column holds the trigger's row.
+        Assert.Empty(cut.FindAll("[data-testid='allday-more']"));
+        Assert.Equal(7, cut.FindAll("[data-testid='allday-more-placeholder']").Count);
+
+        // And a day that DOES overflow gets the trigger instead of the placeholder, not both.
+        var many = Enumerable.Range(0, 6)
+            .Select(i => new L.SchedulerEvent($"b{i}", $"All day {i}", day, day.AddDays(1)) { AllDay = true })
+            .ToArray();
+        cut.Render(p => p.Add(c => c.Events, many));
+
+        Assert.Single(cut.FindAll("[data-testid='allday-more']"));
+        Assert.Equal(6, cut.FindAll("[data-testid='allday-more-placeholder']").Count);
+    }
+
+    [Fact]
+    public void Navigating_closes_a_popover_whose_column_now_shows_another_day()
+    {
+        // The open popover is keyed by column INDEX, and navigation rebuilds the columns under it
+        // — so an index that still overflows in the new range kept the popover open over a
+        // different day's events (CodeRabbit review, PR #427).
+        var day = D(2026, 4, 15);
+        var week = Enumerable.Range(0, 6)
+            .Select(i => new L.SchedulerEvent($"a{i}", $"All day {i}", day, day.AddDays(1)) { AllDay = true });
+        var nextWeek = Enumerable.Range(0, 6)
+            .Select(i => new L.SchedulerEvent($"n{i}", $"Next {i}", day.AddDays(7), day.AddDays(8)) { AllDay = true });
+        var events = week.Concat(nextWeek).ToArray();
+
+        var cut = _ctx.Render<L.SchedulerTimeGridView>(p => p
+            .Add(c => c.AnchorDate, day).Add(c => c.Days, 7).Add(c => c.Events, events));
+
+        cut.Find("[data-testid='allday-more']").Click();
+        Assert.Single(cut.FindAll("[data-testid='allday-more-popover']"));
+
+        // The very same column index overflows next week too.
+        cut.Render(p => p.Add(c => c.AnchorDate, day.AddDays(7)));
+
+        Assert.Empty(cut.FindAll("[data-testid='allday-more-popover']"));
+    }
+
+    [Fact]
+    public void Escape_puts_focus_back_on_the_trigger_before_closing()
+    {
+        // Escape usually arrives from a button INSIDE the popover, and closing removes the focused
+        // element — which drops focus onto the document body.
+        var day = D(2026, 4, 15);
+        var events = Enumerable.Range(0, 6)
+            .Select(i => new L.SchedulerEvent($"a{i}", $"All day {i}", day, day.AddDays(1)) { AllDay = true })
+            .ToArray();
+
+        var cut = _ctx.Render<L.SchedulerTimeGridView>(p => p
+            .Add(c => c.AnchorDate, day).Add(c => c.Days, 7).Add(c => c.Events, events));
+
+        var triggerId = cut.Find("[data-testid='allday-more']").Id;
+        cut.Find("[data-testid='allday-more']").Click();
+
+        cut.Find("[data-testid='allday-more-popover']").KeyDown(new KeyboardEventArgs { Key = "Escape" });
+
+        Assert.Contains(triggerId, _interop.FocusElementCalls);
+        Assert.Empty(cut.FindAll("[data-testid='allday-more-popover']"));
+    }
+
+    // -- review round 8 --------------------------------------------------------
+
+    [Fact]
+    public void Losing_every_all_day_event_closes_the_overflow_dialog_too()
+    {
+        // The rebuild's early return skipped the reconciliation the long path ends with, so a
+        // refresh that removed EVERY all-day event left the dialog's state and its click-outside
+        // registration behind (Codex review, PR #427).
+        var day = D(2026, 4, 15);
+        var events = Enumerable.Range(0, 6)
+            .Select(i => new L.SchedulerEvent($"a{i}", $"All day {i}", day, day.AddDays(1)) { AllDay = true })
+            .ToArray();
+
+        var cut = _ctx.Render<L.SchedulerTimeGridView>(p => p
+            .Add(c => c.AnchorDate, day).Add(c => c.Days, 7).Add(c => c.Events, events));
+
+        cut.Find("[data-testid='allday-more']").Click();
+        var popoverId = cut.Find("[data-testid='allday-more-popover']").Id;
+
+        // Every all-day event goes; one timed event stays so the view still renders.
+        cut.Render(p => p.Add(c => c.Events, new[]
+        {
+            new L.SchedulerEvent("t1", "Standup", day.AddHours(9), day.AddHours(10)),
+        }));
+
+        Assert.Empty(cut.FindAll("[data-testid='allday-more-popover']"));
+        Assert.Contains(popoverId, _interop.ClickOutsideUnregistrations);
+    }
+
+    [Theory]
+    [InlineData(7, 3, false)]    // the near half opens from the start edge
+    [InlineData(7, 4, true)]     // the far half from the end edge
+    [InlineData(14, 6, false)]   // and the halves move with the day count, not with a constant
+    [InlineData(14, 7, true)]
+    public void The_overflow_popover_opens_from_the_edge_its_half_of_the_strip_faces(
+        int days, int column, bool opensInward)
+    {
+        // Anchored to the STRIP, so the panel cannot overhang the grid whatever a column is
+        // worth. Counting columns was the wrong instrument twice: the panel is a fixed 14rem
+        // while a column is gridWidth/Days, which moves with the day count AND with the width —
+        // and side-by-side panes halve the width without touching the count (Codex review,
+        // PR #427).
+        var start = D(2026, 4, 13);
+        var overflowDay = start.AddDays(column);
+        var events = Enumerable.Range(0, 6)
+            .Select(i => new L.SchedulerEvent($"a{i}", $"All day {i}", overflowDay, overflowDay.AddDays(1)) { AllDay = true })
+            .ToArray();
+
+        var cut = _ctx.Render<L.SchedulerTimeGridView>(p => p
+            .Add(c => c.AnchorDate, start)
+            .Add(c => c.Days, days)
+            .Add(c => c.FirstDayOfWeek, DayOfWeek.Monday)
+            .Add(c => c.Events, events));
+
+        cut.Find("[data-testid='allday-more']").Click();
+        var cls = cut.Find("[data-testid='allday-more-popover']").GetAttribute("class") ?? string.Empty;
+
+        Assert.Contains(opensInward ? "end-0" : "start-0", cls);
+    }
+
 }

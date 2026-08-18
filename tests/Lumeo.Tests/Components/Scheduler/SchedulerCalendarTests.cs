@@ -261,4 +261,198 @@ public class SchedulerCalendarTests : IAsyncLifetime
         Assert.Contains("darkorange", style, StringComparison.Ordinal);
         Assert.DoesNotContain("rebeccapurple", style, StringComparison.Ordinal);
     }
+
+    // -- one scrollbar for every pane -----------------------------------------
+
+    [Theory]
+    [InlineData(L.SchedulerView.Week)]
+    [InlineData(L.SchedulerView.Day)]
+    public void Side_by_side_panes_share_a_single_scroller(L.SchedulerView view)
+    {
+        // Each pane owning a scroller gave one scrollbar per calendar, and scrolling one left the
+        // others behind — so the same hour was never on screen twice, which is the whole point of
+        // putting the calendars beside each other.
+        var calendars = new[]
+        {
+            new L.SchedulerCalendar("team", "Team"),
+            new L.SchedulerCalendar("personal", "Personal"),
+        };
+
+        var cut = _ctx.Render<L.Scheduler>(p => p
+            .Add(c => c.InitialView, view)
+            .Add(c => c.InitialDate, Anchor)
+            .Add(c => c.Events, Array.Empty<L.SchedulerEvent>())
+            .Add(c => c.Calendars, calendars)
+            .Add(c => c.PaneMode, L.SchedulerPaneMode.SideBySide));
+
+        Assert.Equal(2, cut.FindAll("[data-scheduler-pane]").Count);
+        Assert.Single(ScrollersIn(cut));
+        Assert.Empty(cut.FindAll("[data-scheduler-pane] > .overflow-auto"));
+    }
+
+    [Fact]
+    public void Merging_the_panes_gives_the_view_its_own_scroller_back()
+    {
+        // The counterpart: overlaid, the view is alone in the box and scrolling itself is what
+        // every other consumer already expects of it.
+        var calendars = new[]
+        {
+            new L.SchedulerCalendar("team", "Team"),
+            new L.SchedulerCalendar("personal", "Personal"),
+        };
+
+        var cut = _ctx.Render<L.Scheduler>(p => p
+            .Add(c => c.InitialView, L.SchedulerView.Week)
+            .Add(c => c.InitialDate, Anchor)
+            .Add(c => c.Events, Array.Empty<L.SchedulerEvent>())
+            .Add(c => c.Calendars, calendars)
+            .Add(c => c.PaneMode, L.SchedulerPaneMode.Overlay));
+
+        Assert.Empty(cut.FindAll("[data-scheduler-pane]"));
+        // The scheduler's own box, and the view's — the arrangement panes deliberately collapse.
+        Assert.Equal(2, ScrollersIn(cut).Count);
+    }
+
+    private static IReadOnlyList<AngleSharp.Dom.IElement> ScrollersIn(IRenderedComponent<L.Scheduler> cut) =>
+        cut.FindAll("*")
+           .Where(e =>
+           {
+               var style = e.GetAttribute("style") ?? string.Empty;
+               var cls = e.GetAttribute("class") ?? string.Empty;
+               return style.Contains("overflow: auto", StringComparison.Ordinal)
+                   || style.Contains("overflow-y: auto", StringComparison.Ordinal)
+                   || cls.Split(' ').Contains("overflow-y-auto")
+                   // The class form matters too: the wrapper's own per-pane box used it, and
+                   // a predicate blind to it passed while the real page still had one
+                   // scrollbar per calendar.
+                   || cls.Split(' ').Contains("overflow-auto");
+           })
+           .ToList();
+
+    [Fact]
+    public void Panes_reserve_the_same_all_day_height_so_their_hours_line_up()
+    {
+        // One box scrolls them both by the same pixels, so an offset that differs per pane never
+        // closes — the same hour would sit at two heights, which defeats the comparison the mode
+        // exists for (Codex review, PR #427).
+        var day = Anchor;
+        var calendars = new[]
+        {
+            new L.SchedulerCalendar("team", "Team"),
+            new L.SchedulerCalendar("personal", "Personal"),
+        };
+
+        var cut = _ctx.Render<L.Scheduler>(p => p
+            .Add(c => c.InitialView, L.SchedulerView.Week)
+            .Add(c => c.InitialDate, day)
+            .Add(c => c.Calendars, calendars)
+            .Add(c => c.PaneMode, L.SchedulerPaneMode.SideBySide)
+            .Add(c => c.Events, new[]
+            {
+                // Only the team calendar has anything all-day.
+                new L.SchedulerEvent("a1", "Offsite", day, day.AddDays(1)) { AllDay = true, CalendarId = "team" },
+                new L.SchedulerEvent("t1", "Gym", day.AddHours(7), day.AddHours(8)) { CalendarId = "personal" },
+            }));
+
+        var strips = cut.FindAll("[data-testid='timegrid-allday-strip']");
+        Assert.Equal(2, strips.Count);
+
+        // Both panes hold the strip open to the same number of lanes.
+        var reserved = strips.Select(s => s.GetAttribute("data-reserved-lanes")).Distinct().ToList();
+        Assert.Single(reserved);
+
+        var lanesPerPane = cut.FindAll("[data-scheduler-pane]")
+            .Select(p => p.QuerySelectorAll("[data-testid='timegrid-allday-strip'] [data-lane]").Length)
+            .Distinct()
+            .ToList();
+        Assert.Single(lanesPerPane);
+    }
+
+    [Theory]
+    [InlineData(L.SchedulerView.List)]
+    [InlineData(L.SchedulerView.Resource)]
+    public void Views_whose_panes_cannot_line_up_keep_their_own_scrollers(L.SchedulerView view)
+    {
+        // A shared scroll only means anything when the vertical axis is the SAME in every pane.
+        // The clock is; a pane's own resources, its own overlap-driven row heights and an agenda's
+        // own row count are not — sharing there moves both panes without aligning anything, and
+        // costs each of them the headings its own scroller kept in place (Codex review, PR #427).
+        var calendars = new[]
+        {
+            new L.SchedulerCalendar("team", "Team"),
+            new L.SchedulerCalendar("personal", "Personal"),
+        };
+
+        var cut = _ctx.Render<L.Scheduler>(p => p
+            .Add(c => c.InitialView, view)
+            .Add(c => c.InitialDate, Anchor)
+            .Add(c => c.Events, Array.Empty<L.SchedulerEvent>())
+            .Add(c => c.Resources, new[] { new L.SchedulerResource("r1", "Room 1") })
+            .Add(c => c.Calendars, calendars)
+            .Add(c => c.PaneMode, L.SchedulerPaneMode.SideBySide));
+
+        Assert.Equal(2, cut.FindAll("[data-scheduler-pane]").Count);
+
+        // Each pane still owns the box around its view. Counting scrollers anywhere would not
+        // discriminate: these views scroll themselves regardless, so the pane box is the thing
+        // that actually changes.
+        Assert.Equal(2, cut.FindAll("[data-scheduler-pane] > .overflow-auto").Count);
+    }
+
+    [Fact]
+    public void The_pane_names_stay_outside_the_shared_scroller()
+    {
+        // Inside it they scrolled away with the calendars, and the sticky day rows that remain are
+        // identical in every pane — so nothing on screen said which calendar a column belonged to
+        // (Codex review, PR #427).
+        var calendars = new[]
+        {
+            new L.SchedulerCalendar("team", "Team"),
+            new L.SchedulerCalendar("personal", "Personal"),
+        };
+
+        var cut = _ctx.Render<L.Scheduler>(p => p
+            .Add(c => c.InitialView, L.SchedulerView.Week)
+            .Add(c => c.InitialDate, Anchor)
+            .Add(c => c.Events, Array.Empty<L.SchedulerEvent>())
+            .Add(c => c.Calendars, calendars)
+            .Add(c => c.PaneMode, L.SchedulerPaneMode.SideBySide));
+
+        var names = cut.FindAll("[data-scheduler-pane-name]");
+        Assert.Equal(2, names.Count);
+        Assert.Equal(new[] { "team", "personal" },
+                     names.Select(n => n.GetAttribute("data-scheduler-pane-name")).ToArray());
+
+        // None of them sits inside the box that moves.
+        var scroller = ScrollersIn(cut).Single();
+        Assert.Empty(scroller.QuerySelectorAll("[data-scheduler-pane-name]"));
+    }
+
+    [Fact]
+    public void The_pane_names_reserve_the_same_scrollbar_gutter_as_the_canvas()
+    {
+        // Anything laid out beside a scroller rather than inside it loses the scrollbar's width on
+        // platforms that draw one, and its columns stop lining up with the ones underneath. This
+        // is the third place in this component where that happened, so both sides reserve it
+        // explicitly (Codex review, PR #427).
+        var calendars = new[]
+        {
+            new L.SchedulerCalendar("team", "Team"),
+            new L.SchedulerCalendar("personal", "Personal"),
+        };
+
+        var cut = _ctx.Render<L.Scheduler>(p => p
+            .Add(c => c.InitialView, L.SchedulerView.Week)
+            .Add(c => c.InitialDate, Anchor)
+            .Add(c => c.Events, Array.Empty<L.SchedulerEvent>())
+            .Add(c => c.Calendars, calendars)
+            .Add(c => c.PaneMode, L.SchedulerPaneMode.SideBySide));
+
+        var names = cut.Find("[data-testid='scheduler-pane-names']").GetAttribute("style") ?? string.Empty;
+        var canvas = ScrollersIn(cut).Single().GetAttribute("style") ?? string.Empty;
+
+        Assert.Contains("scrollbar-gutter: stable", names);
+        Assert.Contains("scrollbar-gutter: stable", canvas);
+    }
+
 }

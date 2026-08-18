@@ -212,4 +212,34 @@ public class SchedulerMonthViewHideWeekendsTests : IAsyncLifetime
         Assert.Equal(6, cut.FindAll("[role='rowheader']").Count);
         Assert.Equal(30, cut.FindAll("[data-cell-date]").Count);
     }
+
+    [Theory]
+    [InlineData(false, true)]    // Friday is column five of seven: the far half
+    [InlineData(true, true)]     // hide the weekends and it is the last of five: still the far half
+    public void The_overflow_side_follows_the_visible_column_count(bool hideWeekends, bool opensInward)
+    {
+        // Which half a cell falls in depends on how many columns are actually on SCREEN, not on
+        // its raw index. Under the old column-counting rule Friday sat in the NEAR half of a
+        // seven-column grid and opened outward past its edge.
+        // (Codex review, PR #427).
+        var anchor = D(2026, 3, 15);
+        var friday = new DateTime(2026, 3, 20);   // a Friday inside the rendered month
+        var events = Enumerable.Range(0, 6)
+            .Select(i => new L.SchedulerEvent($"f{i}", $"Event {i}", friday.AddHours(9), friday.AddHours(10)))
+            .ToArray();
+
+        var cut = _ctx.Render<L.SchedulerMonthView>(p => p
+            .Add(c => c.AnchorDate, anchor)
+            .Add(c => c.FirstDayOfWeek, DayOfWeek.Monday)
+            .Add(c => c.HideWeekends, hideWeekends)
+            .Add(c => c.Events, events));
+
+        var trigger = cut.FindAll("[data-testid='month-more-events']")
+                         .Single(t => DateOf(t.Closest("[data-cell-date]")!) == friday.Date);
+        trigger.Click();
+
+        var cls = cut.Find("[data-testid='month-more-popover']").GetAttribute("class") ?? string.Empty;
+        Assert.Contains(opensInward ? "end-0" : "start-0", cls);
+    }
+
 }
