@@ -214,13 +214,14 @@ public class SchedulerMonthViewHideWeekendsTests : IAsyncLifetime
     }
 
     [Theory]
-    [InlineData(false, DayOfWeek.Friday)]
-    [InlineData(true, DayOfWeek.Friday)]
-    public void The_last_VISIBLE_column_opens_its_overflow_inward(bool hideWeekends, DayOfWeek lastVisible)
+    [InlineData(false, true)]    // Friday is column five of seven: the far half
+    [InlineData(true, true)]     // hide the weekends and it is the last of five: still the far half
+    public void The_overflow_side_follows_the_visible_column_count(bool hideWeekends, bool opensInward)
     {
-        // With weekends hidden on a Monday-first grid, Friday is the last column on SCREEN while
-        // its raw index is 4 — so a raw index test left it opening outward, past the edge of a
-        // five-column grid whose root clips (Codex review, PR #427).
+        // Which half a cell falls in depends on how many columns are actually on SCREEN, not on
+        // its raw index. Under the old column-counting rule Friday sat in the NEAR half of a
+        // seven-column grid and opened outward past its edge.
+        // (Codex review, PR #427).
         var anchor = D(2026, 3, 15);
         var friday = new DateTime(2026, 3, 20);   // a Friday inside the rendered month
         var events = Enumerable.Range(0, 6)
@@ -233,23 +234,12 @@ public class SchedulerMonthViewHideWeekendsTests : IAsyncLifetime
             .Add(c => c.HideWeekends, hideWeekends)
             .Add(c => c.Events, events));
 
-        Assert.Equal(DayOfWeek.Friday, lastVisible);
-
         var trigger = cut.FindAll("[data-testid='month-more-events']")
                          .Single(t => DateOf(t.Closest("[data-cell-date]")!) == friday.Date);
         trigger.Click();
 
         var cls = cut.Find("[data-testid='month-more-popover']").GetAttribute("class") ?? string.Empty;
-        if (hideWeekends)
-        {
-            // Last visible column: it has to open back into the grid.
-            Assert.Contains("end-0", cls);
-        }
-        else
-        {
-            // Friday is column five of seven — two more follow it, so it opens outward as usual.
-            Assert.Contains("start-0", cls);
-        }
+        Assert.Contains(opensInward ? "end-0" : "start-0", cls);
     }
 
 }

@@ -71,7 +71,7 @@
             <div class="flex border-b border-border/60" data-testid="timegrid-allday-strip"
                  data-reserved-lanes="@ReservedAllDayLanes">
                 <div class="flex-none w-14 text-[10px] text-muted-foreground pt-1.5 pl-1">@L["Scheduler.AllDay"]</div>
-                <div class="flex-1 grid min-w-0" style="grid-template-columns: repeat(@Days, minmax(0, 1fr));">
+                <div class="flex-1 grid min-w-0 relative" style="grid-template-columns: repeat(@Days, minmax(0, 1fr));">
                     @for (var d = 0; d < Days; d++)
                     {
                         var dayIndex = d;
@@ -136,7 +136,9 @@
                                    month grid uses for the same overflow, down to the per-instance id
                                    that keeps two views on one page from sharing a click-outside
                                    registration. *@
-                                <div class="relative">
+                                @* NOT position: relative. The panel is measured against the
+                                   STRIP, not this cell — see AllDayMorePopoverClasses. *@
+                                <div>
                                     @* The trigger carries an id and its own Escape handler. Without the id
                                        the document-level mousedown reads a second press as an OUTSIDE
                                        click and closes the popover before @onclick runs, so the click
@@ -444,19 +446,20 @@
     /// writing direction, which makes the index test correct in either.
     /// </summary>
     /// <summary>
-    /// How many trailing columns the popover would overhang, so those columns open inward. The
-    /// panel is a fixed 14rem against columns of <c>gridWidth / Days</c>, so it covers more of
-    /// them the more days are shown: a fixed two was right for a week and left an eight-to-
-    /// fourteen-day window opening outward from its third and fourth columns (Codex review of
-    /// PR #427). Derived against a ~900px grid, which gives the same two at seven days and four
-    /// at fourteen.
+    /// Anchored to the STRIP's edges rather than the cell's, so the panel cannot overhang the
+    /// grid whatever a column happens to be worth.
+    ///
+    /// Counting columns was the wrong instrument twice over. The panel is a fixed 14rem while a
+    /// column is <c>gridWidth / Days</c> — which changes with the day count AND with the width,
+    /// and side-by-side panes halve the width without touching the day count, so a formula tuned
+    /// for one was wrong for the other (Codex review of PR #427). Against the strip there is
+    /// nothing to estimate: the near half opens from the start edge, the far half from the end,
+    /// and <c>max-w-full</c> keeps a grid narrower than the panel from overhanging either way.
     /// </summary>
-    private int AllDayMoreOverhang => Math.Max(2, (int)Math.Ceiling(Days / 4.0));
-
     private string AllDayMorePopoverClasses(int dayIndex) =>
-        dayIndex >= Days - AllDayMoreOverhang
-            ? "absolute end-0 top-full mt-1 z-50 w-56 rounded-md border border-border/60 bg-popover text-popover-foreground shadow-lg p-2"
-            : "absolute start-0 top-full mt-1 z-50 w-56 rounded-md border border-border/60 bg-popover text-popover-foreground shadow-lg p-2";
+        dayIndex >= (Days + 1) / 2
+            ? "absolute end-0 top-full mt-1 z-50 w-56 max-w-full rounded-md border border-border/60 bg-popover text-popover-foreground shadow-lg p-2"
+            : "absolute start-0 top-full mt-1 z-50 w-56 max-w-full rounded-md border border-border/60 bg-popover text-popover-foreground shadow-lg p-2";
 
     private readonly string _instanceId = Guid.NewGuid().ToString("n")[..8];
 

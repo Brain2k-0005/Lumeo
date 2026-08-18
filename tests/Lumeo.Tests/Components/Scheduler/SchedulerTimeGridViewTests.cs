@@ -1214,16 +1214,18 @@ public class SchedulerTimeGridViewTests : IAsyncLifetime
     }
 
     [Theory]
-    [InlineData(7, 4, false)]    // a week: only the last two columns overhang
-    [InlineData(7, 5, true)]
-    [InlineData(14, 9, false)]   // fourteen days: the panel covers four of them
-    [InlineData(14, 10, true)]
-    public void The_overflow_popover_opens_inward_from_however_many_columns_it_overhangs(
+    [InlineData(7, 3, false)]    // the near half opens from the start edge
+    [InlineData(7, 4, true)]     // the far half from the end edge
+    [InlineData(14, 6, false)]   // and the halves move with the day count, not with a constant
+    [InlineData(14, 7, true)]
+    public void The_overflow_popover_opens_from_the_edge_its_half_of_the_strip_faces(
         int days, int column, bool opensInward)
     {
-        // The panel is a fixed 14rem against columns of gridWidth/Days, so it covers more of them
-        // the more days are shown — a fixed two was right for a week and left an eight-to-fourteen
-        // day window opening outward from its third and fourth columns (Codex review, PR #427).
+        // Anchored to the STRIP, so the panel cannot overhang the grid whatever a column is
+        // worth. Counting columns was the wrong instrument twice: the panel is a fixed 14rem
+        // while a column is gridWidth/Days, which moves with the day count AND with the width —
+        // and side-by-side panes halve the width without touching the count (Codex review,
+        // PR #427).
         var start = D(2026, 4, 13);
         var overflowDay = start.AddDays(column);
         var events = Enumerable.Range(0, 6)

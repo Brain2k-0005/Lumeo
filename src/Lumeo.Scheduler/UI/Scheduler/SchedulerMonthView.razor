@@ -34,7 +34,9 @@
             <span class="px-2 py-1.5 text-right text-[11px] font-medium text-muted-foreground">@_weekdayHeaders[i]</span>
         }
     </div>
-    <div class="@GridColsClass" role="grid" aria-label="@L["Scheduler.Month"]" @ref="_hostRef">
+    @* relative: the overflow popover is measured against the GRID rather than a day cell,
+       so it cannot overhang whatever a column happens to be worth — see MorePopoverClasses. *@
+    <div class="@($"{GridColsClass} relative")" role="grid" aria-label="@L["Scheduler.Month"]" @ref="_hostRef">
         @for (var row = 0; row < 6; row++)
         {
             <div role="row" class="contents">
@@ -123,7 +125,8 @@
                                Mirrors DataGridColumnVisibility.razor's own proven manual click-outside popover
                                pattern — same RegisterClickOutside/UnregisterClickOutside lifecycle, just scoped
                                to this cell instead of a column id.) *@
-                            <div class="relative">
+                            @* NOT position: relative — the panel is measured against the grid. *@
+                            <div>
                                 @* Same four fixes the time grid's copy of this popover took in
                                    review (PR #427): the trigger needs an id or a second press reads
                                    as an outside click and reopens what it meant to close, and a
@@ -811,18 +814,19 @@
 
     /// <summary>
     /// Whole literal class strings, chosen rather than composed - see the same helper in
-    /// SchedulerTimeGridView. The last two columns of a week open inward, or a 14rem panel hung
-    /// off the final column lands past the grid's trailing edge (Codex review of PR #427).
+    /// SchedulerTimeGridView, which carries the full reasoning. Anchored to the GRID's edges
+    /// rather than a cell's: a fixed 14rem panel against a column of unknown width cannot be
+    /// placed by counting columns, and side-by-side panes halve that width without changing the
+    /// count (Codex review of PR #427).
     ///
     /// By VISIBLE ordinal, not the raw index: with HideWeekends on a Monday-first grid, Friday is
-    /// the last column on screen while its raw index is 4, so a raw test left it opening outward.
-    /// And LOGICAL insets, because under an RTL provider the columns are placed from the right —
-    /// start/end follow the writing direction, where left/right send both edges outward.
+    /// the last column on screen while its raw index is 4. And LOGICAL insets, because under an
+    /// RTL provider the columns are placed from the right.
     /// </summary>
     private string MorePopoverClasses(int cellIndex) =>
-        VisibleColumnOrdinal(cellIndex) >= VisibleColumns - 2
-            ? "absolute end-0 top-full mt-1 z-50 w-56 rounded-md border border-border/60 bg-popover text-popover-foreground shadow-lg p-2"
-            : "absolute start-0 top-full mt-1 z-50 w-56 rounded-md border border-border/60 bg-popover text-popover-foreground shadow-lg p-2";
+        VisibleColumnOrdinal(cellIndex) >= (VisibleColumns + 1) / 2
+            ? "absolute end-0 top-full mt-1 z-50 w-56 max-w-full rounded-md border border-border/60 bg-popover text-popover-foreground shadow-lg p-2"
+            : "absolute start-0 top-full mt-1 z-50 w-56 max-w-full rounded-md border border-border/60 bg-popover text-popover-foreground shadow-lg p-2";
 
     /// <summary>Where this cell sits among the columns actually on screen.</summary>
     private int VisibleColumnOrdinal(int cellIndex)
