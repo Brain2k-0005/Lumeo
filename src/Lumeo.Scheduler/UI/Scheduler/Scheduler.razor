@@ -41,6 +41,42 @@
         </ToggleGroup>
     </div>
 
+    @* Calendar chips. Each toggles its own visibility; the trailing control switches every
+       pane at once, and only appears once there is a second calendar to put beside the first. *@
+    @if (Calendars is { Count: > 0 })
+    {
+        <div class="flex flex-wrap items-center gap-1.5 px-1" aria-label="@L["Scheduler.Calendars"]">
+            @foreach (var cal in Calendars)
+            {
+                var hidden = _hiddenCalendars.Contains(cal.Id);
+                <button type="button"
+                        class="@($"inline-flex items-center gap-1.5 rounded-[calc(var(--radius)*2)] border px-2 py-0.5 text-xs transition-colors {(hidden ? "border-border/60 text-muted-foreground" : "border-transparent bg-accent text-foreground")}")"
+                        data-scheduler-calendar="@cal.Id"
+                        aria-pressed="@((!hidden).ToString().ToLowerInvariant())"
+                        aria-label="@string.Format(L["Scheduler.ToggleCalendar"], cal.Name)"
+                        @onclick="@(() => ToggleCalendarAsync(cal.Id))">
+                    @* The dot keeps its colour when hidden, at reduced opacity: it is the only
+                       thing tying the chip to its events, and dropping it would make an off
+                       calendar unidentifiable. *@
+                    <span class="inline-block h-2.5 w-2.5 flex-shrink-0 rounded-[calc(var(--radius)*2)]"
+                          style="background: @(cal.Color ?? "var(--color-primary)"); opacity: @(hidden ? "0.4" : "1")"></span>
+                    <span class="@(hidden ? "line-through" : null)">@cal.Name</span>
+                </button>
+            }
+
+            @if (Calendars.Count > 1)
+            {
+                <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Sm"
+                        OnClick="@(() => SetPaneModeAsync(_paneMode == SchedulerPaneMode.SideBySide ? SchedulerPaneMode.Overlay : SchedulerPaneMode.SideBySide))"
+                        aria-label="@(_paneMode == SchedulerPaneMode.SideBySide ? L["Scheduler.MergePanes"] : L["Scheduler.SplitPanes"])"
+                        title="@(_paneMode == SchedulerPaneMode.SideBySide ? L["Scheduler.MergePanes"] : L["Scheduler.SplitPanes"])"
+                        data-scheduler-pane-toggle>
+                    <SvgGlyph Svg="@(_paneMode == SchedulerPaneMode.SideBySide ? LumeoIcons.Minimize2 : LumeoIcons.Columns3)" class="h-4 w-4" />
+                </Button>
+            }
+        </div>
+    }
+
     @* Resource legend — rendered when Resources are provided.
        Uses simple color-coded dots. *@
     @if (_resolvedResources is { Count: > 0 })
@@ -60,11 +96,16 @@
     @* Height bounds the SCROLL viewport (Codex review, P2): applied only as an
        outer max-height it left the inner views free to grow past it, so a tall
        month rendered outside the box the caller asked for. *@
-    <div style="height: @Height; max-height: @Height; overflow: auto;">
+    @{
+        // The whole view switch as ONE fragment, rendered once per pane with that pane's own
+        // events. Duplicating the switch instead would let a pane drift from the overlay the
+        // first time a view gained a parameter.
+        RenderFragment<IEnumerable<SchedulerEvent>?> viewFor = paneEvents =>
+        @<text>
             @switch (_currentView)
             {
                 case SchedulerView.Month:
-                    <SchedulerMonthView Events="@EffectiveEvents" AnchorDate="@_fpAnchor"
+                    <SchedulerMonthView Events="@paneEvents" AnchorDate="@_fpAnchor"
                                         FirstDayOfWeek="@EffectiveFirstDayOfWeek"
                                         BusinessHours="@BusinessHours"
                                         ShowWeekNumbers="@ShowWeekNumbers" HideWeekends="@HideWeekends"
@@ -76,7 +117,7 @@
                                         OnRequestPrev="@PrevAsync" OnRequestNext="@NextAsync" />
                     break;
                 case SchedulerView.Week:
-                    <SchedulerTimeGridView Events="@EffectiveEvents" AnchorDate="@_fpAnchor" Days="7"
+                    <SchedulerTimeGridView Events="@paneEvents" AnchorDate="@_fpAnchor" Days="7"
                                            FirstDayOfWeek="@EffectiveFirstDayOfWeek"
                                            BusinessHours="@BusinessHours" NowIndicator="@NowIndicator" NowTimeZoneId="@SchedulerTimeZoneProjection.JsZoneId(_displayZone)"
                                            SlotMinTime="@SlotMinTime" SlotMaxTime="@SlotMaxTime" SlotDuration="@SlotDuration"
@@ -88,7 +129,7 @@
                                            OnRequestPrev="@PrevAsync" OnRequestNext="@NextAsync" />
                     break;
                 case SchedulerView.Day:
-                    <SchedulerTimeGridView Events="@EffectiveEvents" AnchorDate="@_fpAnchor" Days="1"
+                    <SchedulerTimeGridView Events="@paneEvents" AnchorDate="@_fpAnchor" Days="1"
                                            FirstDayOfWeek="@EffectiveFirstDayOfWeek"
                                            BusinessHours="@BusinessHours" NowIndicator="@NowIndicator" NowTimeZoneId="@SchedulerTimeZoneProjection.JsZoneId(_displayZone)"
                                            SlotMinTime="@SlotMinTime" SlotMaxTime="@SlotMaxTime" SlotDuration="@SlotDuration"
@@ -102,7 +143,7 @@
                 case SchedulerView.MultiDay:
                     @* Days != 7 makes the time grid start at the anchor itself instead of a
                        week boundary, which is exactly the rolling window this view wants. *@
-                    <SchedulerTimeGridView Events="@EffectiveEvents" AnchorDate="@_fpAnchor" Days="@EffectiveVisibleDays"
+                    <SchedulerTimeGridView Events="@paneEvents" AnchorDate="@_fpAnchor" Days="@EffectiveVisibleDays"
                                            AlignToWeek="false"
                                            FirstDayOfWeek="@EffectiveFirstDayOfWeek"
                                            BusinessHours="@BusinessHours" NowIndicator="@NowIndicator" NowTimeZoneId="@SchedulerTimeZoneProjection.JsZoneId(_displayZone)"
@@ -119,7 +160,7 @@
                        projected into it, so letting the view fall back to the host's
                        DateTime.Today highlighted a different column than the data sits in —
                        and disagreed with this wrapper's own Today button. *@
-                    <SchedulerTimelineView Events="@EffectiveEvents" Resources="@Resources"
+                    <SchedulerTimelineView Events="@paneEvents" Resources="@Resources"
                                            Today="@(_displayZone is not null ? SchedulerTimeZoneProjection.TodayIn(_displayZone) : _browserToday)"
                                            RangeStart="@_fpAnchor" Columns="@EffectiveTimelineColumns"
                                            Unit="@TimelineUnit" FirstDayOfWeek="@EffectiveFirstDayOfWeek"
@@ -128,7 +169,7 @@
                                            OnEventClick="@OnEventClick" />
                     break;
                 case SchedulerView.Resource when Resources is { Count: > 0 }:
-                    <SchedulerResourceView Events="@EffectiveEvents" Date="@_fpAnchor"
+                    <SchedulerResourceView Events="@paneEvents" Date="@_fpAnchor"
                                            Resources="@Resources"
                                            SlotMinTime="@SlotMinTime" SlotMaxTime="@SlotMaxTime" SlotDuration="@SlotDuration"
                                            ResolveEventColor="@ResolveFirstPartyColor"
@@ -142,7 +183,7 @@
                        through to `default`, i.e. the AGENDA — a flat list, which is not what
                        was promised and not the nearest thing either. Caught by a test written
                        against the documented behaviour. *@
-                    <SchedulerTimeGridView Events="@EffectiveEvents" AnchorDate="@_fpAnchor" Days="1"
+                    <SchedulerTimeGridView Events="@paneEvents" AnchorDate="@_fpAnchor" Days="1"
                                            FirstDayOfWeek="@EffectiveFirstDayOfWeek"
                                            BusinessHours="@BusinessHours" NowIndicator="@NowIndicator" NowTimeZoneId="@SchedulerTimeZoneProjection.JsZoneId(_displayZone)"
                                            SlotMinTime="@SlotMinTime" SlotMaxTime="@SlotMaxTime" SlotDuration="@SlotDuration"
@@ -156,12 +197,48 @@
                 default:
                     @* List maps to the agenda view — the same "flat, chronological"
                        reading a week-long agenda gives. *@
-                    <SchedulerAgendaView Events="@EffectiveEvents" AnchorDate="@FirstPartyAgendaStart" DaysToShow="7"
+                    <SchedulerAgendaView Events="@paneEvents" AnchorDate="@FirstPartyAgendaStart" DaysToShow="7"
                                          ResolveEventColor="@ResolveFirstPartyColor"
                                          ResolveEventClassNames="@ResolveFirstPartyClassNames"
                                          OnEventClick="@OnEventClick" />
                     break;
             }
+        </text>;
+    }
+
+    <div style="height: @Height; max-height: @Height; overflow: auto;">
+        @if (ShowsPanes)
+        {
+            <div class="flex h-full gap-3">
+                @foreach (var cal in VisibleCalendars)
+                {
+                    <div class="flex min-w-0 flex-1 flex-col gap-1" data-scheduler-pane="@cal.Id">
+                        <div class="flex items-center justify-between gap-2 border-b border-border/60 pb-1">
+                            <span class="flex min-w-0 items-center gap-1.5 text-xs font-medium text-foreground">
+                                <span class="inline-block h-2.5 w-2.5 flex-shrink-0 rounded-[calc(var(--radius)*2)]"
+                                      style="background: @(cal.Color ?? "var(--color-primary)")"></span>
+                                <span class="truncate">@cal.Name</span>
+                            </span>
+                            @* Merges ALL panes, not just this one: side by side is a MODE rather
+                               than a per-calendar flag, and a control that looked per-pane would
+                               promise something the mode cannot deliver. *@
+                            <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Sm"
+                                    OnClick="@(() => SetPaneModeAsync(SchedulerPaneMode.Overlay))"
+                                    aria-label="@L["Scheduler.MergePanes"]" title="@L["Scheduler.MergePanes"]">
+                                <SvgGlyph Svg="@(LumeoIcons.Minimize2)" class="h-4 w-4" />
+                            </Button>
+                        </div>
+                        <div class="min-h-0 flex-1 overflow-auto">
+                            @viewFor(EventsFor(cal.Id))
+                        </div>
+                    </div>
+                }
+            </div>
+        }
+        else
+        {
+            @viewFor(EffectiveEvents)
+        }
     </div>
 </div>
 
@@ -297,6 +374,24 @@
     /// </summary>
     [Parameter] public IReadOnlyList<SchedulerResource>? Resources { get; set; }
 
+    /// <summary>
+    /// The calendars events can belong to. Supplying any renders a row of visibility chips, and
+    /// an event whose <see cref="SchedulerEvent.CalendarId"/> names a HIDDEN calendar is left out
+    /// of every view. An event with a null CalendarId belongs to no calendar and is therefore
+    /// never hidden — hiding "Team" must not silently swallow everything unfiled.
+    /// </summary>
+    [Parameter] public IReadOnlyList<SchedulerCalendar>? Calendars { get; set; }
+
+    /// <summary>
+    /// Whether visible calendars share ONE view (<see cref="SchedulerPaneMode.Overlay"/>, the
+    /// default and the behaviour before calendars existed) or each get their own pane side by
+    /// side. Two-way bindable, so a caller can drive the mode from its own chrome.
+    /// </summary>
+    [Parameter] public SchedulerPaneMode PaneMode { get; set; }
+
+    /// <summary>Raised when the user switches modes with the toolbar's own control.</summary>
+    [Parameter] public EventCallback<SchedulerPaneMode> PaneModeChanged { get; set; }
+
     // ── Event styling callbacks ──────────────────────────────────────────
     /// <summary>
     /// Optional callback that returns extra CSS class names for an event chip.
@@ -386,6 +481,16 @@
         }
         // Rebuild the resource lookup whenever the Resources param changes.
         RebuildResourceLookup();
+
+        SeedCalendarVisibility();
+
+        // The parameter WINS whenever the caller changes it, but the user's own toggling of the
+        // toolbar control is component state in between — the same split the view selection uses.
+        if (PaneMode != _lastPaneModeParameter)
+        {
+            _lastPaneModeParameter = PaneMode;
+            _paneMode = PaneMode;
+        }
 
         // The title is cached, so a UI-culture change that arrives through a normal
         // re-render has to invalidate it explicitly — otherwise a German toolbar sat over
@@ -634,10 +739,86 @@
     /// working copy itself; with one it is that copy read in the display zone. The projection
     /// lives HERE rather than inside the views so they stay pure wall-clock renderers.
     /// </summary>
-    private IEnumerable<SchedulerEvent>? EffectiveEvents =>
-        _displayZone is null
-            ? _events
-            : _events.Select(e => SchedulerTimeZoneProjection.ToDisplay(e, _displayZone));
+    /// <summary>
+    /// Calendars the user has switched off. Component state rather than a parameter write, so a
+    /// parent re-rendering with the same Calendars list does not undo the user's toggling — the
+    /// same reason the view selection is not pushed back either.
+    /// </summary>
+    private readonly HashSet<string> _hiddenCalendars = new(StringComparer.Ordinal);
+
+    /// <summary>Seeded once from each calendar's declared Visible, then owned by the user.</summary>
+    private readonly HashSet<string> _seededCalendars = new(StringComparer.Ordinal);
+
+    private SchedulerPaneMode _paneMode;
+
+    /// <summary>The last value the CALLER set, so a re-render with an unchanged parameter does not
+    /// undo what the user chose with the toolbar control in the meantime.</summary>
+    private SchedulerPaneMode _lastPaneModeParameter;
+
+    private IReadOnlyList<SchedulerCalendar> VisibleCalendars =>
+        Calendars is null ? Array.Empty<SchedulerCalendar>()
+                          : Calendars.Where(c => !_hiddenCalendars.Contains(c.Id)).ToList();
+
+    private void SeedCalendarVisibility()
+    {
+        if (Calendars is null) return;
+
+        foreach (var cal in Calendars)
+        {
+            // Seeded ONCE per id. Re-seeding on every parameter set would fight the user every
+            // time the parent re-rendered.
+            if (!_seededCalendars.Add(cal.Id)) continue;
+            if (!cal.Visible) _hiddenCalendars.Add(cal.Id);
+        }
+    }
+
+    private async Task ToggleCalendarAsync(string id)
+    {
+        if (!_hiddenCalendars.Remove(id)) _hiddenCalendars.Add(id);
+
+        // Popping a pane out only to hide it would leave an empty column, so hiding the last
+        // visible calendar falls back to overlay rather than rendering nothing.
+        if (_paneMode == SchedulerPaneMode.SideBySide && VisibleCalendars.Count == 0)
+            await SetPaneModeAsync(SchedulerPaneMode.Overlay);
+    }
+
+    private async Task SetPaneModeAsync(SchedulerPaneMode mode)
+    {
+        if (_paneMode == mode) return;
+
+        _paneMode = mode;
+        if (PaneModeChanged.HasDelegate) await PaneModeChanged.InvokeAsync(mode);
+    }
+
+    /// <summary>
+    /// Side by side needs at least two visible calendars to mean anything — with one it is the
+    /// overlay wearing a column header, and with none it is an empty box.
+    /// </summary>
+    private bool ShowsPanes => _paneMode == SchedulerPaneMode.SideBySide && VisibleCalendars.Count > 1;
+
+    private IEnumerable<SchedulerEvent>? EffectiveEvents => EventsFor(calendarId: null);
+
+    /// <summary>
+    /// The events a view should draw: projected into the display zone, with hidden calendars
+    /// removed, and — when <paramref name="calendarId"/> is given — narrowed to that one pane.
+    /// </summary>
+    private IEnumerable<SchedulerEvent>? EventsFor(string? calendarId)
+    {
+        var events = _events.AsEnumerable();
+
+        if (Calendars is { Count: > 0 })
+        {
+            // Null CalendarId means "no calendar", which no toggle owns and nothing can hide.
+            events = events.Where(e => e.CalendarId is null || !_hiddenCalendars.Contains(e.CalendarId));
+        }
+
+        if (calendarId is not null)
+            events = events.Where(e => string.Equals(e.CalendarId, calendarId, StringComparison.Ordinal));
+
+        return _displayZone is null
+            ? events
+            : events.Select(e => SchedulerTimeZoneProjection.ToDisplay(e, _displayZone));
+    }
 
     /// <summary>
     /// Colour for a first-party chip, preserving the wrapper's own precedence
@@ -649,7 +830,10 @@
     private string? ResolveFirstPartyColor(SchedulerEvent ev) =>
         EventColor?.Invoke(ev)
         ?? ev.Color
-        ?? (ev.ResourceId is { } rid && _resourceById.TryGetValue(rid, out var res) ? res.Color : null);
+        ?? (ev.ResourceId is { } rid && _resourceById.TryGetValue(rid, out var res) ? res.Color : null)
+        // The calendar comes LAST, after the resource: an event's own resource is more specific
+        // than the feed it arrived on, and a room's colour should survive being filed under Team.
+        ?? (ev.CalendarId is { } cid ? Calendars?.FirstOrDefault(c => c.Id == cid)?.Color : null);
 
     /// <summary>
     /// Extra chip classes, combining the EventClassNames delegate with the event's

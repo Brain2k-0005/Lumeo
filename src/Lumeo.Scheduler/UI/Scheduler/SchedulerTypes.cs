@@ -60,6 +60,19 @@ public record SchedulerEvent(
     public SchedulerEvent() : this("", "", default, default) { }
 
     /// <summary>
+    /// The <see cref="SchedulerCalendar.Id"/> this event belongs to, or null when it belongs to
+    /// none. Null and the empty string are DIFFERENT: a blank id matches a calendar declared with
+    /// one, while null matches no calendar at all and is therefore never hidden by a visibility
+    /// toggle — the same distinction <see cref="ResourceId"/> draws.
+    /// </summary>
+    /// <remarks>
+    /// A body property rather than a positional parameter, for the reason spelled out on
+    /// <see cref="Recurrence"/> below: appending to the primary constructor changes the
+    /// compiler-synthesized Deconstruct/constructor signature that callers may already depend on.
+    /// </remarks>
+    public string? CalendarId { get; init; }
+
+    /// <summary>
     /// Optional structured recurrence rule (wave-1 RRULE subset: <c>FREQ=DAILY|WEEKLY|MONTHLY</c>,
     /// <c>INTERVAL</c>, <c>COUNT</c>, <c>UNTIL</c>, <c>BYDAY</c>). When set, this takes precedence
     /// over the legacy <see cref="DaysOfWeek"/>/<see cref="RecurrenceEnd"/> pair — both express the
@@ -111,6 +124,37 @@ public record SchedulerEvent(
 /// does not supply its own <see cref="SchedulerEvent.Color"/>.
 /// </param>
 public record SchedulerResource(string Id, string Title, string? Color = null);
+
+/// <summary>
+/// One named calendar an event can belong to — "Team", "Personal", a room's booking feed.
+///
+/// <para>
+/// Distinct from <see cref="SchedulerResource"/> on purpose, because they answer different
+/// questions. A RESOURCE is who or what an event consumes, and the resource views lay one out
+/// per lane; a CALENDAR is which feed an event came from, and it decides whether the event is
+/// shown at all. An event can have both: Alice's booking (resource) from the Team calendar.
+/// </para>
+/// </summary>
+/// <param name="Id">Matches <see cref="SchedulerEvent.CalendarId"/>. A blank id is legitimate
+/// and means the same as any other id — it is NOT "no calendar".</param>
+/// <param name="Name">Shown on the visibility chip.</param>
+/// <param name="Color">Colour for this calendar's events, used when neither the event nor its
+/// resource supplies one.</param>
+/// <param name="Visible">Initial visibility. The user's own toggling is component state from
+/// then on, so re-rendering with the same list does not undo it.</param>
+public record SchedulerCalendar(string Id, string Name, string? Color = null, bool Visible = true);
+
+/// <summary>How several visible calendars share the space.</summary>
+public enum SchedulerPaneMode
+{
+    /// <summary>All visible calendars in ONE view, drawn over each other. The default, and what
+    /// the component did before calendars existed.</summary>
+    Overlay,
+
+    /// <summary>One view per visible calendar, side by side. Answers "what does each look like on
+    /// its own" — the question overlaying cannot.</summary>
+    SideBySide,
+}
 
 /// <summary>
 /// A date range produced when the user drag-selects in the calendar.
