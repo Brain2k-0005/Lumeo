@@ -750,11 +750,24 @@ public class SchedulerTimeGridViewTests : IAsyncLifetime
             .Add(c => c.Days, 7)
             .Add(c => c.Events, events));
 
+        // Capped by LANES, not by a scrollbar: a scroller here takes its width out of this row
+        // alone, which pulls the strip's columns out from under the header above and the grid
+        // below — the same width mismatch the header fix removed, one level down.
         var strip = cut.Find("[data-testid='timegrid-allday-strip']");
         var cls = strip.GetAttribute("class") ?? string.Empty;
+        Assert.DoesNotContain("overflow-y-auto", cls);
+        Assert.DoesNotContain("overflow-auto", cls);
 
-        Assert.Contains("max-h-", cls);
-        Assert.Contains("overflow-y-auto", cls);
+        // Three lanes drawn, the rest counted.
+        var firstDay = cut.FindAll("[data-testid='allday-more']");
+        Assert.NotEmpty(firstDay);
+        Assert.Equal(24 - 3, int.Parse(firstDay[0].GetAttribute("data-hidden-count")!, CultureInfo.InvariantCulture));
+
+        // Every day column shows at most the lane budget.
+        var lanes = cut.FindAll("[data-testid='timegrid-allday-strip'] [data-lane]");
+        Assert.All(lanes, l => Assert.True(
+            int.Parse(l.GetAttribute("data-lane")!, CultureInfo.InvariantCulture) < 3,
+            "an all-day lane was drawn past the budget"));
     }
 
 }
