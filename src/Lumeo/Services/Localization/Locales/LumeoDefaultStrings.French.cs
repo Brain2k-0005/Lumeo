@@ -350,6 +350,9 @@ internal static partial class LumeoDefaultStrings
         ["Scheduler.WeekOf"] = "Semaine du {0}",
 
         ["Scheduler.NoEvents"] = "Aucun événement",
+        ["Scheduler.MoreEvents"] = "{0} de plus",
+        ["Scheduler.MoreEvents.One"] = "{0} de plus",
+        ["Scheduler.MoreEvents.Other"] = "{0} de plus",
         // Gantt (Codex round 4, P2 #6 — locale completeness: previously only en/de had any Gantt.* keys)
         ["Gantt.Day"] = "Jour",
         ["Gantt.Week"] = "Semaine",

@@ -770,4 +770,68 @@ public class SchedulerTimeGridViewTests : IAsyncLifetime
             "an all-day lane was drawn past the budget"));
     }
 
+    [Fact]
+    public void The_hidden_all_day_events_can_be_opened_and_clicked()
+    {
+        // Capping the lanes takes the surplus out of the DOM. A bare count would leave the fourth
+        // and later appointments visible as a number and openable by nothing (Codex review,
+        // PR #427) — so the overflow is a button with the month grid's own popover behind it.
+        var day = D(2026, 4, 15);
+        var events = Enumerable.Range(0, 6)
+            .Select(i => new L.SchedulerEvent($"a{i}", $"All day {i}", day, day.AddDays(1)) { AllDay = true })
+            .ToArray();
+
+        L.SchedulerEvent? clicked = null;
+        var cut = _ctx.Render<L.SchedulerTimeGridView>(p => p
+            .Add(c => c.AnchorDate, day)
+            .Add(c => c.Days, 7)
+            .Add(c => c.Events, events)
+            .Add(c => c.OnEventClick, (L.SchedulerEvent e) => clicked = e));
+
+        var more = cut.Find("[data-testid='allday-more']");
+        Assert.Equal("3", more.GetAttribute("data-hidden-count"));
+        Assert.Empty(cut.FindAll("[data-testid='allday-more-popover']"));
+
+        more.Click();
+
+        var popover = cut.Find("[data-testid='allday-more-popover']");
+        var listed = popover.QuerySelectorAll("[data-event-id]");
+        Assert.Equal(3, listed.Length);
+
+        // The three the lanes could not hold, and no others.
+        Assert.Equal(
+            new[] { "a3", "a4", "a5" },
+            listed.Select(l => l.GetAttribute("data-event-id")).OrderBy(x => x, StringComparer.Ordinal).ToArray());
+
+        cut.Find("[data-testid='allday-more-popover'] [data-event-id='a4']").Click();
+
+        Assert.Equal("a4", clicked?.Id);
+        // Clicking one closes the popover, the way the month grid's does.
+        Assert.Empty(cut.FindAll("[data-testid='allday-more-popover']"));
+    }
+
+    [Fact]
+    public void Two_time_grids_do_not_share_one_overflow_popover_registration()
+    {
+        // The popover id keys the GLOBAL click-outside registry, and side-by-side calendar panes
+        // put two time grids on one page — the lesson from the month grid's own version.
+        var day = D(2026, 4, 15);
+        var events = Enumerable.Range(0, 6)
+            .Select(i => new L.SchedulerEvent($"a{i}", $"All day {i}", day, day.AddDays(1)) { AllDay = true })
+            .ToArray();
+
+        var first = _ctx.Render<L.SchedulerTimeGridView>(p => p
+            .Add(c => c.AnchorDate, day).Add(c => c.Days, 7).Add(c => c.Events, events));
+        var second = _ctx.Render<L.SchedulerTimeGridView>(p => p
+            .Add(c => c.AnchorDate, day).Add(c => c.Days, 7).Add(c => c.Events, events));
+
+        first.Find("[data-testid='allday-more']").Click();
+        second.Find("[data-testid='allday-more']").Click();
+
+        var a = first.Find("[data-testid='allday-more-popover']").Id;
+        var b = second.Find("[data-testid='allday-more-popover']").Id;
+
+        Assert.NotEqual(a, b);
+    }
+
 }

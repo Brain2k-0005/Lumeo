@@ -252,6 +252,11 @@ public class P2LocalizationSweepTests : IAsyncLifetime
         "Scheduler.Starts", "Scheduler.Ends", "Scheduler.AllDay",
         "Scheduler.Save", "Scheduler.Cancel", "Scheduler.Delete",
         "Scheduler.NoEvents",
+        // The overflow count, shared by the month grid and the time grid's all-day strip.
+        // Only the categories EVERY locale has: .Few/.Many are Slavic and Arabic forms that
+        // English and the Romance locales legitimately do not define, and
+        // Every_Translated_Key_Also_Exists_In_English exempts them for that reason.
+        "Scheduler.MoreEvents", "Scheduler.MoreEvents.One", "Scheduler.MoreEvents.Other",
     };
 
     [Theory]

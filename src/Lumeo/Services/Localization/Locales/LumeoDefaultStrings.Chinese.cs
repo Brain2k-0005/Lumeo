@@ -289,6 +289,9 @@ internal static partial class LumeoDefaultStrings
         ["Scheduler.WeekOf"] = "{0} 所在周",
 
         ["Scheduler.NoEvents"] = "无日程",
+        ["Scheduler.MoreEvents"] = "还有 {0} 个",
+        ["Scheduler.MoreEvents.One"] = "还有 {0} 个",
+        ["Scheduler.MoreEvents.Other"] = "还有 {0} 个",
         // Gantt
         ["Gantt.Day"] = "日",
         ["Gantt.Week"] = "周",

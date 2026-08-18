@@ -116,11 +116,48 @@
                             }
                             @if (dayIndex < _allDayHiddenCounts.Length && _allDayHiddenCounts[dayIndex] > 0)
                             {
-                                <span class="px-0.5 text-[11px] text-muted-foreground"
-                                      data-testid="allday-more"
-                                      data-hidden-count="@_allDayHiddenCounts[dayIndex]">
-                                    @L[LumeoPlurals.PluralKey(_allDayHiddenCounts[dayIndex], "Scheduler.MoreEvents", CultureInfo.CurrentUICulture), _allDayHiddenCounts[dayIndex]]
-                                </span>
+                                var hiddenCount = _allDayHiddenCounts[dayIndex];
+                                var moreLabel = L[LumeoPlurals.PluralKey(hiddenCount, "Scheduler.MoreEvents", CultureInfo.CurrentUICulture), hiddenCount];
+                                @* A button and a popover, not a bare count. Capping the lanes takes the
+                                   surplus out of the DOM, so a label alone would leave the fourth and
+                                   later appointments unreachable — visible as a number, openable by
+                                   nothing (Codex review of PR #427). Same self-contained popover the
+                                   month grid uses for the same overflow, down to the per-instance id
+                                   that keeps two views on one page from sharing a click-outside
+                                   registration. *@
+                                <div class="relative">
+                                    <button type="button"
+                                            class="px-0.5 text-left text-[11px] text-muted-foreground hover:text-foreground hover:underline cursor-pointer"
+                                            data-testid="allday-more"
+                                            data-hidden-count="@hiddenCount"
+                                            @onclick="() => ToggleAllDayMoreAsync(dayIndex)"
+                                            @onclick:stopPropagation="true">
+                                        @moreLabel
+                                    </button>
+                                    @if (_openAllDayMoreDay == dayIndex)
+                                    {
+                                        <div id="@AllDayMorePopoverId(dayIndex)"
+                                             role="dialog"
+                                             aria-label="@moreLabel"
+                                             class="absolute left-0 top-full mt-1 z-50 w-56 rounded-md border border-border/60 bg-popover text-popover-foreground shadow-lg p-2"
+                                             data-testid="allday-more-popover"
+                                             @onclick:stopPropagation="true"
+                                             @onkeydown="e => OnAllDayMoreKeyDown(e, dayIndex)">
+                                            <div class="flex flex-col gap-0.5">
+                                                @foreach (var hidden in HiddenAllDayFor(dayIndex))
+                                                {
+                                                    <button type="button"
+                                                            class="flex items-center gap-1.5 w-full text-left text-xs px-1.5 py-1 rounded hover:bg-accent/60"
+                                                            data-event-id="@hidden.Instance.EventId"
+                                                            @onclick="() => OnAllDayMoreEventClickAsync(hidden.Source)">
+                                                        <span class="w-1.5 h-1.5 rounded-[calc(var(--radius)*2)] flex-none" style="background-color: @(ResolveEventColor?.Invoke(hidden.Source) ?? hidden.Source.Color ?? "var(--color-primary)")" aria-hidden="true"></span>
+                                                        <span class="flex-1 min-w-0 truncate">@hidden.Source.Title</span>
+                                                    </button>
+                                                }
+                                            </div>
+                                        </div>
+                                    }
+                                </div>
                             }
                         </div>
                     }
@@ -331,6 +368,24 @@
     /// <summary>Per day, how many all-day events did not fit in <see cref="MaxAllDayLanes"/>.</summary>
     private int[] _allDayHiddenCounts = Array.Empty<int>();
 
+    /// <summary>Per day, the ones that did not fit — what the overflow popover lists.</summary>
+    private IReadOnlyList<AllDaySlot>[] _allDayHidden = Array.Empty<IReadOnlyList<AllDaySlot>>();
+
+    private int? _openAllDayMoreDay;
+    private bool _allDayMoreClickOutsideRegistered;
+
+    /// <summary>
+    /// Per-INSTANCE, like the month grid's. The id keys the GLOBAL click-outside registry, so two
+    /// time grids on one page — side-by-side calendar panes put them there — would otherwise
+    /// register the same id twice and dismiss each other's popover.
+    /// </summary>
+    private string AllDayMorePopoverId(int dayIndex) => $"scheduler-timegrid-allday-more-{_instanceId}-{dayIndex}";
+
+    private readonly string _instanceId = Guid.NewGuid().ToString("n")[..8];
+
+    private IReadOnlyList<AllDaySlot> HiddenAllDayFor(int dayIndex) =>
+        dayIndex < _allDayHidden.Length ? _allDayHidden[dayIndex] : Array.Empty<AllDaySlot>();
+
     /// <summary>
     /// The tallest the all-day strip may grow. Matches the month grid's own lane budget, since
     /// both rows are packed by <c>SchedulerMonthLayout.PackRow</c> and a reader moving between
@@ -396,6 +451,7 @@
     {
         await SyncDragRegistrationAsync();
         await SyncNowIndicatorAsync();
+        await SyncAllDayMoreClickOutsideAsync();
     }
 
     private async Task SyncDragRegistrationAsync()
@@ -538,6 +594,7 @@
         {
             _allDayLaneSlots = Array.Empty<IReadOnlyList<AllDaySlot?>>();
             _allDayHiddenCounts = Array.Empty<int>();
+            _allDayHidden = Array.Empty<IReadOnlyList<AllDaySlot>>();
             return;
         }
 
@@ -555,6 +612,8 @@
 
         var perDay = new IReadOnlyList<AllDaySlot?>[_dayColumns.Length];
         var hidden = new int[_dayColumns.Length];
+        var hiddenSlots = new List<AllDaySlot>[_dayColumns.Length];
+        for (var i = 0; i < hiddenSlots.Length; i++) hiddenSlots[i] = new List<AllDaySlot>();
         for (var d = 0; d < _dayColumns.Length; d++)
         {
             var day = _dayColumns[d];
@@ -568,6 +627,7 @@
                 if (lane >= laneCount)
                 {
                     hidden[d]++;
+                    hiddenSlots[d].Add(new AllDaySlot(block.Instance, block.Source, false, false, true));
                     continue;
                 }
 
@@ -579,6 +639,7 @@
         }
         _allDayLaneSlots = perDay;
         _allDayHiddenCounts = hidden;
+        _allDayHidden = hiddenSlots.Select(h => (IReadOnlyList<AllDaySlot>)h).ToArray();
     }
 
     /// <summary>Whether the row starting <paramref name="startMinute"/> minutes into <paramref name="day"/> falls outside <see cref="BusinessHoursStart"/>/<see cref="BusinessHoursEnd"/>/<see cref="BusinessDays"/> when <see cref="BusinessHours"/> is enabled.</summary>
@@ -627,6 +688,59 @@
     /// <c>SchedulerMonthView.BuildWeekdayHeaders</c> reads, so the two views never disagree
     /// about what Monday is called.
     /// </summary>
+    private async Task ToggleAllDayMoreAsync(int dayIndex)
+    {
+        if (_openAllDayMoreDay == dayIndex)
+        {
+            await CloseAllDayMoreAsync();
+            return;
+        }
+
+        if (_openAllDayMoreDay is not null) await CloseAllDayMoreAsync();
+        _openAllDayMoreDay = dayIndex;
+    }
+
+    private async Task CloseAllDayMoreAsync()
+    {
+        var wasOpen = _openAllDayMoreDay;
+        _openAllDayMoreDay = null;
+        if (_allDayMoreClickOutsideRegistered && wasOpen is { } idx)
+        {
+            _allDayMoreClickOutsideRegistered = false;
+            try { await Interop.UnregisterClickOutside(AllDayMorePopoverId(idx)); }
+            catch (Microsoft.JSInterop.JSDisconnectedException) { }
+        }
+    }
+
+    private async Task SyncAllDayMoreClickOutsideAsync()
+    {
+        if (_openAllDayMoreDay is not { } idx || _allDayMoreClickOutsideRegistered) return;
+
+        try
+        {
+            await Interop.RegisterClickOutside(AllDayMorePopoverId(idx), null, async () =>
+            {
+                _allDayMoreClickOutsideRegistered = false;
+                _openAllDayMoreDay = null;
+                await InvokeAsync(StateHasChanged);
+            });
+            _allDayMoreClickOutsideRegistered = true;
+        }
+        catch (Microsoft.JSInterop.JSDisconnectedException) { }
+    }
+
+    private async Task OnAllDayMoreEventClickAsync(SchedulerEvent ev)
+    {
+        await CloseAllDayMoreAsync();
+        await OnEventClickAsync(ev);
+    }
+
+    private void OnAllDayMoreKeyDown(KeyboardEventArgs e, int dayIndex)
+    {
+        if (e.Key == "Escape" && _openAllDayMoreDay == dayIndex)
+            _ = CloseAllDayMoreAsync();
+    }
+
     private static string WeekdayLabel(DateTime day) =>
         CultureInfo.CurrentUICulture.DateTimeFormat.AbbreviatedDayNames[(int)day.DayOfWeek];
 
