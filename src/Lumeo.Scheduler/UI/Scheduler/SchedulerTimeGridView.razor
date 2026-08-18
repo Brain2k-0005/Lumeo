@@ -440,10 +440,18 @@
     private const int MaxAllDayLanes = SchedulerMonthLayout.DefaultMaxVisibleLanes;
 
     /// <summary>
-    /// A floor on the all-day strip's lane count, so a set of side-by-side panes can agree on one
-    /// height and keep their hours level. Zero — the default — sizes the strip to its content.
+    /// Holds the all-day strip open at its full lane budget, so a set of side-by-side panes agree
+    /// on one height and keep their hours level. Off — the default — sizes the strip to content.
+    ///
+    /// A switch rather than a number on purpose. A caller-supplied count could exceed the view's
+    /// own cap, and it reached <c>Math.Clamp(value, 4, 3)</c> — whose minimum above its maximum
+    /// throws, taking the whole scheduler down (Codex review of PR #427). It also spared the
+    /// caller a count it cannot make correctly: it sees source events where the strip packs
+    /// overlapping ones into shared lanes and expands recurrences into several.
     /// </summary>
-    [Parameter] public int ReservedAllDayLanes { get; set; }
+    [Parameter] public bool ReserveFullAllDayStrip { get; set; }
+
+    private int ReservedAllDayLanes => ReserveFullAllDayStrip ? MaxAllDayLanes : 0;
     private int _focusedIndex;
     private ElementReference _scrollRef;
     private ElementReference _hostRef;

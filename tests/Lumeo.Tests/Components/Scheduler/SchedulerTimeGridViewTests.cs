@@ -1045,13 +1045,13 @@ public class SchedulerTimeGridViewTests : IAsyncLifetime
 
         var empty = _ctx.Render<L.SchedulerTimeGridView>(p => p
             .Add(c => c.AnchorDate, day).Add(c => c.Days, 7)
-            .Add(c => c.ReservedAllDayLanes, 2)
+            .Add(c => c.ReserveFullAllDayStrip, true)
             .Add(c => c.Events, Array.Empty<L.SchedulerEvent>()));
 
         // The strip renders even with nothing in it, holding the reserved lanes open.
         var strip = empty.Find("[data-testid='timegrid-allday-strip']");
-        Assert.Equal("2", strip.GetAttribute("data-reserved-lanes"));
-        Assert.Equal(7 * 2, empty.FindAll("[data-testid='timegrid-allday-strip'] [data-lane]").Count);
+        Assert.Equal("3", strip.GetAttribute("data-reserved-lanes"));
+        Assert.Equal(7 * 3, empty.FindAll("[data-testid='timegrid-allday-strip'] [data-lane]").Count);
 
         // And without the floor there is no strip at all — which is the height difference.
         var unreserved = _ctx.Render<L.SchedulerTimeGridView>(p => p
@@ -1082,6 +1082,28 @@ public class SchedulerTimeGridViewTests : IAsyncLifetime
 
         Assert.Empty(cut.FindAll("[data-testid='allday-more-popover']"));
         Assert.Contains(popoverId, _interop.ClickOutsideUnregistrations);
+    }
+
+    [Fact]
+    public void Reserving_the_strip_survives_a_day_that_overflows_it()
+    {
+        // The floor used to be a caller-supplied COUNT, and the wrapper handed it the number of
+        // all-day events — so four of them reached Math.Clamp(x, 4, 3), whose minimum above its
+        // maximum throws and took the whole scheduler down (Codex review, PR #427). A switch
+        // cannot express a floor above the cap.
+        var day = D(2026, 4, 15);
+        var events = Enumerable.Range(0, 5)
+            .Select(i => new L.SchedulerEvent($"a{i}", $"All day {i}", day, day.AddDays(1)) { AllDay = true })
+            .ToArray();
+
+        var cut = _ctx.Render<L.SchedulerTimeGridView>(p => p
+            .Add(c => c.AnchorDate, day)
+            .Add(c => c.Days, 7)
+            .Add(c => c.ReserveFullAllDayStrip, true)
+            .Add(c => c.Events, events));
+
+        Assert.Equal("3", cut.Find("[data-testid='timegrid-allday-strip']").GetAttribute("data-reserved-lanes"));
+        Assert.Equal("2", cut.Find("[data-testid='allday-more']").GetAttribute("data-hidden-count"));
     }
 
 }

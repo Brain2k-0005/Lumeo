@@ -267,7 +267,6 @@ public class SchedulerCalendarTests : IAsyncLifetime
     [Theory]
     [InlineData(L.SchedulerView.Week)]
     [InlineData(L.SchedulerView.Day)]
-    [InlineData(L.SchedulerView.List)]
     public void Side_by_side_panes_share_a_single_scroller(L.SchedulerView view)
     {
         // Each pane owning a scroller gave one scrollbar per calendar, and scrolling one left the
@@ -288,6 +287,7 @@ public class SchedulerCalendarTests : IAsyncLifetime
 
         Assert.Equal(2, cut.FindAll("[data-scheduler-pane]").Count);
         Assert.Single(ScrollersIn(cut));
+        Assert.Empty(cut.FindAll("[data-scheduler-pane] > .overflow-auto"));
     }
 
     [Fact]
@@ -366,6 +366,37 @@ public class SchedulerCalendarTests : IAsyncLifetime
             .Distinct()
             .ToList();
         Assert.Single(lanesPerPane);
+    }
+
+    [Theory]
+    [InlineData(L.SchedulerView.List)]
+    [InlineData(L.SchedulerView.Resource)]
+    public void Views_whose_panes_cannot_line_up_keep_their_own_scrollers(L.SchedulerView view)
+    {
+        // A shared scroll only means anything when the vertical axis is the SAME in every pane.
+        // The clock is; a pane's own resources, its own overlap-driven row heights and an agenda's
+        // own row count are not — sharing there moves both panes without aligning anything, and
+        // costs each of them the headings its own scroller kept in place (Codex review, PR #427).
+        var calendars = new[]
+        {
+            new L.SchedulerCalendar("team", "Team"),
+            new L.SchedulerCalendar("personal", "Personal"),
+        };
+
+        var cut = _ctx.Render<L.Scheduler>(p => p
+            .Add(c => c.InitialView, view)
+            .Add(c => c.InitialDate, Anchor)
+            .Add(c => c.Events, Array.Empty<L.SchedulerEvent>())
+            .Add(c => c.Resources, new[] { new L.SchedulerResource("r1", "Room 1") })
+            .Add(c => c.Calendars, calendars)
+            .Add(c => c.PaneMode, L.SchedulerPaneMode.SideBySide));
+
+        Assert.Equal(2, cut.FindAll("[data-scheduler-pane]").Count);
+
+        // Each pane still owns the box around its view. Counting scrollers anywhere would not
+        // discriminate: these views scroll themselves regardless, so the pane box is the thing
+        // that actually changes.
+        Assert.Equal(2, cut.FindAll("[data-scheduler-pane] > .overflow-auto").Count);
     }
 
 }
