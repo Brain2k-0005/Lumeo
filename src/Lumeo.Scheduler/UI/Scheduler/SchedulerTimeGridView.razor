@@ -443,8 +443,18 @@
     /// so a physical left/right test opened both edge popovers outward; start/end follow the
     /// writing direction, which makes the index test correct in either.
     /// </summary>
+    /// <summary>
+    /// How many trailing columns the popover would overhang, so those columns open inward. The
+    /// panel is a fixed 14rem against columns of <c>gridWidth / Days</c>, so it covers more of
+    /// them the more days are shown: a fixed two was right for a week and left an eight-to-
+    /// fourteen-day window opening outward from its third and fourth columns (Codex review of
+    /// PR #427). Derived against a ~900px grid, which gives the same two at seven days and four
+    /// at fourteen.
+    /// </summary>
+    private int AllDayMoreOverhang => Math.Max(2, (int)Math.Ceiling(Days / 4.0));
+
     private string AllDayMorePopoverClasses(int dayIndex) =>
-        dayIndex >= Days - 2
+        dayIndex >= Days - AllDayMoreOverhang
             ? "absolute end-0 top-full mt-1 z-50 w-56 rounded-md border border-border/60 bg-popover text-popover-foreground shadow-lg p-2"
             : "absolute start-0 top-full mt-1 z-50 w-56 rounded-md border border-border/60 bg-popover text-popover-foreground shadow-lg p-2";
 
@@ -672,6 +682,13 @@
     {
         if (_allDayInstances.Count == 0 || _dayColumns.Length == 0)
         {
+            // The same reconciliation the long path ends with. A refresh that removes EVERY
+            // all-day event comes through here, and leaving the state behind meant the dialog
+            // left the DOM with a live registration — and came back on its own if the events did
+            // (Codex review of PR #427).
+            _openAllDayMoreDay = null;
+            _openAllDayMoreDate = null;
+
             // Empty lanes, not NO lanes, when a floor is reserved: a pane with nothing all-day
             // still has to start its hours at the same height as the pane beside it.
             var reserved = Math.Clamp(ReservedAllDayLanes, 0, MaxAllDayLanes);

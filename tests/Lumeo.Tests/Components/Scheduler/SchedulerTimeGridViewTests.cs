@@ -1184,4 +1184,62 @@ public class SchedulerTimeGridViewTests : IAsyncLifetime
         Assert.Empty(cut.FindAll("[data-testid='allday-more-popover']"));
     }
 
+    // -- review round 8 --------------------------------------------------------
+
+    [Fact]
+    public void Losing_every_all_day_event_closes_the_overflow_dialog_too()
+    {
+        // The rebuild's early return skipped the reconciliation the long path ends with, so a
+        // refresh that removed EVERY all-day event left the dialog's state and its click-outside
+        // registration behind (Codex review, PR #427).
+        var day = D(2026, 4, 15);
+        var events = Enumerable.Range(0, 6)
+            .Select(i => new L.SchedulerEvent($"a{i}", $"All day {i}", day, day.AddDays(1)) { AllDay = true })
+            .ToArray();
+
+        var cut = _ctx.Render<L.SchedulerTimeGridView>(p => p
+            .Add(c => c.AnchorDate, day).Add(c => c.Days, 7).Add(c => c.Events, events));
+
+        cut.Find("[data-testid='allday-more']").Click();
+        var popoverId = cut.Find("[data-testid='allday-more-popover']").Id;
+
+        // Every all-day event goes; one timed event stays so the view still renders.
+        cut.Render(p => p.Add(c => c.Events, new[]
+        {
+            new L.SchedulerEvent("t1", "Standup", day.AddHours(9), day.AddHours(10)),
+        }));
+
+        Assert.Empty(cut.FindAll("[data-testid='allday-more-popover']"));
+        Assert.Contains(popoverId, _interop.ClickOutsideUnregistrations);
+    }
+
+    [Theory]
+    [InlineData(7, 4, false)]    // a week: only the last two columns overhang
+    [InlineData(7, 5, true)]
+    [InlineData(14, 9, false)]   // fourteen days: the panel covers four of them
+    [InlineData(14, 10, true)]
+    public void The_overflow_popover_opens_inward_from_however_many_columns_it_overhangs(
+        int days, int column, bool opensInward)
+    {
+        // The panel is a fixed 14rem against columns of gridWidth/Days, so it covers more of them
+        // the more days are shown — a fixed two was right for a week and left an eight-to-fourteen
+        // day window opening outward from its third and fourth columns (Codex review, PR #427).
+        var start = D(2026, 4, 13);
+        var overflowDay = start.AddDays(column);
+        var events = Enumerable.Range(0, 6)
+            .Select(i => new L.SchedulerEvent($"a{i}", $"All day {i}", overflowDay, overflowDay.AddDays(1)) { AllDay = true })
+            .ToArray();
+
+        var cut = _ctx.Render<L.SchedulerTimeGridView>(p => p
+            .Add(c => c.AnchorDate, start)
+            .Add(c => c.Days, days)
+            .Add(c => c.FirstDayOfWeek, DayOfWeek.Monday)
+            .Add(c => c.Events, events));
+
+        cut.Find("[data-testid='allday-more']").Click();
+        var cls = cut.Find("[data-testid='allday-more-popover']").GetAttribute("class") ?? string.Empty;
+
+        Assert.Contains(opensInward ? "end-0" : "start-0", cls);
+    }
+
 }

@@ -428,4 +428,31 @@ public class SchedulerCalendarTests : IAsyncLifetime
         Assert.Empty(scroller.QuerySelectorAll("[data-scheduler-pane-name]"));
     }
 
+    [Fact]
+    public void The_pane_names_reserve_the_same_scrollbar_gutter_as_the_canvas()
+    {
+        // Anything laid out beside a scroller rather than inside it loses the scrollbar's width on
+        // platforms that draw one, and its columns stop lining up with the ones underneath. This
+        // is the third place in this component where that happened, so both sides reserve it
+        // explicitly (Codex review, PR #427).
+        var calendars = new[]
+        {
+            new L.SchedulerCalendar("team", "Team"),
+            new L.SchedulerCalendar("personal", "Personal"),
+        };
+
+        var cut = _ctx.Render<L.Scheduler>(p => p
+            .Add(c => c.InitialView, L.SchedulerView.Week)
+            .Add(c => c.InitialDate, Anchor)
+            .Add(c => c.Events, Array.Empty<L.SchedulerEvent>())
+            .Add(c => c.Calendars, calendars)
+            .Add(c => c.PaneMode, L.SchedulerPaneMode.SideBySide));
+
+        var names = cut.Find("[data-testid='scheduler-pane-names']").GetAttribute("style") ?? string.Empty;
+        var canvas = ScrollersIn(cut).Single().GetAttribute("style") ?? string.Empty;
+
+        Assert.Contains("scrollbar-gutter: stable", names);
+        Assert.Contains("scrollbar-gutter: stable", canvas);
+    }
+
 }
