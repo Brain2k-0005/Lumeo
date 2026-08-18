@@ -137,12 +137,28 @@ public class SchedulerViewsInteractionTests : PlaywrightTestBase
         var headers = week.Locator("[data-dayheader]");
         await Assertions.Expect(headers).ToHaveCountAsync(7, new() { Timeout = 5000 });
 
-        // Each header sits above the column it names.
+        // Each header sits above the column it names — by NAME and by POSITION. Matching the
+        // date arrays alone passed happily while the two rows were laid out against different
+        // widths, which is the whole failure mode: the header labelled the right day and drew
+        // it over the wrong column (Codex review, PR #427).
         var headerDates = await headers.EvaluateAllAsync<string[]>(
             "els => els.map(e => e.getAttribute('data-dayheader'))");
         var columnDates = await week.Locator("[data-daycol]").EvaluateAllAsync<string[]>(
             "els => els.map(e => e.getAttribute('data-daycol'))");
         Assert.Equal(columnDates, headerDates);
+
+        for (var i = 0; i < columnDates.Length; i++)
+        {
+            var head = await headers.Nth(i).BoundingBoxAsync();
+            var col = await week.Locator("[data-daycol]").Nth(i).BoundingBoxAsync();
+            Assert.NotNull(head);
+            Assert.NotNull(col);
+            // A pixel of rounding is fine; a scrollbar's width is not.
+            Assert.True(Math.Abs(head!.X - col!.X) <= 1,
+                $"header {i} ({columnDates[i]}) starts at {head.X} over a column at {col.X}");
+            Assert.True(Math.Abs(head.Width - col.Width) <= 1,
+                $"header {i} is {head.Width} wide over a column {col.Width} wide");
+        }
 
         // And the first hour label is fully inside the scroller rather than half above it.
         var clipped = await week.Locator("span.absolute").First.EvaluateAsync<bool>(

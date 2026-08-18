@@ -609,4 +609,77 @@ public class SchedulerTimeGridViewTests : IAsyncLifetime
         Assert.Contains("-top-1.5", second);
     }
 
+    // -- review round 1 --------------------------------------------------------
+
+    [Fact]
+    public void The_header_marks_the_day_the_scheduler_is_showing_not_the_hosts_own()
+    {
+        // A scheduler projected into another zone can be a whole day away from the server
+        // drawing it. The timeline already takes its today from the wrapper for exactly this
+        // reason; the header does now too.
+        var elsewhere = DateTime.Today.AddDays(1);
+
+        var cut = _ctx.Render<L.SchedulerTimeGridView>(p => p
+            .Add(c => c.AnchorDate, elsewhere)
+            .Add(c => c.Days, 7)
+            .Add(c => c.Today, elsewhere)
+            .Add(c => c.Events, Array.Empty<L.SchedulerEvent>()));
+
+        var marked = cut.FindAll("[data-dayheader][data-today='true']");
+        Assert.Single(marked);
+        Assert.Equal(elsewhere.ToString("yyyy-MM-dd"), marked[0].GetAttribute("data-dayheader"));
+
+        // And the host's own today is NOT marked, which is the half that would still pass if
+        // the parameter were read but the fallback left in place.
+        Assert.DoesNotContain(
+            DateTime.Today.ToString("yyyy-MM-dd"),
+            marked.Select(m => m.GetAttribute("data-dayheader")));
+    }
+
+    [Fact]
+    public void The_header_and_the_grid_share_one_scroller()
+    {
+        // Laid out against the full component width while the grid below lost the scrollbar
+        // width to it, every header drifted off the column it labels on any platform with
+        // non-overlay scrollbars. Sharing the scroller makes the widths equal by construction,
+        // which no arithmetic in the markup can be trusted to reproduce.
+        var cut = _ctx.Render<L.SchedulerTimeGridView>(p => p
+            .Add(c => c.AnchorDate, D(2026, 4, 15))
+            .Add(c => c.Days, 7)
+            .Add(c => c.Events, new[]
+            {
+                // An all-day event, so the strip renders and is covered by the same assertion.
+                new L.SchedulerEvent("a1", "Offsite", D(2026, 4, 15), D(2026, 4, 16)) { AllDay = true },
+            }));
+
+        // Queried FROM the scroller: bUnit hands back wrapper instances, so comparing
+        // elements by identity across two queries never matches.
+        var scroller = cut.Find("[style*='overflow-y: auto']");
+
+        Assert.NotNull(scroller.QuerySelector("[data-testid='timegrid-day-header']"));
+        Assert.NotNull(scroller.QuerySelector("[data-event-id='a1']"));
+        Assert.NotNull(scroller.QuerySelector("[role='grid']"));
+
+        // And there is exactly ONE scroller, so "inside it" cannot mean two different boxes.
+        Assert.Single(cut.FindAll("[style*='overflow-y: auto']"));
+    }
+
+    [Fact]
+    public void The_header_block_sticks_while_the_hours_scroll()
+    {
+        // The other half of moving it in: a header that scrolls away over 24 hours would answer
+        // the question once and then stop.
+        var cut = _ctx.Render<L.SchedulerTimeGridView>(p => p
+            .Add(c => c.AnchorDate, D(2026, 4, 15))
+            .Add(c => c.Days, 7)
+            .Add(c => c.Events, Array.Empty<L.SchedulerEvent>()));
+
+        var header = cut.Find("[data-testid='timegrid-day-header']");
+        var sticky = header.ParentElement;
+
+        Assert.NotNull(sticky);
+        Assert.Contains("sticky", sticky!.GetAttribute("class") ?? string.Empty);
+        Assert.Contains("top-0", sticky.GetAttribute("class") ?? string.Empty);
+    }
+
 }

@@ -290,7 +290,7 @@ internal static partial class LumeoDefaultStrings
         ["Scheduler.Day"] = "День",
         ["Scheduler.List"] = "Список",
         ["Scheduler.WeekOf"] = "Неделя от {0}",
-
+
         ["Scheduler.NoEvents"] = "Нет событий",
         // Gantt
         ["Gantt.Day"] = "День",

@@ -287,7 +287,7 @@ internal static partial class LumeoDefaultStrings
         ["Scheduler.Day"] = "Gün",
         ["Scheduler.List"] = "Liste",
         ["Scheduler.WeekOf"] = "{0} haftası",
-
+
         ["Scheduler.NoEvents"] = "Etkinlik yok",
         // Gantt
         ["Gantt.Day"] = "Gün",
