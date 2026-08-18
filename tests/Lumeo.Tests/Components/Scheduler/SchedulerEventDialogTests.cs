@@ -376,6 +376,14 @@ public class SchedulerEventDialogTests : IAsyncLifetime
         var saved = pushed!.Single();
         Assert.False(saved.AllDay);
         Assert.Equal(utcMidnight.Date, saved.Start.Date);
+
+        // And in the frame the dialog SHOWED them in. Keeping the UTC kind on an event that
+        // is now timed would have the next render project it — 00:00Z drawn at 01:00 Berlin,
+        // an hour the user never typed.
+        Assert.Equal(DateTimeKind.Unspecified, saved.Start.Kind);
+        Assert.Equal(new DateTime(2026, 3, 9, 0, 0, 0), saved.Start);
+        Assert.Equal(saved.Start, L.SchedulerTimeZoneProjection.ToDisplay(saved.Start,
+            TimeZoneInfo.FindSystemTimeZoneById("Europe/Berlin")));
     }
 
     [Fact]
@@ -476,5 +484,37 @@ public class SchedulerEventDialogTests : IAsyncLifetime
 
         Assert.NotNull(seen);
         Assert.Null(seen!.CalendarId);
+    }
+
+    [Fact]
+    public void Saving_an_event_whose_id_is_duplicated_changes_nothing_and_still_closes()
+    {
+        // The save side of the same ambiguity: writing onto the first match would corrupt the
+        // wrong record. Leaving the dialog open instead would have the user pressing Save
+        // against a form that can never commit, with nothing to distinguish that from a slow
+        // render — so the collection is untouched AND the dialog closes.
+        var start = new DateTime(2026, 3, 9, 9, 0, 0);
+        var events = new[]
+        {
+            new L.SchedulerEvent("dup", "First", start, start.AddHours(1)),
+            new L.SchedulerEvent("dup", "Second", start.AddDays(1), start.AddDays(1).AddHours(1)),
+        };
+
+        IEnumerable<L.SchedulerEvent>? pushed = null;
+        var cut = _ctx.Render<L.Scheduler>(p => p
+            .Add(c => c.InitialView, L.SchedulerView.Month)
+            .Add(c => c.InitialDate, start.Date)
+            .Add(c => c.Events, events)
+            .Add(c => c.BuiltInEventDialog, true)
+            .Add(c => c.EventsChanged, (IEnumerable<L.SchedulerEvent> e) => pushed = e));
+
+        cut.FindAll("[data-event-instance]")[0].Click();
+        cut.Find("input[data-scheduler-dialog-title]").Input("Renamed");
+        cut.Find("[data-scheduler-dialog-save]").Click();
+
+        Assert.Null(pushed);
+        // The content stays mounted through the exit transition, so openness is the
+        // aria state, not the presence of the markup.
+        Assert.Equal("false", cut.Find("[role='dialog']").GetAttribute("aria-modal"));
     }
 }

@@ -1024,6 +1024,22 @@
     /// event that vanished the moment it was saved on the first visible day (Codex review of
     /// PR #426).
     /// </summary>
+    /// <summary>
+    /// The bounds an all-day source hands back, in the frame the dialog actually SHOWED them in.
+    /// ToDisplay leaves all-day instants alone, so the form displayed them raw; keeping a UTC or
+    /// local kind on an event that is now TIMED would have the very next render project it, and
+    /// a 00:00Z appointment would jump to 01:00 in Berlin without the user touching the time
+    /// (Codex review of PR #426). Naive bounds are what those readings were all along.
+    /// </summary>
+    private SchedulerEvent Unprojected(SchedulerEvent saved) =>
+        _displayZone is null || saved.AllDay
+            ? saved
+            : saved with
+            {
+                Start = DateTime.SpecifyKind(saved.Start, DateTimeKind.Unspecified),
+                End = DateTime.SpecifyKind(saved.End, DateTimeKind.Unspecified),
+            };
+
     private static DateTime AllDayEnd(DateTime start, DateTime end)
     {
         var normalised = end.Date;
@@ -1076,12 +1092,21 @@
         // never projected, and inverting one moves the event a day when the user did nothing but
         // switch all-day off.
         var committed = original is { AllDay: true }
-            ? saved
+            ? Unprojected(saved)
             : SchedulerTimeZoneProjection.FromDisplay(saved, original, _displayZone);
+
+        if (matches > 1)
+        {
+            // Nothing stored, nothing reported — but the dialog still closes. Returning with
+            // it open would leave the user pressing Save against a form that can never
+            // commit, with no way to tell that from a slow render.
+            _dialogOpen = false;
+            _dialogSource = null;
+            return;
+        }
 
         if (_dialogSource is null) _events.Add(committed);
         else if (idx >= 0) _events[idx] = committed;
-        else if (matches > 1) return;
 
         _dialogOpen = false;
         _dialogSource = null;
