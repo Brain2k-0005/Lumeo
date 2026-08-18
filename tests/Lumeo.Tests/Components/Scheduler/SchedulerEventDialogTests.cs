@@ -842,4 +842,60 @@ public class SchedulerEventDialogTests : IAsyncLifetime
         Assert.Equal(new[] { "team", "personal" },
                      panes.Select(p => p.GetAttribute("data-scheduler-pane")).ToArray());
     }
+
+    // -- review round 6 --------------------------------------------------------
+
+    [Fact]
+    public void Withdrawing_the_opt_in_closes_the_form_rather_than_parking_it()
+    {
+        // Only the dialog's MARKUP is conditional, so turning the feature off left the state
+        // behind: turning it back on remounted the Dialog with Open=true and the stale form
+        // reappeared, ready to commit values from a session the user had left.
+        var start = new DateTime(2026, 3, 9, 9, 0, 0);
+        var ev = new L.SchedulerEvent("e1", "Standup", start, start.AddHours(1));
+
+        var cut = _ctx.Render<L.Scheduler>(p => p
+            .Add(c => c.InitialView, L.SchedulerView.Month)
+            .Add(c => c.InitialDate, start.Date)
+            .Add(c => c.Events, new[] { ev })
+            .Add(c => c.BuiltInEventDialog, true));
+
+        cut.Find("[data-event-instance]").Click();
+        cut.Find("input[data-scheduler-dialog-title]").Input("Renamed");
+
+        cut.Render(p => p.Add(c => c.BuiltInEventDialog, false));
+        Assert.Empty(cut.FindAll("[data-scheduler-dialog-title]"));
+
+        cut.Render(p => p.Add(c => c.BuiltInEventDialog, true));
+        // A freshly mounted Dialog with Open=false renders no content at all, so the stale
+        // form is gone rather than merely marked shut.
+        Assert.Empty(cut.FindAll("[data-scheduler-dialog-title]"));
+    }
+
+    [Fact]
+    public void Withdrawing_Selectable_closes_a_create_form_but_leaves_an_edit_alone()
+    {
+        // Selectable is what opens the CREATE form, so withdrawing it takes that form with it.
+        // An edit was opened by clicking an event, which Selectable has nothing to do with.
+        var start = new DateTime(2026, 3, 9, 9, 0, 0);
+        var ev = new L.SchedulerEvent("e1", "Standup", start, start.AddHours(1));
+
+        var cut = _ctx.Render<L.Scheduler>(p => p
+            .Add(c => c.InitialView, L.SchedulerView.Month)
+            .Add(c => c.InitialDate, start.Date)
+            .Add(c => c.Events, new[] { ev })
+            .Add(c => c.BuiltInEventDialog, true));
+
+        cut.FindAll("[data-cell-date]")[0].DoubleClick();
+        Assert.Equal("true", cut.Find("[role='dialog']").GetAttribute("aria-modal"));
+
+        cut.Render(p => p.Add(c => c.Selectable, false));
+        Assert.Equal("false", cut.Find("[role='dialog']").GetAttribute("aria-modal"));
+
+        // An edit survives it.
+        cut.Find("[data-event-instance]").Click();
+        Assert.Equal("true", cut.Find("[role='dialog']").GetAttribute("aria-modal"));
+        cut.Render(p => p.Add(c => c.Selectable, false));
+        Assert.Equal("true", cut.Find("[role='dialog']").GetAttribute("aria-modal"));
+    }
 }

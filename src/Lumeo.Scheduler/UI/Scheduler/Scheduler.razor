@@ -587,6 +587,17 @@
     {
         _displayZone = SchedulerTimeZoneProjection.Resolve(TimeZone);
 
+        // A parent can withdraw the dialog with the form standing open. Only its MARKUP is
+        // conditional, so the state survived: switching the opt-in back on remounted the
+        // Dialog with Open=true and the stale form reappeared, ready to commit values from a
+        // session the user had left (Codex review of PR #426). The create form goes the same
+        // way when Selectable is withdrawn, since that is the gesture that opened it.
+        if (_dialogOpen && (!BuiltInEventDialog || (_dialogSource is null && !Selectable)))
+        {
+            _dialogOpen = false;
+            _dialogSource = null;
+        }
+
         // The timeline rebuilds its columns from these immediately, but the toolbar title is
         // cached and was only refreshed by navigation or a culture change — so it kept naming
         // the old end date until the user pressed something (Codex review, P2).
