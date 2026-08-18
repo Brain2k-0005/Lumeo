@@ -214,9 +214,14 @@
         @if (ShowsPanes)
         {
             <div class="flex h-full gap-3">
+                @* Keyed by calendar, not by position. A parent reordering a still-visible set
+                   otherwise hands each stateful view the NEXT calendar's events while keeping its
+                   own state: an open overflow popover, a roving-focus index, a live-region
+                   announcement. The popover then silently switches feeds and lists a different
+                   calendar's events (Codex review of PR #426). *@
                 @foreach (var cal in VisibleCalendars)
                 {
-                    <div class="flex min-w-0 flex-1 flex-col gap-1" data-scheduler-pane="@cal.Id">
+                    <div @key="cal.Id" class="flex min-w-0 flex-1 flex-col gap-1" data-scheduler-pane="@cal.Id">
                         <div class="flex items-center justify-between gap-2 border-b border-border/60 pb-1">
                             <span class="flex min-w-0 items-center gap-1.5 text-xs font-medium text-foreground">
                                 <span class="inline-block h-2.5 w-2.5 flex-shrink-0 rounded-[calc(var(--radius)*2)]"
@@ -284,7 +289,7 @@
                                type="@(_dialogAllDay ? "date" : "datetime-local")"
                                class="flex h-9 w-full rounded-[var(--radius)] border border-input bg-transparent px-3 py-1 text-sm shadow-xs outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
                                value="@FormatForInput(_dialogStart)"
-                               @onchange="@(e => _dialogStart = ParseFromInput(e.Value?.ToString(), _dialogStart))" />
+                               @onchange="@(e => _dialogStartValid = TryReadInput(e.Value?.ToString(), ref _dialogStart))" />
                     </div>
                     <div class="flex flex-col gap-1.5">
                         <Label For="scheduler-dialog-end">@L["Scheduler.Ends"]</Label>
@@ -292,7 +297,7 @@
                                type="@(_dialogAllDay ? "date" : "datetime-local")"
                                class="flex h-9 w-full rounded-[var(--radius)] border border-input bg-transparent px-3 py-1 text-sm shadow-xs outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
                                value="@FormatForInput(_dialogEnd)"
-                               @onchange="@(e => _dialogEnd = ParseFromInput(e.Value?.ToString(), _dialogEnd))" />
+                               @onchange="@(e => _dialogEndValid = TryReadInput(e.Value?.ToString(), ref _dialogEnd))" />
                     </div>
                 </div>
 
@@ -325,7 +330,7 @@
                 }
                 <Button Variant="Button.ButtonVariant.Outline" OnClick="@(() => _dialogOpen = false)"
                         data-scheduler-dialog-cancel>@L["Scheduler.Cancel"]</Button>
-                <Button OnClick="SaveDialogAsync" Disabled="@string.IsNullOrWhiteSpace(_dialogTitle)"
+                <Button OnClick="SaveDialogAsync" Disabled="@(!CanSaveDialog)"
                         data-scheduler-dialog-save>@L["Scheduler.Save"]</Button>
             </DialogFooter>
         </DialogContent>
@@ -914,6 +919,8 @@
     private DateTime _dialogStart;
     private DateTime _dialogEnd;
     private bool _dialogAllDay;
+    private bool _dialogStartValid = true;
+    private bool _dialogEndValid = true;
     private string? _dialogCalendarId;
 
     private bool DialogIsEdit => _dialogSource is not null;
@@ -938,7 +945,7 @@
     /// the new appointment appeared in the wrong column (Codex review of PR #426).
     /// </summary>
     private EventCallback<SchedulerDateRange> DateSelectFor(string? calendarId) =>
-        BuiltInEventDialog || OnDateSelect.HasDelegate
+        DialogCreates || OnDateSelect.HasDelegate
             ? EventCallback.Factory.Create<SchedulerDateRange>(
                 this, (SchedulerDateRange r) => OnDateSelectInternalAsync(r, calendarId))
             : default;
@@ -970,9 +977,18 @@
         return (matches > 1 ? -1 : idx, matches);
     }
 
+    /// <summary>
+    /// The views gate the create gesture on nothing but <c>OnDateSelect.HasDelegate</c>, so arming
+    /// it for the dialog armed it past <see cref="Selectable"/> as well: double-clicking an empty
+    /// day opened the create form on a scheduler that had explicitly turned selection off (Codex
+    /// review of PR #426). A caller's own handler is deliberately left alone — that contract
+    /// predates the dialog and is not mine to change here.
+    /// </summary>
+    private bool DialogCreates => BuiltInEventDialog && Selectable;
+
     private async Task OnDateSelectInternalAsync(SchedulerDateRange range, string? paneCalendarId = null)
     {
-        if (BuiltInEventDialog)
+        if (DialogCreates)
         {
             _dialogSource = null;
             _dialogTitle = string.Empty;
@@ -983,6 +999,7 @@
             // calendar rather than the first declared one, or it would be created straight into
             // something the user cannot see.
             _dialogCalendarId = paneCalendarId ?? VisibleCalendars.FirstOrDefault()?.Id;
+            _dialogStartValid = _dialogEndValid = true;
             _dialogOpen = true;
         }
 
@@ -1006,6 +1023,7 @@
             _dialogEnd = ev.End;
             _dialogAllDay = ev.AllDay;
             _dialogCalendarId = ev.CalendarId;
+            _dialogStartValid = _dialogEndValid = true;
             _dialogOpen = true;
         }
 
@@ -1050,7 +1068,11 @@
 
     private async Task SaveDialogAsync()
     {
-        if (string.IsNullOrWhiteSpace(_dialogTitle)) return;
+        if (!CanSaveDialog) return;
+
+        // Read once. CanSaveDialog already rules out a blank title, but that check now sits
+        // behind a property, so the compiler's flow analysis no longer sees it here.
+        var title = (_dialogTitle ?? string.Empty).Trim();
 
         // An end before its start is the one input the form itself can produce, and every
         // downstream consumer — layout, recurrence, the expander's seek — assumes otherwise.
@@ -1065,7 +1087,7 @@
         var saved = _dialogSource is { } existing
             ? existing with
             {
-                Title = _dialogTitle.Trim(),
+                Title = title,
                 Start = _dialogStart,
                 End = end,
                 AllDay = _dialogAllDay,
@@ -1073,7 +1095,7 @@
             }
             : new SchedulerEvent(
                 Id: Guid.NewGuid().ToString("n"),
-                Title: _dialogTitle.Trim(),
+                Title: title,
                 Start: _dialogStart,
                 End: end,
                 AllDay: _dialogAllDay)
@@ -1137,13 +1159,28 @@
             ? value.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture)
             : value.ToString("yyyy-MM-ddTHH:mm", System.Globalization.CultureInfo.InvariantCulture);
 
-    /// <summary>Keeps the previous value when the control hands back something unparseable,
-    /// which an empty date field does on every keystroke while it is being retyped.</summary>
-    private static DateTime ParseFromInput(string? raw, DateTime fallback) =>
-        DateTime.TryParse(raw, System.Globalization.CultureInfo.InvariantCulture,
-                          System.Globalization.DateTimeStyles.None, out var parsed)
-            ? parsed
-            : fallback;
+    /// <summary>
+    /// Keeps the previous value when the control hands back something unparseable — which an
+    /// empty date field does on every keystroke while it is being retyped — and reports whether
+    /// it did. The KEEPING is why the report matters: a user who clears the field and presses
+    /// Save was otherwise committing a date the form no longer showed them, silently restored
+    /// from behind the empty control (Codex review of PR #426).
+    /// </summary>
+    private static bool TryReadInput(string? raw, ref DateTime value)
+    {
+        if (!DateTime.TryParse(raw, System.Globalization.CultureInfo.InvariantCulture,
+                               System.Globalization.DateTimeStyles.None, out var parsed))
+        {
+            return false;
+        }
+
+        value = parsed;
+        return true;
+    }
+
+    /// <summary>A title is not the only thing the form can be missing.</summary>
+    private bool CanSaveDialog =>
+        !string.IsNullOrWhiteSpace(_dialogTitle) && _dialogStartValid && _dialogEndValid;
 
     private async Task DeleteDialogAsync()
     {

@@ -608,4 +608,93 @@ public class SchedulerEventDialogTests : IAsyncLifetime
         Assert.Single(cut.FindAll("[data-scheduler-pane-toggle]"));
         Assert.Equal(2, cut.FindAll("[data-scheduler-pane]").Count);
     }
+
+    // -- review round 4 --------------------------------------------------------
+
+    [Fact]
+    public void A_cleared_date_field_blocks_the_save_instead_of_restoring_what_it_hid()
+    {
+        // The parser keeps the previous value on unparseable input, which is what lets a user
+        // retype a date without the field destroying itself mid-keystroke. Clearing it and
+        // pressing Save therefore committed a date the form no longer showed them.
+        var start = new DateTime(2026, 3, 9, 9, 0, 0);
+        var ev = new L.SchedulerEvent("e1", "Standup", start, start.AddHours(1));
+
+        IEnumerable<L.SchedulerEvent>? pushed = null;
+        var cut = _ctx.Render<L.Scheduler>(p => p
+            .Add(c => c.InitialView, L.SchedulerView.Month)
+            .Add(c => c.InitialDate, start.Date)
+            .Add(c => c.Events, new[] { ev })
+            .Add(c => c.BuiltInEventDialog, true)
+            .Add(c => c.EventsChanged, (IEnumerable<L.SchedulerEvent> e) => pushed = e));
+
+        cut.Find("[data-event-instance]").Click();
+        cut.Find("[data-scheduler-dialog-start]").Change(string.Empty);
+
+        var save = cut.Find("[data-scheduler-dialog-save]");
+        Assert.True(save.HasAttribute("disabled"));
+
+        save.Click();
+        Assert.Null(pushed);
+
+        // Typing a date back in releases it again.
+        cut.Find("[data-scheduler-dialog-start]").Change("2026-03-10T09:00");
+        cut.Find("[data-scheduler-dialog-save]").Click();
+
+        Assert.Equal(new DateTime(2026, 3, 10, 9, 0, 0), pushed!.Single().Start);
+    }
+
+    [Fact]
+    public void Selectable_false_keeps_the_create_dialog_shut()
+    {
+        // The views gate the create gesture on OnDateSelect.HasDelegate alone, so arming it for
+        // the dialog armed it past Selectable as well.
+        var cut = _ctx.Render<L.Scheduler>(p => p
+            .Add(c => c.InitialView, L.SchedulerView.Month)
+            .Add(c => c.InitialDate, Anchor)
+            .Add(c => c.Events, Array.Empty<L.SchedulerEvent>())
+            .Add(c => c.BuiltInEventDialog, true)
+            .Add(c => c.Selectable, false));
+
+        cut.FindAll("[data-cell-date]")[0].DoubleClick();
+
+        Assert.Empty(cut.FindAll("[data-scheduler-dialog-title]"));
+    }
+
+    [Fact]
+    public void A_pane_keeps_its_own_state_when_the_calendars_are_reordered()
+    {
+        // Unkeyed, the panes are matched by position: reordering a still-visible set hands each
+        // stateful view the next calendar's events while it keeps its own state, so an open
+        // overflow popover silently starts listing a different calendar's events.
+        var team = new L.SchedulerCalendar("team", "Team");
+        var personal = new L.SchedulerCalendar("personal", "Personal");
+
+        var events = Enumerable.Range(0, 16)
+            .Select(i => new L.SchedulerEvent($"e{i}", $"E{i}", Anchor.AddHours(9), Anchor.AddHours(10))
+            {
+                CalendarId = i % 2 == 0 ? "team" : "personal",
+            })
+            .ToArray();
+
+        var cut = _ctx.Render<L.Scheduler>(p => p
+            .Add(c => c.InitialView, L.SchedulerView.Month)
+            .Add(c => c.InitialDate, Anchor)
+            .Add(c => c.Events, events)
+            .Add(c => c.Calendars, new[] { team, personal })
+            .Add(c => c.PaneMode, L.SchedulerPaneMode.SideBySide));
+
+        // Open the overflow popover in the TEAM pane, which is first.
+        cut.FindAll("[data-scheduler-pane]")[0]
+           .QuerySelector("[data-testid='month-more-events']")!.Click();
+        var opened = cut.Find("[data-testid='month-more-popover']").Id;
+
+        // The parent hands the same two calendars back the other way round.
+        cut.Render(p => p.Add(c => c.Calendars, new[] { personal, team }));
+
+        // The popover has to still be the team pane's, which is now second.
+        var teamPane = cut.Find("[data-scheduler-pane='team']");
+        Assert.Equal("team", cut.FindAll("[data-scheduler-pane]")[1].GetAttribute("data-scheduler-pane"));
+        Assert.Equal(opened, teamPane.QuerySelector("[data-testid='month-more-popover']")?.Id);
+    }
 }
