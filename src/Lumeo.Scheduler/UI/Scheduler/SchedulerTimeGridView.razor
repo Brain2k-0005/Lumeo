@@ -27,7 +27,7 @@
 
        ONE sticky wrapper, not two sticky rows: a second row would need its top offset to
        equal the first row's rendered height, which nothing here can measure. *@
-    <div class="flex flex-col" style="max-height: 34rem; overflow-y: auto;" @ref="_scrollRef">
+    <div class="flex flex-col" style="@ScrollerStyle" @ref="_scrollRef">
         <div class="sticky top-0 z-20 bg-card">
         @* Which day each column IS. Week and Day had no header at all: the grid opened straight on
            the all-day strip, so nothing on screen said whether a column was Monday or Thursday, and
@@ -152,7 +152,12 @@
                                              data-testid="allday-more-popover"
                                              @onclick:stopPropagation="true"
                                              @onkeydown="e => OnAllDayMoreKeyDown(e, dayIndex)">
-                                            <div class="flex flex-col gap-0.5">
+                                            @* Capped and scrolled: the lane cap can hide two
+                                               dozen events, and an uncapped list ran off the
+                                               bottom of a scroller that clips while the sticky
+                                               dialog stayed pinned — so the last entries were
+                                               unreachable (Codex review of PR #427). *@
+                                            <div class="flex flex-col gap-0.5 max-h-64 overflow-y-auto">
                                                 @foreach (var hidden in HiddenAllDayFor(dayIndex))
                                                 {
                                                     <button type="button"
@@ -296,6 +301,16 @@
     [Parameter] public string? NowTimeZoneId { get; set; }
 
     /// <summary>
+    /// Whether this view is its own scroll container. Side-by-side calendar panes turn it OFF:
+    /// each pane owning a scroller gave one scrollbar per calendar, and scrolling one left the
+    /// others behind, so the same hour was never on screen twice. With it off the view renders at
+    /// full height and the SCHEDULER's own box does the scrolling, which moves every pane at once
+    /// — and the sticky header, whose offset is relative to the nearest scrollport, then sticks to
+    /// that box, so all the panes' headers line up.
+    /// </summary>
+    [Parameter] public bool SelfScrolling { get; set; } = true;
+
+    /// <summary>
     /// The date the header marks as today. Defaults to the host's own today, which is only the
     /// same day when no display zone is in play — the wrapper resolves it from
     /// <c>TimeZone</c> and passes it, exactly as it already does for the timeline, because a
@@ -398,14 +413,18 @@
     /// not survive Razor's nested quotes either — it rendered an EMPTY class.
     ///
     /// The trailing columns open inward. A 14rem panel is far wider than a day column, so hung
-    /// off the last one it lands past the grid's right edge inside a scroller that clips, and
+    /// off the last one it lands past the grid's trailing edge inside a scroller that clips, and
     /// part of the list is reachable only by discovering a horizontal scrollbar (Codex review
     /// of PR #427).
+    ///
+    /// LOGICAL insets, not left/right. Under an RTL provider the grid places day 0 at the right,
+    /// so a physical left/right test opened both edge popovers outward; start/end follow the
+    /// writing direction, which makes the index test correct in either.
     /// </summary>
     private string AllDayMorePopoverClasses(int dayIndex) =>
         dayIndex >= Days - 2
-            ? "absolute right-0 top-full mt-1 z-50 w-56 rounded-md border border-border/60 bg-popover text-popover-foreground shadow-lg p-2"
-            : "absolute left-0 top-full mt-1 z-50 w-56 rounded-md border border-border/60 bg-popover text-popover-foreground shadow-lg p-2";
+            ? "absolute end-0 top-full mt-1 z-50 w-56 rounded-md border border-border/60 bg-popover text-popover-foreground shadow-lg p-2"
+            : "absolute start-0 top-full mt-1 z-50 w-56 rounded-md border border-border/60 bg-popover text-popover-foreground shadow-lg p-2";
 
     private readonly string _instanceId = Guid.NewGuid().ToString("n")[..8];
 
@@ -628,7 +647,7 @@
         var packInput = _allDayInstances
             .Select(b => (Id: InstanceKey(b.Instance), StartDate: b.Instance.Start, EndDate: b.Instance.End, AllDay: true))
             .ToList();
-        var lanes = SchedulerMonthLayout.PackRow(rowStart, packInput);
+        var lanes = SchedulerMonthLayout.PackRow(rowStart, packInput, _dayColumns.Length);
         var maxLane = lanes.Count == 0 ? -1 : lanes.Values.Max();
 
         // Capped, so the strip can never grow tall enough to cover the grid it sits above. The
@@ -773,6 +792,12 @@
         if (e.Key == "Escape" && _openAllDayMoreDay == dayIndex)
             _ = CloseAllDayMoreAsync();
     }
+
+    /// <summary>
+    /// Built here rather than inline in the attribute: a ternary written there does not survive
+    /// Razor's nested quotes and renders as nothing at all.
+    /// </summary>
+    private string? ScrollerStyle => SelfScrolling ? "max-height: 34rem; overflow-y: auto;" : null;
 
     private static string WeekdayLabel(DateTime day) =>
         CultureInfo.CurrentUICulture.DateTimeFormat.AbbreviatedDayNames[(int)day.DayOfWeek];
@@ -1195,6 +1220,12 @@
 
     public async ValueTask DisposeAsync()
     {
+        // A view can be torn down with its overflow dialog OPEN — switching views does exactly
+        // that. Without this the JS handler map and the interop dictionary keep a callback, and
+        // the component instance behind it, for a DOM that no longer exists (Codex review of
+        // PR #427).
+        await CloseAllDayMoreAsync();
+
         if (_dragRegistered)
         {
             try { await Interop.SchedulerViewsUnregisterTimeGridDragAsync(_hostRef); }

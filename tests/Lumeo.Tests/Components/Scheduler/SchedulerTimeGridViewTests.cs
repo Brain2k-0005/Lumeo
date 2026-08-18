@@ -923,8 +923,94 @@ public class SchedulerTimeGridViewTests : IAsyncLifetime
         cut.Find("[data-testid='allday-more']").Click();
 
         var cls = cut.Find("[data-testid='allday-more-popover']").GetAttribute("class") ?? string.Empty;
-        Assert.Contains("right-0", cls);
-        Assert.DoesNotContain("left-0", cls);
+        Assert.Contains("end-0", cls);
+        Assert.DoesNotContain("start-0", cls);
+    }
+
+    [Fact]
+    public void A_ten_day_window_renders_an_all_day_event_on_its_ninth_day()
+    {
+        // The all-day strip packs through the MONTH row packer, which is hard-coded to seven
+        // columns: an event starting on the eighth or a later day clamped its start to 7 and then
+        // asked Math.Clamp for a range of [8, 7], which throws — so a supported MultiDay window
+        // failed to render at all as soon as such an event was present (Codex review, PR #427).
+        var start = D(2026, 4, 13);
+        var ninth = start.AddDays(8);
+
+        var cut = _ctx.Render<L.SchedulerTimeGridView>(p => p
+            .Add(c => c.AnchorDate, start)
+            .Add(c => c.Days, 10)
+            .Add(c => c.Events, new[]
+            {
+                new L.SchedulerEvent("late", "Late offsite", ninth, ninth.AddDays(1)) { AllDay = true },
+                new L.SchedulerEvent("later", "Later offsite", ninth.AddDays(1), ninth.AddDays(2)) { AllDay = true },
+            }));
+
+        Assert.Equal(10, cut.FindAll("[data-dayheader]").Count);
+        Assert.Single(cut.FindAll("[data-event-id='late']"));
+
+        // Both on lane 0, which is what packing against the window's real width buys. Days
+        // nine and ten are consecutive and overlap nothing, but a seven-wide packer clamps
+        // every day-eight-or-later start onto the SAME last column — so it reads them as
+        // overlapping and stacks the second onto a lane of its own.
+        Assert.Equal("0", cut.Find("[data-event-id='late']").GetAttribute("data-lane"));
+        Assert.Equal("0", cut.Find("[data-event-id='later']").GetAttribute("data-lane"));
+    }
+
+    [Fact]
+    public void The_overflow_dialog_scrolls_rather_than_running_off_the_bottom()
+    {
+        // The lane cap can hide two dozen events. An uncapped list ran past the bottom of a
+        // scroller that clips while the sticky dialog stayed pinned, so the last entries were
+        // unreachable (Codex review, PR #427).
+        var day = D(2026, 4, 15);
+        var events = Enumerable.Range(0, 24)
+            .Select(i => new L.SchedulerEvent($"a{i}", $"All day {i}", day, day.AddDays(1)) { AllDay = true })
+            .ToArray();
+
+        var cut = _ctx.Render<L.SchedulerTimeGridView>(p => p
+            .Add(c => c.AnchorDate, day).Add(c => c.Days, 7).Add(c => c.Events, events));
+
+        cut.Find("[data-testid='allday-more']").Click();
+
+        var list = cut.Find("[data-testid='allday-more-popover'] div");
+        var cls = list.GetAttribute("class") ?? string.Empty;
+        Assert.Contains("max-h-", cls);
+        Assert.Contains("overflow-y-auto", cls);
+    }
+
+    [Fact]
+    public async Task Disposing_the_grid_releases_an_open_overflow_registration()
+    {
+        // Switching views tears the grid down, dialog and all. Without a teardown path the JS
+        // handler map and the interop dictionary keep the callback - and the component behind it.
+        var day = D(2026, 4, 15);
+        var events = Enumerable.Range(0, 6)
+            .Select(i => new L.SchedulerEvent($"a{i}", $"All day {i}", day, day.AddDays(1)) { AllDay = true })
+            .ToArray();
+
+        var ctx = new BunitContext();
+        var interop = new TrackingInteropService();
+        try
+        {
+            ctx.AddLumeoServices();
+            ctx.Services.AddSingleton<IComponentInteropService>(interop);
+
+            var cut = ctx.Render<L.SchedulerTimeGridView>(p => p
+                .Add(c => c.AnchorDate, day).Add(c => c.Days, 7).Add(c => c.Events, events));
+
+            cut.Find("[data-testid='allday-more']").Click();
+            var popoverId = cut.Find("[data-testid='allday-more-popover']").Id;
+            Assert.DoesNotContain(popoverId, interop.ClickOutsideUnregistrations);
+
+            await cut.Instance.DisposeAsync();
+
+            Assert.Contains(popoverId, interop.ClickOutsideUnregistrations);
+        }
+        finally
+        {
+            await ctx.DisposeAsync();
+        }
     }
 
 }

@@ -805,13 +805,33 @@
 
     /// <summary>
     /// Whole literal class strings, chosen rather than composed - see the same helper in
-    /// SchedulerTimeGridView. The last two columns of a week open inward, or a 14rem panel
-    /// hung off Sunday lands past the grid's right edge (Codex review of PR #427).
+    /// SchedulerTimeGridView. The last two columns of a week open inward, or a 14rem panel hung
+    /// off the final column lands past the grid's trailing edge (Codex review of PR #427).
+    ///
+    /// By VISIBLE ordinal, not the raw index: with HideWeekends on a Monday-first grid, Friday is
+    /// the last column on screen while its raw index is 4, so a raw test left it opening outward.
+    /// And LOGICAL insets, because under an RTL provider the columns are placed from the right —
+    /// start/end follow the writing direction, where left/right send both edges outward.
     /// </summary>
     private string MorePopoverClasses(int cellIndex) =>
-        cellIndex % 7 >= 5
-            ? "absolute right-0 top-full mt-1 z-50 w-56 rounded-md border border-border/60 bg-popover text-popover-foreground shadow-lg p-2"
-            : "absolute left-0 top-full mt-1 z-50 w-56 rounded-md border border-border/60 bg-popover text-popover-foreground shadow-lg p-2";
+        VisibleColumnOrdinal(cellIndex) >= VisibleColumns - 2
+            ? "absolute end-0 top-full mt-1 z-50 w-56 rounded-md border border-border/60 bg-popover text-popover-foreground shadow-lg p-2"
+            : "absolute start-0 top-full mt-1 z-50 w-56 rounded-md border border-border/60 bg-popover text-popover-foreground shadow-lg p-2";
+
+    /// <summary>Where this cell sits among the columns actually on screen.</summary>
+    private int VisibleColumnOrdinal(int cellIndex)
+    {
+        var dayOfRow = cellIndex % 7;
+        if (!HideWeekends) return dayOfRow;
+
+        var ordinal = 0;
+        for (var i = 0; i < dayOfRow; i++)
+        {
+            var dow = (DayOfWeek)(((int)FirstDayOfWeek + i) % 7);
+            if (dow is not (DayOfWeek.Saturday or DayOfWeek.Sunday)) ordinal++;
+        }
+        return ordinal;
+    }
 
     private readonly string _instanceId = Guid.NewGuid().ToString("n")[..8];
 

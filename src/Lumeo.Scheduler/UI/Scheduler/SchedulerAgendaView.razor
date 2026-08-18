@@ -8,7 +8,7 @@
    the enum member and change only the internal rendering). Not a grid — a flat, day-grouped
    list, which is what it visually already is (spec §5.1). *@
 <div class="@($"flex flex-col w-full rounded-md border border-border/60 overflow-hidden {Class}".Trim())" @attributes="AdditionalAttributes">
-    <div role="list" aria-label="@L["Scheduler.List"]" class="max-h-[34rem] overflow-y-auto divide-y divide-border/60">
+    <div role="list" aria-label="@L["Scheduler.List"]" class="@ScrollerClasses">
         @if (_days.Count == 0)
         {
             <div class="p-4 text-sm text-muted-foreground">@L["Scheduler.NoEvents"]</div>
@@ -42,6 +42,18 @@
 </div>
 
 @code {
+    /// <summary>
+    /// Whether this view is its own scroll container. Side-by-side calendar panes turn it OFF so
+    /// the scheduler's own box scrolls every pane at once, instead of one scrollbar per calendar
+    /// leaving the others behind.
+    /// </summary>
+    [Parameter] public bool SelfScrolling { get; set; } = true;
+
+    /// <summary>Whole literal class strings: the Tailwind v4 build only emits utilities it can SEE.</summary>
+    private string ScrollerClasses => SelfScrolling
+        ? "max-h-[34rem] overflow-y-auto divide-y divide-border/60"
+        : "divide-y divide-border/60";
+
     [Parameter] public IEnumerable<SchedulerEvent>? Events { get; set; }
 
     /// <summary>The window's start (inclusive). Default: today.</summary>

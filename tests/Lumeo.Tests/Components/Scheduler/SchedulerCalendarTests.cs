@@ -261,4 +261,72 @@ public class SchedulerCalendarTests : IAsyncLifetime
         Assert.Contains("darkorange", style, StringComparison.Ordinal);
         Assert.DoesNotContain("rebeccapurple", style, StringComparison.Ordinal);
     }
+
+    // -- one scrollbar for every pane -----------------------------------------
+
+    [Theory]
+    [InlineData(L.SchedulerView.Week)]
+    [InlineData(L.SchedulerView.Day)]
+    [InlineData(L.SchedulerView.List)]
+    public void Side_by_side_panes_share_a_single_scroller(L.SchedulerView view)
+    {
+        // Each pane owning a scroller gave one scrollbar per calendar, and scrolling one left the
+        // others behind — so the same hour was never on screen twice, which is the whole point of
+        // putting the calendars beside each other.
+        var calendars = new[]
+        {
+            new L.SchedulerCalendar("team", "Team"),
+            new L.SchedulerCalendar("personal", "Personal"),
+        };
+
+        var cut = _ctx.Render<L.Scheduler>(p => p
+            .Add(c => c.InitialView, view)
+            .Add(c => c.InitialDate, Anchor)
+            .Add(c => c.Events, Array.Empty<L.SchedulerEvent>())
+            .Add(c => c.Calendars, calendars)
+            .Add(c => c.PaneMode, L.SchedulerPaneMode.SideBySide));
+
+        Assert.Equal(2, cut.FindAll("[data-scheduler-pane]").Count);
+        Assert.Single(ScrollersIn(cut));
+    }
+
+    [Fact]
+    public void Merging_the_panes_gives_the_view_its_own_scroller_back()
+    {
+        // The counterpart: overlaid, the view is alone in the box and scrolling itself is what
+        // every other consumer already expects of it.
+        var calendars = new[]
+        {
+            new L.SchedulerCalendar("team", "Team"),
+            new L.SchedulerCalendar("personal", "Personal"),
+        };
+
+        var cut = _ctx.Render<L.Scheduler>(p => p
+            .Add(c => c.InitialView, L.SchedulerView.Week)
+            .Add(c => c.InitialDate, Anchor)
+            .Add(c => c.Events, Array.Empty<L.SchedulerEvent>())
+            .Add(c => c.Calendars, calendars)
+            .Add(c => c.PaneMode, L.SchedulerPaneMode.Overlay));
+
+        Assert.Empty(cut.FindAll("[data-scheduler-pane]"));
+        // The scheduler's own box, and the view's — the arrangement panes deliberately collapse.
+        Assert.Equal(2, ScrollersIn(cut).Count);
+    }
+
+    private static IReadOnlyList<AngleSharp.Dom.IElement> ScrollersIn(IRenderedComponent<L.Scheduler> cut) =>
+        cut.FindAll("*")
+           .Where(e =>
+           {
+               var style = e.GetAttribute("style") ?? string.Empty;
+               var cls = e.GetAttribute("class") ?? string.Empty;
+               return style.Contains("overflow: auto", StringComparison.Ordinal)
+                   || style.Contains("overflow-y: auto", StringComparison.Ordinal)
+                   || cls.Split(' ').Contains("overflow-y-auto")
+                   // The class form matters too: the wrapper's own per-pane box used it, and
+                   // a predicate blind to it passed while the real page still had one
+                   // scrollbar per calendar.
+                   || cls.Split(' ').Contains("overflow-auto");
+           })
+           .ToList();
+
 }
