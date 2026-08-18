@@ -112,7 +112,7 @@
                                         Editable="@Editable" Selectable="@Selectable" CanDrop="@CanDrop"
                                         ResolveEventColor="@ResolveFirstPartyColor"
                                         ResolveEventClassNames="@ResolveFirstPartyClassNames"
-                                        OnEventClick="@OnEventClickInternalAsync" OnDateSelect="@OnDateSelectInternalAsync"
+                                        OnEventClick="@EffectiveEventClick" OnDateSelect="@EffectiveDateSelect"
                                         OnEventChange="@OnFirstPartyEventChangeAsync"
                                         OnRequestPrev="@PrevAsync" OnRequestNext="@NextAsync" />
                     break;
@@ -124,7 +124,7 @@
                                            Editable="@Editable" Selectable="@Selectable" CanDrop="@CanDrop"
                                            ResolveEventColor="@ResolveFirstPartyColor"
                                            ResolveEventClassNames="@ResolveFirstPartyClassNames"
-                                           OnEventClick="@OnEventClickInternalAsync" OnDateSelect="@OnDateSelectInternalAsync"
+                                           OnEventClick="@EffectiveEventClick" OnDateSelect="@EffectiveDateSelect"
                                            OnEventChange="@OnFirstPartyEventChangeAsync"
                                            OnRequestPrev="@PrevAsync" OnRequestNext="@NextAsync" />
                     break;
@@ -136,7 +136,7 @@
                                            Editable="@Editable" Selectable="@Selectable" CanDrop="@CanDrop"
                                            ResolveEventColor="@ResolveFirstPartyColor"
                                            ResolveEventClassNames="@ResolveFirstPartyClassNames"
-                                           OnEventClick="@OnEventClickInternalAsync" OnDateSelect="@OnDateSelectInternalAsync"
+                                           OnEventClick="@EffectiveEventClick" OnDateSelect="@EffectiveDateSelect"
                                            OnEventChange="@OnFirstPartyEventChangeAsync"
                                            OnRequestPrev="@PrevAsync" OnRequestNext="@NextAsync" />
                     break;
@@ -151,7 +151,7 @@
                                            Editable="@Editable" Selectable="@Selectable" CanDrop="@CanDrop"
                                            ResolveEventColor="@ResolveFirstPartyColor"
                                            ResolveEventClassNames="@ResolveFirstPartyClassNames"
-                                           OnEventClick="@OnEventClickInternalAsync" OnDateSelect="@OnDateSelectInternalAsync"
+                                           OnEventClick="@EffectiveEventClick" OnDateSelect="@EffectiveDateSelect"
                                            OnEventChange="@OnFirstPartyEventChangeAsync"
                                            OnRequestPrev="@PrevAsync" OnRequestNext="@NextAsync" />
                     break;
@@ -166,7 +166,7 @@
                                            Unit="@TimelineUnit" FirstDayOfWeek="@EffectiveFirstDayOfWeek"
                                            ResolveEventColor="@ResolveFirstPartyColor"
                                            ResolveEventClassNames="@ResolveFirstPartyClassNames"
-                                           OnEventClick="@OnEventClickInternalAsync" />
+                                           OnEventClick="@EffectiveEventClick" />
                     break;
                 case SchedulerView.Resource when Resources is { Count: > 0 }:
                     <SchedulerResourceView Events="@paneEvents" Date="@_fpAnchor"
@@ -174,7 +174,7 @@
                                            SlotMinTime="@SlotMinTime" SlotMaxTime="@SlotMaxTime" SlotDuration="@SlotDuration"
                                            ResolveEventColor="@ResolveFirstPartyColor"
                                            ResolveEventClassNames="@ResolveFirstPartyClassNames"
-                                           OnEventClick="@OnEventClickInternalAsync" />
+                                           OnEventClick="@EffectiveEventClick" />
                     break;
                 case SchedulerView.Resource:
                 case SchedulerView.Timeline:
@@ -190,7 +190,7 @@
                                            Editable="@Editable" Selectable="@Selectable" CanDrop="@CanDrop"
                                            ResolveEventColor="@ResolveFirstPartyColor"
                                            ResolveEventClassNames="@ResolveFirstPartyClassNames"
-                                           OnEventClick="@OnEventClickInternalAsync" OnDateSelect="@OnDateSelectInternalAsync"
+                                           OnEventClick="@EffectiveEventClick" OnDateSelect="@EffectiveDateSelect"
                                            OnEventChange="@OnFirstPartyEventChangeAsync"
                                            OnRequestPrev="@PrevAsync" OnRequestNext="@NextAsync" />
                     break;
@@ -200,7 +200,7 @@
                     <SchedulerAgendaView Events="@paneEvents" AnchorDate="@FirstPartyAgendaStart" DaysToShow="7"
                                          ResolveEventColor="@ResolveFirstPartyColor"
                                          ResolveEventClassNames="@ResolveFirstPartyClassNames"
-                                         OnEventClick="@OnEventClickInternalAsync" />
+                                         OnEventClick="@EffectiveEventClick" />
                     break;
             }
         </text>;
@@ -913,6 +913,24 @@
     /// Runs BEFORE the caller's own handler and never in place of it: the dialog is additive, so
     /// a consumer keeps whatever it already does with the selection.
     /// </summary>
+    /// <summary>
+    /// A delegate ONLY when something can actually happen with it — the caller wants the range,
+    /// or the built-in dialog is on. The views arm their drag-create gesture on
+    /// <c>OnDateSelect.HasDelegate</c> precisely so a gesture that can do nothing is never
+    /// offered, and routing unconditionally through the internal handler armed it for everyone:
+    /// on the docs demo the create gesture then intercepted the drag that MOVES an event, so
+    /// nothing committed. Caught by the E2E suite, which the local gate filters out.
+    /// </summary>
+    private EventCallback<SchedulerDateRange> EffectiveDateSelect =>
+        BuiltInEventDialog || OnDateSelect.HasDelegate
+            ? EventCallback.Factory.Create<SchedulerDateRange>(this, OnDateSelectInternalAsync)
+            : default;
+
+    private EventCallback<SchedulerEvent> EffectiveEventClick =>
+        BuiltInEventDialog || OnEventClick.HasDelegate
+            ? EventCallback.Factory.Create<SchedulerEvent>(this, OnEventClickInternalAsync)
+            : default;
+
     private async Task OnDateSelectInternalAsync(SchedulerDateRange range)
     {
         if (BuiltInEventDialog)

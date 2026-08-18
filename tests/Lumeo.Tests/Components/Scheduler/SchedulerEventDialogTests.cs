@@ -181,4 +181,47 @@ public class SchedulerEventDialogTests : IAsyncLifetime
         Assert.Equal("create", cut.Find("[data-scheduler-dialog]").GetAttribute("data-scheduler-dialog"));
         Assert.Equal("shown", cut.Find("[data-scheduler-dialog-calendar]").GetAttribute("value"));
     }
+
+    // ── the gesture must not be armed when it can do nothing ────────────────
+
+    [Fact]
+    public void No_drag_create_gesture_when_nothing_can_handle_it()
+    {
+        // The views arm drag-create on OnDateSelect.HasDelegate so a gesture that cannot act is
+        // never offered. Routing unconditionally through the internal handler armed it for
+        // everyone, and on a demo with no OnDateSelect the create gesture then intercepted the
+        // drag that MOVES an event — nothing committed. The E2E suite caught it; this pins it
+        // where the local gate can see it.
+        var cut = _ctx.Render<L.Scheduler>(p => p
+            .Add(c => c.InitialView, L.SchedulerView.Month)
+            .Add(c => c.InitialDate, Anchor)
+            .Add(c => c.Events, new[] { Existing() }));
+
+        Assert.False(cut.FindComponent<L.SchedulerMonthView>().Instance.OnDateSelect.HasDelegate);
+        Assert.False(cut.FindComponent<L.SchedulerMonthView>().Instance.OnEventClick.HasDelegate);
+    }
+
+    [Fact]
+    public void The_gesture_is_armed_when_the_dialog_wants_it()
+    {
+        var cut = _ctx.Render<L.Scheduler>(p => p
+            .Add(c => c.InitialView, L.SchedulerView.Month)
+            .Add(c => c.InitialDate, Anchor)
+            .Add(c => c.Events, new[] { Existing() })
+            .Add(c => c.BuiltInEventDialog, true));
+
+        Assert.True(cut.FindComponent<L.SchedulerMonthView>().Instance.OnDateSelect.HasDelegate);
+    }
+
+    [Fact]
+    public void The_gesture_is_armed_when_the_caller_wants_it()
+    {
+        var cut = _ctx.Render<L.Scheduler>(p => p
+            .Add(c => c.InitialView, L.SchedulerView.Month)
+            .Add(c => c.InitialDate, Anchor)
+            .Add(c => c.Events, new[] { Existing() })
+            .Add(c => c.OnDateSelect, (L.SchedulerDateRange _) => { }));
+
+        Assert.True(cut.FindComponent<L.SchedulerMonthView>().Instance.OnDateSelect.HasDelegate);
+    }
 }
