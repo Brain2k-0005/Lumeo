@@ -782,7 +782,16 @@
             _ = CloseMorePopoverAsync();
     }
 
-    private static string MorePopoverId(int cellIndex) => $"scheduler-month-more-{cellIndex}";
+    /// <summary>
+    /// Per-INSTANCE, not per-cell. The id also keys the global click-outside registry, so two
+    /// month views on one page — which side-by-side calendar panes create — produced the same id
+    /// for the same day: opening an overflow popover in the second pane re-registered the first
+    /// one's id against the second callback, so the wrong popover closed and the other could not
+    /// be dismissed at all (Codex review of PR #426).
+    /// </summary>
+    private string MorePopoverId(int cellIndex) => $"scheduler-month-more-{_instanceId}-{cellIndex}";
+
+    private readonly string _instanceId = Guid.NewGuid().ToString("n")[..8];
 
     /// <summary>
     /// [JSInvokable] fail-closed CanDrop check for a candidate day-move. Returns
