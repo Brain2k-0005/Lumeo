@@ -70,6 +70,13 @@
     private int? _appliedOffset;
     private string? _appliedAlign;
 
+    /// <summary>
+    /// The element the live placement is actually watching. In the guard beside Side/Offset/Align
+    /// for the same reason they are: a caller can move the anchor while the tooltip is open, and
+    /// without this the box keeps tracking the element it was first given.
+    /// </summary>
+    private string? _appliedAnchor;
+
     // The side the box ACTUALLY resolved to, echoed back by PositionFixed after any collision flip.
     // Null until the first placement; the arrow + data-side render from EffectiveSide so they follow a flip.
     private string? _resolvedSide;
@@ -153,17 +160,20 @@
         // leaving the box at its original spot. positionFixed cleans up the prior
         // placement (keyed by contentId) at entry, so re-calling it is safe.
         if (IsOpen && Context is not null
-            && (!_registered || _appliedSide != SideStr || _appliedOffset != Offset || _appliedAlign != AlignStr))
+            && (!_registered || _appliedSide != SideStr || _appliedOffset != Offset || _appliedAlign != AlignStr
+                || _appliedAnchor != (Context.AnchorId ?? Context.WrapperId)))
         {
             // OnLiveSideChanged covers a LATER flip too — a scroll/resize reposition while this tooltip
             // stays open at the same Side/Offset/Align (Codex P2, round-11/14). The guard above keys off
             // SideStr/Offset/AlignStr (NOT _resolvedSide), so OnLiveSideChanged's StateHasChanged does
             // not re-enter this branch — no render loop, no re-registering positionFixed.
-            var resolved = await Interop.PositionFixed(_contentId, Context.AnchorId ?? Context.WrapperId, AlignStr, false, SideStr, Offset, OnLiveSideChanged);
+            var anchor = Context.AnchorId ?? Context.WrapperId;
+            var resolved = await Interop.PositionFixed(_contentId, anchor, AlignStr, false, SideStr, Offset, OnLiveSideChanged);
             _registered = true;
             _appliedSide = SideStr;
             _appliedOffset = Offset;
             _appliedAlign = AlignStr;
+            _appliedAnchor = anchor;
             // The box may have collision-flipped to the opposite side on this INITIAL placement; re-render
             // so the arrow + data-side follow it.
             if (resolved != _resolvedSide)
@@ -222,6 +232,7 @@
         _appliedSide = null;
         _appliedOffset = null;
         _appliedAlign = null;
+        _appliedAnchor = null;
         // NOTE: _resolvedSide is intentionally NOT cleared here. Cleanup runs
         // immediately on close, but the box stays mounted (frozen) for the exit
         // window — keeping the resolved (possibly collision-flipped) side means the
