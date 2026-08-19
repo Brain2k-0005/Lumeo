@@ -104,7 +104,7 @@
         // The whole view switch as ONE fragment, rendered once per pane with that pane's own
         // events. Duplicating the switch instead would let a pane drift from the overlay the
         // first time a view gained a parameter.
-        RenderFragment<(IEnumerable<SchedulerEvent>? Events, string? CalendarId)> viewFor = pane =>
+        RenderFragment<(IEnumerable<SchedulerEvent>? Events, string? CalendarId, bool ShowGutter)> viewFor = pane =>
         @<text>
             @switch (_currentView)
             {
@@ -123,7 +123,7 @@
                 case SchedulerView.Week:
                     <SchedulerTimeGridView Events="@pane.Events" AnchorDate="@_fpAnchor" Days="7"
                                            ReserveFullAllDayStrip="@SharesPaneScroll"
-                                           SelfScrolling="@(!SharesPaneScroll)"
+                                           SelfScrolling="@(!SharesPaneScroll)" ShowTimeGutter="@pane.ShowGutter"
                                            Today="@(_displayZone is not null ? SchedulerTimeZoneProjection.TodayIn(_displayZone) : _browserToday)"
                                            FirstDayOfWeek="@EffectiveFirstDayOfWeek"
                                            BusinessHours="@BusinessHours" NowIndicator="@NowIndicator" NowTimeZoneId="@SchedulerTimeZoneProjection.JsZoneId(_displayZone)"
@@ -138,7 +138,7 @@
                 case SchedulerView.Day:
                     <SchedulerTimeGridView Events="@pane.Events" AnchorDate="@_fpAnchor" Days="1"
                                            ReserveFullAllDayStrip="@SharesPaneScroll"
-                                           SelfScrolling="@(!SharesPaneScroll)"
+                                           SelfScrolling="@(!SharesPaneScroll)" ShowTimeGutter="@pane.ShowGutter"
                                            Today="@(_displayZone is not null ? SchedulerTimeZoneProjection.TodayIn(_displayZone) : _browserToday)"
                                            FirstDayOfWeek="@EffectiveFirstDayOfWeek"
                                            BusinessHours="@BusinessHours" NowIndicator="@NowIndicator" NowTimeZoneId="@SchedulerTimeZoneProjection.JsZoneId(_displayZone)"
@@ -155,7 +155,7 @@
                        week boundary, which is exactly the rolling window this view wants. *@
                     <SchedulerTimeGridView Events="@pane.Events" AnchorDate="@_fpAnchor" Days="@EffectiveVisibleDays"
                                            ReserveFullAllDayStrip="@SharesPaneScroll"
-                                           SelfScrolling="@(!SharesPaneScroll)"
+                                           SelfScrolling="@(!SharesPaneScroll)" ShowTimeGutter="@pane.ShowGutter"
                                            Today="@(_displayZone is not null ? SchedulerTimeZoneProjection.TodayIn(_displayZone) : _browserToday)"
                                            AlignToWeek="false"
                                            FirstDayOfWeek="@EffectiveFirstDayOfWeek"
@@ -198,7 +198,7 @@
                        against the documented behaviour. *@
                     <SchedulerTimeGridView Events="@pane.Events" AnchorDate="@_fpAnchor" Days="1"
                                            ReserveFullAllDayStrip="@SharesPaneScroll"
-                                           SelfScrolling="@(!SharesPaneScroll)"
+                                           SelfScrolling="@(!SharesPaneScroll)" ShowTimeGutter="@pane.ShowGutter"
                                            Today="@(_displayZone is not null ? SchedulerTimeZoneProjection.TodayIn(_displayZone) : _browserToday)"
                                            FirstDayOfWeek="@EffectiveFirstDayOfWeek"
                                            BusinessHours="@BusinessHours" NowIndicator="@NowIndicator" NowTimeZoneId="@SchedulerTimeZoneProjection.JsZoneId(_displayZone)"
@@ -235,9 +235,18 @@
            rather than one of them being moved (Codex review of PR #427). *@
         <div class="flex gap-3" data-testid="scheduler-pane-names"
              style="overflow-y: hidden; scrollbar-gutter: stable;">
-            @foreach (var cal in VisibleCalendars)
+            @for (var p = 0; p < VisibleCalendars.Count; p++)
             {
-                <div @key="cal.Id" class="flex min-w-0 flex-1 items-center justify-between gap-2 border-b border-border/60 pb-1"
+                var nameIndex = p;
+                var cal = VisibleCalendars[nameIndex];
+                var overGutter = SharesPaneScroll && nameIndex == 0;
+                @* Matching the pane geometry below, gutter and all, or the names stop sitting over
+                   their own columns. The first one is padded past the hour labels so it reads above
+                   the days rather than above the clock. *@
+                <div @key="cal.Id" class="@(overGutter
+                         ? "flex min-w-0 flex-1 items-center justify-between gap-2 border-b border-border/60 pb-1 ps-14"
+                         : "flex min-w-0 flex-1 items-center justify-between gap-2 border-b border-border/60 pb-1")"
+                     style="@(overGutter ? "flex-basis: 3.5rem" : null)"
                      data-scheduler-pane-name="@cal.Id">
                     <span class="flex min-w-0 items-center gap-1.5 text-xs font-medium text-foreground">
                         <span class="inline-block h-2.5 w-2.5 flex-shrink-0 rounded-[calc(var(--radius)*2)]"
@@ -266,9 +275,16 @@
                    own state: an open overflow popover, a roving-focus index, a live-region
                    announcement. The popover then silently switches feeds and lists a different
                    calendar's events (Codex review of PR #426). *@
-                @foreach (var cal in VisibleCalendars)
+                @for (var p = 0; p < VisibleCalendars.Count; p++)
                 {
-                    <div @key="cal.Id" class="flex min-w-0 flex-1 flex-col gap-1" data-scheduler-pane="@cal.Id">
+                    var paneIndex = p;
+                    var cal = VisibleCalendars[paneIndex];
+                    @* Only the leftmost pane draws the hour labels — one clock for the set, the way
+                       Outlook shows them, rather than the same axis repeated in every column. It is
+                       therefore wider by exactly the gutter, and the flex basis gives that width
+                       back so every pane's DAY columns still come out the same size. *@
+                    <div @key="cal.Id" class="flex min-w-0 flex-1 flex-col gap-1" data-scheduler-pane="@cal.Id"
+                         style="@(SharesPaneScroll && paneIndex == 0 ? "flex-basis: 3.5rem" : null)">
                         @* No scroller of its own. One per pane meant one scrollbar per
                            calendar, each moving only its own column — so the same hour was
                            never on screen twice, which is the whole point of putting the
@@ -276,7 +292,7 @@
                            all together instead, and the views hand their scrolling over via
                            SelfScrolling. *@
                         <div class="@(SharesPaneScroll ? "min-h-0 flex-1" : "min-h-0 flex-1 overflow-auto")">
-                            @viewFor((EventsFor(cal.Id), cal.Id))
+                            @viewFor((EventsFor(cal.Id), cal.Id, !SharesPaneScroll || paneIndex == 0))
                         </div>
                     </div>
                 }
@@ -284,7 +300,7 @@
         }
         else
         {
-            @viewFor((EffectiveEvents, (string?)null))
+            @viewFor((EffectiveEvents, (string?)null, true))
         }
     </div>
 </div>

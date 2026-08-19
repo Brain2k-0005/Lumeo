@@ -3,7 +3,7 @@
 @inject Lumeo.Services.IComponentInteropService Interop
 
 @{
-    var context = new TooltipContext(_isOpen, _wrapperId, _contentId);
+    var context = new TooltipContext(_isOpen, _wrapperId, _contentId) { AnchorId = AnchorElementId };
 }
 
 @* aria-describedby links the trigger region to the role=tooltip content so
@@ -47,6 +47,18 @@
     /// not shrunk to content width.
     /// </summary>
     [Parameter] public string? Class { get; set; }
+
+    /// <summary>
+    /// The element the box is positioned against. Defaults to this component's own wrapper, which
+    /// is right whenever the trigger sits in normal flow inside it.
+    ///
+    /// It is NOT right when the trigger is taken out of flow — an absolutely positioned one leaves
+    /// the wrapper collapsed to a zero-size box at its flow position, and the box is then placed
+    /// against that rather than against anything the user can see. The scheduler's timed event
+    /// pills are the case in hand: their tooltips opened hundreds of pixels away, at the bottom of
+    /// the page.
+    /// </summary>
+    [Parameter] public string? AnchorElementId { get; set; }
 
     /// <summary>Captures unmatched attributes and applies them to the wrapper element.</summary>
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
@@ -215,5 +227,14 @@
         }
     }
 
-    public record TooltipContext(bool IsOpen, string WrapperId, string ContentId);
+public record TooltipContext(bool IsOpen, string WrapperId, string ContentId)
+    {
+        /// <summary>
+        /// What the content positions against, when that is not this context's own
+        /// <see cref="WrapperId"/>. A body property rather than a positional one: the record is
+        /// SHIPPED, and adding to the primary constructor would change its synthesized signature
+        /// and Deconstruct for every existing caller.
+        /// </summary>
+        public string? AnchorId { get; init; }
+    }
 }

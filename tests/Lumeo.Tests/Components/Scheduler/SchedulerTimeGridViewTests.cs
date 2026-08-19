@@ -1244,4 +1244,73 @@ public class SchedulerTimeGridViewTests : IAsyncLifetime
         Assert.Contains(opensInward ? "end-0" : "start-0", cls);
     }
 
+    // -- the timed pill's tooltip anchor --------------------------------------
+
+    [Fact]
+    public void A_timed_pill_anchors_its_own_tooltip()
+    {
+        // The pill is placed absolutely by the clock, so the wrapper Tooltip renders around it
+        // collapses to a zero-size box at its FLOW position - hundreds of pixels from anything the
+        // user can see, which is where the tooltip opened (reported against the running docs).
+        var start = D(2026, 4, 15, 11, 0);
+        var cut = _ctx.Render<L.SchedulerTimeGridView>(p => p
+            .Add(c => c.AnchorDate, start.Date)
+            .Add(c => c.Days, 7)
+            .Add(c => c.Events, new[] { new L.SchedulerEvent("e1", "1:1", start, start.AddMinutes(45)) }));
+
+        var pill = cut.Find("[data-event-instance]");
+        var pillId = pill.Id;
+        Assert.False(string.IsNullOrEmpty(pillId), "the pill has no id for its tooltip to anchor to");
+
+        // The wrapper points the tooltip at the pill rather than at itself.
+        var wrapper = pill.Closest("[id^='tooltip-wrapper-']");
+        Assert.NotNull(wrapper);
+        Assert.NotEqual(pillId, wrapper!.Id);
+    }
+
+    [Fact]
+    public void Two_grids_do_not_hand_out_the_same_pill_id()
+    {
+        // The id is what the tooltip positions against, and side-by-side panes put two grids on
+        // one page - a shared id would anchor one grid's tooltip to the other grid's pill.
+        var start = D(2026, 4, 15, 11, 0);
+        var events = new[] { new L.SchedulerEvent("e1", "1:1", start, start.AddMinutes(45)) };
+
+        var first = _ctx.Render<L.SchedulerTimeGridView>(p => p
+            .Add(c => c.AnchorDate, start.Date).Add(c => c.Days, 7).Add(c => c.Events, events));
+        var second = _ctx.Render<L.SchedulerTimeGridView>(p => p
+            .Add(c => c.AnchorDate, start.Date).Add(c => c.Days, 7).Add(c => c.Events, events));
+
+        Assert.NotEqual(first.Find("[data-event-instance]").Id, second.Find("[data-event-instance]").Id);
+    }
+
+    [Fact]
+    public void Dropping_the_gutter_leaves_the_grid_otherwise_intact()
+    {
+        // Side-by-side panes turn the hour labels off in every pane but the leftmost. The header
+        // and all-day spacers go with them, or that pane's columns shift out from under the one
+        // beside it.
+        var day = D(2026, 4, 15);
+        var events = new[]
+        {
+            new L.SchedulerEvent("a1", "Offsite", day, day.AddDays(1)) { AllDay = true },
+        };
+
+        var with = _ctx.Render<L.SchedulerTimeGridView>(p => p
+            .Add(c => c.AnchorDate, day).Add(c => c.Days, 7).Add(c => c.Events, events));
+        var without = _ctx.Render<L.SchedulerTimeGridView>(p => p
+            .Add(c => c.AnchorDate, day).Add(c => c.Days, 7).Add(c => c.ShowTimeGutter, false).Add(c => c.Events, events));
+
+        Assert.Single(with.FindAll("[data-testid='timegrid-hour-gutter']"));
+        Assert.Empty(without.FindAll("[data-testid='timegrid-hour-gutter']"));
+
+        // Every w-14 spacer goes, not only the labels: the day header's and the all-day strip's.
+        Assert.Equal(3, with.FindAll(".w-14").Count);
+        Assert.Empty(without.FindAll(".w-14"));
+
+        // And the day columns are all still there.
+        Assert.Equal(7, without.FindAll("[data-daycol]").Count);
+        Assert.Equal(7, without.FindAll("[data-dayheader]").Count);
+    }
+
 }
