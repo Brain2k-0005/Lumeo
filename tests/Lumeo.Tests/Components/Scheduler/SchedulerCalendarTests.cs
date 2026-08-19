@@ -658,6 +658,40 @@ public class SchedulerCalendarTests : IAsyncLifetime
     }
 
     [Fact]
+    public void While_reserving_the_lane_is_a_hard_height_because_alignment_outranks_a_taller_pill()
+    {
+        // The other side of the floor above. A pill styled taller through ResolveEventClassNames
+        // would open its lane in one calendar and not in the next, making that week taller there -
+        // exactly the drift the mode exists to remove. It clips instead, and only in a mode the
+        // caller turned on for that geometry (Codex review of PR #429).
+        var day = Anchor;
+        var calendars = new[]
+        {
+            new L.SchedulerCalendar("team", "Team"),
+            new L.SchedulerCalendar("personal", "Personal"),
+        };
+
+        var cut = _ctx.Render<L.Scheduler>(p => p
+            .Add(c => c.InitialView, L.SchedulerView.Month)
+            .Add(c => c.InitialDate, day)
+            .Add(c => c.Calendars, calendars)
+            .Add(c => c.PaneMode, L.SchedulerPaneMode.SideBySide)
+            .Add(c => c.Events, new[]
+            {
+                new L.SchedulerEvent("a", "Busy", day.AddHours(9), day.AddHours(10)) { CalendarId = "team" },
+            }));
+
+        var filled = cut.FindAll("[data-lane]")
+            .Select(e => e.ParentElement)
+            .First(e => e is not null && (e.GetAttribute("class") ?? string.Empty).Contains("w-full"));
+
+        var classes = filled!.GetAttribute("class") ?? string.Empty;
+        Assert.Contains("h-[19px]", classes);
+        Assert.DoesNotContain("min-h-", classes);
+        Assert.Contains("overflow-hidden", classes);
+    }
+
+    [Fact]
     public void The_overflow_row_is_one_line_of_a_fixed_height_whether_it_is_real_or_reserved()
     {
         // The reserved row holds a non-breaking space and can never wrap. The real one carries a
@@ -706,6 +740,11 @@ public class SchedulerCalendarTests : IAsyncLifetime
 
         Assert.NotEmpty(cut.FindAll("[data-cell-date]"));
         Assert.Empty(cut.FindAll("[data-lane]"));
+
+        // And nothing is hidden either. The clamp used to sit at the lane allocation only, so
+        // HiddenCounts still subtracted the negative and every cell of an empty calendar offered
+        // a "+3 more" whose popover held nothing (Codex review of PR #429).
+        Assert.Empty(cut.FindAll("[data-testid='month-more-events']"));
     }
 
 }

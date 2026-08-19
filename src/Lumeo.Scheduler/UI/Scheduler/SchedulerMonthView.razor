@@ -443,14 +443,19 @@
                 .Select(i => (Id: InstanceKey(i), StartDate: i.Start, EndDate: i.End, AllDay: byId[i.EventId].AllDay))
                 .ToList();
 
+            // Clamped ONCE, before anything reads it. Clamping at the point of use left
+            // HiddenCounts subtracting a negative budget, so an empty calendar rendered a
+            // "+3 more" in every cell with nothing behind it (Codex review of PR #429).
+            var laneBudget = Math.Max(0, MaxVisibleLanes);
+
             var lanes = SchedulerMonthLayout.PackRow(weekStart, packInput);
-            var hidden = SchedulerMonthLayout.HiddenCounts(weekStart, lanes, packInput, MaxVisibleLanes);
+            var hidden = SchedulerMonthLayout.HiddenCounts(weekStart, lanes, packInput, laneBudget);
 
             var maxLane = lanes.Count == 0 ? -1 : lanes.Values.Max();
             // Never fewer than the caller reserved, so every pane's rows come out the same height.
             var visibleLaneCount = ReserveFullLanes
-                ? Math.Max(0, MaxVisibleLanes)
-                : Math.Max(0, Math.Min(MaxVisibleLanes, maxLane + 1));
+                ? laneBudget
+                : Math.Min(laneBudget, maxLane + 1);
 
             for (var col = 0; col < 7; col++)
             {
@@ -599,12 +604,22 @@
     /// spacing was missing.
     /// </summary>
     // One pill lane, filled or empty, at the same 19px - so a week's height depends on how many
-    // lanes it has and not on which of them happen to hold events, which is what lets side-by-side
-    // panes keep the same date at the same height. The filled one takes the height as a floor: a
-    // caller may style a pill taller, and that has to open the lane rather than spill out of it.
-    // Both literals are spelled out because Tailwind reads class names out of this file as text.
+    // lanes it has and not on which of them happen to hold events. Both literals are spelled out
+    // because Tailwind reads class names out of this file as text.
+    //
+    // The filled lane treats that as a FLOOR normally: a caller may style a pill taller through
+    // ResolveEventClassNames, and it has to open the lane rather than spill into the one below.
+    // While reserving, it is a hard height instead. The two cannot both be had: a pill that grows
+    // in one calendar and not in the next makes that week taller there, which is the drift
+    // reserving exists to remove. Deciding it in favour of the pill would quietly break the one
+    // thing the caller turned the mode on for, so alignment wins and the lane clips - and only
+    // ever in a mode the caller opted into for exactly that geometry (both directions raised in
+    // review of PR #429).
     private const string EmptyLaneClasses = "h-[19px]";
-    private const string FilledLaneClasses = "w-full min-h-[19px]";
+    private const string GrowingLaneClasses = "w-full min-h-[19px]";
+    private const string FixedLaneClasses = "w-full h-[19px] overflow-hidden";
+
+    private string FilledLaneClasses => ReserveFullLanes ? FixedLaneClasses : GrowingLaneClasses;
 
     // The "+N more" row, real or reserved. Fixed height and one line in both cases: a label that
     // wraps in one pane and not in another puts the panes straight back out of step.
