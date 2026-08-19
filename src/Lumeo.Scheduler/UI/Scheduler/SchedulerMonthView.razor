@@ -78,12 +78,17 @@
                         {
                             if (slot is null)
                             {
-                                <div class="h-[19px]" aria-hidden="true"></div>
+                                <div class="@LaneHeight" aria-hidden="true"></div>
                             }
                             else
                             {
                                 var key = InstanceKey(slot.Instance);
-                                <Tooltip ShowDelay="400" Class="w-full">
+                                @* The SAME height as the empty lane above - one constant, because
+                                   the two only work as a pair. Left to size itself a pill came out
+                                   17.75px against that lane's 19, so a week with events stood
+                                   shorter than the reserved week beside it and the panes lost step
+                                   by 3.75px per row (measured). *@
+                                <Tooltip ShowDelay="400" Class="@FilledLaneClasses">
                                     <TooltipTrigger AsChild="true">
                                         <ChildContentSlot Context="pillSlot">
                                             <button type="button"
@@ -112,6 +117,21 @@
                                     <TooltipContent>@TooltipLabel(slot.Source, slot.Instance)</TooltipContent>
                                 </Tooltip>
                             }
+                        }
+                        @* The trigger is a row of its own, so a week holding one stands taller
+                           than a week that does not - and reserving the lanes alone would still
+                           leave the panes out of step (measured: 26px per overflowing week). *@
+                        @if (ReserveFullLanes && cell.HiddenCount == 0)
+                        {
+                            @* Mirrors the trigger's markup below rather than guessing at its height:
+                               same wrapper, same classes, just invisible. A bare span was 16.5px
+                               against the real row's 24, because the wrapper's line box - not the
+                               button - is what sets that height. Mirroring keeps the two in step if
+                               the trigger is ever restyled. *@
+                            <div class="relative">
+                                <span class="px-0.5 text-left text-[11px] invisible" aria-hidden="true"
+                                      data-testid="month-more-placeholder">&nbsp;</span>
+                            </div>
                         }
                         @if (cell.HiddenCount > 0)
                         {
@@ -216,6 +236,15 @@
 
     /// <summary>Max visible pill lanes per day before "+N more". Default <see cref="SchedulerMonthLayout.DefaultMaxVisibleLanes"/>.</summary>
     [Parameter] public int MaxVisibleLanes { get; set; } = SchedulerMonthLayout.DefaultMaxVisibleLanes;
+
+    /// <summary>
+    /// Holds every week open at its full lane budget, including the row the "+N more" trigger
+    /// occupies. Side-by-side calendar panes turn it on: they scroll as one box, so a week that is
+    /// taller in one calendar than another pushes every week below it out of step, permanently -
+    /// and the same date stops sitting at the same height, which is what standing them side by
+    /// side is for. Off by default, which sizes each week to its own content.
+    /// </summary>
+    [Parameter] public bool ReserveFullLanes { get; set; }
 
     /// <summary>The currently selected date (keyboard focus anchor / agenda-strip driver). Controlled via <see cref="SelectedDateChanged"/>.</summary>
     [Parameter] public DateTime? SelectedDate { get; set; }
@@ -408,7 +437,10 @@
             var hidden = SchedulerMonthLayout.HiddenCounts(weekStart, lanes, packInput, MaxVisibleLanes);
 
             var maxLane = lanes.Count == 0 ? -1 : lanes.Values.Max();
-            var visibleLaneCount = Math.Max(0, Math.Min(MaxVisibleLanes, maxLane + 1));
+            // Never fewer than the caller reserved, so every pane's rows come out the same height.
+            var visibleLaneCount = ReserveFullLanes
+                ? MaxVisibleLanes
+                : Math.Max(0, Math.Min(MaxVisibleLanes, maxLane + 1));
 
             for (var col = 0; col < 7; col++)
             {
@@ -556,6 +588,16 @@
     /// bar. The rounded corners were already dropped on those sides for this reason; only the
     /// spacing was missing.
     /// </summary>
+    /// <summary>
+    /// One pill lane, filled or empty. Both cases carry it, so a week's height depends on how many
+    /// lanes it has and not on which of them happen to hold events - the property side-by-side
+    /// panes rely on to keep the same date at the same height in every calendar.
+    /// </summary>
+    private const string LaneHeight = "h-[19px]";
+
+    /// <summary>The wrapper a pill sits in, held at <see cref="LaneHeight"/> like an empty lane.</summary>
+    private static string FilledLaneClasses => "w-full " + LaneHeight;
+
     private const double CellPadPx = 4;
     private const double CellBorderPx = 1;
 

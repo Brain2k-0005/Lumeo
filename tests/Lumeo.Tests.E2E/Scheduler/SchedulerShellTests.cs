@@ -255,4 +255,45 @@ public class SchedulerShellTests : PlaywrightTestBase
             $"the tooltip opened {Math.Abs(tb.X - pb.X)}px to the side of its event");
     }
 
+
+    [Fact]
+    public async Task Month_Panes_Scroll_As_One_Box_With_Their_Weeks_In_Step()
+    {
+        // Reported: three calendars side by side, three scrollbars. Sharing the scroll is only half
+        // of it - a week is only at the same height in every pane if it is the same HEIGHT, and a
+        // pane overflowing a day used to stand 26px taller, pushing every week below it out of
+        // step. Both halves are geometry, which no markup assertion can see: the first fix left
+        // 3.75px of drift per row that only a measurement caught.
+        await Goto("/e2e/scheduler-shell-preview");
+
+        var section = Page.Locator("[data-testid='panes-section']");
+        await section.ScrollIntoViewIfNeededAsync();
+        await Assertions.Expect(section.Locator("[data-scheduler-pane]")).ToHaveCountAsync(2);
+
+        // The harness overflows a day in one pane only - the case that used to drift.
+        await Assertions.Expect(section.Locator("[data-testid='month-more-events']"))
+            .ToHaveCountAsync(1, new() { Timeout = 5000 });
+
+        var scrollers = await section.EvaluateAsync<int>(
+            @"el => [...el.querySelectorAll('*')].filter(d => {
+                  const cs = getComputedStyle(d);
+                  return (cs.overflowY === 'auto' || cs.overflowY === 'scroll')
+                      && d.scrollHeight > d.clientHeight + 2;
+              }).length");
+        Assert.True(scrollers == 1, $"the panes offer {scrollers} scrollbars, not one");
+
+        var rows = await section.EvaluateAsync<int[][]>(
+            @"el => [...el.querySelectorAll('[data-scheduler-pane]')].map(p =>
+                  [...new Set([...p.querySelectorAll('[data-cell-date]')]
+                      .map(c => Math.round(c.getBoundingClientRect().top)))].sort((a, b) => a - b))");
+
+        Assert.Equal(2, rows.Length);
+        Assert.True(rows[0].Length >= 5, $"only {rows[0].Length} week rows were measured");
+        Assert.Equal(rows[0].Length, rows[1].Length);
+        for (var i = 0; i < rows[0].Length; i++)
+        {
+            Assert.True(Math.Abs(rows[0][i] - rows[1][i]) <= 1,
+                $"week {i + 1} sits at {rows[0][i]} in one pane and {rows[1][i]} in the other");
+        }
+    }
 }

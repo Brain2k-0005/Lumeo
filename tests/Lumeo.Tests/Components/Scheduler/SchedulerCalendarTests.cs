@@ -532,4 +532,95 @@ public class SchedulerCalendarTests : IAsyncLifetime
         Assert.Equal(24, cut.FindAll("[data-testid='timegrid-hour-gutter'] .h-12").Count);
     }
 
+    // -- the month view joins the shared scroll -------------------------------
+
+    [Fact]
+    public void Month_panes_share_the_single_scroller_too()
+    {
+        // Reported: three calendars side by side, three scrollbars. The month grid's vertical axis
+        // is the same dates in every pane, so one scroll offset means the same week everywhere -
+        // it belongs in the shared-scroll set, and was left out of it by omission.
+        var calendars = new[]
+        {
+            new L.SchedulerCalendar("team", "Team"),
+            new L.SchedulerCalendar("personal", "Personal"),
+            new L.SchedulerCalendar("holidays", "Holidays"),
+        };
+
+        var cut = _ctx.Render<L.Scheduler>(p => p
+            .Add(c => c.InitialView, L.SchedulerView.Month)
+            .Add(c => c.InitialDate, Anchor)
+            .Add(c => c.Events, Array.Empty<L.SchedulerEvent>())
+            .Add(c => c.Calendars, calendars)
+            .Add(c => c.PaneMode, L.SchedulerPaneMode.SideBySide));
+
+        Assert.Equal(3, cut.FindAll("[data-scheduler-pane]").Count);
+        Assert.Empty(cut.FindAll("[data-scheduler-pane] > .overflow-auto"));
+        Assert.Single(ScrollersIn(cut));
+    }
+
+    [Fact]
+    public void Month_panes_do_not_hand_the_first_one_the_hour_gutters_width()
+    {
+        // The shared TIME AXIS is a time-grid concept. The month grid has no hour labels, so giving
+        // its first pane the gutter's width would simply make that calendar wider than the others.
+        var calendars = new[]
+        {
+            new L.SchedulerCalendar("team", "Team"),
+            new L.SchedulerCalendar("personal", "Personal"),
+        };
+
+        var cut = _ctx.Render<L.Scheduler>(p => p
+            .Add(c => c.InitialView, L.SchedulerView.Month)
+            .Add(c => c.InitialDate, Anchor)
+            .Add(c => c.Events, Array.Empty<L.SchedulerEvent>())
+            .Add(c => c.Calendars, calendars)
+            .Add(c => c.PaneMode, L.SchedulerPaneMode.SideBySide));
+
+        Assert.All(cut.FindAll("[data-scheduler-pane]"),
+            p => Assert.DoesNotContain("flex-basis", p.GetAttribute("style") ?? string.Empty));
+        Assert.All(cut.FindAll("[data-scheduler-pane-name]"),
+            n => Assert.DoesNotContain("ps-14", n.GetAttribute("class") ?? string.Empty));
+    }
+
+    [Fact]
+    public void A_week_is_the_same_height_in_every_month_pane()
+    {
+        // One pane overflowing a day made its week taller - and with a shared scroll that pushes
+        // every week below it out of step permanently. Measured on the running docs before the fix:
+        // 26px per overflowing week.
+        var day = Anchor;
+        var calendars = new[]
+        {
+            new L.SchedulerCalendar("team", "Team"),
+            new L.SchedulerCalendar("personal", "Personal"),
+        };
+
+        var cut = _ctx.Render<L.Scheduler>(p => p
+            .Add(c => c.InitialView, L.SchedulerView.Month)
+            .Add(c => c.InitialDate, day)
+            .Add(c => c.Calendars, calendars)
+            .Add(c => c.PaneMode, L.SchedulerPaneMode.SideBySide)
+            .Add(c => c.Events, Enumerable.Range(0, 6)
+                .Select(i => new L.SchedulerEvent($"a{i}", $"Busy {i}", day.AddHours(9), day.AddHours(10))
+                {
+                    CalendarId = "team",   // only ONE pane overflows
+                })
+                .ToArray()));
+
+        var panes = cut.FindAll("[data-scheduler-pane]");
+        Assert.Equal(2, panes.Count);
+
+        // The overflowing pane shows the trigger; the other reserves its row instead.
+        Assert.Single(panes[0].QuerySelectorAll("[data-testid='month-more-events']"));
+        Assert.Empty(panes[1].QuerySelectorAll("[data-testid='month-more-events']"));
+        Assert.NotEmpty(panes[1].QuerySelectorAll("[data-testid='month-more-placeholder']"));
+
+        // And every cell in both panes carries the full lane budget, so no week is shorter.
+        var laneCounts = panes
+            .Select(p => p.QuerySelectorAll("[data-cell-date]:first-child [data-lane], [data-cell-date] [data-lane]").Length)
+            .ToList();
+        Assert.Equal(laneCounts[0], laneCounts[1]);
+    }
+
 }
