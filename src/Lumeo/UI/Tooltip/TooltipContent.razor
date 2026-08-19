@@ -169,17 +169,29 @@
             // not re-enter this branch — no render loop, no re-registering positionFixed.
             var anchor = Context.AnchorId ?? Context.WrapperId;
             var resolved = await Interop.PositionFixed(_contentId, anchor, AlignStr, false, SideStr, Offset, OnLiveSideChanged);
-            _registered = true;
-            _appliedSide = SideStr;
-            _appliedOffset = Offset;
-            _appliedAlign = AlignStr;
-            _appliedAnchor = anchor;
-            // The box may have collision-flipped to the opposite side on this INITIAL placement; re-render
-            // so the arrow + data-side follow it.
-            if (resolved != _resolvedSide)
+
+            // Empty means the anchor was not in the DOM, so nothing was placed and nothing
+            // registered. Latching the applied state here would record an element the box never
+            // attached to and stop it ever retrying — and an anchor that arrives on a LATER
+            // render, which a conditionally rendered one does, would never be picked up
+            // (Codex review of PR #428). Leaving the state alone makes the next render try again.
+            //
+            // Guarded rather than returned early: the exit wiring at the end of this method has to
+            // run on every pass regardless.
+            if (!string.IsNullOrEmpty(resolved))
             {
-                _resolvedSide = resolved;
-                StateHasChanged();
+                _registered = true;
+                _appliedSide = SideStr;
+                _appliedOffset = Offset;
+                _appliedAlign = AlignStr;
+                _appliedAnchor = anchor;
+                // The box may have collision-flipped to the opposite side on this INITIAL placement;
+                // re-render so the arrow + data-side follow it.
+                if (resolved != _resolvedSide)
+                {
+                    _resolvedSide = resolved;
+                    StateHasChanged();
+                }
             }
         }
         else if (!IsOpen && _registered)

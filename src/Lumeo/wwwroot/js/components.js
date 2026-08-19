@@ -487,7 +487,12 @@ const positionCleanups = new Map();
 export function positionFixed(contentId, referenceId, align, matchWidth, side, offset, dotnetRef) {
     const content = document.getElementById(contentId);
     const reference = document.getElementById(referenceId);
-    if (!content || !reference) return side || 'bottom';
+    // Empty, not a side: nothing was placed and nothing was registered. A caller that latches
+    // "applied" state has to be able to tell that apart from a real placement, or it records a
+    // reference it never attached to and never retries — which is what happened when a tooltip's
+    // anchor was swapped for an element that arrives on a later render (Codex review of PR #428).
+    // Every other caller ignores the return value.
+    if (!content || !reference) return '';
 
     const resolvedSide = side || 'bottom';
     // The side the box ACTUALLY lands on after any collision flip — returned to the caller so a
