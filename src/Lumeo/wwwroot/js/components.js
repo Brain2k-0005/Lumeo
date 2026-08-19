@@ -487,12 +487,20 @@ const positionCleanups = new Map();
 export function positionFixed(contentId, referenceId, align, matchWidth, side, offset, dotnetRef) {
     const content = document.getElementById(contentId);
     const reference = document.getElementById(referenceId);
-    // Empty, not a side: nothing was placed and nothing was registered. A caller that latches
-    // "applied" state has to be able to tell that apart from a real placement, or it records a
-    // reference it never attached to and never retries — which is what happened when a tooltip's
-    // anchor was swapped for an element that arrives on a later render (Codex review of PR #428).
-    // Every other caller ignores the return value.
-    if (!content || !reference) return '';
+    if (!content || !reference) {
+        // Tear the PREVIOUS placement down first. Giving up without it left the old watcher
+        // running, so a box whose anchor was swapped for one not yet in the DOM kept being
+        // positioned against the element it used to follow (CodeRabbit review of PR #428).
+        if (positionCleanups.has(contentId)) {
+            positionCleanups.get(contentId)();
+        }
+        // Empty, not a side: nothing was placed and nothing is registered. A caller that latches
+        // "applied" state has to be able to tell that apart from a real placement, or it records a
+        // reference it never attached to and never retries — which is what happened when a
+        // tooltip's anchor was swapped for an element that arrives on a later render (Codex
+        // review of PR #428). Every other caller ignores the return value.
+        return '';
+    }
 
     const resolvedSide = side || 'bottom';
     // The side the box ACTUALLY lands on after any collision flip — returned to the caller so a

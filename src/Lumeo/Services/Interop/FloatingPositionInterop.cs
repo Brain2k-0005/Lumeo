@@ -53,6 +53,13 @@ internal sealed class FloatingPositionInterop
         _sideChangeHandlers[contentId] = onSideChanged;
         // Same distinction as the overload above: null is a stale script, empty is "nothing placed".
         var resolved = await module.InvokeAsync<string?>("positionFixed", contentId, referenceId, align, matchWidth, side, offset, selfRef);
+
+        // The handler is stored BEFORE the call, because the JS can report a flip during it. When
+        // nothing was placed there is no watcher to report anything, and a surface torn down before
+        // a retry succeeds would leave the entry behind for the lifetime of the service (Codex
+        // review of PR #428).
+        if (resolved is { Length: 0 }) _sideChangeHandlers.Remove(contentId);
+
         return resolved ?? side;
     }
 
