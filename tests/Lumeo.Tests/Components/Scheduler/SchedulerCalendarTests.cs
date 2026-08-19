@@ -532,4 +532,219 @@ public class SchedulerCalendarTests : IAsyncLifetime
         Assert.Equal(24, cut.FindAll("[data-testid='timegrid-hour-gutter'] .h-12").Count);
     }
 
+    // -- the month view joins the shared scroll -------------------------------
+
+    [Fact]
+    public void Month_panes_share_the_single_scroller_too()
+    {
+        // Reported: three calendars side by side, three scrollbars. The month grid's vertical axis
+        // is the same dates in every pane, so one scroll offset means the same week everywhere -
+        // it belongs in the shared-scroll set, and was left out of it by omission.
+        var calendars = new[]
+        {
+            new L.SchedulerCalendar("team", "Team"),
+            new L.SchedulerCalendar("personal", "Personal"),
+            new L.SchedulerCalendar("holidays", "Holidays"),
+        };
+
+        var cut = _ctx.Render<L.Scheduler>(p => p
+            .Add(c => c.InitialView, L.SchedulerView.Month)
+            .Add(c => c.InitialDate, Anchor)
+            .Add(c => c.Events, Array.Empty<L.SchedulerEvent>())
+            .Add(c => c.Calendars, calendars)
+            .Add(c => c.PaneMode, L.SchedulerPaneMode.SideBySide));
+
+        Assert.Equal(3, cut.FindAll("[data-scheduler-pane]").Count);
+        Assert.Empty(cut.FindAll("[data-scheduler-pane] > .overflow-auto"));
+        Assert.Single(ScrollersIn(cut));
+    }
+
+    [Fact]
+    public void Month_panes_do_not_hand_the_first_one_the_hour_gutters_width()
+    {
+        // The shared TIME AXIS is a time-grid concept. The month grid has no hour labels, so giving
+        // its first pane the gutter's width would simply make that calendar wider than the others.
+        var calendars = new[]
+        {
+            new L.SchedulerCalendar("team", "Team"),
+            new L.SchedulerCalendar("personal", "Personal"),
+        };
+
+        var cut = _ctx.Render<L.Scheduler>(p => p
+            .Add(c => c.InitialView, L.SchedulerView.Month)
+            .Add(c => c.InitialDate, Anchor)
+            .Add(c => c.Events, Array.Empty<L.SchedulerEvent>())
+            .Add(c => c.Calendars, calendars)
+            .Add(c => c.PaneMode, L.SchedulerPaneMode.SideBySide));
+
+        Assert.All(cut.FindAll("[data-scheduler-pane]"),
+            p => Assert.DoesNotContain("flex-basis", p.GetAttribute("style") ?? string.Empty));
+        Assert.All(cut.FindAll("[data-scheduler-pane-name]"),
+            n => Assert.DoesNotContain("ps-14", n.GetAttribute("class") ?? string.Empty));
+    }
+
+    [Fact]
+    public void A_week_is_the_same_height_in_every_month_pane()
+    {
+        // One pane overflowing a day made its week taller - and with a shared scroll that pushes
+        // every week below it out of step permanently. Measured on the running docs before the fix:
+        // 26px per overflowing week.
+        var day = Anchor;
+        var calendars = new[]
+        {
+            new L.SchedulerCalendar("team", "Team"),
+            new L.SchedulerCalendar("personal", "Personal"),
+        };
+
+        var cut = _ctx.Render<L.Scheduler>(p => p
+            .Add(c => c.InitialView, L.SchedulerView.Month)
+            .Add(c => c.InitialDate, day)
+            .Add(c => c.Calendars, calendars)
+            .Add(c => c.PaneMode, L.SchedulerPaneMode.SideBySide)
+            .Add(c => c.Events, Enumerable.Range(0, 6)
+                .Select(i => new L.SchedulerEvent($"a{i}", $"Busy {i}", day.AddHours(9), day.AddHours(10))
+                {
+                    CalendarId = "team",   // only ONE pane overflows
+                })
+                .ToArray()));
+
+        var panes = cut.FindAll("[data-scheduler-pane]");
+        Assert.Equal(2, panes.Count);
+
+        // The overflowing pane shows the trigger; the other reserves its row instead.
+        Assert.Single(panes[0].QuerySelectorAll("[data-testid='month-more-events']"));
+        Assert.Empty(panes[1].QuerySelectorAll("[data-testid='month-more-events']"));
+        Assert.NotEmpty(panes[1].QuerySelectorAll("[data-testid='month-more-placeholder']"));
+
+        // And EVERY cell in both panes carries the full lane budget, so no week is shorter than
+        // the one beside it. Per cell, not summed: a total can come out equal while the cells
+        // underneath it differ.
+        var laneCounts = panes
+            .SelectMany(p => p.QuerySelectorAll("[data-cell-date]"))
+            .Select(c => c.QuerySelectorAll("[data-lane]").Length)
+            .ToList();
+
+        Assert.NotEmpty(laneCounts);
+        // Guarded, because "every cell has the same number of lanes" is also true of no lanes at
+        // all - which is how the previous version of this assertion passed against a selector that
+        // matched nothing (Codex review of PR #429).
+        Assert.All(laneCounts, n => Assert.True(n > 0, "a cell rendered no lanes at all"));
+        Assert.Single(laneCounts.Distinct());
+    }
+
+    [Fact]
+    public void A_filled_lane_takes_the_lane_height_as_a_floor_not_as_a_ceiling()
+    {
+        // Both lanes carry the same 19px or the panes drift. The filled one takes it as a floor:
+        // ResolveEventClassNames may style a pill taller, and a fixed height would leave that pill
+        // spilling into the lane below - in a single calendar too, which never asked for any of
+        // this (Codex review of PR #429).
+        var day = Anchor;
+        var cut = _ctx.Render<L.Scheduler>(p => p
+            .Add(c => c.InitialView, L.SchedulerView.Month)
+            .Add(c => c.InitialDate, day)
+            .Add(c => c.Events, new[]
+            {
+                new L.SchedulerEvent("a", "Busy", day.AddHours(9), day.AddHours(10)),
+            }));
+
+        var filled = cut.FindAll("[data-lane]")
+            .Select(e => e.ParentElement)
+            .First(e => e is not null && (e.GetAttribute("class") ?? string.Empty).Contains("min-h-"));
+
+        var classes = filled!.GetAttribute("class") ?? string.Empty;
+        Assert.Contains("min-h-[19px]", classes);
+        Assert.DoesNotContain(" h-[19px]", " " + classes);
+    }
+
+    [Fact]
+    public void While_reserving_the_lane_is_a_hard_height_because_alignment_outranks_a_taller_pill()
+    {
+        // The other side of the floor above. A pill styled taller through ResolveEventClassNames
+        // would open its lane in one calendar and not in the next, making that week taller there -
+        // exactly the drift the mode exists to remove. It clips instead, and only in a mode the
+        // caller turned on for that geometry (Codex review of PR #429).
+        var day = Anchor;
+        var calendars = new[]
+        {
+            new L.SchedulerCalendar("team", "Team"),
+            new L.SchedulerCalendar("personal", "Personal"),
+        };
+
+        var cut = _ctx.Render<L.Scheduler>(p => p
+            .Add(c => c.InitialView, L.SchedulerView.Month)
+            .Add(c => c.InitialDate, day)
+            .Add(c => c.Calendars, calendars)
+            .Add(c => c.PaneMode, L.SchedulerPaneMode.SideBySide)
+            .Add(c => c.Events, new[]
+            {
+                new L.SchedulerEvent("a", "Busy", day.AddHours(9), day.AddHours(10)) { CalendarId = "team" },
+            }));
+
+        var filled = cut.FindAll("[data-lane]")
+            .Select(e => e.ParentElement)
+            .First(e => e is not null && (e.GetAttribute("class") ?? string.Empty).Contains("w-full"));
+
+        var classes = filled!.GetAttribute("class") ?? string.Empty;
+        Assert.Contains("h-[19px]", classes);
+        Assert.DoesNotContain("min-h-", classes);
+        Assert.Contains("overflow-hidden", classes);
+    }
+
+    [Fact]
+    public void The_overflow_row_is_one_line_of_a_fixed_height_whether_it_is_real_or_reserved()
+    {
+        // The reserved row holds a non-breaking space and can never wrap. The real one carries a
+        // translated label - and left free to wrap, a longer one in another language would have
+        // made that week two rows tall in one pane and one in the next, which is the drift this
+        // whole change removes (Codex review of PR #429).
+        var day = Anchor;
+        var calendars = new[]
+        {
+            new L.SchedulerCalendar("team", "Team"),
+            new L.SchedulerCalendar("personal", "Personal"),
+        };
+
+        var cut = _ctx.Render<L.Scheduler>(p => p
+            .Add(c => c.InitialView, L.SchedulerView.Month)
+            .Add(c => c.InitialDate, day)
+            .Add(c => c.Calendars, calendars)
+            .Add(c => c.PaneMode, L.SchedulerPaneMode.SideBySide)
+            .Add(c => c.Events, Enumerable.Range(0, 6)
+                .Select(i => new L.SchedulerEvent($"a{i}", $"Busy {i}", day.AddHours(9), day.AddHours(10))
+                {
+                    CalendarId = "team",
+                })
+                .ToArray()));
+
+        var real = cut.Find("[data-testid='month-more-events']");
+        var reserved = cut.Find("[data-testid='month-more-placeholder']");
+
+        foreach (var label in new[] { real, reserved })
+        {
+            Assert.Contains("truncate", label.GetAttribute("class") ?? string.Empty);
+            Assert.Contains("h-6", label.ParentElement?.GetAttribute("class") ?? string.Empty);
+        }
+    }
+
+    [Fact]
+    public void A_negative_lane_budget_does_not_take_the_reserved_grid_down_with_it()
+    {
+        // Reserving handed MaxVisibleLanes straight to an array length, where the old expression
+        // had clamped it on the way through - so a negative value threw during render instead of
+        // simply showing nothing (CodeRabbit review of PR #429).
+        var cut = _ctx.Render<L.SchedulerMonthView>(p => p
+            .Add(c => c.AnchorDate, Anchor)
+            .Add(c => c.ReserveFullLanes, true)
+            .Add(c => c.MaxVisibleLanes, -3));
+
+        Assert.NotEmpty(cut.FindAll("[data-cell-date]"));
+        Assert.Empty(cut.FindAll("[data-lane]"));
+
+        // And nothing is hidden either. The clamp used to sit at the lane allocation only, so
+        // HiddenCounts still subtracted the negative and every cell of an empty calendar offered
+        // a "+3 more" whose popover held nothing (Codex review of PR #429).
+        Assert.Empty(cut.FindAll("[data-testid='month-more-events']"));
+    }
+
 }

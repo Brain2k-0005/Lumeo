@@ -74,21 +74,33 @@
                          @ondblclick="() => OnCellDoubleClickAsync(cell.Date)"
                          @onkeydown="e => OnGridKeyDownAsync(e, cellIndex)">
                         <span class="@DayNumberClasses(cell)">@cell.Date.Day</span>
-                        @foreach (var slot in cell.Lanes)
+                        @for (var l = 0; l < cell.Lanes.Count; l++)
                         {
+                            @* Copied out of the loop before anything defers on it - the same
+                               capture the day index takes above. *@
+                            var laneIndex = l;
+                            var slot = cell.Lanes[laneIndex];
                             if (slot is null)
                             {
-                                <div class="h-[19px]" aria-hidden="true"></div>
+                                <div class="@EmptyLaneClasses" data-lane="@laneIndex" aria-hidden="true"></div>
                             }
                             else
                             {
                                 var key = InstanceKey(slot.Instance);
-                                <Tooltip ShowDelay="400" Class="w-full">
+                                @* Carries the same 19px the empty lane above is fixed at, as a
+                                   FLOOR. Left to size itself a pill came out 17.75px against that
+                                   19, so a week with events stood shorter than the reserved week
+                                   beside it and the panes lost step by 3.75px per row (measured).
+                                   A floor rather than a fixed height because ResolveEventClassNames
+                                   may make a pill taller, and that has to push the lane open rather
+                                   than spill into the one below (Codex review of PR #429). *@
+                                <Tooltip ShowDelay="400" Class="@FilledLaneClasses">
                                     <TooltipTrigger AsChild="true">
                                         <ChildContentSlot Context="pillSlot">
                                             <button type="button"
                                                     @ref="_pillRefs[key]"
                                                     class="@PillClasses(slot)"
+                                                    data-lane="@laneIndex"
                                                     data-event-instance="@key"
                                                     data-event-id="@slot.Instance.EventId"
                                                     style="@PillStyle(slot)"
@@ -113,6 +125,21 @@
                                 </Tooltip>
                             }
                         }
+                        @* The trigger is a row of its own, so a week holding one stands taller
+                           than a week that does not - and reserving the lanes alone would still
+                           leave the panes out of step (measured: 26px per overflowing week). *@
+                        @if (ReserveFullLanes && cell.HiddenCount == 0)
+                        {
+                            @* Mirrors the trigger's markup below rather than guessing at its height:
+                               same wrapper, same classes, just invisible. A bare span was 16.5px
+                               against the real row's 24, because the wrapper's line box - not the
+                               button - is what sets that height. Mirroring keeps the two in step if
+                               the trigger is ever restyled. *@
+                            <div class="@MoreRowClasses">
+                                <span class="@MoreTriggerClasses invisible" aria-hidden="true"
+                                      data-testid="month-more-placeholder">&nbsp;</span>
+                            </div>
+                        }
                         @if (cell.HiddenCount > 0)
                         {
                             @* Self-contained popover (not the Popover/PopoverTrigger primitives — both the
@@ -123,7 +150,11 @@
                                Mirrors DataGridColumnVisibility.razor's own proven manual click-outside popover
                                pattern — same RegisterClickOutside/UnregisterClickOutside lifecycle, just scoped
                                to this cell instead of a column id.) *@
-                            <div class="relative">
+                            @* Fixed height and a single line, matching the reserved row above.
+                               Left to wrap, a longer label in another language would have made this
+                               week two rows tall in one pane and one in the next, which is exactly
+                               the drift this change removes (Codex review of PR #429). *@
+                            <div class="@MoreRowClasses">
                                 @* Same four fixes the time grid's copy of this popover took in
                                    review (PR #427): the trigger needs an id or a second press reads
                                    as an outside click and reopens what it meant to close, and a
@@ -131,7 +162,7 @@
                                    the dialog's own keydown cannot hear Escape. *@
                                 <button type="button"
                                         id="@MoreTriggerId(cellIndex)"
-                                        class="px-0.5 text-left text-[11px] text-muted-foreground hover:text-foreground hover:underline cursor-pointer"
+                                        class="@MoreTriggerClasses text-muted-foreground hover:text-foreground hover:underline cursor-pointer"
                                         data-testid="month-more-events"
                                         aria-expanded="@((_openMoreCellIndex == cellIndex).ToString().ToLowerInvariant())"
                                         @onclick="() => ToggleMorePopoverAsync(cellIndex)"
@@ -216,6 +247,14 @@
 
     /// <summary>Max visible pill lanes per day before "+N more". Default <see cref="SchedulerMonthLayout.DefaultMaxVisibleLanes"/>.</summary>
     [Parameter] public int MaxVisibleLanes { get; set; } = SchedulerMonthLayout.DefaultMaxVisibleLanes;
+
+    /// <summary>
+    /// Reserves every week's full lane budget, including the row the "+N more" trigger occupies,
+    /// whether or not that week has anything to put there. Off by default, which sizes each week to
+    /// its own content. Turn it on to make a week's height independent of what is in it - which is
+    /// what lets several calendars shown side by side keep the same date at the same height.
+    /// </summary>
+    [Parameter] public bool ReserveFullLanes { get; set; }
 
     /// <summary>The currently selected date (keyboard focus anchor / agenda-strip driver). Controlled via <see cref="SelectedDateChanged"/>.</summary>
     [Parameter] public DateTime? SelectedDate { get; set; }
@@ -404,11 +443,19 @@
                 .Select(i => (Id: InstanceKey(i), StartDate: i.Start, EndDate: i.End, AllDay: byId[i.EventId].AllDay))
                 .ToList();
 
+            // Clamped ONCE, before anything reads it. Clamping at the point of use left
+            // HiddenCounts subtracting a negative budget, so an empty calendar rendered a
+            // "+3 more" in every cell with nothing behind it (Codex review of PR #429).
+            var laneBudget = Math.Max(0, MaxVisibleLanes);
+
             var lanes = SchedulerMonthLayout.PackRow(weekStart, packInput);
-            var hidden = SchedulerMonthLayout.HiddenCounts(weekStart, lanes, packInput, MaxVisibleLanes);
+            var hidden = SchedulerMonthLayout.HiddenCounts(weekStart, lanes, packInput, laneBudget);
 
             var maxLane = lanes.Count == 0 ? -1 : lanes.Values.Max();
-            var visibleLaneCount = Math.Max(0, Math.Min(MaxVisibleLanes, maxLane + 1));
+            // Never fewer than the caller reserved, so every pane's rows come out the same height.
+            var visibleLaneCount = ReserveFullLanes
+                ? laneBudget
+                : Math.Min(laneBudget, maxLane + 1);
 
             for (var col = 0; col < 7; col++)
             {
@@ -556,6 +603,29 @@
     /// bar. The rounded corners were already dropped on those sides for this reason; only the
     /// spacing was missing.
     /// </summary>
+    // One pill lane, filled or empty, at the same 19px - so a week's height depends on how many
+    // lanes it has and not on which of them happen to hold events. Both literals are spelled out
+    // because Tailwind reads class names out of this file as text.
+    //
+    // The filled lane treats that as a FLOOR normally: a caller may style a pill taller through
+    // ResolveEventClassNames, and it has to open the lane rather than spill into the one below.
+    // While reserving, it is a hard height instead. The two cannot both be had: a pill that grows
+    // in one calendar and not in the next makes that week taller there, which is the drift
+    // reserving exists to remove. Deciding it in favour of the pill would quietly break the one
+    // thing the caller turned the mode on for, so alignment wins and the lane clips - and only
+    // ever in a mode the caller opted into for exactly that geometry (both directions raised in
+    // review of PR #429).
+    private const string EmptyLaneClasses = "h-[19px]";
+    private const string GrowingLaneClasses = "w-full min-h-[19px]";
+    private const string FixedLaneClasses = "w-full h-[19px] overflow-hidden";
+
+    private string FilledLaneClasses => ReserveFullLanes ? FixedLaneClasses : GrowingLaneClasses;
+
+    // The "+N more" row, real or reserved. Fixed height and one line in both cases: a label that
+    // wraps in one pane and not in another puts the panes straight back out of step.
+    private const string MoreRowClasses = "relative h-6";
+    private const string MoreTriggerClasses = "px-0.5 w-full text-left text-[11px] truncate";
+
     private const double CellPadPx = 4;
     private const double CellBorderPx = 1;
 

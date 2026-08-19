@@ -110,6 +110,7 @@
             {
                 case SchedulerView.Month:
                     <SchedulerMonthView Events="@pane.Events" AnchorDate="@_fpAnchor"
+                                        ReserveFullLanes="@SharesPaneScroll"
                                         FirstDayOfWeek="@EffectiveFirstDayOfWeek"
                                         BusinessHours="@BusinessHours"
                                         ShowWeekNumbers="@ShowWeekNumbers" HideWeekends="@HideWeekends"
@@ -239,7 +240,7 @@
             {
                 var nameIndex = p;
                 var cal = VisibleCalendars[nameIndex];
-                var overGutter = SharesPaneScroll && nameIndex == 0;
+                var overGutter = SharesTimeAxis && nameIndex == 0;
                 @* Matching the pane geometry below, gutter and all, or the names stop sitting over
                    their own columns. The first one is padded past the hour labels so it reads above
                    the days rather than above the clock. *@
@@ -284,7 +285,7 @@
                        therefore wider by exactly the gutter, and the flex basis gives that width
                        back so every pane's DAY columns still come out the same size. *@
                     <div @key="cal.Id" class="flex min-w-0 flex-1 flex-col gap-1" data-scheduler-pane="@cal.Id"
-                         style="@(SharesPaneScroll && paneIndex == 0 ? "flex-basis: 3.5rem" : null)">
+                         style="@(SharesTimeAxis && paneIndex == 0 ? "flex-basis: 3.5rem" : null)">
                         @* No scroller of its own. One per pane meant one scrollbar per
                            calendar, each moving only its own column — so the same hour was
                            never on screen twice, which is the whole point of putting the
@@ -292,7 +293,7 @@
                            all together instead, and the views hand their scrolling over via
                            SelfScrolling. *@
                         <div class="@(SharesPaneScroll ? "min-h-0 flex-1" : "min-h-0 flex-1 overflow-auto")">
-                            @viewFor((EventsFor(cal.Id), cal.Id, !SharesPaneScroll || paneIndex == 0))
+                            @viewFor((EventsFor(cal.Id), cal.Id, !SharesTimeAxis || paneIndex == 0))
                         </div>
                     </div>
                 }
@@ -1026,7 +1027,16 @@
     /// place (Codex review of PR #427).
     /// </summary>
     private bool SharesPaneScroll =>
-        ShowsPanes && EffectiveView is SchedulerView.Week or SchedulerView.Day or SchedulerView.MultiDay;
+        ShowsPanes && EffectiveView is SchedulerView.Month
+            or SchedulerView.Week or SchedulerView.Day or SchedulerView.MultiDay;
+
+    /// <summary>
+    /// Whether the leftmost pane carries the hour labels for the whole set. A TIME GRID concept,
+    /// not a scrolling one: the month grid has no hour axis, and giving its first pane the gutter's
+    /// width would simply make that calendar wider than the others.
+    /// </summary>
+    private bool SharesTimeAxis =>
+        SharesPaneScroll && EffectiveView is SchedulerView.Week or SchedulerView.Day or SchedulerView.MultiDay;
 
     // ── Built-in dialog ──────────────────────────────────────────────────
     private bool _dialogOpen;
