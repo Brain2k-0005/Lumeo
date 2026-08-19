@@ -118,4 +118,109 @@ public class TooltipRepositionOnSideChangeTests : IAsyncLifetime
 
         Assert.Equal(callsAfterOpen, PositionFixedCalls());
     }
+
+    // -- the anchor is placement state too ------------------------------------
+
+    /// <summary>Drives Tooltip.AnchorElementId from its own parameter, so a re-render moves the
+    /// anchor while the tooltip stays open.</summary>
+    private sealed class TooltipAnchorProbe : ComponentBase
+    {
+        [Parameter] public string? Anchor { get; set; }
+
+        /// <summary>Flows into TooltipContent's ChildContent, so changing it re-renders the content
+        /// without touching any input the placement guard reads.</summary>
+        [Parameter] public string Label { get; set; } = "Tooltip text";
+
+        protected override void BuildRenderTree(Microsoft.AspNetCore.Components.Rendering.RenderTreeBuilder builder)
+        {
+            builder.OpenElement(0, "div");
+            builder.AddAttribute(1, "id", "anchor-a");
+            builder.CloseElement();
+            builder.OpenElement(2, "div");
+            builder.AddAttribute(3, "id", "anchor-b");
+            builder.CloseElement();
+
+            builder.OpenComponent<L.Tooltip>(4);
+            builder.AddAttribute(5, "ShowDelay", 0);
+            builder.AddAttribute(6, "AnchorElementId", Anchor);
+            builder.AddAttribute(7, "ChildContent", (RenderFragment)(b =>
+            {
+                b.OpenComponent<L.TooltipTrigger>(0);
+                b.AddAttribute(1, "ChildContent", (RenderFragment)(inner => inner.AddContent(0, "Hover me")));
+                b.CloseComponent();
+
+                b.OpenComponent<L.TooltipContent>(2);
+                b.AddAttribute(3, "ChildContent", (RenderFragment)(inner => inner.AddContent(0, Label)));
+                b.CloseComponent();
+            }));
+            builder.CloseComponent();
+        }
+    }
+
+    private void OpenAnchorProbe(IRenderedComponent<TooltipAnchorProbe> cut)
+        => cut.FindAll("div").First(d => d.Id?.StartsWith("tooltip-wrapper-") == true)
+              .TriggerEvent("onmouseenter", new MouseEventArgs());
+
+    [Fact]
+    public void Moving_The_Anchor_While_Open_ReRuns_PositionFixed()
+    {
+        // The anchor belongs beside Side/Offset/Align in the placement guard for the same reason
+        // they are there: without it the box keeps tracking the element it was first given, and a
+        // consumer that moves the anchor sees nothing happen until the tooltip closes and reopens.
+        var cut = _ctx.Render<TooltipAnchorProbe>(p => p.Add(x => x.Anchor, "anchor-a"));
+        OpenAnchorProbe(cut);
+
+        var afterOpen = PositionFixedCalls();
+        Assert.True(afterOpen >= 1);
+        Assert.Contains(_ctx.JSInterop.Invocations,
+            i => i.Identifier == "positionFixed" && Equals(i.Arguments[1], "anchor-a"));
+
+        cut.Render(p => p.Add(x => x.Anchor, "anchor-b"));
+
+        Assert.True(PositionFixedCalls() > afterOpen,
+            "the placement never re-ran, so the box is still watching the old element");
+        Assert.Contains(_ctx.JSInterop.Invocations,
+            i => i.Identifier == "positionFixed" && Equals(i.Arguments[1], "anchor-b"));
+    }
+
+    [Fact]
+    public void An_Unchanged_Anchor_Does_Not_Re_Place_On_Every_Render()
+    {
+        // The applied-value bookkeeping exists so a same-value re-render does not thrash the JS.
+        var cut = _ctx.Render<TooltipAnchorProbe>(p => p.Add(x => x.Anchor, "anchor-a"));
+        OpenAnchorProbe(cut);
+
+        var afterOpen = PositionFixedCalls();
+
+        // A REAL re-render of the content, driven by something the placement guard does not read.
+        // Re-rendering with the same anchor value does not re-render the content at all, so an
+        // assertion against that would pass without the bookkeeping doing anything.
+        cut.Render(p => p.Add(x => x.Label, "changed"));
+
+        Assert.Equal(afterOpen, PositionFixedCalls());
+    }
+
+    [Fact]
+    public void An_Anchor_That_Is_Not_In_The_DOM_Yet_Is_Retried_On_The_Next_Render()
+    {
+        // positionFixed returns empty when the reference element is missing: nothing was placed and
+        // nothing registered. Latching the applied state there would record an element the box never
+        // attached to and stop it ever retrying - so an anchor that only arrives on a LATER render,
+        // which a conditionally rendered one does, would never be picked up (Codex review, PR #428).
+        _ctx.JSInterop.Setup<string>("positionFixed", _ => true).SetResult(string.Empty);
+
+        var cut = _ctx.Render<TooltipAnchorProbe>(p => p.Add(x => x.Anchor, "anchor-a"));
+        OpenAnchorProbe(cut);
+
+        var afterOpen = PositionFixedCalls();
+        Assert.True(afterOpen >= 1);
+
+        // Same anchor, next render: because the first attempt placed nothing, it has to try again
+        // rather than treat the anchor as applied.
+        cut.Render(p => p.Add(x => x.Label, "changed"));
+
+        Assert.True(PositionFixedCalls() > afterOpen,
+            "the placement was latched as applied even though nothing was placed");
+    }
+
 }

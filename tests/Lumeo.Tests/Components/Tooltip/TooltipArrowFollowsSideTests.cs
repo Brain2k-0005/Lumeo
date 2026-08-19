@@ -184,4 +184,36 @@ public class TooltipArrowFollowsSideTests : IAsyncLifetime
         Assert.Contains("bottom-full", arrowClass);
         Assert.DoesNotContain("top-full", arrowClass);
     }
+
+    [Fact]
+    public async Task A_Placement_That_Never_Happened_Leaves_No_Live_Side_Handler()
+    {
+        // The side-change handler is stored BEFORE the JS call, because a flip can be reported
+        // during it. When nothing was placed there is no watcher to report anything - and a surface
+        // torn down before a retry succeeds would leave the entry behind for the lifetime of the
+        // service, still holding a reference to the component (Codex review, PR #428).
+        var v = typeof(Lumeo.Services.ComponentInteropService).Assembly
+            .GetCustomAttribute<System.Reflection.AssemblyInformationalVersionAttribute>()
+            ?.InformationalVersion
+            ?? typeof(Lumeo.Services.ComponentInteropService).Assembly.GetName().Version?.ToString()
+            ?? "0";
+        var module = _ctx.JSInterop.SetupModule($"./_content/Lumeo/js/components.js?v={v}");
+        // Empty: the reference element was not in the DOM, so the script placed nothing.
+        module.Setup<string>("positionFixed", _ => true).SetResult(string.Empty);
+
+        var cut = _ctx.Render<TooltipSideProbe>(p => p.Add(x => x.Side, L.Side.Top));
+        OpenTooltip(cut);
+
+        var content = cut.Find("[role='tooltip']");
+        var contentId = content.Id;
+        Assert.False(string.IsNullOrEmpty(contentId));
+
+        // A flip reported for that content must reach nobody: the handler was dropped with the
+        // failed placement. If it were still registered the side would move to bottom.
+        var interop = _ctx.Services.GetRequiredService<Lumeo.Services.ComponentInteropService>();
+        await cut.InvokeAsync(() => interop.OnPositionSideChanged(contentId!, "bottom"));
+
+        Assert.Equal("top", cut.Find("[role='tooltip']").GetAttribute("data-side"));
+    }
+
 }

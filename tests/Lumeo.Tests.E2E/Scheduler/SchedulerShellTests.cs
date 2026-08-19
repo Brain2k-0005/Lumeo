@@ -199,4 +199,60 @@ public class SchedulerShellTests : PlaywrightTestBase
             $"the panel opens {panel.Y - box.Y}px below its trigger");
     }
 
+    [Fact]
+    public async Task Side_By_Side_Panes_Read_Against_One_Clock_Without_Narrowing_Any_Of_Them()
+    {
+        // One time axis for the set, the way Outlook shows them. The pane that carries it is wider
+        // by exactly the gutter, so every pane's day columns still come out the same size -
+        // otherwise the calendars stop being comparable, which is the point of the mode.
+        await Goto("/e2e/scheduler-shell-preview");
+
+        var section = Page.Locator("[data-testid='panes-section']");
+        await section.ScrollIntoViewIfNeededAsync();
+        await section.GetByRole(AriaRole.Button, new() { Name = "Week", Exact = true }).ClickAsync();
+
+        await Assertions.Expect(section.Locator("[data-testid='timegrid-hour-gutter']"))
+            .ToHaveCountAsync(1, new() { Timeout = 5000 });
+
+        var grids = section.Locator("[data-scheduler-pane] [role='grid']");
+        await Assertions.Expect(grids).ToHaveCountAsync(2);
+
+        var a = await grids.Nth(0).BoundingBoxAsync();
+        var b = await grids.Nth(1).BoundingBoxAsync();
+        Assert.NotNull(a);
+        Assert.NotNull(b);
+        Assert.True(Math.Abs(a!.Width - b!.Width) <= 1,
+            $"the panes' day areas are {a.Width} and {b.Width} wide");
+    }
+
+    [Fact]
+    public async Task A_Timed_Events_Tooltip_Opens_Beside_The_Event()
+    {
+        // The pill is placed absolutely by the clock, so the wrapper Tooltip renders around it
+        // collapses to a zero-size box at its FLOW position. Positioned against that, the tooltip
+        // opened at the bottom of the page - reported against the running docs, and pure geometry,
+        // which is why it belongs here rather than in a markup assertion.
+        await Goto("/e2e/scheduler-shell-preview");
+
+        var section = Page.Locator("[data-testid='panes-section']");
+        await section.ScrollIntoViewIfNeededAsync();
+        await section.GetByRole(AriaRole.Button, new() { Name = "Week", Exact = true }).ClickAsync();
+
+        var pill = section.Locator("[data-scheduler-pane] [data-event-instance]").First;
+        await pill.ScrollIntoViewIfNeededAsync();
+        var pb = await pill.BoundingBoxAsync();
+        Assert.NotNull(pb);
+
+        await pill.HoverAsync();
+        var tip = Page.Locator("[role='tooltip']").First;
+        await Assertions.Expect(tip).ToBeVisibleAsync(new() { Timeout = 5000 });
+
+        var tb = await tip.BoundingBoxAsync();
+        Assert.NotNull(tb);
+        Assert.True(Math.Abs(tb!.Y - pb!.Y) < 120,
+            $"the tooltip opened {Math.Abs(tb.Y - pb.Y)}px away from its event");
+        Assert.True(Math.Abs(tb.X - pb.X) < 200,
+            $"the tooltip opened {Math.Abs(tb.X - pb.X)}px to the side of its event");
+    }
+
 }

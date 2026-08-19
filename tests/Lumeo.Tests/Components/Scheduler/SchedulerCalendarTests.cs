@@ -455,4 +455,81 @@ public class SchedulerCalendarTests : IAsyncLifetime
         Assert.Contains("scrollbar-gutter: stable", canvas);
     }
 
+    // -- one clock for the pane set -------------------------------------------
+
+    [Fact]
+    public void Only_the_leftmost_pane_draws_the_hour_labels()
+    {
+        // A set of calendars should read against ONE clock, the way Outlook shows them, rather
+        // than repeating the same axis in every column.
+        var calendars = new[]
+        {
+            new L.SchedulerCalendar("team", "Team"),
+            new L.SchedulerCalendar("personal", "Personal"),
+            new L.SchedulerCalendar("holidays", "Holidays"),
+        };
+
+        var cut = _ctx.Render<L.Scheduler>(p => p
+            .Add(c => c.InitialView, L.SchedulerView.Week)
+            .Add(c => c.InitialDate, Anchor)
+            .Add(c => c.Events, Array.Empty<L.SchedulerEvent>())
+            .Add(c => c.Calendars, calendars)
+            .Add(c => c.PaneMode, L.SchedulerPaneMode.SideBySide));
+
+        var panes = cut.FindAll("[data-scheduler-pane]");
+        Assert.Equal(3, panes.Count);
+
+        // 24 hour labels, in the first pane and nowhere else.
+        Assert.Equal(24, panes[0].QuerySelectorAll("[data-testid='timegrid-hour-gutter'] .h-12").Length);
+        Assert.Empty(panes[1].QuerySelectorAll("[data-testid='timegrid-hour-gutter']"));
+        Assert.Empty(panes[2].QuerySelectorAll("[data-testid='timegrid-hour-gutter']"));
+    }
+
+    [Fact]
+    public void The_pane_that_carries_the_clock_is_wider_by_exactly_the_gutter()
+    {
+        // Otherwise its day columns come out narrower than every other pane's, and the calendars
+        // stop being comparable — which is the point of standing them side by side.
+        var calendars = new[]
+        {
+            new L.SchedulerCalendar("team", "Team"),
+            new L.SchedulerCalendar("personal", "Personal"),
+        };
+
+        var cut = _ctx.Render<L.Scheduler>(p => p
+            .Add(c => c.InitialView, L.SchedulerView.Week)
+            .Add(c => c.InitialDate, Anchor)
+            .Add(c => c.Events, Array.Empty<L.SchedulerEvent>())
+            .Add(c => c.Calendars, calendars)
+            .Add(c => c.PaneMode, L.SchedulerPaneMode.SideBySide));
+
+        var panes = cut.FindAll("[data-scheduler-pane]");
+        Assert.Contains("flex-basis: 3.5rem", panes[0].GetAttribute("style") ?? string.Empty);
+        Assert.DoesNotContain("flex-basis", panes[1].GetAttribute("style") ?? string.Empty);
+
+        // The name row above has to match it, or the names stop sitting over their own columns.
+        var names = cut.FindAll("[data-scheduler-pane-name]");
+        Assert.Contains("flex-basis: 3.5rem", names[0].GetAttribute("style") ?? string.Empty);
+        Assert.Contains("ps-14", names[0].GetAttribute("class") ?? string.Empty);
+    }
+
+    [Fact]
+    public void Overlaid_the_view_keeps_its_own_clock()
+    {
+        var calendars = new[]
+        {
+            new L.SchedulerCalendar("team", "Team"),
+            new L.SchedulerCalendar("personal", "Personal"),
+        };
+
+        var cut = _ctx.Render<L.Scheduler>(p => p
+            .Add(c => c.InitialView, L.SchedulerView.Week)
+            .Add(c => c.InitialDate, Anchor)
+            .Add(c => c.Events, Array.Empty<L.SchedulerEvent>())
+            .Add(c => c.Calendars, calendars)
+            .Add(c => c.PaneMode, L.SchedulerPaneMode.Overlay));
+
+        Assert.Equal(24, cut.FindAll("[data-testid='timegrid-hour-gutter'] .h-12").Count);
+    }
+
 }

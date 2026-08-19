@@ -21,10 +21,13 @@ internal sealed class FloatingPositionInterop
         int offset = 4)
     {
         // The JS returns the side the box ACTUALLY resolved to (a collision flip can move a preferred-Top
-        // box below its trigger, etc.). Fall back to the requested side if an older/stale cached script
-        // returns null/undefined, so a directional-arrow consumer still gets a sensible value.
+        // box below its trigger, etc.). NULL means an older/stale cached script that returns nothing at
+        // all - fall back to the requested side so a directional-arrow consumer still gets a sensible
+        // value. An EMPTY string is the current script reporting that it placed nothing, because the
+        // reference element was not in the DOM; that has to reach the caller, or a caller that records
+        // "applied" state latches a placement which never happened (Codex review of PR #428).
         var resolved = await module.InvokeAsync<string?>("positionFixed", contentId, referenceId, align, matchWidth, side, offset);
-        return string.IsNullOrEmpty(resolved) ? side : resolved!;
+        return resolved ?? side;
     }
 
     // round-14 — extended overload that also reports LIVE collision flips (a later scroll/resize
@@ -48,8 +51,16 @@ internal sealed class FloatingPositionInterop
             return await PositionFixed(module, contentId, referenceId, align, matchWidth, side, offset);
         }
         _sideChangeHandlers[contentId] = onSideChanged;
+        // Same distinction as the overload above: null is a stale script, empty is "nothing placed".
         var resolved = await module.InvokeAsync<string?>("positionFixed", contentId, referenceId, align, matchWidth, side, offset, selfRef);
-        return string.IsNullOrEmpty(resolved) ? side : resolved!;
+
+        // The handler is stored BEFORE the call, because the JS can report a flip during it. When
+        // nothing was placed there is no watcher to report anything, and a surface torn down before
+        // a retry succeeds would leave the entry behind for the lifetime of the service (Codex
+        // review of PR #428).
+        if (resolved is { Length: 0 }) _sideChangeHandlers.Remove(contentId);
+
+        return resolved ?? side;
     }
 
     public async ValueTask UnpositionFixed(IJSObjectReference module, string contentId)

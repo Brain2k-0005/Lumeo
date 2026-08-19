@@ -122,6 +122,12 @@ public interface IComponentInteropService : IAsyncDisposable, IDisposable
     // Floating Position. Returns the side the content box ACTUALLY resolved to: a collision flip can move
     // a preferred-Top box below its trigger (etc.), so a directional-arrow consumer (Tooltip) reads this to
     // keep the arrow on the edge facing the trigger. Equals the requested side when no flip occurs.
+    //
+    // Returns an EMPTY STRING when the content or the reference element is not in the DOM. Nothing is
+    // placed and any previous placement for this content is torn down, so a caller that records
+    // "applied" placement state must not record it on an empty result - it has to try again on a later
+    // render, which is when a conditionally rendered reference appears (PR #428). A caller that only
+    // reads the side for a directional arrow can treat empty as "leave the arrow where it is".
     ValueTask<string> PositionFixed(string contentId, string referenceId, string align = "start", bool matchWidth = false, string side = "bottom");
     /// <summary>
     /// 3.12.x — extended overload with an explicit trigger→content gap in pixels
