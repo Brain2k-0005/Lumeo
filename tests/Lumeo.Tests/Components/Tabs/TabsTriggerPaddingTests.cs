@@ -8,9 +8,9 @@ namespace Lumeo.Tests.Components.Tabs;
 
 /// <summary>
 /// PadClass's Comfortable-density row is variant- AND orientation-scoped: only the
-/// HORIZONTAL Default trigger needs `py-1` to fit inside TabsList's `h-9 p-1` track
+/// HORIZONTAL Default trigger needs `py-0.5` to fit inside TabsList's `h-8 p-[3px]` track
 /// (28px content box — the wave-0 C2 overflow fix); every other (variant, orientation)
-/// combination at Comfortable keeps the original `py-1.5`. Two rounds of Codex findings
+/// combination at Comfortable keeps the looser `py-1`. Two rounds of Codex findings
 /// on this exact line each caught a leak the previous round's scoping missed:
 ///   Round 2 (#386 P2 finding 2): py-1 applied to every VARIANT, not just Default —
 ///     Card/Pill/Underline render inside a `h-10` track with no `p-1` at all (see
@@ -67,10 +67,10 @@ public class TabsTriggerPaddingTests : IAsyncLifetime
     // only Default+Horizontal at Comfortable takes the tighter vertical padding, every
     // other variant/orientation keeps the looser one. Three rounds of review findings
     // are about that scoping, not about the particular pixel values.
-    // Exact-token assertion, not Assert.Contains: "py-1.5" itself contains the
-    // substring "py-1", so a plain Contains("py-1") check would pass even when the
-    // rendered class is actually "py-1.5" — exactly the kind of class-string-only
-    // assertion this PR's escaped bugs have repeatedly slipped past.
+    // Exact-token assertion, not Assert.Contains: "py-0.5" itself CONTAINS "py-0" as a
+    // substring, so a plain Contains("py-0") check would pass on a py-0.5 class - and the
+    // pair those two guard is exactly Compact against Comfortable. That is the kind of
+    // class-string-only assertion this component's escaped bugs have repeatedly slipped past.
     private static void AssertExactPadding(string cls, string expectedPad, string expectedPy)
     {
         var tokens = cls.Split(' ', StringSplitOptions.RemoveEmptyEntries);
@@ -86,10 +86,10 @@ public class TabsTriggerPaddingTests : IAsyncLifetime
         {
             var (pad, py) = density switch
             {
-                L.Density.Compact => ("px-1", "py-0.5"),
-                L.Density.Spacious => ("px-3", "py-1.5"),
-                // Comfortable: only Default+Horizontal gets the tighter py-1;
-                // every other variant/orientation combination keeps py-1.5.
+                L.Density.Compact => ("px-1", "py-0"),
+                L.Density.Spacious => ("px-3", "py-1"),
+                // Comfortable: only Default+Horizontal gets the tighter py-0.5;
+                // every other variant/orientation combination keeps py-1.
                 _ when variant == L.Tabs.TabsVariant.Default && orientation == L.Orientation.Horizontal
                     => ("px-1.5", "py-0.5"),
                 _ => ("px-2", "py-1"),

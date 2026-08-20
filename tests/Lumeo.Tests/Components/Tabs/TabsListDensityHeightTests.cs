@@ -78,10 +78,10 @@ public class TabsListDensityHeightTests : IAsyncLifetime
     {
         var tokens = cls.Split(' ', StringSplitOptions.RemoveEmptyEntries);
         Assert.Contains(expectedHeight, tokens);
-        // The three height tiers this switch ever emits ("h-8"/"h-9"/"h-9") must be
+        // The three height tiers this switch ever emits ("h-7"/"h-8"/"h-9") must be
         // mutually exclusive on any single render — asserting the OTHER two are absent
         // is what actually catches a leaked extra token a plain Contains would miss
-        // (e.g. "h-9" is not a substring of "h-8", so a naive check could pass with
+        // (e.g. "h-9" is not a substring of "h-8", nor "h-7" of either, so a naive check could pass with
         // BOTH present).
         foreach (var other in new[] { "h-7", "h-8", "h-9" })
         {
@@ -119,7 +119,7 @@ public class TabsListDensityHeightTests : IAsyncLifetime
     public void No_DensityScope_Default_Variant_Renders_H9_Unchanged()
     {
         // A consumer who never touches DensityScope must get exactly today's rendering:
-        // Default variant's track was always h-9 before this fix.
+        // Default variant's track was always the same height before this fix.
         var cut = RenderTabsList(L.Tabs.TabsVariant.Default);
         var cls = cut.Find("[role='tablist']").GetAttribute("class") ?? "";
         AssertExactHeight(cls, "h-8");
@@ -174,7 +174,7 @@ public class TabsListDensityHeightTests : IAsyncLifetime
     }
 
     [Fact]
-    public void Predicted_Vs_Actual_Spacious_Default_Would_Wrongly_Stay_H9_Under_The_Old_Hardcoded_Height()
+    public void Predicted_Vs_Actual_Spacious_Default_Would_Wrongly_Stay_At_The_Comfortable_Height()
     {
         // Mirror case for the Default variant: pre-fix TabsList.CssClass hardcoded "h-8"
         // for the Default horizontal track regardless of Density. Predicted WRONG value

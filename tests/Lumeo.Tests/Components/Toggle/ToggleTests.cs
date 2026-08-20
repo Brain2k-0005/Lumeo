@@ -206,7 +206,7 @@ public class ToggleTests : IAsyncLifetime
     }
 
     [Fact]
-    public void Default_Size_Has_Px_3_Padding()
+    public void Default_Size_Has_Px_2Point5_Padding()
     {
         var cut = _ctx.Render<Lumeo.Toggle>(p => p
             .Add(b => b.Size, Lumeo.Size.Md)
@@ -226,7 +226,7 @@ public class ToggleTests : IAsyncLifetime
     }
 
     [Fact]
-    public void Lg_Size_Has_Px_4_Padding()
+    public void Lg_Size_Has_Px_2Point5_Padding()
     {
         var cut = _ctx.Render<Lumeo.Toggle>(p => p
             .Add(b => b.Size, Lumeo.Size.Lg)
