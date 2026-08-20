@@ -208,6 +208,14 @@ public class BadgeTests : IAsyncLifetime
     private static string[] Tokens(AngleSharp.Dom.IElement el) =>
         (el.GetAttribute("class") ?? "").Split(' ', StringSplitOptions.RemoveEmptyEntries);
 
+    // The three lists below were frozen during the Size-scale migration to prove that migration
+    // changed nothing. They moved once since, deliberately: w-fit / shrink-0 / justify-center /
+    // whitespace-nowrap were added because inline-flex alone still stretches inside a flex column
+    // or a stretched grid cell, so a badge in a table column rendered as wide as the column
+    // (measured: 300px against 77.6px for the same content) and wrapped to two lines when squeezed.
+    // The SIZE-dependent tokens - rounded, text, px, py - are untouched, which is what these tests
+    // were written to guard. A caller can still override the width: w-* is a merge conflict group,
+    // so Class="w-full" wins.
     [Fact]
     public void Size_Sm_Renders_Byte_Identical_To_Pre_Migration_BadgeSize_Sm()
     {
@@ -218,7 +226,8 @@ public class BadgeTests : IAsyncLifetime
         Assert.Equal(
             new[]
             {
-                "inline-flex", "items-center", "border", "font-semibold", "transition-colors",
+                "inline-flex", "w-fit", "shrink-0", "items-center", "justify-center",
+                "whitespace-nowrap", "border", "font-semibold", "transition-colors",
                 "focus:outline-none", "rounded-md", "text-[10px]", "px-2", "py-0",
                 "border-transparent", "bg-primary", "text-primary-foreground", "shadow"
             },
@@ -233,7 +242,8 @@ public class BadgeTests : IAsyncLifetime
         Assert.Equal(
             new[]
             {
-                "inline-flex", "items-center", "border", "font-semibold", "transition-colors",
+                "inline-flex", "w-fit", "shrink-0", "items-center", "justify-center",
+                "whitespace-nowrap", "border", "font-semibold", "transition-colors",
                 "focus:outline-none", "rounded-md", "text-xs", "px-2.5", "py-0.5",
                 "border-transparent", "bg-primary", "text-primary-foreground", "shadow"
             },
@@ -250,7 +260,8 @@ public class BadgeTests : IAsyncLifetime
         Assert.Equal(
             new[]
             {
-                "inline-flex", "items-center", "border", "font-semibold", "transition-colors",
+                "inline-flex", "w-fit", "shrink-0", "items-center", "justify-center",
+                "whitespace-nowrap", "border", "font-semibold", "transition-colors",
                 "focus:outline-none", "rounded-md", "text-sm", "px-3", "py-1",
                 "border-transparent", "bg-primary", "text-primary-foreground", "shadow"
             },
@@ -266,5 +277,34 @@ public class BadgeTests : IAsyncLifetime
     {
         var cut = _ctx.Render<Lumeo.Badge>(p => p.Add(b => b.Size, size).AddChildContent("X"));
         Assert.Contains(expectedTextClass, Tokens(cut.Find("div")));
+    }
+
+    [Fact]
+    public void A_badge_stays_at_its_content_width_and_on_one_line()
+    {
+        // inline-flex alone still stretches inside a flex column or a stretched grid cell, so a
+        // badge dropped into a table column came out as wide as the column - measured at 300px
+        // against 77.6px for the same content. shadcn carries w-fit/shrink-0/whitespace-nowrap for
+        // exactly that, and a badge squeezed in a narrow row used to wrap and change the row height.
+        var cut = _ctx.Render<Lumeo.Badge>(p => p.AddChildContent("Gesammelt"));
+
+        var cls = cut.Find("div").GetAttribute("class") ?? string.Empty;
+        Assert.Contains("w-fit", cls);
+        Assert.Contains("shrink-0", cls);
+        Assert.Contains("whitespace-nowrap", cls);
+    }
+
+    [Fact]
+    public void A_caller_can_still_stretch_a_badge_that_should_fill_its_container()
+    {
+        // w-fit is a default, not a decree: w-* is a merge conflict group and Class is merged last,
+        // so anyone who wants the old full-width behaviour back asks for it and gets it.
+        var cut = _ctx.Render<Lumeo.Badge>(p => p
+            .Add(b => b.Class, "w-full")
+            .AddChildContent("Gesammelt"));
+
+        var cls = cut.Find("div").GetAttribute("class") ?? string.Empty;
+        Assert.Contains("w-full", cls);
+        Assert.DoesNotContain("w-fit", cls);
     }
 }
