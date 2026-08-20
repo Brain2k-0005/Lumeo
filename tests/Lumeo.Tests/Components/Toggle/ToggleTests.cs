@@ -5,6 +5,10 @@ using Lumeo.Tests.Helpers;
 
 namespace Lumeo.Tests.Components.Toggle;
 
+// Values moved in the 5.0 scale alignment: every control sits one rung lower, on what the
+// shadcn CLI writes into a new project today - and on reui's values where reui defines the
+// component too, since reui takes precedence there. The ladder these tests guard, distinct
+// and monotonic rungs, is unchanged.
 public class ToggleTests : IAsyncLifetime
 {
     private readonly BunitContext _ctx = new();
@@ -189,9 +193,9 @@ public class ToggleTests : IAsyncLifetime
     }
 
     [Theory]
-    [InlineData(Lumeo.Size.Md, "h-9")]
-    [InlineData(Lumeo.Size.Sm, "h-8")]
-    [InlineData(Lumeo.Size.Lg, "h-10")]
+    [InlineData(Lumeo.Size.Md, "h-8")]
+    [InlineData(Lumeo.Size.Sm, "h-7")]
+    [InlineData(Lumeo.Size.Lg, "h-9")]
     public void Renders_Correct_Size_Classes(Lumeo.Size size, string expectedClass)
     {
         var cut = _ctx.Render<Lumeo.Toggle>(p => p
@@ -208,7 +212,7 @@ public class ToggleTests : IAsyncLifetime
             .Add(b => b.Size, Lumeo.Size.Md)
             .AddChildContent("B"));
 
-        Assert.Contains("px-3", cut.Find("button").GetAttribute("class"));
+        Assert.Contains("px-2.5", cut.Find("button").GetAttribute("class"));
     }
 
     [Fact]
@@ -228,7 +232,7 @@ public class ToggleTests : IAsyncLifetime
             .Add(b => b.Size, Lumeo.Size.Lg)
             .AddChildContent("B"));
 
-        Assert.Contains("px-4", cut.Find("button").GetAttribute("class"));
+        Assert.Contains("px-2.5", cut.Find("button").GetAttribute("class"));
     }
 
     [Fact]

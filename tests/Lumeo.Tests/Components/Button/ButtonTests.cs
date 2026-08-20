@@ -25,7 +25,7 @@ public class ButtonTests : IAsyncLifetime
 
         var button = cut.Find("button");
         Assert.Contains("bg-primary", button.GetAttribute("class"));
-        Assert.Contains("h-9 px-4 py-2", button.GetAttribute("class"));
+        Assert.Contains("h-8 px-2.5", button.GetAttribute("class"));
         Assert.Equal("Click me", button.TextContent.Trim());
     }
 
@@ -96,9 +96,9 @@ public class ButtonTests : IAsyncLifetime
     }
 
     [Theory]
-    [InlineData(Lumeo.Button.ButtonSize.Sm, "h-8")]
-    [InlineData(Lumeo.Button.ButtonSize.Lg, "h-10")]
-    [InlineData(Lumeo.Button.ButtonSize.Icon, "w-9")]
+    [InlineData(Lumeo.Button.ButtonSize.Sm, "h-7")]
+    [InlineData(Lumeo.Button.ButtonSize.Lg, "h-9")]
+    [InlineData(Lumeo.Button.ButtonSize.Icon, "w-8")]
     public void Renders_Correct_Size_Classes(Lumeo.Button.ButtonSize size, string expectedClass)
     {
         var cut = _ctx.Render<Lumeo.Button>(p => p
@@ -110,7 +110,7 @@ public class ButtonTests : IAsyncLifetime
     }
 
     [Fact]
-    public void Sm_Size_Renders_TextSm_Not_TextXs()
+    public void Sm_Size_Renders_Shadcns_Text0Point8Rem()
     {
         // Wave-0 no-op proof (C3): SizeClasses used to emit a dead " text-xs" for
         // Sm that Cx.Merge always discarded (Size runs before Base in CssClass's
@@ -123,7 +123,7 @@ public class ButtonTests : IAsyncLifetime
             .AddChildContent("Btn"));
 
         var cls = cut.Find("button").GetAttribute("class") ?? "";
-        Assert.Contains("text-sm", cls);
+        Assert.Contains("text-[0.8rem]", cls);
         Assert.DoesNotContain("text-xs", cls);
     }
 
@@ -165,9 +165,9 @@ public class ButtonTests : IAsyncLifetime
     }
 
     [Fact]
-    public void Sm_Size_Renders_Gap1Point5_Not_Base_Gap2()
+    public void Sm_Size_Renders_Gap1_Not_Base_Gap2()
     {
-        // shadcn `sm` carries gap-1.5; Lumeo's BaseClasses fixes gap-2 for every size.
+        // shadcn `sm` carries gap-1; Lumeo's BaseClasses fixes gap-2 for every size.
         // Predicted-vs-actual disable check: reverting SizeOverrideClass to null for Sm
         // (or moving it before BaseClasses in the CssClass merge) makes this render
         // "gap-2" instead — confirmed manually before writing this assertion.
@@ -176,28 +176,29 @@ public class ButtonTests : IAsyncLifetime
             .AddChildContent("Btn"));
 
         var cls = cut.Find("button").GetAttribute("class") ?? "";
-        Assert.Contains("gap-1.5", cls);
+        Assert.Contains("gap-1", cls);
         Assert.DoesNotContain("gap-2", cls);
     }
 
     [Fact]
-    public void Lg_Comfortable_Padding_Matches_Shadcn_Px6_Not_Px8()
+    public void Lg_Comfortable_Padding_Matches_Shadcns_Uniform_Px2Point5()
     {
-        // shadcn `lg`: "h-10 rounded-md px-6 has-[>svg]:px-4" — Lumeo previously shipped
-        // px-8 here (16px wider overall than shadcn, the delta the repo owner spotted
-        // side-by-side against the shadcn docs).
+        // shadcn's `lg` is "h-9 px-2.5" today: they collapsed the per-size padding
+        // ladder (px-3 / px-4 / px-6) onto a single value for sm, default and lg
+        // alike. Measured in a project built with their CLI, since an older registry
+        // file in their repository still carries the previous px-6.
         var cut = _ctx.Render<Lumeo.Button>(p => p
             .Add(b => b.Size, Lumeo.Button.ButtonSize.Lg)
             .AddChildContent("Btn"));
 
         var cls = cut.Find("button").GetAttribute("class") ?? "";
-        Assert.Contains("px-6", cls);
-        Assert.DoesNotContain("px-8", cls);
+        Assert.Contains("px-2.5", cls);
+        Assert.DoesNotContain("px-6", cls);
     }
 
     [Theory]
-    [InlineData(Lumeo.Density.Compact, "px-4")]
-    [InlineData(Lumeo.Density.Spacious, "px-8")]
+    [InlineData(Lumeo.Density.Compact, "px-2")]
+    [InlineData(Lumeo.Density.Spacious, "px-3")]
     public void Lg_Density_Rows_Shift_Proportionately_With_Comfortable(Lumeo.Density density, string expectedPad)
     {
         // Compact/Spacious are Lumeo-only (shadcn has no density concept). They are kept

@@ -61,6 +61,12 @@ public class TabsTriggerPaddingTests : IAsyncLifetime
             builder.CloseComponent();
         });
 
+    // The numbers below moved once, in the 5.0 scale alignment: shadcn's tab trigger is
+    // px-1.5 py-0.5 and its track h-8, measured in a project built with their CLI. The
+    // SHAPE of the table is unchanged, and that is what these tests were written for -
+    // only Default+Horizontal at Comfortable takes the tighter vertical padding, every
+    // other variant/orientation keeps the looser one. Three rounds of review findings
+    // are about that scoping, not about the particular pixel values.
     // Exact-token assertion, not Assert.Contains: "py-1.5" itself contains the
     // substring "py-1", so a plain Contains("py-1") check would pass even when the
     // rendered class is actually "py-1.5" — exactly the kind of class-string-only
@@ -80,13 +86,13 @@ public class TabsTriggerPaddingTests : IAsyncLifetime
         {
             var (pad, py) = density switch
             {
-                L.Density.Compact => ("px-2", "py-1"),
-                L.Density.Spacious => ("px-4", "py-2"),
+                L.Density.Compact => ("px-1", "py-0.5"),
+                L.Density.Spacious => ("px-3", "py-1.5"),
                 // Comfortable: only Default+Horizontal gets the tighter py-1;
                 // every other variant/orientation combination keeps py-1.5.
                 _ when variant == L.Tabs.TabsVariant.Default && orientation == L.Orientation.Horizontal
-                    => ("px-3", "py-1"),
-                _ => ("px-3", "py-1.5"),
+                    => ("px-1.5", "py-0.5"),
+                _ => ("px-2", "py-1"),
             };
             yield return new object[] { variant, orientation, density, pad, py };
         }
@@ -113,7 +119,7 @@ public class TabsTriggerPaddingTests : IAsyncLifetime
         var cut = RenderTabs(L.Tabs.TabsVariant.Default, L.Orientation.Horizontal);
 
         var cls = cut.Find("button[role='tab']").GetAttribute("class") ?? "";
-        AssertExactPadding(cls, "px-3", "py-1");
+        AssertExactPadding(cls, "px-1.5", "py-0.5");
     }
 
     [Fact]
@@ -127,7 +133,7 @@ public class TabsTriggerPaddingTests : IAsyncLifetime
         var cut = RenderTabs(L.Tabs.TabsVariant.Default, L.Orientation.Vertical);
 
         var cls = cut.Find("button[role='tab']").GetAttribute("class") ?? "";
-        AssertExactPadding(cls, "px-3", "py-1.5");
+        AssertExactPadding(cls, "px-2", "py-1");
     }
 
     [Theory]
@@ -139,6 +145,6 @@ public class TabsTriggerPaddingTests : IAsyncLifetime
         var cut = RenderTabs(variant);
 
         var cls = cut.Find("button[role='tab']").GetAttribute("class") ?? "";
-        AssertExactPadding(cls, "px-3", "py-1.5");
+        AssertExactPadding(cls, "px-2", "py-1");
     }
 }

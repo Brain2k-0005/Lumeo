@@ -43,14 +43,14 @@ public class AvatarTests : IAsyncLifetime
         var cut = _ctx.Render<L.Avatar>();
 
         var cls = cut.Find("div").GetAttribute("class");
-        Assert.Contains("h-10", cls);
-        Assert.Contains("w-10", cls);
+        Assert.Contains("h-8", cls);
+        Assert.Contains("w-8", cls);
     }
 
     [Theory]
-    [InlineData(L.Size.Sm, "h-8", "w-8")]
-    [InlineData(L.Size.Md, "h-10", "w-10")]
-    [InlineData(L.Size.Lg, "h-12", "w-12")]
+    [InlineData(L.Size.Sm, "h-6", "w-6")]
+    [InlineData(L.Size.Md, "h-8", "w-8")]
+    [InlineData(L.Size.Lg, "h-10", "w-10")]
     public void Avatar_Renders_Correct_Size(L.Size size, string expectedH, string expectedW)
     {
         var cut = _ctx.Render<L.Avatar>(p => p

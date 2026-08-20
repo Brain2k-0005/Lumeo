@@ -85,10 +85,16 @@ else
         get
         {
             var animatedClass = Animated ? "lumeo-badge-animated" : null;
-            var shape = Pill ? "rounded-[calc(var(--radius)*2)]" : "rounded-md";
+            // reui's badge is rounded-sm by default - which follows the theme, since their
+            // whole radius scale derives from --radius, so a sharp theme squares the badge off
+            // like everything else. The pill is their opt-in `radius=full` variant, and it is
+            // literal there: a caller who asks for a pill wants a pill whatever the theme says.
+            // That is the same contract Avatar's Shape=Circle already has here, which is why
+            // both sit in RadiusTokenGuardTests' audited allowlist.
+            var shape = Pill ? "rounded-full" : "rounded-sm";
             return IsDot
                 ? Cx.Merge("inline-flex h-2 w-2 rounded-[calc(var(--radius)*2)] p-0", VariantClasses, animatedClass, Class)
-                : Cx.Merge(BaseClasses, shape, TextClass, PadClass, VariantClasses, animatedClass, Class);
+                : Cx.Merge(BaseClasses, shape, TextClass, HeightClass, PadClass, VariantClasses, animatedClass, Class);
         }
     }
 
@@ -114,27 +120,42 @@ else
     // rungs deliberately tie there; documented via SizeScaleOrderingTests.
     private string PadClass => (Size, EffectiveDensity) switch
     {
-        (Lumeo.Size.Xxs, Lumeo.Density.Compact)  => "px-0.5 py-0",
-        (Lumeo.Size.Xxs, Lumeo.Density.Spacious) => "px-1.5 py-0",
-        (Lumeo.Size.Xxs, _)                      => "px-1 py-0",
-        (Lumeo.Size.Xs, Lumeo.Density.Compact)   => "px-1 py-0",
-        (Lumeo.Size.Xs, Lumeo.Density.Spacious)  => "px-2 py-0.5",
-        (Lumeo.Size.Xs, _)                       => "px-1.5 py-0",
-        (Lumeo.Size.Sm, Lumeo.Density.Compact)   => "px-1.5 py-0",
-        (Lumeo.Size.Sm, Lumeo.Density.Spacious)  => "px-2.5 py-0.5",
-        (Lumeo.Size.Sm, _)                       => "px-2 py-0",
-        (Lumeo.Size.Lg, Lumeo.Density.Compact)   => "px-2.5 py-0.5",
-        (Lumeo.Size.Lg, Lumeo.Density.Spacious)  => "px-4 py-1.5",
-        (Lumeo.Size.Lg, _)                       => "px-3 py-1",
-        (Lumeo.Size.Xl, Lumeo.Density.Compact)   => "px-3 py-1",
-        (Lumeo.Size.Xl, Lumeo.Density.Spacious)  => "px-5 py-2",
-        (Lumeo.Size.Xl, _)                       => "px-3.5 py-1.5",
-        (Lumeo.Size.Xxl, Lumeo.Density.Compact)  => "px-3.5 py-1.5",
-        (Lumeo.Size.Xxl, Lumeo.Density.Spacious) => "px-6 py-2.5",
-        (Lumeo.Size.Xxl, _)                      => "px-4 py-2",
-        (_, Lumeo.Density.Compact)               => "px-2 py-0.5",
-        (_, Lumeo.Density.Spacious)              => "px-3 py-1",
-        _                                        => "px-2.5 py-0.5"
+        (Lumeo.Size.Xxs, Lumeo.Density.Compact)  => "px-0.25 py-0",
+        (Lumeo.Size.Xxs, Lumeo.Density.Spacious) => "px-0.75 py-0.25",
+        (Lumeo.Size.Xxs, _)                      => "px-0.5 py-0",
+        (Lumeo.Size.Xs, Lumeo.Density.Compact)   => "px-0.5 py-0",
+        (Lumeo.Size.Xs, Lumeo.Density.Spacious)  => "px-1 py-0.25",
+        (Lumeo.Size.Xs, _)                       => "px-0.75 py-0.25",
+        (Lumeo.Size.Sm, Lumeo.Density.Compact)   => "px-0.75 py-0.25",
+        (Lumeo.Size.Sm, Lumeo.Density.Spacious)  => "px-1.25 py-0.5",
+        (Lumeo.Size.Sm, _)                       => "px-1 py-0.25",
+        (Lumeo.Size.Lg, Lumeo.Density.Compact)   => "px-1.25 py-0.5",
+        (Lumeo.Size.Lg, Lumeo.Density.Spacious)  => "px-2 py-0.75",
+        (Lumeo.Size.Lg, _)                       => "px-1.5 py-0.5",
+        (Lumeo.Size.Xl, Lumeo.Density.Compact)   => "px-1.5 py-0.5",
+        (Lumeo.Size.Xl, Lumeo.Density.Spacious)  => "px-2.5 py-1",
+        (Lumeo.Size.Xl, _)                       => "px-2 py-0.75",
+        (Lumeo.Size.Xxl, Lumeo.Density.Compact)  => "px-2 py-0.75",
+        (Lumeo.Size.Xxl, Lumeo.Density.Spacious) => "px-3 py-1.25",
+        (Lumeo.Size.Xxl, _)                      => "px-2.5 py-1",
+        (_, Lumeo.Density.Compact)               => "px-1 py-0.25",
+        (_, Lumeo.Density.Spacious)              => "px-1.5 py-0.5",
+        _                                        => "px-1.25 py-0.5"
+    };
+
+    /// <summary>
+    /// Height and minimum width per rung, reui's own ladder: a badge holding a single digit
+    /// stays a circle rather than collapsing to the width of the glyph.
+    /// </summary>
+    private string HeightClass => Size switch
+    {
+        Lumeo.Size.Xxs => "h-3.5 min-w-3.5",
+        Lumeo.Size.Xs  => "h-4 min-w-4",
+        Lumeo.Size.Sm  => "h-4.5 min-w-4.5",
+        Lumeo.Size.Lg  => "h-5.5 min-w-5.5",
+        Lumeo.Size.Xl  => "h-6 min-w-6",
+        Lumeo.Size.Xxl => "h-7 min-w-7",
+        _              => "h-5 min-w-5"
     };
 
     // w-fit / shrink-0 / whitespace-nowrap / justify-center are shadcn's, and they are here for
@@ -143,7 +164,7 @@ else
     // 300px against 77.6px for the same content) - and squeezed in a narrow flex row it wrapped to
     // two lines and changed the row height. None of them alters a badge that is already sitting at
     // its content width, which is the ordinary case.
-    private const string BaseClasses = "inline-flex w-fit shrink-0 items-center justify-center whitespace-nowrap border font-semibold transition-colors focus:outline-none";
+    private const string BaseClasses = "relative inline-flex w-fit shrink-0 items-center justify-center gap-1 whitespace-nowrap border font-medium transition-colors focus:outline-none";
 
     private string DotClasses => VariantClasses;
 

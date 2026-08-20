@@ -124,10 +124,10 @@ public class BadgeTests : IAsyncLifetime
         var cls = cut.Find("div").GetAttribute("class");
         Assert.Contains("inline-flex", cls);
         Assert.Contains("items-center", cls);
-        Assert.Contains("rounded-md", cls);
+        Assert.Contains("rounded-sm", cls);
         Assert.Contains("border", cls);
         Assert.Contains("text-xs", cls);
-        Assert.Contains("font-semibold", cls);
+        Assert.Contains("font-medium", cls);
     }
 
     [Fact]
@@ -213,9 +213,12 @@ public class BadgeTests : IAsyncLifetime
     // whitespace-nowrap were added because inline-flex alone still stretches inside a flex column
     // or a stretched grid cell, so a badge in a table column rendered as wide as the column
     // (measured: 300px against 77.6px for the same content) and wrapped to two lines when squeezed.
-    // The SIZE-dependent tokens - rounded, text, px, py - are untouched, which is what these tests
-    // were written to guard. A caller can still override the width: w-* is a merge conflict group,
-    // so Class="w-full" wins.
+    // They moved a second time in the 5.0 alignment, and that time the size-dependent tokens
+    // moved too: the badge is anchored on reui's own ladder now (px-1.25 py-0.5 h-5 at the
+    // default rung, rounded-sm, font-medium), because where reui defines a component it takes
+    // precedence over shadcn - and the two genuinely differ here. What the tests still guard is
+    // that the rungs stay distinct and that nothing silently drifts between releases.
+    // A caller can still override the width: w-* is a merge conflict group, so Class="w-full" wins.
     [Fact]
     public void Size_Sm_Renders_Byte_Identical_To_Pre_Migration_BadgeSize_Sm()
     {
@@ -226,9 +229,9 @@ public class BadgeTests : IAsyncLifetime
         Assert.Equal(
             new[]
             {
-                "inline-flex", "w-fit", "shrink-0", "items-center", "justify-center",
-                "whitespace-nowrap", "border", "font-semibold", "transition-colors",
-                "focus:outline-none", "rounded-md", "text-[10px]", "px-2", "py-0",
+                "relative", "inline-flex", "w-fit", "shrink-0", "items-center", "justify-center",
+                "gap-1", "whitespace-nowrap", "border", "font-medium", "transition-colors",
+                "focus:outline-none", "rounded-sm", "text-[10px]", "h-4.5", "min-w-4.5", "px-1", "py-0.25",
                 "border-transparent", "bg-primary", "text-primary-foreground", "shadow"
             },
             Tokens(cut.Find("div")));
@@ -242,9 +245,9 @@ public class BadgeTests : IAsyncLifetime
         Assert.Equal(
             new[]
             {
-                "inline-flex", "w-fit", "shrink-0", "items-center", "justify-center",
-                "whitespace-nowrap", "border", "font-semibold", "transition-colors",
-                "focus:outline-none", "rounded-md", "text-xs", "px-2.5", "py-0.5",
+                "relative", "inline-flex", "w-fit", "shrink-0", "items-center", "justify-center",
+                "gap-1", "whitespace-nowrap", "border", "font-medium", "transition-colors",
+                "focus:outline-none", "rounded-sm", "text-xs", "h-5", "min-w-5", "px-1.25", "py-0.5",
                 "border-transparent", "bg-primary", "text-primary-foreground", "shadow"
             },
             Tokens(cut.Find("div")));
@@ -260,9 +263,9 @@ public class BadgeTests : IAsyncLifetime
         Assert.Equal(
             new[]
             {
-                "inline-flex", "w-fit", "shrink-0", "items-center", "justify-center",
-                "whitespace-nowrap", "border", "font-semibold", "transition-colors",
-                "focus:outline-none", "rounded-md", "text-sm", "px-3", "py-1",
+                "relative", "inline-flex", "w-fit", "shrink-0", "items-center", "justify-center",
+                "gap-1", "whitespace-nowrap", "border", "font-medium", "transition-colors",
+                "focus:outline-none", "rounded-sm", "text-sm", "h-5.5", "min-w-5.5", "px-1.5", "py-0.5",
                 "border-transparent", "bg-primary", "text-primary-foreground", "shadow"
             },
             Tokens(cut.Find("div")));

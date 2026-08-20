@@ -9,6 +9,10 @@ namespace Lumeo.Tests.Components.Kbd;
 // (both tie at h-5) so the new Xxs/Xs rungs deliberately deviate from mechanical
 // extrapolation (which would freeze them at 20px too) and use a flat 1-step
 // Tailwind decrement instead — see the component's inline comment and the spec.
+// Values moved in the 5.0 scale alignment: every control sits one rung lower, on what the
+// shadcn CLI writes into a new project today - and on reui's values where reui defines the
+// component too, since reui takes precedence there. The ladder these tests guard, distinct
+// and monotonic rungs, is unchanged.
 public class KbdSizeScaleTests : IAsyncLifetime
 {
     private readonly BunitContext _ctx = new();
@@ -20,7 +24,7 @@ public class KbdSizeScaleTests : IAsyncLifetime
     [InlineData(L.Size.Xxs, "h-3.5", "px-0", "text-[8px]")]
     [InlineData(L.Size.Xs, "h-4", "px-0.5", "text-[9px]")]
     [InlineData(L.Size.Sm, "h-5", "px-1", "text-[10px]")]
-    [InlineData(L.Size.Md, "h-5", "px-1.5", "text-[11px]")]
+    [InlineData(L.Size.Md, "h-5", "px-1", "text-[11px]")]
     [InlineData(L.Size.Lg, "h-6", "px-2", "text-xs")]
     [InlineData(L.Size.Xl, "h-7", "px-2.5", "text-[13px]")]
     [InlineData(L.Size.Xxl, "h-8", "px-3", "text-sm")]
