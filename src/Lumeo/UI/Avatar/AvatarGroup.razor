@@ -11,7 +11,10 @@
     @if (OverflowCount > 0)
     {
         <div class="@OverflowClasses">
-            <span class="text-xs font-medium">+@OverflowCount</span>
+            @* No font size here: it inherits the chip's, which is size-aware. A pinned
+               text-xs won every rung, so at Xxs a 12px label sat in a 16px chip whose
+               borders leave 12px of inner height (review of PR #430). *@
+            <span class="font-medium leading-none">+@OverflowCount</span>
         </div>
     }
 </div>
@@ -47,7 +50,7 @@
 
     // New context instance per render → non-fixed CascadingValue notifies
     // children, so they recompute visibility once all siblings have registered.
-    private AvatarGroupContext CurrentContext => new(_registrar, Max);
+    private AvatarGroupContext CurrentContext => new(_registrar, Max) { Size = Size };
 
     private void OnMembersChanged()
     {
@@ -71,10 +74,10 @@
     private int OverflowCount => Max > 0 && EffectiveTotal > Max ? EffectiveTotal - Max : 0;
 
     private string CssClass => Cx.Merge("flex -space-x-3", Class);
-    /// <summary>Size of the avatars in this group, and of the "+N" chip that closes it.
-    /// Mirrors <see cref="Lumeo.Avatar"/>'s own ladder: the chip was pinned at the old default
-    /// of 40px, so once the avatar moved to 32px every group with <c>Max</c> ended in a chip a
-    /// rung larger than the faces beside it (Codex review of PR #430).</summary>
+    /// <summary>Size of the avatars in this group and of the "+N" chip that closes it, on
+    /// <see cref="Lumeo.Avatar"/>'s own ladder. Members that set their own <c>Size</c> keep
+    /// it; the rest follow the group, so a group and its chip stay one size without repeating
+    /// the value on every child.</summary>
     [Parameter] public Lumeo.Size Size { get; set; } = Lumeo.Size.Md;
 
     private string OverflowSizeClasses => Size switch
@@ -127,6 +130,14 @@
     /// </summary>
     public sealed record AvatarGroupContext(AvatarGroupRegistrar Registrar, int Max)
     {
+        /// <summary>
+        /// The size the group was given, for members that did not ask for one themselves.
+        /// A body property rather than a positional one: this record is SHIPPED, and adding
+        /// to the primary constructor would change its signature and Deconstruct for every
+        /// existing caller.
+        /// </summary>
+        public Lumeo.Size? Size { get; init; }
+
         public void Register(object token) => Registrar.Register(token);
         public void Unregister(object token) => Registrar.Unregister(token);
 

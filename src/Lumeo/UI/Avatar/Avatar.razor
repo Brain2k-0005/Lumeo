@@ -83,6 +83,23 @@
     // around fallback initials.
     private string CssClass => Cx.Merge("relative flex shrink-0", SizeClasses, ShapeClasses, Class);
 
+    // Whether the caller wrote Size on THIS avatar. Size is a shipped non-nullable
+    // parameter, so there is no null to test against - and asking the ParameterView is
+    // the only way to tell "the caller chose Md" from "nobody chose anything", which is
+    // exactly the difference between keeping Md and following an Xxs group.
+    private bool _sizeSetExplicitly;
+
+    public override Task SetParametersAsync(ParameterView parameters)
+    {
+        if (parameters.TryGetValue<Lumeo.Size>(nameof(Size), out _)) _sizeSetExplicitly = true;
+        return base.SetParametersAsync(parameters);
+    }
+
+    /// <summary>The size actually rendered: this avatar's own if it was given one, else the
+    /// group's, else the default. Mirrors how Density resolves elsewhere in the library.</summary>
+    private Lumeo.Size EffectiveSize =>
+        _sizeSetExplicitly ? Size : GroupContext?.Size ?? Size;
+
     private string InnerClasses => $"flex h-full w-full overflow-hidden {ShapeClasses}";
 
     private string ShapeClasses => Shape switch
@@ -103,7 +120,7 @@
         _ => "rounded-full"
     };
 
-    private string SizeClasses => Size switch
+    private string SizeClasses => EffectiveSize switch
     {
         // A font size on EVERY rung, because AvatarFallback inherits it now rather than
         // carrying its own text-sm - which at Xxs produced a 20px line box in a 16px box

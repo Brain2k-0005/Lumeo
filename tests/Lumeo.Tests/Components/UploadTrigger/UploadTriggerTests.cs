@@ -43,7 +43,7 @@ public class UploadTriggerTests : IAsyncLifetime
     }
 
     [Fact]
-    public void Sm_Size_Renders_TextSm_Not_TextXs()
+    public void Sm_Size_Renders_Shadcns_Text0Point8Rem()
     {
         // Wave-0 fix (C3): unlike Button, UploadTrigger's LabelClass merges
         // BASE-first then SizeClass, so SizeClass's text-xs (the LAST font-size
@@ -53,7 +53,7 @@ public class UploadTriggerTests : IAsyncLifetime
         var cut = _ctx.Render<L.UploadTrigger>(p => p.Add(u => u.Size, Lumeo.Button.ButtonSize.Sm));
 
         var cls = cut.Find("label").GetAttribute("class") ?? "";
-        Assert.Contains("text-sm", cls);
+        Assert.Contains("text-[0.8rem]", cls);
         Assert.DoesNotContain("text-xs", cls);
     }
 

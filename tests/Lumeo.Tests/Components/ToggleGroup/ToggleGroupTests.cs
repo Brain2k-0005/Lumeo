@@ -190,9 +190,9 @@ public class ToggleGroupTests : IAsyncLifetime
     // --- Sizes ---
 
     [Theory]
-    [InlineData(L.Size.Md, "h-9", "px-3")]
-    [InlineData(L.Size.Sm, "h-8", "px-2")]
-    [InlineData(L.Size.Lg, "h-10", "px-4")]
+    [InlineData(L.Size.Md, "h-8", "px-2.5")]
+    [InlineData(L.Size.Sm, "h-7", "px-2.5")]
+    [InlineData(L.Size.Lg, "h-9", "px-2.5")]
     public void Item_Renders_Correct_Size_Classes(L.Size size, string heightClass, string paddingClass)
     {
         var cut = RenderToggleGroup(size: size);
