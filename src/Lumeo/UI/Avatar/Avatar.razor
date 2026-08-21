@@ -83,6 +83,23 @@
     // around fallback initials.
     private string CssClass => Cx.Merge("relative flex shrink-0", SizeClasses, ShapeClasses, Class);
 
+    // Whether the caller wrote Size on THIS avatar. Size is a shipped non-nullable
+    // parameter, so there is no null to test against - and asking the ParameterView is
+    // the only way to tell "the caller chose Md" from "nobody chose anything", which is
+    // exactly the difference between keeping Md and following an Xxs group.
+    private bool _sizeSetExplicitly;
+
+    public override Task SetParametersAsync(ParameterView parameters)
+    {
+        if (parameters.TryGetValue<Lumeo.Size>(nameof(Size), out _)) _sizeSetExplicitly = true;
+        return base.SetParametersAsync(parameters);
+    }
+
+    /// <summary>The size actually rendered: this avatar's own if it was given one, else the
+    /// group's, else the default. Mirrors how Density resolves elsewhere in the library.</summary>
+    private Lumeo.Size EffectiveSize =>
+        _sizeSetExplicitly ? Size : GroupContext?.Size ?? Size;
+
     private string InnerClasses => $"flex h-full w-full overflow-hidden {ShapeClasses}";
 
     private string ShapeClasses => Shape switch
@@ -103,18 +120,23 @@
         _ => "rounded-full"
     };
 
-    private string SizeClasses => Size switch
+    private string SizeClasses => EffectiveSize switch
     {
-        Lumeo.Size.Xxs => "h-5 w-5 text-[10px]",
+        // A font size on EVERY rung, because AvatarFallback inherits it now rather than
+        // carrying its own text-sm - which at Xxs produced a 20px line box in a 16px box
+        // and clipped the initials (Codex review of PR #430).
+        Lumeo.Size.Xxs => "h-4 w-4 text-[8px]",
         // Own rung as of the full-scale rollout — previously fell through to the
         // Md catch-all (40px), rendering LARGER than Sm (32px). Deliberate visual
         // change: consumers relying on Size.Xs will see the avatar shrink to 24px.
-        Lumeo.Size.Xs => "h-6 w-6",
-        Lumeo.Size.Sm => "h-8 w-8",
-        Lumeo.Size.Lg => "h-12 w-12",
-        Lumeo.Size.Xl => "h-16 w-16",
-        Lumeo.Size.Xxl => "h-20 w-20",
-        _ => "h-10 w-10"
+        Lumeo.Size.Xs => "h-5 w-5 text-[10px]",
+        // shadcn's avatar is size-8, with size-6 small and size-10 large. The whole ladder
+        // moves down with it so the rungs stay one step apart.
+        Lumeo.Size.Sm => "h-6 w-6 text-xs",
+        Lumeo.Size.Lg => "h-10 w-10 text-base",
+        Lumeo.Size.Xl => "h-12 w-12 text-lg",
+        Lumeo.Size.Xxl => "h-16 w-16 text-xl",
+        _ => "h-8 w-8 text-sm"
     };
 
     private string StatusColor => Status switch

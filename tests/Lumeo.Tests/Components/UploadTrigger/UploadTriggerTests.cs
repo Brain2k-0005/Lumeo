@@ -43,7 +43,7 @@ public class UploadTriggerTests : IAsyncLifetime
     }
 
     [Fact]
-    public void Sm_Size_Renders_TextSm_Not_TextXs()
+    public void Sm_Size_Renders_Shadcns_Text0Point8Rem()
     {
         // Wave-0 fix (C3): unlike Button, UploadTrigger's LabelClass merges
         // BASE-first then SizeClass, so SizeClass's text-xs (the LAST font-size
@@ -53,7 +53,7 @@ public class UploadTriggerTests : IAsyncLifetime
         var cut = _ctx.Render<L.UploadTrigger>(p => p.Add(u => u.Size, Lumeo.Button.ButtonSize.Sm));
 
         var cls = cut.Find("label").GetAttribute("class") ?? "";
-        Assert.Contains("text-sm", cls);
+        Assert.Contains("text-[0.8rem]", cls);
         Assert.DoesNotContain("text-xs", cls);
     }
 
@@ -73,15 +73,15 @@ public class UploadTriggerTests : IAsyncLifetime
     }
 
     [Fact]
-    public void Lg_Size_Padding_Is_Synced_With_Buttons_Px6()
+    public void Lg_Size_Padding_Is_Synced_With_Buttons_Px2Point5()
     {
         // Sync check for the Wave-0b Button.Lg px-8 -> px-6 change (the delta the
         // repo owner spotted comparing Lumeo's docs to shadcn's side by side).
         var cut = _ctx.Render<L.UploadTrigger>(p => p.Add(u => u.Size, Lumeo.Button.ButtonSize.Lg));
 
         var cls = cut.Find("label").GetAttribute("class") ?? "";
-        Assert.Contains("px-6", cls);
-        Assert.DoesNotContain("px-8", cls);
+        Assert.Contains("px-2.5", cls);
+        Assert.DoesNotContain("px-6", cls);
     }
 
     [Fact]

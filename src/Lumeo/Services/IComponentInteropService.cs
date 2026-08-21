@@ -686,8 +686,8 @@ public interface IComponentInteropService : IAsyncDisposable, IDisposable
     /// unavailable) so the caller can fall back to that proxy. Default no-op
     /// DIM so existing implementers/test doubles keep compiling.
     /// </summary>
-    /// <param name="direction">Optional explicit <c>"ltr"</c>/<c>"rtl"</c> override
-    /// (Codex round 16 review, P2 finding #5), forwarded to the JS-side RTL
+    /// <param name="direction">Optional explicit <c>"ltr"</c>/<c>"rtl"</c> override,
+    /// forwarded to the JS-side RTL
     /// normalization instead of letting it read the element's OWN live
     /// <c>getComputedStyle(...).direction</c> — needed for a ThemeService-driven
     /// direction flip, whose own DOM mutation can already have landed by the
@@ -779,7 +779,7 @@ public interface IComponentInteropService : IAsyncDisposable, IDisposable
     /// Force-applies <paramref name="totalWidth"/>/<paramref name="nameWidth"/>
     /// directly onto <paramref name="paneEl"/>'s inline <c>width</c> style and
     /// its <c>--lumeo-gantt-tree-name-width</c> custom property (design spec
-    /// Phase 3, T5) — bug fix (Codex review, P2 #9): the live splitter drag
+    /// Phase 3, T5). Needed because the live splitter drag
     /// (<see cref="GanttV3RegisterSplitterDragAsync{T}"/>'s own
     /// <c>onPointerMove</c>) mutates the REAL pane element's inline width
     /// directly during the gesture, entirely outside Blazor's own render

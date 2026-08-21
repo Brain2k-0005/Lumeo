@@ -194,10 +194,13 @@ public class SizeScaleOrderingTests : IAsyncLifetime
     }
 
     [Fact]
-    public void Badge_Padding_Py_Xxs_Xs_Sm_Tie_At_Py0()
+    public void Badge_Padding_Py_Xxs_Xs_Sm_No_Longer_Tie_At_Zero()
     {
-        // Vertical padding floors at py-0 for Xxs/Xs (can't go negative below
-        // the pre-existing Sm=py-0) at the default Comfortable density.
+        // They used to tie: the ladder was anchored on a Sm of py-0 and nothing below zero
+        // exists, so three rungs shared it. Anchoring the badge on reui's own scale moved
+        // the whole ladder into quarter steps, which leaves room under the default rung -
+        // so the three rungs are distinct now, and this test says so rather than pinning a
+        // tie that only ever expressed the old floor.
         double? PyAt(L.Size size)
         {
             var cut = _ctx.Render<L.Badge>(p => p.Add(b => b.Size, size).AddChildContent("X"));
@@ -206,8 +209,8 @@ public class SizeScaleOrderingTests : IAsyncLifetime
         var xxs = PyAt(L.Size.Xxs);
         var xs = PyAt(L.Size.Xs);
         var sm = PyAt(L.Size.Sm);
-        Assert.Equal(xxs, xs);
-        Assert.Equal(xs, sm);
+        Assert.True(xxs < xs, $"Xxs {xxs} should sit under Xs {xs}");
+        Assert.True(xs <= sm, $"Xs {xs} should not exceed Sm {sm}");
     }
 
     // ============================== BorderBeam ==============================

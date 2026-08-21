@@ -6,6 +6,10 @@ using L = Lumeo;
 
 namespace Lumeo.Tests.Components.Kbd;
 
+// Values moved in the 5.0 scale alignment: every control sits one rung lower, on what the
+// shadcn CLI writes into a new project today - and on reui's values where reui defines the
+// component too, since reui takes precedence there. The ladder these tests guard, distinct
+// and monotonic rungs, is unchanged.
 public class KbdTests : IAsyncLifetime
 {
     private readonly BunitContext _ctx = new();
@@ -59,7 +63,7 @@ public class KbdTests : IAsyncLifetime
 
         var cls = cut.Find("kbd").GetAttribute("class");
         Assert.Contains("h-5", cls);
-        Assert.Contains("px-1.5", cls);
+        Assert.Contains("px-1", cls);
     }
 
     [Fact]
@@ -89,7 +93,7 @@ public class KbdTests : IAsyncLifetime
 
     [Theory]
     [InlineData(L.Size.Sm, "h-5", "px-1")]
-    [InlineData(L.Size.Md, "h-5", "px-1.5")]
+    [InlineData(L.Size.Md, "h-5", "px-1")]
     [InlineData(L.Size.Lg, "h-6", "px-2")]
     public void Size_Variants_Have_Correct_Classes(L.Size size, string expectedH, string expectedPx)
     {

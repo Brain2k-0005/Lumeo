@@ -40,9 +40,12 @@ public static class LumeoPresetOptions
     {
         "0",      // 0 None
         "0.25",   // 1 Small
-        "0.5",    // 2 Default
-        "0.75",   // 3 Medium
-        "1",      // 4 Large
+        "0.5",    // 2 Medium
+        "0.75",   // 3 Large
+        "1",      // 4 Extra large
+        "0.625",  // 5 Default - the shipped --radius. Appended rather than inserted in
+                  //   sorted position: the index is what an encoded preset stores, so
+                  //   inserting would re-point every code already saved or shared.
     };
 
     public static readonly string[] Fonts =

@@ -76,12 +76,30 @@
     // "w-7" here (28px), 4px narrower than the h-8 (32px) Button height it sits next
     // to — a pre-existing drift unrelated to this PR's Lg change, caught during the
     // arm-by-arm mirror re-audit (Codex #386 review, round 3).
-    private string ChevronWidth => Size switch
+    /// <summary>Density for this split button, matching <see cref="Lumeo.Button"/>'s own
+    /// parameter. The chevron half derives its width from the resulting height.</summary>
+    [Parameter] public Lumeo.Density? Density { get; set; }
+    [CascadingParameter] private Lumeo.Density? InheritedDensity { get; set; }
+
+    private Lumeo.Density EffectiveDensity => Density ?? InheritedDensity ?? Lumeo.Density.Comfortable;
+
+    // Follows Button's HEIGHT per size AND density - the chevron half is square by
+    // contract, and Button's height moves with density, so a size-only table left the
+    // half oblong at Compact and Spacious (review of PR #430).
+    private string ChevronWidth => (Size, EffectiveDensity) switch
     {
-        Button.ButtonSize.Xs => "w-6",
-        Button.ButtonSize.Sm => "w-8",
-        Button.ButtonSize.Lg => "w-10",
-        _ => "w-9"
+        (Button.ButtonSize.Xs, Lumeo.Density.Compact)  => "w-5",
+        (Button.ButtonSize.Xs, Lumeo.Density.Spacious) => "w-7",
+        (Button.ButtonSize.Xs, _)                      => "w-6",
+        (Button.ButtonSize.Sm, Lumeo.Density.Compact)  => "w-6",
+        (Button.ButtonSize.Sm, Lumeo.Density.Spacious) => "w-8",
+        (Button.ButtonSize.Sm, _)                      => "w-7",
+        (Button.ButtonSize.Lg, Lumeo.Density.Compact)  => "w-8",
+        (Button.ButtonSize.Lg, Lumeo.Density.Spacious) => "w-10",
+        (Button.ButtonSize.Lg, _)                      => "w-9",
+        (_, Lumeo.Density.Compact)  => "w-7",
+        (_, Lumeo.Density.Spacious) => "w-9",
+        _ => "w-8"
     };
 
     private string RootCssClass => Cx.Merge(

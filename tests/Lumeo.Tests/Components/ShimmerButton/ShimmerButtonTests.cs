@@ -105,7 +105,7 @@ public class ShimmerButtonTests : IAsyncLifetime
             .Add(b => b.Size, Lumeo.Button.ButtonSize.Sm)
             .AddChildContent("X"));
 
-        Assert.Contains("h-8", cut.Find("button").GetAttribute("class"));
+        Assert.Contains("h-7", cut.Find("button").GetAttribute("class"));
     }
 
     [Fact]

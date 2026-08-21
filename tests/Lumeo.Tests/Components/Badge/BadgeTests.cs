@@ -124,10 +124,10 @@ public class BadgeTests : IAsyncLifetime
         var cls = cut.Find("div").GetAttribute("class");
         Assert.Contains("inline-flex", cls);
         Assert.Contains("items-center", cls);
-        Assert.Contains("rounded-md", cls);
+        Assert.Contains("rounded-sm", cls);
         Assert.Contains("border", cls);
         Assert.Contains("text-xs", cls);
-        Assert.Contains("font-semibold", cls);
+        Assert.Contains("font-medium", cls);
     }
 
     [Fact]
@@ -208,6 +208,17 @@ public class BadgeTests : IAsyncLifetime
     private static string[] Tokens(AngleSharp.Dom.IElement el) =>
         (el.GetAttribute("class") ?? "").Split(' ', StringSplitOptions.RemoveEmptyEntries);
 
+    // The three lists below were frozen during the Size-scale migration to prove that migration
+    // changed nothing. They moved once since, deliberately: w-fit / shrink-0 / justify-center /
+    // whitespace-nowrap were added because inline-flex alone still stretches inside a flex column
+    // or a stretched grid cell, so a badge in a table column rendered as wide as the column
+    // (measured: 300px against 77.6px for the same content) and wrapped to two lines when squeezed.
+    // They moved a second time in the 5.0 alignment, and that time the size-dependent tokens
+    // moved too: the badge is anchored on reui's own ladder now (px-1.25 py-0.5 h-5 at the
+    // default rung, rounded-sm, font-medium), because where reui defines a component it takes
+    // precedence over shadcn - and the two genuinely differ here. What the tests still guard is
+    // that the rungs stay distinct and that nothing silently drifts between releases.
+    // A caller can still override the width: w-* is a merge conflict group, so Class="w-full" wins.
     [Fact]
     public void Size_Sm_Renders_Byte_Identical_To_Pre_Migration_BadgeSize_Sm()
     {
@@ -218,8 +229,10 @@ public class BadgeTests : IAsyncLifetime
         Assert.Equal(
             new[]
             {
-                "inline-flex", "items-center", "border", "font-semibold", "transition-colors",
-                "focus:outline-none", "rounded-md", "text-[10px]", "px-2", "py-0",
+                "relative", "inline-flex", "w-fit", "shrink-0", "items-center", "justify-center",
+                "gap-1", "whitespace-nowrap", "border", "font-medium", "leading-none",
+                "transition-colors",
+                "focus:outline-none", "rounded-sm", "text-[10px]", "min-h-4.5", "min-w-4.5", "px-1", "py-0.25",
                 "border-transparent", "bg-primary", "text-primary-foreground", "shadow"
             },
             Tokens(cut.Find("div")));
@@ -233,8 +246,10 @@ public class BadgeTests : IAsyncLifetime
         Assert.Equal(
             new[]
             {
-                "inline-flex", "items-center", "border", "font-semibold", "transition-colors",
-                "focus:outline-none", "rounded-md", "text-xs", "px-2.5", "py-0.5",
+                "relative", "inline-flex", "w-fit", "shrink-0", "items-center", "justify-center",
+                "gap-1", "whitespace-nowrap", "border", "font-medium", "leading-none",
+                "transition-colors",
+                "focus:outline-none", "rounded-sm", "text-xs", "min-h-5", "min-w-5", "px-1.25", "py-0.5",
                 "border-transparent", "bg-primary", "text-primary-foreground", "shadow"
             },
             Tokens(cut.Find("div")));
@@ -250,8 +265,10 @@ public class BadgeTests : IAsyncLifetime
         Assert.Equal(
             new[]
             {
-                "inline-flex", "items-center", "border", "font-semibold", "transition-colors",
-                "focus:outline-none", "rounded-md", "text-sm", "px-3", "py-1",
+                "relative", "inline-flex", "w-fit", "shrink-0", "items-center", "justify-center",
+                "gap-1", "whitespace-nowrap", "border", "font-medium", "leading-none",
+                "transition-colors",
+                "focus:outline-none", "rounded-sm", "text-sm", "min-h-5.5", "min-w-5.5", "px-1.5", "py-0.5",
                 "border-transparent", "bg-primary", "text-primary-foreground", "shadow"
             },
             Tokens(cut.Find("div")));
@@ -266,5 +283,34 @@ public class BadgeTests : IAsyncLifetime
     {
         var cut = _ctx.Render<Lumeo.Badge>(p => p.Add(b => b.Size, size).AddChildContent("X"));
         Assert.Contains(expectedTextClass, Tokens(cut.Find("div")));
+    }
+
+    [Fact]
+    public void A_badge_stays_at_its_content_width_and_on_one_line()
+    {
+        // inline-flex alone still stretches inside a flex column or a stretched grid cell, so a
+        // badge dropped into a table column came out as wide as the column - measured at 300px
+        // against 77.6px for the same content. shadcn carries w-fit/shrink-0/whitespace-nowrap for
+        // exactly that, and a badge squeezed in a narrow row used to wrap and change the row height.
+        var cut = _ctx.Render<Lumeo.Badge>(p => p.AddChildContent("Gesammelt"));
+
+        var cls = cut.Find("div").GetAttribute("class") ?? string.Empty;
+        Assert.Contains("w-fit", cls);
+        Assert.Contains("shrink-0", cls);
+        Assert.Contains("whitespace-nowrap", cls);
+    }
+
+    [Fact]
+    public void A_caller_can_still_stretch_a_badge_that_should_fill_its_container()
+    {
+        // w-fit is a default, not a decree: w-* is a merge conflict group and Class is merged last,
+        // so anyone who wants the old full-width behaviour back asks for it and gets it.
+        var cut = _ctx.Render<Lumeo.Badge>(p => p
+            .Add(b => b.Class, "w-full")
+            .AddChildContent("Gesammelt"));
+
+        var cls = cut.Find("div").GetAttribute("class") ?? string.Empty;
+        Assert.Contains("w-full", cls);
+        Assert.DoesNotContain("w-fit", cls);
     }
 }

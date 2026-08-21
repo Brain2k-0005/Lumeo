@@ -44,6 +44,12 @@ public class RadiusTokenGuardTests
         "src/Lumeo/UI/Mention/Mention.razor",
         "src/Lumeo/UI/Skeleton/SkeletonCircle.razor",
 
+        // Explicit pill opt-in — Badge's Pill parameter is the caller asking for a pill
+        // whatever the theme says, the same contract as Avatar's Shape=Circle above. The
+        // DEFAULT badge shape is rounded-sm and does follow the theme; only this opt-in is
+        // literal. Mirrors reui's own `radius=full` variant (audited 2026-08, 5.0 alignment).
+        "src/Lumeo/UI/Badge/Badge.razor",
+
         // Mirrors the circular map-marker glyph — must match the marker, not the theme.
         "src/Lumeo.Maps/UI/Map/MapLegendItem.razor",
     };

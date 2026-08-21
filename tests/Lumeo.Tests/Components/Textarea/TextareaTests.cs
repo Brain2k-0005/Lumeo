@@ -5,6 +5,10 @@ using Microsoft.AspNetCore.Components;
 
 namespace Lumeo.Tests.Components.Textarea;
 
+// Values moved in the 5.0 scale alignment: every control sits one rung lower, on what the
+// shadcn CLI writes into a new project today - and on reui's values where reui defines the
+// component too, since reui takes precedence there. The ladder these tests guard, distinct
+// and monotonic rungs, is unchanged.
 public class TextareaTests : IAsyncLifetime
 {
     private readonly BunitContext _ctx = new();
@@ -51,13 +55,13 @@ public class TextareaTests : IAsyncLifetime
 
         var cls = cut.Find("textarea").GetAttribute("class");
         Assert.Contains("flex", cls);
-        Assert.Contains("min-h-[60px]", cls);
+        Assert.Contains("min-h-16", cls);
         Assert.Contains("w-full", cls);
         Assert.Contains("rounded-md", cls);
         Assert.Contains("border", cls);
         Assert.Contains("border-input", cls);
         Assert.Contains("bg-transparent", cls);
-        Assert.Contains("px-3", cls);
+        Assert.Contains("px-2.5", cls);
         Assert.Contains("py-2", cls);
         Assert.Contains("text-sm", cls);
     }

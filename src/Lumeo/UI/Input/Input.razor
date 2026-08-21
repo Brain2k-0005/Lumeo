@@ -384,8 +384,14 @@ else
     // second one, so this can never again recognise a narrower set of forms than Cx.Merge does.
     private bool HasFontSizeOverride => Lumeo.Internal.TailwindMerge.HasUnprefixedFontSizeClass(Class);
 
-    private string SmFontClasses => HasFontSizeOverride ? "" : " text-base md:text-xs max-md:leading-none";
-    private string DefaultFontClasses => HasFontSizeOverride ? "" : " text-base md:text-sm max-md:leading-none";
+    // Compact drops a rung below Comfortable, which leaves 18px of inner height against
+    // text-sm's 20px line box once the md breakpoint turns max-md:leading-none off - so at
+    // that density the tight line box applies at EVERY width, not just below md
+    // (Codex review of PR #430). The other densities keep the original behaviour.
+    private string CompactLeading => EffectiveDensity == Lumeo.Density.Compact ? " leading-none" : " max-md:leading-none";
+
+    private string SmFontClasses => HasFontSizeOverride ? "" : " text-base md:text-xs" + CompactLeading;
+    private string DefaultFontClasses => HasFontSizeOverride ? "" : " text-base md:text-sm" + CompactLeading;
 
     // Full-scale rollout (Xl/Xxl): same HasFontSizeOverride-suppressed "text-base md:text-<n>
     // max-md:leading-none" trio as SmFontClasses/DefaultFontClasses above, just with a
@@ -447,9 +453,9 @@ else
         (Lumeo.Size.Xxl, Lumeo.Density.Compact)  => $"h-14{XxlFontClasses} px-4",
         (Lumeo.Size.Xxl, Lumeo.Density.Spacious) => $"h-16{XxlFontClasses} px-7",
         (Lumeo.Size.Xxl, _)                      => $"h-[60px]{XxlFontClasses} px-6",
-        (_, Lumeo.Density.Compact)              => $"h-8{DefaultFontClasses} px-2.5",
-        (_, Lumeo.Density.Spacious)             => $"h-10{DefaultFontClasses} px-4",
-        _                                       => $"h-9{DefaultFontClasses} px-3"
+        (_, Lumeo.Density.Compact)              => $"h-7{DefaultFontClasses} px-2",
+        (_, Lumeo.Density.Spacious)             => $"h-9{DefaultFontClasses} px-3",
+        _                                       => $"h-8{DefaultFontClasses} px-2.5"
     };
 
     // Wrapper/wrapped-input paths (Prefix/Suffix/Search/Clearable/number-stepper branch):
@@ -480,9 +486,11 @@ else
         (Lumeo.Size.Xxl, Lumeo.Density.Compact)  => "h-14 text-base md:text-xl max-md:leading-none",
         (Lumeo.Size.Xxl, Lumeo.Density.Spacious) => "h-16 text-base md:text-xl max-md:leading-none",
         (Lumeo.Size.Xxl, _)                      => "h-[60px] text-base md:text-xl max-md:leading-none",
-        (_, Lumeo.Density.Compact)              => "h-8 text-base md:text-sm max-md:leading-none",
-        (_, Lumeo.Density.Spacious)             => "h-10 text-base md:text-sm max-md:leading-none",
-        _                                       => "h-9 text-base md:text-sm max-md:leading-none"
+        // shadcn's input is h-8 px-2.5, measured in a project built with their CLI. Compact
+        // sits one rung below that and Spacious one rung above, which is what density means.
+        (_, Lumeo.Density.Compact)              => "h-7 text-base md:text-sm leading-none",
+        (_, Lumeo.Density.Spacious)             => "h-9 text-base md:text-sm max-md:leading-none",
+        _                                       => "h-8 text-base md:text-sm max-md:leading-none"
     };
 
     // Accessory edge padding tracks density so prefix/suffix/search-icon/clear
@@ -490,14 +498,14 @@ else
     private string AccessoryPad => EffectiveDensity switch
     {
         Lumeo.Density.Compact => "px-2",
-        Lumeo.Density.Spacious => "px-4",
-        _ => "px-3"
+        Lumeo.Density.Spacious => "px-3",
+        _ => "px-2.5"
     };
     private string AccessoryStartPad => EffectiveDensity switch
     {
         Lumeo.Density.Compact => "ps-2",
-        Lumeo.Density.Spacious => "ps-4",
-        _ => "ps-3"
+        Lumeo.Density.Spacious => "ps-3",
+        _ => "ps-2.5"
     };
     private string AccessoryClearPad => EffectiveDensity switch
     {
@@ -532,9 +540,11 @@ else
         (Lumeo.Size.Xxl, Lumeo.Density.Compact)  => "px-4 text-base md:text-xl max-md:leading-none",
         (Lumeo.Size.Xxl, Lumeo.Density.Spacious) => "px-7 text-base md:text-xl max-md:leading-none",
         (Lumeo.Size.Xxl, _)                      => "px-6 text-base md:text-xl max-md:leading-none",
-        (_, Lumeo.Density.Compact)              => "px-2.5 text-base md:text-sm max-md:leading-none",
-        (_, Lumeo.Density.Spacious)             => "px-4 text-base md:text-sm max-md:leading-none",
-        _                                       => "px-3 text-base md:text-sm max-md:leading-none"
+        // The inner <input> of the accessory branch carries its own padding; it moves with the
+        // plain input's, or a field with a prefix ends up wider inside than one without.
+        (_, Lumeo.Density.Compact)              => "px-2 text-base md:text-sm leading-none",
+        (_, Lumeo.Density.Spacious)             => "px-3 text-base md:text-sm max-md:leading-none",
+        _                                       => "px-2.5 text-base md:text-sm max-md:leading-none"
     };
 
     private string CssClass => Cx.Merge("flex", SizeClasses, "w-full rounded-md border", (EffectiveInvalid ? "border-destructive" : "border-input"), "bg-transparent py-1 shadow-xs transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-[1.5px]", (EffectiveInvalid ? "focus-visible:ring-destructive/20" : "focus-visible:ring-ring"), "disabled:cursor-not-allowed disabled:opacity-50", Class);

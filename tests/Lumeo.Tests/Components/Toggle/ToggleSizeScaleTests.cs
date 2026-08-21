@@ -11,6 +11,9 @@ namespace Lumeo.Tests.Components.Toggle;
 // "h-1" is a substring of "h-11"/"h-14" — so a loose Contains could
 // silently pass a wrong value), per the task brief's note that Cx.Merge's
 // argument order has bitten this repo twice.
+/// The Sm/Md/Lg rungs moved down one step in the 5.0 scale alignment - shadcn's toggle is
+/// h-8 px-2.5 at the default rung, h-7 small, h-9 large, with one padding value across all
+/// three. The rungs above and below are untouched.
 public class ToggleSizeScaleTests : IAsyncLifetime
 {
     private readonly BunitContext _ctx = new();
@@ -34,9 +37,9 @@ public class ToggleSizeScaleTests : IAsyncLifetime
     [Theory]
     [InlineData(Lumeo.Size.Xxs, "h-6", "px-0")]
     [InlineData(Lumeo.Size.Xs, "h-7", "px-1")]
-    [InlineData(Lumeo.Size.Sm, "h-8", "px-2")]
-    [InlineData(Lumeo.Size.Md, "h-9", "px-3")]
-    [InlineData(Lumeo.Size.Lg, "h-10", "px-4")]
+    [InlineData(Lumeo.Size.Sm, "h-7", "px-2.5")]
+    [InlineData(Lumeo.Size.Md, "h-8", "px-2.5")]
+    [InlineData(Lumeo.Size.Lg, "h-9", "px-2.5")]
     [InlineData(Lumeo.Size.Xl, "h-11", "px-5")]
     [InlineData(Lumeo.Size.Xxl, "h-12", "px-6")]
     public void Comfortable_Renders_Correct_Size_Classes(Lumeo.Size size, string heightClass, string paddingClass)
@@ -51,9 +54,9 @@ public class ToggleSizeScaleTests : IAsyncLifetime
     [Theory]
     [InlineData(Lumeo.Size.Xxs, "h-5", "px-0.5")]
     [InlineData(Lumeo.Size.Xs, "h-6", "px-1")]
-    [InlineData(Lumeo.Size.Sm, "h-7", "px-1.5")]
-    [InlineData(Lumeo.Size.Md, "h-8", "px-2")]
-    [InlineData(Lumeo.Size.Lg, "h-9", "px-3")]
+    [InlineData(Lumeo.Size.Sm, "h-6", "px-2")]
+    [InlineData(Lumeo.Size.Md, "h-7", "px-2")]
+    [InlineData(Lumeo.Size.Lg, "h-8", "px-2")]
     [InlineData(Lumeo.Size.Xl, "h-10", "px-4")]
     [InlineData(Lumeo.Size.Xxl, "h-11", "px-5")]
     public void Compact_Renders_Correct_Size_Classes(Lumeo.Size size, string heightClass, string paddingClass)
@@ -69,9 +72,9 @@ public class ToggleSizeScaleTests : IAsyncLifetime
     [Theory]
     [InlineData(Lumeo.Size.Xxs, "h-5", "px-1")]
     [InlineData(Lumeo.Size.Xs, "h-7", "px-2")]
-    [InlineData(Lumeo.Size.Sm, "h-9", "px-3")]
-    [InlineData(Lumeo.Size.Md, "h-11", "px-4")]
-    [InlineData(Lumeo.Size.Lg, "h-12", "px-5")]
+    [InlineData(Lumeo.Size.Sm, "h-8", "px-3")]
+    [InlineData(Lumeo.Size.Md, "h-9", "px-3")]
+    [InlineData(Lumeo.Size.Lg, "h-10", "px-3")]
     [InlineData(Lumeo.Size.Xl, "h-[52px]", "px-6")]
     [InlineData(Lumeo.Size.Xxl, "h-14", "px-7")]
     public void Spacious_Renders_Correct_Size_Classes(Lumeo.Size size, string heightClass, string paddingClass)
