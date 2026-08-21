@@ -17,12 +17,12 @@ else
     <div class="@CssClass" @attributes="AdditionalAttributes">
         @if (IconContent != null)
         {
-            <span class="me-1 inline-flex items-center">@IconContent</span>
+            <span class="inline-flex items-center">@IconContent</span>
         }
         @ChildContent
         @if (IsRemovable)
         {
-            <button type="button" class="ms-1 rounded-[calc(var(--radius)*2)] hover:bg-foreground/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1" @onclick="HandleRemove" aria-label="@L["Badge.Remove"]">
+            <button type="button" class="rounded-[calc(var(--radius)*2)] hover:bg-foreground/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1" @onclick="HandleRemove" aria-label="@L["Badge.Remove"]">
                 <SvgGlyph Svg="@(LumeoIcons.X)" class="h-3 w-3" />
             </button>
         }
@@ -44,9 +44,11 @@ else
     /// inline tags / counts and <c>Lg</c> for prominent status chips — avoids
     /// consumer-side <c>!px-*</c> / <c>!h-*</c> / <c>!text-*</c> overrides.</summary>
     [Parameter] public Lumeo.Size Size { get; set; } = Lumeo.Size.Md;
-    /// <summary>Pill shape instead of the default <c>rounded-md</c> — for count/quota
-    /// chips. Theme-radius-aware: renders as a full pill at stock radii and squares off
-    /// along with the rest of the UI in sharp themes (<c>--radius: 0</c>).</summary>
+    /// <summary>Pill shape instead of the default <c>rounded-sm</c> — for count/quota
+    /// chips. Deliberately NOT theme-radius-aware: it stays a full pill even at
+    /// <c>--radius: 0</c>, because a caller asking for a pill is asking for the shape and
+    /// not for the theme's roundness. Mirrors reui's own <c>radius="full"</c> variant; the
+    /// DEFAULT shape does follow the theme.</summary>
     [Parameter] public bool Pill { get; set; }
     /// <summary>Renders the badge as a small filled dot instead of a chip with text — for
     /// status indicators. When set, <see cref="ChildContent"/>/<see cref="IconContent"/>/
@@ -139,7 +141,7 @@ else
         (Lumeo.Size.Xxl, Lumeo.Density.Spacious) => "px-3 py-1.25",
         (Lumeo.Size.Xxl, _)                      => "px-2.5 py-1",
         (_, Lumeo.Density.Compact)               => "px-1 py-0.25",
-        (_, Lumeo.Density.Spacious)              => "px-1.5 py-0.5",
+        (_, Lumeo.Density.Spacious)              => "px-1.5 py-0.75",
         _                                        => "px-1.25 py-0.5"
     };
 
@@ -151,15 +153,33 @@ else
     /// taller than a pinned height would be: at Lg that is 24px of content in a 22px box,
     /// with the text painting outside its own background.
     /// </summary>
-    private string HeightClass => Size switch
+    private string HeightClass => (Size, EffectiveDensity) switch
     {
-        Lumeo.Size.Xxs => "min-h-3.5 min-w-3.5",
-        Lumeo.Size.Xs  => "min-h-4 min-w-4",
-        Lumeo.Size.Sm  => "min-h-4.5 min-w-4.5",
-        Lumeo.Size.Lg  => "min-h-5.5 min-w-5.5",
-        Lumeo.Size.Xl  => "min-h-6 min-w-6",
-        Lumeo.Size.Xxl => "min-h-7 min-w-7",
-        _              => "min-h-5 min-w-5"
+        // Density has to reach the HEIGHT, not just the padding: leading-none makes the
+        // floor govern the box, so a Spacious badge that only gained padding would have
+        // come out exactly as tall as a Comfortable one - a density setting with no
+        // visible effect, against its own public contract (Codex review of PR #430).
+        (Lumeo.Size.Xxs, Lumeo.Density.Compact)  => "min-h-3 min-w-3",
+        (Lumeo.Size.Xxs, Lumeo.Density.Spacious) => "min-h-4 min-w-4",
+        (Lumeo.Size.Xxs, _)                      => "min-h-3.5 min-w-3.5",
+        (Lumeo.Size.Xs, Lumeo.Density.Compact)   => "min-h-3.5 min-w-3.5",
+        (Lumeo.Size.Xs, Lumeo.Density.Spacious)  => "min-h-4.5 min-w-4.5",
+        (Lumeo.Size.Xs, _)                       => "min-h-4 min-w-4",
+        (Lumeo.Size.Sm, Lumeo.Density.Compact)   => "min-h-4 min-w-4",
+        (Lumeo.Size.Sm, Lumeo.Density.Spacious)  => "min-h-5 min-w-5",
+        (Lumeo.Size.Sm, _)                       => "min-h-4.5 min-w-4.5",
+        (Lumeo.Size.Lg, Lumeo.Density.Compact)   => "min-h-5 min-w-5",
+        (Lumeo.Size.Lg, Lumeo.Density.Spacious)  => "min-h-6 min-w-6",
+        (Lumeo.Size.Lg, _)                       => "min-h-5.5 min-w-5.5",
+        (Lumeo.Size.Xl, Lumeo.Density.Compact)   => "min-h-5.5 min-w-5.5",
+        (Lumeo.Size.Xl, Lumeo.Density.Spacious)  => "min-h-7 min-w-7",
+        (Lumeo.Size.Xl, _)                       => "min-h-6 min-w-6",
+        (Lumeo.Size.Xxl, Lumeo.Density.Compact)  => "min-h-6 min-w-6",
+        (Lumeo.Size.Xxl, Lumeo.Density.Spacious) => "min-h-8 min-w-8",
+        (Lumeo.Size.Xxl, _)                      => "min-h-7 min-w-7",
+        (_, Lumeo.Density.Compact)               => "min-h-4.5 min-w-4.5",
+        (_, Lumeo.Density.Spacious)              => "min-h-5.5 min-w-5.5",
+        _                                        => "min-h-5 min-w-5"
     };
 
     // w-fit / shrink-0 / whitespace-nowrap / justify-center are shadcn's, and they are here for
@@ -168,7 +188,11 @@ else
     // 300px against 77.6px for the same content) - and squeezed in a narrow flex row it wrapped to
     // two lines and changed the row height. None of them alters a badge that is already sitting at
     // its content width, which is the ordinary case.
-    private const string BaseClasses = "relative inline-flex w-fit shrink-0 items-center justify-center gap-1 whitespace-nowrap border font-medium transition-colors focus:outline-none";
+    // leading-none is what makes min-h-* actually govern the box: with a normal line box the
+    // intrinsic height (line + padding + border) exceeds the floor, so the badge grew past it
+    // while the width stayed at min-w-* - and a single digit came out an oval rather than the
+    // circle this pair promises (Codex review of PR #430).
+    private const string BaseClasses = "relative inline-flex w-fit shrink-0 items-center justify-center gap-1 whitespace-nowrap border font-medium leading-none transition-colors focus:outline-none";
 
     private string DotClasses => VariantClasses;
 

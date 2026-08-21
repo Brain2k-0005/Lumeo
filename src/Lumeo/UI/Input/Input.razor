@@ -384,8 +384,14 @@ else
     // second one, so this can never again recognise a narrower set of forms than Cx.Merge does.
     private bool HasFontSizeOverride => Lumeo.Internal.TailwindMerge.HasUnprefixedFontSizeClass(Class);
 
-    private string SmFontClasses => HasFontSizeOverride ? "" : " text-base md:text-xs max-md:leading-none";
-    private string DefaultFontClasses => HasFontSizeOverride ? "" : " text-base md:text-sm max-md:leading-none";
+    // Compact drops a rung below Comfortable, which leaves 18px of inner height against
+    // text-sm's 20px line box once the md breakpoint turns max-md:leading-none off - so at
+    // that density the tight line box applies at EVERY width, not just below md
+    // (Codex review of PR #430). The other densities keep the original behaviour.
+    private string CompactLeading => EffectiveDensity == Lumeo.Density.Compact ? " leading-none" : " max-md:leading-none";
+
+    private string SmFontClasses => HasFontSizeOverride ? "" : " text-base md:text-xs" + CompactLeading;
+    private string DefaultFontClasses => HasFontSizeOverride ? "" : " text-base md:text-sm" + CompactLeading;
 
     // Full-scale rollout (Xl/Xxl): same HasFontSizeOverride-suppressed "text-base md:text-<n>
     // max-md:leading-none" trio as SmFontClasses/DefaultFontClasses above, just with a

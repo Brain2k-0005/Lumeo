@@ -71,7 +71,26 @@
     private int OverflowCount => Max > 0 && EffectiveTotal > Max ? EffectiveTotal - Max : 0;
 
     private string CssClass => Cx.Merge("flex -space-x-3", Class);
-    private const string OverflowClasses = "relative flex h-10 w-10 shrink-0 items-center justify-center rounded-full border-2 border-background bg-muted text-muted-foreground";
+    /// <summary>Size of the avatars in this group, and of the "+N" chip that closes it.
+    /// Mirrors <see cref="Lumeo.Avatar"/>'s own ladder: the chip was pinned at the old default
+    /// of 40px, so once the avatar moved to 32px every group with <c>Max</c> ended in a chip a
+    /// rung larger than the faces beside it (Codex review of PR #430).</summary>
+    [Parameter] public Lumeo.Size Size { get; set; } = Lumeo.Size.Md;
+
+    private string OverflowSizeClasses => Size switch
+    {
+        Lumeo.Size.Xxs => "h-4 w-4 text-[8px]",
+        Lumeo.Size.Xs  => "h-5 w-5 text-[10px]",
+        Lumeo.Size.Sm  => "h-6 w-6 text-xs",
+        Lumeo.Size.Lg  => "h-10 w-10 text-base",
+        Lumeo.Size.Xl  => "h-12 w-12 text-lg",
+        Lumeo.Size.Xxl => "h-16 w-16 text-xl",
+        _              => "h-8 w-8 text-sm"
+    };
+
+    private string OverflowClasses => Cx.Merge(
+        "relative flex shrink-0 items-center justify-center rounded-full border-2 border-background bg-muted text-muted-foreground",
+        OverflowSizeClasses);
 
     /// <summary>
     /// Stable registry of the group's member avatars, preserving DOM order

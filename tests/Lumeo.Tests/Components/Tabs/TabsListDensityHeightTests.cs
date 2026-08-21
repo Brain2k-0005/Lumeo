@@ -97,9 +97,11 @@ public class TabsListDensityHeightTests : IAsyncLifetime
         {
             var expected = (variant, density) switch
             {
-                (_, L.Density.Spacious) => "h-9",
-                (_, L.Density.Compact) => "h-7",
+                (L.Tabs.TabsVariant.Default, L.Density.Compact) => "h-7",
+                (L.Tabs.TabsVariant.Default, L.Density.Spacious) => "h-9",
                 (L.Tabs.TabsVariant.Default, _) => "h-8",
+                (_, L.Density.Compact) => "h-8",
+                (_, L.Density.Spacious) => "h-10",
                 _ => "h-9",
             };
             yield return new object[] { variant, density, expected };
@@ -169,7 +171,7 @@ public class TabsListDensityHeightTests : IAsyncLifetime
         var cut = RenderTabsList(L.Tabs.TabsVariant.Card, L.Orientation.Horizontal, L.Density.Compact);
         var tokens = (cut.Find("[role='tablist']").GetAttribute("class") ?? "").Split(' ', StringSplitOptions.RemoveEmptyEntries);
 
-        Assert.Contains("h-7", tokens);       // actual (fixed) value
+        Assert.Contains("h-8", tokens);       // actual (fixed) value
         Assert.DoesNotContain("h-9", tokens); // predicted value under the pre-fix hardcoded class
     }
 

@@ -42,7 +42,7 @@ public class AvatarSizeScaleTests : IAsyncLifetime
     {
         var cut = _ctx.Render<L.Avatar>(p => p.Add(a => a.Size, L.Size.Xxs));
         var tokens = cut.Find("div").GetAttribute("class")!.Split(' ');
-        Assert.Contains("text-[10px]", tokens);
+        Assert.Contains("text-[8px]", tokens);
     }
 
     [Fact]
