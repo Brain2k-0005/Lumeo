@@ -57,7 +57,8 @@
     [Parameter] public bool Block { get; set; }
     /// <summary>Per-control density override. When null, inherits from any
     /// ancestor <see cref="DensityScope"/>; if neither is set, matches the
-    /// historical <c>Comfortable</c> default. Only the track + item padding
+    /// sits on the <c>Comfortable</c> rung, which follows TabsTrigger and moved down a
+    /// step in 5.0. Only the track + item padding
     /// shift between values.</summary>
     [Parameter] public Density? Density { get; set; }
     [CascadingParameter] private Density? InheritedDensity { get; set; }
@@ -114,20 +115,23 @@
 
     private Lumeo.Density EffectiveDensity => Density ?? InheritedDensity ?? Lumeo.Density.Comfortable;
 
-    // Track padding tracks density; Comfortable reproduces the historical p-1.
+    // Track padding tracks density. Comfortable is TabsList's p-[3px] as of 5.0; the
+    // other two keep a rung either side of it.
     private string TrackPadClass => EffectiveDensity switch
     {
         Lumeo.Density.Compact => "p-0.5",
-        Lumeo.Density.Spacious => "p-1.5",
-        _ => "p-1"
+        Lumeo.Density.Spacious => "p-1",
+        _ => "p-[3px]"
     };
 
-    // Item padding tracks density; Comfortable reproduces the historical px-3 py-1.5.
+    // Item padding tracks density. This table is TabsTrigger's, because a Segmented
+    // control IS a tab strip as far as a reader is concerned - it copied the pre-5.0
+    // values and stayed a visibly larger rung when Tabs moved.
     private string ItemPadClass => EffectiveDensity switch
     {
-        Lumeo.Density.Compact => "px-2 py-1",
-        Lumeo.Density.Spacious => "px-4 py-2",
-        _ => "px-3 py-1.5"
+        Lumeo.Density.Compact => "px-1 py-0",
+        Lumeo.Density.Spacious => "px-3 py-1",
+        _ => "px-2 py-1"
     };
 
     protected override void OnParametersSet()
