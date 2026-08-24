@@ -176,7 +176,7 @@ infoCmd.SetHandler(Commands.Info, infoJsonOpt);
 var encodeThemeOpt = new Option<string?>("--theme", "Theme name: default, blue, orange, green, rose, zinc, violet, amber, teal.");
 var encodeStyleOpt = new Option<string?>("--style", "Style: default | new-york.");
 var encodeBaseOpt = new Option<string?>("--base", "Base color: slate | gray | zinc | neutral | stone.");
-var encodeRadiusOpt = new Option<string?>("--radius", "Radius: 0 | 0.25 | 0.5 | 0.75 | 1.");
+var encodeRadiusOpt = new Option<string?>("--radius", "Radius: 0 | 0.25 | 0.5 | 0.625 (default) | 0.75 | 1.");
 var encodeFontOpt = new Option<string?>("--font", "Font: system | inter | geist | ibm-plex-sans | jetbrains-mono | fira-code.");
 var encodeIconsOpt = new Option<string?>("--icons", "Icon library: lucide | bootstrap | fluent | material-symbols | material-symbols-rounded | material-symbols-sharp | tabler | phosphor | heroicons | remix | iconoir.");
 var encodeMenuColorOpt = new Option<string?>("--menu-color", "Menu color: default | dark | light.");
