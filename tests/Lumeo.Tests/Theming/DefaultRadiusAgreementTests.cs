@@ -79,4 +79,20 @@ public class DefaultRadiusAgreementTests
         Assert.NotEmpty(quoted);
         Assert.All(quoted, v => Assert.Equal(CssDefaultRadius(), v));
     }
+
+    [Fact]
+    public void The_Chart_Theme_Falls_Back_To_The_Radius_The_Stylesheet_Renders()
+    {
+        // buildLumeoTheme reads --radius off the document, but falls back to a literal when
+        // the Charts interop initializes without the base stylesheet. That branch produces a
+        // real rendered result - tooltip and bar corners - so a stale literal there is not a
+        // dead default, it is chart geometry at the pre-5.0 radius with nothing to reveal it.
+        var js = File.ReadAllText(Path.Combine(
+            RepoRoot(), "src/Lumeo.Charts/wwwroot/js/echarts-interop.js"));
+
+        var m = Regex.Match(js, @"cssVar\('--radius'\)\s*\|\|\s*'([0-9.]+)rem'");
+        Assert.True(m.Success, "could not find buildLumeoTheme's --radius fallback in echarts-interop.js");
+
+        Assert.Equal(CssDefaultRadius(), m.Groups[1].Value);
+    }
 }

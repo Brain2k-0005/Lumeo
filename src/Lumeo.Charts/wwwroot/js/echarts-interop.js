@@ -389,7 +389,10 @@ function buildLumeoTheme(cssVar, reducedMotion) {
     // BarChart.razor sends straight through to ECharts options).
     const toPx = (raw) => parseFloat(raw) * (String(raw).includes('rem') ? 16 : 1);
 
-    const radiusRaw = cssVar('--radius') || '0.75rem';
+    // Mirrors lumeo.css's shipped --radius. This branch runs when the Charts interop
+    // initializes without the base stylesheet, so a stale value here silently renders
+    // chart corners at the pre-5.0 radius. DefaultRadiusAgreementTests keeps it in step.
+    const radiusRaw = cssVar('--radius') || '0.625rem';
     const radiusPx = toPx(radiusRaw);
     // Popover uses `rounded-md` (--radius-md == --radius by default) — tooltip
     // matches it exactly rather than re-deriving its own scale.
@@ -495,9 +498,10 @@ function buildLumeoTheme(cssVar, reducedMotion) {
             // full-opacity border. See src/Lumeo/UI/Popover/PopoverContent.razor.
             borderColor: withAlpha(border, 0.6),
             borderWidth: 1,
-            // PopoverContent uses `p-4` (16px, uniform) — the tooltip previously used
-            // an asymmetric [8,12] ECharts default instead of matching that padding.
-            padding: 16,
+            // PopoverContent uses `p-2.5` (10px, uniform) as of 5.0 — the tooltip is
+            // contractually the same surface, so it follows. It previously used an
+            // asymmetric [8,12] ECharts default instead of matching that padding.
+            padding: 10,
             // 14 — --text-sm, matching the body-copy size Lumeo's own popover-family
             // surfaces use for their content (DropdownMenuItem/SelectItem are both
             // `text-sm`), not the smaller --text-xs used for ambient axis/legend labels.
