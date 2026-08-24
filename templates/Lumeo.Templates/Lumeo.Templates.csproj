@@ -29,18 +29,23 @@
     <Compile Remove="**\*" />
   </ItemGroup>
 
-  <!-- Stamp the lockstep Lumeo version (from /Directory.Build.props → $(Version)) into the
+  <!-- Stamp $(LumeoTemplatePackageVersion) (from /Directory.Build.props) into the
        lumeo-app project template's Lumeo + Lumeo.DataGrid PackageReferences at pack time.
        The committed csproj carries the placeholder __LUMEO_VERSION__; the regex is scoped to
        the two Lumeo includes (so it never touches the Microsoft.AspNetCore.* pins) and is
-       idempotent — it re-stamps whether the current value is the placeholder or a previously
+       idempotent - it re-stamps whether the current value is the placeholder or a previously
        stamped version. Runs before build AND before the pack file-collection so the packed
-       .nupkg always carries the exact version this repo builds. -->
+       .nupkg always carries it.
+
+       NOT $(Version): that is the release under construction and does not exist on the feed
+       yet, so stamping it made `dotnet new lumeo-app` emit a project that fails restore with
+       NU1102 for the whole release window - and it contradicted the comment sitting directly
+       above the pin it rewrote, which says the pin names the last PUBLISHED release. -->
   <Target Name="StampLumeoAppTemplateVersion" BeforeTargets="BeforeBuild;_GetPackageFiles;GenerateNuspec">
     <PropertyGroup>
       <_LumeoAppCsproj>$(MSBuildProjectDirectory)\templates\lumeo-app\MyApp.csproj</_LumeoAppCsproj>
       <_LumeoAppCsprojRaw>$([System.IO.File]::ReadAllText('$(_LumeoAppCsproj)'))</_LumeoAppCsprojRaw>
-      <_LumeoAppCsprojStamped>$([System.Text.RegularExpressions.Regex]::Replace('$(_LumeoAppCsprojRaw)', '(Include="Lumeo(?:\.DataGrid)?" Version=")[^"]*(")', '${1}$(Version)${2}'))</_LumeoAppCsprojStamped>
+      <_LumeoAppCsprojStamped>$([System.Text.RegularExpressions.Regex]::Replace('$(_LumeoAppCsprojRaw)', '(Include="Lumeo(?:\.DataGrid)?" Version=")[^"]*(")', '${1}$(LumeoTemplatePackageVersion)${2}'))</_LumeoAppCsprojStamped>
     </PropertyGroup>
     <WriteLinesToFile File="$(_LumeoAppCsproj)"
                       Lines="$(_LumeoAppCsprojStamped)"
@@ -51,7 +56,7 @@
     <PropertyGroup>
       <_LumeoFsCsproj>$(MSBuildProjectDirectory)\templates\lumeo-fullstack\src\MyApp.Client\MyApp.Client.csproj</_LumeoFsCsproj>
       <_LumeoFsCsprojRaw>$([System.IO.File]::ReadAllText('$(_LumeoFsCsproj)'))</_LumeoFsCsprojRaw>
-      <_LumeoFsCsprojStamped>$([System.Text.RegularExpressions.Regex]::Replace('$(_LumeoFsCsprojRaw)', '(Include="Lumeo(?:\.DataGrid)?" Version=")[^"]*(")', '${1}$(Version)${2}'))</_LumeoFsCsprojStamped>
+      <_LumeoFsCsprojStamped>$([System.Text.RegularExpressions.Regex]::Replace('$(_LumeoFsCsprojRaw)', '(Include="Lumeo(?:\.DataGrid)?" Version=")[^"]*(")', '${1}$(LumeoTemplatePackageVersion)${2}'))</_LumeoFsCsprojStamped>
     </PropertyGroup>
     <WriteLinesToFile File="$(_LumeoFsCsproj)"
                       Lines="$(_LumeoFsCsprojStamped)"
