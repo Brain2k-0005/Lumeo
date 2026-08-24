@@ -102,9 +102,13 @@ public class ControlHeightAgreementTests : IAsyncLifetime
 /// literal box in a rarely-rendered branch is invisible to every per-component test.
 ///
 /// So this scans the source instead, for one specific shape: a SPACE-DELIMITED h-9 sharing a
-/// class list with `rounded` and `border`. That is a control box written out by hand at the
-/// pre-5.0 rung. The token match is deliberate - `max-h-96` contains "h-9" as a substring and
-/// is not a control box.
+/// class list with `rounded` and either `border` or a background. That is a control box written
+/// out by hand at the pre-5.0 rung, bordered or filled. The token match is deliberate -
+/// `max-h-96` contains "h-9" as a substring and is not a control box.
+///
+/// The `border`-only form of this check shipped one round earlier and missed FileViewer's
+/// download link, which is a filled `bg-primary` button with no border at all - so the shape
+/// now covers both.
 /// </summary>
 public class LiteralControlBoxGuardTests
 {
@@ -117,6 +121,14 @@ public class LiteralControlBoxGuardTests
          "Menubar and Navigation-Menu are deferred to 5.1.0 - the owner scoped 5.0 to the "
          + "B2C input and display primitives, so the bar keeps its pre-5.0 height until the "
          + "component is aligned as a whole rather than having its height moved in isolation."),
+        ("UI/NavigationMenu/NavigationMenuTrigger.razor",
+         "Same deferral as Menubar above."),
+        ("UI/Calendar/Calendar.razor",
+         "Not a rung at all in shadcn: their day cell is size-(--cell-size), driven by a CSS "
+         + "variable rather than a step on the control ladder. Matching that means giving "
+         + "Calendar a cell-size token, which is a restructure like Card's --card-spacing and "
+         + "is deferred to 5.1.0 with it. Moving the literal h-9 to h-8 in the meantime would "
+         + "look like progress while leaving the actual divergence untouched."),
     };
 
     private static string RepoRoot()
@@ -145,7 +157,8 @@ public class LiteralControlBoxGuardTests
             {
                 var line = lines[i];
                 if (!line.Contains("rounded", StringComparison.Ordinal)
-                    || !line.Contains("border", StringComparison.Ordinal))
+                    || (!line.Contains("border", StringComparison.Ordinal)
+                        && !line.Contains("bg-", StringComparison.Ordinal)))
                     continue;
 
                 var hasFixedH9 = line
@@ -158,7 +171,8 @@ public class LiteralControlBoxGuardTests
         }
 
         Assert.True(offenders.Count == 0,
-            "These lines spell out the pre-5.0 control box (h-9 with rounded + border) instead "
+            "These lines spell out the pre-5.0 control box (h-9 with rounded and a border "
+            + "or background) instead "
             + "of deriving it. Either move them onto the current rung or add a documented entry "
             + "to the Allowed list above:\n  " + string.Join("\n  ", offenders));
     }

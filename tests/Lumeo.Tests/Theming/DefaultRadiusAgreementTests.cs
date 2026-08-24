@@ -55,4 +55,28 @@ public class DefaultRadiusAgreementTests
         // is what an encoded preset stores, so the default will not sit in sorted position.
         Assert.Contains(CssDefaultRadius(), LumeoPresetOptions.Radii);
     }
+
+    [Fact]
+    public void The_Docs_Quote_The_Radius_The_Stylesheet_Renders()
+    {
+        // The Tweakcn guide prints an excerpt of lumeo.css so a reader can see which tokens
+        // map onto shadcn's. An excerpt that has drifted from the file it quotes is worse
+        // than no excerpt: it reads as authoritative and is wrong, and nothing about editing
+        // lumeo.css prompts anyone to open a docs page (Codex review of PR #430).
+        var page = File.ReadAllText(Path.Combine(
+            RepoRoot(), "docs/Lumeo.Docs/Pages/Docs/Tweakcn.razor"));
+
+        // Only the excerpt that claims to BE lumeo.css. The same page also shows a tweakcn
+        // export the reader pastes to OVERRIDE the default - pinning that to the default
+        // would assert the opposite of what the example teaches.
+        var excerpt = Regex.Match(page, @"_howCode\s*=\s*@""(.*?)"";", RegexOptions.Singleline);
+        Assert.True(excerpt.Success, "could not find the lumeo.css excerpt (_howCode) in Tweakcn.razor");
+
+        var quoted = Regex.Matches(excerpt.Groups[1].Value, @"--radius:\s*([0-9.]+)rem")
+            .Select(m => m.Groups[1].Value)
+            .ToArray();
+
+        Assert.NotEmpty(quoted);
+        Assert.All(quoted, v => Assert.Equal(CssDefaultRadius(), v));
+    }
 }
