@@ -97,18 +97,25 @@
     /// the value on every child.</summary>
     [Parameter] public Lumeo.Size Size { get; set; } = Lumeo.Size.Md;
 
+    /// <summary>Whether the count needs more room than the avatar's own box.</summary>
+    private bool OverflowIsWide => OverflowCount > 9;
+
     private string OverflowSizeClasses => Size switch
     {
-        // min-w, not w: the chip is square for "+9" and stretches into a pill for "+10".
-        // A fixed width locked it to the avatar, and at Xxs that left 12px of inner width
-        // after the two borders - a two-digit count spilled onto the avatars underneath.
-        Lumeo.Size.Xxs => "h-4 min-w-4 px-1 text-[8px]",
-        Lumeo.Size.Xs  => "h-5 min-w-5 px-1 text-[10px]",
-        Lumeo.Size.Sm  => "h-6 min-w-6 px-1 text-xs",
-        Lumeo.Size.Lg  => "h-10 min-w-10 px-2 text-base",
-        Lumeo.Size.Xl  => "h-12 min-w-12 px-2.5 text-lg",
-        Lumeo.Size.Xxl => "h-16 min-w-16 px-3 text-xl",
-        _              => "h-8 min-w-8 px-1.5 text-sm"
+        // Square or pill, decided by the count rather than applied to both. A single-digit
+        // count fits inside the avatar's box, so the chip keeps that exact width and reads as
+        // the circle its border-2 ring promises. Two digits fit at no rung - at Xxs the box
+        // leaves 12px of inner width after the borders - so there the fixed width gives way to
+        // a floor plus padding and the chip stretches into a pill instead of spilling onto the
+        // avatars it overlaps. Padding on BOTH branches was the earlier mistake: it widened the
+        // single-digit chip past its own height, turning every count into a pill.
+        Lumeo.Size.Xxs => OverflowIsWide ? "h-4 min-w-4 px-1 text-[8px]"   : "h-4 w-4 text-[8px]",
+        Lumeo.Size.Xs  => OverflowIsWide ? "h-5 min-w-5 px-1 text-[10px]"  : "h-5 w-5 text-[10px]",
+        Lumeo.Size.Sm  => OverflowIsWide ? "h-6 min-w-6 px-1 text-xs"      : "h-6 w-6 text-xs",
+        Lumeo.Size.Lg  => OverflowIsWide ? "h-10 min-w-10 px-2 text-base"  : "h-10 w-10 text-base",
+        Lumeo.Size.Xl  => OverflowIsWide ? "h-12 min-w-12 px-2.5 text-lg"  : "h-12 w-12 text-lg",
+        Lumeo.Size.Xxl => OverflowIsWide ? "h-16 min-w-16 px-3 text-xl"    : "h-16 w-16 text-xl",
+        _              => OverflowIsWide ? "h-8 min-w-8 px-1.5 text-sm"    : "h-8 w-8 text-sm"
     };
 
     private string OverflowClasses => Cx.Merge(
