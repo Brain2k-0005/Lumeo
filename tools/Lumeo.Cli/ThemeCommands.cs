@@ -37,7 +37,10 @@ public static class ThemeCommands
         var themeIdx = Idx(LumeoPresetOptions.Themes, theme, "theme", 0);
         var styleIdx = Idx(LumeoPresetOptions.Styles, style, "style", 0);
         var baseIdx = Idx(LumeoPresetOptions.BaseColors, baseColor, "base", 0);
-        var radiusIdx = Idx(LumeoPresetOptions.Radii, radius, "radius", 2);
+        // Index 5 is the shipped 0.625, appended to the catalog rather than inserted so
+        // existing preset codes keep decoding. Encoding without a radius has to name the
+        // default the stylesheet actually renders, not the old index-2 entry.
+        var radiusIdx = Idx(LumeoPresetOptions.Radii, radius, "radius", 5);
         var fontIdx = Idx(LumeoPresetOptions.Fonts, font, "font", 0);
         var iconsIdx = Idx(LumeoPresetOptions.IconLibraries, icons, "icons", 0);
         var menuColorIdx = Idx(LumeoPresetOptions.MenuColors, menuColor, "menu-color", 0);
@@ -371,7 +374,7 @@ public static class ThemeCommands
         Theme = NullIfEmpty(LumeoPresetOptions.At(LumeoPresetOptions.Themes, decoded.Theme)),
         Style = LumeoPresetOptions.At(LumeoPresetOptions.Styles, decoded.Style, "default"),
         BaseColor = LumeoPresetOptions.At(LumeoPresetOptions.BaseColors, decoded.BaseColor, "slate"),
-        Radius = LumeoPresetOptions.At(LumeoPresetOptions.Radii, decoded.Radius, "0.5"),
+        Radius = LumeoPresetOptions.At(LumeoPresetOptions.Radii, decoded.Radius, "0.625"),
         Font = LumeoPresetOptions.At(LumeoPresetOptions.Fonts, decoded.Font, "system"),
         IconLibrary = LumeoPresetOptions.At(LumeoPresetOptions.IconLibraries, decoded.IconLibrary, "lucide"),
         MenuColor = LumeoPresetOptions.At(LumeoPresetOptions.MenuColors, decoded.MenuColor, "default"),
