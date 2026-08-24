@@ -97,4 +97,23 @@ public class AvatarSizeScaleTests : IAsyncLifetime
     private static string[] Tokens(IRenderedComponent<Lumeo.AvatarGroup> cut) =>
         (cut.Find("[class*='shrink-0']").GetAttribute("class") ?? string.Empty)
             .Split(' ', StringSplitOptions.RemoveEmptyEntries);
+
+    [Fact]
+    public void An_Avatar_Outside_A_Group_Returns_To_Its_Declared_Default_When_Size_Is_Dropped()
+    {
+        // Blazor leaves a parameter at its previous value when a later parameter set stops
+        // supplying it - a DynamicComponent dictionary losing the entry, say. The flag correctly
+        // says "the caller did not give a size", but reading Size back would hand out the stale
+        // one, so a formerly large avatar stayed large after its override was gone.
+        var cut = _ctx.Render<L.Avatar>(p => p.Add(a => a.Size, L.Size.Lg));
+        Assert.Contains("h-10", Tokens(cut.Find("div")));
+
+        cut.Render(p => { });
+
+        Assert.Contains("h-8", Tokens(cut.Find("div")));   // Size.Md, the declared default
+        Assert.DoesNotContain("h-10", Tokens(cut.Find("div")));
+    }
+
+    private static string[] Tokens(AngleSharp.Dom.IElement el) =>
+        (el.GetAttribute("class") ?? string.Empty).Split(' ', StringSplitOptions.RemoveEmptyEntries);
 }
