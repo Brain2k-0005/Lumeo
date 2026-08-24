@@ -50,13 +50,13 @@ public class ToggleGroupItemSizeScaleTests : IAsyncLifetime
     }
 
     [Theory]
-    [InlineData(L.Size.Xxs, "h-5", "px-0")]
-    [InlineData(L.Size.Xs, "h-6", "px-1")]
+    [InlineData(L.Size.Xxs, "h-6", "px-0")]
+    [InlineData(L.Size.Xs, "h-7", "px-1")]
     [InlineData(L.Size.Sm, "h-7", "px-2.5")]
     [InlineData(L.Size.Md, "h-8", "px-2.5")]
     [InlineData(L.Size.Lg, "h-9", "px-2.5")]
-    [InlineData(L.Size.Xl, "h-10", "px-5")]
-    [InlineData(L.Size.Xxl, "h-11", "px-6")]
+    [InlineData(L.Size.Xl, "h-11", "px-5")]
+    [InlineData(L.Size.Xxl, "h-12", "px-6")]
     public void Item_Renders_Correct_Size_Classes(L.Size size, string heightClass, string paddingClass)
     {
         var cut = RenderToggleGroup(size);
