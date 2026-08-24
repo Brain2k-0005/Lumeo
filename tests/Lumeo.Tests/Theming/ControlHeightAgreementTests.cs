@@ -94,3 +94,72 @@ public class ControlHeightAgreementTests : IAsyncLifetime
         Assert.Equal(InputHeight(), HeightToken(field.GetAttribute("class") ?? "", "NumberInput"));
     }
 }
+
+/// <summary>
+/// The render-level agreement test above covers the six primitives it can construct at
+/// defaults. It cannot cover a control buried three levels inside a Scheduler dialog or a
+/// FileViewer error state - and those were exactly where the last stragglers hid, because a
+/// literal box in a rarely-rendered branch is invisible to every per-component test.
+///
+/// So this scans the source instead, for one specific shape: a SPACE-DELIMITED h-9 sharing a
+/// class list with `rounded` and `border`. That is a control box written out by hand at the
+/// pre-5.0 rung. The token match is deliberate - `max-h-96` contains "h-9" as a substring and
+/// is not a control box.
+/// </summary>
+public class LiteralControlBoxGuardTests
+{
+    /// <summary>
+    /// Deliberate exceptions, each one a decision rather than an oversight.
+    /// </summary>
+    private static readonly (string File, string Why)[] Allowed =
+    {
+        ("UI/Menubar/Menubar.razor",
+         "Menubar and Navigation-Menu are deferred to 5.1.0 - the owner scoped 5.0 to the "
+         + "B2C input and display primitives, so the bar keeps its pre-5.0 height until the "
+         + "component is aligned as a whole rather than having its height moved in isolation."),
+    };
+
+    private static string RepoRoot()
+    {
+        var dir = AppContext.BaseDirectory;
+        while (dir is not null && !File.Exists(Path.Combine(dir, "Lumeo.slnx")))
+            dir = Path.GetDirectoryName(dir);
+        Assert.NotNull(dir);
+        return dir!;
+    }
+
+    [Fact]
+    public void No_Component_Spells_Out_The_Pre_5_0_Control_Box()
+    {
+        var root = Path.Combine(RepoRoot(), "src");
+        var offenders = new List<string>();
+
+        foreach (var file in Directory.EnumerateFiles(root, "*.razor", SearchOption.AllDirectories))
+        {
+            var rel = Path.GetRelativePath(root, file).Replace(Path.DirectorySeparatorChar, '/');
+            if (rel.Contains("/obj/") || Allowed.Any(a => rel.EndsWith(a.File, StringComparison.Ordinal)))
+                continue;
+
+            var lines = File.ReadAllLines(file);
+            for (var i = 0; i < lines.Length; i++)
+            {
+                var line = lines[i];
+                if (!line.Contains("rounded", StringComparison.Ordinal)
+                    || !line.Contains("border", StringComparison.Ordinal))
+                    continue;
+
+                var hasFixedH9 = line
+                    .Split(new[] { ' ', '"', '\t' }, StringSplitOptions.RemoveEmptyEntries)
+                    .Any(t => t == "h-9" || t == "min-h-9");
+
+                if (hasFixedH9)
+                    offenders.Add($"{rel}:{i + 1}");
+            }
+        }
+
+        Assert.True(offenders.Count == 0,
+            "These lines spell out the pre-5.0 control box (h-9 with rounded + border) instead "
+            + "of deriving it. Either move them onto the current rung or add a documented entry "
+            + "to the Allowed list above:\n  " + string.Join("\n  ", offenders));
+    }
+}

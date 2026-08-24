@@ -13,6 +13,17 @@ what it was: a systematic one-rung offset rather than scattered drift.
 
 ### Changed
 
+- **BREAKING — `Label` is a flex container.** It now matches shadcn's
+  `flex items-center gap-2`, which is what lets a label hold an icon or a required
+  marker without per-consumer spacing. The consequence is that a text-alignment
+  utility alone no longer moves the label's content: the text becomes a
+  shrink-wrapped flex item, so there is no free space for `text-align` to
+  distribute. Replace `<Label Class="text-right">` with
+  `<Label Class="justify-end text-right">` (and `text-center` with
+  `justify-center`). A label that explicitly sets a display utility —
+  `Class="text-center block"` — is unaffected, because that utility wins the
+  merge and the label stays a block box.
+
 - **BREAKING — the control scale moves down one rung.** shadcn's default button is
   `h-8 px-2.5` today, small `h-7`, large `h-9`, icon `size-8`; their input is `h-8 px-2.5`.
   Lumeo shipped the rung above each of those. Button, Input, Select, Toggle, Avatar,
