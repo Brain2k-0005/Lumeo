@@ -230,7 +230,12 @@ public class SchedulerViewsDragTests : PlaywrightTestBase
     public async Task Month_Drag_With_CanDrop_Adjustment_Commits_The_Snapped_Date_Not_The_Raw_Drop_Target()
     {
         // SchedulerViewsPreview.RejectDrop15th snaps any drop landing on the 22nd forward to
-        // the 23rd. Predicted: dragging e2e-1 onto the 22nd commits to the 23rd, not the 22nd —
+        // the 23rd. Drags e2e-candrop, whose day-of-month is FIXED at the 3rd: e2e-1 is seeded
+        // at today+2, so on two days a month it sits on the 22nd or the 23rd itself and the
+        // drag becomes a drag onto its own day - CommitDrag then sees newStart == ev.Start and
+        // declines, correctly, and this test failed on those dates alone. The sibling
+        // plain-move test above already learned this; the lesson had not reached here.
+        // Predicted: dragging it onto the 22nd commits to the 23rd, not the 22nd —
         // the concrete, E2E-observable proof that CanDrop's three-way Adjustment reaches the
         // real committed event through the full pointer -> ValidateDrop -> CommitDrag path.
         await Goto("/e2e/scheduler-views-preview");
@@ -238,7 +243,7 @@ public class SchedulerViewsDragTests : PlaywrightTestBase
         var monthSection = Page.Locator("[data-testid='month-section']");
         await monthSection.ScrollIntoViewIfNeededAsync();
 
-        var pill = monthSection.Locator("[data-event-id='e2e-1']").First;
+        var pill = monthSection.Locator("[data-event-id='e2e-candrop']").First;
         await pill.ScrollIntoViewIfNeededAsync();
 
         var targetCell = monthSection.Locator("[data-cell-date$='-22']").First;
