@@ -386,13 +386,13 @@ public sealed class CliStandaloneE2ETests : IDisposable
         // published version is also strictly stronger: an API added in the unreleased version
         // would make a broken vendored component restore cleanly and hide the very failure
         // this test exists to catch.
-        // The fallback must never be templatedVersion: that IS the unreleased pin. Falling back
-        // to it reintroduces the exact NU1102 this paragraph exists to avoid, and does so only
-        // during the release window - the one time the failure is most confusing. The previous
-        // CHANGELOG entry is published by definition, so it is a safe answer offline and still
-        // asks the same question: does vendored source compile against a PUBLISHED Lumeo.
-        var lumeoVersion = await LatestPublishedLumeoVersionAsync()
-                           ?? PreviousReleasedVersion(templatedVersion);
+        // The fallback IS templatedVersion, because the template pin is no longer $(Version):
+        // it reads $(LumeoTemplatePackageVersion), whose whole contract is "the last PUBLISHED
+        // release". So offline it is exactly the right answer, and it is the one the scaffolded
+        // project itself would use. Preferring the live feed is still strictly stronger, since
+        // an API added in the unreleased version would otherwise let a broken vendored component
+        // restore cleanly and hide the failure this test exists to catch.
+        var lumeoVersion = await LatestPublishedLumeoVersionAsync() ?? templatedVersion;
 
         File.WriteAllText(Path.Combine(_proj, "App.csproj"),
             "<Project Sdk=\"Microsoft.NET.Sdk.Razor\"><PropertyGroup><TargetFramework>net10.0</TargetFramework>"
@@ -591,28 +591,6 @@ public sealed class CliStandaloneE2ETests : IDisposable
     /// in which case the caller falls back to the templated version and the test behaves
     /// exactly as it did before.
     /// </summary>
-    /// <summary>
-    /// The newest version in CHANGELOG.md that is not <paramref name="unreleased"/>. Used only
-    /// when nuget.org cannot be reached; the top CHANGELOG entry is the version being prepared,
-    /// so the one below it is the last release that actually exists on the feed.
-    /// </summary>
-    private string PreviousReleasedVersion(string unreleased)
-    {
-        var changelog = File.ReadAllText(Path.Combine(_repoRoot, "CHANGELOG.md"));
-        var versions = Regex.Matches(changelog, @"^##\s*\[(\d+\.\d+\.\d+)\]", RegexOptions.Multiline)
-            .Select(m => m.Groups[1].Value)
-            .Where(v => v != unreleased)
-            .Select(v => new Version(v))
-            .OrderByDescending(v => v)
-            .ToList();
-
-        Assert.True(versions.Count > 0,
-            "nuget.org was unreachable and CHANGELOG.md names no released version other than "
-            + unreleased + " - cannot pick a published Lumeo to restore.");
-
-        return versions[0].ToString();
-    }
-
     private static async Task<string?> LatestPublishedLumeoVersionAsync()
     {
         try

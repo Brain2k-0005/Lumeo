@@ -390,8 +390,17 @@ else
     // (Codex review of PR #430). The other densities keep the original behaviour.
     private string CompactLeading => EffectiveDensity == Lumeo.Density.Compact ? " leading-none" : " max-md:leading-none";
 
-    private string SmFontClasses => HasFontSizeOverride ? "" : " text-base md:text-xs" + CompactLeading;
-    private string DefaultFontClasses => HasFontSizeOverride ? "" : " text-base md:text-sm" + CompactLeading;
+    // Compact's leading-none survives a caller font-size override, because it is not part of
+    // the font ramp - it is what makes a 20px line box fit an h-7 box that has 18px after its
+    // padding and borders. Suppressing it along with the default font classes meant a plain
+    // Class="text-sm" clipped the caret in the very box that was tightened to prevent that.
+    // The zoom guard (max-md:leading-none) stays tied to the default font, since it exists to
+    // protect the ramp it ships with. Cx.Merge puts Class last, so an explicit caller
+    // leading-* still wins over either.
+    private string DensityLeading => EffectiveDensity == Lumeo.Density.Compact ? " leading-none" : "";
+
+    private string SmFontClasses => HasFontSizeOverride ? DensityLeading : " text-base md:text-xs" + CompactLeading;
+    private string DefaultFontClasses => HasFontSizeOverride ? DensityLeading : " text-base md:text-sm" + CompactLeading;
 
     // Full-scale rollout (Xl/Xxl): same HasFontSizeOverride-suppressed "text-base md:text-<n>
     // max-md:leading-none" trio as SmFontClasses/DefaultFontClasses above, just with a
@@ -409,10 +418,10 @@ else
     // tight enough to fit at every density, mobile included. The accepted consequence is that
     // focusing an Xxs or Xs input on iOS Safari zooms the viewport; that trade-off is documented
     // on the Size parameter's XML doc and the Input docs page.
-    private string XxsFontClasses => HasFontSizeOverride ? "" : " text-[8px] leading-none";
-    private string XsFontClasses => HasFontSizeOverride ? "" : " text-[10px] leading-none";
-    private string XlFontClasses => HasFontSizeOverride ? "" : " text-base md:text-lg max-md:leading-none";
-    private string XxlFontClasses => HasFontSizeOverride ? "" : " text-base md:text-xl max-md:leading-none";
+    private string XxsFontClasses => HasFontSizeOverride ? DensityLeading : " text-[8px] leading-none";
+    private string XsFontClasses => HasFontSizeOverride ? DensityLeading : " text-[10px] leading-none";
+    private string XlFontClasses => HasFontSizeOverride ? DensityLeading : " text-base md:text-lg max-md:leading-none";
+    private string XxlFontClasses => HasFontSizeOverride ? DensityLeading : " text-base md:text-xl max-md:leading-none";
 
     // Full-scale rollout height/px derivation (spec 2026-08-10-lumeo-size-full-scale.md §6b):
     // S1(Md-Sm)=4px, S2(Lg-Md)=8px per density arm (non-uniform); Xl/Xxl extrapolate outward

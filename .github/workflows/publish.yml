@@ -199,8 +199,14 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
+      # LumeoTemplatePackageVersion is deliberately the LAST PUBLISHED release in the repo, so
+      # that scaffolding from a freshly bumped source tree produces a project that restores.
+      # Here it has to be the release being published instead: this job runs after
+      # publish-lumeo, so $(Version) is on the feed by now, and the template package is
+      # immutable - shipping 5.0.0 templates that scaffold 4.3.3 references cannot be repaired
+      # by a later commit.
       - name: Pack
-        run: dotnet pack templates/Lumeo.Templates/Lumeo.Templates.csproj -c Release -o ./nupkg /p:Version=${{ steps.ver.outputs.version }}
+        run: dotnet pack templates/Lumeo.Templates/Lumeo.Templates.csproj -c Release -o ./nupkg /p:Version=${{ steps.ver.outputs.version }} /p:LumeoTemplatePackageVersion=${{ steps.ver.outputs.version }}
 
       - name: Push to NuGet
         run: dotnet nuget push ./nupkg/*.nupkg --api-key ${{ secrets.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json --skip-duplicate
