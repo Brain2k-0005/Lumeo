@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Text.RegularExpressions;
+using System.Net.Http;
 using Xunit;
 
 namespace Lumeo.Cli.Tests;
@@ -351,7 +352,7 @@ public sealed class CliStandaloneE2ETests : IDisposable
     }
 
     [Fact]
-    public void Add_Vendor_Toast_Compiles_Against_The_Officially_Supported_Template_Setup()
+    public async Task Add_Vendor_Toast_Compiles_Against_The_Officially_Supported_Template_Setup()
     {
         // PR #357 round-4 (P1) — "kill the class": every prior vendoring finding this PR
         // (round-2 namespace rewriting, round-3 internal-type refs) was only ever caught by
@@ -373,7 +374,19 @@ public sealed class CliStandaloneE2ETests : IDisposable
         var templateCsproj = File.ReadAllText(templateCsprojPath);
         var versionMatch = Regex.Match(templateCsproj, "Include=\"Lumeo\"\\s+Version=\"([^\"]+)\"");
         Assert.True(versionMatch.Success, "Could not read the officially templated Lumeo package version from " + templateCsprojPath);
-        var lumeoVersion = versionMatch.Groups[1].Value;
+        var templatedVersion = versionMatch.Groups[1].Value;
+
+        // The point of this test is "does vendored source compile against what is actually
+        // PUBLISHED", so it restores the newest version on the feed rather than whatever the
+        // template currently names. Those two differ for the whole life of a release commit:
+        // StampLumeoAppTemplateVersion writes $(Version) from Directory.Build.props into the
+        // template on every build, so the moment the repo's version is bumped the template
+        // names a package that does not exist yet and restore fails with NU1102 - the test
+        // going red for the one reason that has nothing to do with what it checks. Using the
+        // published version is also strictly stronger: an API added in the unreleased version
+        // would make a broken vendored component restore cleanly and hide the very failure
+        // this test exists to catch.
+        var lumeoVersion = await LatestPublishedLumeoVersionAsync() ?? templatedVersion;
 
         File.WriteAllText(Path.Combine(_proj, "App.csproj"),
             "<Project Sdk=\"Microsoft.NET.Sdk.Razor\"><PropertyGroup><TargetFramework>net10.0</TargetFramework>"
@@ -565,5 +578,30 @@ public sealed class CliStandaloneE2ETests : IDisposable
         var csproj = File.ReadAllText(Path.Combine(_proj, "App.csproj"));
         Assert.DoesNotContain("Include=\"Lumeo\"", csproj);
         Assert.DoesNotContain("Include=\"Lumeo.", csproj);
+    }
+
+    /// <summary>
+    /// The newest stable Lumeo on nuget.org, or null when the feed cannot be reached -
+    /// in which case the caller falls back to the templated version and the test behaves
+    /// exactly as it did before.
+    /// </summary>
+    private static async Task<string?> LatestPublishedLumeoVersionAsync()
+    {
+        try
+        {
+            using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(20) };
+            var json = await http.GetStringAsync("https://api.nuget.org/v3-flatcontainer/lumeo/index.json");
+            using var doc = System.Text.Json.JsonDocument.Parse(json);
+            var versions = doc.RootElement.GetProperty("versions")
+                .EnumerateArray()
+                .Select(v => v.GetString())
+                .Where(v => !string.IsNullOrWhiteSpace(v) && !v!.Contains('-'))
+                .ToList();
+            return versions.Count == 0 ? null : versions[^1];
+        }
+        catch
+        {
+            return null;
+        }
     }
 }
