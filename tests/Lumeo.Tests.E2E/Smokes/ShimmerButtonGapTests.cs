@@ -120,14 +120,18 @@ public class ShimmerButtonGapTests : IAsyncLifetime
         Assert.Equal(4, measured, 1); // 1px tolerance for sub-pixel layout rounding
     }
 
+    // 4px, not 6: Button moved its Sm gap from gap-1.5 to gap-1 in the 5.0 scale
+    // alignment, and this component mirrors Button by contract. The "not 8" half of
+    // the check is what still matters - 8px is what falls out if the size override is
+    // dropped and BaseClasses' gap-2 wins.
     [Fact]
-    public async Task Sm_Inner_Span_Computed_Gap_Is_6px_Not_8px()
+    public async Task Sm_Inner_Span_Computed_Gap_Is_4px_Not_8px()
     {
         var gap = await ComputedColumnGapPxAsync("Sm");
-        Assert.Equal(6, gap);
+        Assert.Equal(4, gap);
 
         var measured = await MeasuredIconToLabelGapPxAsync("Sm");
-        Assert.Equal(6, measured, 1);
+        Assert.Equal(4, measured, 1);
     }
 
     [Theory]
