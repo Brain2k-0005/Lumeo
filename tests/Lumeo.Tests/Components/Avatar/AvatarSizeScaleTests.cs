@@ -72,4 +72,29 @@ public class AvatarSizeScaleTests : IAsyncLifetime
         Assert.Contains("h-5", xs.Find("div").GetAttribute("class")!.Split(' '));
         Assert.Contains("h-6", sm.Find("div").GetAttribute("class")!.Split(' '));
     }
+
+    [Fact]
+    public void An_Avatar_That_Loses_Its_Size_Follows_Its_Group_Again()
+    {
+        // The flag that records "the caller gave this avatar a size" is read from the
+        // ParameterView on every update. Raising it once and never lowering it meant a reused
+        // avatar - same element, re-rendered without Size - kept ignoring its group for the
+        // rest of its life, which is precisely the case a virtualized list produces.
+        var cut = _ctx.Render<Lumeo.AvatarGroup>(p => p
+            .Add(g => g.Size, Lumeo.Size.Xxs)
+            .AddChildContent<Lumeo.Avatar>(a => a.Add(x => x.Size, Lumeo.Size.Lg)));
+
+        Assert.Contains("h-10", Tokens(cut));      // its own Lg wins
+
+        cut.Render(p => p
+            .Add(g => g.Size, Lumeo.Size.Xxs)
+            .AddChildContent<Lumeo.Avatar>(_ => { }));
+
+        Assert.Contains("h-4", Tokens(cut));       // no Size of its own: follows the group
+        Assert.DoesNotContain("h-10", Tokens(cut));
+    }
+
+    private static string[] Tokens(IRenderedComponent<Lumeo.AvatarGroup> cut) =>
+        (cut.Find("[class*='shrink-0']").GetAttribute("class") ?? string.Empty)
+            .Split(' ', StringSplitOptions.RemoveEmptyEntries);
 }
