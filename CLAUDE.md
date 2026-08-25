@@ -64,7 +64,12 @@ dotnet pack src/Lumeo/Lumeo.csproj
 ### Component Patterns
 - **State management**: Use `CascadingValue` with context records (`IsFixed="false"` for mutable state)
 - **Two-way binding**: `Property` + `PropertyChanged` EventCallback pairs
-- **CSS classes**: Combine via `$"{BaseClasses} {Class}".Trim()` — no hardcoded colors
+- **CSS classes**: Compose with `Cx.Merge(baseClasses, ..., Class)` — Lumeo's `cn()`.
+  It drops null/blank parts and resolves Tailwind conflict groups so the LAST wins,
+  which is what lets a caller's `Class="w-full"` override a component's `w-fit`.
+  Put `Class` last. Use `Cx.Join` only where no conflict resolution is wanted, and
+  `Cx.When(cond, "…")` for conditional parts. Plain string interpolation loses the
+  conflict resolution and is not used anywhere in this repo. No hardcoded colors.
 - **Theme**: All colors via CSS variables (`bg-primary`, `text-foreground`, etc.) — never raw hex/hsl
 - **Dark mode**: Handled by CSS variable swaps in `lumeo.css` — do NOT use `dark:` Tailwind prefixes
 - **Icons**: Use `<SvgGlyph Svg="@(Lucide.X)" />` from the first-party `Lumeo.Icons.Lucide` pack (`@using Lumeo.Icons`), or `<Icon Name="X" />` for the built-in app-chrome vocabulary

@@ -68,8 +68,8 @@ else
     /// <summary>Button height/padding. Defaults to <see cref="ButtonSize.Default"/>. Combines with <see cref="Density"/> to pick the final height.</summary>
     [Parameter] public ButtonSize Size { get; set; } = ButtonSize.Default;
     /// <summary>Per-button density override. When null, the button inherits
-    /// from any ancestor <see cref="DensityScope"/>; if neither is set,
-    /// behaviour matches the historical <c>Comfortable</c> default. Only
+    /// from any ancestor <see cref="DensityScope"/>; if neither is set, the
+    /// button sits on the <c>Comfortable</c> rung — which is where shadcn's own default sits as of 5.0, one step below the pre-5.0 Lumeo default. Only
     /// padding / row-height shifts between values — text size + radius
     /// are governed by <see cref="Size"/>.</summary>
     [Parameter] public Density? Density { get; set; }
@@ -196,7 +196,7 @@ else
     // <a>), so fold the inactive styling in directly.
     private string LinkCssClass => Cx.Merge(CssClass, Cx.When(IsLoading || Disabled, "pointer-events-none opacity-50"));
 
-    private const string BaseClasses = "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50";
+    private const string BaseClasses = "inline-flex shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50";
 
     private string? PressEffectClass => PressEffect switch
     {
@@ -225,25 +225,27 @@ else
         {
             var (height, pad, padIcon) = (Size, EffectiveDensity) switch
             {
+                // Comfortable IS shadcn: measured against a project built with their CLI, a
+                // default button there is h-8 px-2.5, small h-7, large h-9, icon size-8 - and
+                // the horizontal padding is one value for all three sizes rather than a ladder
+                // of its own. Compact sits one rung below Comfortable and Spacious one rung
+                // above, which is what the density scale means; it also gives the pre-5.0 look
+                // a name, since Spacious at Default lands back on h-9 px-3.
                 (ButtonSize.Xs, Lumeo.Density.Compact)    => ("h-5",  "px-1.5",  "h-5 w-5"),
                 (ButtonSize.Xs, Lumeo.Density.Spacious)   => ("h-7",  "px-2.5",  "h-7 w-7"),
                 (ButtonSize.Xs, _)                        => ("h-6",  "px-2",    "h-6 w-6"),
-                (ButtonSize.Sm, Lumeo.Density.Compact)    => ("h-7",  "px-2.5",  "h-7 w-7"),
-                (ButtonSize.Sm, Lumeo.Density.Spacious)   => ("h-9",  "px-4",    "h-9 w-9"),
-                (ButtonSize.Sm, _)                        => ("h-8",  "px-3",    "h-8 w-8"),
-                // Comfortable px-6 is the shadcn `lg` value (px-8 -> px-6, the Wave-0b delta);
-                // Compact/Spacious are Lumeo-only (shadcn has no density concept) and are kept
-                // proportionate by shifting the whole family the same -2 units Comfortable moved
-                // (px-6 -> px-4, px-10 -> px-8), preserving the original +/-2 spread around it.
-                (ButtonSize.Lg, Lumeo.Density.Compact)    => ("h-9",  "px-4",    "h-9 w-9"),
-                (ButtonSize.Lg, Lumeo.Density.Spacious)   => ("h-12", "px-8",    "h-12 w-12"),
-                (ButtonSize.Lg, _)                        => ("h-10", "px-6",    "h-10 w-10"),
-                (ButtonSize.Default, Lumeo.Density.Compact)  => ("h-8",  "px-3",  "h-8 w-8"),
-                (ButtonSize.Default, Lumeo.Density.Spacious) => ("h-11", "px-6 py-2.5", "h-11 w-11"),
-                (ButtonSize.Default, _)                      => ("h-9",  "px-4 py-2",   "h-9 w-9"),
-                (ButtonSize.Icon, Lumeo.Density.Compact)  => ("h-8",  "",       "h-8 w-8"),
-                (ButtonSize.Icon, Lumeo.Density.Spacious) => ("h-11", "",       "h-11 w-11"),
-                (ButtonSize.Icon, _)                      => ("h-9",  "",       "h-9 w-9"),
+                (ButtonSize.Sm, Lumeo.Density.Compact)    => ("h-6",  "px-2",    "h-6 w-6"),
+                (ButtonSize.Sm, Lumeo.Density.Spacious)   => ("h-8",  "px-3",    "h-8 w-8"),
+                (ButtonSize.Sm, _)                        => ("h-7",  "px-2.5",  "h-7 w-7"),
+                (ButtonSize.Lg, Lumeo.Density.Compact)    => ("h-8",  "px-2",    "h-8 w-8"),
+                (ButtonSize.Lg, Lumeo.Density.Spacious)   => ("h-10", "px-3",    "h-10 w-10"),
+                (ButtonSize.Lg, _)                        => ("h-9",  "px-2.5",  "h-9 w-9"),
+                (ButtonSize.Default, Lumeo.Density.Compact)  => ("h-7",  "px-2",  "h-7 w-7"),
+                (ButtonSize.Default, Lumeo.Density.Spacious) => ("h-9",  "px-3",  "h-9 w-9"),
+                (ButtonSize.Default, _)                      => ("h-8",  "px-2.5", "h-8 w-8"),
+                (ButtonSize.Icon, Lumeo.Density.Compact)  => ("h-7",  "",       "h-7 w-7"),
+                (ButtonSize.Icon, Lumeo.Density.Spacious) => ("h-9",  "",       "h-9 w-9"),
+                (ButtonSize.Icon, _)                      => ("h-8",  "",       "h-8 w-8"),
                 _ => ("", "", "")
             };
             var radiusClass = Size is ButtonSize.Sm or ButtonSize.Lg ? " rounded-md" : "";
@@ -261,7 +263,7 @@ else
     private string? SizeOverrideClass => Size switch
     {
         ButtonSize.Xs => "gap-1 text-xs",
-        ButtonSize.Sm => "gap-1.5",
+        ButtonSize.Sm => "gap-1 text-[0.8rem]",
         _ => null
     };
 

@@ -30,11 +30,11 @@ public class FileUploadSizeScaleTests : IAsyncLifetime
     [Theory]
     [InlineData(Lumeo.Size.Xxs, "h-6", "px-1", "text-[10px]")]
     [InlineData(Lumeo.Size.Xs, "h-7", "px-2", "text-[10px]")]
-    [InlineData(Lumeo.Size.Sm, "h-8", "px-3", "text-xs")]
-    [InlineData(Lumeo.Size.Md, "h-9", "px-4", "text-sm")]
-    [InlineData(Lumeo.Size.Lg, "h-10", "px-8", "text-sm")]
-    [InlineData(Lumeo.Size.Xl, "h-11", "px-9", "text-base")]
-    [InlineData(Lumeo.Size.Xxl, "h-12", "px-10", "text-lg")]
+    [InlineData(Lumeo.Size.Sm, "h-7", "px-2.5", "text-[0.8rem]")]
+    [InlineData(Lumeo.Size.Md, "h-8", "px-2.5", "text-sm")]
+    [InlineData(Lumeo.Size.Lg, "h-9", "px-2.5", "text-sm")]
+    [InlineData(Lumeo.Size.Xl, "h-10", "px-3", "text-base")]
+    [InlineData(Lumeo.Size.Xxl, "h-11", "px-4", "text-lg")]
     public void Button_Variant_Size_Per_Rung(Lumeo.Size size, string h, string px, string text)
     {
         var cut = _ctx.Render<Lumeo.FileUpload>(p => p
@@ -48,7 +48,7 @@ public class FileUploadSizeScaleTests : IAsyncLifetime
     }
 
     [Fact]
-    public void Existing_Sm_Md_Lg_Button_Rungs_Unchanged()
+    public void Sm_Md_Lg_Button_Rungs_Match_Buttons_Own_Ladder()
     {
         var sm = _ctx.Render<Lumeo.FileUpload>(p => p.Add(b => b.Variant, Lumeo.FileUpload.FileUploadVariant.Button).Add(b => b.Size, Lumeo.Size.Sm));
         var md = _ctx.Render<Lumeo.FileUpload>(p => p.Add(b => b.Variant, Lumeo.FileUpload.FileUploadVariant.Button).Add(b => b.Size, Lumeo.Size.Md));
@@ -58,9 +58,9 @@ public class FileUploadSizeScaleTests : IAsyncLifetime
         var mdCls = md.Find("label").GetAttribute("class");
         var lgCls = lg.Find("label").GetAttribute("class");
 
-        foreach (var token in new[] { "h-8", "px-3", "text-xs" }) AssertHasClass(smCls, token);
-        foreach (var token in new[] { "h-9", "px-4", "py-2", "text-sm" }) AssertHasClass(mdCls, token);
-        foreach (var token in new[] { "h-10", "px-8", "text-sm" }) AssertHasClass(lgCls, token);
+        foreach (var token in new[] { "h-7", "px-2.5", "text-[0.8rem]" }) AssertHasClass(smCls, token);
+        foreach (var token in new[] { "h-8", "px-2.5", "text-sm" }) AssertHasClass(mdCls, token);
+        foreach (var token in new[] { "h-9", "px-2.5", "text-sm" }) AssertHasClass(lgCls, token);
     }
 
     [Theory]

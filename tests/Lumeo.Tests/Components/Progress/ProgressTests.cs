@@ -5,6 +5,7 @@ using Lumeo.Tests.Helpers;
 
 namespace Lumeo.Tests.Components.Progress;
 
+// The track moved down one step in the 5.0 scale alignment: shadcn's progress is h-1.
 public class ProgressTests : IAsyncLifetime
 {
     private readonly BunitContext _ctx = new();
@@ -150,7 +151,7 @@ public class ProgressTests : IAsyncLifetime
         var bar = cut.Find("[role='progressbar']");
         var cls = bar.GetAttribute("class");
         Assert.Contains("relative", cls);
-        Assert.Contains("h-2", cls);
+        Assert.Contains("h-1", cls);
         Assert.Contains("w-full", cls);
         Assert.Contains("overflow-hidden", cls);
         Assert.Contains("rounded-[var(--radius)]", cls);
@@ -239,7 +240,7 @@ public class ProgressTests : IAsyncLifetime
         var cut = _ctx.Render<Lumeo.Progress>(p => p.Add(b => b.Value, 50).Add(b => b.Size, Lumeo.Size.Sm));
         var bar = cut.Find("[role='progressbar']");
         Assert.Equal(
-            new[] { "relative", "h-1", "w-full", "overflow-hidden", "rounded-[var(--radius)]", "bg-primary/20" },
+            new[] { "relative", "h-0.75", "w-full", "overflow-hidden", "rounded-[var(--radius)]", "bg-primary/20" },
             bar.GetAttribute("class")!.Split(' ', StringSplitOptions.RemoveEmptyEntries));
     }
 
@@ -249,7 +250,7 @@ public class ProgressTests : IAsyncLifetime
         var cut = _ctx.Render<Lumeo.Progress>(p => p.Add(b => b.Value, 50));
         var bar = cut.Find("[role='progressbar']");
         Assert.Equal(
-            new[] { "relative", "h-2", "w-full", "overflow-hidden", "rounded-[var(--radius)]", "bg-primary/20" },
+            new[] { "relative", "h-1", "w-full", "overflow-hidden", "rounded-[var(--radius)]", "bg-primary/20" },
             bar.GetAttribute("class")!.Split(' ', StringSplitOptions.RemoveEmptyEntries));
     }
 
@@ -259,7 +260,7 @@ public class ProgressTests : IAsyncLifetime
         var cut = _ctx.Render<Lumeo.Progress>(p => p.Add(b => b.Value, 50).Add(b => b.Size, Lumeo.Size.Lg));
         var bar = cut.Find("[role='progressbar']");
         Assert.Equal(
-            new[] { "relative", "h-4", "w-full", "overflow-hidden", "rounded-[var(--radius)]", "bg-primary/20" },
+            new[] { "relative", "h-2", "w-full", "overflow-hidden", "rounded-[var(--radius)]", "bg-primary/20" },
             bar.GetAttribute("class")!.Split(' ', StringSplitOptions.RemoveEmptyEntries));
     }
 

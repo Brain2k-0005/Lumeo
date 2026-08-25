@@ -6,6 +6,10 @@ using Lumeo.Tests.Helpers;
 
 namespace Lumeo.Tests.Components.Alert;
 
+// Values moved in the 5.0 scale alignment: every control sits one rung lower, on what the
+// shadcn CLI writes into a new project today - and on reui's values where reui defines the
+// component too, since reui takes precedence there. The ladder these tests guard, distinct
+// and monotonic rungs, is unchanged.
 public class AlertTests : IAsyncLifetime
 {
     private readonly BunitContext _ctx = new();
@@ -91,8 +95,8 @@ public class AlertTests : IAsyncLifetime
         Assert.Contains("rounded-lg", cls);
         Assert.Contains("border", cls);
         Assert.Contains("border-border", cls);
-        Assert.Contains("px-4", cls);
-        Assert.Contains("py-3", cls);
+        Assert.Contains("px-3", cls);
+        Assert.Contains("py-2.5", cls);
         Assert.Contains("text-sm", cls);
     }
 

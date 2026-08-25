@@ -116,7 +116,12 @@ internal static class LumeoPresetOptions
     public static readonly string[] Themes = { "", "blue", "orange", "green", "rose", "zinc", "violet", "amber", "teal" };
     public static readonly string[] Styles = { "default", "new-york" };
     public static readonly string[] BaseColors = { "slate", "gray", "zinc", "neutral", "stone" };
-    public static readonly string[] Radii = { "0", "0.25", "0.5", "0.75", "1" };
+    // Mirrors Lumeo.Theming.LumeoPresetOptions.Radii, index for index - a preset code
+    // carries indices, so a catalog that stops short decodes a newer code to the wrong
+    // value instead of failing. 0.625 is the shipped default and is APPENDED there for
+    // the same reason the indices are load-bearing. PresetCatalogParityTests keeps the
+    // two in step.
+    public static readonly string[] Radii = { "0", "0.25", "0.5", "0.75", "1", "0.625" };
     public static readonly string[] Fonts = { "system", "inter", "geist", "ibm-plex-sans", "jetbrains-mono", "fira-code" };
     public static readonly string[] IconLibraries =
     {

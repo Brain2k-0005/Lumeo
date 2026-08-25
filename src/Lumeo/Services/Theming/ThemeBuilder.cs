@@ -51,7 +51,7 @@ public sealed class ThemeBuilder
     public ThemeBuilder WithDestructive(string color) => Set("--color-destructive", color);
 
     /// <summary>Override the global border-radius scale. Accepts a rem value
-    /// — Lumeo uses <c>0.75</c> by default. The other rungs derive
+    /// — Lumeo uses <c>0.625</c> by default. The other rungs derive
     /// multiplicatively from this value: <c>--radius-sm</c> is
     /// <c>calc(var(--radius) * 0.5)</c>, <c>--radius-md</c> is
     /// <c>var(--radius)</c> itself, up through <c>--radius-xl</c> at

@@ -175,9 +175,12 @@ else
     /// <summary>End color of a linear gradient fill (CSS color string). Requires <see cref="GradientFrom"/>
     /// to also be set.</summary>
     [Parameter] public string? GradientTo { get; set; }
-    /// <summary>Bar thickness / ring diameter / label text size. Supports all 7 <see cref="Lumeo.Size"/>
-    /// values (Xxs–Xxl). Defaults to <see cref="Lumeo.Size.Md"/>, which reproduces the historical
-    /// <c>"Default"</c> metrics (<c>Sm</c> reproduces <c>"Small"</c>, <c>Lg</c> reproduces <c>"Large"</c>).</summary>
+    /// <summary>Bar thickness / ring diameter / label text size. Supports all 7
+    /// <see cref="Lumeo.Size"/> values (Xxs–Xxl), defaulting to <see cref="Lumeo.Size.Md"/>.
+    /// The LINEAR track moved onto shadcn's scale in 5.0 and no longer reproduces the
+    /// pre-5.0 metrics: <c>Md</c> is <c>h-1</c> (was <c>h-2</c>), <c>Sm</c> <c>h-0.75</c>
+    /// (was <c>h-1</c>) and <c>Lg</c> <c>h-2</c> (was <c>h-4</c>). The circular dimensions
+    /// are unchanged.</summary>
     [Parameter] public Lumeo.Size Size { get; set; } = Lumeo.Size.Md;
     /// <summary>Stroke width in px for the circular shape's ring. Default: 4.</summary>
     [Parameter] public int StrokeWidth { get; set; } = 4;
@@ -213,11 +216,13 @@ else
     {
         Lumeo.Size.Xxs => "h-0.5",
         Lumeo.Size.Xs => "h-0.5",
-        Lumeo.Size.Sm => "h-1",
-        Lumeo.Size.Lg => "h-4",
-        Lumeo.Size.Xl => "h-5",
-        Lumeo.Size.Xxl => "h-6",
-        _ => "h-2"
+        // shadcn's progress track is h-1. The ladder moves down with it and stays
+        // non-decreasing, which is what the size-scale contract test guards.
+        Lumeo.Size.Sm => "h-0.75",
+        Lumeo.Size.Lg => "h-2",
+        Lumeo.Size.Xl => "h-3",
+        Lumeo.Size.Xxl => "h-4",
+        _ => "h-1"
     };
 
     private string CssClass => Cx.Merge("relative", SizeClass, "w-full overflow-hidden rounded-[var(--radius)] bg-primary/20", Class);

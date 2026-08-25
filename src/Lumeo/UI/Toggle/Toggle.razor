@@ -18,8 +18,9 @@
     /// minimum at Compact and even Spacious density. Default <see cref="Lumeo.Size.Md"/>.</summary>
     [Parameter] public Lumeo.Size Size { get; set; } = Lumeo.Size.Md;
     /// <summary>Per-toggle density override. When null, inherits from any
-    /// ancestor <see cref="DensityScope"/>; if neither is set, matches the
-    /// historical <c>Comfortable</c> default. Only height + horizontal
+    /// ancestor <see cref="DensityScope"/>; if neither is set, the toggle
+    /// sits on the <c>Comfortable</c> rung — which is where shadcn's own default sits as of 5.0, one step below the pre-5.0 Lumeo default.
+    /// Only height + horizontal
     /// padding shift — text size + radius stay governed by <see cref="Size"/>.</summary>
     [Parameter] public Density? Density { get; set; }
     [CascadingParameter] private Density? InheritedDensity { get; set; }
@@ -51,8 +52,9 @@
 
     private Lumeo.Density EffectiveDensity => Density ?? InheritedDensity ?? Lumeo.Density.Comfortable;
 
-    // Height + horizontal padding track Size x Density; Comfortable
-    // reproduces the historical per-Size values verbatim.
+    // Height + horizontal padding track Size x Density. Sm, Md and Lg moved down a
+    // rung in the 5.0 scale alignment, so Comfortable reproduces the pre-5.0 values
+    // only on the rungs that did not move (Xxs, Xs, Xl, Xxl).
     // Xxs/Xs/Xl/Xxl per spec §16b. Every arm's Sm→Md→Lg height step is
     // non-uniform (flagged); extension follows methodology §0.3 (S2 outward,
     // S1 inward). Spacious/Xl computes to 52px (h-[52px], arbitrary, no named
@@ -65,21 +67,22 @@
         (Lumeo.Size.Xs, Lumeo.Density.Compact)   => "h-6 px-1",
         (Lumeo.Size.Xs, Lumeo.Density.Spacious)  => "h-7 px-2",
         (Lumeo.Size.Xs, _)                       => "h-7 px-1",
-        (Lumeo.Size.Sm, Lumeo.Density.Compact)  => "h-7 px-1.5",
-        (Lumeo.Size.Sm, Lumeo.Density.Spacious) => "h-9 px-3",
-        (Lumeo.Size.Sm, _)                      => "h-8 px-2",
-        (Lumeo.Size.Lg, Lumeo.Density.Compact)  => "h-9 px-3",
-        (Lumeo.Size.Lg, Lumeo.Density.Spacious) => "h-12 px-5",
-        (Lumeo.Size.Lg, _)                      => "h-10 px-4",
+        (Lumeo.Size.Sm, Lumeo.Density.Compact)  => "h-6 px-2",
+        (Lumeo.Size.Sm, Lumeo.Density.Spacious) => "h-8 px-3",
+        (Lumeo.Size.Sm, _)                      => "h-7 px-2.5",
+        (Lumeo.Size.Lg, Lumeo.Density.Compact)  => "h-8 px-2",
+        (Lumeo.Size.Lg, Lumeo.Density.Spacious) => "h-10 px-3",
+        (Lumeo.Size.Lg, _)                      => "h-9 px-2.5",
         (Lumeo.Size.Xl, Lumeo.Density.Compact)   => "h-10 px-4",
         (Lumeo.Size.Xl, Lumeo.Density.Spacious)  => "h-[52px] px-6",
         (Lumeo.Size.Xl, _)                       => "h-11 px-5",
         (Lumeo.Size.Xxl, Lumeo.Density.Compact)  => "h-11 px-5",
         (Lumeo.Size.Xxl, Lumeo.Density.Spacious) => "h-14 px-7",
         (Lumeo.Size.Xxl, _)                      => "h-12 px-6",
-        (_, Lumeo.Density.Compact)              => "h-8 px-2",
-        (_, Lumeo.Density.Spacious)             => "h-11 px-4",
-        _                                       => "h-9 px-3"
+        // shadcn's toggle is h-8 px-2.5, small h-7, large h-9 - their button ladder exactly.
+        (_, Lumeo.Density.Compact)              => "h-7 px-2",
+        (_, Lumeo.Density.Spacious)             => "h-9 px-3",
+        _                                       => "h-8 px-2.5"
     };
 
     private async Task HandleToggle()

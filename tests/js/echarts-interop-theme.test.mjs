@@ -92,8 +92,9 @@ test('tooltip surface mirrors the Lumeo popover token-for-token, not a re-derive
     // border-border/60 — PopoverContent's exact border (not full-opacity).
     assert.equal(theme.tooltip.borderColor, 'rgba(221, 221, 221, 0.6)');
     assert.equal(theme.tooltip.borderWidth, 1);
-    // padding: PopoverContent uses p-4 (16px, uniform), not ECharts' [8,12] default.
-    assert.equal(theme.tooltip.padding, 16);
+    // padding: PopoverContent uses p-2.5 (10px, uniform) as of 5.0, not ECharts' [8,12]
+    // default. The tooltip is contractually that surface, so it moved with it.
+    assert.equal(theme.tooltip.padding, 10);
     // type: 14 (--text-sm) — matching Lumeo's own popover-family body-copy size
     // (DropdownMenuItem/SelectItem are both text-sm), not the smaller --text-xs.
     assert.equal(theme.tooltip.textStyle.fontSize, 14);

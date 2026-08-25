@@ -5,6 +5,69 @@ All notable changes to Lumeo will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.0.0] - 2026-08-24
+
+Every control in Lumeo was one step larger than its shadcn counterpart. Measured
+against a React project built with the shadcn CLI, that turned out to be exactly
+what it was: a systematic one-rung offset rather than scattered drift.
+
+### Changed
+
+- **BREAKING — `Label` is a flex container.** It now matches shadcn's
+  `flex items-center gap-2`, which is what lets a label hold an icon or a required
+  marker without per-consumer spacing. The consequence is that a text-alignment
+  utility alone no longer moves the label's content: the text becomes a
+  shrink-wrapped flex item, so there is no free space for `text-align` to
+  distribute. Replace `<Label Class="text-right">` with
+  `<Label Class="justify-end text-right">` (and `text-center` with
+  `justify-center`). A label that explicitly sets a display utility —
+  `Class="text-center block"` — is unaffected, because that utility wins the
+  merge and the label stays a block box.
+
+- **BREAKING — the control scale moves down one rung.** shadcn's default button is
+  `h-8 px-2.5` today, small `h-7`, large `h-9`, icon `size-8`; their input is `h-8 px-2.5`.
+  Lumeo shipped the rung above each of those. Button, Input, Select, Toggle, Avatar,
+  Badge, Tabs, Spinner and Progress now sit where shadcn does. Their horizontal padding
+  follows shadcn's own change too: one `px-2.5` for small, default and large alike,
+  instead of a `px-3 / px-4 / px-6` ladder.
+- **BREAKING — the theme radius drops from `0.75rem` to `0.625rem`,** shadcn's value.
+  `themeManager.getRadius()` and the preset catalog report and offer it, and a test now
+  fails if those three copies of the number ever disagree again.
+- **BREAKING — reui takes precedence over shadcn** where both define a component, and
+  the two differ: Alert is `px-3 py-2.5` (not shadcn's `px-2.5 py-2`), and Badge
+  `px-1.25` with `rounded-sm` (not `px-2` with a pill). Badge's `Pill` parameter is
+  unchanged in meaning and mirrors reui's own `radius="full"`.
+- **Alert, Popover, Textarea, HoverCard, Card, Label and Kbd** move onto the same
+  values: tighter container padding, `min-h-16` on the textarea, a body text size on
+  the card, and a label that spaces its own control like shadcn's does.
+- The **density ladder is preserved throughout**: `Comfortable` IS shadcn now, `Compact`
+  one rung below, `Spacious` one above. Applications that want the previous proportions
+  can wrap themselves in `DensityScope` at `Density.Spacious`, which lands within a hair
+  of the old values.
+
+### Fixed
+
+- **A badge no longer stretches to its container.** `inline-flex` alone does not prevent
+  it; shadcn and reui both carry `w-fit shrink-0 whitespace-nowrap`. Measured in a flex
+  column: 300px before, 77.6px after. A caller can still ask for the old behaviour with
+  `Class="w-full"`.
+- **Every table that mirrors another component's sizes moved with it:** UploadTrigger,
+  SplitButton's chevron width (now density-aware), ShimmerButton, ToggleGroupItem and
+  the AvatarGroup overflow chip had each been left a rung behind.
+- **Density reaches the height,** not just the padding, on Badge and on the non-default
+  Tabs variants — both previously rendered identically at `Spacious` and `Comfortable`
+  despite their public contract.
+- **`AvatarGroup.Size` sizes its members,** not only the chip, and an avatar that later
+  renders without a `Size` of its own follows the group again.
+- **Compact inputs keep room for their line box** at every breakpoint, and an `Xxs`
+  avatar's fallback initials are no longer clipped.
+
+### Added
+
+- **`AvatarGroup.Size`** and **`SplitButton.Density`**.
+- **`/e2e/shadcn-parity`** — one element per primitive at its defaults, the counterpart
+  of the React project these measurements came from.
+
 ## [4.3.3] - 2026-07-18
 
 ### Added

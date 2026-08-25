@@ -11,7 +11,7 @@
     {
         @* The status is conveyed by colour; role=img + aria-label give it a text
            alternative so it isn't colour-only (WCAG 1.4.1). *@
-        <span class="absolute bottom-0 end-0 block h-2.5 w-2.5 rounded-[calc(var(--radius)*2)] ring-2 ring-background @StatusColor"
+        <span class="@($"absolute bottom-0 end-0 block {StatusDotClasses} rounded-[calc(var(--radius)*2)] ring-background {StatusColor}")"
               role="img" aria-label="@EffectiveStatusLabel"></span>
     }
 </div>
@@ -83,6 +83,29 @@
     // around fallback initials.
     private string CssClass => Cx.Merge("relative flex shrink-0", SizeClasses, ShapeClasses, Class);
 
+    // Whether the caller wrote Size on THIS avatar. Size is a shipped non-nullable
+    // parameter, so there is no null to test against - and asking the ParameterView is
+    // the only way to tell "the caller chose Md" from "nobody chose anything", which is
+    // exactly the difference between keeping Md and following an Xxs group.
+    private bool _sizeSetExplicitly;
+
+    public override Task SetParametersAsync(ParameterView parameters)
+    {
+        // Assigned, not raised: a reused avatar that first gets Size="Lg" and later renders
+        // without Size would otherwise keep ignoring its group forever (review of PR #430).
+        _sizeSetExplicitly = parameters.TryGetValue<Lumeo.Size>(nameof(Size), out _);
+        return base.SetParametersAsync(parameters);
+    }
+
+    /// <summary>The size actually rendered: this avatar's own if it was given one, else the
+    /// group's, else the default. Mirrors how Density resolves elsewhere in the library.</summary>
+    // The last arm is Size.Md, not Size: Blazor leaves the property at its previous value
+    // when a parameter set stops supplying it, so falling back to Size would keep a
+    // formerly large avatar large after the override is gone - the declared default is
+    // what "no size given" means (review of PR #430).
+    private Lumeo.Size EffectiveSize =>
+        _sizeSetExplicitly ? Size : GroupContext?.Size ?? Lumeo.Size.Md;
+
     private string InnerClasses => $"flex h-full w-full overflow-hidden {ShapeClasses}";
 
     private string ShapeClasses => Shape switch
@@ -103,18 +126,39 @@
         _ => "rounded-full"
     };
 
-    private string SizeClasses => Size switch
+    private string SizeClasses => EffectiveSize switch
     {
-        Lumeo.Size.Xxs => "h-5 w-5 text-[10px]",
+        // A font size on EVERY rung, because AvatarFallback inherits it now rather than
+        // carrying its own text-sm - which at Xxs produced a 20px line box in a 16px box
+        // and clipped the initials (Codex review of PR #430).
+        Lumeo.Size.Xxs => "h-4 w-4 text-[8px]",
         // Own rung as of the full-scale rollout — previously fell through to the
         // Md catch-all (40px), rendering LARGER than Sm (32px). Deliberate visual
         // change: consumers relying on Size.Xs will see the avatar shrink to 24px.
-        Lumeo.Size.Xs => "h-6 w-6",
-        Lumeo.Size.Sm => "h-8 w-8",
-        Lumeo.Size.Lg => "h-12 w-12",
-        Lumeo.Size.Xl => "h-16 w-16",
-        Lumeo.Size.Xxl => "h-20 w-20",
-        _ => "h-10 w-10"
+        Lumeo.Size.Xs => "h-5 w-5 text-[10px]",
+        // shadcn's avatar is size-8, with size-6 small and size-10 large. The whole ladder
+        // moves down with it so the rungs stay one step apart.
+        Lumeo.Size.Sm => "h-6 w-6 text-xs",
+        Lumeo.Size.Lg => "h-10 w-10 text-base",
+        Lumeo.Size.Xl => "h-12 w-12 text-lg",
+        Lumeo.Size.Xxl => "h-16 w-16 text-xl",
+        _ => "h-8 w-8 text-sm"
+    };
+
+    /// <summary>
+    /// The presence dot, sized from the avatar rather than pinned. At 10px with a 2px ring
+    /// it covered most of an Xxs avatar once the ladder moved down, and looked lost on the
+    /// largest rungs - roughly a quarter of the box at every size reads as the same badge.
+    /// </summary>
+    private string StatusDotClasses => EffectiveSize switch
+    {
+        Lumeo.Size.Xxs => "h-1 w-1 ring-1",
+        Lumeo.Size.Xs  => "h-1.5 w-1.5 ring-1",
+        Lumeo.Size.Sm  => "h-1.5 w-1.5 ring-2",
+        Lumeo.Size.Lg  => "h-2.5 w-2.5 ring-2",
+        Lumeo.Size.Xl  => "h-3 w-3 ring-2",
+        Lumeo.Size.Xxl => "h-4 w-4 ring-2",
+        _              => "h-2 w-2 ring-2"
     };
 
     private string StatusColor => Status switch

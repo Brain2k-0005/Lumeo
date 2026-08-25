@@ -97,7 +97,11 @@ public class SwitchSizeScaleTests : IAsyncLifetime
     // (rounded down/up respectively) rather than tied at a fixed size — see
     // SpinnerSizeForThumb's mapping comment in Switch.razor.
     [Theory]
-    [InlineData(Lumeo.Size.Xxs, "h-2", "w-2")]  // predicted wrong (pre-fix): h-4 w-4
+    // Every rung below still renders the pixel size it did before: the Spinner ladder
+    // moved down in the 5.0 alignment and SpinnerSizeForThumb moved up to cancel it.
+    // Xxs is the exception, and an improvement - the ring is 6px against a 4px thumb
+    // now instead of 8px, so it overhangs less.
+    [InlineData(Lumeo.Size.Xxs, "h-1.5", "w-1.5")]
     [InlineData(Lumeo.Size.Xs, "h-2", "w-2")]   // predicted wrong (pre-fix): h-4 w-4
     [InlineData(Lumeo.Size.Sm, "h-3", "w-3")]   // predicted wrong (pre-fix): h-4 w-4
     [InlineData(Lumeo.Size.Md, "h-4", "w-4")]   // pre-fix already correct (coincidence: hardcoded Sm == mapped Sm)

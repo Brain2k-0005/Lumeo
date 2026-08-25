@@ -247,7 +247,10 @@ window.themeManager = {
         this._notifyThemeChanged();
     },
     getRadius: function () {
-        return localStorage.getItem('theme-radius') !== null ? localStorage.getItem('theme-radius') : '0.75';
+        // Must match --radius in lumeo.css. With nothing stored, init() removes the inline
+        // property and the page renders the stylesheet's value - so reporting a different
+        // number here let a theme editor restore the old radius by writing back what it read.
+        return localStorage.getItem('theme-radius') !== null ? localStorage.getItem('theme-radius') : '0.625';
     },
     setStyle: function (style) {
         if (style === 'new-york') {

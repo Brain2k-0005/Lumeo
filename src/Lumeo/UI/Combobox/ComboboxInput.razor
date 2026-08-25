@@ -148,29 +148,37 @@ else
             ? AdditionalAttributes.Where(kv => kv.Key != "id").ToDictionary(kv => kv.Key, kv => kv.Value)
             : AdditionalAttributes;
 
-    // Height + vertical padding track the ambient DensityScope; Comfortable
-    // reproduces the historical `h-9 py-2`.
+    // Height + vertical padding track the ambient DensityScope on Input's ladder, which
+    // moved down a rung in 5.0. A combobox sitting beside a plain input has to match it.
     private string SizeClasses => Density switch
     {
-        Lumeo.Density.Compact => "h-8 py-1.5",
-        Lumeo.Density.Spacious => "h-10 py-2.5",
-        _ => "h-9 py-2"
+        // Padding moves with the height: h-8 with the old py-1.5 leaves 18px after its
+        // padding and border for a 20px line box, which clips the text and caret.
+        // The end inset rides along: it is the field's own padding, so leaving it at the
+        // pre-5.0 pe-3 put the placeholder edge 2px off from the Input beside it. ps-*
+        // is NOT on the ladder - it clears the search icon, whose size did not change.
+        Lumeo.Density.Compact => "h-7 py-0.5 pe-2",
+        Lumeo.Density.Spacious => "h-9 py-1.5 pe-3",
+        _ => "h-8 py-1 pe-2.5"
     };
 
     // Tag-input wrapper height is min- not fixed (chips can wrap to a second row),
     // keeping the Comfortable visual default at h-9 minimum.
     private string ChipWrapperSizeClasses => Density switch
     {
-        Lumeo.Density.Compact => "min-h-8 px-2 py-1",
-        Lumeo.Density.Spacious => "min-h-10 px-3 py-1.5",
-        _ => "min-h-9 px-2.5 py-1"
+        // py-0.5 at Compact, not py-1: the chip inside is 22px, so 8px of padding plus the
+        // border made the box 32px intrinsically and the min-h-7 floor never bound - a
+        // selected compact Combobox stayed as tall as a Comfortable one.
+        Lumeo.Density.Compact => "min-h-7 px-2 py-0.5",
+        Lumeo.Density.Spacious => "min-h-9 px-3 py-1.5",
+        _ => "min-h-8 px-2.5 py-1"
     };
 
     private bool HasChips => Context.Multiple && Context.Values != null && Context.Values.Count > 0;
     private bool HasSingleChip => !Context.Multiple && !string.IsNullOrEmpty(Context.Value);
     private string? EffectivePlaceholder => Placeholder ?? Context.Placeholder ?? L["Combobox.SearchPlaceholder"];
 
-    private string CssClass => Cx.Merge("flex", SizeClasses, "w-full rounded-md border", (Context.Invalid ? "border-destructive" : "border-input"), "bg-transparent ps-8 pe-3 text-sm placeholder:text-muted-foreground focus-visible:outline-none", (Context.Invalid ? "focus-visible:ring-[1.5px] focus-visible:ring-destructive/20" : ""), Class);
+    private string CssClass => Cx.Merge("flex", SizeClasses, "w-full rounded-md border", (Context.Invalid ? "border-destructive" : "border-input"), "bg-transparent ps-8 text-sm placeholder:text-muted-foreground focus-visible:outline-none", (Context.Invalid ? "focus-visible:ring-[1.5px] focus-visible:ring-destructive/20" : ""), Class);
 
     private string WrapperCssClass => Cx.Merge("flex flex-wrap items-center gap-1", ChipWrapperSizeClasses, "w-full rounded-md border", (Context.Invalid ? "border-destructive" : "border-input"), "bg-transparent text-sm focus-within:outline-none", (Context.Invalid ? "focus-within:ring-[1.5px] focus-within:ring-destructive/20" : ""), Class);
 

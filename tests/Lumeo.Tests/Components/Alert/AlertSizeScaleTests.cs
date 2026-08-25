@@ -12,9 +12,13 @@ namespace Lumeo.Tests.Components.Alert;
 //
 // IMPORTANT: assertions use exact space-delimited token matching (AssertHasClass),
 // never Assert.Contains(substring, cls) — Tailwind's own scale defeats naive
-// substring checks (e.g. "px-2" is a substring of "px-2.5"), which was caught live
+// substring checks (e.g. "px-1.5" is a substring of "px-1.5"), which was caught live
 // during this batch's required disable-check: a deliberately-broken rung produced
 // a false PASS under Assert.Contains before this helper was introduced.
+// Values moved in the 5.0 scale alignment: every control sits one rung lower, on what the
+// shadcn CLI writes into a new project today - and on reui's values where reui defines the
+// component too, since reui takes precedence there. The ladder these tests guard, distinct
+// and monotonic rungs, is unchanged.
 public class AlertSizeScaleTests : IAsyncLifetime
 {
     private readonly BunitContext _ctx = new();
@@ -30,13 +34,13 @@ public class AlertSizeScaleTests : IAsyncLifetime
     }
 
     [Theory]
-    [InlineData(L.Size.Xxs, "px-2", "py-1")]
-    [InlineData(L.Size.Xs, "px-2.5", "py-1.5")]
-    [InlineData(L.Size.Sm, "px-3", "py-2")]
-    [InlineData(L.Size.Md, "px-4", "py-3")]
-    [InlineData(L.Size.Lg, "px-5", "py-4")]
-    [InlineData(L.Size.Xl, "px-6", "py-5")]
-    [InlineData(L.Size.Xxl, "px-7", "py-6")]
+    [InlineData(L.Size.Xxs, "px-1", "py-0.5")]
+    [InlineData(L.Size.Xs, "px-1.5", "py-1")]
+    [InlineData(L.Size.Sm, "px-2", "py-1.5")]
+    [InlineData(L.Size.Md, "px-3", "py-2.5")]
+    [InlineData(L.Size.Lg, "px-4", "py-3.5")]
+    [InlineData(L.Size.Xl, "px-5", "py-4.5")]
+    [InlineData(L.Size.Xxl, "px-6", "py-5.5")]
     public void Comfortable_Density_Padding_Per_Rung(L.Size size, string px, string py)
     {
         var cut = _ctx.Render<L.Alert>(p => p
@@ -152,11 +156,11 @@ public class AlertSizeScaleTests : IAsyncLifetime
         var mdCls = md.Find("[role='alert']").GetAttribute("class");
         var lgCls = lg.Find("[role='alert']").GetAttribute("class");
 
-        AssertHasClass(smCls, "px-2.5");
-        AssertHasClass(smCls, "py-1.5");
-        AssertHasClass(mdCls, "px-3");
-        AssertHasClass(mdCls, "py-2");
-        AssertHasClass(lgCls, "px-4");
-        AssertHasClass(lgCls, "py-3");
+        AssertHasClass(smCls, "px-1.5");
+        AssertHasClass(smCls, "py-1");
+        AssertHasClass(mdCls, "px-2");
+        AssertHasClass(mdCls, "py-1.5");
+        AssertHasClass(lgCls, "px-3");
+        AssertHasClass(lgCls, "py-2.5");
     }
 }

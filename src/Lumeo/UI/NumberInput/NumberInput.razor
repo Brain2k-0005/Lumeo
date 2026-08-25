@@ -36,7 +36,7 @@
                aria-invalid="@EffectiveInvalid.ToString().ToLowerInvariant()"
                aria-label="@EffectiveAriaLabel"
                aria-describedby="@FormFieldDescribedBy"
-               class="@($"{HeightClass} {(Block ? "w-full min-w-0" : "w-20")} bg-transparent {(string.IsNullOrEmpty(Prefix) && string.IsNullOrEmpty(Suffix) ? "px-3" : "px-1")} {(Block ? "text-start" : "text-center")} text-sm text-foreground outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none")"
+               class="@($"{HeightClass} {(Block ? "w-full min-w-0" : "w-20")} bg-transparent {(string.IsNullOrEmpty(Prefix) && string.IsNullOrEmpty(Suffix) ? "px-2.5" : "px-1")} {(Block ? "text-start" : "text-center")} text-sm text-foreground outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none")"
                value="@DisplayValue"
                disabled="@Disabled"
                min="@Min"
@@ -144,8 +144,9 @@
     /// doesn't work in Blazor WASM.</summary>
     [Parameter] public bool AutoFocus { get; set; }
     /// <summary>Per-control density override. When null, inherits from any
-    /// ancestor <see cref="DensityScope"/>; if neither is set, matches the
-    /// historical <c>Comfortable</c> default. Only the control height shifts
+    /// ancestor <see cref="DensityScope"/>; if neither is set, the control
+    /// sits on the <c>Comfortable</c> rung — which is where shadcn's own default sits as of 5.0, one step below the pre-5.0 Lumeo default.
+    /// Only the control height shifts
     /// between values.</summary>
     [Parameter] public Density? Density { get; set; }
     [CascadingParameter] private Density? InheritedDensity { get; set; }
@@ -159,20 +160,21 @@
 
     private Lumeo.Density EffectiveDensity => Density ?? InheritedDensity ?? Lumeo.Density.Comfortable;
 
-    // Height tracks density; Comfortable reproduces the historical h-9.
+    // Height tracks density on Input's ladder, which moved down a rung in 5.0 - a number
+    // field beside an ordinary one has to be the same height.
     private string HeightClass => EffectiveDensity switch
     {
-        Lumeo.Density.Compact => "h-8",
-        Lumeo.Density.Spacious => "h-10",
-        _ => "h-9"
+        Lumeo.Density.Compact => "h-7",
+        Lumeo.Density.Spacious => "h-9",
+        _ => "h-8"
     };
 
     // Stepper buttons stay square so the +/- glyphs remain centred.
     private string ControlSizeClass => EffectiveDensity switch
     {
-        Lumeo.Density.Compact => "h-8 w-8",
-        Lumeo.Density.Spacious => "h-10 w-10",
-        _ => "h-9 w-9"
+        Lumeo.Density.Compact => "h-7 w-7",
+        Lumeo.Density.Spacious => "h-9 w-9",
+        _ => "h-8 w-8"
     };
 
     /// <summary>The underlying number &lt;input&gt; element.</summary>

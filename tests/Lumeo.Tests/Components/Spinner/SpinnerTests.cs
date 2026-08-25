@@ -6,6 +6,8 @@ using L = Lumeo;
 
 namespace Lumeo.Tests.Components.Spinner;
 
+// The rungs moved down one step in the 5.0 scale alignment: shadcn's spinner is size-4,
+// so Md sits there and the ladder follows - 6 / 8 / 12 / 16 / 24 / 32 / 40px.
 public class SpinnerTests : IAsyncLifetime
 {
     private readonly BunitContext _ctx = new();
@@ -41,8 +43,8 @@ public class SpinnerTests : IAsyncLifetime
         var cut = _ctx.Render<L.Spinner>();
 
         var cls = cut.Find("svg").GetAttribute("class");
-        Assert.Contains("h-6", cls);
-        Assert.Contains("w-6", cls);
+        Assert.Contains("h-4", cls);
+        Assert.Contains("w-4", cls);
     }
 
     [Fact]
@@ -52,8 +54,8 @@ public class SpinnerTests : IAsyncLifetime
             .Add(s => s.Size, L.Size.Sm));
 
         var cls = cut.Find("svg").GetAttribute("class");
-        Assert.Contains("h-4", cls);
-        Assert.Contains("w-4", cls);
+        Assert.Contains("h-3", cls);
+        Assert.Contains("w-3", cls);
     }
 
     [Fact]
@@ -63,14 +65,14 @@ public class SpinnerTests : IAsyncLifetime
             .Add(s => s.Size, L.Size.Lg));
 
         var cls = cut.Find("svg").GetAttribute("class");
-        Assert.Contains("h-8", cls);
-        Assert.Contains("w-8", cls);
+        Assert.Contains("h-6", cls);
+        Assert.Contains("w-6", cls);
     }
 
     [Theory]
-    [InlineData(L.Size.Sm, "h-4", "w-4")]
-    [InlineData(L.Size.Md, "h-6", "w-6")]
-    [InlineData(L.Size.Lg, "h-8", "w-8")]
+    [InlineData(L.Size.Sm, "h-3", "w-3")]
+    [InlineData(L.Size.Md, "h-4", "w-4")]
+    [InlineData(L.Size.Lg, "h-6", "w-6")]
     public void Size_Variants_Have_Correct_Dimensions(L.Size size, string expectedH, string expectedW)
     {
         var cut = _ctx.Render<L.Spinner>(p => p

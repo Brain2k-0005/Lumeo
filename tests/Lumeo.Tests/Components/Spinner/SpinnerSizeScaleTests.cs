@@ -20,13 +20,15 @@ public class SpinnerSizeScaleTests : IAsyncLifetime
     // --- Ring: SizeClasses — no ties, every rung distinct ---
 
     [Theory]
-    [InlineData(L.Size.Xxs, "h-2 w-2")]
-    [InlineData(L.Size.Xs, "h-3 w-3")]
-    [InlineData(L.Size.Sm, "h-4 w-4")]
-    [InlineData(L.Size.Md, "h-6 w-6")]
-    [InlineData(L.Size.Lg, "h-8 w-8")]
-    [InlineData(L.Size.Xl, "h-10 w-10")]
-    [InlineData(L.Size.Xxl, "h-12 w-12")]
+    // The RING moved down one rung in the 5.0 scale alignment (shadcn's spinner is size-4,
+    // so Md sits there). The Bars and Dots variants below are untouched.
+    [InlineData(L.Size.Xxs, "h-1.5 w-1.5")]
+    [InlineData(L.Size.Xs, "h-2 w-2")]
+    [InlineData(L.Size.Sm, "h-3 w-3")]
+    [InlineData(L.Size.Md, "h-4 w-4")]
+    [InlineData(L.Size.Lg, "h-6 w-6")]
+    [InlineData(L.Size.Xl, "h-8 w-8")]
+    [InlineData(L.Size.Xxl, "h-10 w-10")]
     public void Ring_SizeClasses_Per_Rung(L.Size size, string expected)
     {
         var cut = _ctx.Render<L.Spinner>(p => p.Add(s => s.Size, size));

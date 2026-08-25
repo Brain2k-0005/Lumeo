@@ -276,8 +276,9 @@ else
     /// variant is forwarded to <c>TimeWheelPicker</c>.</summary>
     [Parameter] public bool Disabled { get; set; }
     /// <summary>Per-picker density override. When null, inherits from any
-    /// ancestor <see cref="DensityScope"/>; if neither is set, matches the
-    /// historical <c>Comfortable</c> default. Only the trigger height +
+    /// ancestor <see cref="DensityScope"/>; if neither is set, the picker
+    /// sits on the <c>Comfortable</c> rung — which is where shadcn's own default sits as of 5.0, one step below the pre-5.0 Lumeo default.
+    /// Only the trigger height +
     /// horizontal padding shift between values.</summary>
     [Parameter] public Density? Density { get; set; }
     [CascadingParameter] private Density? InheritedDensity { get; set; }
@@ -510,12 +511,15 @@ else
     private Lumeo.Density EffectiveDensity => Density ?? InheritedDensity ?? Lumeo.Density.Comfortable;
 
     // Trigger height + horizontal padding track density; Comfortable
-    // reproduces the historical `h-9 px-3`.
+    // follows Input's ladder, one rung lower since the 5.0 alignment.
     private string SizeClasses => EffectiveDensity switch
     {
-        Lumeo.Density.Compact => "h-8 px-2.5 py-1",
-        Lumeo.Density.Spacious => "h-10 px-4 py-2.5",
-        _ => "h-9 px-3 py-2"
+        // leading-none at Compact for the same reason Input carries it: h-7 leaves 18px
+        // after py-1 and the border, and text-sm's line box is 20px. Without it the time
+        // spills into its own padding.
+        Lumeo.Density.Compact => "h-7 px-2 py-1 leading-none",
+        Lumeo.Density.Spacious => "h-9 px-3 py-2",
+        _ => "h-8 px-2.5 py-1.5"
     };
 
     private string CssClass => Cx.Merge("group flex", SizeClasses, Cx.When(FullWidth, "w-full"), "items-center rounded-md border", (EffectiveInvalid ? "border-destructive ring-1 ring-destructive/20" : "border-input"), "bg-transparent text-sm shadow-sm hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50", Class);
