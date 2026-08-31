@@ -338,7 +338,7 @@
                               VirtualOverscanCount="@VirtualOverscanCount"
                               ServerVirtualizationProvider="@(_useServerVirtualization ? ServerVirtualizationProviderImpl : null)"
                               HasDetailTemplate="@(DetailTemplate is not null)"
-                              SkeletonRowCount="@PageSize"
+                              SkeletonRowCount="@EffectiveSkeletonRowCount"
                               OnContextMenu="@(args => HandleContextMenu(args.Item1, args.Item2, args.Item3))" />
             </table>
             @if (EditMode == DataGridEditMode.Batch && ShowAddRow && NewItemFactory is not null)
@@ -861,6 +861,24 @@
 
     // --- Internal state ---
     private DataGridBody<TItem>? _bodyRef;
+    /// <summary>
+    /// How many skeleton rows the loading state renders. Capped, deliberately.
+    ///
+    /// This used to be PageSize outright, and PageSize is documented as a paging window, not
+    /// an allocation count - so the natural configuration for "pagination is off, I supply
+    /// exactly the rows to show" (a generous PageSize) built that many &lt;tr&gt; synchronously on
+    /// the main thread BEFORE any data existed. Measured at 200 bound rows: PageSize=3000
+    /// blocked the browser for ~8 s with no spinner and no error, and PageSize=10000 never
+    /// finished rendering at all (#432).
+    ///
+    /// A skeleton exists to fill the visible area until data arrives. Forty rows is already
+    /// more than any realistic viewport shows, so the cap costs nothing and removes a failure
+    /// mode that reads to a user as the whole application hanging.
+    /// </summary>
+    private int EffectiveSkeletonRowCount => Math.Clamp(PageSize, 0, MaxSkeletonRows);
+
+    private const int MaxSkeletonRows = 40;
+
     private bool _useServerVirtualization => Virtualized && OnRangeRequest is not null;
 
     // --- Keyboard navigation / roving tabindex (rc.32) ---

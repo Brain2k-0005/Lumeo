@@ -1,10 +1,22 @@
 @namespace Lumeo
-@implements IAsyncDisposable
-@inject Lumeo.Services.IComponentInteropService Interop
 
-<div id="@Context.TriggerId" class="@CssClass" role="button" tabindex="@(Context.Disabled ? "-1" : "0")" aria-expanded="@(Context.IsOpen ? "true" : "false")" aria-controls="@Context.ContentId" aria-disabled="@(Context.Disabled ? "true" : null)" data-state="@(Context.IsOpen ? "open" : "closed")" data-disabled="@(Context.Disabled ? string.Empty : null)" @onclick="Context.Toggle" @onkeydown="HandleKeyDown" @attributes="AdditionalAttributes">
+@* A native button, not a div[role=button] — the same shape AccordionTrigger already uses.
+   The div version had to hand-roll everything the browser gives a button for free: a manual
+   tabindex, an @onkeydown synthesising Enter and Space, and a JS prevent-default
+   registration on first render for EVERY trigger on the page, because Space on a div both
+   toggles and scrolls. All of that is gone, along with its interop round-trip (#438). *@
+<button type="button"
+        id="@Context.TriggerId"
+        class="@CssClass"
+        disabled="@Context.Disabled"
+        aria-expanded="@(Context.IsOpen ? "true" : "false")"
+        aria-controls="@Context.ContentId"
+        data-state="@(Context.IsOpen ? "open" : "closed")"
+        data-disabled="@(Context.Disabled ? string.Empty : null)"
+        @onclick="Context.Toggle"
+        @attributes="AdditionalAttributes">
     @ChildContent
-</div>
+</button>
 
 @code {
     [CascadingParameter] public Collapsible.CollapsibleContext Context { get; set; } = default!;
@@ -17,45 +29,13 @@
     /// <summary>Unmatched attributes splatted onto the trigger element.</summary>
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
-    private string CssClass => Cx.Merge("cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 rounded-sm", Class);
-
-    protected override async Task OnAfterRenderAsync(bool firstRender)
-    {
-        if (!firstRender) return;
-        try
-        {
-            // div[role=button] has no native key synthesis: Space toggled AND
-            // scrolled the page. Suppress only Space's default (Enter has no
-            // default on a div) synchronously in JS.
-            await Interop.RegisterPreventDefaultKeys(
-                Context.TriggerId,
-                new[] { new Lumeo.Services.PreventDefaultKeyRule(" ") });
-            _pdRegistered = true;
-        }
-        catch (JSDisconnectedException) { }
-        catch (ObjectDisposedException) { }
-        catch (InvalidOperationException) { } // JS interop unavailable during prerender
-    }
-
-    private bool _pdRegistered;
-
-    private async Task HandleKeyDown(KeyboardEventArgs e)
-    {
-        if (e.Key == "Enter" || e.Key == " ")
-        {
-            await Context.Toggle.InvokeAsync();
-        }
-    }
-
-    public async ValueTask DisposeAsync()
-    {
-        if (!_pdRegistered) return;
-        try
-        {
-            await Interop.UnregisterPreventDefaultKeys(Context.TriggerId);
-        }
-        catch (JSDisconnectedException) { }
-        catch (ObjectDisposedException) { }
-        catch (InvalidOperationException) { }
-    }
+    // w-full and text-start restore what the div gave for nothing: a div is block-level and
+    // left-aligned, a button is inline-block and centres its label. Without them the swap
+    // would silently reflow every existing trigger. `font: inherit` needs no class — the
+    // shipped reset already sets it on button. The rest is unchanged from the div version,
+    // and mirrors AccordionTrigger's disabled treatment.
+    private string CssClass => Cx.Merge(
+        "w-full text-start focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 rounded-sm",
+        (Context.Disabled ? "cursor-not-allowed opacity-50" : "cursor-pointer"),
+        Class);
 }

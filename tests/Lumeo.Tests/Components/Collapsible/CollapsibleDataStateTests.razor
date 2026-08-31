@@ -27,7 +27,7 @@
     public void DataState_Closed_By_Default()
     {
         var cut = RenderOne(open: false);
-        Assert.Equal("closed", cut.Find("[role='button']").GetAttribute("data-state"));
+        Assert.Equal("closed", cut.Find("button[aria-controls]").GetAttribute("data-state"));
         Assert.Equal("closed", cut.Find("[role='region']").GetAttribute("data-state"));
     }
 
@@ -35,7 +35,7 @@
     public void DataState_Open_When_Open()
     {
         var cut = RenderOne(open: true);
-        Assert.Equal("open", cut.Find("[role='button']").GetAttribute("data-state"));
+        Assert.Equal("open", cut.Find("button[aria-controls]").GetAttribute("data-state"));
         Assert.Equal("open", cut.Find("[role='region']").GetAttribute("data-state"));
     }
 
@@ -43,28 +43,31 @@
     public void DataState_Flips_On_Trigger_Click()
     {
         var cut = RenderOne(open: false);
-        cut.Find("[role='button']").Click();
-        Assert.Equal("open", cut.Find("[role='button']").GetAttribute("data-state"));
+        cut.Find("button[aria-controls]").Click();
+        Assert.Equal("open", cut.Find("button[aria-controls]").GetAttribute("data-state"));
     }
 
     [Fact]
     public void Disabled_Emits_DataDisabled_And_NoOps_Toggle()
     {
         var cut = RenderOne(open: false, disabled: true);
-        var trigger = cut.Find("[role='button']");
+        var trigger = cut.Find("button[aria-controls]");
         Assert.True(trigger.HasAttribute("data-disabled"));
-        Assert.Equal("true", trigger.GetAttribute("aria-disabled"));
+        // Native disabled, not aria-disabled: the trigger is a real <button> now (#438),
+        // and aria-disabled alongside the native attribute is redundant. Toggle() still
+        // guards on Disabled, so the no-op below holds either way.
+        Assert.True(trigger.HasAttribute("disabled"));
 
         // A disabled collapsible must not open on click.
         trigger.Click();
-        Assert.Equal("closed", cut.Find("[role='button']").GetAttribute("data-state"));
-        Assert.Equal("false", cut.Find("[role='button']").GetAttribute("aria-expanded"));
+        Assert.Equal("closed", cut.Find("button[aria-controls]").GetAttribute("data-state"));
+        Assert.Equal("false", cut.Find("button[aria-controls]").GetAttribute("aria-expanded"));
     }
 
     [Fact]
     public void Enabled_Omits_DataDisabled()
     {
         var cut = RenderOne();
-        Assert.False(cut.Find("[role='button']").HasAttribute("data-disabled"));
+        Assert.False(cut.Find("button[aria-controls]").HasAttribute("data-disabled"));
     }
 }
