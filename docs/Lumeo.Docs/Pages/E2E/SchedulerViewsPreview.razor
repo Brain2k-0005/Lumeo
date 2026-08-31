@@ -86,14 +86,25 @@
                 new DateTime(t.Year, t.Month, 3).AddHours(11.5),
                 Color: "var(--color-chart-4)"),
             new("e2e-3", "All-day Offsite", t.AddDays(5), t.AddDays(7), AllDay: true, Color: "var(--color-chart-3)"),
-            // 4 same-day events (> Month's default MaxVisibleLanes=3) — deterministically
-            // overflows into "+N more" on day+9 for the popover E2E coverage.
-            new("e2e-overflow-1", "Overflow A", t.AddDays(9).AddHours(8), t.AddDays(9).AddHours(8.5)),
-            new("e2e-overflow-2", "Overflow B", t.AddDays(9).AddHours(9), t.AddDays(9).AddHours(9.5)),
-            new("e2e-overflow-3", "Overflow C", t.AddDays(9).AddHours(10), t.AddDays(9).AddHours(10.5)),
-            new("e2e-overflow-4", "Overflow D", t.AddDays(9).AddHours(11), t.AddDays(9).AddHours(11.5)),
+            // 4 same-day events (> Month's default MaxVisibleLanes=3) so the day overflows
+            // into "+N more" for the popover E2E coverage.
+            //
+            // Fixed to the 11th of the anchor month, for the same reason e2e-candrop above is
+            // fixed: t.AddDays(9) is only inside the rendered month grid while today is early
+            // enough in the month. Run it on the 31st and the group lands in the NEXT month,
+            // outside the grid, no "+N more" trigger is rendered at all, and the E2E fails for
+            // a reason that has nothing to do with the popover it covers. The 11th exists in
+            // every month and collides with none of the days the drag tests reserve
+            // (3 candrop, 15 reject, 20 plain-move target, 22 snaps to 23).
+            new("e2e-overflow-1", "Overflow A", Day11(t).AddHours(8), Day11(t).AddHours(8.5)),
+            new("e2e-overflow-2", "Overflow B", Day11(t).AddHours(9), Day11(t).AddHours(9.5)),
+            new("e2e-overflow-3", "Overflow C", Day11(t).AddHours(10), Day11(t).AddHours(10.5)),
+            new("e2e-overflow-4", "Overflow D", Day11(t).AddHours(11), Day11(t).AddHours(11.5)),
         };
     }
+
+    /// <summary>The 11th of the month <paramref name="t"/> falls in, at midnight.</summary>
+    private static DateTime Day11(DateTime t) => new(t.Year, t.Month, 11);
 
     // Rejects any drop landing on the 15th of the month, and SNAPS any drop landing on the
     // 22nd forward one day to the 23rd (an E2E-observable accept-with-adjustment case,
