@@ -3607,6 +3607,53 @@ export function registerColumnResize(handleId, dotnetRef, minWidth, maxWidth) {
             cell.style.width = wpx;
             cell.style.minWidth = wpx;
         }
+        // The TABLE absorbs the delta, not the other columns. Without this the row still
+        // has to add up to the container, so widening one column silently narrows another.
+        if (frozenTable && frozenTotal > 0) {
+            frozenTable.style.width = (frozenTotal - startWidth + w) + 'px';
+        }
+    };
+
+    // Pins every column at the width it is CURRENTLY rendering at, then switches the table
+    // to table-layout:fixed.
+    //
+    // The table is width:100% under the default table-layout:auto, where a width written
+    // onto a cell is only a HINT: the browser still has to make the row add up to the
+    // container, so with no slack left it takes the space from whichever column has some -
+    // frequently one to the LEFT of the handle being dragged. The user drags the right
+    // border and watches the left border move, and only sometimes, because it depends on
+    // which column happens to have slack.
+    //
+    // Widths are measured before anything is written, so the table looks identical either
+    // side of the freeze. Grouped headers are skipped: under fixed layout the FIRST row
+    // governs, and freezing a leaf row underneath a colspan row would be a guess - better
+    // to leave those grids exactly as they behave today than to make them worse.
+    const freezeColumnWidths = (thEl) => {
+        const table = thEl.closest('table');
+        const headerRow = thEl.parentElement;
+        if (!table || !headerRow) return null;
+
+        const thead = table.querySelector('thead');
+        if (thead && thead.rows.length > 1) return null;
+
+        if (table.dataset.lumeoWidthsFrozen !== 'true') {
+            const cells = Array.prototype.slice.call(headerRow.children);
+            const widths = cells.map(c => c.getBoundingClientRect().width);
+            cells.forEach((c, i) => {
+                const w = widths[i] + 'px';
+                c.style.width = w;
+                c.style.minWidth = w;
+            });
+
+            table.style.tableLayout = 'fixed';
+            // min-width keeps a narrow grid filling its container; width lets a wide one
+            // grow past it and scroll, which the pinned-column container already handles.
+            table.style.width = widths.reduce((a, b) => a + b, 0) + 'px';
+            table.style.minWidth = '100%';
+            table.dataset.lumeoWidthsFrozen = 'true';
+        }
+
+        return table;
     };
 
     const gatherBodyCells = () => {
@@ -3630,6 +3677,9 @@ export function registerColumnResize(handleId, dotnetRef, minWidth, maxWidth) {
     };
 
     let activePointerId = null;
+    // The table whose layout was frozen for this drag, and its width at freeze time.
+    let frozenTable = null;
+    let frozenTotal = 0;
 
     // Migrated mouse* → pointer* (rc.43 mobile audit). Pointer events are a
     // superset that handles mouse, touch, and pen with a single API. We bind
@@ -3658,6 +3708,10 @@ export function registerColumnResize(handleId, dotnetRef, minWidth, maxWidth) {
         pendingWidth = startWidth;
         dirMultiplier = getComputedStyle(th).direction === 'rtl' ? -1 : 1;
         colBodyCells = gatherBodyCells();
+        frozenTable = freezeColumnWidths(th);
+        // Read AFTER the freeze: another column may have frozen this table on an earlier
+        // drag, in which case the measuring branch above did not run for this closure.
+        frozenTotal = frozenTable ? frozenTable.getBoundingClientRect().width : 0;
         document.body.style.cursor = 'col-resize';
         document.documentElement.style.cursor = 'col-resize';
         document.body.style.userSelect = 'none';
@@ -3803,6 +3857,9 @@ export function registerColumnResize(handleId, dotnetRef, minWidth, maxWidth) {
         let w = natural;
         if (w < min) w = min; else if (w > max) w = max;
         colBodyCells = gatherBodyCells();
+        startWidth = th.getBoundingClientRect().width;
+        frozenTable = freezeColumnWidths(th);
+        frozenTotal = frozenTable ? frozenTable.getBoundingClientRect().width : 0;
         applyWidth(w);
         currentWidth = w;
         // `finally` releases on both a successful commit and a rejected one,

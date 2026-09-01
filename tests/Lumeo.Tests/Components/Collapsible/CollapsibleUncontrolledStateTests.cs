@@ -48,7 +48,7 @@ public class CollapsibleUncontrolledStateTests : IAsyncLifetime
         });
 
     private static IElement Trigger(IRenderedComponent<L.Collapsible> cut)
-        => cut.Find("[role='button']");
+        => cut.Find("button[aria-controls]");
 
     private static IElement ContentRegion(IRenderedComponent<L.Collapsible> cut)
         => cut.Find("[role='region']");

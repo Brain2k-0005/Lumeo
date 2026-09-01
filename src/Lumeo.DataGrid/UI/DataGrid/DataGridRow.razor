@@ -61,6 +61,7 @@
            which toggles selection again — net no-op. The single-select cell below
            already does this on its <button>. *@
         <td role="gridcell" class="@($"{(Context.Compact ? "px-2 py-1" : "px-3 py-2")} w-10{(Context.HasPinnedLeft ? " sticky left-0 z-10 group-hover/row:bg-muted/50" : "")}")" style="@SelectionPinStyle"
+            @onclick="HandleSelectionCellClick"
             @onclick:stopPropagation="true">
             @* button-name (axe): icon-only checkbox, no visible label — row-context
                name so a screen reader announces WHICH row it toggles. *@
@@ -378,13 +379,23 @@
         }
     }
 
-    private async Task HandleClick()
+    private async Task HandleClick(MouseEventArgs e)
     {
         if (Context is not null)
         {
             if (Context.SelectionMode != DataGridSelectionMode.None)
             {
-                Context.ToggleSelection(Item);
+                // Shift/Ctrl go to the modifier-aware path when the grid supplies one; the
+                // plain toggle stays the fallback so a host cascading its own context still
+                // selects (#440).
+                if (Context.ToggleSelectionModified is { } modified)
+                {
+                    modified(Item, e.ShiftKey, e.CtrlKey);
+                }
+                else
+                {
+                    Context.ToggleSelection(Item);
+                }
             }
             await Context.OnRowClick.InvokeAsync(Item);
         }
@@ -414,6 +425,17 @@
     private async Task OnCheckChanged(bool value)
     {
         Context?.ToggleSelection(Item);
+    }
+
+    /// <summary>
+    /// Shift-click on the checkbox cell. The Checkbox has already toggled this row by the
+    /// time the click bubbles here, and that is fine: the range fill is additive, so it
+    /// turns the row on whichever way the checkbox just flipped it.
+    /// </summary>
+    private void HandleSelectionCellClick(MouseEventArgs e)
+    {
+        if (!e.ShiftKey) return;
+        if (Context?.ToggleSelectionModified is { } modified) modified(Item, true, e.CtrlKey);
     }
 
     // --- Row Editing ---

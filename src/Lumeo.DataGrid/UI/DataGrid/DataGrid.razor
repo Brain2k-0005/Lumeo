@@ -93,7 +93,11 @@
         Hoverable: Hoverable,
         ColumnGroups: _columnGroups,
         Compact: Compact
-    );
+    )
+    {
+        // init-only body property, so it is set here rather than passed positionally.
+        ToggleSelectionModified = ToggleSelectionModified,
+    };
 }
 
 @{
@@ -129,6 +133,7 @@
                              AllItems="@(ServerMode ? _displayedItems : _processedItems)"
                              EffectiveColumns="EffectiveColumns.AsReadOnly()"
                              EnableLayoutPersistence="EnableLayoutPersistence"
+                             ShowLayouts="ShowLayouts"
                              OnSaveLayout="HandleSaveLayout"
                              OnResetLayout="HandleResetLayout"
                              GlobalLayouts="GlobalLayouts"
@@ -338,7 +343,7 @@
                               VirtualOverscanCount="@VirtualOverscanCount"
                               ServerVirtualizationProvider="@(_useServerVirtualization ? ServerVirtualizationProviderImpl : null)"
                               HasDetailTemplate="@(DetailTemplate is not null)"
-                              SkeletonRowCount="@PageSize"
+                              SkeletonRowCount="@EffectiveSkeletonRowCount"
                               OnContextMenu="@(args => HandleContextMenu(args.Item1, args.Item2, args.Item3))" />
             </table>
             @if (EditMode == DataGridEditMode.Batch && ShowAddRow && NewItemFactory is not null)
@@ -460,7 +465,13 @@
 
     // --- Features ---
     /// <summary>Row-selection behavior: None (default), Single, or Multiple
-    /// (adds checkboxes and enables Ctrl/Shift-click and Ctrl+A).</summary>
+    /// (adds checkboxes and enables Ctrl/Shift-click and Ctrl+A).
+    ///
+    /// Shift-click selects the inclusive range from the anchor - the last row toggled without
+    /// Shift - to the clicked row, and EXTENDS rather than replaces the selection. Explorer
+    /// replaces; this grid selects with checkboxes, where destroying an existing selection on a
+    /// mis-click is the worse failure. The anchor stays put, so a range can be adjusted by
+    /// clicking again rather than starting over.</summary>
     [Parameter] public DataGridSelectionMode SelectionMode { get; set; } = DataGridSelectionMode.None;
 
     /// <summary>Cell/row editing behavior: None (default), Cell (commit per cell
@@ -498,6 +509,16 @@
     /// <see cref="ExportFormats"/>.
     /// </summary>
     [Parameter] public bool ShowExport { get; set; } = true;
+
+    /// <summary>
+    /// Shows the layouts menu in the toolbar. Only ever rendered when
+    /// <see cref="EnableLayoutPersistence"/> is on.
+    ///
+    /// Before 5.1 the menu appeared unconditionally with persistence, so a consumer who
+    /// wanted saved layouts but a toolbar carrying only their own controls had no way to
+    /// say so - the only lever was switching persistence off entirely (#441).
+    /// </summary>
+    [Parameter] public bool ShowLayouts { get; set; } = true;
 
     /// <summary>
     /// Which export formats appear in the Export dropdown. Default <see cref="DataGridExportFormat.All"/>.
@@ -861,6 +882,24 @@
 
     // --- Internal state ---
     private DataGridBody<TItem>? _bodyRef;
+    /// <summary>
+    /// How many skeleton rows the loading state renders. Capped, deliberately.
+    ///
+    /// This used to be PageSize outright, and PageSize is documented as a paging window, not
+    /// an allocation count - so the natural configuration for "pagination is off, I supply
+    /// exactly the rows to show" (a generous PageSize) built that many &lt;tr&gt; synchronously on
+    /// the main thread BEFORE any data existed. Measured at 200 bound rows: PageSize=3000
+    /// blocked the browser for ~8 s with no spinner and no error, and PageSize=10000 never
+    /// finished rendering at all (#432).
+    ///
+    /// A skeleton exists to fill the visible area until data arrives. Forty rows is already
+    /// more than any realistic viewport shows, so the cap costs nothing and removes a failure
+    /// mode that reads to a user as the whole application hanging.
+    /// </summary>
+    private int EffectiveSkeletonRowCount => Math.Clamp(PageSize, 0, MaxSkeletonRows);
+
+    private const int MaxSkeletonRows = 40;
+
     private bool _useServerVirtualization => Virtualized && OnRangeRequest is not null;
 
     // --- Keyboard navigation / roving tabindex (rc.32) ---
@@ -1063,6 +1102,26 @@
     /// sort/filter/search change; expose as <c>@ref</c> if you need to
     /// trigger it manually (e.g. after an external data mutation).
     /// </summary>
+    /// <summary>
+    /// Re-runs <see cref="OnServerRequest"/> with the grid's current sort, filter, search
+    /// and paging state.
+    ///
+    /// Use this when something OUTSIDE the grid invalidates the data - a filter bar that
+    /// lives in the page rather than the toolbar, a save that changed a row, a tab switch.
+    /// Until 5.1 the only public entry point was <see cref="RefreshVirtualizedAsync"/>,
+    /// which is documented as a no-op outside virtualized server mode and behaves like one,
+    /// so a host in plain server mode had no way to say "your data is stale, ask again".
+    ///
+    /// No-ops when <see cref="ServerMode"/> is off: there is no server to ask.
+    ///
+    /// Safe to call from any thread. The reasons to reach for this - a save completing, a
+    /// background poll, a message arriving - are exactly the ones that resume off the
+    /// renderer's dispatcher, so the dispatch is done here rather than left as an undocumented
+    /// precondition that throws.
+    /// </summary>
+    public Task RefreshAsync() =>
+        ServerMode ? InvokeAsync(RequestServerData) : Task.CompletedTask;
+
     public Task RefreshVirtualizedAsync() =>
         _bodyRef is not null ? _bodyRef.RefreshVirtualizeAsync() : Task.CompletedTask;
 
@@ -1307,6 +1366,21 @@
     private DataGridLayoutService? _layoutService;
     private DataGridServerService? _serverService;
     private DataGridToolbarContext<TItem> _toolbarContext = new();
+
+    /// <summary>
+    /// The live toolbar context. Pass a <c>@ref</c> to this grid into a toolbar tool to place
+    /// it in your own page instead of the grid's chrome:
+    ///
+    /// <code>
+    /// &lt;DataGrid @ref="_grid" TItem="T" ShowToolbar="false" ... /&gt;
+    /// &lt;DataGridToolbarColumns TItem="T" Grid="@_grid" /&gt;
+    /// </code>
+    ///
+    /// Until 5.1 the tools could only render inside the grid, so a consumer who wanted the
+    /// column chooser in a page-level action bar had to rebuild it by hand against each
+    /// column's Visible binding, losing the reorder arrows and the pin submenu (#441).
+    /// </summary>
+    public DataGridToolbarContext<TItem> ToolbarContext => _toolbarContext;
 
     // --- ToolbarContent component registration ---
 
@@ -1614,6 +1688,19 @@
 
     protected override async Task OnParametersSetAsync()
     {
+        // ServerMode used to be read exactly once, in OnInitializedAsync. A host that binds
+        // it to a field it resolves asynchronously, or to a feature flag, therefore never got
+        // a request at all (#442).
+        if (ServerMode && !_lastServerModeParam && _initialServerRequestSent is false)
+        {
+            _lastServerModeParam = true;
+            if (OnServerRequest.HasDelegate)
+            {
+                await RequestServerData();
+            }
+        }
+        _lastServerModeParam = ServerMode;
+
         // Sync IsExpanded parameter with internal state (allow external binding to drive it)
         if (IsExpanded != _lastIsExpandedParam)
         {
@@ -1715,6 +1802,17 @@
     {
         if (firstRender)
         {
+            // Second chance for the initial server request. OnInitializedAsync fires before
+            // children register and before the first render, so a ServerMode or handler that
+            // arrives even slightly later missed it entirely - and the grid then sat in its
+            // empty state forever, with no error and no way to ask again (#442). By first
+            // render the columns have registered, so this request also carries the real
+            // descriptor set.
+            if (ServerMode && OnServerRequest.HasDelegate && !_initialServerRequestSent)
+            {
+                await RequestServerData();
+            }
+
             _layoutService ??= new DataGridLayoutService(Interop, ex =>
             {
                 if (OnError.HasDelegate)
@@ -1954,6 +2052,12 @@
             await RequestServerData();
         }
     }
+
+    // Whether the mount-time server request has gone out. Guards the first-render retry
+    // and the ServerMode false->true transition below, so at most one initial request is
+    // made however the grid arrives at server mode.
+    private bool _initialServerRequestSent;
+    private bool _lastServerModeParam;
 
     // Applies grouping to the server-returned page in ServerMode. The server has
     // already done sort/filter/page, so we treat _displayedItems as the buffer
@@ -2951,8 +3055,73 @@
         foreach (var it in rebuilt) set.Add(it);
     }
 
+    // The anchor for Shift-click: the last row toggled WITHOUT Shift. Held as a key rather
+    // than a reference so it survives a server-mode refetch that replaces the wrappers.
+    private object? _selectionAnchorKey;
+
+    /// <summary>
+    /// Selection with modifiers. The XML summary on <see cref="SelectionMode"/> has promised
+    /// Ctrl/Shift-click since the parameter existed; Ctrl-click was already satisfied by the
+    /// plain per-row toggle Multiple mode does, but Shift-click did nothing at all (#440).
+    ///
+    /// Shift EXTENDS rather than replaces. Explorer replaces the selection, but this grid
+    /// selects with checkboxes, where destroying an existing selection on a mis-click is the
+    /// worse failure - and for the reported use case (picking 20-40 receipts) the two are
+    /// identical anyway, because the run starts from an empty selection.
+    /// </summary>
+    private void ToggleSelectionModified(TItem item, bool shift, bool ctrl)
+    {
+        if (shift && SelectionMode == DataGridSelectionMode.Multiple && _selectionAnchorKey is not null)
+        {
+            SelectRangeFromAnchor(item);
+            return;
+        }
+
+        ToggleSelection(item);
+    }
+
+    /// <summary>
+    /// Selects every row between the anchor and <paramref name="item"/> inclusive, in the
+    /// order the user sees them. The anchor deliberately stays put: extending a range is an
+    /// adjustment, and moving it would make each Shift-click start a new one.
+    /// </summary>
+    private void SelectRangeFromAnchor(TItem item)
+    {
+        var rows = _displayedItems;
+        var from = rows.FindIndex(r => Equals(SelectionKeyFor(r), _selectionAnchorKey));
+        var to = rows.FindIndex(r => Equals(SelectionKeyFor(r), SelectionKeyFor(item)));
+
+        // The anchor can be off-screen after a filter or a page change. Falling back to a
+        // plain toggle beats selecting a range whose start the user can no longer see.
+        if (from < 0 || to < 0)
+        {
+            ToggleSelection(item);
+            return;
+        }
+
+        if (from > to) (from, to) = (to, from);
+
+        for (var i = from; i <= to; i++)
+        {
+            var row = rows[i];
+            if (!FindSelectionMatch(row).found)
+            {
+                _selectedSet.Add(row);
+                _selectedItems.Add(row);
+            }
+        }
+
+        NotifySelectionChanged();
+        StateHasChanged();
+    }
+
+    private object SelectionKeyFor(TItem item) =>
+        SelectionKeySelector is not null ? SelectionKeySelector(item)! : item!;
+
     private void ToggleSelection(TItem item)
     {
+        // Every Shift-less toggle re-anchors, so the next Shift-click extends from here.
+        _selectionAnchorKey = SelectionKeyFor(item);
         // Capture both ref-membership and key-membership BEFORE mutating, so a
         // fresh server-mode wrapper (different ref, same key) is correctly
         // recognised as already-selected and deselects instead of doubling.
@@ -4411,6 +4580,7 @@
 
     private async Task RequestServerData()
     {
+        _initialServerRequestSent = true;
         var previousError = _serverService!.Error;
 
         await _serverService!.RequestDataAsync(

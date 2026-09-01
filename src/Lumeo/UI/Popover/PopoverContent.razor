@@ -29,6 +29,19 @@
     /// saves/restores focus, it just doesn't steal focus from the trigger on open.
     /// </summary>
     [Parameter] public bool FocusOnOpen { get; set; } = true;
+
+    /// <summary>
+    /// Element id to focus on open INSTEAD of the popover surface. Ignored when
+    /// <see cref="FocusOnOpen"/> is <c>false</c>.
+    ///
+    /// Radix's <c>onOpenAutoFocus</c> lets a consumer redirect focus, not only suppress it;
+    /// until 5.1 Lumeo had on/off only, so a popover whose first meaningful control is a
+    /// search field left the user a Tab away from it (#439).
+    ///
+    /// Prefer this over putting <c>AutoFocus</c> on a child input: both run on open and the
+    /// surface wins, which is a race rather than a contract.
+    /// </summary>
+    [Parameter] public string? FocusTargetId { get; set; }
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
@@ -108,7 +121,7 @@
             // keyboard input) keeps focus and stays typeable while the popover opens.
             if (FocusOnOpen)
             {
-                try { await Interop.FocusElement(_contentId); } catch (JSDisconnectedException) { }
+                try { await Interop.FocusElement(FocusTargetId ?? _contentId); } catch (JSDisconnectedException) { }
             }
         }
         else if (Context.IsOpen && _registered && _appliedAnchor != (SideStr, AlignStr))

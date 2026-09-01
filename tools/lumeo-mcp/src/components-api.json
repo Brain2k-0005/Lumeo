@@ -1,10 +1,10 @@
 {
   "$schema": "https://lumeo.nativ.sh/components-api-schema.json",
-  "version": "5.0.0",
-  "generated": "2026-08-31T16:34:51.5030408Z",
+  "version": "5.1.0",
+  "generated": "2026-09-01T21:16:19.8296378Z",
   "stats": {
     "componentCount": 165,
-    "totalParameters": 4587,
+    "totalParameters": 4596,
     "totalEnums": 93,
     "totalRecords": 65,
     "serviceCount": 33,
@@ -5943,6 +5943,10 @@
         "--color-input",
         "--color-muted",
         "--color-muted-foreground",
+        "--color-primary",
+        "--color-primary-foreground",
+        "--color-secondary",
+        "--color-secondary-foreground",
         "--radius"
       ],
       "examples": [
@@ -6003,6 +6007,15 @@
               "type": "bool",
               "default": "false",
               "description": "When true, shows a spinner and disables the button, and suppresses the auto-close so the dialog stays open while an async action is in flight.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "Variant",
+              "type": "Button.ButtonVariant",
+              "default": "Button.ButtonVariant.Default",
+              "description": "Visual variant, the same set as Variant. Defaults to Default (primary), which is what shadcn's AlertDialogAction renders: an alert dialog asks for confirmation, and only a destructive confirmation is red. Before 5.1 every action was destructive with no way to change it, so a \"Transfer again?\" dialog got the same red button as \"Delete?\".",
               "isCascading": false,
               "captureUnmatched": false,
               "isEditorRequired": false
@@ -19971,6 +19984,7 @@
       "cssVars": [
         "--color-background",
         "--color-destructive",
+        "--color-input",
         "--color-muted",
         "--color-muted-foreground",
         "--color-primary",
@@ -20822,9 +20836,7 @@
           "fileName": "CollapsibleTrigger.razor",
           "namespace": "Lumeo",
           "inheritsFrom": null,
-          "implements": [
-            "IAsyncDisposable"
-          ],
+          "implements": [],
           "parameters": [
             {
               "name": "Context",
@@ -20873,22 +20885,17 @@
       },
       "a11y": {
         "roles": [
-          "button",
           "region"
         ],
         "ariaAttributes": [
           "aria-controls",
-          "aria-disabled",
           "aria-expanded",
           "aria-hidden",
           "aria-labelledby"
         ],
-        "keys": [
-          "Enter",
-          "Space"
-        ],
-        "keyboardInteractive": true,
-        "focusManaged": true
+        "keys": [],
+        "keyboardInteractive": false,
+        "focusManaged": false
       },
       "parseFailed": false,
       "parseError": null
@@ -24336,7 +24343,7 @@
           "name": "SelectionMode",
           "type": "DataGridSelectionMode",
           "default": "DataGridSelectionMode.None",
-          "description": "Row-selection behavior: None (default), Single, or Multiple (adds checkboxes and enables Ctrl/Shift-click and Ctrl+A).",
+          "description": "Row-selection behavior: None (default), Single, or Multiple (adds checkboxes and enables Ctrl/Shift-click and Ctrl+A). Shift-click selects the inclusive range from the anchor - the last row toggled without Shift - to the clicked row, and EXTENDS rather than replaces the selection. Explorer replaces; this grid selects with checkboxes, where destroying an existing selection on a mis-click is the worse failure. The anchor stays put, so a range can be adjusted by clicking again rather than starting over.",
           "isCascading": false,
           "captureUnmatched": false,
           "isEditorRequired": false
@@ -24409,6 +24416,15 @@
           "type": "bool",
           "default": "true",
           "description": "Show the Export button and its format dropdown. Default true. Set false to hide export entirely. For fine-grained per-format control see ExportFormats.",
+          "isCascading": false,
+          "captureUnmatched": false,
+          "isEditorRequired": false
+        },
+        {
+          "name": "ShowLayouts",
+          "type": "bool",
+          "default": "true",
+          "description": "Shows the layouts menu in the toolbar. Only ever rendered when EnableLayoutPersistence is on. Before 5.1 the menu appeared unconditionally with persistence, so a consumer who wanted saved layouts but a toolbar carrying only their own controls had no way to say so - the only lever was switching persistence off entirely (#441).",
           "isCascading": false,
           "captureUnmatched": false,
           "isEditorRequired": false
@@ -25232,7 +25248,7 @@
               "name": "SkeletonRowCount",
               "type": "int",
               "default": "5",
-              "description": "Number of placeholder skeleton rows rendered while Context.IsLoading is true. Defaults to 5.",
+              "description": null,
               "isCascading": false,
               "captureUnmatched": false,
               "isEditorRequired": false
@@ -26882,6 +26898,15 @@
               "isEditorRequired": false
             },
             {
+              "name": "ShowLayouts",
+              "type": "bool",
+              "default": "true",
+              "description": "Shows the layouts menu. Only ever rendered when EnableLayoutPersistence is on; this switches it off WITHOUT giving up persistence, which had no expression before 5.1 (#441).",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
               "name": "ExportFormats",
               "type": "DataGridExportFormat",
               "default": "DataGridExportFormat.All",
@@ -26992,11 +27017,20 @@
           ],
           "parameters": [
             {
-              "name": "Context",
+              "name": "CascadedContext",
               "type": "DataGridToolbarContext<TItem>?",
               "default": null,
               "description": null,
               "isCascading": true,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "Grid",
+              "type": "DataGrid<TItem>?",
+              "default": null,
+              "description": "The grid to drive, when this tool is placed OUTSIDE the grid's own toolbar. Leave unset inside it - the cascade supplies the context there and wins (#441).",
+              "isCascading": false,
               "captureUnmatched": false,
               "isEditorRequired": false
             }
@@ -27016,11 +27050,20 @@
           "implements": [],
           "parameters": [
             {
-              "name": "Context",
+              "name": "CascadedContext",
               "type": "DataGridToolbarContext<TItem>?",
               "default": null,
               "description": null,
               "isCascading": true,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "Grid",
+              "type": "DataGrid<TItem>?",
+              "default": null,
+              "description": "The grid to drive, when this tool is placed OUTSIDE the grid's own toolbar. Leave unset inside it - the cascade supplies the context there and wins (#441).",
+              "isCascading": false,
               "captureUnmatched": false,
               "isEditorRequired": false
             }
@@ -27042,11 +27085,20 @@
           ],
           "parameters": [
             {
-              "name": "Context",
+              "name": "CascadedContext",
               "type": "DataGridToolbarContext<TItem>?",
               "default": null,
               "description": null,
               "isCascading": true,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "Grid",
+              "type": "DataGrid<TItem>?",
+              "default": null,
+              "description": "The grid to drive, when this tool is placed OUTSIDE the grid's own toolbar. Leave unset inside it - the cascade supplies the context there and wins (#441).",
+              "isCascading": false,
               "captureUnmatched": false,
               "isEditorRequired": false
             }
@@ -27066,11 +27118,20 @@
           "implements": [],
           "parameters": [
             {
-              "name": "Context",
+              "name": "CascadedContext",
               "type": "DataGridToolbarContext<TItem>?",
               "default": null,
               "description": null,
               "isCascading": true,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "Grid",
+              "type": "DataGrid<TItem>?",
+              "default": null,
+              "description": "The grid to drive, when this tool is placed OUTSIDE the grid's own toolbar. Leave unset inside it - the cascade supplies the context there and wins (#441).",
+              "isCascading": false,
               "captureUnmatched": false,
               "isEditorRequired": false
             }
@@ -27092,11 +27153,20 @@
           ],
           "parameters": [
             {
-              "name": "Context",
+              "name": "CascadedContext",
               "type": "DataGridToolbarContext<TItem>?",
               "default": null,
               "description": null,
               "isCascading": true,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "Grid",
+              "type": "DataGrid<TItem>?",
+              "default": null,
+              "description": "The grid to drive, when this tool is placed OUTSIDE the grid's own toolbar. Leave unset inside it - the cascade supplies the context there and wins (#441).",
+              "isCascading": false,
               "captureUnmatched": false,
               "isEditorRequired": false
             }
@@ -46173,6 +46243,15 @@
               "type": "bool",
               "default": "true",
               "description": "When true (default), focus moves into the popover surface on open so its @onkeydown handler receives Escape and keyboard users land inside the dialog (the Radix onOpenAutoFocus default). Set to false when the trigger is a typeable control that must KEEP focus while the popover opens (e.g. DatePicker's keyboard-input trigger) — the surface still positions, registers click-outside and saves/restores focus, it just doesn't steal focus from the trigger on open.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "FocusTargetId",
+              "type": "string?",
+              "default": null,
+              "description": "Element id to focus on open INSTEAD of the popover surface. Ignored when FocusOnOpen is false. Radix's onOpenAutoFocus lets a consumer redirect focus, not only suppress it; until 5.1 Lumeo had on/off only, so a popover whose first meaningful control is a search field left the user a Tab away from it (#439). Prefer this over putting AutoFocus on a child input: both run on open and the surface wins, which is a race rather than a contract.",
               "isCascading": false,
               "captureUnmatched": false,
               "isEditorRequired": false

@@ -42,11 +42,15 @@ public class SidebarContentScrollDefaultsTests : IAsyncLifetime
     }
 
     [Fact]
-    public void Default_Root_Class_Reserves_A_Stable_Scrollbar_Gutter()
+    public void Default_Root_Class_Reserves_No_Scrollbar_Gutter()
     {
+        // 5.1: dropped. shadcn's sidebar content reserves nothing (scrollbar-gutter: auto,
+        // measured live 2026-09-01), and the stable gutter cost every consumer 10px of nav
+        // width whether or not anything overflowed (#437 / field report 3.2). The horizontal
+        // scrollbar the gutter guarded against is already ruled out by overflow-x-hidden.
         var cut = _ctx.Render<Lumeo.SidebarContent>();
 
-        Assert.Contains("scrollbar-gutter:stable", cut.Find("div").GetAttribute("class"));
+        Assert.DoesNotContain("scrollbar-gutter", cut.Find("div").GetAttribute("class"));
     }
 
     [Fact]
@@ -76,12 +80,13 @@ public class SidebarContentScrollDefaultsTests : IAsyncLifetime
     }
 
     [Fact]
-    public void Scrollbar_Gutter_Present_When_Sidebar_Is_Expanded()
+    public void Scrollbar_Gutter_Not_Reserved_When_Sidebar_Is_Expanded()
     {
         var cut = RenderWithProvider(isCollapsed: false);
 
         var sidebarContentDiv = cut.FindAll("div").First(d => (d.GetAttribute("class") ?? "").Contains("overflow-y-auto"));
-        Assert.Contains("scrollbar-gutter:stable", sidebarContentDiv.GetAttribute("class"));
+        // 5.1: no gutter in either state (see Default_Root_Class_Reserves_No_Scrollbar_Gutter).
+        Assert.DoesNotContain("scrollbar-gutter", sidebarContentDiv.GetAttribute("class"));
     }
 
     [Fact]

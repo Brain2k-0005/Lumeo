@@ -82,7 +82,7 @@ public class AlertDialogSizeTests : IAsyncLifetime
         var dialog = cut.Find("[role='alertdialog']");
         var tokens = (dialog.GetAttribute("class") ?? "").Split(' ', StringSplitOptions.RemoveEmptyEntries);
 
-        foreach (var expected in new[] { "relative", "grid", "w-full", "max-w-lg", "gap-4", "bg-background", "p-6", "shadow-lg", "sm:rounded-lg" })
+        foreach (var expected in new[] { "relative", "grid", "w-full", "max-w-lg", "gap-4", "bg-background", "p-6", "shadow-lg", "sm:rounded-xl" })
             Assert.Contains(expected, tokens);
 
         foreach (var otherSize in new[] { "max-w-sm", "max-w-2xl", "max-w-4xl", "max-w-[calc(100vw-2rem)]" })

@@ -184,7 +184,12 @@ else if (Context is not null && Context.IsGrouped && Context.GroupedSections is 
         }
     </tbody>
 }
-else if (Context is not null && Context.DisplayedItems.Count == 0)
+@* The ServerVirtualizationProvider guard is load-bearing: in server virtualization the
+   bound list is empty BY DESIGN, because the provider is what supplies the rows. Without
+   it this branch matched on every mount, <Virtualize> below never mounted, and
+   OnRangeRequest never fired (#431). "Nothing to show" in that mode is decided by the
+   provider's own reported total, not by the in-memory list - see _serverReportedEmpty. *@
+else if (Context is not null && Context.DisplayedItems.Count == 0 && ServerVirtualizationProvider is null)
 {
     <tbody data-slot="datagrid-body" class="@CssClass" @attributes="AdditionalAttributes">
         <tr>
@@ -210,8 +215,29 @@ else if (Context is not null && ServerVirtualizationProvider is not null)
        via ItemsProvider, so the in-memory list is empty until the user
        scrolls. SpacerElement="tr" is non-negotiable inside <tbody>. *@
     <tbody data-slot="datagrid-body" class="@CssClass" @attributes="AdditionalAttributes">
+        @if (_serverReportedEmpty)
+        {
+            @* Rendered BESIDE <Virtualize>, never instead of it. Replacing it would stop the
+               provider running, so a later filter change that does have rows could never
+               bring the grid back. Virtualize renders only its two spacers at zero items. *@
+            <tr>
+                <td colspan="@ColSpan" class="px-3 py-8 text-center text-muted-foreground">
+                    @if (EmptyContent is not null)
+                    {
+                        @EmptyContent
+                    }
+                    else
+                    {
+                        <div class="flex flex-col items-center gap-2">
+                            <SvgGlyph Svg="@(LumeoIcons.Inbox)" class="h-8 w-8 text-muted-foreground/50" />
+                            <span class="text-sm">@L["DataGrid.NoData"]</span>
+                        </div>
+                    }
+                </td>
+            </tr>
+        }
         <Virtualize @ref="_virtualize" TItem="IndexedItem"
-                    ItemsProvider="ServerVirtualizationProvider"
+                    ItemsProvider="ObservingServerProvider"
                     Context="entry"
                     SpacerElement="tr"
                     ItemSize="@VirtualItemSize"
@@ -348,6 +374,30 @@ else if (Context is not null)
 
     /// <summary>Number of placeholder skeleton rows rendered while <c>Context.IsLoading</c>
     /// is true. Defaults to 5.</summary>
+    // Whether the provider's last answer said there is nothing to show. Only the provider
+    // can know that in server virtualization; the in-memory list is empty either way.
+    private bool _serverReportedEmpty;
+
+    /// <summary>
+    /// Wraps <see cref="ServerVirtualizationProvider"/> so the body learns whether the
+    /// server actually has rows. Re-renders only when the answer CHANGES, so a steady
+    /// stream of non-empty windows costs nothing.
+    /// </summary>
+    private async ValueTask<Microsoft.AspNetCore.Components.Web.Virtualization.ItemsProviderResult<IndexedItem>>
+        ObservingServerProvider(Microsoft.AspNetCore.Components.Web.Virtualization.ItemsProviderRequest request)
+    {
+        var result = await ServerVirtualizationProvider!(request);
+
+        var empty = result.TotalItemCount == 0;
+        if (empty != _serverReportedEmpty)
+        {
+            _serverReportedEmpty = empty;
+            await InvokeAsync(StateHasChanged);
+        }
+
+        return result;
+    }
+
     [Parameter] public int SkeletonRowCount { get; set; } = 5;
 
     /// <summary>Fires when a row is right-clicked, carrying the item and the pointer's

@@ -57,7 +57,7 @@ public class CollapsibleBehaviorTests : IAsyncLifetime
     }
 
     private static IElement Trigger(IRenderedComponent<L.Collapsible> cut)
-        => cut.Find("[role='button']");
+        => cut.Find("button[aria-controls]");
 
     private static IElement ContentRegion(IRenderedComponent<L.Collapsible> cut)
         => cut.Find("[role='region']");
@@ -96,26 +96,31 @@ public class CollapsibleBehaviorTests : IAsyncLifetime
         Assert.Equal("true", ContentRegion(cut).GetAttribute("aria-hidden"));
     }
 
+    /// <summary>
+    /// Enter and Space used to be asserted here directly, because the trigger was a
+    /// div[role=button] and the component synthesised both itself in an @onkeydown handler.
+    /// It is a native &lt;button&gt; now (#438), so the BROWSER supplies them - and bUnit does
+    /// not model native key-to-click semantics, so dispatching a KeyDown at it proves
+    /// nothing either way.
+    ///
+    /// What can be asserted, and what actually carries the guarantee, is the element type.
+    /// A button[type=button] gets Enter and Space activation, focusability without a manual
+    /// tabindex, and disabled semantics, none of which a div does. If this assertion ever
+    /// fails, the keyboard behaviour is gone with it.
+    /// </summary>
     [Fact]
-    public void EnterKey_TogglesDisclosure_LikeNativeButton()
+    public void Trigger_Is_A_Native_Button_Which_Is_What_Gives_It_Enter_And_Space()
     {
         var cut = RenderCollapsible(open: false);
+        var trigger = Trigger(cut);
 
-        Trigger(cut).KeyDown(new KeyboardEventArgs { Key = "Enter" });
+        Assert.Equal("BUTTON", trigger.TagName, ignoreCase: true);
+        Assert.Equal("button", trigger.GetAttribute("type"));
 
+        // And it still toggles, so the swap did not cost the behaviour it was protecting.
+        trigger.Click();
         Assert.Equal("true", Trigger(cut).GetAttribute("aria-expanded"));
         Assert.Equal("false", ContentRegion(cut).GetAttribute("aria-hidden"));
-    }
-
-    [Fact]
-    public void SpaceKey_TogglesDisclosure_LikeNativeButton()
-    {
-        var cut = RenderCollapsible(open: true);
-
-        Trigger(cut).KeyDown(new KeyboardEventArgs { Key = " " });
-
-        Assert.Equal("false", Trigger(cut).GetAttribute("aria-expanded"));
-        Assert.Equal("true", ContentRegion(cut).GetAttribute("aria-hidden"));
     }
 
     [Fact]

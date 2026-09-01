@@ -5,6 +5,116 @@ All notable changes to Lumeo will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.1.0] - 2026-09-01
+
+A team rebuilding a dense, production Next.js/shadcn application in Blazor sent a
+field report against 5.0.0: 47 findings, each checked against a running app, plus the
+2,400-line stylesheet they needed to make Lumeo match their shadcn reference pixel for
+pixel. This release works through it. The DataGrid virtualization and server-mode
+defects were real and are fixed. The "Lumeo is bigger than shadcn" impression was real
+too, but it was never the control scale (5.0 got that right): it was the sidebar
+inheriting the page's 16px text, a radius scale two pixels rounder on every rung, and
+icons that had to be sized by hand. Each of those is now measured equal to shadcn's live
+docs, and most of that stylesheet is no longer needed.
+
+### Changed
+
+- **BREAKING — the radius scale is shadcn's.** `--radius-sm/md/lg/xl` were
+  `0.5r / r / 1.25r / 1.5r` (5 / 10 / 12.5 / 15px); shadcn v4 has `r-4px / r-2px / r / r+4px`
+  (6 / 8 / 10 / 14px). Every `rounded-md` corner was 2px rounder than shadcn's, every
+  `rounded-lg` 2.5px. Components whose shadcn counterpart sits on a different step were
+  re-rung so their computed radius lands where shadcn's does: Input, Textarea and
+  SelectTrigger `rounded-lg` (10px), DialogContent and AlertDialogContent `sm:rounded-xl`
+  (14px), Command `rounded-xl`, DropdownMenuContent `rounded-lg`, Progress `rounded-full`.
+  `.style-new-york` now sets `--radius: 0.625rem`, shadcn's value since v4; `0.5rem` was
+  the pre-v4 one.
+- **BREAKING — the sidebar is shadcn's sidebar, measured.** `SidebarMenuButton` is
+  `h-8 p-2 gap-2 text-sm rounded-md` with 16px icons; it used to be `px-3 py-2 gap-3` with
+  an *inherited* font size, which in a 16px page made every entry 40px tall with 16px
+  text — the single most visible reason Lumeo read as larger than shadcn. Header and
+  footer are `p-2` (was `p-4`), content is `gap-2` with no padding and no reserved
+  scrollbar gutter (was `px-2 py-3 gap-1` + `scrollbar-gutter: stable`, which cost every
+  consumer 10px of navigation width), group `p-2`, group label `px-2`, menu `gap-1`. The
+  44px mobile touch floor stays.
+- **BREAKING — `AlertDialogAction` defaults to the primary variant** and gains a
+  `Variant` parameter with Button's full set. It used to render destructive
+  unconditionally, so "transfer again?" got the same red button as "delete?". shadcn's
+  action is `buttonVariants()` at its default; pass `Variant="Destructive"` where red is
+  the right answer.
+- **Checkbox's unchecked border is `border-input`** (shadcn), not `border-primary/60`.
+- **Tabs trigger** reserves `border border-transparent` and fills the track minus 1px,
+  so the active tab, which gets a visible edge, no longer grows by 2px against its
+  neighbours. Track 32px / 3px inset, trigger 25px: shadcn's numbers.
+- **`DropdownMenuItem` and `DropdownMenuSubTrigger` are `text-start`.** They are
+  `<button>`s, and the UA centres button text; shadcn's items are start-aligned divs.
+- **`NavigationMenuLink` sets `text-sm`** instead of inheriting.
+- **DataGrid's sort glyph** is no longer 30% opacity — it read as "a tiny grey dot".
+  shadcn's column-header icon inherits the ghost button's colour at full opacity.
+- **BREAKING — `CollapsibleTrigger` renders a native `<button>`** (#438) instead of
+  `div[role=button]`, so it is focusable, submits nothing, and takes `disabled`. The
+  `IAsyncDisposable`/`OnAfterRenderAsync` surface it had for the keyboard shim is gone.
+- **BREAKING — Excel and PDF export move to `Lumeo.DataGrid.Export`** (#433).
+  `Lumeo.DataGrid` no longer depends on ClosedXML and QuestPDF, which every consumer paid
+  for (1.44 MB brotli) whether or not export was on. CSV stays built in; add the new
+  package for the other two formats.
+
+### Fixed
+
+- **DataGrid `OnRangeRequest` fires** (#431). The empty-state branch matched the
+  deliberately empty `Items` list before the server-virtualization branch, so
+  `<Virtualize>` never mounted. A server that reports zero rows still shows the empty
+  state, rendered beside the virtualizer rather than instead of it.
+- **`PageSize` no longer materialises that many skeleton rows** (#432). The loading
+  skeleton is capped at 40 rows; a generous `PageSize` with pagination off used to freeze
+  the main thread for seconds, with no spinner and no error.
+- **The initial ServerMode request is deterministic** (#442). It fired from
+  `OnInitializedAsync` alone; `ServerMode` or the handler arriving a render later left
+  the grid empty for good. It now retries on first render, fires when `ServerMode` turns
+  on, and **`RefreshAsync()`** lets the host ask again after an external filter change.
+- **Shift-click range selection works** (#440), as the `SelectionMode` docs promised.
+  Shift extends from the last plain click without moving the anchor.
+- **A column resize never moves the columns to its left** (#443). Under
+  `table-layout: auto` a width on one cell is only a hint, so with no slack the browser
+  took the space from a neighbour. Widths are frozen and the table switched to fixed
+  layout on the first drag; the table absorbs the delta.
+- **Six German strings were missing** and fell back to English (field report 5.3):
+  `Common.Expand`/`Collapse`, the three Gantt keyboard announcements and
+  `Kanban.CardRoleDescription`. A test now holds German to full parity with English.
+
+### Added
+
+- **Icons size themselves.** Button, DropdownMenuItem, DropdownMenuSubTrigger and
+  SidebarMenuButton apply `size-4` to any `<svg>` without an explicit `size-*`/`h-*` class,
+  as shadcn's do. An unsized Lucide icon used to render at its native size; consumers had
+  to write `class="h-4 w-4"` at every call site (the docs alone did it 252 times).
+- **The toolbar is composable** (#441). `DataGridToolbarColumns`, `Export`,
+  `CopySelected`, `Layouts` and `Fullscreen` take a `Grid` reference and render anywhere
+  in the host page; `DataGrid.ToolbarContext` is public; **`ShowLayouts`** gates the
+  layouts menu like `ShowExport` gates export.
+- **`PopoverContent.FocusTargetId`** (#439) redirects initial focus to an element
+  inside the popover instead of the content wrapper.
+- **`lumeo-classes.txt`** ships as a static asset: every class name Lumeo's own
+  components use, one per line, for `@source` in a consumer's own Tailwind build.
+  Tailwind cannot scan the NuGet DLL, and running a second build *next to*
+  `lumeo-utilities.css` is not additive: both put their rules in the same `utilities`
+  layer, so whichever loads second wins for a class both contain, and a consumer's plain
+  `text-center` silently overrides Lumeo's `sm:text-start`. That was the mechanism behind
+  the "dialog headers always centred" report. The CLI copies the file in prebuilt mode.
+
+### Docs
+
+- The README and the install page now say how to run your own Tailwind build with
+  Lumeo — `@source` the safelist and drop the bundle — and why loading both is wrong.
+- The CLI page says plainly that `lumeo-utilities.css` contains only the utilities
+  Lumeo's own components use (#435), with the grep to check a class.
+
+### Deferred
+
+- Density/size tokens as CSS variables (#434) stay open. Wiring one arm of the size
+  ladder to a token makes a half-feature; the whole ladder needs a design of its own.
+  With this release the default geometry *is* shadcn's, which is what the report's
+  team needed the tokens for.
+
 ## [5.0.0] - 2026-08-24
 
 Every control in Lumeo was one step larger than its shadcn counterpart. Measured

@@ -169,7 +169,7 @@ public class CheckboxTests : IAsyncLifetime
             .Add(b => b.Class, "my-custom-class"));
 
         Assert.Contains("my-custom-class", cut.Find("button").GetAttribute("class"));
-        Assert.Contains("border-primary", cut.Find("button").GetAttribute("class"));
+        Assert.Contains("border-input", cut.Find("button").GetAttribute("class"));
     }
 
     [Fact]

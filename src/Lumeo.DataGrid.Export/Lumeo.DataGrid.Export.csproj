@@ -11,12 +11,19 @@
          (eagerly or via lazy loading), with no app-side wiring required. -->
     <NoWarn>$(NoWarn);CA2255</NoWarn>
 
-    <!-- Internal helper project: NOT a NuGet package. Its compiled DLL is bundled
-         into Lumeo.DataGrid.nupkg (see Lumeo.DataGrid.csproj's BuildOutputInPackage
-         target) so consumers install only Lumeo.DataGrid as before. Splitting the
-         Excel/PDF code into its own DLL is what allows Blazor WebAssembly to lazy-
-         load it on demand — Lumeo.DataGrid.dll itself stays eager. -->
-    <IsPackable>false</IsPackable>
+    <!-- Its OWN NuGet package as of 5.1. It used to be an internal helper DLL bundled
+         inside Lumeo.DataGrid.nupkg, which meant ClosedXML and QuestPDF had to be declared
+         as dependencies of Lumeo.DataGrid so a consumer's app would restore them - about
+         1.44 MB brotli that every DataGrid consumer paid, including those who switch export
+         off (#433).
+
+         Splitting the package moves that cost to the consumers who ask for it. Nothing about
+         the runtime design changes: the DLL still self-registers through the core's
+         IDataGridExportBackend registry and is still lazy-loadable on WebAssembly. -->
+    <IsPackable>true</IsPackable>
+    <PackageId>Lumeo.DataGrid.Export</PackageId>
+    <Description>Excel and PDF export for Lumeo.DataGrid. Add this package only if you need
+      those formats - CSV export is built into Lumeo.DataGrid and needs nothing extra.</Description>
   </PropertyGroup>
 
   <ItemGroup>
@@ -27,6 +34,10 @@
   <ItemGroup>
     <!-- Core supplies IDataGridExportBackend, IDataGridExportService, DataGridExportColumn. -->
     <ProjectReference Include="..\Lumeo\Lumeo.csproj" />
+    <!-- Not needed to compile - the interfaces live in the core - but it is what a consumer
+         means when they install this package, and it keeps them from ending up with the
+         export backend and no grid to export from. -->
+    <ProjectReference Include="..\Lumeo.DataGrid\Lumeo.DataGrid.csproj" />
   </ItemGroup>
 
   <ItemGroup>

@@ -28,6 +28,9 @@ public class RadiusTokenGuardTests
 
         // Loading indicators — the circle IS the indicator.
         "src/Lumeo/UI/Spinner/Spinner.razor",
+        // shadcn keeps the progress track and bar rounded-full at every theme radius
+        // (measured live 2026-09-01); a bar is a bar, not a card corner. 5.1 alignment.
+        "src/Lumeo/UI/Progress/Progress.razor",
 
         // Pick-point / drag affordances — platform-recognized circles.
         "src/Lumeo/UI/ColorPicker/ColorPicker.razor",

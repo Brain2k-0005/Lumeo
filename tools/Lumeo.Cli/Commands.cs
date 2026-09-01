@@ -37,6 +37,8 @@ internal static class Commands
     {
         ("_content/Lumeo/css/lumeo.css",           "wwwroot/css/lumeo.css"),
         ("_content/Lumeo/css/lumeo-utilities.css", "wwwroot/css/lumeo-utilities.css"),
+        // Class-name safelist for a consumer who later runs their own Tailwind build (see README).
+        ("_content/Lumeo/css/lumeo-classes.txt",   "wwwroot/css/lumeo-classes.txt"),
         ("_content/Lumeo/js/theme.js",             "wwwroot/js/theme.js"),
         ("_content/Lumeo/js/components.js",        "wwwroot/js/components.js"),
     };
@@ -54,6 +56,7 @@ internal static class Commands
         "_content/Lumeo/js/toolbar.js",
         "_content/Lumeo/css/lumeo.css",
         "_content/Lumeo/css/lumeo-utilities.css",
+        "_content/Lumeo/css/lumeo-classes.txt",
     };
 
     // ---------------------------------------------------------------- init
