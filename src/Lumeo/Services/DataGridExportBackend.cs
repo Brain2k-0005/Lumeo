@@ -6,8 +6,10 @@ namespace Lumeo.Services;
 
 /// <summary>
 /// Heavy export backend (Excel via ClosedXML, PDF via QuestPDF). Implemented in the
-/// separate <c>Lumeo.DataGrid.Export</c> assembly so the ~1.6 MB of ClosedXML/QuestPDF
-/// dependencies stay out of the core's eager load and can be lazy-loaded on demand.
+/// separate <c>Lumeo.DataGrid.Export</c> PACKAGE, so ClosedXML and QuestPDF are carried
+/// only by apps that actually export those formats. Until 5.1 the assembly shipped inside
+/// Lumeo.DataGrid, which meant every consumer restored the dependencies whether or not
+/// export was switched on. It is still lazy-loadable on WebAssembly.
 /// </summary>
 public interface IDataGridExportBackend
 {
@@ -54,10 +56,13 @@ public static class DataGridExportBackend
         catch (Exception ex)
         {
             throw new InvalidOperationException(
-                $"Excel/PDF export requires the '{ExportAssemblyName}' assembly. " +
-                "It ships inside the 'Lumeo.DataGrid' NuGet package — if your app references only " +
-                "the core 'Lumeo' package, add 'Lumeo.DataGrid' to enable Excel/PDF (CSV needs no " +
-                "extra package). On Blazor WebAssembly that lazy-loads these assemblies, also " +
+                $"Excel/PDF export requires the '{ExportAssemblyName}' NuGet package. " +
+                "As of 5.1 it is a package of its own rather than a DLL bundled inside " +
+                "'Lumeo.DataGrid', so that ClosedXML and QuestPDF - about 1.44 MB brotli - are " +
+                "carried only by apps that actually export Excel or PDF. Add " +
+                $"<PackageReference Include=\"{ExportAssemblyName}\" /> to enable them. CSV export " +
+                "is built into Lumeo.DataGrid and needs nothing extra. " +
+                "On Blazor WebAssembly that lazy-loads these assemblies, also " +
                 $"await {nameof(DataGridExportLoader)}.{nameof(DataGridExportLoader.EnsureExcelAssembliesAsync)}() / " +
                 $"{nameof(DataGridExportLoader.EnsurePdfAssembliesAsync)}() before a direct service call " +
                 $"(the DataGrid component does this for you), and wire " +
