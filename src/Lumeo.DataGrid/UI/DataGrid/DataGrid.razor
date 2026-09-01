@@ -129,6 +129,7 @@
                              AllItems="@(ServerMode ? _displayedItems : _processedItems)"
                              EffectiveColumns="EffectiveColumns.AsReadOnly()"
                              EnableLayoutPersistence="EnableLayoutPersistence"
+                             ShowLayouts="ShowLayouts"
                              OnSaveLayout="HandleSaveLayout"
                              OnResetLayout="HandleResetLayout"
                              GlobalLayouts="GlobalLayouts"
@@ -498,6 +499,16 @@
     /// <see cref="ExportFormats"/>.
     /// </summary>
     [Parameter] public bool ShowExport { get; set; } = true;
+
+    /// <summary>
+    /// Shows the layouts menu in the toolbar. Only ever rendered when
+    /// <see cref="EnableLayoutPersistence"/> is on.
+    ///
+    /// Before 5.1 the menu appeared unconditionally with persistence, so a consumer who
+    /// wanted saved layouts but a toolbar carrying only their own controls had no way to
+    /// say so - the only lever was switching persistence off entirely (#441).
+    /// </summary>
+    [Parameter] public bool ShowLayouts { get; set; } = true;
 
     /// <summary>
     /// Which export formats appear in the Export dropdown. Default <see cref="DataGridExportFormat.All"/>.
@@ -1345,6 +1356,21 @@
     private DataGridLayoutService? _layoutService;
     private DataGridServerService? _serverService;
     private DataGridToolbarContext<TItem> _toolbarContext = new();
+
+    /// <summary>
+    /// The live toolbar context. Pass a <c>@ref</c> to this grid into a toolbar tool to place
+    /// it in your own page instead of the grid's chrome:
+    ///
+    /// <code>
+    /// &lt;DataGrid @ref="_grid" TItem="T" ShowToolbar="false" ... /&gt;
+    /// &lt;DataGridToolbarColumns TItem="T" Grid="@_grid" /&gt;
+    /// </code>
+    ///
+    /// Until 5.1 the tools could only render inside the grid, so a consumer who wanted the
+    /// column chooser in a page-level action bar had to rebuild it by hand against each
+    /// column's Visible binding, losing the reorder arrows and the pin submenu (#441).
+    /// </summary>
+    public DataGridToolbarContext<TItem> ToolbarContext => _toolbarContext;
 
     // --- ToolbarContent component registration ---
 
