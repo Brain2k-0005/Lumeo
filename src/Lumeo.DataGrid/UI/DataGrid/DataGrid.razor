@@ -1081,6 +1081,26 @@
     /// sort/filter/search change; expose as <c>@ref</c> if you need to
     /// trigger it manually (e.g. after an external data mutation).
     /// </summary>
+    /// <summary>
+    /// Re-runs <see cref="OnServerRequest"/> with the grid's current sort, filter, search
+    /// and paging state.
+    ///
+    /// Use this when something OUTSIDE the grid invalidates the data - a filter bar that
+    /// lives in the page rather than the toolbar, a save that changed a row, a tab switch.
+    /// Until 5.1 the only public entry point was <see cref="RefreshVirtualizedAsync"/>,
+    /// which is documented as a no-op outside virtualized server mode and behaves like one,
+    /// so a host in plain server mode had no way to say "your data is stale, ask again".
+    ///
+    /// No-ops when <see cref="ServerMode"/> is off: there is no server to ask.
+    ///
+    /// Safe to call from any thread. The reasons to reach for this - a save completing, a
+    /// background poll, a message arriving - are exactly the ones that resume off the
+    /// renderer's dispatcher, so the dispatch is done here rather than left as an undocumented
+    /// precondition that throws.
+    /// </summary>
+    public Task RefreshAsync() =>
+        ServerMode ? InvokeAsync(RequestServerData) : Task.CompletedTask;
+
     public Task RefreshVirtualizedAsync() =>
         _bodyRef is not null ? _bodyRef.RefreshVirtualizeAsync() : Task.CompletedTask;
 
@@ -1632,6 +1652,19 @@
 
     protected override async Task OnParametersSetAsync()
     {
+        // ServerMode used to be read exactly once, in OnInitializedAsync. A host that binds
+        // it to a field it resolves asynchronously, or to a feature flag, therefore never got
+        // a request at all (#442).
+        if (ServerMode && !_lastServerModeParam && _initialServerRequestSent is false)
+        {
+            _lastServerModeParam = true;
+            if (OnServerRequest.HasDelegate)
+            {
+                await RequestServerData();
+            }
+        }
+        _lastServerModeParam = ServerMode;
+
         // Sync IsExpanded parameter with internal state (allow external binding to drive it)
         if (IsExpanded != _lastIsExpandedParam)
         {
@@ -1733,6 +1766,17 @@
     {
         if (firstRender)
         {
+            // Second chance for the initial server request. OnInitializedAsync fires before
+            // children register and before the first render, so a ServerMode or handler that
+            // arrives even slightly later missed it entirely - and the grid then sat in its
+            // empty state forever, with no error and no way to ask again (#442). By first
+            // render the columns have registered, so this request also carries the real
+            // descriptor set.
+            if (ServerMode && OnServerRequest.HasDelegate && !_initialServerRequestSent)
+            {
+                await RequestServerData();
+            }
+
             _layoutService ??= new DataGridLayoutService(Interop, ex =>
             {
                 if (OnError.HasDelegate)
@@ -1972,6 +2016,12 @@
             await RequestServerData();
         }
     }
+
+    // Whether the mount-time server request has gone out. Guards the first-render retry
+    // and the ServerMode false->true transition below, so at most one initial request is
+    // made however the grid arrives at server mode.
+    private bool _initialServerRequestSent;
+    private bool _lastServerModeParam;
 
     // Applies grouping to the server-returned page in ServerMode. The server has
     // already done sort/filter/page, so we treat _displayedItems as the buffer
@@ -4429,6 +4479,7 @@
 
     private async Task RequestServerData()
     {
+        _initialServerRequestSent = true;
         var previousError = _serverService!.Error;
 
         await _serverService!.RequestDataAsync(
