@@ -78,7 +78,7 @@ public class InputTests : IAsyncLifetime
         Assert.Contains("flex", cls);
         Assert.Contains("h-8", cls);
         Assert.Contains("w-full", cls);
-        Assert.Contains("rounded-md", cls);
+        Assert.Contains("rounded-lg", cls);
         Assert.Contains("border", cls);
         Assert.Contains("border-input", cls);
         Assert.Contains("bg-transparent", cls);

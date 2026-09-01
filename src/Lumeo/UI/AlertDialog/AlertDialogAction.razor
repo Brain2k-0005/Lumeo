@@ -20,13 +20,33 @@
     /// <summary>When <c>true</c>, shows a spinner and disables the button, and suppresses the auto-close so the dialog stays open while an async action is in flight.</summary>
     [Parameter] public bool IsLoading { get; set; }
 
+    /// <summary>
+    /// Visual variant, the same set as <see cref="Button.Variant"/>. Defaults to
+    /// <see cref="Button.ButtonVariant.Default"/> (primary), which is what shadcn's
+    /// AlertDialogAction renders: an alert dialog asks for confirmation, and only a
+    /// destructive confirmation is red. Before 5.1 every action was destructive with no
+    /// way to change it, so a "Transfer again?" dialog got the same red button as "Delete?".
+    /// </summary>
+    [Parameter] public Button.ButtonVariant Variant { get; set; } = Button.ButtonVariant.Default;
+
     /// <summary>Additional CSS classes merged onto the button.</summary>
     [Parameter] public string? Class { get; set; }
 
     /// <summary>Unmatched attributes splatted onto the button.</summary>
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
-    private string CssClass => Cx.Merge("inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none bg-destructive text-destructive-foreground shadow hover:bg-destructive/90 h-8 px-2.5 disabled:pointer-events-none disabled:opacity-50", Class);
+    private string CssClass => Cx.Merge("inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none ", VariantClasses, "h-8 px-2.5 disabled:pointer-events-none disabled:opacity-50", Class);
+
+    // Mirrors Button.VariantClasses one-to-one; keep the two tables in step.
+    private string VariantClasses => Variant switch
+    {
+        Button.ButtonVariant.Destructive => "bg-destructive text-destructive-foreground shadow-sm hover:bg-destructive/90",
+        Button.ButtonVariant.Outline => "border border-input bg-background shadow-xs hover:bg-accent hover:text-accent-foreground",
+        Button.ButtonVariant.Secondary => "bg-secondary text-secondary-foreground shadow-sm hover:bg-secondary/80",
+        Button.ButtonVariant.Ghost => "hover:bg-accent hover:text-accent-foreground",
+        Button.ButtonVariant.Link => "text-primary underline-offset-4 hover:underline",
+        _ => "bg-primary text-primary-foreground shadow hover:bg-primary/90"
+    };
 
     private async Task DoAction()
     {

@@ -204,6 +204,12 @@ If you want to write Tailwind classes yourself (in your pages / your own compone
 ```css
 @import "tailwindcss";
 
+/* Let YOUR build see Lumeo's own class names. Tailwind cannot scan the NuGet DLL, so
+   without this line your build emits only the utilities YOUR markup uses and Lumeo's
+   components lose theirs. The file ships as a static asset; at build time it lives in
+   the NuGet cache: ~/.nuget/packages/lumeo/<version>/staticwebassets/css/lumeo-classes.txt */
+@source "./_content/Lumeo/css/lumeo-classes.txt";
+
 /* Import Lumeo theme variables */
 @import "./_content/Lumeo/css/lumeo.css" layer(base);
 
@@ -220,7 +226,9 @@ If you want to write Tailwind classes yourself (in your pages / your own compone
 }
 ```
 
-In this setup you can drop `lumeo-utilities.css` from step 3 — your own Tailwind build will emit every utility Lumeo uses, plus anything you use in your app.
+In this setup **drop `lumeo-utilities.css` from step 3** — with the `@source` line above, your own build emits every utility Lumeo uses plus anything you use in your app.
+
+> Do not run both. A second Tailwind build loaded next to `lumeo-utilities.css` is not additive: both files put their rules in the same `utilities` layer, so for any class both contain the later file wins outright — media query or not. Your plain `text-center` then beats Lumeo's `sm:text-start`, and dialog headers stay centred at every width. Whichever order you load them in, some responsive variant loses; one build that sees both sets of markup is the only arrangement that cannot go wrong.
 
 For alternate color themes, import additional theme files:
 

@@ -154,7 +154,7 @@ public class ProgressTests : IAsyncLifetime
         Assert.Contains("h-1", cls);
         Assert.Contains("w-full", cls);
         Assert.Contains("overflow-hidden", cls);
-        Assert.Contains("rounded-[var(--radius)]", cls);
+        Assert.Contains("rounded-full", cls);
     }
 
     [Fact]
@@ -240,7 +240,7 @@ public class ProgressTests : IAsyncLifetime
         var cut = _ctx.Render<Lumeo.Progress>(p => p.Add(b => b.Value, 50).Add(b => b.Size, Lumeo.Size.Sm));
         var bar = cut.Find("[role='progressbar']");
         Assert.Equal(
-            new[] { "relative", "h-0.75", "w-full", "overflow-hidden", "rounded-[var(--radius)]", "bg-primary/20" },
+            new[] { "relative", "h-0.75", "w-full", "overflow-hidden", "rounded-full", "bg-primary/20" },
             bar.GetAttribute("class")!.Split(' ', StringSplitOptions.RemoveEmptyEntries));
     }
 
@@ -250,7 +250,7 @@ public class ProgressTests : IAsyncLifetime
         var cut = _ctx.Render<Lumeo.Progress>(p => p.Add(b => b.Value, 50));
         var bar = cut.Find("[role='progressbar']");
         Assert.Equal(
-            new[] { "relative", "h-1", "w-full", "overflow-hidden", "rounded-[var(--radius)]", "bg-primary/20" },
+            new[] { "relative", "h-1", "w-full", "overflow-hidden", "rounded-full", "bg-primary/20" },
             bar.GetAttribute("class")!.Split(' ', StringSplitOptions.RemoveEmptyEntries));
     }
 
@@ -260,7 +260,7 @@ public class ProgressTests : IAsyncLifetime
         var cut = _ctx.Render<Lumeo.Progress>(p => p.Add(b => b.Value, 50).Add(b => b.Size, Lumeo.Size.Lg));
         var bar = cut.Find("[role='progressbar']");
         Assert.Equal(
-            new[] { "relative", "h-2", "w-full", "overflow-hidden", "rounded-[var(--radius)]", "bg-primary/20" },
+            new[] { "relative", "h-2", "w-full", "overflow-hidden", "rounded-full", "bg-primary/20" },
             bar.GetAttribute("class")!.Split(' ', StringSplitOptions.RemoveEmptyEntries));
     }
 

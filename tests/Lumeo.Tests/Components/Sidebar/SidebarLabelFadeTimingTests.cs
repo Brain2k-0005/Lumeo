@@ -150,6 +150,6 @@ public class SidebarLabelFadeTimingTests : IAsyncLifetime
 
         // shadcn geometry: SIDEBAR_WIDTH_ICON = 3rem (w-12) with p-2 icon-square buttons.
         Assert.Contains("w-12", cut.Find("aside").ClassList);
-        Assert.Contains("px-2", cut.Find("a").ClassList);
+        Assert.Contains("p-2", cut.Find("a").ClassList);
     }
 }

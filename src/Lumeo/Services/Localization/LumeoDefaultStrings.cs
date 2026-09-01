@@ -867,6 +867,8 @@ internal static partial class LumeoDefaultStrings
         ["Common.Copied"] = "Kopiert",
         ["Common.More"] = "Mehr",
         ["Common.Back"] = "Zurück",
+        ["Common.Expand"] = "Ausklappen",
+        ["Common.Collapse"] = "Einklappen",
         ["Common.Next"] = "Weiter",
         ["Common.ShowMore"] = "Mehr anzeigen",
         ["Common.ShowLess"] = "Weniger anzeigen",
@@ -907,6 +909,7 @@ internal static partial class LumeoDefaultStrings
 
         // ── Kanban ──────────────────────────────────────────────────────
         ["Kanban.AddCard"] = "Karte hinzufügen",
+        ["Kanban.CardRoleDescription"] = "Verschiebbare Karte",
 
         // ── Carousel ────────────────────────────────────────────────────
         ["Carousel.PreviousSlide"] = "Vorherige Folie",
@@ -1166,6 +1169,9 @@ internal static partial class LumeoDefaultStrings
         ["Gantt.SettingsOffDays"] = "Freie Tage",
         ["Gantt.SettingsColorByGroup"] = "Farbe nach Gruppe",
         ["Gantt.SettingsReset"] = "Auf Standard zurücksetzen",
+        ["Gantt.KeyboardNoMoreTasks"] = "Keine weitere Aufgabe zum Fokussieren",
+        ["Gantt.KeyboardTaskMoved"] = "{0} verschoben auf {1} bis {2}",
+        ["Gantt.KeyboardTaskResized"] = "{0} endet jetzt am {1}",
 
         // ── Scheduler (first-party view engine, wave 1b) ──────────────
         ["Scheduler.AllDay"] = "Ganztägig",
