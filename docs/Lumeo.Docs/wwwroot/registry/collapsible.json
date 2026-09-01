@@ -215,9 +215,7 @@
         "fileName": "CollapsibleTrigger.razor",
         "namespace": "Lumeo",
         "inheritsFrom": null,
-        "implements": [
-          "IAsyncDisposable"
-        ],
+        "implements": [],
         "parameters": [
           {
             "name": "Context",
@@ -266,22 +264,17 @@
     },
     "a11y": {
       "roles": [
-        "button",
         "region"
       ],
       "ariaAttributes": [
         "aria-controls",
-        "aria-disabled",
         "aria-expanded",
         "aria-hidden",
         "aria-labelledby"
       ],
-      "keys": [
-        "Enter",
-        "Space"
-      ],
-      "keyboardInteractive": true,
-      "focusManaged": true
+      "keys": [],
+      "keyboardInteractive": false,
+      "focusManaged": false
     },
     "parseFailed": false,
     "parseError": null
@@ -289,7 +282,7 @@
   "testCoverage": {
     "tier": 3,
     "files": 5,
-    "tests": 36,
+    "tests": 35,
     "relatedFiles": 0,
     "render": true,
     "behavior": true,
@@ -328,7 +321,7 @@
     },
     {
       "path": "UI/Collapsible/CollapsibleTrigger.razor",
-      "content": "@namespace Lumeo\n@implements IAsyncDisposable\n@inject Lumeo.Services.IComponentInteropService Interop\n\n<div id=\"@Context.TriggerId\" class=\"@CssClass\" role=\"button\" tabindex=\"@(Context.Disabled ? \"-1\" : \"0\")\" aria-expanded=\"@(Context.IsOpen ? \"true\" : \"false\")\" aria-controls=\"@Context.ContentId\" aria-disabled=\"@(Context.Disabled ? \"true\" : null)\" data-state=\"@(Context.IsOpen ? \"open\" : \"closed\")\" data-disabled=\"@(Context.Disabled ? string.Empty : null)\" @onclick=\"Context.Toggle\" @onkeydown=\"HandleKeyDown\" @attributes=\"AdditionalAttributes\">\n    @ChildContent\n</div>\n\n@code {\n    [CascadingParameter] public Collapsible.CollapsibleContext Context { get; set; } = default!;\n    /// <summary>The trigger's label content.</summary>\n    [Parameter] public RenderFragment? ChildContent { get; set; }\n\n    /// <summary>Additional CSS classes merged onto the trigger element.</summary>\n    [Parameter] public string? Class { get; set; }\n\n    /// <summary>Unmatched attributes splatted onto the trigger element.</summary>\n    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }\n\n    private string CssClass => Cx.Merge(\"cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 rounded-sm\", Class);\n\n    protected override async Task OnAfterRenderAsync(bool firstRender)\n    {\n        if (!firstRender) return;\n        try\n        {\n            // div[role=button] has no native key synthesis: Space toggled AND\n            // scrolled the page. Suppress only Space's default (Enter has no\n            // default on a div) synchronously in JS.\n            await Interop.RegisterPreventDefaultKeys(\n                Context.TriggerId,\n                new[] { new Lumeo.Services.PreventDefaultKeyRule(\" \") });\n            _pdRegistered = true;\n        }\n        catch (JSDisconnectedException) { }\n        catch (ObjectDisposedException) { }\n        catch (InvalidOperationException) { } // JS interop unavailable during prerender\n    }\n\n    private bool _pdRegistered;\n\n    private async Task HandleKeyDown(KeyboardEventArgs e)\n    {\n        if (e.Key == \"Enter\" || e.Key == \" \")\n        {\n            await Context.Toggle.InvokeAsync();\n        }\n    }\n\n    public async ValueTask DisposeAsync()\n    {\n        if (!_pdRegistered) return;\n        try\n        {\n            await Interop.UnregisterPreventDefaultKeys(Context.TriggerId);\n        }\n        catch (JSDisconnectedException) { }\n        catch (ObjectDisposedException) { }\n        catch (InvalidOperationException) { }\n    }\n}\n"
+      "content": "@namespace Lumeo\n\n@* A native button, not a div[role=button] — the same shape AccordionTrigger already uses.\n   The div version had to hand-roll everything the browser gives a button for free: a manual\n   tabindex, an @onkeydown synthesising Enter and Space, and a JS prevent-default\n   registration on first render for EVERY trigger on the page, because Space on a div both\n   toggles and scrolls. All of that is gone, along with its interop round-trip (#438). *@\n<button type=\"button\"\n        id=\"@Context.TriggerId\"\n        class=\"@CssClass\"\n        disabled=\"@Context.Disabled\"\n        aria-expanded=\"@(Context.IsOpen ? \"true\" : \"false\")\"\n        aria-controls=\"@Context.ContentId\"\n        data-state=\"@(Context.IsOpen ? \"open\" : \"closed\")\"\n        data-disabled=\"@(Context.Disabled ? string.Empty : null)\"\n        @onclick=\"Context.Toggle\"\n        @attributes=\"AdditionalAttributes\">\n    @ChildContent\n</button>\n\n@code {\n    [CascadingParameter] public Collapsible.CollapsibleContext Context { get; set; } = default!;\n    /// <summary>The trigger's label content.</summary>\n    [Parameter] public RenderFragment? ChildContent { get; set; }\n\n    /// <summary>Additional CSS classes merged onto the trigger element.</summary>\n    [Parameter] public string? Class { get; set; }\n\n    /// <summary>Unmatched attributes splatted onto the trigger element.</summary>\n    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }\n\n    // w-full and text-start restore what the div gave for nothing: a div is block-level and\n    // left-aligned, a button is inline-block and centres its label. Without them the swap\n    // would silently reflow every existing trigger. `font: inherit` needs no class — the\n    // shipped reset already sets it on button. The rest is unchanged from the div version,\n    // and mirrors AccordionTrigger's disabled treatment.\n    private string CssClass => Cx.Merge(\n        \"w-full text-start focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 rounded-sm\",\n        (Context.Disabled ? \"cursor-not-allowed opacity-50\" : \"cursor-pointer\"),\n        Class);\n}\n"
     }
   ],
   "slots": [
@@ -351,12 +344,7 @@
       "description": "The trigger's label content."
     }
   ],
-  "serviceDependencies": [
-    {
-      "service": "IComponentInteropService",
-      "namespace": "Lumeo.Services"
-    }
-  ],
+  "serviceDependencies": [],
   "cascadingDependencies": [
     {
       "name": "Context",
@@ -374,16 +362,7 @@
       "reason": "sub-component"
     }
   ],
-  "keyboardInteractions": [
-    {
-      "key": "Enter",
-      "action": "HandleKeyDown handles Enter in CollapsibleTrigger.razor"
-    },
-    {
-      "key": "Space",
-      "action": "HandleKeyDown handles Space in CollapsibleTrigger.razor"
-    }
-  ],
+  "keyboardInteractions": [],
   "tests": [
     "tests/Lumeo.Tests/Components/Collapsible/CollapsibleBehaviorTests.cs",
     "tests/Lumeo.Tests/Components/Collapsible/CollapsibleDataStateTests.razor",
@@ -394,5 +373,5 @@
     "tests/Lumeo.Tests/Components/Resizable/ResizablePanelDisposeUnregisterTests.cs",
     "tests/Lumeo.Tests/Components/Resizable/ResizableSavedLayoutMismatchTests.cs"
   ],
-  "mdSummary": "# Collapsible\n\nSingle expandable region with animated height transition.\n\n**Package:** `Lumeo` · **Category:** Navigation\n**Docs:** https://lumeo.nativ.sh/components/collapsible\n\n## Parameters\n| Owner | Name | Type | Default | Description |\n|---|---|---|---|---|\n| Collapsible | ChildContent | `RenderFragment?` | `` | The collapsible's trigger and panel, typically a CollapsibleTrigger followed by a CollapsibleContent. |\n| Collapsible | Open | `bool` | `false` | Whether the panel is open. Uncontrolled by default (self-managed after the initial value); bind OpenChanged for controlled usage. |\n| Collapsible | OpenChanged | `EventCallback<bool>` | `` | Two-way callback for Open. Binding this switches the component to controlled mode. |\n| Collapsible | Disabled | `bool` | `false` | When true the collapsible cannot be toggled: the trigger no-ops and every part (root/trigger/content) emits data-disabled so consumers can style the disabled state with a data-[disabled] selector (Radix parity). |\n| Collapsible | IsOpen | `bool` | `false` | Deprecated alias for Open. |\n| Collapsible | IsOpenChanged | `EventCallback<bool>` | `` | Deprecated alias for OpenChanged. |\n| Collapsible | Class | `string?` | `` | Additional CSS classes merged onto the root element. |\n| Collapsible | AdditionalAttributes | `Dictionary<string, object>?` | `` | Unmatched attributes splatted onto the root element. |\n| CollapsibleContent | Context | `Collapsible.CollapsibleContext` | `default!` |  |\n| CollapsibleContent | ChildContent | `RenderFragment?` | `` | The panel's content, revealed when the parent Collapsible is open. |\n| CollapsibleContent | ForceMount | `bool` | `false` | Preserved for API compatibility only — Collapsible content is now always mounted so the grid-rows close animation can run on collapse, so this flag is effectively a no-op. Children always live in the DOM whether the collapsible is open or closed. |\n| CollapsibleContent | Class | `string?` | `` | Additional CSS classes merged onto the panel's root element. |\n| CollapsibleContent | AdditionalAttributes | `Dictionary<string, object>?` | `` | Unmatched attributes splatted onto the panel's root element. |\n| CollapsibleTrigger | Context | `Collapsible.CollapsibleContext` | `default!` |  |\n| CollapsibleTrigger | ChildContent | `RenderFragment?` | `` | The trigger's label content. |\n| CollapsibleTrigger | Class | `string?` | `` | Additional CSS classes merged onto the trigger element. |\n| CollapsibleTrigger | AdditionalAttributes | `Dictionary<string, object>?` | `` | Unmatched attributes splatted onto the trigger element. |\n\n## Slots\n- `ChildContent` (Collapsible) — The collapsible's trigger and panel, typically a CollapsibleTrigger followed by a CollapsibleContent.\n- `ChildContent` (CollapsibleContent) — The panel's content, revealed when the parent Collapsible is open.\n- `ChildContent` (CollapsibleTrigger) — The trigger's label content.\n\n## Events\n- `OpenChanged` (`EventCallback<bool>`) — Two-way callback for Open. Binding this switches the component to controlled mode.\n- `IsOpenChanged` (`EventCallback<bool>`) — Deprecated alias for OpenChanged.\n\n## Sub-components\n- `CollapsibleContent`, `CollapsibleTrigger`\n\n## Cascading values it expects\n- `Context` (`Collapsible.CollapsibleContext`)\n\n## Services it injects\n- `IComponentInteropService` (Lumeo.Services)\n\n## Keyboard\n- `Enter` — HandleKeyDown handles Enter in CollapsibleTrigger.razor\n- `Space` — HandleKeyDown handles Space in CollapsibleTrigger.razor\n\n## Example\n```razor\n<Collapsible />\n```\n\n## CSS variables\n`--color-ring`, `--radius`\n\n## Files\n- `UI/Collapsible/Collapsible.razor`\n- `UI/Collapsible/CollapsibleContent.razor`\n- `UI/Collapsible/CollapsibleTrigger.razor`\n"
+  "mdSummary": "# Collapsible\n\nSingle expandable region with animated height transition.\n\n**Package:** `Lumeo` · **Category:** Navigation\n**Docs:** https://lumeo.nativ.sh/components/collapsible\n\n## Parameters\n| Owner | Name | Type | Default | Description |\n|---|---|---|---|---|\n| Collapsible | ChildContent | `RenderFragment?` | `` | The collapsible's trigger and panel, typically a CollapsibleTrigger followed by a CollapsibleContent. |\n| Collapsible | Open | `bool` | `false` | Whether the panel is open. Uncontrolled by default (self-managed after the initial value); bind OpenChanged for controlled usage. |\n| Collapsible | OpenChanged | `EventCallback<bool>` | `` | Two-way callback for Open. Binding this switches the component to controlled mode. |\n| Collapsible | Disabled | `bool` | `false` | When true the collapsible cannot be toggled: the trigger no-ops and every part (root/trigger/content) emits data-disabled so consumers can style the disabled state with a data-[disabled] selector (Radix parity). |\n| Collapsible | IsOpen | `bool` | `false` | Deprecated alias for Open. |\n| Collapsible | IsOpenChanged | `EventCallback<bool>` | `` | Deprecated alias for OpenChanged. |\n| Collapsible | Class | `string?` | `` | Additional CSS classes merged onto the root element. |\n| Collapsible | AdditionalAttributes | `Dictionary<string, object>?` | `` | Unmatched attributes splatted onto the root element. |\n| CollapsibleContent | Context | `Collapsible.CollapsibleContext` | `default!` |  |\n| CollapsibleContent | ChildContent | `RenderFragment?` | `` | The panel's content, revealed when the parent Collapsible is open. |\n| CollapsibleContent | ForceMount | `bool` | `false` | Preserved for API compatibility only — Collapsible content is now always mounted so the grid-rows close animation can run on collapse, so this flag is effectively a no-op. Children always live in the DOM whether the collapsible is open or closed. |\n| CollapsibleContent | Class | `string?` | `` | Additional CSS classes merged onto the panel's root element. |\n| CollapsibleContent | AdditionalAttributes | `Dictionary<string, object>?` | `` | Unmatched attributes splatted onto the panel's root element. |\n| CollapsibleTrigger | Context | `Collapsible.CollapsibleContext` | `default!` |  |\n| CollapsibleTrigger | ChildContent | `RenderFragment?` | `` | The trigger's label content. |\n| CollapsibleTrigger | Class | `string?` | `` | Additional CSS classes merged onto the trigger element. |\n| CollapsibleTrigger | AdditionalAttributes | `Dictionary<string, object>?` | `` | Unmatched attributes splatted onto the trigger element. |\n\n## Slots\n- `ChildContent` (Collapsible) — The collapsible's trigger and panel, typically a CollapsibleTrigger followed by a CollapsibleContent.\n- `ChildContent` (CollapsibleContent) — The panel's content, revealed when the parent Collapsible is open.\n- `ChildContent` (CollapsibleTrigger) — The trigger's label content.\n\n## Events\n- `OpenChanged` (`EventCallback<bool>`) — Two-way callback for Open. Binding this switches the component to controlled mode.\n- `IsOpenChanged` (`EventCallback<bool>`) — Deprecated alias for OpenChanged.\n\n## Sub-components\n- `CollapsibleContent`, `CollapsibleTrigger`\n\n## Cascading values it expects\n- `Context` (`Collapsible.CollapsibleContext`)\n\n## Services it injects\n- (none)\n\n## Keyboard\n—\n\n## Example\n```razor\n<Collapsible />\n```\n\n## CSS variables\n`--color-ring`, `--radius`\n\n## Files\n- `UI/Collapsible/Collapsible.razor`\n- `UI/Collapsible/CollapsibleContent.razor`\n- `UI/Collapsible/CollapsibleTrigger.razor`\n"
 }
