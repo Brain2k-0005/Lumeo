@@ -93,7 +93,11 @@
         Hoverable: Hoverable,
         ColumnGroups: _columnGroups,
         Compact: Compact
-    );
+    )
+    {
+        // init-only body property, so it is set here rather than passed positionally.
+        ToggleSelectionModified = ToggleSelectionModified,
+    };
 }
 
 @{
@@ -461,7 +465,13 @@
 
     // --- Features ---
     /// <summary>Row-selection behavior: None (default), Single, or Multiple
-    /// (adds checkboxes and enables Ctrl/Shift-click and Ctrl+A).</summary>
+    /// (adds checkboxes and enables Ctrl/Shift-click and Ctrl+A).
+    ///
+    /// Shift-click selects the inclusive range from the anchor - the last row toggled without
+    /// Shift - to the clicked row, and EXTENDS rather than replaces the selection. Explorer
+    /// replaces; this grid selects with checkboxes, where destroying an existing selection on a
+    /// mis-click is the worse failure. The anchor stays put, so a range can be adjusted by
+    /// clicking again rather than starting over.</summary>
     [Parameter] public DataGridSelectionMode SelectionMode { get; set; } = DataGridSelectionMode.None;
 
     /// <summary>Cell/row editing behavior: None (default), Cell (commit per cell
@@ -3045,8 +3055,73 @@
         foreach (var it in rebuilt) set.Add(it);
     }
 
+    // The anchor for Shift-click: the last row toggled WITHOUT Shift. Held as a key rather
+    // than a reference so it survives a server-mode refetch that replaces the wrappers.
+    private object? _selectionAnchorKey;
+
+    /// <summary>
+    /// Selection with modifiers. The XML summary on <see cref="SelectionMode"/> has promised
+    /// Ctrl/Shift-click since the parameter existed; Ctrl-click was already satisfied by the
+    /// plain per-row toggle Multiple mode does, but Shift-click did nothing at all (#440).
+    ///
+    /// Shift EXTENDS rather than replaces. Explorer replaces the selection, but this grid
+    /// selects with checkboxes, where destroying an existing selection on a mis-click is the
+    /// worse failure - and for the reported use case (picking 20-40 receipts) the two are
+    /// identical anyway, because the run starts from an empty selection.
+    /// </summary>
+    private void ToggleSelectionModified(TItem item, bool shift, bool ctrl)
+    {
+        if (shift && SelectionMode == DataGridSelectionMode.Multiple && _selectionAnchorKey is not null)
+        {
+            SelectRangeFromAnchor(item);
+            return;
+        }
+
+        ToggleSelection(item);
+    }
+
+    /// <summary>
+    /// Selects every row between the anchor and <paramref name="item"/> inclusive, in the
+    /// order the user sees them. The anchor deliberately stays put: extending a range is an
+    /// adjustment, and moving it would make each Shift-click start a new one.
+    /// </summary>
+    private void SelectRangeFromAnchor(TItem item)
+    {
+        var rows = _displayedItems;
+        var from = rows.FindIndex(r => Equals(SelectionKeyFor(r), _selectionAnchorKey));
+        var to = rows.FindIndex(r => Equals(SelectionKeyFor(r), SelectionKeyFor(item)));
+
+        // The anchor can be off-screen after a filter or a page change. Falling back to a
+        // plain toggle beats selecting a range whose start the user can no longer see.
+        if (from < 0 || to < 0)
+        {
+            ToggleSelection(item);
+            return;
+        }
+
+        if (from > to) (from, to) = (to, from);
+
+        for (var i = from; i <= to; i++)
+        {
+            var row = rows[i];
+            if (!FindSelectionMatch(row).found)
+            {
+                _selectedSet.Add(row);
+                _selectedItems.Add(row);
+            }
+        }
+
+        NotifySelectionChanged();
+        StateHasChanged();
+    }
+
+    private object SelectionKeyFor(TItem item) =>
+        SelectionKeySelector is not null ? SelectionKeySelector(item)! : item!;
+
     private void ToggleSelection(TItem item)
     {
+        // Every Shift-less toggle re-anchors, so the next Shift-click extends from here.
+        _selectionAnchorKey = SelectionKeyFor(item);
         // Capture both ref-membership and key-membership BEFORE mutating, so a
         // fresh server-mode wrapper (different ref, same key) is correctly
         // recognised as already-selected and deselects instead of doubling.

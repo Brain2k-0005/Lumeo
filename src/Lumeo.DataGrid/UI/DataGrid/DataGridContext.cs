@@ -168,6 +168,17 @@ public record DataGridContext<TItem>(
     bool Compact
 )
 {
+    /// <summary>
+    /// Selection with keyboard modifiers: <c>(item, shift, ctrl)</c>. Shift extends the
+    /// selection from the anchor - the last row toggled without Shift - to the clicked row,
+    /// inclusive, without moving the anchor, so a range can be adjusted by clicking again.
+    ///
+    /// A body property rather than a positional parameter: this record is shipped, and a new
+    /// positional would change its constructor. Null-safe, so anything rendering rows outside
+    /// the grid's own body keeps working on ToggleSelection alone.
+    /// </summary>
+    public Action<TItem, bool, bool>? ToggleSelectionModified { get; init; }
+
     /// <summary>Padding utilities for a body data cell, tightened under <see cref="Compact"/>.
     /// Kept here (rather than duplicated per cell) so the compact/normal values can't drift
     /// between <see cref="DataGridCell{TItem}"/> and the row's structural cells.</summary>
