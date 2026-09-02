@@ -1,0 +1,44 @@
+@namespace Lumeo
+@* shadcn's Field: one label + control + description, spaced by gap-2 (measured live
+   2026-09-02). Vertical stacks them; Horizontal puts the control beside the label, which is
+   the checkbox / switch shape; Responsive is Vertical until the enclosing FieldGroup is
+   md-wide, then Horizontal. *@
+<div role="group" data-slot="field" data-orientation="@OrientationAttr" class="@CssClass" @attributes="AdditionalAttributes">
+    @ChildContent
+</div>
+
+@code {
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    /// <summary>Additional CSS classes, merged after the defaults.</summary>
+    [Parameter] public string? Class { get; set; }
+
+    /// <summary>Unmatched attributes splatted onto the root element.</summary>
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    /// <summary>How label, control and description are laid out. Default <see cref="FieldOrientation.Vertical"/>.</summary>
+    [Parameter] public FieldOrientation Orientation { get; set; } = FieldOrientation.Vertical;
+
+    public enum FieldOrientation
+    {
+        Vertical,
+        Horizontal,
+        Responsive
+    }
+
+    private string OrientationAttr => Orientation switch
+    {
+        FieldOrientation.Horizontal => "horizontal",
+        FieldOrientation.Responsive => "responsive",
+        _ => "vertical"
+    };
+
+    private string OrientationClasses => Orientation switch
+    {
+        FieldOrientation.Horizontal => "flex-row items-center has-[>[data-slot=field-content]]:items-start [&>[data-slot=field-label]]:flex-auto has-[>[data-slot=field-content]]:[&>[data-slot=field-label]]:pt-0.5",
+        FieldOrientation.Responsive => "flex-col [&>*]:w-full [&>.sr-only]:w-auto @md/field-group:flex-row @md/field-group:items-center @md/field-group:[&>*]:w-auto @md/field-group:[&>[data-slot=field-label]]:flex-auto",
+        _ => "flex-col [&>*]:w-full [&>.sr-only]:w-auto"
+    };
+
+    private string CssClass => Cx.Merge("group/field flex w-full gap-2 data-[invalid=true]:text-destructive", OrientationClasses, Class);
+}

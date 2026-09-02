@@ -1,0 +1,49 @@
+@namespace Lumeo
+@* shadcn's SidebarMenuSubButton: a 28px link inside SidebarMenuSub (measured live
+   2026-09-02: h-7, px-2, 14px; Sm is 12px). Renders an anchor when Href is set, a button
+   otherwise, so a sub entry that opens something is still keyboard-reachable. *@
+@if (Href is not null)
+{
+    <a href="@Href" data-slot="sidebar-menu-sub-button" data-sidebar="menu-sub-button" data-size="@SizeAttr" data-active="@(IsActive ? "true" : "false")" aria-current="@(IsActive ? "page" : null)" class="@CssClass" @attributes="AdditionalAttributes">@ChildContent</a>
+}
+else
+{
+    <button type="button" data-slot="sidebar-menu-sub-button" data-sidebar="menu-sub-button" data-size="@SizeAttr" data-active="@(IsActive ? "true" : "false")" class="@CssClass" @attributes="AdditionalAttributes">@ChildContent</button>
+}
+
+@code {
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    /// <summary>Additional CSS classes, merged after the defaults.</summary>
+    [Parameter] public string? Class { get; set; }
+
+    /// <summary>Unmatched attributes splatted onto the root element.</summary>
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    /// <summary>Link target. Without one the entry renders as a button.</summary>
+    [Parameter] public string? Href { get; set; }
+
+    /// <summary><see cref="SubSize.Md"/> (14px, default) or <see cref="SubSize.Sm"/> (12px).</summary>
+    [Parameter] public SubSize Size { get; set; } = SubSize.Md;
+
+    /// <summary>Highlights the entry as the current one.</summary>
+    [Parameter] public bool IsActive { get; set; }
+
+    public enum SubSize
+    {
+        Sm,
+        Md
+    }
+
+    private string SizeAttr => Size == SubSize.Sm ? "sm" : "md";
+
+    private string CssClass => Cx.Merge(
+        "text-sidebar-foreground ring-sidebar-ring hover:bg-sidebar-accent hover:text-sidebar-accent-foreground active:bg-sidebar-accent active:text-sidebar-accent-foreground",
+        "flex h-7 min-w-0 w-full -translate-x-px items-center gap-2 overflow-hidden rounded-md px-2 text-start outline-hidden focus-visible:ring-2",
+        "disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none aria-disabled:opacity-50",
+        "[&>span:last-child]:truncate [&>svg]:size-4 [&>svg]:shrink-0 [&>svg]:text-sidebar-accent-foreground",
+        Size == SubSize.Sm ? "text-xs" : "text-sm",
+        Cx.When(IsActive, "bg-sidebar-accent text-sidebar-accent-foreground"),
+        "group-data-[collapsible=icon]:hidden",
+        Class);
+}
