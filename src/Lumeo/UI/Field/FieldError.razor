@@ -1,0 +1,48 @@
+@namespace Lumeo
+@* shadcn's FieldError. Renders nothing when there is nothing to say: no child content and
+   no messages. Several messages become a list; duplicates (the same rule firing from two
+   validators) collapse to one line. *@
+@if (ChildContent is not null)
+{
+    <div role="alert" data-slot="field-error" class="@CssClass" @attributes="AdditionalAttributes">@ChildContent</div>
+}
+else if (Unique.Count == 1)
+{
+    <div role="alert" data-slot="field-error" class="@CssClass" @attributes="AdditionalAttributes">@Unique[0]</div>
+}
+else if (Unique.Count > 1)
+{
+    <div role="alert" data-slot="field-error" class="@CssClass" @attributes="AdditionalAttributes">
+        <ul class="ml-4 flex list-disc flex-col gap-1">
+            @foreach (var m in Unique)
+            {
+                <li>@m</li>
+            }
+        </ul>
+    </div>
+}
+
+@code {
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    /// <summary>Additional CSS classes, merged after the defaults.</summary>
+    [Parameter] public string? Class { get; set; }
+
+    /// <summary>Unmatched attributes splatted onto the root element.</summary>
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    /// <summary>
+    /// Validation messages to show when there is no <see cref="ChildContent"/>. Null or
+    /// empty entries are skipped and duplicates collapse, so the same rule reported twice
+    /// reads once.
+    /// </summary>
+    [Parameter] public IEnumerable<string?>? Errors { get; set; }
+
+    private List<string> Unique => (Errors ?? Enumerable.Empty<string?>())
+        .Where(e => !string.IsNullOrWhiteSpace(e))
+        .Select(e => e!)
+        .Distinct(StringComparer.Ordinal)
+        .ToList();
+
+    private string CssClass => Cx.Merge("text-destructive text-sm font-normal", Class);
+}
