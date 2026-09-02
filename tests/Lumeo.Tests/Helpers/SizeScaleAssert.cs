@@ -50,6 +50,8 @@ public static class SizeScaleAssert
 
     private static readonly Regex ArbitraryPxRegex = new(@"^\[(?<n>[0-9.]+)px\]$", RegexOptions.Compiled);
     private static readonly Regex TextArbitraryPxRegex = new(@"^text-\[(?<n>[0-9.]+)px\]$", RegexOptions.Compiled);
+    // A geometry token (#434): h-[var(--lumeo-control-h,calc(var(--spacing,0.25rem)*8))] is 8 spacing steps.
+    private static readonly Regex GeometryTokenRegex = new(@"^\[var\(--lumeo-[a-z0-9-]+,calc\(var\(--spacing,0\.25rem\)\*(?<n>[0-9.]+)\)\)\]$", RegexOptions.Compiled);
 
     /// <summary>
     /// Finds the FIRST space-delimited token starting with "<paramref name="prefix"/>-"
@@ -68,6 +70,9 @@ public static class SizeScaleAssert
         var arbitrary = ArbitraryPxRegex.Match(suffix);
         if (arbitrary.Success)
             return double.Parse(arbitrary.Groups["n"].Value, NumberStyles.Float, CultureInfo.InvariantCulture);
+        var geometry = GeometryTokenRegex.Match(suffix);
+        if (geometry.Success)
+            return double.Parse(geometry.Groups["n"].Value, NumberStyles.Float, CultureInfo.InvariantCulture) * 4.0;
 
         return double.TryParse(suffix, NumberStyles.Float, CultureInfo.InvariantCulture, out var units)
             ? units * 4.0

@@ -25,7 +25,7 @@ public class ButtonTests : IAsyncLifetime
 
         var button = cut.Find("button");
         Assert.Contains("bg-primary", button.GetAttribute("class"));
-        Assert.Contains("h-8 px-2.5", button.GetAttribute("class"));
+        Assert.Contains("h-[var(--lumeo-control-h,calc(var(--spacing,0.25rem)*8))] px-2.5", button.GetAttribute("class"));
         Assert.Equal("Click me", button.TextContent.Trim());
     }
 
@@ -96,9 +96,9 @@ public class ButtonTests : IAsyncLifetime
     }
 
     [Theory]
-    [InlineData(Lumeo.Button.ButtonSize.Sm, "h-7")]
-    [InlineData(Lumeo.Button.ButtonSize.Lg, "h-9")]
-    [InlineData(Lumeo.Button.ButtonSize.Icon, "w-8")]
+    [InlineData(Lumeo.Button.ButtonSize.Sm, "h-[var(--lumeo-control-h-sm,calc(var(--spacing,0.25rem)*7))]")]
+    [InlineData(Lumeo.Button.ButtonSize.Lg, "h-[var(--lumeo-control-h-lg,calc(var(--spacing,0.25rem)*9))]")]
+    [InlineData(Lumeo.Button.ButtonSize.Icon, "w-[var(--lumeo-control-h,calc(var(--spacing,0.25rem)*8))]")]
     public void Renders_Correct_Size_Classes(Lumeo.Button.ButtonSize size, string expectedClass)
     {
         var cut = _ctx.Render<Lumeo.Button>(p => p
@@ -141,7 +141,7 @@ public class ButtonTests : IAsyncLifetime
             .AddChildContent("Btn"));
 
         var cls = cut.Find("button").GetAttribute("class") ?? "";
-        Assert.Contains("h-6", cls);
+        Assert.Contains("h-[var(--lumeo-control-h-xs,calc(var(--spacing,0.25rem)*6))]", cls);
         Assert.Contains("px-2", cls);
         Assert.Contains("gap-1", cls);
         Assert.Contains("text-xs", cls);

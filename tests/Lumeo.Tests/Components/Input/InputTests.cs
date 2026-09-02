@@ -76,7 +76,7 @@ public class InputTests : IAsyncLifetime
 
         var cls = cut.Find("input").GetAttribute("class");
         Assert.Contains("flex", cls);
-        Assert.Contains("h-8", cls);
+        Assert.Contains("h-[var(--lumeo-control-h,calc(var(--spacing,0.25rem)*8))]", cls);
         Assert.Contains("w-full", cls);
         Assert.Contains("rounded-lg", cls);
         Assert.Contains("border", cls);
@@ -149,7 +149,7 @@ public class InputTests : IAsyncLifetime
             .Add(b => b.Size, Lumeo.Size.Sm));
 
         var cls = cut.Find("input").GetAttribute("class");
-        Assert.Contains("h-8", cls);
+        Assert.Contains("h-[var(--lumeo-control-h,calc(var(--spacing,0.25rem)*8))]", cls);
     }
 
     [Fact]

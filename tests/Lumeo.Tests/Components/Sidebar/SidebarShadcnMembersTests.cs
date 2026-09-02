@@ -36,7 +36,7 @@ public class SidebarShadcnMembersTests : IAsyncLifetime
         Assert.Equal("default", btn.GetAttribute("data-size"));
         Assert.Equal("false", btn.GetAttribute("data-active"));
         Assert.Contains("peer/menu-button", btn.ClassList);
-        Assert.Contains("h-8", btn.ClassList);
+        Assert.Contains("h-[var(--lumeo-sidebar-item-h,calc(var(--spacing,0.25rem)*8))]", btn.ClassList);
         Assert.Contains("text-sm", btn.ClassList);
     }
 
@@ -52,8 +52,8 @@ public class SidebarShadcnMembersTests : IAsyncLifetime
     }
 
     [Theory]
-    [InlineData(L.SidebarMenuButton.ButtonSize.Sm, "sm", "h-7", "text-xs")]
-    [InlineData(L.SidebarMenuButton.ButtonSize.Lg, "lg", "h-12", "text-sm")]
+    [InlineData(L.SidebarMenuButton.ButtonSize.Sm, "sm", "h-[var(--lumeo-sidebar-item-h-sm,calc(var(--spacing,0.25rem)*7))]", "text-xs")]
+    [InlineData(L.SidebarMenuButton.ButtonSize.Lg, "lg", "h-[var(--lumeo-sidebar-item-h-lg,calc(var(--spacing,0.25rem)*12))]", "text-sm")]
     public void MenuButton_Sizes_Match_Shadcn(L.SidebarMenuButton.ButtonSize size, string attr, string h, string text)
     {
         var cut = _ctx.Render<L.SidebarMenuButton>(p => p.Add(b => b.Size, size).AddChildContent("x"));
