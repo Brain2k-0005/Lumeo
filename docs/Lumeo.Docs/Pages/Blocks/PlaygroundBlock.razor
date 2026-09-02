@@ -1,0 +1,690 @@
+@page "/blocks/playground"
+@namespace Lumeo.Docs.Pages.Blocks
+@using Lumeo.Services
+@inject ToastService ToastService
+
+<PageTitle>Playground — Lumeo Blocks</PageTitle>
+
+<PageHeader Title="Playground"
+            Description="shadcn's Playground example, ported one to one: the OpenAI-playground layout with a preset combobox, save and share, a view-code dialog and a preset actions menu with its content-filter dialog and delete confirmation; three editing modes as tabs; and a settings column with a model combobox that previews the highlighted model, plus temperature, maximum length and top-p sliders, each explained by a HoverCard." />
+
+<Stack Gap="10" Class="mt-8">
+    <ComponentDemo Id="playground" Title="Playground" Description="A prompt playground with model and sampling controls." Code="@_code">
+        <div class="flex w-full flex-col overflow-hidden rounded-[var(--radius-lg)] border border-border/40 bg-background">
+            <div class="flex flex-col items-start justify-between gap-2 px-6 py-4 sm:flex-row sm:items-center sm:gap-0 md:h-16">
+                <h2 class="pl-0.5 text-lg font-semibold">Playground</h2>
+                <div class="ml-auto flex w-full gap-2 sm:justify-end">
+                    <Popover Open="@_presetOpen" OpenChanged="@(v => _presetOpen = v)">
+                        <PopoverTrigger Class="flex-1 md:max-w-[200px] lg:max-w-[300px]">
+                            <Button Variant="Button.ButtonVariant.Outline" role="combobox" aria-label="Load a preset..." aria-expanded="@_presetOpen" Class="w-full justify-between">
+                                @(_preset?.Name ?? "Load a preset...")
+                                <SvgGlyph Svg="@(Lucide.ChevronsUpDown)" class="opacity-50" />
+                            </Button>
+                        </PopoverTrigger>
+                        <PopoverContent Class="w-[300px] p-0">
+                            <Command>
+                                <CommandInput Placeholder="Search presets..." />
+                                <CommandList>
+                                    <CommandEmpty>No presets found.</CommandEmpty>
+                                    <CommandGroup Heading="Examples">
+                                        @foreach (var preset in Presets)
+                                        {
+                                            <CommandItem FilterValue="@preset.Name" OnSelect="@(() => { _preset = preset; _presetOpen = false; })">
+                                                @preset.Name
+                                                <SvgGlyph Svg="@(Lucide.Check)" class="@("ml-auto " + (_preset?.Id == preset.Id ? "opacity-100" : "opacity-0"))" />
+                                            </CommandItem>
+                                        }
+                                    </CommandGroup>
+                                    <CommandSeparator />
+                                    <CommandGroup>
+                                        <CommandItem FilterValue="More examples">More examples</CommandItem>
+                                    </CommandGroup>
+                                </CommandList>
+                            </Command>
+                        </PopoverContent>
+                    </Popover>
+                    <Dialog>
+                        <DialogTrigger>
+                            <Button Variant="Button.ButtonVariant.Secondary">Save</Button>
+                        </DialogTrigger>
+                        <DialogContent>
+                            <DialogHeader>
+                                <DialogTitle>Save preset</DialogTitle>
+                                <DialogDescription>This will save the current playground state as a preset which you can access later or share with others.</DialogDescription>
+                            </DialogHeader>
+                            <div class="grid gap-6 py-4">
+                                <div class="grid gap-3">
+                                    <Label For="preset-name">Name</Label>
+                                    <Input id="preset-name" AutoFocus="true" />
+                                </div>
+                                <div class="grid gap-3">
+                                    <Label For="preset-description">Description</Label>
+                                    <Textarea id="preset-description" />
+                                </div>
+                            </div>
+                            <DialogFooter>
+                                <Button Type="Button.ButtonType.Submit">Save</Button>
+                            </DialogFooter>
+                        </DialogContent>
+                    </Dialog>
+                    <div class="hidden gap-2 md:flex">
+                        <Dialog>
+                            <DialogTrigger>
+                                <Button Variant="Button.ButtonVariant.Secondary">View code</Button>
+                            </DialogTrigger>
+                            <DialogContent>
+                                <DialogHeader>
+                                    <DialogTitle>View code</DialogTitle>
+                                    <DialogDescription>You can use the following code to start integrating your current prompt and settings into your application.</DialogDescription>
+                                </DialogHeader>
+                                <div class="grid gap-4">
+                                    <div class="rounded-md bg-black p-6">
+                                        <pre><code class="grid gap-1 text-sm text-white [&_span]:h-4"><span><span class="text-sky-300">import</span> os</span><span><span class="text-sky-300">import</span> openai</span><span></span><span>openai.api_key = os.getenv(<span class="text-green-300">&quot;OPENAI_API_KEY&quot;</span>)</span><span></span><span>response = openai.Completion.create(</span><span> model=<span class="text-green-300">&quot;davinci&quot;</span>,</span><span> prompt=<span class="text-amber-300">&quot;&quot;</span>,</span><span> temperature=<span class="text-amber-300">0.9</span>,</span><span> max_tokens=<span class="text-amber-300">5</span>,</span><span> top_p=<span class="text-amber-300">1</span>,</span><span> frequency_penalty=<span class="text-amber-300">0</span>,</span><span> presence_penalty=<span class="text-green-300">0</span>,</span><span>)</span></code></pre>
+                                    </div>
+                                    <div>
+                                        <p class="text-sm text-muted-foreground">Your API Key can be found here. You should use environment variables or a secret management tool to expose your key to your applications.</p>
+                                    </div>
+                                </div>
+                            </DialogContent>
+                        </Dialog>
+                        <Popover>
+                            <PopoverTrigger>
+                                <Button Variant="Button.ButtonVariant.Secondary">Share</Button>
+                            </PopoverTrigger>
+                            <PopoverContent Align="Lumeo.Align.End" Class="flex w-[520px] flex-col gap-4">
+                                <div class="flex flex-col gap-1 text-center sm:text-left">
+                                    <h3 class="text-lg font-semibold">Share preset</h3>
+                                    <p class="text-sm text-muted-foreground">Anyone who has this link and an OpenAI account will be able to view this.</p>
+                                </div>
+                                <div class="relative flex-1">
+                                    <Label For="preset-link" Class="sr-only">Link</Label>
+                                    <Input id="preset-link" Value="https://platform.openai.com/playground/p/7bbKYQvsVkNmVb8NGcdUOLae?model=text-davinci-003" readonly Class="h-9 pr-10" />
+                                    <Button Type="Button.ButtonType.Submit" Size="Button.ButtonSize.Icon" Variant="Button.ButtonVariant.Ghost" Class="absolute top-1 right-1 size-7">
+                                        <span class="sr-only">Copy</span>
+                                        <SvgGlyph Svg="@(Lucide.Copy)" class="size-3.5" />
+                                    </Button>
+                                </div>
+                            </PopoverContent>
+                        </Popover>
+                    </div>
+                    <DropdownMenu>
+                        <DropdownMenuTrigger AsChild>
+                            <ChildContentSlot Context="slot">
+                                <Button Variant="Button.ButtonVariant.Secondary" Size="Button.ButtonSize.Icon" id="@slot.Id" @attributes="slot.Attributes" OnClick="slot.OnClick">
+                                    <span class="sr-only">Actions</span>
+                                    <SvgGlyph Svg="@(Lucide.Ellipsis)" />
+                                </Button>
+                            </ChildContentSlot>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent Align="Lumeo.Align.End">
+                            <DropdownMenuItem OnClick="@(() => _filterOpen = true)">Content filter preferences</DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem OnClick="@(() => _deleteOpen = true)" Class="text-red-600">Delete preset</DropdownMenuItem>
+                        </DropdownMenuContent>
+                    </DropdownMenu>
+                    <Dialog Open="@_filterOpen" OpenChanged="@(v => _filterOpen = v)">
+                        <DialogContent>
+                            <DialogHeader>
+                                <DialogTitle>Content filter preferences</DialogTitle>
+                                <DialogDescription>The content filter flags text that may violate our content policy. It's powered by our moderation endpoint which is free to use to moderate your OpenAI API traffic. Learn more.</DialogDescription>
+                            </DialogHeader>
+                            <div class="py-6">
+                                <h4 class="text-sm text-muted-foreground">Playground Warnings</h4>
+                                <div class="flex items-start justify-between gap-4 pt-3">
+                                    <Switch Name="show" Id="show-warning" Checked="@_showWarning" CheckedChanged="@(v => _showWarning = v)" />
+                                    <Label Class="grid gap-1 font-normal" For="show-warning">
+                                        <span class="font-semibold">Show a warning when content is flagged</span>
+                                        <span class="text-sm text-muted-foreground">A warning will be shown when sexual, hateful, violent or self-harm content is detected.</span>
+                                    </Label>
+                                </div>
+                            </div>
+                            <DialogFooter>
+                                <DialogClose>
+                                    <Button Variant="Button.ButtonVariant.Secondary">Close</Button>
+                                </DialogClose>
+                            </DialogFooter>
+                        </DialogContent>
+                    </Dialog>
+                    <AlertDialog Open="@_deleteOpen" OpenChanged="@(v => _deleteOpen = v)">
+                        <AlertDialogContent>
+                            <AlertDialogHeader>
+                                <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                                <AlertDialogDescription>This action cannot be undone. This preset will no longer be accessible by you or others you've shared it with.</AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                <Button Variant="Button.ButtonVariant.Destructive" OnClick="@DeletePreset">Delete</Button>
+                            </AlertDialogFooter>
+                        </AlertDialogContent>
+                    </AlertDialog>
+                </div>
+            </div>
+            <Separator />
+            <Tabs ActiveValue="@_mode" ActiveValueChanged="@(v => _mode = v)" Class="flex flex-1 flex-col">
+                <div class="flex flex-1 flex-col px-6 py-6">
+                    <div class="grid flex-1 items-stretch gap-6 md:grid-cols-[1fr_200px]">
+                        <div class="hidden flex-col gap-6 sm:flex md:order-2">
+                            <div class="grid gap-3">
+                                <HoverCard OpenDelay="200">
+                                    <HoverCardTrigger>
+                                        <span class="text-sm leading-none font-medium peer-disabled:cursor-not-allowed peer-disabled:opacity-70">Mode</span>
+                                    </HoverCardTrigger>
+                                    <HoverCardContent Side="Lumeo.Side.Left" Class="w-[320px] text-sm">Choose the interface that best suits your task. You can provide: a simple prompt to complete, starting and ending text to insert a completion within, or some text with instructions to edit it.</HoverCardContent>
+                                </HoverCard>
+                                <TabsList Class="grid w-full grid-cols-3">
+                                    <TabsTrigger Value="complete"><span class="sr-only">Complete</span><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="none"><rect x="4" y="3" width="12" height="2" rx="1" fill="currentColor"></rect><rect x="4" y="7" width="12" height="2" rx="1" fill="currentColor"></rect><rect x="4" y="11" width="3" height="2" rx="1" fill="currentColor"></rect><rect x="4" y="15" width="3" height="2" rx="1" fill="currentColor"></rect><rect x="8.5" y="11" width="3" height="2" rx="1" fill="currentColor"></rect><rect x="8.5" y="15" width="3" height="2" rx="1" fill="currentColor"></rect><rect x="13" y="11" width="3" height="2" rx="1" fill="currentColor"></rect></svg></TabsTrigger>
+                                    <TabsTrigger Value="insert"><span class="sr-only">Insert</span><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="none" class="h-5 w-5"><path fill-rule="evenodd" clip-rule="evenodd" d="M14.491 7.769a.888.888 0 0 1 .287.648.888.888 0 0 1-.287.648l-3.916 3.667a1.013 1.013 0 0 1-.692.268c-.26 0-.509-.097-.692-.268L5.275 9.065A.886.886 0 0 1 5 8.42a.889.889 0 0 1 .287-.64c.181-.17.427-.267.683-.269.257-.002.504.09.69.258L8.903 9.87V3.917c0-.243.103-.477.287-.649.183-.171.432-.268.692-.268.26 0 .509.097.692.268a.888.888 0 0 1 .287.649V9.87l2.245-2.102c.183-.172.432-.269.692-.269.26 0 .508.097.692.269Z" fill="currentColor"></path><rect x="4" y="15" width="3" height="2" rx="1" fill="currentColor"></rect><rect x="8.5" y="15" width="3" height="2" rx="1" fill="currentColor"></rect><rect x="13" y="15" width="3" height="2" rx="1" fill="currentColor"></rect></svg></TabsTrigger>
+                                    <TabsTrigger Value="edit"><span class="sr-only">Edit</span><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="none" class="h-5 w-5"><rect x="4" y="3" width="12" height="2" rx="1" fill="currentColor"></rect><rect x="4" y="7" width="12" height="2" rx="1" fill="currentColor"></rect><rect x="4" y="11" width="3" height="2" rx="1" fill="currentColor"></rect><rect x="4" y="15" width="4" height="2" rx="1" fill="currentColor"></rect><rect x="8.5" y="11" width="3" height="2" rx="1" fill="currentColor"></rect><path d="M17.154 11.346a1.182 1.182 0 0 0-1.671 0L11 15.829V17.5h1.671l4.483-4.483a1.182 1.182 0 0 0 0-1.671Z" fill="currentColor"></path></svg></TabsTrigger>
+                                </TabsList>
+                            </div>
+                            <div class="grid gap-3">
+                                <HoverCard OpenDelay="200">
+                                    <HoverCardTrigger>
+                                        <Label For="playground-model">Model</Label>
+                                    </HoverCardTrigger>
+                                    <HoverCardContent Align="Lumeo.Align.Start" Side="Lumeo.Side.Left" Class="w-[260px] text-sm">The model which will generate the completion. Some models are suitable for natural language tasks, others specialize in code. Learn more.</HoverCardContent>
+                                </HoverCard>
+                                <Popover Open="@_modelOpen" OpenChanged="@(v => _modelOpen = v)">
+                                    <PopoverTrigger Class="w-full">
+                                        <Button Variant="Button.ButtonVariant.Outline" role="combobox" aria-expanded="@_modelOpen" aria-label="Select a model" Class="w-full justify-between">
+                                            @_model.Name
+                                            <SvgGlyph Svg="@(Lucide.ChevronsUpDown)" class="text-muted-foreground" />
+                                        </Button>
+                                    </PopoverTrigger>
+                                    <PopoverContent Align="Lumeo.Align.End" Class="w-[250px] overflow-visible p-0">
+                                        <div class="absolute top-0 right-full mr-1 hidden min-h-[280px] w-64 rounded-md border border-border bg-popover p-4 text-popover-foreground shadow-md outline-hidden md:block">
+                                            <div class="grid gap-2">
+                                                <h4 class="leading-none font-medium">@_peeked.Name</h4>
+                                                <div class="text-sm text-muted-foreground">@_peeked.Description</div>
+                                                @if (_peeked.Strengths is not null)
+                                                {
+                                                    <div class="mt-4 grid gap-2">
+                                                        <h5 class="text-sm leading-none font-medium">Strengths</h5>
+                                                        <ul class="text-sm text-muted-foreground">@_peeked.Strengths</ul>
+                                                    </div>
+                                                }
+                                            </div>
+                                        </div>
+                                        <Command>
+                                            <CommandInput Placeholder="Search Models..." />
+                                            <CommandList Class="max-h-[400px]">
+                                                <CommandEmpty>No Models found.</CommandEmpty>
+                                                @foreach (var type in ModelTypes)
+                                                {
+                                                    <CommandGroup Heading="@type">
+                                                        @foreach (var model in Models.Where(m => m.Type == type))
+                                                        {
+                                                            <CommandItem FilterValue="@model.Name" OnSelect="@(() => { _model = model; _modelOpen = false; })" @onmouseenter="@(() => _peeked = model)" @onfocus="@(() => _peeked = model)" Class="aria-selected:bg-primary aria-selected:text-primary-foreground">
+                                                                @model.Name
+                                                                <SvgGlyph Svg="@(Lucide.Check)" class="@("ml-auto " + (_model.Id == model.Id ? "opacity-100" : "opacity-0"))" />
+                                                            </CommandItem>
+                                                        }
+                                                    </CommandGroup>
+                                                }
+                                            </CommandList>
+                                        </Command>
+                                    </PopoverContent>
+                                </Popover>
+                            </div>
+                            <div class="grid gap-2 pt-2">
+                                <HoverCard OpenDelay="200">
+                                    <HoverCardTrigger Class="block">
+                                        <div class="grid gap-4">
+                                            <div class="flex items-center justify-between">
+                                                <Label For="playground-temperature">Temperature</Label>
+                                                <span class="w-12 rounded-md border border-transparent px-2 py-0.5 text-right text-sm text-muted-foreground hover:border-border">@_temperature.ToString(System.Globalization.CultureInfo.InvariantCulture)</span>
+                                            </div>
+                                            <Slider id="playground-temperature" Max="1" Step="0.1" Value="@_temperature" ValueChanged="@(v => _temperature = v)" AriaLabel="Temperature" />
+                                        </div>
+                                    </HoverCardTrigger>
+                                    <HoverCardContent Align="Lumeo.Align.Start" Side="Lumeo.Side.Left" Class="w-[260px] text-sm">Controls randomness: lowering results in less random completions. As the temperature approaches zero, the model will become deterministic and repetitive.</HoverCardContent>
+                                </HoverCard>
+                            </div>
+                            <div class="grid gap-2 pt-2">
+                                <HoverCard OpenDelay="200">
+                                    <HoverCardTrigger Class="block">
+                                        <div class="grid gap-4">
+                                            <div class="flex items-center justify-between">
+                                                <Label For="playground-maxlength">Maximum Length</Label>
+                                                <span class="w-12 rounded-md border border-transparent px-2 py-0.5 text-right text-sm text-muted-foreground hover:border-border">@_maxLength.ToString(System.Globalization.CultureInfo.InvariantCulture)</span>
+                                            </div>
+                                            <Slider id="playground-maxlength" Max="4000" Step="10" Value="@_maxLength" ValueChanged="@(v => _maxLength = v)" AriaLabel="Maximum Length" />
+                                        </div>
+                                    </HoverCardTrigger>
+                                    <HoverCardContent Align="Lumeo.Align.Start" Side="Lumeo.Side.Left" Class="w-[260px] text-sm">The maximum number of tokens to generate. Requests can use up to 2,048 or 4,000 tokens, shared between prompt and completion. The exact limit varies by model.</HoverCardContent>
+                                </HoverCard>
+                            </div>
+                            <div class="grid gap-2 pt-2">
+                                <HoverCard OpenDelay="200">
+                                    <HoverCardTrigger Class="block">
+                                        <div class="grid gap-4">
+                                            <div class="flex items-center justify-between">
+                                                <Label For="playground-top-p">Top P</Label>
+                                                <span class="w-12 rounded-md border border-transparent px-2 py-0.5 text-right text-sm text-muted-foreground hover:border-border">@_topP.ToString(System.Globalization.CultureInfo.InvariantCulture)</span>
+                                            </div>
+                                            <Slider id="playground-top-p" Max="1" Step="0.1" Value="@_topP" ValueChanged="@(v => _topP = v)" AriaLabel="Top P" />
+                                        </div>
+                                    </HoverCardTrigger>
+                                    <HoverCardContent Align="Lumeo.Align.Start" Side="Lumeo.Side.Left" Class="w-[260px] text-sm">Control diversity via nucleus sampling: 0.5 means half of all likelihood-weighted options are considered.</HoverCardContent>
+                                </HoverCard>
+                            </div>
+                        </div>
+                        <div class="flex flex-1 flex-col md:order-1">
+                            <TabsContent Value="complete" Class="mt-0 flex-1 border-0 p-0">
+                                <div class="flex h-full flex-col gap-4">
+                                    <Textarea placeholder="Write a tagline for an ice cream shop" Class="min-h-[400px] flex-1 p-4 md:min-h-[700px] lg:min-h-[700px]" />
+                                    <div class="flex items-center gap-2">
+                                        <Button>Submit</Button>
+                                        <Button Variant="Button.ButtonVariant.Secondary">
+                                            <span class="sr-only">Show history</span>
+                                            <SvgGlyph Svg="@(Lucide.RotateCcw)" />
+                                        </Button>
+                                    </div>
+                                </div>
+                            </TabsContent>
+                            <TabsContent Value="insert" Class="mt-0 flex flex-1 flex-col gap-4 border-0 p-0">
+                                <div class="grid h-full grid-rows-2 gap-6 lg:grid-cols-2 lg:grid-rows-1">
+                                    <Textarea placeholder="We're writing to [inset]. Congrats from OpenAI!" Class="h-full min-h-[300px] p-4 lg:min-h-[700px] xl:min-h-[700px]" />
+                                    <div class="rounded-md border border-border bg-muted"></div>
+                                </div>
+                                <div class="flex items-center gap-2">
+                                    <Button>Submit</Button>
+                                    <Button Variant="Button.ButtonVariant.Secondary">
+                                        <span class="sr-only">Show history</span>
+                                        <SvgGlyph Svg="@(Lucide.RotateCcw)" />
+                                    </Button>
+                                </div>
+                            </TabsContent>
+                            <TabsContent Value="edit" Class="mt-0 flex flex-1 flex-col gap-4 border-0 p-0">
+                                <div class="grid h-full gap-6 lg:grid-cols-2">
+                                    <div class="flex flex-col gap-4">
+                                        <div class="flex flex-1 flex-col gap-2">
+                                            <Label For="playground-input" Class="sr-only">Input</Label>
+                                            <Textarea id="playground-input" placeholder="We is going to the market." Class="flex-1 p-4 lg:min-h-[580px]" />
+                                        </div>
+                                        <div class="flex flex-col gap-2">
+                                            <Label For="playground-instructions">Instructions</Label>
+                                            <Textarea id="playground-instructions" placeholder="Fix the grammar." />
+                                        </div>
+                                    </div>
+                                    <div class="min-h-[400px] rounded-md border border-border bg-muted lg:min-h-[700px]"></div>
+                                </div>
+                                <div class="flex items-center gap-2">
+                                    <Button>Submit</Button>
+                                    <Button Variant="Button.ButtonVariant.Secondary">
+                                        <span class="sr-only">Show history</span>
+                                        <SvgGlyph Svg="@(Lucide.RotateCcw)" />
+                                    </Button>
+                                </div>
+                            </TabsContent>
+                        </div>
+                    </div>
+                </div>
+            </Tabs>
+        </div>
+    </ComponentDemo>
+</Stack>
+
+@code {
+    private const string _code = @"<div class=""flex w-full flex-col overflow-hidden rounded-[var(--radius-lg)] border border-border/40 bg-background"">
+    <div class=""flex flex-col items-start justify-between gap-2 px-6 py-4 sm:flex-row sm:items-center sm:gap-0 md:h-16"">
+        <h2 class=""pl-0.5 text-lg font-semibold"">Playground</h2>
+        <div class=""ml-auto flex w-full gap-2 sm:justify-end"">
+            <Popover Open=""@_presetOpen"" OpenChanged=""@(v => _presetOpen = v)"">
+                <PopoverTrigger Class=""flex-1 md:max-w-[200px] lg:max-w-[300px]"">
+                    <Button Variant=""Button.ButtonVariant.Outline"" role=""combobox"" aria-label=""Load a preset..."" aria-expanded=""@_presetOpen"" Class=""w-full justify-between"">
+                        @(_preset?.Name ?? ""Load a preset..."")
+                        <SvgGlyph Svg=""@(Lucide.ChevronsUpDown)"" class=""opacity-50"" />
+                    </Button>
+                </PopoverTrigger>
+                <PopoverContent Class=""w-[300px] p-0"">
+                    <Command>
+                        <CommandInput Placeholder=""Search presets..."" />
+                        <CommandList>
+                            <CommandEmpty>No presets found.</CommandEmpty>
+                            <CommandGroup Heading=""Examples"">
+                                @foreach (var preset in Presets)
+                                {
+                                    <CommandItem FilterValue=""@preset.Name"" OnSelect=""@(() => { _preset = preset; _presetOpen = false; })"">
+                                        @preset.Name
+                                        <SvgGlyph Svg=""@(Lucide.Check)"" class=""@(""ml-auto "" + (_preset?.Id == preset.Id ? ""opacity-100"" : ""opacity-0""))"" />
+                                    </CommandItem>
+                                }
+                            </CommandGroup>
+                            <CommandSeparator />
+                            <CommandGroup>
+                                <CommandItem FilterValue=""More examples"">More examples</CommandItem>
+                            </CommandGroup>
+                        </CommandList>
+                    </Command>
+                </PopoverContent>
+            </Popover>
+            <Dialog>
+                <DialogTrigger>
+                    <Button Variant=""Button.ButtonVariant.Secondary"">Save</Button>
+                </DialogTrigger>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Save preset</DialogTitle>
+                        <DialogDescription>This will save the current playground state as a preset which you can access later or share with others.</DialogDescription>
+                    </DialogHeader>
+                    <div class=""grid gap-6 py-4"">
+                        <div class=""grid gap-3"">
+                            <Label For=""preset-name"">Name</Label>
+                            <Input id=""preset-name"" AutoFocus=""true"" />
+                        </div>
+                        <div class=""grid gap-3"">
+                            <Label For=""preset-description"">Description</Label>
+                            <Textarea id=""preset-description"" />
+                        </div>
+                    </div>
+                    <DialogFooter>
+                        <Button Type=""Button.ButtonType.Submit"">Save</Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+            <div class=""hidden gap-2 md:flex"">
+                <Dialog>
+                    <DialogTrigger>
+                        <Button Variant=""Button.ButtonVariant.Secondary"">View code</Button>
+                    </DialogTrigger>
+                    <DialogContent>
+                        <DialogHeader>
+                            <DialogTitle>View code</DialogTitle>
+                            <DialogDescription>You can use the following code to start integrating your current prompt and settings into your application.</DialogDescription>
+                        </DialogHeader>
+                        <div class=""grid gap-4"">
+                            <div class=""rounded-md bg-black p-6"">
+                                <pre><code class=""grid gap-1 text-sm text-white [&_span]:h-4""><span><span class=""text-sky-300"">import</span> os</span><span><span class=""text-sky-300"">import</span> openai</span><span></span><span>openai.api_key = os.getenv(<span class=""text-green-300"">&quot;OPENAI_API_KEY&quot;</span>)</span><span></span><span>response = openai.Completion.create(</span><span> model=<span class=""text-green-300"">&quot;davinci&quot;</span>,</span><span> prompt=<span class=""text-amber-300"">&quot;&quot;</span>,</span><span> temperature=<span class=""text-amber-300"">0.9</span>,</span><span> max_tokens=<span class=""text-amber-300"">5</span>,</span><span> top_p=<span class=""text-amber-300"">1</span>,</span><span> frequency_penalty=<span class=""text-amber-300"">0</span>,</span><span> presence_penalty=<span class=""text-green-300"">0</span>,</span><span>)</span></code></pre>
+                            </div>
+                            <div>
+                                <p class=""text-sm text-muted-foreground"">Your API Key can be found here. You should use environment variables or a secret management tool to expose your key to your applications.</p>
+                            </div>
+                        </div>
+                    </DialogContent>
+                </Dialog>
+                <Popover>
+                    <PopoverTrigger>
+                        <Button Variant=""Button.ButtonVariant.Secondary"">Share</Button>
+                    </PopoverTrigger>
+                    <PopoverContent Align=""Lumeo.Align.End"" Class=""flex w-[520px] flex-col gap-4"">
+                        <div class=""flex flex-col gap-1 text-center sm:text-left"">
+                            <h3 class=""text-lg font-semibold"">Share preset</h3>
+                            <p class=""text-sm text-muted-foreground"">Anyone who has this link and an OpenAI account will be able to view this.</p>
+                        </div>
+                        <div class=""relative flex-1"">
+                            <Label For=""preset-link"" Class=""sr-only"">Link</Label>
+                            <Input id=""preset-link"" Value=""https://platform.openai.com/playground/p/7bbKYQvsVkNmVb8NGcdUOLae?model=text-davinci-003"" readonly Class=""h-9 pr-10"" />
+                            <Button Type=""Button.ButtonType.Submit"" Size=""Button.ButtonSize.Icon"" Variant=""Button.ButtonVariant.Ghost"" Class=""absolute top-1 right-1 size-7"">
+                                <span class=""sr-only"">Copy</span>
+                                <SvgGlyph Svg=""@(Lucide.Copy)"" class=""size-3.5"" />
+                            </Button>
+                        </div>
+                    </PopoverContent>
+                </Popover>
+            </div>
+            <DropdownMenu>
+                <DropdownMenuTrigger AsChild>
+                    <ChildContentSlot Context=""slot"">
+                        <Button Variant=""Button.ButtonVariant.Secondary"" Size=""Button.ButtonSize.Icon"" id=""@slot.Id"" @attributes=""slot.Attributes"" OnClick=""slot.OnClick"">
+                            <span class=""sr-only"">Actions</span>
+                            <SvgGlyph Svg=""@(Lucide.Ellipsis)"" />
+                        </Button>
+                    </ChildContentSlot>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent Align=""Lumeo.Align.End"">
+                    <DropdownMenuItem OnClick=""@(() => _filterOpen = true)"">Content filter preferences</DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem OnClick=""@(() => _deleteOpen = true)"" Class=""text-red-600"">Delete preset</DropdownMenuItem>
+                </DropdownMenuContent>
+            </DropdownMenu>
+            <Dialog Open=""@_filterOpen"" OpenChanged=""@(v => _filterOpen = v)"">
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Content filter preferences</DialogTitle>
+                        <DialogDescription>The content filter flags text that may violate our content policy. It's powered by our moderation endpoint which is free to use to moderate your OpenAI API traffic. Learn more.</DialogDescription>
+                    </DialogHeader>
+                    <div class=""py-6"">
+                        <h4 class=""text-sm text-muted-foreground"">Playground Warnings</h4>
+                        <div class=""flex items-start justify-between gap-4 pt-3"">
+                            <Switch Name=""show"" Id=""show-warning"" Checked=""@_showWarning"" CheckedChanged=""@(v => _showWarning = v)"" />
+                            <Label Class=""grid gap-1 font-normal"" For=""show-warning"">
+                                <span class=""font-semibold"">Show a warning when content is flagged</span>
+                                <span class=""text-sm text-muted-foreground"">A warning will be shown when sexual, hateful, violent or self-harm content is detected.</span>
+                            </Label>
+                        </div>
+                    </div>
+                    <DialogFooter>
+                        <DialogClose>
+                            <Button Variant=""Button.ButtonVariant.Secondary"">Close</Button>
+                        </DialogClose>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+            <AlertDialog Open=""@_deleteOpen"" OpenChanged=""@(v => _deleteOpen = v)"">
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                        <AlertDialogDescription>This action cannot be undone. This preset will no longer be accessible by you or others you've shared it with.</AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <Button Variant=""Button.ButtonVariant.Destructive"" OnClick=""@DeletePreset"">Delete</Button>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
+        </div>
+    </div>
+    <Separator />
+    <Tabs ActiveValue=""@_mode"" ActiveValueChanged=""@(v => _mode = v)"" Class=""flex flex-1 flex-col"">
+        <div class=""flex flex-1 flex-col px-6 py-6"">
+            <div class=""grid flex-1 items-stretch gap-6 md:grid-cols-[1fr_200px]"">
+                <div class=""hidden flex-col gap-6 sm:flex md:order-2"">
+                    <div class=""grid gap-3"">
+                        <HoverCard OpenDelay=""200"">
+                            <HoverCardTrigger>
+                                <span class=""text-sm leading-none font-medium peer-disabled:cursor-not-allowed peer-disabled:opacity-70"">Mode</span>
+                            </HoverCardTrigger>
+                            <HoverCardContent Side=""Lumeo.Side.Left"" Class=""w-[320px] text-sm"">Choose the interface that best suits your task. You can provide: a simple prompt to complete, starting and ending text to insert a completion within, or some text with instructions to edit it.</HoverCardContent>
+                        </HoverCard>
+                        <TabsList Class=""grid w-full grid-cols-3"">
+                            <TabsTrigger Value=""complete""><span class=""sr-only"">Complete</span><svg xmlns=""http://www.w3.org/2000/svg"" viewBox=""0 0 20 20"" fill=""none""><rect x=""4"" y=""3"" width=""12"" height=""2"" rx=""1"" fill=""currentColor""></rect><rect x=""4"" y=""7"" width=""12"" height=""2"" rx=""1"" fill=""currentColor""></rect><rect x=""4"" y=""11"" width=""3"" height=""2"" rx=""1"" fill=""currentColor""></rect><rect x=""4"" y=""15"" width=""3"" height=""2"" rx=""1"" fill=""currentColor""></rect><rect x=""8.5"" y=""11"" width=""3"" height=""2"" rx=""1"" fill=""currentColor""></rect><rect x=""8.5"" y=""15"" width=""3"" height=""2"" rx=""1"" fill=""currentColor""></rect><rect x=""13"" y=""11"" width=""3"" height=""2"" rx=""1"" fill=""currentColor""></rect></svg></TabsTrigger>
+                            <TabsTrigger Value=""insert""><span class=""sr-only"">Insert</span><svg xmlns=""http://www.w3.org/2000/svg"" viewBox=""0 0 20 20"" fill=""none"" class=""h-5 w-5""><path fill-rule=""evenodd"" clip-rule=""evenodd"" d=""M14.491 7.769a.888.888 0 0 1 .287.648.888.888 0 0 1-.287.648l-3.916 3.667a1.013 1.013 0 0 1-.692.268c-.26 0-.509-.097-.692-.268L5.275 9.065A.886.886 0 0 1 5 8.42a.889.889 0 0 1 .287-.64c.181-.17.427-.267.683-.269.257-.002.504.09.69.258L8.903 9.87V3.917c0-.243.103-.477.287-.649.183-.171.432-.268.692-.268.26 0 .509.097.692.268a.888.888 0 0 1 .287.649V9.87l2.245-2.102c.183-.172.432-.269.692-.269.26 0 .508.097.692.269Z"" fill=""currentColor""></path><rect x=""4"" y=""15"" width=""3"" height=""2"" rx=""1"" fill=""currentColor""></rect><rect x=""8.5"" y=""15"" width=""3"" height=""2"" rx=""1"" fill=""currentColor""></rect><rect x=""13"" y=""15"" width=""3"" height=""2"" rx=""1"" fill=""currentColor""></rect></svg></TabsTrigger>
+                            <TabsTrigger Value=""edit""><span class=""sr-only"">Edit</span><svg xmlns=""http://www.w3.org/2000/svg"" viewBox=""0 0 20 20"" fill=""none"" class=""h-5 w-5""><rect x=""4"" y=""3"" width=""12"" height=""2"" rx=""1"" fill=""currentColor""></rect><rect x=""4"" y=""7"" width=""12"" height=""2"" rx=""1"" fill=""currentColor""></rect><rect x=""4"" y=""11"" width=""3"" height=""2"" rx=""1"" fill=""currentColor""></rect><rect x=""4"" y=""15"" width=""4"" height=""2"" rx=""1"" fill=""currentColor""></rect><rect x=""8.5"" y=""11"" width=""3"" height=""2"" rx=""1"" fill=""currentColor""></rect><path d=""M17.154 11.346a1.182 1.182 0 0 0-1.671 0L11 15.829V17.5h1.671l4.483-4.483a1.182 1.182 0 0 0 0-1.671Z"" fill=""currentColor""></path></svg></TabsTrigger>
+                        </TabsList>
+                    </div>
+                    <div class=""grid gap-3"">
+                        <HoverCard OpenDelay=""200"">
+                            <HoverCardTrigger>
+                                <Label For=""playground-model"">Model</Label>
+                            </HoverCardTrigger>
+                            <HoverCardContent Align=""Lumeo.Align.Start"" Side=""Lumeo.Side.Left"" Class=""w-[260px] text-sm"">The model which will generate the completion. Some models are suitable for natural language tasks, others specialize in code. Learn more.</HoverCardContent>
+                        </HoverCard>
+                        <Popover Open=""@_modelOpen"" OpenChanged=""@(v => _modelOpen = v)"">
+                            <PopoverTrigger Class=""w-full"">
+                                <Button Variant=""Button.ButtonVariant.Outline"" role=""combobox"" aria-expanded=""@_modelOpen"" aria-label=""Select a model"" Class=""w-full justify-between"">
+                                    @_model.Name
+                                    <SvgGlyph Svg=""@(Lucide.ChevronsUpDown)"" class=""text-muted-foreground"" />
+                                </Button>
+                            </PopoverTrigger>
+                            <PopoverContent Align=""Lumeo.Align.End"" Class=""w-[250px] overflow-visible p-0"">
+                                <div class=""absolute top-0 right-full mr-1 hidden min-h-[280px] w-64 rounded-md border border-border bg-popover p-4 text-popover-foreground shadow-md outline-hidden md:block"">
+                                    <div class=""grid gap-2"">
+                                        <h4 class=""leading-none font-medium"">@_peeked.Name</h4>
+                                        <div class=""text-sm text-muted-foreground"">@_peeked.Description</div>
+                                        @if (_peeked.Strengths is not null)
+                                        {
+                                            <div class=""mt-4 grid gap-2"">
+                                                <h5 class=""text-sm leading-none font-medium"">Strengths</h5>
+                                                <ul class=""text-sm text-muted-foreground"">@_peeked.Strengths</ul>
+                                            </div>
+                                        }
+                                    </div>
+                                </div>
+                                <Command>
+                                    <CommandInput Placeholder=""Search Models..."" />
+                                    <CommandList Class=""max-h-[400px]"">
+                                        <CommandEmpty>No Models found.</CommandEmpty>
+                                        @foreach (var type in ModelTypes)
+                                        {
+                                            <CommandGroup Heading=""@type"">
+                                                @foreach (var model in Models.Where(m => m.Type == type))
+                                                {
+                                                    <CommandItem FilterValue=""@model.Name"" OnSelect=""@(() => { _model = model; _modelOpen = false; })"" @onmouseenter=""@(() => _peeked = model)"" @onfocus=""@(() => _peeked = model)"" Class=""aria-selected:bg-primary aria-selected:text-primary-foreground"">
+                                                        @model.Name
+                                                        <SvgGlyph Svg=""@(Lucide.Check)"" class=""@(""ml-auto "" + (_model.Id == model.Id ? ""opacity-100"" : ""opacity-0""))"" />
+                                                    </CommandItem>
+                                                }
+                                            </CommandGroup>
+                                        }
+                                    </CommandList>
+                                </Command>
+                            </PopoverContent>
+                        </Popover>
+                    </div>
+                    <div class=""grid gap-2 pt-2"">
+                        <HoverCard OpenDelay=""200"">
+                            <HoverCardTrigger Class=""block"">
+                                <div class=""grid gap-4"">
+                                    <div class=""flex items-center justify-between"">
+                                        <Label For=""playground-temperature"">Temperature</Label>
+                                        <span class=""w-12 rounded-md border border-transparent px-2 py-0.5 text-right text-sm text-muted-foreground hover:border-border"">@_temperature.ToString(System.Globalization.CultureInfo.InvariantCulture)</span>
+                                    </div>
+                                    <Slider id=""playground-temperature"" Max=""1"" Step=""0.1"" Value=""@_temperature"" ValueChanged=""@(v => _temperature = v)"" AriaLabel=""Temperature"" />
+                                </div>
+                            </HoverCardTrigger>
+                            <HoverCardContent Align=""Lumeo.Align.Start"" Side=""Lumeo.Side.Left"" Class=""w-[260px] text-sm"">Controls randomness: lowering results in less random completions. As the temperature approaches zero, the model will become deterministic and repetitive.</HoverCardContent>
+                        </HoverCard>
+                    </div>
+                    <div class=""grid gap-2 pt-2"">
+                        <HoverCard OpenDelay=""200"">
+                            <HoverCardTrigger Class=""block"">
+                                <div class=""grid gap-4"">
+                                    <div class=""flex items-center justify-between"">
+                                        <Label For=""playground-maxlength"">Maximum Length</Label>
+                                        <span class=""w-12 rounded-md border border-transparent px-2 py-0.5 text-right text-sm text-muted-foreground hover:border-border"">@_maxLength.ToString(System.Globalization.CultureInfo.InvariantCulture)</span>
+                                    </div>
+                                    <Slider id=""playground-maxlength"" Max=""4000"" Step=""10"" Value=""@_maxLength"" ValueChanged=""@(v => _maxLength = v)"" AriaLabel=""Maximum Length"" />
+                                </div>
+                            </HoverCardTrigger>
+                            <HoverCardContent Align=""Lumeo.Align.Start"" Side=""Lumeo.Side.Left"" Class=""w-[260px] text-sm"">The maximum number of tokens to generate. Requests can use up to 2,048 or 4,000 tokens, shared between prompt and completion. The exact limit varies by model.</HoverCardContent>
+                        </HoverCard>
+                    </div>
+                    <div class=""grid gap-2 pt-2"">
+                        <HoverCard OpenDelay=""200"">
+                            <HoverCardTrigger Class=""block"">
+                                <div class=""grid gap-4"">
+                                    <div class=""flex items-center justify-between"">
+                                        <Label For=""playground-top-p"">Top P</Label>
+                                        <span class=""w-12 rounded-md border border-transparent px-2 py-0.5 text-right text-sm text-muted-foreground hover:border-border"">@_topP.ToString(System.Globalization.CultureInfo.InvariantCulture)</span>
+                                    </div>
+                                    <Slider id=""playground-top-p"" Max=""1"" Step=""0.1"" Value=""@_topP"" ValueChanged=""@(v => _topP = v)"" AriaLabel=""Top P"" />
+                                </div>
+                            </HoverCardTrigger>
+                            <HoverCardContent Align=""Lumeo.Align.Start"" Side=""Lumeo.Side.Left"" Class=""w-[260px] text-sm"">Control diversity via nucleus sampling: 0.5 means half of all likelihood-weighted options are considered.</HoverCardContent>
+                        </HoverCard>
+                    </div>
+                </div>
+                <div class=""flex flex-1 flex-col md:order-1"">
+                    <TabsContent Value=""complete"" Class=""mt-0 flex-1 border-0 p-0"">
+                        <div class=""flex h-full flex-col gap-4"">
+                            <Textarea placeholder=""Write a tagline for an ice cream shop"" Class=""min-h-[400px] flex-1 p-4 md:min-h-[700px] lg:min-h-[700px]"" />
+                            <div class=""flex items-center gap-2"">
+                                <Button>Submit</Button>
+                                <Button Variant=""Button.ButtonVariant.Secondary"">
+                                    <span class=""sr-only"">Show history</span>
+                                    <SvgGlyph Svg=""@(Lucide.RotateCcw)"" />
+                                </Button>
+                            </div>
+                        </div>
+                    </TabsContent>
+                    <TabsContent Value=""insert"" Class=""mt-0 flex flex-1 flex-col gap-4 border-0 p-0"">
+                        <div class=""grid h-full grid-rows-2 gap-6 lg:grid-cols-2 lg:grid-rows-1"">
+                            <Textarea placeholder=""We're writing to [inset]. Congrats from OpenAI!"" Class=""h-full min-h-[300px] p-4 lg:min-h-[700px] xl:min-h-[700px]"" />
+                            <div class=""rounded-md border border-border bg-muted""></div>
+                        </div>
+                        <div class=""flex items-center gap-2"">
+                            <Button>Submit</Button>
+                            <Button Variant=""Button.ButtonVariant.Secondary"">
+                                <span class=""sr-only"">Show history</span>
+                                <SvgGlyph Svg=""@(Lucide.RotateCcw)"" />
+                            </Button>
+                        </div>
+                    </TabsContent>
+                    <TabsContent Value=""edit"" Class=""mt-0 flex flex-1 flex-col gap-4 border-0 p-0"">
+                        <div class=""grid h-full gap-6 lg:grid-cols-2"">
+                            <div class=""flex flex-col gap-4"">
+                                <div class=""flex flex-1 flex-col gap-2"">
+                                    <Label For=""playground-input"" Class=""sr-only"">Input</Label>
+                                    <Textarea id=""playground-input"" placeholder=""We is going to the market."" Class=""flex-1 p-4 lg:min-h-[580px]"" />
+                                </div>
+                                <div class=""flex flex-col gap-2"">
+                                    <Label For=""playground-instructions"">Instructions</Label>
+                                    <Textarea id=""playground-instructions"" placeholder=""Fix the grammar."" />
+                                </div>
+                            </div>
+                            <div class=""min-h-[400px] rounded-md border border-border bg-muted lg:min-h-[700px]""></div>
+                        </div>
+                        <div class=""flex items-center gap-2"">
+                            <Button>Submit</Button>
+                            <Button Variant=""Button.ButtonVariant.Secondary"">
+                                <span class=""sr-only"">Show history</span>
+                                <SvgGlyph Svg=""@(Lucide.RotateCcw)"" />
+                            </Button>
+                        </div>
+                    </TabsContent>
+                </div>
+            </div>
+        </div>
+    </Tabs>
+</div>";
+
+    // shadcn's data/presets.ts and data/models.ts.
+    private sealed record Preset(string Id, string Name);
+    private sealed record Model(string Id, string Name, string Description, string Type, string? Strengths = null);
+
+    private static readonly Preset[] Presets =
+    [
+        new("9cb0e66a-9937-465d-a188-2c4c4ae2401f", "Grammatical Standard English"),
+        new("61eb0e32-2391-4cd3-adc3-66efe09bc0b7", "Summarize for a 2nd grader"),
+        new("a4e1fa51-f4ce-4e45-892c-224030a00bdd", "Text to command"),
+        new("cc198b13-4933-43aa-977e-dcd95fa30770", "Q&A"),
+        new("adfa95be-a575-45fd-a9ef-ea45386c64de", "English to other languages"),
+        new("c569a06a-0bd6-43a7-adf9-bf68c09e7a79", "Parse unstructured data"),
+        new("15ccc0d7-f37a-4f0a-8163-a37e162877dc", "Classification"),
+        new("4641ef41-1c0f-421d-b4b2-70fe431081f3", "Natural language to Python"),
+        new("48d34082-72f3-4a1b-a14d-f15aca4f57a0", "Explain code"),
+        new("dfd42fd5-0394-4810-92c6-cc907d3bfd1a", "Chat"),
+    ];
+
+    private static readonly string[] ModelTypes = ["GPT-3", "Codex"];
+
+    private static readonly Model[] Models =
+    [
+        new("c305f976-8e38-42b1-9fb7-d21b2e34f0da", "text-davinci-003", "Most capable GPT-3 model. Can do any task the other models can do, often with higher quality, longer output and better instruction-following. Also supports inserting completions within text.", "GPT-3", "Complex intent, cause and effect, creative generation, search, summarization for audience"),
+        new("464a47c3-7ab5-44d7-b669-f9cb5a9e8465", "text-curie-001", "Very capable, but faster and lower cost than Davinci.", "GPT-3", "Language translation, complex classification, sentiment, summarization"),
+        new("ac0797b0-7e31-43b6-a494-da7e2ab43445", "text-babbage-001", "Capable of straightforward tasks, very fast, and lower cost.", "GPT-3", "Moderate classification, semantic search"),
+        new("be638fb1-973b-4471-a49c-290325085802", "text-ada-001", "Capable of very simple tasks, usually the fastest model in the GPT-3 series, and lowest cost.", "GPT-3", "Parsing text, simple classification, address correction, keywords"),
+        new("b43c0ea9-5ad4-456a-ae29-26cd77b6d0fb", "code-davinci-002", "Most capable Codex model. Particularly good at translating natural language to code. In addition to completing code, also supports inserting completions within code.", "Codex"),
+        new("bbd57291-4622-4a21-9eed-dd6bd786fdd1", "code-cushman-001", "Almost as capable as Davinci Codex, but slightly faster. This speed advantage may make it preferable for real-time applications.", "Codex", "Real-time application where low-latency is preferable"),
+    ];
+
+    private string _mode = "complete";
+    private bool _presetOpen;
+    private Preset? _preset;
+    private bool _modelOpen;
+    private Model _model = Models[0];
+    private Model _peeked = Models[0];
+    private double _temperature = 0.56;
+    private double _maxLength = 256;
+    private double _topP = 0.9;
+    private bool _filterOpen;
+    private bool _deleteOpen;
+    private bool _showWarning = true;
+
+    private void DeletePreset()
+    {
+        _deleteOpen = false;
+        ToastService.Show("This preset has been deleted.", null, ToastVariant.Success);
+    }
+}

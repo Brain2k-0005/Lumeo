@@ -84,6 +84,11 @@ const blocks = [
     { label: 'Hero Section',   slug: 'hero' },
     { label: 'Dashboard Block', slug: 'dashboard-block' },
     { label: 'Settings Page',  slug: 'settings-page' },
+    { label: 'Playground',     slug: 'playground' },
+    { label: 'Playground',     slug: 'playground' },
+    { label: 'Playground',     slug: 'playground' },
+    { label: 'Playground',     slug: 'playground' },
+    { label: 'Playground',     slug: 'playground' },
 ];
 
 const blockItems = blocks.map(b => ({
