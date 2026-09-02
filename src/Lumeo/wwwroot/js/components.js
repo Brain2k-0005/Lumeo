@@ -3601,16 +3601,32 @@ export function registerColumnResize(handleId, dotnetRef, minWidth, maxWidth) {
     // every mouse move. We commit the final width ONCE on mouseup.
     const applyWidth = (w) => {
         const wpx = w + 'px';
-        th.style.width = wpx;
+        // The fill column carries its floor only (see freezeColumnWidths): writing a width
+        // would leave the fixed layout with no auto column and the remainder would spread
+        // over every column again.
+        const isFill = th.hasAttribute('data-fill-width');
+        if (!isFill) th.style.width = wpx;
         th.style.minWidth = wpx;
         for (const cell of colBodyCells) {
-            cell.style.width = wpx;
+            if (!isFill) cell.style.width = wpx;
             cell.style.minWidth = wpx;
         }
-        // The TABLE absorbs the delta, not the other columns. Without this the row still
-        // has to add up to the container, so widening one column silently narrows another.
         if (frozenTable && frozenTotal > 0) {
-            frozenTable.style.width = (frozenTotal - startWidth + w) + 'px';
+            const headerRow = th.parentElement;
+            const fillCell = headerRow ? headerRow.querySelector('th[data-fill-width]') : null;
+            if (fillCell) {
+                // With a fill column the table is the sum of the floors, and min-width: 100%
+                // keeps it at the container; the fill column shrinks as a neighbour grows
+                // instead of the table growing by the delta.
+                let total = 0;
+                for (const c of headerRow.children) {
+                    const v = parseFloat(c.hasAttribute('data-fill-width') ? c.style.minWidth : c.style.width);
+                    total += isNaN(v) ? c.getBoundingClientRect().width : v;
+                }
+                frozenTable.style.width = total + 'px';
+            } else {
+                frozenTable.style.width = (frozenTotal - startWidth + w) + 'px';
+            }
         }
     };
 
@@ -3637,19 +3653,32 @@ export function registerColumnResize(handleId, dotnetRef, minWidth, maxWidth) {
         if (thead && thead.rows.length > 1) return null;
 
         if (table.dataset.lumeoWidthsFrozen !== 'true') {
+            // Every column gets its rendered width as an explicit, fixed-layout width, so
+            // from here on a drag moves one edge and nothing else. A fill column (ReUI's
+            // meta.fillWidth) keeps only its floor: as the single width-less column of a
+            // fixed layout it takes the table's remainder, which is what lets the grid keep
+            // spanning its container (min-width: 100%). Without a fill column the table is
+            // exactly the sum of the widths and may sit narrower than the container, as a
+            // TanStack table does; min-width: 100% would hand the freed space back to every
+            // column proportionally and the dragged edge would stop following the pointer.
             const cells = Array.prototype.slice.call(headerRow.children);
             const widths = cells.map(c => c.getBoundingClientRect().width);
+            const hasFill = cells.some(c => c.hasAttribute('data-fill-width'));
             cells.forEach((c, i) => {
                 const w = widths[i] + 'px';
-                c.style.width = w;
-                c.style.minWidth = w;
+                if (!c.hasAttribute('data-fill-width')) {
+                    c.style.width = w;
+                    c.style.minWidth = w;
+                } else if (!c.style.minWidth) {
+                    // the fill column keeps the floor Blazor gave it; its rendered width is
+                    // the remainder, which must stay free to shrink when a neighbour grows
+                    c.style.minWidth = w;
+                }
             });
 
             table.style.tableLayout = 'fixed';
-            // min-width keeps a narrow grid filling its container; width lets a wide one
-            // grow past it and scroll, which the pinned-column container already handles.
             table.style.width = widths.reduce((a, b) => a + b, 0) + 'px';
-            table.style.minWidth = '100%';
+            table.style.minWidth = hasFill ? '100%' : '';
             table.dataset.lumeoWidthsFrozen = 'true';
         }
 

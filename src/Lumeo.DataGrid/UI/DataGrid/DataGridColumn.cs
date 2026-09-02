@@ -13,6 +13,13 @@ public class DataGridColumn<TItem>
     public string? Field { get; set; }
     public Func<TItem, object?>? FieldSelector { get; set; }
     public double? Width { get; set; }
+
+    /// <summary>The column that absorbs the grid's free space, as ReUI's <c>meta.fillWidth</c>
+    /// does. With every visible column sized, the grid lays out fixed: each column is exactly
+    /// its <see cref="Width"/>, and resizing one moves only its own edge. Without a fill
+    /// column the table is the sum of the widths and may be narrower than its container;
+    /// with one, that column takes the remainder so the grid still spans the container.</summary>
+    public bool FillWidth { get; set; }
     public double? MinWidth { get; set; }
     public double? MaxWidth { get; set; }
     public bool Sortable { get; set; }

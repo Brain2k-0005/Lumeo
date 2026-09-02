@@ -7,6 +7,7 @@
     id="@CellId"
     data-col-id="@Column.Id"
     data-col-pin="@Column.Pin"
+    data-fill-width="@(Column.FillWidth ? "true" : null)"
     data-reorderable="@(EffectiveReorderable ? "true" : null)"
     data-groupable="@(Column.Groupable ? "true" : null)"
     role="columnheader"
@@ -662,7 +663,9 @@
             var parts = new List<string>();
             if (Column.Width.HasValue)
             {
-                parts.Add($"width: {Column.Width.Value}px");
+                // A fill column keeps only its floor: under the fixed layout the one column
+                // without a width takes the table's remainder, which is what makes it fill.
+                if (!Column.FillWidth) parts.Add($"width: {Column.Width.Value}px");
                 parts.Add($"min-width: {Column.Width.Value}px");
             }
             if (Column.Pin == PinDirection.Left && Context?.PinnedLeftOffsets.TryGetValue(Column.Id, out var leftOff) == true)
