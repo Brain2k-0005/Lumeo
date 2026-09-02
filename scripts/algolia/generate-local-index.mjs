@@ -62,7 +62,7 @@ const patterns = [
     { label: 'Notifications', slug: 'notifications' },
     { label: 'Settings',      slug: 'settings' },
     { label: 'Social Feed',   slug: 'social-feed' },
-    { label: 'Task Tracker',  slug: 'task-tracker' },
+    { label: 'Tasks',         slug: 'tasks' },
 ];
 
 const patternItems = patterns.map(p => ({

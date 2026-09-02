@@ -165,12 +165,12 @@ const extras = [
         summary: 'Social media feed with posts, likes, and comments.',
     },
     {
-        id: 'pattern:task-tracker',
+        id: 'pattern:tasks',
         type: 'pattern',
-        title: 'Task Tracker',
-        url: '/patterns/task-tracker',
+        title: 'Tasks',
+        url: '/blocks/tasks',
         category: 'Patterns',
-        summary: 'Task list with status, priority, and filtering.',
+        summary: "shadcn's Tasks example: a filterable, sortable task table with faceted filters, row actions and pagination.",
     },
     // ── Blocks ────────────────────────────────────────────────────────────────
     {

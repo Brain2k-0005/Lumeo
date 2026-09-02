@@ -230,7 +230,7 @@ Composed examples built entirely from Lumeo components. Get the full Razor sourc
 - **Notifications** (`/blocks/notifications`) — A full notification center with tabbed inbox (All / Mentions / Activity / Followers / Security), time-grouped items with unread indicators, preference toggles, and live toast demos.
 - **Settings Page** (`/blocks/settings`) — A full settings layout with sidebar navigation, profile, account security, billing, notifications, team management, and danger zone.
 - **Social Feed** (`/blocks/social-feed`) — A three-column social media layout with navigation rail, timeline feed with posts and interactions, and a right sidebar with trending topics and follow suggestions.
-- **Task Tracker** (`/blocks/task-tracker`) — A Linear-inspired task tracker with grouped status lanes, priority icons, label badges, subtask progress, multi-select with bulk actions, and a left navigation rail.
+- **Tasks** (`/blocks/tasks`) — shadcn's Tasks example, ported one to one: a task and issue tracker with a text filter, faceted status and priority filters with counts, sortable and hideable columns, row selection, per-row actions with a label sub-menu, and pagination with a page-size select.
 
 ## Theme tokens
 
