@@ -1,6 +1,6 @@
 # Lumeo component catalog
 
-All 166 components by category, plus 16 full-page patterns and the 58 theme tokens. Generated from `components-api.json` (`node skills/lumeo/gen-catalog.mjs`).
+All 166 components by category, plus 17 full-page patterns and the 58 theme tokens. Generated from `components-api.json` (`node skills/lumeo/gen-catalog.mjs`).
 
 > This is the **offline fallback**. When the `lumeo-mcp` server is connected, prefer `lumeo_search` / `lumeo_get_component` / `lumeo_get_example` — they give the live, complete per-parameter API.
 
@@ -28,7 +28,7 @@ Satellite packages: a component tagged **[Charts]** needs `Lumeo.Charts`, **[Dat
 - **Badge** — Small label for counts, statuses, or category tags.
 - **Barcode** — Inline SVG Code 128B barcode renderer (scannable).
 - **Calendar** — Date picker calendar grid with single, range, and multi-select modes.
-- **Card** — Flexible container with header, content, and footer slots. _(sub-components: CardContent, CardDescription, CardFooter, CardHeader, CardTitle)_
+- **Card** — Flexible container with header, content, and footer slots. _(sub-components: CardAction, CardContent, CardDescription, CardFooter, CardHeader, CardTitle)_
 - **Chart** **[Charts]** — Declarative chart wrapper over ECharts — 30+ types supported. _(sub-components: AreaChart, BarChart, BoxPlotChart, CalendarHeatmapChart, CandlestickChart, ChartReferenceZone, ChartSkeleton, ChartThreshold, ChartTooltip, DonutChart, EffectScatterChart, FunnelChart, GaugeChart, GeoMapChart, GraphChart, HeatmapChart, LineChart, LiquidFillChart, MixedChart, NightingaleChart, ParallelChart, PictorialBarChart, PieChart, PolarBarChart, RadarChart, RadialChart, SankeyChart, ScatterChart, SunburstChart, ThemeRiverChart, TreeChart, TreemapChart, WaterfallChart, WordCloudChart)_
 - **Chip** — Compact removable tag, optionally toggleable. _(sub-components: ChipGroup)_
 - **DataGrid** **[DataGrid]** — Enterprise grid: sort, filter, inline edit, multi-level group (client + server), pin, virtualize, export. _(sub-components: DataGridBody, DataGridCell, DataGridColumnDef, DataGridColumnFilter, DataGridColumnGroup, DataGridColumnVisibility, DataGridDetailRow, DataGridFooter, DataGridGroupRow, DataGridHeader, DataGridHeaderCell, DataGridPagination, DataGridRow, DataGridToolbar, DataGridToolbarColumns, DataGridToolbarCopySelected, DataGridToolbarExport, DataGridToolbarFullscreen, DataGridToolbarLayouts, ToolbarContent)_
@@ -216,10 +216,10 @@ Satellite packages: a component tagged **[Charts]** needs `Lumeo.Charts`, **[Dat
 Composed examples built entirely from Lumeo components. Get the full Razor source with `lumeo_get_pattern`.
 
 - **Analytics** (`/blocks/analytics`) — A KPI analytics dashboard with metric overview cards, traffic source breakdown, page views trend, top pages table, device split bars, and geographic distribution.
-- **Authentication** (`/blocks/authentication`) — shadcn's Authentication example, ported one to one: a split page with a tinted brand panel and testimonial on the left and a create-account form (email field, submit, 'Or continue with' separator, GitHub button, terms line) on the right.
+- **Authentication** (`/blocks/authentication`) — shadcn's Authentication example, ported one to one: a split page with a tinted brand panel and a testimonial on the left, and a create-account form on the right: an email field and a submit button inside a FieldGroup, an 'Or continue with' FieldSeparator, a GitHub button, and the terms line as a FieldDescription. Submitting shows the three-second loading state.
 - **Calendar / Scheduling** (`/blocks/calendar`) — A full-featured calendar view with event chips, category filters, a mini-calendar sidebar, upcoming list, and an inline event composer.
 - **Chat** (`/blocks/chat`) — A full messaging interface with contact list, conversation view, time-grouped messages, and message input bar.
-- **Dashboard** (`/blocks/dashboard`) — shadcn's dashboard-01, ported one to one: an app sidebar with quick-create, documents and a user menu, a site header, four stat cards with trend badges, an interactive area chart with a range toggle, and a tabbed data table with row selection, inline editing and pagination.
+- **Dashboard** (`/blocks/dashboard`) — shadcn's dashboard-01, ported one to one: the app sidebar with quick-create, documents and a user menu, a site header, four stat cards with trend badges, the interactive visitors chart with a time-range toggle, and the sections table with tabs, column visibility, selection, drag-to-reorder, pagination and a detail drawer.
 - **E-Commerce** (`/blocks/ecommerce`) — An e-commerce admin dashboard with KPI cards, revenue chart, recent orders, top products, inventory alerts, and customer segment breakdown.
 - **File Manager** (`/blocks/file-manager`) — A Dropbox-inspired file manager with workspace navigation, pinned folders, recent files grid, full file table, and contextual hover actions.
 - **Filters** (`/blocks/filters`) — A full faceted-search product browser with a sticky filter sidebar, live category/brand/rating/price/date/stock filters, active chips, and a responsive product grid with favorites.
@@ -228,11 +228,11 @@ Composed examples built entirely from Lumeo components. Get the full Razor sourc
 - **Mail** (`/blocks/mail`) — A three-column inbox with folder rail, message list, reading pane, and reply composer.
 - **Music Player** (`/blocks/music`) — A full-screen music application with sidebar library navigation, album grid browsing, a 'Made for You' row, and a persistent bottom playback bar with progress and volume controls.
 - **Notifications** (`/blocks/notifications`) — A full notification center with tabbed inbox (All / Mentions / Activity / Followers / Security), time-grouped items with unread indicators, preference toggles, and live toast demos.
+- **Playground** (`/blocks/playground`) — shadcn's Playground example, ported one to one: the OpenAI-playground layout with a preset combobox, save and share, a view-code dialog and a preset actions menu with its content-filter dialog and delete confirmation; three editing modes as tabs; and a settings column with a model combobox that previews the highlighted model, plus temperature, maximum length and top-p sliders, each explained by a HoverCard.
 - **Settings Page** (`/blocks/settings`) — A full settings layout with sidebar navigation, profile, account security, billing, notifications, team management, and danger zone.
 - **Social Feed** (`/blocks/social-feed`) — A three-column social media layout with navigation rail, timeline feed with posts and interactions, and a right sidebar with trending topics and follow suggestions.
-- **Tasks** (`/blocks/tasks`) — shadcn's Tasks example, ported one to one: a task and issue tracker with a text filter, faceted status and priority filters with counts, sortable and hideable columns, row selection, per-row actions with a label sub-menu, and pagination with a page-size select.
+- **Tasks** (`/blocks/tasks`) — shadcn's Tasks example, ported one to one: a task and issue tracker with a text filter, faceted status and priority filters with counts, sortable and hideable columns, row selection, per-row actions with a label sub-menu, and pagination with a page-size select. Table, Popover, Command and DropdownMenu, on shadcn's 100 sample tasks.
 
-- **Playground** (`/blocks/playground`) — shadcn's Playground example, ported one to one: a prompt editor with a preset combobox, save/share/view-code, three editing modes as tabs, and a settings column with a model combobox and temperature, maximum-length and top-p sliders.
 ## Theme tokens
 
 The ONLY legal colours. Use as Tailwind-style utilities: `bg-{token}`, `text-{token}`, `border-{token}`, `ring-{token}`, `fill-{token}`. Radius tokens → `rounded-[var(--radius-…)]`. Never raw hex/hsl; never `dark:` prefixes (dark mode swaps the variable values).
