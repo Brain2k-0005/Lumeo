@@ -336,6 +336,11 @@ public interface IComponentInteropService : IAsyncDisposable, IDisposable
     /// DataGrid's own keyboard resize simply has no effect against a legacy double.</summary>
     ValueTask NudgeColumnResize(string handleId, double delta) => ValueTask.CompletedTask;
 
+    /// <summary>Fits a resizable column to its content, exactly as a double-click on its resize
+    /// handle does (the width commits through the registered handler). Returns false when no
+    /// resize handle is registered for <paramref name="handleId"/>. Additive DIM.</summary>
+    ValueTask<bool> AutoFitColumn(string handleId) => ValueTask.FromResult(false);
+
     // DataGrid Column Reorder (pointer-based touch/pen) — one delegated listener per
     // grid; commitHandler(sourceColumnId, targetColumnId) fires once on release.
     // Additive DIMs (round-9 #4) — no-op default so existing implementers / test

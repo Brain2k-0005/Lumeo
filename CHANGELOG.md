@@ -5,6 +5,37 @@ All notable changes to Lumeo will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.4.0] - 2026-09-02
+
+### Added
+
+- **`DataGrid` column menu.** `ColumnMenu="true"` turns the header click into the
+  shadcn/ReUI column menu instead of a sort toggle: sort ascending / descending (a check
+  marks the current direction, picking it again clears), fit to content, pin left / right,
+  move left / right. Entries follow the column's `Sortable`, `Resizable`, `Pinnable` and
+  `Reorderable` flags; a pinned column does not move. The menu is 160px wide with 28px
+  rows, as the reference measures. Field report 1.18.
+- **`DataGrid.OnHeaderClick`** fires before the grid's own response to a header click, with
+  `ColumnHeaderClickEventArgs.PreventDefault` to take the click over entirely. Field
+  report 1.18 asked for exactly this hook.
+- **`IComponentInteropService.AutoFitColumn`** runs a column's fit-to-content from code,
+  through the same path a double-click on the resize handle takes.
+- Six new localization strings for the menu, in all 14 locales.
+- **`DataGridColumn.FillWidth`** (and the `DataGridColumnDef` parameter): the column that
+  absorbs the grid's free space, as ReUI's `meta.fillWidth` does, so the grid keeps spanning
+  its container while every other column stays exactly its width.
+
+### Changed
+
+- **Column resizing moves one edge only.** With every visible column sized, the grid lays
+  out fixed at the sum of the widths: each column renders exactly its `Width` (it used to be
+  stretched to fill the container), and dragging a handle changes that column alone, 1:1
+  with the pointer. Free space goes to the `FillWidth` column when there is one; without one
+  the table may sit narrower than its container, as a TanStack table does. Before, the
+  freed space was handed back to every column proportionally as soon as the table was no
+  wider than its container, so the dragged edge lagged the pointer and the other columns
+  shifted. Grids with an unsized column keep the auto layout.
+
 ## [5.3.1] - 2026-09-02
 
 ### Fixed

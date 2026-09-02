@@ -155,6 +155,28 @@ public record ColumnPinEventArgs(
     PinDirection Direction
 );
 
+/// <summary>Raised by <c>DataGrid.OnHeaderClick</c> when a column header is clicked, before
+/// the grid's own response (toggling the sort, or opening the column menu when
+/// <c>ColumnMenu</c> is on). Set <see cref="PreventDefault"/> to keep that response from
+/// running and handle the click yourself.</summary>
+public sealed class ColumnHeaderClickEventArgs
+{
+    public ColumnHeaderClickEventArgs(string columnId, string? field)
+    {
+        ColumnId = columnId;
+        Field = field;
+    }
+
+    /// <summary>The clicked column's id.</summary>
+    public string ColumnId { get; }
+
+    /// <summary>The clicked column's field, when it has one.</summary>
+    public string? Field { get; }
+
+    /// <summary>Set to true to suppress the grid's default response to the click.</summary>
+    public bool PreventDefault { get; set; }
+}
+
 public record FilterApplyEventArgs(
     string? Field,
     FilterDescriptor? Filter

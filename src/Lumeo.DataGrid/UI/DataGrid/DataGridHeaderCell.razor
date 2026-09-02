@@ -7,6 +7,7 @@
     id="@CellId"
     data-col-id="@Column.Id"
     data-col-pin="@Column.Pin"
+    data-fill-width="@(Column.FillWidth ? "true" : null)"
     data-reorderable="@(EffectiveReorderable ? "true" : null)"
     data-groupable="@(Column.Groupable ? "true" : null)"
     role="columnheader"
@@ -59,9 +60,12 @@
                pointerdown at all and would silently kill the drag gesture. *@
             <button type="button"
                     data-slot="datagrid-sort-button"
+                    id="@_menuTriggerId"
+                    aria-haspopup="@(ColumnMenu ? "menu" : null)"
+                    aria-expanded="@(ColumnMenu ? (_menuOpen ? "true" : "false") : null)"
                     class="flex-1 self-stretch min-w-0 flex items-center gap-1 select-none rounded focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-2 @(Column.Sortable ? "cursor-pointer hover:text-foreground" : "cursor-default")"
-                    @onclick="HandleSort"
-                    disabled="@(!Column.Sortable && !EffectiveReorderable)">
+                    @onclick="HandleHeaderClick"
+                    disabled="@(!Column.Sortable && !EffectiveReorderable && !ColumnMenu)">
                 <span class="truncate">@(Column.Title ?? Column.Field ?? "")</span>
                 @if (Column.Sortable && SortDirection != SortDirection.None)
                 {
@@ -204,6 +208,160 @@
         </div>
     }
 
+    @if (_menuOpen && ColumnMenu)
+
+    {
+
+        @* The column menu (shadcn/ReUI's DataGridColumnHeader): opened by a header click when
+
+           the grid has ColumnMenu on, positioned like the pin menu. Entries follow the column's
+
+           flags; a checked entry is the current state and picking it again clears it. Field
+
+           report 1.18 measured the reference at 160px wide, 4px padding, 28px rows. *@
+
+        <div id="@_menuId" role="menu" aria-label="@L["DataGrid.ColumnMenu"]" style="position: fixed; z-index: 50;"
+
+             class="min-w-40 rounded-lg border border-border/40 bg-popover text-popover-foreground shadow-md p-1"
+
+             @onkeydown="HandleMenuKeyDown">
+
+            @if (Column.Sortable)
+
+            {
+
+                <button type="button" role="menuitemradio" aria-checked="@(SortDirection == SortDirection.Ascending ? "true" : "false")"
+
+                        class="w-full flex h-7 items-center gap-2 rounded-md px-2 text-sm text-start hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:bg-accent disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+
+                        @onclick="@(() => SortFromMenu(SortDirection.Ascending))" @onclick:stopPropagation="true">
+
+                    <SvgGlyph Svg="@(LumeoIcons.ArrowUp)" class="h-3.5 w-3.5" />
+
+                    <span class="grow whitespace-nowrap">@L["DataGrid.SortAscending"]</span>
+
+                    @if (SortDirection == SortDirection.Ascending) { <SvgGlyph Svg="@(LumeoIcons.Check)" class="h-4 w-4 text-primary" /> }
+
+                </button>
+
+                <button type="button" role="menuitemradio" aria-checked="@(SortDirection == SortDirection.Descending ? "true" : "false")"
+
+                        class="w-full flex h-7 items-center gap-2 rounded-md px-2 text-sm text-start hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:bg-accent disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+
+                        @onclick="@(() => SortFromMenu(SortDirection.Descending))" @onclick:stopPropagation="true">
+
+                    <SvgGlyph Svg="@(LumeoIcons.ArrowDown)" class="h-3.5 w-3.5" />
+
+                    <span class="grow whitespace-nowrap">@L["DataGrid.SortDescending"]</span>
+
+                    @if (SortDirection == SortDirection.Descending) { <SvgGlyph Svg="@(LumeoIcons.Check)" class="h-4 w-4 text-primary" /> }
+
+                </button>
+
+                @if (Column.Resizable || Column.Pinnable || EffectiveReorderable)
+
+                {
+
+                    <div role="separator" class="-mx-1 my-1 h-px bg-border"></div>
+
+                }
+
+            }
+
+            @if (Column.Resizable)
+
+            {
+
+                <button type="button" role="menuitem" class="w-full flex h-7 items-center gap-2 rounded-md px-2 text-sm text-start hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:bg-accent disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent" @onclick="FitFromMenu" @onclick:stopPropagation="true">
+
+                    <SvgGlyph Svg="@(LumeoIcons.Maximize2)" class="h-3.5 w-3.5" />
+
+                    <span class="grow whitespace-nowrap">@L["DataGrid.FitToContent"]</span>
+
+                </button>
+
+                @if (Column.Pinnable || EffectiveReorderable)
+
+                {
+
+                    <div role="separator" class="-mx-1 my-1 h-px bg-border"></div>
+
+                }
+
+            }
+
+            @if (Column.Pinnable)
+
+            {
+
+                <button type="button" role="menuitemradio" aria-checked="@(Column.Pin == PinDirection.Left ? "true" : "false")"
+
+                        class="w-full flex h-7 items-center gap-2 rounded-md px-2 text-sm text-start hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:bg-accent disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+
+                        @onclick="@(() => PinFromMenu(PinDirection.Left))" @onclick:stopPropagation="true">
+
+                    <SvgGlyph Svg="@(LumeoIcons.ChevronsLeft)" class="h-3.5 w-3.5" />
+
+                    <span class="grow whitespace-nowrap">@L["DataGrid.PinLeft"]</span>
+
+                    @if (Column.Pin == PinDirection.Left) { <SvgGlyph Svg="@(LumeoIcons.Check)" class="h-4 w-4 text-primary" /> }
+
+                </button>
+
+                <button type="button" role="menuitemradio" aria-checked="@(Column.Pin == PinDirection.Right ? "true" : "false")"
+
+                        class="w-full flex h-7 items-center gap-2 rounded-md px-2 text-sm text-start hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:bg-accent disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+
+                        @onclick="@(() => PinFromMenu(PinDirection.Right))" @onclick:stopPropagation="true">
+
+                    <SvgGlyph Svg="@(LumeoIcons.ChevronsRight)" class="h-3.5 w-3.5" />
+
+                    <span class="grow whitespace-nowrap">@L["DataGrid.PinRight"]</span>
+
+                    @if (Column.Pin == PinDirection.Right) { <SvgGlyph Svg="@(LumeoIcons.Check)" class="h-4 w-4 text-primary" /> }
+
+                </button>
+
+                @if (EffectiveReorderable)
+
+                {
+
+                    <div role="separator" class="-mx-1 my-1 h-px bg-border"></div>
+
+                }
+
+            }
+
+            @if (EffectiveReorderable)
+
+            {
+
+                <button type="button" role="menuitem" class="w-full flex h-7 items-center gap-2 rounded-md px-2 text-sm text-start hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:bg-accent disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent" disabled="@(!CanMove(-1))"
+
+                        @onclick="@(() => MoveFromMenu(-1))" @onclick:stopPropagation="true">
+
+                    <SvgGlyph Svg="@(LumeoIcons.ArrowLeft)" class="h-3.5 w-3.5" />
+
+                    <span class="grow whitespace-nowrap">@L["DataGrid.MoveLeft"]</span>
+
+                </button>
+
+                <button type="button" role="menuitem" class="w-full flex h-7 items-center gap-2 rounded-md px-2 text-sm text-start hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:bg-accent disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent" disabled="@(!CanMove(1))"
+
+                        @onclick="@(() => MoveFromMenu(1))" @onclick:stopPropagation="true">
+
+                    <SvgGlyph Svg="@(LumeoIcons.ArrowRight)" class="h-3.5 w-3.5" />
+
+                    <span class="grow whitespace-nowrap">@L["DataGrid.MoveRight"]</span>
+
+                </button>
+
+            }
+
+        </div>
+
+    }
+
     @if (Column.Resizable)
     {
         @* ReUI-grade resize handle: a wide (~16px) invisible hit area straddling
@@ -270,6 +428,12 @@
     /// <summary>Enables drag-to-reorder on this header cell (still gated per-column
     /// by <c>Column.Reorderable</c>).</summary>
     [Parameter] public bool Reorderable { get; set; }
+
+    /// <summary>A header click opens the column menu instead of toggling the sort.</summary>
+    [Parameter] public bool ColumnMenu { get; set; }
+
+    /// <summary>Raised before a header click's default response; cancellable.</summary>
+    [Parameter] public EventCallback<ColumnHeaderClickEventArgs> OnHeaderClick { get; set; }
 
     /// <summary>Fires when this column's filter icon is clicked, to open/close its
     /// filter popover.</summary>
@@ -371,9 +535,9 @@
             return;
         }
 
-        if ((e.Key == "Enter" || e.Key == " " || e.Key == "Spacebar") && Column.Sortable)
+        if ((e.Key == "Enter" || e.Key == " " || e.Key == "Spacebar") && (Column.Sortable || ColumnMenu))
         {
-            await HandleSort();
+            await HandleHeaderClick();
             return;
         }
 
@@ -499,7 +663,9 @@
             var parts = new List<string>();
             if (Column.Width.HasValue)
             {
-                parts.Add($"width: {Column.Width.Value}px");
+                // A fill column keeps only its floor: under the fixed layout the one column
+                // without a width takes the table's remainder, which is what makes it fill.
+                if (!Column.FillWidth) parts.Add($"width: {Column.Width.Value}px");
                 parts.Add($"min-width: {Column.Width.Value}px");
             }
             if (Column.Pin == PinDirection.Left && Context?.PinnedLeftOffsets.TryGetValue(Column.Id, out var leftOff) == true)
@@ -508,6 +674,90 @@
                 parts.Add($"right: {rightOff}px");
             return parts.Count > 0 ? string.Join("; ", parts) + ";" : null;
         }
+    }
+
+    // --- Column menu (ColumnMenu="true"): the header click opens this instead of sorting. ---
+    private readonly string _menuTriggerId = $"dg-menu-trigger-{Guid.NewGuid():N}";
+    private readonly string _menuId = $"dg-menu-{Guid.NewGuid():N}";
+    private bool _menuOpen;
+    private bool _menuPositionRegistered;
+
+    /// <summary>The header click's single entry point: the grid's OnHeaderClick runs first and
+    /// may cancel; otherwise the column menu opens (ColumnMenu on) or the sort toggles.</summary>
+    private async Task HandleHeaderClick()
+    {
+        if (OnHeaderClick.HasDelegate)
+        {
+            var args = new ColumnHeaderClickEventArgs(Column.Id, Column.Field);
+            await OnHeaderClick.InvokeAsync(args);
+            if (args.PreventDefault) return;
+        }
+        if (ColumnMenu)
+        {
+            _menuOpen = !_menuOpen;
+            return;
+        }
+        await HandleSort();
+    }
+
+    private void HandleMenuKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape") _menuOpen = false;
+    }
+
+    /// <summary>Picking the direction that is already applied clears the sort, as ReUI does.</summary>
+    private async Task SortFromMenu(SortDirection direction)
+    {
+        _menuOpen = false;
+        if (!Column.Sortable || Context is null || Column.Field is null) return;
+        var next = SortDirection == direction ? SortDirection.None : direction;
+        await Context.OnSort.InvokeAsync(new SortDescriptor(Column.Field, next));
+    }
+
+    private async Task FitFromMenu()
+    {
+        _menuOpen = false;
+        if (!Column.Resizable) return;
+        await Interop.AutoFitColumn(_resizeHandleId);
+    }
+
+    /// <summary>Picking the side the column is already pinned to unpins it.</summary>
+    private void PinFromMenu(PinDirection direction)
+    {
+        _menuOpen = false;
+        ParentGrid?.ApplyColumnPin(Column.Id, Column.Pin == direction ? PinDirection.None : direction);
+    }
+
+    /// <summary>A pinned column stays where it is, as in the reference; otherwise the entry is
+    /// live when a reorderable neighbour exists in the same partition.</summary>
+    private bool CanMove(int direction)
+    {
+        if (Context is null || Column.Pin != PinDirection.None) return false;
+        var visible = Context.VisibleColumns;
+        var srcIdx = -1;
+        for (var i = 0; i < visible.Count; i++)
+        {
+            if (visible[i].Id == Column.Id) { srcIdx = i; break; }
+        }
+        if (srcIdx < 0) return false;
+        var j = srcIdx + direction;
+        while (j >= 0 && j < visible.Count && visible[j].Pin == Column.Pin && !visible[j].Reorderable)
+            j += direction;
+        return j >= 0 && j < visible.Count && visible[j].Pin == Column.Pin;
+    }
+
+    private async Task MoveFromMenu(int direction)
+    {
+        _menuOpen = false;
+        if (!CanMove(direction)) return;
+        await HandleKeyboardReorder(direction);
+    }
+
+    private async Task CleanupColumnMenu()
+    {
+        try { await Interop.UnpositionFixed(_menuId); } catch (JSDisconnectedException) { }
+        try { await Interop.UnregisterClickOutside(_menuId); } catch (JSDisconnectedException) { }
+        _menuPositionRegistered = false;
     }
 
     private async Task HandleSort()
@@ -631,6 +881,25 @@
             else if (!_pinMenuOpen && _pinPositionRegistered)
             {
                 await CleanupPinMenu();
+            }
+        }
+
+        if (ColumnMenu)
+        {
+            if (_menuOpen && !_menuPositionRegistered)
+            {
+                await Interop.PositionFixed(_menuId, _menuTriggerId, align: "start", matchWidth: false, side: "bottom");
+                await Interop.RegisterClickOutside(_menuId, _menuTriggerId, async () =>
+                {
+                    _menuOpen = false;
+                    await CleanupColumnMenu();
+                    await InvokeAsync(StateHasChanged);
+                });
+                _menuPositionRegistered = true;
+            }
+            else if (!_menuOpen && _menuPositionRegistered)
+            {
+                await CleanupColumnMenu();
             }
         }
 
@@ -788,6 +1057,10 @@
         if (_pinPositionRegistered)
         {
             await CleanupPinMenu();
+        }
+        if (_menuPositionRegistered)
+        {
+            await CleanupColumnMenu();
         }
     }
 }

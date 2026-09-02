@@ -320,6 +320,7 @@
 
         <div class="overflow-auto flex-1" @onclick="CloseContextMenu">
             <table class="w-full caption-bottom text-sm"
+                   style="@TableStyle"
                    id="@_gridId"
                    role="@(IsTreeGridMode ? "treegrid" : "grid")"
                    aria-rowcount="@(context.HeaderRowOffset - 1 + context.CountBodyRows(DetailTemplate is not null, !UseVirtualization && !_useServerVirtualization))"
@@ -332,6 +333,8 @@
                                 OnFilterToggle="HandleFilterToggle"
                                 OnFilterApply="HandleFilterApply"
                                 Reorderable="Reorderable"
+                                ColumnMenu="ColumnMenu"
+                                OnHeaderClick="OnHeaderClick"
                                 OnColumnReorder="HandleColumnReorder" />
 
                 <DataGridBody TItem="TItem"
@@ -573,6 +576,13 @@
     /// Default false.</summary>
     [Parameter] public bool Reorderable { get; set; }
 
+    /// <summary>When true, a click on a column header opens a column menu, as the shadcn/ReUI
+    /// data grid does, instead of toggling the sort: sort ascending / descending, fit to
+    /// content, pin left / right, move left / right. Entries follow the column's
+    /// <c>Sortable</c>, <c>Resizable</c>, <c>Pinnable</c> and <c>Reorderable</c> flags.
+    /// Default false.</summary>
+    [Parameter] public bool ColumnMenu { get; set; }
+
     /// <summary>Enables drag-to-reorder rows via a pointer drag on the row. Default false.</summary>
     [Parameter] public bool RowReorderable { get; set; }
 
@@ -813,6 +823,11 @@
     /// <summary>Fires when a column is reordered via drag (<see cref="Reorderable"/>) or the
     /// column-visibility menu, carrying the moved column's id and its old/new index.</summary>
     [Parameter] public EventCallback<ColumnReorderEventArgs> OnColumnReorder { get; set; }
+
+    /// <summary>Fires when a column header is clicked, before the grid's own response (the
+    /// sort toggle, or the column menu when <see cref="ColumnMenu"/> is on). Set
+    /// <see cref="ColumnHeaderClickEventArgs.PreventDefault"/> to handle the click yourself.</summary>
+    [Parameter] public EventCallback<ColumnHeaderClickEventArgs> OnHeaderClick { get; set; }
     /// <summary>
     /// Raised when a column is resized through the built-in UI — a pointer drag on
     /// the resize handle, a keyboard nudge (arrow keys on the focused handle), or a
@@ -1129,6 +1144,22 @@
     private List<DataGridColumn<TItem>> _orderedColumns = new();
     // Cached visible-columns projection — recomputed only when columns change or
     // visibility is toggled, not on every Blazor render cycle.
+    /// <summary>With every visible column sized, the table lays out fixed at the sum of the
+    /// widths (ReUI with columnsResizable): each column is exactly its Width and resizing one
+    /// moves only its own edge. A FillWidth column keeps the table at least as wide as its
+    /// container and takes the remainder; without one the table may sit narrower than the
+    /// container, as TanStack's does. Unsized columns keep the auto layout.</summary>
+    private string? TableStyle
+    {
+        get
+        {
+            if (_visibleColumns.Count == 0 || _visibleColumns.Any(c => !c.Width.HasValue)) return null;
+            var sum = _visibleColumns.Sum(c => c.Width!.Value);
+            var fill = _visibleColumns.Any(c => c.FillWidth);
+            return $"table-layout: fixed; width: {sum.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)}px;{(fill ? " min-width: 100%;" : "")}";
+        }
+    }
+
     private System.Collections.ObjectModel.ReadOnlyCollection<DataGridColumn<TItem>> _visibleColumns =
         new List<DataGridColumn<TItem>>().AsReadOnly();
 
