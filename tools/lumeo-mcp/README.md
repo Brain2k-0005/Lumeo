@@ -128,7 +128,7 @@ The component schema is generated at build time, not hand-maintained:
 `tools/Lumeo.RegistryGen` reads the actual Razor source via Roslyn and emits full
 params / enums / events / sub-component metadata for every component into
 `src/Lumeo/registry/`. `scripts/sync-registry.mjs` copies the generated
-`registry.json` (164 components) and `components-api.json` here at `prebuild`
+`registry.json` (166 components) and `components-api.json` here at `prebuild`
 time, so the catalog never drifts from the source.
 
 `src/components.ts` only layers a few extra hand-curated example snippets on top —
