@@ -31,6 +31,8 @@ public class RadiusTokenGuardTests
         // shadcn keeps the progress track and bar rounded-full at every theme radius
         // (measured live 2026-09-01); a bar is a bar, not a card corner. 5.1 alignment.
         "src/Lumeo/UI/Progress/Progress.razor",
+        // shadcn's slider track, range and thumb are rounded-full at every theme radius too
+        "src/Lumeo/UI/Slider/Slider.razor",
 
         // Pick-point / drag affordances — platform-recognized circles.
         "src/Lumeo/UI/ColorPicker/ColorPicker.razor",

@@ -62,7 +62,7 @@ const patterns = [
     { label: 'Notifications', slug: 'notifications' },
     { label: 'Settings',      slug: 'settings' },
     { label: 'Social Feed',   slug: 'social-feed' },
-    { label: 'Task Tracker',  slug: 'task-tracker' },
+    { label: 'Tasks',         slug: 'tasks' },
 ];
 
 const patternItems = patterns.map(p => ({
@@ -82,8 +82,12 @@ const blocks = [
     { label: 'OTP Verify',     slug: 'otp-verify' },
     { label: 'Pricing Table',  slug: 'pricing' },
     { label: 'Hero Section',   slug: 'hero' },
-    { label: 'Dashboard Block', slug: 'dashboard-block' },
     { label: 'Settings Page',  slug: 'settings-page' },
+    { label: 'Playground',     slug: 'playground' },
+    { label: 'Playground',     slug: 'playground' },
+    { label: 'Playground',     slug: 'playground' },
+    { label: 'Playground',     slug: 'playground' },
+    { label: 'Playground',     slug: 'playground' },
 ];
 
 const blockItems = blocks.map(b => ({

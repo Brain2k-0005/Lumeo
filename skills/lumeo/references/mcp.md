@@ -44,7 +44,7 @@ Returns `{ ok, issues: [{ severity: "error"|"warning", component, message }], su
 The 58 colour + radius tokens: `{ count, usage, tokens: [{ token, cssVar }] }`. Use as `bg-{token}`, `text-{token}`, `border-{token}`, `ring-{token}`; radii as `rounded-[var(--radius-…)]`. Never raw hex; never `dark:` prefixes.
 
 ### `lumeo_list_patterns` `{}` / `lumeo_get_pattern` `{ key }`
-The 16 full-page "blocks" (dashboard, authentication, calendar, chat, ecommerce, file-manager, filters, form-wizard, kanban, mail, music, notifications, settings, social-feed, task-tracker, analytics). `list` → `[{ title, key, route, description }]`. `get` → `{ title, route, description, examples: [{ title, code }] }`. Great starting skeletons for a real page.
+The 17 full-page "blocks" (dashboard, authentication, calendar, chat, ecommerce, file-manager, filters, form-wizard, kanban, mail, music, notifications, settings, social-feed, tasks, playground, analytics). `list` → `[{ title, key, route, description }]`. `get` → `{ title, route, description, examples: [{ title, code }] }`. Great starting skeletons for a real page.
 
 ### `lumeo_changelog` `{}`
 `{ version, apiSchemaGenerated, componentCount, changelog, note }` — which version's API surface this MCP reflects.

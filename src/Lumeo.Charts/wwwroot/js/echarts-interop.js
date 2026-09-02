@@ -134,6 +134,9 @@ function resolveCssVarValue(str) {
     if (!match) return str;
     const varName = match[1];
     const resolved = getCssVar(varName);
+    // A colour token is never a length: probing it as a width returned 0, which ECharts
+    // then received as a gradient stop colour ("could not be parsed as a color").
+    if (varName.startsWith('--color')) return resolved || str;
     // A var() reference sitting inside a numeric option (e.g. a bar corner-radius
     // array built from "var(--radius-sm)" — see BarChart.razor / EChartItemStyle.
     // BorderRadiusCorners) resolves to a raw CSS length string ("0.75rem", "12px"),
@@ -166,6 +169,12 @@ function resolveCssVarValue(str) {
 function getCssVar(name) {
     const raw = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
     if (!raw) return '';
+    // lumeo.css defines every colour token as `var(--x, <default>)`, so the raw value starts
+    // with "var(" and none of the colour-function prefixes below match. Let the browser
+    // resolve the nesting: colorToHex applies it as a colour and reads the computed value.
+    if (raw.startsWith('var(') && (name.startsWith('--color') || /oklch\(|hsl\(|rgb\(|lab\(|lch\(|#/.test(raw))) {
+        return colorToHex(`var(${name})`);
+    }
     // Only convert color-like values to hex; leave non-color values (e.g. --radius) as-is
     if (raw.startsWith('#') || raw.startsWith('rgb') || raw.startsWith('hsl') ||
         raw.startsWith('oklch') || raw.startsWith('color(') || raw.startsWith('lab(') ||

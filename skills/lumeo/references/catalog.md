@@ -216,10 +216,10 @@ Satellite packages: a component tagged **[Charts]** needs `Lumeo.Charts`, **[Dat
 Composed examples built entirely from Lumeo components. Get the full Razor source with `lumeo_get_pattern`.
 
 - **Analytics** (`/blocks/analytics`) — A KPI analytics dashboard with metric overview cards, traffic source breakdown, page views trend, top pages table, device split bars, and geographic distribution.
-- **Authentication** (`/blocks/authentication`) — Three production-ready auth screens: Sign In with social providers, Sign Up with password strength, and Two-Factor OTP verification.
+- **Authentication** (`/blocks/authentication`) — shadcn's Authentication example, ported one to one: a split page with a tinted brand panel and testimonial on the left and a create-account form (email field, submit, 'Or continue with' separator, GitHub button, terms line) on the right.
 - **Calendar / Scheduling** (`/blocks/calendar`) — A full-featured calendar view with event chips, category filters, a mini-calendar sidebar, upcoming list, and an inline event composer.
 - **Chat** (`/blocks/chat`) — A full messaging interface with contact list, conversation view, time-grouped messages, and message input bar.
-- **Dashboard** (`/blocks/dashboard`) — A complete analytics dashboard built with Lumeo components. Includes a top bar, stats cards, revenue chart, activity feed, data table, and mini charts.
+- **Dashboard** (`/blocks/dashboard`) — shadcn's dashboard-01, ported one to one: an app sidebar with quick-create, documents and a user menu, a site header, four stat cards with trend badges, an interactive area chart with a range toggle, and a tabbed data table with row selection, inline editing and pagination.
 - **E-Commerce** (`/blocks/ecommerce`) — An e-commerce admin dashboard with KPI cards, revenue chart, recent orders, top products, inventory alerts, and customer segment breakdown.
 - **File Manager** (`/blocks/file-manager`) — A Dropbox-inspired file manager with workspace navigation, pinned folders, recent files grid, full file table, and contextual hover actions.
 - **Filters** (`/blocks/filters`) — A full faceted-search product browser with a sticky filter sidebar, live category/brand/rating/price/date/stock filters, active chips, and a responsive product grid with favorites.
@@ -230,8 +230,9 @@ Composed examples built entirely from Lumeo components. Get the full Razor sourc
 - **Notifications** (`/blocks/notifications`) — A full notification center with tabbed inbox (All / Mentions / Activity / Followers / Security), time-grouped items with unread indicators, preference toggles, and live toast demos.
 - **Settings Page** (`/blocks/settings`) — A full settings layout with sidebar navigation, profile, account security, billing, notifications, team management, and danger zone.
 - **Social Feed** (`/blocks/social-feed`) — A three-column social media layout with navigation rail, timeline feed with posts and interactions, and a right sidebar with trending topics and follow suggestions.
-- **Task Tracker** (`/blocks/task-tracker`) — A Linear-inspired task tracker with grouped status lanes, priority icons, label badges, subtask progress, multi-select with bulk actions, and a left navigation rail.
+- **Tasks** (`/blocks/tasks`) — shadcn's Tasks example, ported one to one: a task and issue tracker with a text filter, faceted status and priority filters with counts, sortable and hideable columns, row selection, per-row actions with a label sub-menu, and pagination with a page-size select.
 
+- **Playground** (`/blocks/playground`) — shadcn's Playground example, ported one to one: a prompt editor with a preset combobox, save/share/view-code, three editing modes as tabs, and a settings column with a model combobox and temperature, maximum-length and top-p sliders.
 ## Theme tokens
 
 The ONLY legal colours. Use as Tailwind-style utilities: `bg-{token}`, `text-{token}`, `border-{token}`, `ring-{token}`, `fill-{token}`. Radius tokens → `rounded-[var(--radius-…)]`. Never raw hex/hsl; never `dark:` prefixes (dark mode swaps the variable values).

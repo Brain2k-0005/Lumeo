@@ -1,583 +1,139 @@
 @page "/blocks/authentication"
 @namespace Lumeo.Docs.Pages.Patterns
-@using Lumeo.Services
-@inject ToastService ToastService
 
-<PageTitle>Authentication Pattern — Lumeo</PageTitle>
+<PageTitle>Authentication — Lumeo Blocks</PageTitle>
 
-<PageHeader Title="Authentication" Description="Three production-ready auth screens: Sign In with social providers, Sign Up with password strength, and Two-Factor OTP verification." />
+<PageHeader Title="Authentication"
+            Description="shadcn's Authentication example, ported one to one: a split page with a tinted brand panel and a testimonial on the left, and a create-account form on the right: an email field and a submit button inside a FieldGroup, an 'Or continue with' FieldSeparator, a GitHub button, and the terms line as a FieldDescription. Submitting shows the three-second loading state." />
 
-<Stack Gap="10">
-
-    <!-- Sign In -->
-    <ComponentDemo Title="Sign In" Code="@_signInCode">
-        <Flex Class="items-stretch justify-center gap-0 w-full min-w-[700px] rounded-[var(--radius-lg)] overflow-hidden border border-border/40">
-
-            <!-- Left branding panel -->
-            <Stack Class="hidden lg:flex w-80 shrink-0 bg-primary p-10" Gap="6">
-                <Flex Class="h-10 w-10 items-center justify-center rounded-[var(--radius)] bg-primary-foreground/10">
-                    <DynamicIcon Name="Zap" Class="h-5 w-5 text-primary-foreground" />
-                </Flex>
-                <Stack Gap="2" Class="mt-auto">
-                    <Heading Level="2" Class="text-2xl font-bold text-primary-foreground leading-tight">
-                        The fastest way to ship products.
-                    </Heading>
-                    <Lumeo.Text Class="text-sm text-primary-foreground/70 leading-relaxed">
-                        Join 12,000+ teams using Acme to design, build, and deliver better products together.
-                    </Lumeo.Text>
-                </Stack>
-                <Stack Gap="3">
-                    @foreach (var t in _testimonials)
-                    {
-                        <Flex Align="start" Gap="2" Class="text-primary-foreground/80">
-                            <DynamicIcon Name="Star" Class="h-3 w-3 mt-0.5 shrink-0 fill-primary-foreground/80 text-primary-foreground/80" />
-                            <Lumeo.Text Class="text-xs leading-relaxed">@t</Lumeo.Text>
-                        </Flex>
-                    }
-                </Stack>
-            </Stack>
-
-            <!-- Sign In form -->
-            <Flex Class="flex-1 items-center justify-center bg-card p-8 lg:p-12">
-                <Stack Class="w-full max-w-sm" Gap="6">
-                    <Stack Gap="1.5">
-                        <Heading Level="2" Size="xl" Class="font-bold">Sign in</Heading>
-                        <Lumeo.Text Color="muted" Size="sm">Don't have an account? <Lumeo.Link Href="#" Class="text-primary hover:underline font-medium">Sign up</Lumeo.Link></Lumeo.Text>
-                    </Stack>
-
-                    <!-- Social providers -->
-                    <Grid Class="grid-cols-3 gap-2">
-                        <Button Variant="Button.ButtonVariant.Outline" Class="w-full gap-2" @onclick="@(() => ToastService.Info("Social auth", "Google OAuth flow would start here."))">
-                            <DynamicIcon Name="Chrome" Class="h-4 w-4" />
-                            Google
-                        </Button>
-                        <Button Variant="Button.ButtonVariant.Outline" Class="w-full gap-2" @onclick="@(() => ToastService.Info("Social auth", "GitHub OAuth flow would start here."))">
-                            <DynamicIcon Name="Github" Class="h-4 w-4" />
+<Stack Gap="10" Class="mt-8">
+    <ComponentDemo Id="authentication" Title="Authentication" Description="A split authentication page with an email sign-in form." Code="@_code">
+        <div class="relative grid min-h-[800px] items-center justify-center overflow-hidden rounded-[var(--radius-lg)] border border-border/40 bg-background lg:grid-cols-2">
+            <Button Variant="Button.ButtonVariant.Ghost" Href="#" Class="absolute top-4 right-4 md:top-8 md:right-8">Login</Button>
+            <div class="relative hidden h-full flex-col p-10 text-primary lg:flex dark:border-r">
+                <div class="absolute inset-0 bg-primary/5"></div>
+                <div class="relative z-20 flex items-center text-lg font-medium">
+                    <SvgGlyph Svg="@(Lucide.Command)" class="mr-2 h-6 w-6" />
+                    Acme Inc
+                </div>
+                <div class="relative z-20 mt-auto">
+                    <blockquote class="leading-normal text-balance">
+                        &ldquo;This library has saved me countless hours of work and helped me deliver stunning designs to my clients faster than ever before.&rdquo; - Sofia Davis
+                    </blockquote>
+                </div>
+            </div>
+            <div class="flex items-center justify-center lg:h-[800px] lg:p-8">
+                <div class="mx-auto flex w-full flex-col justify-center gap-6 sm:w-[350px]">
+                    <div class="flex flex-col gap-2 text-center">
+                        <h1 class="text-2xl font-semibold tracking-tight">Create an account</h1>
+                        <p class="text-sm text-muted-foreground">Enter your email below to create your account</p>
+                    </div>
+                    <div class="grid gap-6">
+                        <form @onsubmit="Submit" @onsubmit:preventDefault>
+                            <FieldGroup>
+                                <Field>
+                                    <FieldLabel Class="sr-only" For="auth-email">Email</FieldLabel>
+                                    <Input id="auth-email" Placeholder="name@example.com" type="email" autocapitalize="none" autocomplete="email" autocorrect="off" Disabled="@_loading" />
+                                </Field>
+                                <Field>
+                                    <Button Type="Button.ButtonType.Submit" Disabled="@_loading">
+                                        @if (_loading)
+                                        {
+                                            <Spinner />
+                                        }
+                                        Sign In with Email
+                                    </Button>
+                                </Field>
+                            </FieldGroup>
+                        </form>
+                        <FieldSeparator>Or continue with</FieldSeparator>
+                        <Button Variant="Button.ButtonVariant.Outline" Disabled="@_loading">
+                            @if (_loading)
+                            {
+                                <Spinner />
+                            }
+                            else
+                            {
+                                <ProviderIcon Provider="GitHub" class="mr-2 h-4 w-4" />
+                            }
                             GitHub
                         </Button>
-                        <Button Variant="Button.ButtonVariant.Outline" Class="w-full gap-2" @onclick="@(() => ToastService.Info("Social auth", "Apple Sign In would start here."))">
-                            <DynamicIcon Name="Apple" Class="h-4 w-4" />
-                            Apple
-                        </Button>
-                    </Grid>
-
-                    <!-- Divider -->
-                    <div class="relative">
-                        <div class="absolute inset-0 flex items-center"><div class="w-full border-t border-border/40"></div></div>
-                        <div class="relative flex justify-center text-xs uppercase">
-                            <Lumeo.Text As="span" Class="bg-card px-2 text-muted-foreground tracking-wider">or continue with email</Lumeo.Text>
-                        </div>
                     </div>
-
-                    <!-- Form -->
-                    <Stack Gap="4">
-                        @if (_siError is not null)
-                        {
-                            <Alert Variant="Alert.AlertVariant.Destructive">
-                                <Flex Align="center" Gap="2">
-                                    <DynamicIcon Name="CircleAlert" Class="h-4 w-4 shrink-0" />
-                                    <Lumeo.Text Size="sm">@_siError</Lumeo.Text>
-                                </Flex>
-                            </Alert>
-                        }
-
-                        <Stack Gap="2">
-                            <Label for="si-email">Email address</Label>
-                            <Lumeo.Input id="si-email" type="email" placeholder="jordan@acme.com"
-                                   Value="@_siEmail" OnInput="@(e => _siEmail = e.Value?.ToString() ?? "")">
-                                <Prefix><DynamicIcon Name="Mail" Class="h-4 w-4 text-muted-foreground" /></Prefix>
-                            </Lumeo.Input>
-                        </Stack>
-
-                        <Stack Gap="2">
-                            <Flex Align="center" Justify="between">
-                                <Label for="si-pass">Password</Label>
-                                <Lumeo.Link Href="#" Class="text-xs text-primary hover:underline">Forgot password?</Lumeo.Link>
-                            </Flex>
-                            <PasswordInput @bind-Value="_siPassword" Placeholder="Enter your password" />
-                        </Stack>
-
-                        <Flex Align="center" Gap="2">
-                            <Checkbox @bind-Checked="_siRemember" />
-                            <Label Class="text-sm font-normal cursor-pointer">Remember me for 30 days</Label>
-                        </Flex>
-
-                        <Button Class="w-full" IsLoading="@_siLoading" OnClick="@HandleSignIn">
-                            @if (!_siLoading)
-                            {
-                                <DynamicIcon Name="LogIn" Class="h-4 w-4" />
-                            }
-                            Sign in
-                        </Button>
-                    </Stack>
-
-                    <Lumeo.Text Size="xs" Color="muted" Align="center">
-                        By signing in you agree to our <Lumeo.Link Href="#" Class="hover:underline">Terms</Lumeo.Link> and <Lumeo.Link Href="#" Class="hover:underline">Privacy Policy</Lumeo.Link>.
-                    </Lumeo.Text>
-                </Stack>
-            </Flex>
-        </Flex>
-        <ToastProvider />
+                    <FieldDescription Class="px-6 text-center">
+                        By clicking continue, you agree to our <a href="#">Terms of Service</a> and <a href="#">Privacy Policy</a>.
+                    </FieldDescription>
+                </div>
+            </div>
+        </div>
     </ComponentDemo>
+</Stack>
 
-    <!-- Sign Up -->
-    <ComponentDemo Title="Sign Up" Code="@_signUpCode">
-        <Flex Class="items-stretch justify-center gap-0 w-full min-w-[700px] rounded-[var(--radius-lg)] overflow-hidden border border-border/40">
-
-            <!-- Sign Up form -->
-            <Flex Class="flex-1 items-center justify-center bg-card p-8 lg:p-12">
-                <Stack Class="w-full max-w-sm" Gap="6">
-                    <Stack Gap="1.5">
-                        <Heading Level="2" Size="xl" Class="font-bold">Create an account</Heading>
-                        <Lumeo.Text Color="muted" Size="sm">Already have one? <Lumeo.Link Href="#" Class="text-primary hover:underline font-medium">Sign in</Lumeo.Link></Lumeo.Text>
-                    </Stack>
-
-                    <!-- Social providers -->
-                    <Grid Class="grid-cols-2 gap-2">
-                        <Button Variant="Button.ButtonVariant.Outline" Class="w-full gap-2">
-                            <DynamicIcon Name="Chrome" Class="h-4 w-4" />
-                            Continue with Google
-                        </Button>
-                        <Button Variant="Button.ButtonVariant.Outline" Class="w-full gap-2">
-                            <DynamicIcon Name="Github" Class="h-4 w-4" />
-                            Continue with GitHub
-                        </Button>
-                    </Grid>
-
-                    <div class="relative">
-                        <div class="absolute inset-0 flex items-center"><div class="w-full border-t border-border/40"></div></div>
-                        <div class="relative flex justify-center text-xs uppercase">
-                            <Lumeo.Text As="span" Class="bg-card px-2 text-muted-foreground tracking-wider">or register with email</Lumeo.Text>
-                        </div>
-                    </div>
-
-                    <Stack Gap="4">
-                        <Grid Class="grid-cols-2 gap-3">
-                            <Stack Gap="2">
-                                <Label>First name</Label>
-                                <Input @bind-Value="_suFirstName" placeholder="Jordan" />
-                            </Stack>
-                            <Stack Gap="2">
-                                <Label>Last name</Label>
-                                <Input @bind-Value="_suLastName" placeholder="Rivera" />
-                            </Stack>
-                        </Grid>
-
-                        <Stack Gap="2">
-                            <Label>Work email</Label>
-                            <Lumeo.Input type="email" placeholder="jordan@acme.com"
-                                   Value="@_suEmail"
-                                   OnInput="@(e => _suEmail = e.Value?.ToString() ?? "")">
-                                <Prefix><DynamicIcon Name="Mail" Class="h-4 w-4 text-muted-foreground" /></Prefix>
-                            </Lumeo.Input>
-                        </Stack>
-
-                        <Stack Gap="2">
-                            <Label>Password</Label>
-                            <PasswordInput @bind-Value="_suPassword" Placeholder="Minimum 8 characters" ShowStrength="true" />
-                        </Stack>
-
-                        <Stack Gap="2">
-                            <Label>Confirm password</Label>
-                            <PasswordInput @bind-Value="_suConfirm" Placeholder="Re-enter password" />
-                            @if (!string.IsNullOrEmpty(_suConfirm) && _suPassword != _suConfirm)
-                            {
-                                <Lumeo.Text Size="xs" Class="text-destructive">Passwords do not match.</Lumeo.Text>
-                            }
-                        </Stack>
-
-                        <Flex Align="start" Gap="2">
-                            <Checkbox @bind-Checked="_suTerms" Class="mt-0.5" />
-                            <Lumeo.Text Size="sm" Color="muted">
-                                I agree to the <Lumeo.Link Href="#" Class="text-primary hover:underline">Terms of Service</Lumeo.Link>
-                                and <Lumeo.Link Href="#" Class="text-primary hover:underline">Privacy Policy</Lumeo.Link>
-                            </Lumeo.Text>
-                        </Flex>
-
-                        <Button Class="w-full" Disabled="@(!_suTerms)" OnClick="@HandleSignUp">
-                            <DynamicIcon Name="UserPlus" Class="h-4 w-4" />
-                            Create account
-                        </Button>
-                    </Stack>
-                </Stack>
-            </Flex>
-
-            <!-- Right feature panel -->
-            <Stack Class="hidden lg:flex w-72 shrink-0 bg-muted/50 border-l border-border/40 p-8" Gap="6">
-                <Heading Level="3" Size="sm" Class="font-semibold">Everything you need</Heading>
-                <Stack Gap="4">
-                    @foreach (var f in _signUpFeatures)
-                    {
-                        <Flex Align="start" Gap="3">
-                            <Flex Class="h-8 w-8 items-center justify-center rounded-[var(--radius)] bg-primary/10 shrink-0">
-                                <DynamicIcon Name="@f.Icon" Class="h-4 w-4 text-primary" />
-                            </Flex>
-                            <Stack Gap="0.5">
-                                <Lumeo.Text Size="sm" Weight="medium">@f.Title</Lumeo.Text>
-                                <Lumeo.Text Size="xs" Color="muted">@f.Body</Lumeo.Text>
-                            </Stack>
-                        </Flex>
-                    }
-                </Stack>
-                <Separator />
-                <Flex Align="center" Gap="2" Class="text-muted-foreground">
-                    <DynamicIcon Name="Shield" Class="h-4 w-4 shrink-0" />
-                    <Lumeo.Text Size="xs">SOC 2 Type II certified. GDPR compliant.</Lumeo.Text>
-                </Flex>
-            </Stack>
-        </Flex>
-    </ComponentDemo>
-
-    <!-- Two-Factor / OTP -->
-    <ComponentDemo Title="Two-Factor Verification" Code="@_twoFaCode">
-        <Flex Class="items-center justify-center py-8 min-w-[700px]">
-            <Stack Class="w-full max-w-md" Gap="0">
-                <Card Class="border-border/40">
-                    <CardHeader>
-                        <Flex Align="center" Gap="3" Class="mb-1">
-                            <Flex Class="h-10 w-10 items-center justify-center rounded-[var(--radius-lg)] bg-primary/10 shrink-0">
-                                <DynamicIcon Name="ShieldCheck" Class="h-5 w-5 text-primary" />
-                            </Flex>
-                            <Stack Gap="0.5">
-                                <Heading Level="2" Size="lg" Class="font-bold">Two-factor auth</Heading>
-                                <Lumeo.Text Size="sm" Color="muted">
-                                    Sent to <Lumeo.Text As="span" Weight="medium" Color="foreground">j••••&#64;acme.com</Lumeo.Text>
-                                </Lumeo.Text>
-                            </Stack>
-                        </Flex>
-                    </CardHeader>
-
-                    <CardContent>
-                        <Stack Gap="6">
-                            <!-- Code info -->
-                            <Flex Class="rounded-[var(--radius-lg)] bg-muted/50 border border-border/40 px-4 py-3 gap-3" Align="start">
-                                <DynamicIcon Name="Info" Class="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
-                                <Lumeo.Text Size="sm" Color="muted" Class="leading-relaxed">
-                                    Enter the 6-digit code from your authenticator app or the one we emailed you. It expires in <Lumeo.Text As="span" Weight="semibold" Color="foreground">@_countdown</Lumeo.Text>.
-                                </Lumeo.Text>
-                            </Flex>
-
-                            <Stack Gap="3">
-                                <Label Class="text-sm font-medium text-center block">Verification code</Label>
-                                <Flex Class="justify-center">
-                                    <OtpInput Length="6" @bind-Value="_otpValue" OnComplete="@HandleOtpComplete" />
-                                </Flex>
-                            </Stack>
-
-                            @if (_otpError is not null)
-                            {
-                                <Alert Variant="Alert.AlertVariant.Destructive">
-                                    <Flex Align="center" Gap="2">
-                                        <DynamicIcon Name="CircleAlert" Class="h-4 w-4 shrink-0" />
-                                        <Lumeo.Text Size="sm">@_otpError</Lumeo.Text>
-                                    </Flex>
-                                </Alert>
-                            }
-
-                            @if (_otpSuccess)
-                            {
-                                <Alert Variant="Alert.AlertVariant.Success">
-                                    <Flex Align="center" Gap="2">
-                                        <DynamicIcon Name="CircleCheck" Class="h-4 w-4 shrink-0" />
-                                        <Stack Gap="0">
-                                            <Lumeo.Text Size="sm" Weight="medium">Identity verified</Lumeo.Text>
-                                            <Lumeo.Text Size="xs" Color="muted">Redirecting you to the dashboard…</Lumeo.Text>
-                                        </Stack>
-                                    </Flex>
-                                </Alert>
-                            }
-
-                            <Button Class="w-full" IsLoading="@_otpLoading" Disabled="@_otpSuccess" OnClick="@HandleOtpVerify">
-                                @if (!_otpLoading)
+@code {
+    private const string _code = @"<div class=""relative grid min-h-[800px] items-center justify-center overflow-hidden rounded-[var(--radius-lg)] border border-border/40 bg-background lg:grid-cols-2"">
+    <Button Variant=""Button.ButtonVariant.Ghost"" Href=""#"" Class=""absolute top-4 right-4 md:top-8 md:right-8"">Login</Button>
+    <div class=""relative hidden h-full flex-col p-10 text-primary lg:flex dark:border-r"">
+        <div class=""absolute inset-0 bg-primary/5""></div>
+        <div class=""relative z-20 flex items-center text-lg font-medium"">
+            <SvgGlyph Svg=""@(Lucide.Command)"" class=""mr-2 h-6 w-6"" />
+            Acme Inc
+        </div>
+        <div class=""relative z-20 mt-auto"">
+            <blockquote class=""leading-normal text-balance"">
+                &ldquo;This library has saved me countless hours of work and helped me deliver stunning designs to my clients faster than ever before.&rdquo; - Sofia Davis
+            </blockquote>
+        </div>
+    </div>
+    <div class=""flex items-center justify-center lg:h-[800px] lg:p-8"">
+        <div class=""mx-auto flex w-full flex-col justify-center gap-6 sm:w-[350px]"">
+            <div class=""flex flex-col gap-2 text-center"">
+                <h1 class=""text-2xl font-semibold tracking-tight"">Create an account</h1>
+                <p class=""text-sm text-muted-foreground"">Enter your email below to create your account</p>
+            </div>
+            <div class=""grid gap-6"">
+                <form @onsubmit=""Submit"" @onsubmit:preventDefault>
+                    <FieldGroup>
+                        <Field>
+                            <FieldLabel Class=""sr-only"" For=""auth-email"">Email</FieldLabel>
+                            <Input id=""auth-email"" Placeholder=""name@example.com"" type=""email"" autocapitalize=""none"" autocomplete=""email"" autocorrect=""off"" Disabled=""@_loading"" />
+                        </Field>
+                        <Field>
+                            <Button Type=""Button.ButtonType.Submit"" Disabled=""@_loading"">
+                                @if (_loading)
                                 {
-                                    <DynamicIcon Name="ShieldCheck" Class="h-4 w-4" />
+                                    <Spinner />
                                 }
-                                Verify code
+                                Sign In with Email
                             </Button>
-
-                            <Flex Align="center" Justify="between">
-                                <button @onclick="@GoBackToLogin"
-                                        class="text-sm text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1.5">
-                                    <DynamicIcon Name="ChevronLeft" Class="h-3.5 w-3.5" />
-                                    Back to sign in
-                                </button>
-                                <button @onclick="@ResendCode"
-                                        class="text-sm text-primary hover:underline">
-                                    Resend code
-                                </button>
-                            </Flex>
-
-                            <Separator />
-
-                            <!-- Backup option -->
-                            <Flex Align="center" Gap="2" Class="text-muted-foreground">
-                                <DynamicIcon Name="Key" Class="h-3.5 w-3.5 shrink-0" />
-                                <Lumeo.Text Size="xs">
-                                    Lost access? Use a <Lumeo.Link Href="#" Class="text-primary hover:underline">backup code</Lumeo.Link> or
-                                    <Lumeo.Link Href="#" Class="text-primary hover:underline">contact support</Lumeo.Link>.
-                                </Lumeo.Text>
-                            </Flex>
-                        </Stack>
-                    </CardContent>
-                </Card>
-
-                <!-- Trust badges -->
-                <Flex Class="mt-4 justify-center gap-6 flex-wrap">
-                    @foreach (var badge in new[] { ("ShieldCheck","SOC 2 Type II"), ("Lock","256-bit encryption"), ("Eye","Zero-knowledge") })
+                        </Field>
+                    </FieldGroup>
+                </form>
+                <FieldSeparator>Or continue with</FieldSeparator>
+                <Button Variant=""Button.ButtonVariant.Outline"" Disabled=""@_loading"">
+                    @if (_loading)
                     {
-                        <Flex Align="center" Gap="1.5">
-                            <DynamicIcon Name="@badge.Item1" Class="h-3 w-3 text-muted-foreground" />
-                            <Lumeo.Text Size="xs" Color="muted">@badge.Item2</Lumeo.Text>
-                        </Flex>
+                        <Spinner />
                     }
-                </Flex>
-            </Stack>
-        </Flex>
-        <ToastProvider />
-    </ComponentDemo>
+                    else
+                    {
+                        <ProviderIcon Provider=""GitHub"" class=""mr-2 h-4 w-4"" />
+                    }
+                    GitHub
+                </Button>
+            </div>
+            <FieldDescription Class=""px-6 text-center"">
+                By clicking continue, you agree to our <a href=""#"">Terms of Service</a> and <a href=""#"">Privacy Policy</a>.
+            </FieldDescription>
+        </div>
+    </div>
+</div>";
 
-</Stack>
+    private bool _loading;
 
-@code {
-    // Sign In state
-    private string _siEmail = "";
-    private string _siPassword = "";
-    private bool _siRemember = false;
-    private bool _siLoading = false;
-    private string? _siError;
-
-    // Sign Up state
-    private string _suFirstName = "";
-    private string _suLastName = "";
-    private string _suEmail = "";
-    private string _suPassword = "";
-    private string _suConfirm = "";
-    private bool _suTerms = false;
-
-    // OTP state
-    private string _otpValue = "";
-    private bool _otpLoading = false;
-    private bool _otpSuccess = false;
-    private string? _otpError;
-    private string _countdown = "5:00";
-
-    private string[] _testimonials = new[]
+    // shadcn's onSubmit: three seconds of "isLoading", then back.
+    private async Task Submit()
     {
-        "Cut our review cycles in half — Priya S., Lead Designer",
-        "The best collaboration tool we've tried — Marcus L., CTO",
-        "Onboarded 40 engineers in a day — Riley T., VP Engineering",
-    };
-
-    private record FeatureItem(string Icon, string Title, string Body);
-
-    private List<FeatureItem> _signUpFeatures = new()
-    {
-        new("Zap", "Ship 2× faster", "Automated workflows cut review and deploy time dramatically."),
-        new("Users", "Seamless collaboration", "Real-time presence, comments, and shared workspaces."),
-        new("BarChart", "Built-in analytics", "Track usage, performance, and team health at a glance."),
-        new("Lock", "Enterprise security", "SSO, audit logs, role-based access, and MFA out of the box."),
-    };
-
-    private async Task HandleSignIn()
-    {
-        _siError = null;
-        if (string.IsNullOrWhiteSpace(_siEmail) || string.IsNullOrWhiteSpace(_siPassword))
-        {
-            _siError = "Please enter your email and password.";
-            return;
-        }
-        _siLoading = true;
-        await Task.Delay(1200);
-        _siLoading = false;
-        if (_siPassword == "wrong")
-        {
-            _siError = "Incorrect email or password. Please try again.";
-            return;
-        }
-        ToastService.Success("Signed in", $"Welcome back, {_siEmail.Split('@')[0]}!");
+        _loading = true;
+        await Task.Delay(3000);
+        _loading = false;
     }
-
-    private async Task HandleSignUp()
-    {
-        await Task.Delay(50);
-        ToastService.Success("Account created", $"Welcome aboard, {_suFirstName}! Check your email to verify.");
-    }
-
-    private async Task HandleOtpComplete(string otp)
-    {
-        if (otp.Length == 6) await HandleOtpVerify();
-    }
-
-    private async Task HandleOtpVerify()
-    {
-        _otpError = null;
-        if (_otpValue.Length < 6)
-        {
-            _otpError = "Please enter all 6 digits.";
-            return;
-        }
-        _otpLoading = true;
-        await Task.Delay(1400);
-        _otpLoading = false;
-        if (_otpValue == "000000")
-        {
-            _otpError = "Invalid code. Please check your email and try again.";
-            return;
-        }
-        _otpSuccess = true;
-        ToastService.Success("Verified", "Identity confirmed — redirecting to dashboard.");
-    }
-
-    private async Task ResendCode()
-    {
-        _otpValue = "";
-        _otpError = null;
-        _countdown = "5:00";
-        ToastService.Info("Code resent", "A new 6-digit code was sent to your email.");
-        await Task.CompletedTask;
-    }
-
-    private void GoBackToLogin()
-    {
-        _otpValue = "";
-        _otpError = null;
-        _otpSuccess = false;
-    }
-
-    private string _signInCode = @"<!-- Sign In card with branding panel, social providers, email/password, remember me -->
-<Flex Class=""rounded-[var(--radius-lg)] overflow-hidden border border-border/40"">
-    <!-- Left branding panel -->
-    <Stack Class=""w-80 bg-primary p-10"" Gap=""6"">
-        <DynamicIcon Name=""Zap"" Class=""h-5 w-5 text-primary-foreground"" />
-        <Heading Level=""2"" Class=""text-2xl font-bold text-primary-foreground"">
-            The fastest way to ship products.
-        </Heading>
-    </Stack>
-
-    <!-- Right form -->
-    <Flex Class=""flex-1 items-center justify-center bg-card p-12"">
-        <Stack Class=""w-full max-w-sm"" Gap=""6"">
-            <Heading Level=""2"">Sign in</Heading>
-
-            <!-- Social providers -->
-            <Grid Class=""grid-cols-3 gap-2"">
-                <Button Variant=""Button.ButtonVariant.Outline"" Class=""gap-2"">
-                    <DynamicIcon Name=""Chrome"" Class=""h-4 w-4"" /> Google
-                </Button>
-                <Button Variant=""Button.ButtonVariant.Outline"" Class=""gap-2"">
-                    <DynamicIcon Name=""Github"" Class=""h-4 w-4"" /> GitHub
-                </Button>
-                <Button Variant=""Button.ButtonVariant.Outline"" Class=""gap-2"">
-                    <DynamicIcon Name=""Apple"" Class=""h-4 w-4"" /> Apple
-                </Button>
-            </Grid>
-
-            <!-- Email / Password -->
-            <Stack Gap=""4"">
-                <Lumeo.Input type=""email"" placeholder=""jordan@acme.com"">
-                    <Prefix><DynamicIcon Name=""Mail"" Class=""h-4 w-4 text-muted-foreground"" /></Prefix>
-                </Lumeo.Input>
-                <PasswordInput Placeholder=""Enter your password"" />
-                <Flex Align=""center"" Gap=""2"">
-                    <Checkbox @bind-Checked=""_remember"" />
-                    <Label>Remember me for 30 days</Label>
-                </Flex>
-                <Button Class=""w-full"">
-                    <DynamicIcon Name=""LogIn"" Class=""h-4 w-4"" /> Sign in
-                </Button>
-            </Stack>
-        </Stack>
-    </Flex>
-</Flex>";
-
-    private string _signUpCode = @"<!-- Sign Up with name fields, email, PasswordInput with strength meter, terms checkbox -->
-<Flex Class=""rounded-[var(--radius-lg)] overflow-hidden border border-border/40"">
-    <Flex Class=""flex-1 items-center justify-center bg-card p-12"">
-        <Stack Class=""w-full max-w-sm"" Gap=""6"">
-            <Heading Level=""2"">Create an account</Heading>
-            <Grid Class=""grid-cols-2 gap-2"">
-                <Button Variant=""Button.ButtonVariant.Outline"" Class=""gap-2"">
-                    <DynamicIcon Name=""Chrome"" Class=""h-4 w-4"" /> Google
-                </Button>
-                <Button Variant=""Button.ButtonVariant.Outline"" Class=""gap-2"">
-                    <DynamicIcon Name=""Github"" Class=""h-4 w-4"" /> GitHub
-                </Button>
-            </Grid>
-            <Stack Gap=""4"">
-                <Grid Class=""grid-cols-2 gap-3"">
-                    <Input placeholder=""First name"" />
-                    <Input placeholder=""Last name"" />
-                </Grid>
-                <Input type=""email"" placeholder=""jordan@acme.com"" />
-                <PasswordInput Placeholder=""Minimum 8 characters"" ShowStrength=""true"" />
-                <PasswordInput Placeholder=""Re-enter password"" />
-                <Flex Align=""start"" Gap=""2"">
-                    <Checkbox @bind-Checked=""_terms"" />
-                    <Lumeo.Text Size=""sm"" Color=""muted"">I agree to the Terms and Privacy Policy</Lumeo.Text>
-                </Flex>
-                <Button Class=""w-full"" Disabled=""@(!_terms)"">
-                    <DynamicIcon Name=""UserPlus"" Class=""h-4 w-4"" /> Create account
-                </Button>
-            </Stack>
-        </Stack>
-    </Flex>
-    <!-- Right feature panel with icon list -->
-    <Stack Class=""w-72 bg-muted/50 border-l border-border/40 p-8"" Gap=""4"">
-        <!-- Feature bullets -->
-    </Stack>
-</Flex>";
-
-    private string _twoFaCode = @"<!-- OTP Two-Factor card with countdown, backup code link, and trust badges -->
-<Stack Class=""max-w-md mx-auto"" Gap=""0"">
-    <Card Class=""border-border/40"">
-        <CardHeader>
-            <Flex Align=""center"" Gap=""3"">
-                <Flex Class=""h-10 w-10 items-center justify-center rounded-[var(--radius-lg)] bg-primary/10"">
-                    <DynamicIcon Name=""ShieldCheck"" Class=""h-5 w-5 text-primary"" />
-                </Flex>
-                <Stack>
-                    <Heading Level=""2"">Two-factor auth</Heading>
-                    <Lumeo.Text Size=""sm"" Color=""muted"">Code sent to j••••@acme.com</Lumeo.Text>
-                </Stack>
-            </Flex>
-        </CardHeader>
-        <CardContent>
-            <Stack Gap=""6"">
-                <Flex Class=""rounded-[var(--radius-lg)] bg-muted/50 border border-border/40 px-4 py-3"" Gap=""3"">
-                    <DynamicIcon Name=""Info"" Class=""h-4 w-4 text-muted-foreground"" />
-                    <Lumeo.Text Size=""sm"" Color=""muted"">Enter the 6-digit code. Expires in 5:00.</Lumeo.Text>
-                </Flex>
-
-                <Flex Justify=""center"">
-                    <OtpInput Length=""6"" @bind-Value=""_otp"" OnComplete=""HandleOtpComplete"" />
-                </Flex>
-
-                <Button Class=""w-full"" IsLoading=""_otpLoading"" OnClick=""HandleOtpVerify"">
-                    <DynamicIcon Name=""ShieldCheck"" Class=""h-4 w-4"" /> Verify code
-                </Button>
-
-                <Flex Justify=""between"">
-                    <Button Variant=""Button.ButtonVariant.Ghost"" OnClick=""GoBack"">Back</Button>
-                    <Button Variant=""Button.ButtonVariant.Ghost"" OnClick=""ResendCode"">Resend code</Button>
-                </Flex>
-            </Stack>
-        </CardContent>
-    </Card>
-</Stack>
-
-@code {
-    private string _otp = """";
-    private bool _otpLoading;
-
-    private async Task HandleOtpComplete(string otp) { if (otp.Length == 6) await HandleOtpVerify(); }
-    private async Task HandleOtpVerify()
-    {
-        _otpLoading = true;
-        await Task.Delay(1400);
-        _otpLoading = false;
-        ToastService.Success(""Verified"", ""Welcome back!"");
-    }
-    private void ResendCode() { _otp = """"; ToastService.Info(""Resent"", ""New code sent.""); }
-    private void GoBack() { _otp = """"; }
-}";
 }
