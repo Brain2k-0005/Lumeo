@@ -1,0 +1,231 @@
+@namespace Lumeo.Docs.Shared
+@using Lumeo.Icons
+
+@* shadcn's sidebar-07 shell as a docs-only host for the full-page blocks: the team switcher,
+   nested navigation, project actions and user menu are the Sidebar block's, verbatim; the
+   inset header carries the page's breadcrumb and the page renders below it. Copy the shell
+   from /blocks/sidebar when a page's source is lifted into an app. *@
+<SidebarProvider Variant="SidebarProvider.SidebarVariant.Icon" Class="@(Cx.Merge("min-h-[640px] w-full overflow-hidden rounded-[var(--radius-lg)] border border-border/40", Class))">
+    <SidebarComponent Rail="true">
+        <SidebarHeader>
+            <SidebarMenu>
+                <SidebarMenuItem>
+                    <DropdownMenu Class="block w-full">
+                        <DropdownMenuTrigger AsChild>
+                            <ChildContentSlot Context="slot">
+                                <SidebarMenuButton Size="SidebarMenuButton.ButtonSize.Lg" id="@slot.Id" Class="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground" @attributes="slot.Attributes" @onclick="slot.OnClick">
+                                    <div class="bg-sidebar-primary text-sidebar-primary-foreground flex aspect-square size-8 items-center justify-center rounded-lg">
+                                        <SvgGlyph Svg="@_activeTeam.Logo" class="size-4" />
+                                    </div>
+                                    <div class="grid flex-1 text-left text-sm leading-tight">
+                                        <span class="truncate font-medium">@_activeTeam.Name</span>
+                                        <span class="truncate text-xs">@_activeTeam.Plan</span>
+                                    </div>
+                                    <SvgGlyph Svg="@(Lucide.ChevronsUpDown)" class="ml-auto" />
+                                </SidebarMenuButton>
+                            </ChildContentSlot>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent Class="w-56 min-w-56 rounded-lg" Align="Lumeo.Align.Start" Side="Lumeo.Side.Right">
+                            <DropdownMenuLabel Class="text-xs text-muted-foreground">Teams</DropdownMenuLabel>
+                            @foreach (var (team, index) in _teams.Select((t, i) => (t, i)))
+                            {
+                                <DropdownMenuItem Class="gap-2 p-2" OnClick="@(() => _activeTeam = team)">
+                                    <div class="flex size-6 items-center justify-center rounded-md border">
+                                        <SvgGlyph Svg="@team.Logo" class="size-3.5 shrink-0" />
+                                    </div>
+                                    @team.Name
+                                    <DropdownMenuShortcut>&#8984;@(index + 1)</DropdownMenuShortcut>
+                                </DropdownMenuItem>
+                            }
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem Class="gap-2 p-2">
+                                <div class="flex size-6 items-center justify-center rounded-md border bg-transparent">
+                                    <SvgGlyph Svg="@(Lucide.Plus)" class="size-4" />
+                                </div>
+                                <div class="font-medium text-muted-foreground">Add team</div>
+                            </DropdownMenuItem>
+                        </DropdownMenuContent>
+                    </DropdownMenu>
+                </SidebarMenuItem>
+            </SidebarMenu>
+        </SidebarHeader>
+        <SidebarContent>
+            <SidebarGroup>
+                <SidebarGroupLabel>Platform</SidebarGroupLabel>
+                <SidebarMenu>
+                    @foreach (var item in _navMain)
+                    {
+                        <Collapsible Open="@_open.Contains(item.Title)" Class="group/collapsible">
+                            <SidebarMenuItem>
+                                <SidebarMenuButton Tooltip="@item.Title" @onclick="@(() => ToggleOpen(item.Title))">
+                                    <SvgGlyph Svg="@item.Icon" />
+                                    <span>@item.Title</span>
+                                    <SvgGlyph Svg="@(Lucide.ChevronRight)" class="@($"ml-auto transition-transform duration-200 {(_open.Contains(item.Title) ? "rotate-90" : "")}")" />
+                                </SidebarMenuButton>
+                                <CollapsibleContent>
+                                    <SidebarMenuSub>
+                                        @foreach (var sub in item.Items)
+                                        {
+                                            <SidebarMenuSubItem>
+                                                <SidebarMenuSubButton Href="#"><span>@sub</span></SidebarMenuSubButton>
+                                            </SidebarMenuSubItem>
+                                        }
+                                    </SidebarMenuSub>
+                                </CollapsibleContent>
+                            </SidebarMenuItem>
+                        </Collapsible>
+                    }
+                </SidebarMenu>
+            </SidebarGroup>
+            <SidebarGroup Class="group-data-[collapsible=icon]:hidden">
+                <SidebarGroupLabel>Projects</SidebarGroupLabel>
+                <SidebarMenu>
+                    @foreach (var project in _projects)
+                    {
+                        <SidebarMenuItem>
+                            <SidebarMenuButton Href="#">
+                                <SvgGlyph Svg="@project.Icon" />
+                                <span>@project.Name</span>
+                            </SidebarMenuButton>
+                            <DropdownMenu Class="absolute inset-y-0 right-0 w-0">
+                                <DropdownMenuTrigger AsChild>
+                                    <ChildContentSlot Context="slot">
+                                        <SidebarMenuAction ShowOnHover="true" id="@slot.Id" @attributes="slot.Attributes" @onclick="slot.OnClick">
+                                            <SvgGlyph Svg="@(Lucide.Ellipsis)" />
+                                            <span class="sr-only">More</span>
+                                        </SidebarMenuAction>
+                                    </ChildContentSlot>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent Class="w-48 rounded-lg" Side="Lumeo.Side.Right" Align="Lumeo.Align.Start">
+                                    <DropdownMenuItem><SvgGlyph Svg="@(Lucide.Folder)" class="text-muted-foreground" /><span>View Project</span></DropdownMenuItem>
+                                    <DropdownMenuItem><SvgGlyph Svg="@(Lucide.Forward)" class="text-muted-foreground" /><span>Share Project</span></DropdownMenuItem>
+                                    <DropdownMenuSeparator />
+                                    <DropdownMenuItem><SvgGlyph Svg="@(Lucide.Trash2)" class="text-muted-foreground" /><span>Delete Project</span></DropdownMenuItem>
+                                </DropdownMenuContent>
+                            </DropdownMenu>
+                        </SidebarMenuItem>
+                    }
+                    <SidebarMenuItem>
+                        <SidebarMenuButton Class="text-sidebar-foreground/70">
+                            <SvgGlyph Svg="@(Lucide.Ellipsis)" class="text-sidebar-foreground/70" />
+                            <span>More</span>
+                        </SidebarMenuButton>
+                    </SidebarMenuItem>
+                </SidebarMenu>
+            </SidebarGroup>
+        </SidebarContent>
+        <SidebarFooter>
+            <SidebarMenu>
+                <SidebarMenuItem>
+                    <DropdownMenu Class="block w-full">
+                        <DropdownMenuTrigger AsChild>
+                            <ChildContentSlot Context="slot">
+                                <SidebarMenuButton Size="SidebarMenuButton.ButtonSize.Lg" id="@slot.Id" Class="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground" @attributes="slot.Attributes" @onclick="slot.OnClick">
+                                    <Avatar Shape="Avatar.AvatarShape.Square" Class="h-8 w-8 rounded-lg"><AvatarFallback Class="rounded-lg">CN</AvatarFallback></Avatar>
+                                    <div class="grid flex-1 text-left text-sm leading-tight">
+                                        <span class="truncate font-medium">shadcn</span>
+                                        <span class="truncate text-xs">m@example.com</span>
+                                    </div>
+                                    <SvgGlyph Svg="@(Lucide.ChevronsUpDown)" class="ml-auto size-4" />
+                                </SidebarMenuButton>
+                            </ChildContentSlot>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent Class="w-56 min-w-56 rounded-lg" Side="Lumeo.Side.Right" Align="Lumeo.Align.End">
+                            <DropdownMenuLabel Class="p-0 font-normal">
+                                <div class="flex items-center gap-2 px-1 py-1.5 text-left text-sm">
+                                    <Avatar Shape="Avatar.AvatarShape.Square" Class="h-8 w-8 rounded-lg"><AvatarFallback Class="rounded-lg">CN</AvatarFallback></Avatar>
+                                    <div class="grid flex-1 text-left text-sm leading-tight">
+                                        <span class="truncate font-medium">shadcn</span>
+                                        <span class="truncate text-xs">m@example.com</span>
+                                    </div>
+                                </div>
+                            </DropdownMenuLabel>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuGroup>
+                                <DropdownMenuItem><SvgGlyph Svg="@(Lucide.Sparkles)" />Upgrade to Pro</DropdownMenuItem>
+                            </DropdownMenuGroup>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuGroup>
+                                <DropdownMenuItem><SvgGlyph Svg="@(Lucide.BadgeCheck)" />Account</DropdownMenuItem>
+                                <DropdownMenuItem><SvgGlyph Svg="@(Lucide.CreditCard)" />Billing</DropdownMenuItem>
+                                <DropdownMenuItem><SvgGlyph Svg="@(Lucide.Bell)" />Notifications</DropdownMenuItem>
+                            </DropdownMenuGroup>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem><SvgGlyph Svg="@(Lucide.LogOut)" />Log out</DropdownMenuItem>
+                        </DropdownMenuContent>
+                    </DropdownMenu>
+                </SidebarMenuItem>
+            </SidebarMenu>
+        </SidebarFooter>
+    </SidebarComponent>
+    <SidebarInset>
+        <header class="flex h-16 shrink-0 items-center gap-2 transition-[width,height] ease-linear">
+            <div class="flex items-center gap-2 px-4">
+                <SidebarTrigger Class="-ml-1" />
+                <Separator Orientation="Lumeo.Orientation.Vertical" Class="mr-2 h-4" />
+                <Breadcrumb>
+                    <BreadcrumbList>
+                        <BreadcrumbItem Class="hidden md:block"><BreadcrumbLink Href="#">@Section</BreadcrumbLink></BreadcrumbItem>
+                        <BreadcrumbSeparator Class="hidden md:block" />
+                        <BreadcrumbItem><BreadcrumbPage>@Page</BreadcrumbPage></BreadcrumbItem>
+                    </BreadcrumbList>
+                </Breadcrumb>
+            </div>
+        </header>
+        <div class="flex flex-1 flex-col gap-4 p-4 pt-0">
+            @ChildContent
+        </div>
+    </SidebarInset>
+</SidebarProvider>
+
+@code {
+    /// <summary>First breadcrumb segment: the app area the page belongs to.</summary>
+    [Parameter] public string Section { get; set; } = "Build Your Application";
+
+    /// <summary>Second breadcrumb segment: the current page.</summary>
+    [Parameter] public string Page { get; set; } = "Data Fetching";
+
+    /// <summary>The page content, rendered inside the inset below the header.</summary>
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    /// <summary>Additional CSS classes for the SidebarProvider frame.</summary>
+    [Parameter] public string? Class { get; set; }
+
+    private sealed record Team(string Name, IconSource Logo, string Plan);
+    private sealed record NavItem(string Title, IconSource Icon, string[] Items);
+    private sealed record Project(string Name, IconSource Icon);
+
+    private readonly List<Team> _teams =
+    [
+        new("Acme Inc", Lucide.GalleryVerticalEnd, "Enterprise"),
+        new("Acme Corp.", Lucide.AudioWaveform, "Startup"),
+        new("Evil Corp.", Lucide.Command, "Free"),
+    ];
+
+    private Team _activeTeam = null!;
+
+    private readonly List<NavItem> _navMain =
+    [
+        new("Playground", Lucide.SquareTerminal, ["History", "Starred", "Settings"]),
+        new("Models", Lucide.Bot, ["Genesis", "Explorer", "Quantum"]),
+        new("Documentation", Lucide.BookOpen, ["Introduction", "Get Started", "Tutorials", "Changelog"]),
+        new("Settings", Lucide.Settings2, ["General", "Team", "Billing", "Limits"]),
+    ];
+
+    private readonly List<Project> _projects =
+    [
+        new("Design Engineering", Lucide.Frame),
+        new("Sales & Marketing", Lucide.ChartPie),
+        new("Travel", Lucide.Map),
+    ];
+
+    // Playground starts open, as isActive does in the block.
+    private readonly HashSet<string> _open = ["Playground"];
+
+    protected override void OnInitialized() => _activeTeam = _teams[0];
+
+    private void ToggleOpen(string title)
+    {
+        if (!_open.Remove(title)) _open.Add(title);
+    }
+}
