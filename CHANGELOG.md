@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [5.3.0] - 2026-09-02
 
+5.2.1 was tagged and never published; its three fixes ship here.
+
 shadcn's four example apps are in the blocks catalogue now, ported one to one from
 the current sources, and porting them verbatim showed where four primitives still
 drew their own thing. Each of those lands on shadcn v4 here.
@@ -46,10 +48,6 @@ drew their own thing. Each of those lands on shadcn v4 here.
 - **Chart gradient stops resolved to `0`** when a series colour was a token that
   pointed at another token (`--chart-1: var(--color-primary)`): the interop's
   colour probe followed one level only. It resolves the chain now.
-
-## [5.2.1] - 2026-09-02
-
-### Fixed
 
 - **The "dark" and "light" menu colours set the whole sidebar token set.** The theme
   customizer's menu colour used to write only `--color-sidebar` and its foreground, so a
