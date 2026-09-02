@@ -95,7 +95,11 @@
             // descendants via group-data-[collapsible=icon]: / group-data-[side=right]: —
             // the shadcn Sidebar styling convention. Additive: Lumeo's own descendants read
             // EffectiveCollapsed from the cascade, so nothing existing relies on this group.
-            var baseCss = "group flex h-full flex-col bg-sidebar text-sidebar-foreground overflow-y-auto overflow-x-hidden transition-[width,translate] duration-200 ease-linear";
+            // No h-full on the in-flow variants: height:100% of a parent that only has a min-height
+            // resolves to auto and DEFEATS the flex stretch, so a collapsed rail ended at its content
+            // (252px in a 640px shell) with the footer floating mid-way. The absolute variants keep
+            // it because they are taken out of the flex flow.
+            var baseCss = "group flex flex-col bg-sidebar text-sidebar-foreground overflow-y-auto overflow-x-hidden transition-[width,translate] duration-200 ease-linear";
 
             // Mobile sheet: a slide-in panel anchored to the edge, above content,
             // collapsed = translated fully off-canvas. Same treatment as Overlay
@@ -104,19 +108,19 @@
             // a `start-0` panel sits on the right under RTL and must slide RIGHT off
             // it, hence the `rtl:` translate variants (Codex P2).
             var variantCss = IsMobileSheet
-                ? $"absolute z-40 top-0 {(Side == Lumeo.Side.Right ? "end-0" : "start-0")} w-64 shadow-xl {(IsCollapsed ? (Side == Lumeo.Side.Right ? "translate-x-full rtl:-translate-x-full" : "-translate-x-full rtl:translate-x-full") : "translate-x-0")}"
+                ? $"absolute z-40 top-0 h-full {(Side == Lumeo.Side.Right ? "end-0" : "start-0")} w-64 shadow-xl {(IsCollapsed ? (Side == Lumeo.Side.Right ? "translate-x-full rtl:-translate-x-full" : "-translate-x-full rtl:translate-x-full") : "translate-x-0")}"
                 : Variant switch
                 {
                     SidebarProvider.SidebarVariant.Overlay =>
-                        $"absolute z-40 top-0 {(Side == Lumeo.Side.Right ? "end-0" : "start-0")} w-64 shadow-xl {(IsCollapsed ? (Side == Lumeo.Side.Right ? "translate-x-full rtl:-translate-x-full" : "-translate-x-full rtl:translate-x-full") : "translate-x-0")}",
+                        $"absolute z-40 top-0 h-full {(Side == Lumeo.Side.Right ? "end-0" : "start-0")} w-64 shadow-xl {(IsCollapsed ? (Side == Lumeo.Side.Right ? "translate-x-full rtl:-translate-x-full" : "-translate-x-full rtl:translate-x-full") : "translate-x-0")}",
                     // Collapsed rail is w-12 (3rem) — shadcn's SIDEBAR_WIDTH_ICON — with the
                     // menu buttons collapsing to p-2 icon squares to match (SidebarMenuButton).
-                    SidebarProvider.SidebarVariant.Icon => $"shrink-0 {(IsCollapsed ? "w-12" : "w-64")}",
+                    SidebarProvider.SidebarVariant.Icon => $"shrink-0 self-stretch {(IsCollapsed ? "w-12" : "w-64")}",
                     // MiniRail widens to w-64 whenever it's effectively expanded — pinned open
                     // OR hover/focus active. The provider owns the hover bit so the same flag
                     // flows to descendant labels via the cascade.
-                    SidebarProvider.SidebarVariant.MiniRail => $"shrink-0 {(EffectiveCollapsed ? "w-12" : "w-64")}",
-                    _ => $"shrink-0 {(IsCollapsed ? "w-0 border-e-0" : "w-64")}"
+                    SidebarProvider.SidebarVariant.MiniRail => $"shrink-0 self-stretch {(EffectiveCollapsed ? "w-12" : "w-64")}",
+                    _ => $"shrink-0 self-stretch {(IsCollapsed ? "w-0" : "w-64")}"
                 };
 
             var sideCss = Side == Lumeo.Side.Right ? "order-last border-s border-e-0" : "";
