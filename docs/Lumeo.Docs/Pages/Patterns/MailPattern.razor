@@ -1,456 +1,773 @@
 @page "/blocks/mail"
 @namespace Lumeo.Docs.Pages.Patterns
 
-<PageTitle>Mail — Lumeo</PageTitle>
+<PageTitle>Mail — Lumeo Blocks</PageTitle>
 
-<PageHeader Title="Mail" Description="A three-column inbox with folder rail, message list, reading pane, and reply composer." />
+<PageHeader Title="Mail"
+            Description="shadcn's Mail example, ported one to one: three resizable panes with an account switcher and a folder nav that collapses into an icon rail with tooltips, an inbox list with All and Unread tabs and a search field, and a reading pane with archive, junk, trash, snooze (with a calendar), reply and forward actions and a reply composer. shadcn's 17 sample mails." />
 
-<ComponentDemo Title="Mail / Inbox" Code="@_mailCode">
-    <Stack Class="w-full min-w-[780px] border border-border/40 rounded-xl overflow-hidden" style="height: 580px;">
-        <Flex Class="h-full">
-
-            <!-- Icon Rail (col 1) -->
-            <Flex Direction="col" Class="w-14 border-r border-border/40 bg-card items-center py-3 gap-1 flex-shrink-0">
-                <Tooltip Content="Inbox" Placement="Tooltip.TooltipPlacement.Right">
-                    <Stack Class="relative">
-                        <Button Variant="@(_activeFolder == "inbox" ? Button.ButtonVariant.Default : Button.ButtonVariant.Ghost)"
-                                Size="Button.ButtonSize.Icon"
-                                @onclick="@(() => _activeFolder = "inbox")">
-                            <DynamicIcon Name="Inbox" Class="h-4 w-4" />
-                        </Button>
-                        <Lumeo.Text As="span" Class="absolute -top-1 -right-1 h-4 min-w-4 rounded-full bg-primary text-primary-foreground text-[10px] flex items-center justify-center px-1 pointer-events-none">3</Lumeo.Text>
-                    </Stack>
-                </Tooltip>
-                <Tooltip Content="Sent" Placement="Tooltip.TooltipPlacement.Right">
-                    <Button Variant="@(_activeFolder == "sent" ? Button.ButtonVariant.Default : Button.ButtonVariant.Ghost)"
-                            Size="Button.ButtonSize.Icon"
-                            @onclick="@(() => _activeFolder = "sent")">
-                        <DynamicIcon Name="Send" Class="h-4 w-4" />
-                    </Button>
-                </Tooltip>
-                <Tooltip Content="Drafts" Placement="Tooltip.TooltipPlacement.Right">
-                    <Button Variant="@(_activeFolder == "drafts" ? Button.ButtonVariant.Default : Button.ButtonVariant.Ghost)"
-                            Size="Button.ButtonSize.Icon"
-                            @onclick="@(() => _activeFolder = "drafts")">
-                        <DynamicIcon Name="FileEdit" Class="h-4 w-4" />
-                    </Button>
-                </Tooltip>
-                <Tooltip Content="Starred" Placement="Tooltip.TooltipPlacement.Right">
-                    <Button Variant="@(_activeFolder == "starred" ? Button.ButtonVariant.Default : Button.ButtonVariant.Ghost)"
-                            Size="Button.ButtonSize.Icon"
-                            @onclick="@(() => _activeFolder = "starred")">
-                        <DynamicIcon Name="Star" Class="h-4 w-4" />
-                    </Button>
-                </Tooltip>
-                <Tooltip Content="Spam" Placement="Tooltip.TooltipPlacement.Right">
-                    <Button Variant="@(_activeFolder == "spam" ? Button.ButtonVariant.Default : Button.ButtonVariant.Ghost)"
-                            Size="Button.ButtonSize.Icon"
-                            @onclick="@(() => _activeFolder = "spam")">
-                        <DynamicIcon Name="ShieldAlert" Class="h-4 w-4" />
-                    </Button>
-                </Tooltip>
-                <Tooltip Content="Trash" Placement="Tooltip.TooltipPlacement.Right">
-                    <Button Variant="@(_activeFolder == "trash" ? Button.ButtonVariant.Default : Button.ButtonVariant.Ghost)"
-                            Size="Button.ButtonSize.Icon"
-                            @onclick="@(() => _activeFolder = "trash")">
-                        <DynamicIcon Name="Trash2" Class="h-4 w-4" />
-                    </Button>
-                </Tooltip>
-
-                <Separator Class="my-1" />
-
-                <!-- Labels -->
-                <Tooltip Content="Work" Placement="Tooltip.TooltipPlacement.Right">
-                    <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Icon">
-                        <Lumeo.Text As="span" Class="h-2.5 w-2.5 rounded-full bg-primary block"></Lumeo.Text>
-                    </Button>
-                </Tooltip>
-                <Tooltip Content="Personal" Placement="Tooltip.TooltipPlacement.Right">
-                    <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Icon">
-                        <Lumeo.Text As="span" Class="h-2.5 w-2.5 rounded-full bg-chart-2 block"></Lumeo.Text>
-                    </Button>
-                </Tooltip>
-                <Tooltip Content="Important" Placement="Tooltip.TooltipPlacement.Right">
-                    <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Icon">
-                        <Lumeo.Text As="span" Class="h-2.5 w-2.5 rounded-full bg-chart-4 block"></Lumeo.Text>
-                    </Button>
-                </Tooltip>
-
-                <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Icon" Class="mt-auto">
-                    <DynamicIcon Name="Settings" Class="h-4 w-4" />
-                </Button>
-            </Flex>
-
-            <!-- Message List (col 2) -->
-            <Flex Direction="col" Class="w-72 border-r border-border/40 bg-card flex-shrink-0">
-                <!-- Toolbar -->
-                <Stack Gap="2" Class="p-3 border-b border-border/40">
-                    <Flex Class="relative items-center">
-                        <DynamicIcon Name="Search" Class="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
-                        <Input placeholder="Search mail..." Class="pl-8 h-8 text-xs w-full" />
-                    </Flex>
-                    <Flex Class="items-center gap-1">
-                        <Button Variant="@(_activeFilter == "all" ? Button.ButtonVariant.Default : Button.ButtonVariant.Ghost)"
-                                Size="Button.ButtonSize.Sm" Class="h-7 text-xs"
-                                @onclick="@(() => _activeFilter = "all")">All</Button>
-                        <Button Variant="@(_activeFilter == "unread" ? Button.ButtonVariant.Default : Button.ButtonVariant.Ghost)"
-                                Size="Button.ButtonSize.Sm" Class="h-7 text-xs"
-                                @onclick="@(() => _activeFilter = "unread")">Unread</Button>
-                        <Button Variant="@(_activeFilter == "starred" ? Button.ButtonVariant.Default : Button.ButtonVariant.Ghost)"
-                                Size="Button.ButtonSize.Sm" Class="h-7 text-xs"
-                                @onclick="@(() => _activeFilter = "starred")">Starred</Button>
-                        <Badge Class="ml-auto">@_mailItems.Count(m => !m.IsRead)</Badge>
-                    </Flex>
-                </Stack>
-
-                <!-- Mail List -->
-                <Stack Class="flex-1 overflow-y-auto">
-                    @for (int i = 0; i < _mailItems.Count; i++)
-                    {
-                        var index = i;
-                        var mail = _mailItems[i];
-                        var isActive = _selectedIndex == index;
-                        <Stack Class="@($"gap-1 px-3 py-2.5 border-b border-border/40 cursor-pointer transition-colors {(isActive ? "bg-accent" : "hover:bg-muted/40")}")"
-                               @onclick="@(() => _selectedIndex = index)">
-                            <Flex Class="items-center justify-between gap-2">
-                                <Flex Class="items-center gap-2 min-w-0">
-                                    @if (!mail.IsRead)
-                                    {
-                                        <Lumeo.Text As="span" Class="h-2 w-2 rounded-full bg-primary shrink-0 block"></Lumeo.Text>
-                                    }
-                                    else
-                                    {
-                                        <Lumeo.Text As="span" Class="h-2 w-2 shrink-0 block"></Lumeo.Text>
-                                    }
-                                    <Avatar Class="h-7 w-7 flex-shrink-0">
-                                        <AvatarFallback Class="text-[10px]">@mail.Initials</AvatarFallback>
-                                    </Avatar>
-                                    <Lumeo.Text As="span" Class="@($"text-sm truncate {(!mail.IsRead ? "font-semibold text-foreground" : "font-medium text-foreground")}")">@mail.Sender</Lumeo.Text>
-                                </Flex>
-                                <Lumeo.Text As="span" Class="text-xs text-muted-foreground shrink-0">@mail.Time</Lumeo.Text>
-                            </Flex>
-                            <Lumeo.Text Class="@($"text-xs pl-4 truncate {(!mail.IsRead ? "font-semibold text-foreground" : "font-medium text-foreground/80")}")">@mail.Subject</Lumeo.Text>
-                            <Lumeo.Text Class="text-xs text-muted-foreground pl-4 truncate">@mail.Preview</Lumeo.Text>
-                            @if (mail.Tags?.Length > 0)
-                            {
-                                <Flex Class="gap-1 pl-4 flex-wrap">
-                                    @foreach (var tag in mail.Tags)
-                                    {
-                                        <Badge Variant="Badge.BadgeVariant.Secondary" Class="text-[10px] h-4 px-1">@tag</Badge>
-                                    }
-                                </Flex>
-                            }
-                        </Stack>
-                    }
-                </Stack>
-            </Flex>
-
-            <!-- Reading Pane (col 3) -->
-            <Flex Direction="col" Class="flex-1 bg-background min-w-0">
-                @{
-                    var selected = _mailItems[_selectedIndex];
-                }
-
-                <!-- Email Header -->
-                <Stack Class="p-4 border-b border-border/40 bg-card">
-                    <Flex Class="items-start justify-between gap-4">
-                        <Flex Class="items-start gap-3 min-w-0">
-                            <Avatar>
-                                <AvatarFallback>@selected.Initials</AvatarFallback>
-                            </Avatar>
-                            <Stack Class="min-w-0">
-                                <Flex Class="items-center gap-2 flex-wrap">
-                                    <Lumeo.Text As="span" Class="text-sm font-semibold text-foreground">@selected.Sender</Lumeo.Text>
-                                    <Lumeo.Text As="span" Class="text-xs text-muted-foreground border border-border/40 rounded px-1.5 py-0.5">@selected.SenderEmail</Lumeo.Text>
-                                </Flex>
-                                <Lumeo.Text Class="text-base font-semibold text-foreground mt-1 leading-tight">@selected.Subject</Lumeo.Text>
-                                @if (selected.Tags?.Length > 0)
+<Stack Gap="10" Class="mt-8">
+    <ComponentDemo Id="mail" Title="Mail" Description="A three-pane mail client built with Resizable, Tabs, ScrollArea and Tooltip." Code="@_code">
+        <div class="w-full overflow-hidden rounded-[var(--radius-lg)] border border-border/40 bg-background">
+            <ResizablePanelGroup Direction="Lumeo.Orientation.Horizontal" DefaultSizes="@(new double[] { 20, 32, 48 })" Class="h-full max-h-[800px] items-stretch">
+                <ResizablePanel Order="0" MinSize="15" MaxSize="20" Collapsible="true" CollapsedSize="4" Class="group/nav data-[collapsed=true]:min-w-[50px] data-[collapsed=true]:transition-all data-[collapsed=true]:duration-300 data-[collapsed=true]:ease-in-out">
+                    <div class="flex h-[52px] items-center justify-center px-2 group-data-[collapsed=true]/nav:px-0">
+                        <Select Value="@_account" ValueChanged="@(v => _account = v ?? _account)">
+                            <SelectTrigger aria-label="Select account" Class="flex items-center gap-2 [&>span]:line-clamp-1 [&>span]:flex [&>span]:w-full [&>span]:items-center [&>span]:gap-1 [&>span]:truncate [&_svg]:h-4 [&_svg]:w-4 [&_svg]:shrink-0 group-data-[collapsed=true]/nav:h-9 group-data-[collapsed=true]/nav:w-9 group-data-[collapsed=true]/nav:shrink-0 group-data-[collapsed=true]/nav:justify-center group-data-[collapsed=true]/nav:p-0 group-data-[collapsed=true]/nav:[&>span]:w-auto group-data-[collapsed=true]/nav:[&>svg]:hidden">
+                                <span>
+                                    @((MarkupString)Accounts.First(a => a.Email == _account).Icon)
+                                    <span class="ml-2 group-data-[collapsed=true]/nav:hidden">@Accounts.First(a => a.Email == _account).Label</span>
+                                </span>
+                            </SelectTrigger>
+                            <SelectContent>
+                                @foreach (var account in Accounts)
                                 {
-                                    <Flex Class="gap-1 flex-wrap mt-1">
-                                        @foreach (var tag in selected.Tags)
-                                        {
-                                            <Badge Variant="Badge.BadgeVariant.Secondary" Class="text-xs">@tag</Badge>
-                                        }
-                                    </Flex>
+                                    <SelectItem Value="@account.Email">
+                                        <div class="flex items-center gap-3 [&_svg]:h-4 [&_svg]:w-4 [&_svg]:shrink-0 [&_svg]:text-foreground">
+                                            @((MarkupString)account.Icon)
+                                            @account.Email
+                                        </div>
+                                    </SelectItem>
                                 }
-                                <Lumeo.Text Class="text-xs text-muted-foreground mt-0.5">@selected.Date</Lumeo.Text>
-                            </Stack>
-                        </Flex>
-                        <Flex Class="items-center gap-1 flex-shrink-0">
-                            <Tooltip Content="Archive">
-                                <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Icon" Class="h-8 w-8">
-                                    <DynamicIcon Name="Archive" Class="h-4 w-4" />
+                            </SelectContent>
+                        </Select>
+                    </div>
+                    <Separator />
+                    <div class="group flex flex-col gap-4 py-2 group-data-[collapsed=true]/nav:py-2">
+                        <nav class="grid gap-1 px-2 group-data-[collapsed=true]/nav:justify-center group-data-[collapsed=true]/nav:px-2">
+                            @foreach (var link in PrimaryLinks)
+                            {
+                                <Button Variant="@link.Variant" Size="Button.ButtonSize.Sm" Href="#" Class="@("justify-start " + Cx.When(link.Variant == Button.ButtonVariant.Default, "dark:bg-muted dark:text-white dark:hover:bg-muted dark:hover:text-white") + " group-data-[collapsed=true]/nav:hidden")">
+                                    <SvgGlyph Svg="@(link.Icon)" class="mr-2 h-4 w-4" />
+                                    @link.Title
+                                    @if (link.Label.Length > 0)
+                                    {
+                                        <span class="@("ml-auto " + Cx.When(link.Variant == Button.ButtonVariant.Default, "text-background dark:text-white"))">@link.Label</span>
+                                    }
                                 </Button>
-                            </Tooltip>
-                            <Tooltip Content="Forward">
-                                <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Icon" Class="h-8 w-8">
-                                    <DynamicIcon Name="Forward" Class="h-4 w-4" />
+                                <Tooltip ShowDelay="0">
+                                    <TooltipTrigger Class="hidden group-data-[collapsed=true]/nav:inline-flex">
+                                        <Button Variant="@link.Variant" Size="Button.ButtonSize.Icon" Href="#" Class="@("h-9 w-9 " + Cx.When(link.Variant == Button.ButtonVariant.Default, "dark:bg-muted dark:text-muted-foreground dark:hover:bg-muted dark:hover:text-white"))">
+                                            <SvgGlyph Svg="@(link.Icon)" class="h-4 w-4" />
+                                            <span class="sr-only">@link.Title</span>
+                                        </Button>
+                                    </TooltipTrigger>
+                                    <TooltipContent Side="Lumeo.Side.Right" Class="flex items-center gap-4">
+                                        @link.Title
+                                        @if (link.Label.Length > 0)
+                                        {
+                                            <span class="ml-auto text-muted-foreground">@link.Label</span>
+                                        }
+                                    </TooltipContent>
+                                </Tooltip>
+                            }
+                        </nav>
+                    </div>
+                    <Separator />
+                    <div class="group flex flex-col gap-4 py-2 group-data-[collapsed=true]/nav:py-2">
+                        <nav class="grid gap-1 px-2 group-data-[collapsed=true]/nav:justify-center group-data-[collapsed=true]/nav:px-2">
+                            @foreach (var link in SecondaryLinks)
+                            {
+                                <Button Variant="@link.Variant" Size="Button.ButtonSize.Sm" Href="#" Class="@("justify-start " + Cx.When(link.Variant == Button.ButtonVariant.Default, "dark:bg-muted dark:text-white dark:hover:bg-muted dark:hover:text-white") + " group-data-[collapsed=true]/nav:hidden")">
+                                    <SvgGlyph Svg="@(link.Icon)" class="mr-2 h-4 w-4" />
+                                    @link.Title
+                                    @if (link.Label.Length > 0)
+                                    {
+                                        <span class="@("ml-auto " + Cx.When(link.Variant == Button.ButtonVariant.Default, "text-background dark:text-white"))">@link.Label</span>
+                                    }
                                 </Button>
-                            </Tooltip>
-                            <Tooltip Content="Delete">
-                                <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Icon" Class="h-8 w-8">
-                                    <DynamicIcon Name="Trash2" Class="h-4 w-4" />
-                                </Button>
-                            </Tooltip>
-                            <Tooltip Content="More">
-                                <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Icon" Class="h-8 w-8">
-                                    <DynamicIcon Name="Ellipsis" Class="h-4 w-4" />
-                                </Button>
-                            </Tooltip>
-                        </Flex>
-                    </Flex>
-                </Stack>
-
-                <!-- Email Body -->
-                <Stack Class="flex-1 overflow-y-auto p-5">
-                    <Lumeo.Text Class="text-sm text-foreground leading-relaxed whitespace-pre-line">@selected.Body</Lumeo.Text>
-                </Stack>
-
-                <Separator />
-
-                <!-- Reply Composer -->
-                <Stack Gap="2" Class="p-3 bg-card">
-                    <Flex Class="items-center justify-between">
-                        <Flex Class="items-center gap-2">
-                            <DynamicIcon Name="CornerUpLeft" Class="h-3.5 w-3.5 text-muted-foreground" />
-                            <Lumeo.Text Class="text-xs font-medium text-muted-foreground">Reply to @selected.Sender</Lumeo.Text>
-                        </Flex>
-                        <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Sm" Class="h-auto py-0.5 px-2 text-muted-foreground text-xs">Cc / Bcc</Button>
-                    </Flex>
-                    <Textarea placeholder="Write your reply..." Class="min-h-[70px] text-sm resize-none" @bind-Value="_replyText" />
-                    <Flex Class="justify-between items-center gap-2">
-                        <Flex Class="items-center gap-1">
-                            <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Icon" Class="h-8 w-8">
-                                <DynamicIcon Name="Paperclip" Class="h-3.5 w-3.5" />
-                            </Button>
-                            <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Icon" Class="h-8 w-8">
-                                <DynamicIcon Name="Image" Class="h-3.5 w-3.5" />
-                            </Button>
-                        </Flex>
-                        <Flex Class="items-center gap-2">
-                            <Button Variant="Button.ButtonVariant.Outline" Size="Button.ButtonSize.Sm">
-                                <DynamicIcon Name="Forward" Class="h-3.5 w-3.5 mr-1.5" />
-                                Forward
-                            </Button>
-                            <Button Size="Button.ButtonSize.Sm">
-                                <DynamicIcon Name="Send" Class="h-3.5 w-3.5 mr-1.5" />
-                                Send
-                            </Button>
-                        </Flex>
-                    </Flex>
-                </Stack>
-            </Flex>
-
-        </Flex>
-    </Stack>
-</ComponentDemo>
+                                <Tooltip ShowDelay="0">
+                                    <TooltipTrigger Class="hidden group-data-[collapsed=true]/nav:inline-flex">
+                                        <Button Variant="@link.Variant" Size="Button.ButtonSize.Icon" Href="#" Class="@("h-9 w-9 " + Cx.When(link.Variant == Button.ButtonVariant.Default, "dark:bg-muted dark:text-muted-foreground dark:hover:bg-muted dark:hover:text-white"))">
+                                            <SvgGlyph Svg="@(link.Icon)" class="h-4 w-4" />
+                                            <span class="sr-only">@link.Title</span>
+                                        </Button>
+                                    </TooltipTrigger>
+                                    <TooltipContent Side="Lumeo.Side.Right" Class="flex items-center gap-4">
+                                        @link.Title
+                                        @if (link.Label.Length > 0)
+                                        {
+                                            <span class="ml-auto text-muted-foreground">@link.Label</span>
+                                        }
+                                    </TooltipContent>
+                                </Tooltip>
+                            }
+                        </nav>
+                    </div>
+                </ResizablePanel>
+                <ResizableHandle PanelIndex="0" WithHandle="true" />
+                <ResizablePanel Order="1" MinSize="30">
+                    <Tabs ActiveValue="@_tab" ActiveValueChanged="@(v => _tab = v)" Class="flex h-full flex-col">
+                        <div class="flex items-center px-4 py-2">
+                            <h1 class="text-xl font-bold">Inbox</h1>
+                            <TabsList Class="ml-auto">
+                                <TabsTrigger Value="all" Class="text-zinc-600 dark:text-zinc-200">All mail</TabsTrigger>
+                                <TabsTrigger Value="unread" Class="text-zinc-600 dark:text-zinc-200">Unread</TabsTrigger>
+                            </TabsList>
+                        </div>
+                        <Separator />
+                        <div class="bg-background/95 p-4 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+                            <form @onsubmit:preventDefault>
+                                <div class="relative">
+                                    <SvgGlyph Svg="@(Lucide.Search)" class="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+                                    <Input Placeholder="Search" Class="pl-8" />
+                                </div>
+                            </form>
+                        </div>
+                        <TabsContent Value="all" Class="m-0 min-h-0 flex-1">
+                            <ScrollArea Class="h-full">
+                                <div class="flex flex-col gap-2 p-4 pt-0">
+                                    @foreach (var item in Mails)
+                                    {
+                                        <button type="button" class="@("flex flex-col items-start gap-2 rounded-lg border p-3 text-left text-sm transition-all hover:bg-accent " + Cx.When(_selected == item.Id, "bg-muted"))" @onclick="@(() => _selected = item.Id)">
+                                            <div class="flex w-full flex-col gap-1">
+                                                <div class="flex items-center">
+                                                    <div class="flex items-center gap-2">
+                                                        <div class="font-semibold">@item.Name</div>
+                                                        @if (!item.Read)
+                                                        {
+                                                            <span class="flex h-2 w-2 rounded-full bg-blue-600"></span>
+                                                        }
+                                                    </div>
+                                                    <div class="@("ml-auto text-xs " + (_selected == item.Id ? "text-foreground" : "text-muted-foreground"))">@DistanceToNow(item.Date)</div>
+                                                </div>
+                                                <div class="text-xs font-medium">@item.Subject</div>
+                                            </div>
+                                            <div class="line-clamp-2 text-xs text-muted-foreground">@(item.Text.Length > 300 ? item.Text[..300] : item.Text)</div>
+                                            @if (item.Labels.Length > 0)
+                                            {
+                                                <div class="flex items-center gap-2">
+                                                    @foreach (var label in item.Labels)
+                                                    {
+                                                        <Badge Variant="@BadgeVariantFor(label)">@label</Badge>
+                                                    }
+                                                </div>
+                                            }
+                                        </button>
+                                    }
+                                </div>
+                            </ScrollArea>
+                        </TabsContent>
+                        <TabsContent Value="unread" Class="m-0 min-h-0 flex-1">
+                            <ScrollArea Class="h-full">
+                                <div class="flex flex-col gap-2 p-4 pt-0">
+                                    @foreach (var item in Mails.Where(m => !m.Read))
+                                    {
+                                        <button type="button" class="@("flex flex-col items-start gap-2 rounded-lg border p-3 text-left text-sm transition-all hover:bg-accent " + Cx.When(_selected == item.Id, "bg-muted"))" @onclick="@(() => _selected = item.Id)">
+                                            <div class="flex w-full flex-col gap-1">
+                                                <div class="flex items-center">
+                                                    <div class="flex items-center gap-2">
+                                                        <div class="font-semibold">@item.Name</div>
+                                                        @if (!item.Read)
+                                                        {
+                                                            <span class="flex h-2 w-2 rounded-full bg-blue-600"></span>
+                                                        }
+                                                    </div>
+                                                    <div class="@("ml-auto text-xs " + (_selected == item.Id ? "text-foreground" : "text-muted-foreground"))">@DistanceToNow(item.Date)</div>
+                                                </div>
+                                                <div class="text-xs font-medium">@item.Subject</div>
+                                            </div>
+                                            <div class="line-clamp-2 text-xs text-muted-foreground">@(item.Text.Length > 300 ? item.Text[..300] : item.Text)</div>
+                                            @if (item.Labels.Length > 0)
+                                            {
+                                                <div class="flex items-center gap-2">
+                                                    @foreach (var label in item.Labels)
+                                                    {
+                                                        <Badge Variant="@BadgeVariantFor(label)">@label</Badge>
+                                                    }
+                                                </div>
+                                            }
+                                        </button>
+                                    }
+                                </div>
+                            </ScrollArea>
+                        </TabsContent>
+                    </Tabs>
+                </ResizablePanel>
+                <ResizableHandle PanelIndex="1" WithHandle="true" />
+                <ResizablePanel Order="2" MinSize="30">
+                    <div class="flex h-full flex-col">
+                        <div class="flex items-center p-2">
+                            <div class="flex items-center gap-2">
+                                <Tooltip ShowDelay="0">
+                                    <TooltipTrigger>
+                                        <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Icon" Disabled="@(Selected is null)">
+                                            <SvgGlyph Svg="@(Lucide.Archive)" class="h-4 w-4" />
+                                            <span class="sr-only">Archive</span>
+                                        </Button>
+                                    </TooltipTrigger>
+                                    <TooltipContent>Archive</TooltipContent>
+                                </Tooltip>
+                                <Tooltip ShowDelay="0">
+                                    <TooltipTrigger>
+                                        <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Icon" Disabled="@(Selected is null)">
+                                            <SvgGlyph Svg="@(Lucide.ArchiveX)" class="h-4 w-4" />
+                                            <span class="sr-only">Move to junk</span>
+                                        </Button>
+                                    </TooltipTrigger>
+                                    <TooltipContent>Move to junk</TooltipContent>
+                                </Tooltip>
+                                <Tooltip ShowDelay="0">
+                                    <TooltipTrigger>
+                                        <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Icon" Disabled="@(Selected is null)">
+                                            <SvgGlyph Svg="@(Lucide.Trash2)" class="h-4 w-4" />
+                                            <span class="sr-only">Move to trash</span>
+                                        </Button>
+                                    </TooltipTrigger>
+                                    <TooltipContent>Move to trash</TooltipContent>
+                                </Tooltip>
+                                <Separator Orientation="Lumeo.Orientation.Vertical" Class="mx-1 h-6" />
+                                <Tooltip ShowDelay="0">
+                                    <Popover>
+                                        <PopoverTrigger>
+                                            <TooltipTrigger>
+                                                <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Icon" Disabled="@(Selected is null)">
+                                                    <SvgGlyph Svg="@(Lucide.Clock)" class="h-4 w-4" />
+                                                    <span class="sr-only">Snooze</span>
+                                                </Button>
+                                            </TooltipTrigger>
+                                        </PopoverTrigger>
+                                        <PopoverContent Class="flex w-[535px] p-0">
+                                            <div class="flex flex-col gap-2 border-r border-border px-2 py-4">
+                                                <div class="px-4 text-sm font-medium">Snooze until</div>
+                                                <div class="grid min-w-[250px] gap-1">
+                                                    <Button Variant="Button.ButtonVariant.Ghost" Class="justify-start font-normal">Later today <span class="ml-auto text-muted-foreground">@Snooze(DateTime.Now.AddHours(4))</span></Button>
+                                                    <Button Variant="Button.ButtonVariant.Ghost" Class="justify-start font-normal">Tomorrow <span class="ml-auto text-muted-foreground">@Snooze(DateTime.Now.AddDays(1))</span></Button>
+                                                    <Button Variant="Button.ButtonVariant.Ghost" Class="justify-start font-normal">This weekend <span class="ml-auto text-muted-foreground">@Snooze(NextSaturday(DateTime.Now))</span></Button>
+                                                    <Button Variant="Button.ButtonVariant.Ghost" Class="justify-start font-normal">Next week <span class="ml-auto text-muted-foreground">@Snooze(DateTime.Now.AddDays(7))</span></Button>
+                                                </div>
+                                            </div>
+                                            <div class="p-2">
+                                                <Calendar />
+                                            </div>
+                                        </PopoverContent>
+                                    </Popover>
+                                    <TooltipContent>Snooze</TooltipContent>
+                                </Tooltip>
+                            </div>
+                            <div class="ml-auto flex items-center gap-2">
+                                <Tooltip ShowDelay="0">
+                                    <TooltipTrigger>
+                                        <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Icon" Disabled="@(Selected is null)">
+                                            <SvgGlyph Svg="@(Lucide.Reply)" class="h-4 w-4" />
+                                            <span class="sr-only">Reply</span>
+                                        </Button>
+                                    </TooltipTrigger>
+                                    <TooltipContent>Reply</TooltipContent>
+                                </Tooltip>
+                                <Tooltip ShowDelay="0">
+                                    <TooltipTrigger>
+                                        <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Icon" Disabled="@(Selected is null)">
+                                            <SvgGlyph Svg="@(Lucide.ReplyAll)" class="h-4 w-4" />
+                                            <span class="sr-only">Reply all</span>
+                                        </Button>
+                                    </TooltipTrigger>
+                                    <TooltipContent>Reply all</TooltipContent>
+                                </Tooltip>
+                                <Tooltip ShowDelay="0">
+                                    <TooltipTrigger>
+                                        <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Icon" Disabled="@(Selected is null)">
+                                            <SvgGlyph Svg="@(Lucide.Forward)" class="h-4 w-4" />
+                                            <span class="sr-only">Forward</span>
+                                        </Button>
+                                    </TooltipTrigger>
+                                    <TooltipContent>Forward</TooltipContent>
+                                </Tooltip>
+                            </div>
+                            <Separator Orientation="Lumeo.Orientation.Vertical" Class="mx-2 h-6" />
+                            <DropdownMenu>
+                                <DropdownMenuTrigger AsChild>
+                                    <ChildContentSlot Context="slot">
+                                        <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Icon" Disabled="@(Selected is null)" id="@slot.Id" @attributes="slot.Attributes" OnClick="slot.OnClick">
+                                            <SvgGlyph Svg="@(Lucide.EllipsisVertical)" class="h-4 w-4" />
+                                            <span class="sr-only">More</span>
+                                        </Button>
+                                    </ChildContentSlot>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent Align="Lumeo.Align.End">
+                                    <DropdownMenuItem>Mark as unread</DropdownMenuItem>
+                                    <DropdownMenuItem>Star thread</DropdownMenuItem>
+                                    <DropdownMenuItem>Add label</DropdownMenuItem>
+                                    <DropdownMenuItem>Mute thread</DropdownMenuItem>
+                                </DropdownMenuContent>
+                            </DropdownMenu>
+                        </div>
+                        <Separator />
+                        @if (Selected is { } mail)
+                        {
+                            <div class="flex flex-1 flex-col">
+                                <div class="flex items-start p-4">
+                                    <div class="flex items-start gap-4 text-sm">
+                                        <Avatar>
+                                            <AvatarFallback>@Initials(mail.Name)</AvatarFallback>
+                                        </Avatar>
+                                        <div class="grid gap-1">
+                                            <div class="font-semibold">@mail.Name</div>
+                                            <div class="line-clamp-1 text-xs">@mail.Subject</div>
+                                            <div class="line-clamp-1 text-xs"><span class="font-medium">Reply-To:</span> @mail.Email</div>
+                                        </div>
+                                    </div>
+                                    <div class="ml-auto text-xs text-muted-foreground">@mail.Date.ToString("MMM d, yyyy, h:mm:ss tt", System.Globalization.CultureInfo.InvariantCulture)</div>
+                                </div>
+                                <Separator />
+                                <div class="flex-1 whitespace-pre-wrap p-4 text-sm">@mail.Text</div>
+                                <Separator Class="mt-auto" />
+                                <div class="p-4">
+                                    <form @onsubmit:preventDefault>
+                                        <div class="grid gap-4">
+                                            <Textarea Class="p-4" placeholder="@($"Reply {mail.Name}...")" />
+                                            <div class="flex items-center">
+                                                <Label For="mail-mute" Class="flex items-center gap-2 text-xs font-normal">
+                                                    <Switch id="mail-mute" AriaLabel="Mute thread" Checked="@_mute" CheckedChanged="@(v => _mute = v)" /> Mute this thread
+                                                </Label>
+                                                <Button Size="Button.ButtonSize.Sm" Class="ml-auto">Send</Button>
+                                            </div>
+                                        </div>
+                                    </form>
+                                </div>
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="p-8 text-center text-muted-foreground">No message selected</div>
+                        }
+                    </div>
+                </ResizablePanel>
+            </ResizablePanelGroup>
+        </div>
+    </ComponentDemo>
+</Stack>
 
 @code {
-    private int _selectedIndex = 0;
-    private string _activeFilter = "all";
-    private string _activeFolder = "inbox";
-    private string _replyText = "";
+    private const string _code = @"<div class=""w-full overflow-hidden rounded-[var(--radius-lg)] border border-border/40 bg-background"">
+    <ResizablePanelGroup Direction=""Lumeo.Orientation.Horizontal"" DefaultSizes=""@(new double[] { 20, 32, 48 })"" Class=""h-full max-h-[800px] items-stretch"">
+        <ResizablePanel Order=""0"" MinSize=""15"" MaxSize=""20"" Collapsible=""true"" CollapsedSize=""4"" Class=""group/nav data-[collapsed=true]:min-w-[50px] data-[collapsed=true]:transition-all data-[collapsed=true]:duration-300 data-[collapsed=true]:ease-in-out"">
+            <div class=""flex h-[52px] items-center justify-center px-2 group-data-[collapsed=true]/nav:px-0"">
+                <Select Value=""@_account"" ValueChanged=""@(v => _account = v ?? _account)"">
+                    <SelectTrigger aria-label=""Select account"" Class=""flex items-center gap-2 [&>span]:line-clamp-1 [&>span]:flex [&>span]:w-full [&>span]:items-center [&>span]:gap-1 [&>span]:truncate [&_svg]:h-4 [&_svg]:w-4 [&_svg]:shrink-0 group-data-[collapsed=true]/nav:h-9 group-data-[collapsed=true]/nav:w-9 group-data-[collapsed=true]/nav:shrink-0 group-data-[collapsed=true]/nav:justify-center group-data-[collapsed=true]/nav:p-0 group-data-[collapsed=true]/nav:[&>span]:w-auto group-data-[collapsed=true]/nav:[&>svg]:hidden"">
+                        <span>
+                            @((MarkupString)Accounts.First(a => a.Email == _account).Icon)
+                            <span class=""ml-2 group-data-[collapsed=true]/nav:hidden"">@Accounts.First(a => a.Email == _account).Label</span>
+                        </span>
+                    </SelectTrigger>
+                    <SelectContent>
+                        @foreach (var account in Accounts)
+                        {
+                            <SelectItem Value=""@account.Email"">
+                                <div class=""flex items-center gap-3 [&_svg]:h-4 [&_svg]:w-4 [&_svg]:shrink-0 [&_svg]:text-foreground"">
+                                    @((MarkupString)account.Icon)
+                                    @account.Email
+                                </div>
+                            </SelectItem>
+                        }
+                    </SelectContent>
+                </Select>
+            </div>
+            <Separator />
+            <div class=""group flex flex-col gap-4 py-2 group-data-[collapsed=true]/nav:py-2"">
+                <nav class=""grid gap-1 px-2 group-data-[collapsed=true]/nav:justify-center group-data-[collapsed=true]/nav:px-2"">
+                    @foreach (var link in PrimaryLinks)
+                    {
+                        <Button Variant=""@link.Variant"" Size=""Button.ButtonSize.Sm"" Href=""#"" Class=""@(""justify-start "" + Cx.When(link.Variant == Button.ButtonVariant.Default, ""dark:bg-muted dark:text-white dark:hover:bg-muted dark:hover:text-white"") + "" group-data-[collapsed=true]/nav:hidden"")"">
+                            <SvgGlyph Svg=""@(link.Icon)"" class=""mr-2 h-4 w-4"" />
+                            @link.Title
+                            @if (link.Label.Length > 0)
+                            {
+                                <span class=""@(""ml-auto "" + Cx.When(link.Variant == Button.ButtonVariant.Default, ""text-background dark:text-white""))"">@link.Label</span>
+                            }
+                        </Button>
+                        <Tooltip ShowDelay=""0"">
+                            <TooltipTrigger Class=""hidden group-data-[collapsed=true]/nav:inline-flex"">
+                                <Button Variant=""@link.Variant"" Size=""Button.ButtonSize.Icon"" Href=""#"" Class=""@(""h-9 w-9 "" + Cx.When(link.Variant == Button.ButtonVariant.Default, ""dark:bg-muted dark:text-muted-foreground dark:hover:bg-muted dark:hover:text-white""))"">
+                                    <SvgGlyph Svg=""@(link.Icon)"" class=""h-4 w-4"" />
+                                    <span class=""sr-only"">@link.Title</span>
+                                </Button>
+                            </TooltipTrigger>
+                            <TooltipContent Side=""Lumeo.Side.Right"" Class=""flex items-center gap-4"">
+                                @link.Title
+                                @if (link.Label.Length > 0)
+                                {
+                                    <span class=""ml-auto text-muted-foreground"">@link.Label</span>
+                                }
+                            </TooltipContent>
+                        </Tooltip>
+                    }
+                </nav>
+            </div>
+            <Separator />
+            <div class=""group flex flex-col gap-4 py-2 group-data-[collapsed=true]/nav:py-2"">
+                <nav class=""grid gap-1 px-2 group-data-[collapsed=true]/nav:justify-center group-data-[collapsed=true]/nav:px-2"">
+                    @foreach (var link in SecondaryLinks)
+                    {
+                        <Button Variant=""@link.Variant"" Size=""Button.ButtonSize.Sm"" Href=""#"" Class=""@(""justify-start "" + Cx.When(link.Variant == Button.ButtonVariant.Default, ""dark:bg-muted dark:text-white dark:hover:bg-muted dark:hover:text-white"") + "" group-data-[collapsed=true]/nav:hidden"")"">
+                            <SvgGlyph Svg=""@(link.Icon)"" class=""mr-2 h-4 w-4"" />
+                            @link.Title
+                            @if (link.Label.Length > 0)
+                            {
+                                <span class=""@(""ml-auto "" + Cx.When(link.Variant == Button.ButtonVariant.Default, ""text-background dark:text-white""))"">@link.Label</span>
+                            }
+                        </Button>
+                        <Tooltip ShowDelay=""0"">
+                            <TooltipTrigger Class=""hidden group-data-[collapsed=true]/nav:inline-flex"">
+                                <Button Variant=""@link.Variant"" Size=""Button.ButtonSize.Icon"" Href=""#"" Class=""@(""h-9 w-9 "" + Cx.When(link.Variant == Button.ButtonVariant.Default, ""dark:bg-muted dark:text-muted-foreground dark:hover:bg-muted dark:hover:text-white""))"">
+                                    <SvgGlyph Svg=""@(link.Icon)"" class=""h-4 w-4"" />
+                                    <span class=""sr-only"">@link.Title</span>
+                                </Button>
+                            </TooltipTrigger>
+                            <TooltipContent Side=""Lumeo.Side.Right"" Class=""flex items-center gap-4"">
+                                @link.Title
+                                @if (link.Label.Length > 0)
+                                {
+                                    <span class=""ml-auto text-muted-foreground"">@link.Label</span>
+                                }
+                            </TooltipContent>
+                        </Tooltip>
+                    }
+                </nav>
+            </div>
+        </ResizablePanel>
+        <ResizableHandle PanelIndex=""0"" WithHandle=""true"" />
+        <ResizablePanel Order=""1"" MinSize=""30"">
+            <Tabs ActiveValue=""@_tab"" ActiveValueChanged=""@(v => _tab = v)"" Class=""flex h-full flex-col"">
+                <div class=""flex items-center px-4 py-2"">
+                    <h1 class=""text-xl font-bold"">Inbox</h1>
+                    <TabsList Class=""ml-auto"">
+                        <TabsTrigger Value=""all"" Class=""text-zinc-600 dark:text-zinc-200"">All mail</TabsTrigger>
+                        <TabsTrigger Value=""unread"" Class=""text-zinc-600 dark:text-zinc-200"">Unread</TabsTrigger>
+                    </TabsList>
+                </div>
+                <Separator />
+                <div class=""bg-background/95 p-4 backdrop-blur supports-[backdrop-filter]:bg-background/60"">
+                    <form @onsubmit:preventDefault>
+                        <div class=""relative"">
+                            <SvgGlyph Svg=""@(Lucide.Search)"" class=""absolute left-2 top-2.5 h-4 w-4 text-muted-foreground"" />
+                            <Input Placeholder=""Search"" Class=""pl-8"" />
+                        </div>
+                    </form>
+                </div>
+                <TabsContent Value=""all"" Class=""m-0 min-h-0 flex-1"">
+                    <ScrollArea Class=""h-full"">
+                        <div class=""flex flex-col gap-2 p-4 pt-0"">
+                            @foreach (var item in Mails)
+                            {
+                                <button type=""button"" class=""@(""flex flex-col items-start gap-2 rounded-lg border p-3 text-left text-sm transition-all hover:bg-accent "" + Cx.When(_selected == item.Id, ""bg-muted""))"" @onclick=""@(() => _selected = item.Id)"">
+                                    <div class=""flex w-full flex-col gap-1"">
+                                        <div class=""flex items-center"">
+                                            <div class=""flex items-center gap-2"">
+                                                <div class=""font-semibold"">@item.Name</div>
+                                                @if (!item.Read)
+                                                {
+                                                    <span class=""flex h-2 w-2 rounded-full bg-blue-600""></span>
+                                                }
+                                            </div>
+                                            <div class=""@(""ml-auto text-xs "" + (_selected == item.Id ? ""text-foreground"" : ""text-muted-foreground""))"">@DistanceToNow(item.Date)</div>
+                                        </div>
+                                        <div class=""text-xs font-medium"">@item.Subject</div>
+                                    </div>
+                                    <div class=""line-clamp-2 text-xs text-muted-foreground"">@(item.Text.Length > 300 ? item.Text[..300] : item.Text)</div>
+                                    @if (item.Labels.Length > 0)
+                                    {
+                                        <div class=""flex items-center gap-2"">
+                                            @foreach (var label in item.Labels)
+                                            {
+                                                <Badge Variant=""@BadgeVariantFor(label)"">@label</Badge>
+                                            }
+                                        </div>
+                                    }
+                                </button>
+                            }
+                        </div>
+                    </ScrollArea>
+                </TabsContent>
+                <TabsContent Value=""unread"" Class=""m-0 min-h-0 flex-1"">
+                    <ScrollArea Class=""h-full"">
+                        <div class=""flex flex-col gap-2 p-4 pt-0"">
+                            @foreach (var item in Mails.Where(m => !m.Read))
+                            {
+                                <button type=""button"" class=""@(""flex flex-col items-start gap-2 rounded-lg border p-3 text-left text-sm transition-all hover:bg-accent "" + Cx.When(_selected == item.Id, ""bg-muted""))"" @onclick=""@(() => _selected = item.Id)"">
+                                    <div class=""flex w-full flex-col gap-1"">
+                                        <div class=""flex items-center"">
+                                            <div class=""flex items-center gap-2"">
+                                                <div class=""font-semibold"">@item.Name</div>
+                                                @if (!item.Read)
+                                                {
+                                                    <span class=""flex h-2 w-2 rounded-full bg-blue-600""></span>
+                                                }
+                                            </div>
+                                            <div class=""@(""ml-auto text-xs "" + (_selected == item.Id ? ""text-foreground"" : ""text-muted-foreground""))"">@DistanceToNow(item.Date)</div>
+                                        </div>
+                                        <div class=""text-xs font-medium"">@item.Subject</div>
+                                    </div>
+                                    <div class=""line-clamp-2 text-xs text-muted-foreground"">@(item.Text.Length > 300 ? item.Text[..300] : item.Text)</div>
+                                    @if (item.Labels.Length > 0)
+                                    {
+                                        <div class=""flex items-center gap-2"">
+                                            @foreach (var label in item.Labels)
+                                            {
+                                                <Badge Variant=""@BadgeVariantFor(label)"">@label</Badge>
+                                            }
+                                        </div>
+                                    }
+                                </button>
+                            }
+                        </div>
+                    </ScrollArea>
+                </TabsContent>
+            </Tabs>
+        </ResizablePanel>
+        <ResizableHandle PanelIndex=""1"" WithHandle=""true"" />
+        <ResizablePanel Order=""2"" MinSize=""30"">
+            <div class=""flex h-full flex-col"">
+                <div class=""flex items-center p-2"">
+                    <div class=""flex items-center gap-2"">
+                        <Tooltip ShowDelay=""0"">
+                            <TooltipTrigger>
+                                <Button Variant=""Button.ButtonVariant.Ghost"" Size=""Button.ButtonSize.Icon"" Disabled=""@(Selected is null)"">
+                                    <SvgGlyph Svg=""@(Lucide.Archive)"" class=""h-4 w-4"" />
+                                    <span class=""sr-only"">Archive</span>
+                                </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>Archive</TooltipContent>
+                        </Tooltip>
+                        <Tooltip ShowDelay=""0"">
+                            <TooltipTrigger>
+                                <Button Variant=""Button.ButtonVariant.Ghost"" Size=""Button.ButtonSize.Icon"" Disabled=""@(Selected is null)"">
+                                    <SvgGlyph Svg=""@(Lucide.ArchiveX)"" class=""h-4 w-4"" />
+                                    <span class=""sr-only"">Move to junk</span>
+                                </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>Move to junk</TooltipContent>
+                        </Tooltip>
+                        <Tooltip ShowDelay=""0"">
+                            <TooltipTrigger>
+                                <Button Variant=""Button.ButtonVariant.Ghost"" Size=""Button.ButtonSize.Icon"" Disabled=""@(Selected is null)"">
+                                    <SvgGlyph Svg=""@(Lucide.Trash2)"" class=""h-4 w-4"" />
+                                    <span class=""sr-only"">Move to trash</span>
+                                </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>Move to trash</TooltipContent>
+                        </Tooltip>
+                        <Separator Orientation=""Lumeo.Orientation.Vertical"" Class=""mx-1 h-6"" />
+                        <Tooltip ShowDelay=""0"">
+                            <Popover>
+                                <PopoverTrigger>
+                                    <TooltipTrigger>
+                                        <Button Variant=""Button.ButtonVariant.Ghost"" Size=""Button.ButtonSize.Icon"" Disabled=""@(Selected is null)"">
+                                            <SvgGlyph Svg=""@(Lucide.Clock)"" class=""h-4 w-4"" />
+                                            <span class=""sr-only"">Snooze</span>
+                                        </Button>
+                                    </TooltipTrigger>
+                                </PopoverTrigger>
+                                <PopoverContent Class=""flex w-[535px] p-0"">
+                                    <div class=""flex flex-col gap-2 border-r border-border px-2 py-4"">
+                                        <div class=""px-4 text-sm font-medium"">Snooze until</div>
+                                        <div class=""grid min-w-[250px] gap-1"">
+                                            <Button Variant=""Button.ButtonVariant.Ghost"" Class=""justify-start font-normal"">Later today <span class=""ml-auto text-muted-foreground"">@Snooze(DateTime.Now.AddHours(4))</span></Button>
+                                            <Button Variant=""Button.ButtonVariant.Ghost"" Class=""justify-start font-normal"">Tomorrow <span class=""ml-auto text-muted-foreground"">@Snooze(DateTime.Now.AddDays(1))</span></Button>
+                                            <Button Variant=""Button.ButtonVariant.Ghost"" Class=""justify-start font-normal"">This weekend <span class=""ml-auto text-muted-foreground"">@Snooze(NextSaturday(DateTime.Now))</span></Button>
+                                            <Button Variant=""Button.ButtonVariant.Ghost"" Class=""justify-start font-normal"">Next week <span class=""ml-auto text-muted-foreground"">@Snooze(DateTime.Now.AddDays(7))</span></Button>
+                                        </div>
+                                    </div>
+                                    <div class=""p-2"">
+                                        <Calendar />
+                                    </div>
+                                </PopoverContent>
+                            </Popover>
+                            <TooltipContent>Snooze</TooltipContent>
+                        </Tooltip>
+                    </div>
+                    <div class=""ml-auto flex items-center gap-2"">
+                        <Tooltip ShowDelay=""0"">
+                            <TooltipTrigger>
+                                <Button Variant=""Button.ButtonVariant.Ghost"" Size=""Button.ButtonSize.Icon"" Disabled=""@(Selected is null)"">
+                                    <SvgGlyph Svg=""@(Lucide.Reply)"" class=""h-4 w-4"" />
+                                    <span class=""sr-only"">Reply</span>
+                                </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>Reply</TooltipContent>
+                        </Tooltip>
+                        <Tooltip ShowDelay=""0"">
+                            <TooltipTrigger>
+                                <Button Variant=""Button.ButtonVariant.Ghost"" Size=""Button.ButtonSize.Icon"" Disabled=""@(Selected is null)"">
+                                    <SvgGlyph Svg=""@(Lucide.ReplyAll)"" class=""h-4 w-4"" />
+                                    <span class=""sr-only"">Reply all</span>
+                                </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>Reply all</TooltipContent>
+                        </Tooltip>
+                        <Tooltip ShowDelay=""0"">
+                            <TooltipTrigger>
+                                <Button Variant=""Button.ButtonVariant.Ghost"" Size=""Button.ButtonSize.Icon"" Disabled=""@(Selected is null)"">
+                                    <SvgGlyph Svg=""@(Lucide.Forward)"" class=""h-4 w-4"" />
+                                    <span class=""sr-only"">Forward</span>
+                                </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>Forward</TooltipContent>
+                        </Tooltip>
+                    </div>
+                    <Separator Orientation=""Lumeo.Orientation.Vertical"" Class=""mx-2 h-6"" />
+                    <DropdownMenu>
+                        <DropdownMenuTrigger AsChild>
+                            <ChildContentSlot Context=""slot"">
+                                <Button Variant=""Button.ButtonVariant.Ghost"" Size=""Button.ButtonSize.Icon"" Disabled=""@(Selected is null)"" id=""@slot.Id"" @attributes=""slot.Attributes"" OnClick=""slot.OnClick"">
+                                    <SvgGlyph Svg=""@(Lucide.EllipsisVertical)"" class=""h-4 w-4"" />
+                                    <span class=""sr-only"">More</span>
+                                </Button>
+                            </ChildContentSlot>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent Align=""Lumeo.Align.End"">
+                            <DropdownMenuItem>Mark as unread</DropdownMenuItem>
+                            <DropdownMenuItem>Star thread</DropdownMenuItem>
+                            <DropdownMenuItem>Add label</DropdownMenuItem>
+                            <DropdownMenuItem>Mute thread</DropdownMenuItem>
+                        </DropdownMenuContent>
+                    </DropdownMenu>
+                </div>
+                <Separator />
+                @if (Selected is { } mail)
+                {
+                    <div class=""flex flex-1 flex-col"">
+                        <div class=""flex items-start p-4"">
+                            <div class=""flex items-start gap-4 text-sm"">
+                                <Avatar>
+                                    <AvatarFallback>@Initials(mail.Name)</AvatarFallback>
+                                </Avatar>
+                                <div class=""grid gap-1"">
+                                    <div class=""font-semibold"">@mail.Name</div>
+                                    <div class=""line-clamp-1 text-xs"">@mail.Subject</div>
+                                    <div class=""line-clamp-1 text-xs""><span class=""font-medium"">Reply-To:</span> @mail.Email</div>
+                                </div>
+                            </div>
+                            <div class=""ml-auto text-xs text-muted-foreground"">@mail.Date.ToString(""MMM d, yyyy, h:mm:ss tt"", System.Globalization.CultureInfo.InvariantCulture)</div>
+                        </div>
+                        <Separator />
+                        <div class=""flex-1 whitespace-pre-wrap p-4 text-sm"">@mail.Text</div>
+                        <Separator Class=""mt-auto"" />
+                        <div class=""p-4"">
+                            <form @onsubmit:preventDefault>
+                                <div class=""grid gap-4"">
+                                    <Textarea Class=""p-4"" placeholder=""@($""Reply {mail.Name}..."")"" />
+                                    <div class=""flex items-center"">
+                                        <Label For=""mail-mute"" Class=""flex items-center gap-2 text-xs font-normal"">
+                                            <Switch id=""mail-mute"" AriaLabel=""Mute thread"" Checked=""@_mute"" CheckedChanged=""@(v => _mute = v)"" /> Mute this thread
+                                        </Label>
+                                        <Button Size=""Button.ButtonSize.Sm"" Class=""ml-auto"">Send</Button>
+                                    </div>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                }
+                else
+                {
+                    <div class=""p-8 text-center text-muted-foreground"">No message selected</div>
+                }
+            </div>
+        </ResizablePanel>
+    </ResizablePanelGroup>
+</div>";
 
-    private record MailItem(
-        string Sender,
-        string Initials,
-        string SenderEmail,
-        string Subject,
-        string Preview,
-        string Time,
-        string Date,
-        string Body,
-        bool IsRead,
-        string[]? Tags = null
-    );
+    // shadcn's data.tsx: the mails and the three accounts with their brand marks.
+    private sealed record Mail(string Id, string Name, string Email, string Subject, string Text, DateTime Date, bool Read, string[] Labels);
+    private sealed record Account(string Label, string Email, string Icon);
+    private sealed record NavLink(string Title, string Label, global::Lumeo.IconSource Icon, Button.ButtonVariant Variant);
 
-    private List<MailItem> _mailItems = new()
+    private static readonly List<Mail> Mails =
+    [
+        new("6c84fb90-12c4-11e1-840d-7b25c5ee775a", "William Smith", "williamsmith@example.com", "Meeting Tomorrow", "Hi, let's have a meeting tomorrow to discuss the project. I've been reviewing the project details and have some ideas I'd like to share. It's crucial that we align on our next steps to ensure the project's success.\n\nPlease come prepared with any questions or insights you may have. Looking forward to our meeting!\n\nBest regards, William", new DateTime(2023, 10, 22, 9, 0, 0), true, ["meeting", "work", "important"]),
+        new("110e8400-e29b-11d4-a716-446655440000", "Alice Smith", "alicesmith@example.com", "Re: Project Update", "Thank you for the project update. It looks great! I've gone through the report, and the progress is impressive. The team has done a fantastic job, and I appreciate the hard work everyone has put in.\n\nI have a few minor suggestions that I'll include in the attached document.\n\nLet's discuss these during our next meeting. Keep up the excellent work!\n\nBest regards, Alice", new DateTime(2023, 10, 22, 10, 30, 0), true, ["work", "important"]),
+        new("3e7c3f6d-bdf5-46ae-8d90-171300f27ae2", "Bob Johnson", "bobjohnson@example.com", "Weekend Plans", "Any plans for the weekend? I was thinking of going hiking in the nearby mountains. It's been a while since we had some outdoor fun.\n\nIf you're interested, let me know, and we can plan the details. It'll be a great way to unwind and enjoy nature.\n\nLooking forward to your response!\n\nBest, Bob", new DateTime(2023, 4, 10, 11, 45, 0), true, ["personal"]),
+        new("61c35085-72d7-42b4-8d62-738f700d4b92", "Emily Davis", "emilydavis@example.com", "Re: Question about Budget", "I have a question about the budget for the upcoming project. It seems like there's a discrepancy in the allocation of resources.\n\nI've reviewed the budget report and identified a few areas where we might be able to optimize our spending without compromising the project's quality.\n\nI've attached a detailed analysis for your reference. Let's discuss this further in our next meeting.\n\nThanks, Emily", new DateTime(2023, 3, 25, 13, 15, 0), false, ["work", "budget"]),
+        new("8f7b5db9-d935-4e42-8e05-1f1d0a3dfb97", "Michael Wilson", "michaelwilson@example.com", "Important Announcement", "I have an important announcement to make during our team meeting. It pertains to a strategic shift in our approach to the upcoming product launch. We've received valuable feedback from our beta testers, and I believe it's time to make some adjustments to better meet our customers' needs.\n\nThis change is crucial to our success, and I look forward to discussing it with the team. Please be prepared to share your insights during the meeting.\n\nRegards, Michael", new DateTime(2023, 3, 10, 15, 0, 0), false, ["meeting", "work", "important"]),
+        new("1f0f2c02-e299-40de-9b1d-86ef9e42126b", "Sarah Brown", "sarahbrown@example.com", "Re: Feedback on Proposal", "Thank you for your feedback on the proposal. It looks great! I'm pleased to hear that you found it promising. The team worked diligently to address all the key points you raised, and I believe we now have a strong foundation for the project.\n\nI've attached the revised proposal for your review.\n\nPlease let me know if you have any further comments or suggestions. Looking forward to your response.\n\nBest regards, Sarah", new DateTime(2023, 2, 15, 16, 30, 0), true, ["work"]),
+        new("17c0a96d-4415-42b1-8b4f-764efab57f66", "David Lee", "davidlee@example.com", "New Project Idea", "I have an exciting new project idea to discuss with you. It involves expanding our services to target a niche market that has shown considerable growth in recent months.\n\nI've prepared a detailed proposal outlining the potential benefits and the strategy for execution.\n\nThis project has the potential to significantly impact our business positively. Let's set up a meeting to dive into the details and determine if it aligns with our current goals.\n\nBest regards, David", new DateTime(2023, 1, 28, 17, 45, 0), false, ["meeting", "work", "important"]),
+        new("2f0130cb-39fc-44c4-bb3c-0a4337edaaab", "Olivia Wilson", "oliviawilson@example.com", "Vacation Plans", "Let's plan our vacation for next month. What do you think? I've been thinking of visiting a tropical paradise, and I've put together some destination options.\n\nI believe it's time for us to unwind and recharge. Please take a look at the options and let me know your preferences.\n\nWe can start making arrangements to ensure a smooth and enjoyable trip.\n\nExcited to hear your thoughts! Olivia", new DateTime(2022, 12, 20, 18, 30, 0), true, ["personal"]),
+        new("de305d54-75b4-431b-adb2-eb6b9e546014", "James Martin", "jamesmartin@example.com", "Re: Conference Registration", "I've completed the registration for the conference next month. The event promises to be a great networking opportunity, and I'm looking forward to attending the various sessions and connecting with industry experts.\n\nI've also attached the conference schedule for your reference.\n\nIf there are any specific topics or sessions you'd like me to explore, please let me know. It's an exciting event, and I'll make the most of it.\n\nBest regards, James", new DateTime(2022, 11, 30, 19, 15, 0), true, ["work", "conference"]),
+        new("7dd90c63-00f6-40f3-bd87-5060a24e8ee7", "Sophia White", "sophiawhite@example.com", "Team Dinner", "Let's have a team dinner next week to celebrate our success. We've achieved some significant milestones, and it's time to acknowledge our hard work and dedication.\n\nI've made reservations at a lovely restaurant, and I'm sure it'll be an enjoyable evening.\n\nPlease confirm your availability and any dietary preferences. Looking forward to a fun and memorable dinner with the team!\n\nBest, Sophia", new DateTime(2022, 11, 5, 20, 30, 0), false, ["meeting", "work"]),
+        new("99a88f78-3eb4-4d87-87b7-7b15a49a0a05", "Daniel Johnson", "danieljohnson@example.com", "Feedback Request", "I'd like your feedback on the latest project deliverables. We've made significant progress, and I value your input to ensure we're on the right track.\n\nI've attached the deliverables for your review, and I'm particularly interested in any areas where you think we can further enhance the quality or efficiency.\n\nYour feedback is invaluable, and I appreciate your time and expertise. Let's work together to make this project a success.\n\nRegards, Daniel", new DateTime(2022, 10, 22, 9, 30, 0), false, ["work"]),
+        new("f47ac10b-58cc-4372-a567-0e02b2c3d479", "Ava Taylor", "avataylor@example.com", "Re: Meeting Agenda", "Here's the agenda for our meeting next week. I've included all the topics we need to cover, as well as time allocations for each.\n\nIf you have any additional items to discuss or any specific points to address, please let me know, and we can integrate them into the agenda.\n\nIt's essential that our meeting is productive and addresses all relevant matters.\n\nLooking forward to our meeting! Ava", new DateTime(2022, 10, 10, 10, 45, 0), true, ["meeting", "work"]),
+        new("c1a0ecb4-2540-49c5-86f8-21e5ce79e4e6", "William Anderson", "williamanderson@example.com", "Product Launch Update", "The product launch is on track. I'll provide an update during our call. We've made substantial progress in the development and marketing of our new product.\n\nI'm excited to share the latest updates with you during our upcoming call. It's crucial that we coordinate our efforts to ensure a successful launch. Please come prepared with any questions or insights you may have.\n\nLet's make this product launch a resounding success!\n\nBest regards, William", new DateTime(2022, 9, 20, 12, 0, 0), false, ["meeting", "work", "important"]),
+        new("ba54eefd-4097-4949-99f2-2a9ae4d1a836", "Mia Harris", "miaharris@example.com", "Re: Travel Itinerary", "I've received the travel itinerary. It looks great! Thank you for your prompt assistance in arranging the details. I've reviewed the schedule and the accommodations, and everything seems to be in order. I'm looking forward to the trip, and I'm confident it'll be a smooth and enjoyable experience.\n\nIf there are any specific activities or attractions you recommend at our destination, please feel free to share your suggestions.\n\nExcited for the trip! Mia", new DateTime(2022, 9, 10, 13, 15, 0), true, ["personal", "travel"]),
+        new("df09b6ed-28bd-4e0c-85a9-9320ec5179aa", "Ethan Clark", "ethanclark@example.com", "Team Building Event", "Let's plan a team-building event for our department. Team cohesion and morale are vital to our success, and I believe a well-organized team-building event can be incredibly beneficial. I've done some research and have a few ideas for fun and engaging activities.\n\nPlease let me know your thoughts and availability. We want this event to be both enjoyable and productive.\n\nTogether, we'll strengthen our team and boost our performance.\n\nRegards, Ethan", new DateTime(2022, 8, 25, 15, 30, 0), false, ["meeting", "work"]),
+        new("d67c1842-7f8b-4b4b-9be1-1b3b1ab4611d", "Chloe Hall", "chloehall@example.com", "Re: Budget Approval", "The budget has been approved. We can proceed with the project. I'm delighted to inform you that our budget proposal has received the green light from the finance department. This is a significant milestone, and it means we can move forward with the project as planned.\n\nI've attached the finalized budget for your reference. Let's ensure that we stay on track and deliver the project on time and within budget.\n\nIt's an exciting time for us! Chloe", new DateTime(2022, 8, 10, 16, 45, 0), true, ["work", "budget"]),
+        new("6c9a7f94-8329-4d70-95d3-51f68c186ae1", "Samuel Turner", "samuelturner@example.com", "Weekend Hike", "Who's up for a weekend hike in the mountains? I've been craving some outdoor adventure, and a hike in the mountains sounds like the perfect escape. If you're up for the challenge, we can explore some scenic trails and enjoy the beauty of nature.\n\nI've done some research and have a few routes in mind.\n\nLet me know if you're interested, and we can plan the details.\n\nIt's sure to be a memorable experience! Samuel", new DateTime(2022, 7, 28, 17, 30, 0), false, ["personal"]),
+    ];
+
+    private static readonly Account[] Accounts =
+    [
+        new("Alicia Koch", "alicia@example.com", @"<svg role=""img"" viewBox=""0 0 24 24"" xmlns=""http://www.w3.org/2000/svg""><title>Vercel</title><path d=""M24 22.525H0l12-21.05 12 21.05z"" fill=""currentColor"" /></svg>"),
+        new("Alicia Koch", "alicia@gmail.com", @"<svg role=""img"" viewBox=""0 0 24 24"" xmlns=""http://www.w3.org/2000/svg""><title>Gmail</title><path d=""M24 5.457v13.909c0 .904-.732 1.636-1.636 1.636h-3.819V11.73L12 16.64l-6.545-4.91v9.273H1.636A1.636 1.636 0 0 1 0 19.366V5.457c0-2.023 2.309-3.178 3.927-1.964L5.455 4.64 12 9.548l6.545-4.91 1.528-1.145C21.69 2.28 24 3.434 24 5.457z"" fill=""currentColor"" /></svg>"),
+        new("Alicia Koch", "alicia@me.com", @"<svg role=""img"" viewBox=""0 0 24 24"" xmlns=""http://www.w3.org/2000/svg""><title>iCloud</title><path d=""M13.762 4.29a6.51 6.51 0 0 0-5.669 3.332 3.571 3.571 0 0 0-1.558-.36 3.571 3.571 0 0 0-3.516 3A4.918 4.918 0 0 0 0 14.796a4.918 4.918 0 0 0 4.92 4.914 4.93 4.93 0 0 0 .617-.045h14.42c2.305-.272 4.041-2.258 4.043-4.589v-.009a4.594 4.594 0 0 0-3.727-4.508 6.51 6.51 0 0 0-6.511-6.27z"" fill=""currentColor"" /></svg>"),
+    ];
+
+    private static readonly NavLink[] PrimaryLinks =
+    [
+        new("Inbox", "128", Lucide.Inbox, Button.ButtonVariant.Default),
+        new("Drafts", "9", Lucide.File, Button.ButtonVariant.Ghost),
+        new("Sent", "", Lucide.Send, Button.ButtonVariant.Ghost),
+        new("Junk", "23", Lucide.ArchiveX, Button.ButtonVariant.Ghost),
+        new("Trash", "", Lucide.Trash2, Button.ButtonVariant.Ghost),
+        new("Archive", "", Lucide.Archive, Button.ButtonVariant.Ghost),
+    ];
+
+    private static readonly NavLink[] SecondaryLinks =
+    [
+        new("Social", "972", Lucide.Users, Button.ButtonVariant.Ghost),
+        new("Updates", "342", Lucide.CircleAlert, Button.ButtonVariant.Ghost),
+        new("Forums", "128", Lucide.MessagesSquare, Button.ButtonVariant.Ghost),
+        new("Shopping", "8", Lucide.ShoppingCart, Button.ButtonVariant.Ghost),
+        new("Promotions", "21", Lucide.Archive, Button.ButtonVariant.Ghost),
+    ];
+
+    private string _account = Accounts[0].Email;
+    private string _tab = "all";
+    private string? _selected = Mails[0].Id;
+    private bool _mute;
+
+    private Mail? Selected => Mails.FirstOrDefault(m => m.Id == _selected);
+
+    private static Badge.BadgeVariant BadgeVariantFor(string label) => label.ToLowerInvariant() switch
     {
-        new("Priya Kapoor", "PK", "priya@designco.com",
-            "Re: Q2 roadmap review — feedback attached",
-            "Left some comments on the Figma link. Overall looks strong but the timeline on feature 3...",
-            "2m",
-            "Apr 17, 2026, 9:42 AM",
-            "Hi,\n\nLeft some inline comments on the Figma file. Overall the roadmap looks strong — I'm particularly excited about the AI-assist feature. My one concern is the timeline on Feature 3; two weeks feels optimistic given the API dependencies.\n\nCould we sync Thursday for 30 min to walk through it together?\n\nBest,\nPriya",
-            false,
-            Tags: new[] { "roadmap", "Q2" }),
-
-        new("Stripe Notifications", "ST", "no-reply@stripe.com",
-            "Your payout of $4,812.00 has been sent",
-            "Your scheduled payout of $4,812.00 is on its way to your bank account ending in 4242...",
-            "18m",
-            "Apr 17, 2026, 9:26 AM",
-            "Your scheduled payout of $4,812.00 is on its way to your bank account ending in 4242. It should arrive within 2 business days.\n\nTransaction ID: py_3PkQvL2eZvKYlo\nPeriod: Apr 10 – Apr 16, 2026\n\nView your dashboard for full details.",
-            false,
-            Tags: new[] { "billing" }),
-
-        new("Marcus Webb", "MW", "marcus@lumeotech.io",
-            "Re: DataGrid sticky headers — PR feedback",
-            "Looks good overall. One nit: the z-index on the sticky header clips the dropdown in the action column...",
-            "1h",
-            "Apr 17, 2026, 8:49 AM",
-            "Looks good overall — nice clean implementation. One nit: the z-index on the sticky header clips the dropdown in the action column when the table scrolls. Setting z-20 on the header row should fix it.\n\nAlso, should we add a test for the horizontal scroll case?\n\nMarcus",
-            true,
-            Tags: new[] { "code review" }),
-
-        new("Amara Diallo", "AD", "amara@acmecorp.com",
-            "Your order has shipped — tracking inside",
-            "Great news! Order #ORD-2026-0417 has been picked up by the carrier. Estimated delivery: Apr 19.",
-            "3h",
-            "Apr 17, 2026, 7:03 AM",
-            "Great news! Your order #ORD-2026-0417 has been picked up by the carrier.\n\nEstimated delivery: Thursday, April 19\nTracking number: 1Z999AA10123456784\nCarrier: UPS Ground\n\nYou can track your package at any time using the link above.",
-            true),
-
-        new("GitHub", "GH", "noreply@github.com",
-            "[lumeo/lumeo] PR #88: Add Resizable component",
-            "mikewb opened a pull request · +847 −12 · Adds the Resizable component with horizontal and vertical...",
-            "Yesterday",
-            "Apr 16, 2026, 4:15 PM",
-            "mikewb opened a pull request:\n\nAdd Resizable component\n\n+847 −12\n\nAdds the Resizable component with horizontal and vertical split pane support. Implemented using CSS custom properties for handle drag state.\n\nCloses #71\n\nReview requested: @priya-k, @marcus-w",
-            true,
-            Tags: new[] { "PR", "component" }),
-
-        new("Sofia Herrera", "SH", "sofia.h@ventureco.com",
-            "Partnership proposal — follow-up",
-            "Following up on our call last week. I've attached the updated one-pager and partnership terms for your review.",
-            "Yesterday",
-            "Apr 16, 2026, 11:30 AM",
-            "Hi,\n\nFollowing up on our call last week. I've attached the updated one-pager and revised partnership terms for your review.\n\nKey changes:\n- Reduced exclusivity window from 12 to 6 months\n- Added performance milestone clause (Section 4.2)\n- Included NDA as Exhibit A\n\nLooking forward to your thoughts.\n\nSofia",
-            false,
-            Tags: new[] { "partnership", "legal" }),
-
-        new("Lena Fischer", "LF", "lena@prodteam.de",
-            "Sprint 14 retrospective notes",
-            "Attached are the retro notes from Friday's session. Key themes: deployment confidence, test coverage, onboarding.",
-            "Apr 14",
-            "Apr 14, 2026, 2:00 PM",
-            "Hi all,\n\nAttached are the condensed notes from Friday's Sprint 14 retrospective. Top themes:\n\n• Deployment confidence improved after new CI checks\n• Test coverage still low on the billing module\n• Onboarding checklist needs update for remote hires\n\nAction items tracked in Linear under milestone 'S14-Retro'.\n\nLena",
-            true),
-
-        new("James Okafor", "JO", "james@supportdesk.io",
-            "Critical: API gateway returning 503 errors",
-            "We're seeing elevated 503 rates from the /v2/payments endpoint since 06:12 UTC. P0 incident opened.",
-            "Apr 12",
-            "Apr 12, 2026, 6:45 AM",
-            "INCIDENT INC-2026-0412\nSeverity: P0\n\nWe're seeing elevated 503 error rates from the /v2/payments endpoint since 06:12 UTC. Error rate peaked at 38% at 06:24 UTC.\n\nRoot cause under investigation — suspected upstream timeout on the payment processor.\n\nStatus page updated. Engineering war room in #inc-0412 on Slack.\n\nJames — On-call Engineering",
-            true,
-            Tags: new[] { "incident", "urgent" }),
-
-        new("Notion", "NO", "notify@notion.so",
-            "Amara Diallo shared a page with you",
-            "Amara shared \"2026 Company OKRs\" with you. Click to view and collaborate.",
-            "Apr 11",
-            "Apr 11, 2026, 3:22 PM",
-            "Amara Diallo shared a page with you:\n\n\"2026 Company OKRs\"\n\nYou can now view and leave comments on this page. Click the button above to open it in Notion.\n\nNotification from Notion Workspace: Lumeo",
-            true),
-
-        new("HR — Lumeo", "HR", "hr@lumeotech.io",
-            "Open enrollment closes April 25 — action required",
-            "This is a reminder that the benefits open enrollment window closes on April 25. Log in to review your selections.",
-            "Apr 10",
-            "Apr 10, 2026, 10:00 AM",
-            "Hi,\n\nThis is a reminder that the annual benefits open enrollment window closes on Friday, April 25 at 11:59 PM PT.\n\nIf you do not make changes, your current elections will carry forward.\n\nAction required: log in to the benefits portal to review your selections.\n\nHR Team — Lumeo",
-            true,
-            Tags: new[] { "action required" }),
+        "work" => Badge.BadgeVariant.Default,
+        "personal" => Badge.BadgeVariant.Outline,
+        _ => Badge.BadgeVariant.Secondary,
     };
 
-    private string _mailCode = @"<!-- 3-column mail layout: icon rail | message list | reading pane -->
-<Stack Class=""w-full border border-border/40 rounded-xl overflow-hidden"" style=""height: 580px;"">
-    <Flex Class=""h-full"">
+    private static string Initials(string name) => string.Concat(name.Split(' ', StringSplitOptions.RemoveEmptyEntries).Select(chunk => chunk[0]));
 
-        <!-- Icon Rail -->
-        <Flex Direction=""col"" Class=""w-14 border-r border-border/40 bg-card items-center py-3 gap-1"">
-            <Stack Class=""relative"">
-                <Button Variant=""Button.ButtonVariant.Default"" Size=""Button.ButtonSize.Icon"">
-                    <DynamicIcon Name=""Inbox"" Class=""h-4 w-4"" />
-                </Button>
-                <Lumeo.Text As=""span"" Class=""absolute -top-1 -right-1 h-4 min-w-4 rounded-full bg-primary text-primary-foreground text-[10px] flex items-center justify-center px-1"">3</Lumeo.Text>
-            </Stack>
-            <Button Variant=""Button.ButtonVariant.Ghost"" Size=""Button.ButtonSize.Icon"">
-                <DynamicIcon Name=""Send"" Class=""h-4 w-4"" />
-            </Button>
-            <Button Variant=""Button.ButtonVariant.Ghost"" Size=""Button.ButtonSize.Icon"">
-                <DynamicIcon Name=""FileEdit"" Class=""h-4 w-4"" />
-            </Button>
-            <Button Variant=""Button.ButtonVariant.Ghost"" Size=""Button.ButtonSize.Icon"">
-                <DynamicIcon Name=""Star"" Class=""h-4 w-4"" />
-            </Button>
-            <Button Variant=""Button.ButtonVariant.Ghost"" Size=""Button.ButtonSize.Icon"">
-                <DynamicIcon Name=""Trash2"" Class=""h-4 w-4"" />
-            </Button>
-        </Flex>
+    // date-fns formatDistanceToNow(date, { addSuffix: true }), with its thresholds.
+    private static string DistanceToNow(DateTime date)
+    {
+        var diff = DateTime.Now - date;
+        var minutes = Math.Round(diff.TotalMinutes);
+        var months = Math.Round(diff.TotalDays / 30);
+        string text;
+        if (minutes < 1) text = "less than a minute";
+        else if (minutes < 45) text = minutes == 1 ? "1 minute" : $"{minutes:0} minutes";
+        else if (minutes < 90) text = "about 1 hour";
+        else if (minutes < 24 * 60) text = $"about {Math.Round(diff.TotalHours):0} hours";
+        else if (minutes < 42 * 60) text = "1 day";
+        else if (minutes < 30 * 24 * 60) text = $"{Math.Round(diff.TotalDays):0} days";
+        else if (minutes < 45 * 24 * 60) text = "about 1 month";
+        else if (minutes < 60 * 24 * 60) text = "about 2 months";
+        else if (months < 12) text = $"{months:0} months";
+        else
+        {
+            var years = Math.Floor(months / 12);
+            var rest = months % 12;
+            text = rest < 3 ? $"about {years:0} year{(years == 1 ? "" : "s")}"
+                 : rest < 9 ? $"over {years:0} year{(years == 1 ? "" : "s")}"
+                 : $"almost {years + 1:0} years";
+        }
+        return text + " ago";
+    }
 
-        <!-- Message List -->
-        <Flex Direction=""col"" Class=""w-72 border-r border-border/40 bg-card"">
-            <Stack Gap=""2"" Class=""p-3 border-b border-border/40"">
-                <Flex Class=""relative items-center"">
-                    <DynamicIcon Name=""Search"" Class=""absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground"" />
-                    <Input placeholder=""Search mail..."" Class=""pl-8 h-8 text-xs w-full"" />
-                </Flex>
-                <Flex Class=""items-center gap-1"">
-                    <Button Variant=""Button.ButtonVariant.Default"" Size=""Button.ButtonSize.Sm"" Class=""h-7 text-xs"">All</Button>
-                    <Button Variant=""Button.ButtonVariant.Ghost"" Size=""Button.ButtonSize.Sm"" Class=""h-7 text-xs"">Unread</Button>
-                    <Badge Class=""ml-auto"">3</Badge>
-                </Flex>
-            </Stack>
-            <Stack Class=""flex-1 overflow-y-auto"">
-                @foreach (var mail in _mailItems)
-                {
-                    <Stack Class=""gap-1 px-3 py-2.5 border-b border-border/40 cursor-pointer hover:bg-muted/40"">
-                        <Flex Class=""items-center justify-between gap-2"">
-                            <Flex Class=""items-center gap-2 min-w-0"">
-                                @if (!mail.IsRead) { <Lumeo.Text As=""span"" Class=""h-2 w-2 rounded-full bg-primary shrink-0 block""></Lumeo.Text> }
-                                <Avatar Class=""h-7 w-7""><AvatarFallback Class=""text-[10px]"">@mail.Initials</AvatarFallback></Avatar>
-                                <Lumeo.Text As=""span"" Class=""text-sm font-semibold text-foreground truncate"">@mail.Sender</Lumeo.Text>
-                            </Flex>
-                            <Lumeo.Text As=""span"" Class=""text-xs text-muted-foreground shrink-0"">@mail.Time</Lumeo.Text>
-                        </Flex>
-                        <Lumeo.Text Class=""text-xs font-semibold text-foreground pl-4 truncate"">@mail.Subject</Lumeo.Text>
-                        <Lumeo.Text Class=""text-xs text-muted-foreground pl-4 truncate"">@mail.Preview</Lumeo.Text>
-                    </Stack>
-                }
-            </Stack>
-        </Flex>
+    // date-fns format(date, "E, h:m b")
+    private static string Snooze(DateTime d) => $"{d.ToString("ddd", System.Globalization.CultureInfo.InvariantCulture)}, {(d.Hour % 12 == 0 ? 12 : d.Hour % 12)}:{d.Minute} {(d.Hour < 12 ? "am" : "pm")}";
 
-        <!-- Reading Pane -->
-        <Flex Direction=""col"" Class=""flex-1 bg-background"">
-            <Stack Class=""p-4 border-b border-border/40 bg-card"">
-                <Flex Class=""items-start justify-between gap-4"">
-                    <Flex Class=""items-start gap-3"">
-                        <Avatar><AvatarFallback>PK</AvatarFallback></Avatar>
-                        <Stack>
-                            <Lumeo.Text As=""span"" Class=""text-sm font-semibold text-foreground"">Priya Kapoor</Lumeo.Text>
-                            <Lumeo.Text Class=""text-base font-semibold text-foreground mt-1"">Re: Q2 roadmap review</Lumeo.Text>
-                            <Lumeo.Text Class=""text-xs text-muted-foreground mt-0.5"">Apr 17, 2026, 9:42 AM</Lumeo.Text>
-                        </Stack>
-                    </Flex>
-                    <Flex Class=""items-center gap-1"">
-                        <Button Variant=""Button.ButtonVariant.Ghost"" Size=""Button.ButtonSize.Icon"" Class=""h-8 w-8"">
-                            <DynamicIcon Name=""Archive"" Class=""h-4 w-4"" />
-                        </Button>
-                        <Button Variant=""Button.ButtonVariant.Ghost"" Size=""Button.ButtonSize.Icon"" Class=""h-8 w-8"">
-                            <DynamicIcon Name=""Trash2"" Class=""h-4 w-4"" />
-                        </Button>
-                    </Flex>
-                </Flex>
-            </Stack>
-            <Stack Class=""flex-1 overflow-y-auto p-5"">
-                <Lumeo.Text Class=""text-sm text-foreground leading-relaxed"">Email body content...</Lumeo.Text>
-            </Stack>
-            <Separator />
-            <Stack Gap=""2"" Class=""p-3 bg-card"">
-                <Lumeo.Text Class=""text-xs font-medium text-muted-foreground"">Reply to Priya Kapoor</Lumeo.Text>
-                <Textarea placeholder=""Write your reply..."" Class=""min-h-[70px] text-sm resize-none"" />
-                <Flex Class=""justify-end gap-2"">
-                    <Button Variant=""Button.ButtonVariant.Outline"" Size=""Button.ButtonSize.Sm"">
-                        <DynamicIcon Name=""Forward"" Class=""h-3.5 w-3.5 mr-1.5"" /> Forward
-                    </Button>
-                    <Button Size=""Button.ButtonSize.Sm"">
-                        <DynamicIcon Name=""Send"" Class=""h-3.5 w-3.5 mr-1.5"" /> Send
-                    </Button>
-                </Flex>
-            </Stack>
-        </Flex>
-    </Flex>
-</Stack>";
+    private static DateTime NextSaturday(DateTime d)
+    {
+        var days = ((int)DayOfWeek.Saturday - (int)d.DayOfWeek + 7) % 7;
+        return d.AddDays(days == 0 ? 7 : days);
+    }
 }

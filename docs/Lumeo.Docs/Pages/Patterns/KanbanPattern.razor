@@ -6,148 +6,148 @@
 <PageHeader Title="Kanban Board" Description="A sprint board with polished task cards and native HTML5 drag-and-drop between columns." />
 
 <ComponentDemo Title="Sprint 24 — Engineering Board" Code="@_code">
+<AppShell Section="Projects" Page="Sprint 24">
+    <Stack Gap="6" Class="w-full">
 
-<Stack Gap="6" Class="w-full min-w-[960px]">
-
-    <!-- Header bar -->
-    <Flex Class="items-center justify-between gap-4">
-        <Stack Gap="0">
-            <Lumeo.Text As="h2" Class="text-xl font-semibold text-foreground leading-none">Sprint 24</Lumeo.Text>
-            <Lumeo.Text Class="text-sm text-muted-foreground mt-1">Apr 14 – Apr 25, 2026 · @_allCards.Count tasks</Lumeo.Text>
-        </Stack>
-        <Flex Class="items-center gap-3">
-            <Button Variant="Button.ButtonVariant.Outline" Size="Button.ButtonSize.Sm">
-                <DynamicIcon Name="Filter" Class="h-4 w-4 mr-1.5" />
-                Filter
-            </Button>
-            <!-- Assignee avatar stack -->
-            <Flex Class="items-center -space-x-2">
-                @foreach (var a in _assignees)
-                {
-                    <Tooltip Content="@a.Name">
-                        <Avatar Size="Lumeo.Size.Sm" Class="ring-2 ring-background cursor-pointer">
-                            <AvatarFallback Class="text-[10px]">@a.Initials</AvatarFallback>
-                        </Avatar>
-                    </Tooltip>
-                }
-                <div class="flex items-center justify-center h-8 w-8 rounded-full bg-muted ring-2 ring-background text-[10px] text-muted-foreground font-medium cursor-pointer">+2</div>
-            </Flex>
-            <Button Variant="Button.ButtonVariant.Default" Size="Button.ButtonSize.Sm">
-                <DynamicIcon Name="Plus" Class="h-4 w-4 mr-1.5" />
-                New Task
-            </Button>
-        </Flex>
-    </Flex>
-
-    <!-- Kanban board -->
-    <div class="flex gap-4 items-start overflow-x-auto pb-4">
-        @foreach (var col in _columnOrder)
-        {
-            var colKey = col;
-            var colCards = _columns[colKey];
-            var colMeta = _columnMeta[colKey];
-            var isOver = _dragOverColumn == colKey;
-
-            <div class="@($"flex flex-col gap-2 min-w-[280px] max-w-[320px] w-[300px] rounded-[var(--radius-lg)] p-3 transition-all duration-150 {(isOver ? "bg-primary/5 ring-2 ring-primary/30" : "bg-muted/30")}")"
-                 @ondragover:preventDefault="true"
-                 @ondragenter="@(() => _dragOverColumn = colKey)"
-                 @ondragleave="@(() => { if (_dragOverColumn == colKey) _dragOverColumn = null; })"
-                 @ondrop="@(() => HandleDrop(colKey))">
-
-                <!-- Column header -->
-                <Flex Class="items-center justify-between mb-1">
-                    <Flex Class="items-center gap-2">
-                        <div class="h-2.5 w-2.5 rounded-full @colMeta.DotColor"></div>
-                        <Lumeo.Text As="h3" Class="text-sm font-semibold text-foreground">@colMeta.Title</Lumeo.Text>
-                        <Badge Variant="Badge.BadgeVariant.Secondary" Class="text-xs h-5 px-1.5 min-w-[20px] text-center">@colCards.Count</Badge>
-                    </Flex>
-                    <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Icon" Class="h-7 w-7 shrink-0">
-                        <DynamicIcon Name="Plus" Class="h-3.5 w-3.5" />
-                    </Button>
-                </Flex>
-
-                <!-- Cards drop zone -->
-                <div class="flex flex-col gap-2 min-h-[80px]">
-                    @foreach (var card in colCards)
+        <!-- Header bar -->
+        <Flex Class="items-center justify-between gap-4">
+            <Stack Gap="0">
+                <Lumeo.Text As="h2" Class="text-xl font-semibold text-foreground leading-none">Sprint 24</Lumeo.Text>
+                <Lumeo.Text Class="text-sm text-muted-foreground mt-1">Apr 14 – Apr 25, 2026 · @_allCards.Count tasks</Lumeo.Text>
+            </Stack>
+            <Flex Class="items-center gap-3">
+                <Button Variant="Button.ButtonVariant.Outline" Size="Button.ButtonSize.Sm">
+                    <DynamicIcon Name="Filter" Class="h-4 w-4 mr-1.5" />
+                    Filter
+                </Button>
+                <!-- Assignee avatar stack -->
+                <Flex Class="items-center -space-x-2">
+                    @foreach (var a in _assignees)
                     {
-                        var c = card;
-                        <div draggable="true"
-                             class="@($"group rounded-[var(--radius-lg)] border border-border/40 bg-card overflow-hidden cursor-grab active:cursor-grabbing hover:shadow-md hover:border-border/70 transition-all duration-150 {(_draggedCard?.Id == c.Id ? "opacity-50 scale-[0.98]" : "opacity-100")}")"
-                             @ondragstart="@(() => HandleDragStart(c, colKey))"
-                             @ondragend="@(() => HandleDragEnd())">
-
-                            <!-- Priority strip -->
-                            <div class="h-1 w-full @GetPriorityStrip(c.Priority)"></div>
-
-                            <div class="p-3 flex flex-col gap-2">
-                                <!-- Top row: category tag + priority badge -->
-                                <Flex Class="items-center justify-between gap-2">
-                                    <Badge Variant="Badge.BadgeVariant.Outline" Class="text-[10px] h-4 px-1.5 font-normal">@c.Category</Badge>
-                                    <Flex Class="items-center gap-1">
-                                        <DynamicIcon Name="@GetPriorityIcon(c.Priority)" Class="@($"h-3 w-3 {GetPriorityIconColor(c.Priority)}")" />
-                                        <Lumeo.Text Class="@($"text-[10px] font-medium {GetPriorityIconColor(c.Priority)}")">@c.Priority</Lumeo.Text>
-                                    </Flex>
-                                </Flex>
-
-                                <!-- Title -->
-                                <Lumeo.Text Class="text-sm font-medium text-foreground leading-snug">@c.Title</Lumeo.Text>
-
-                                <!-- Description -->
-                                <Lumeo.Text Class="text-xs text-muted-foreground leading-relaxed line-clamp-2">@c.Description</Lumeo.Text>
-
-                                <!-- Tags -->
-                                @if (c.Tags.Length > 0)
-                                {
-                                    <Flex Class="items-center gap-1 flex-wrap">
-                                        @foreach (var tag in c.Tags)
-                                        {
-                                            <Badge Variant="Badge.BadgeVariant.Secondary" Class="text-[10px] h-4 px-1.5 font-normal">@tag</Badge>
-                                        }
-                                    </Flex>
-                                }
-
-                                <Separator />
-
-                                <!-- Footer -->
-                                <Flex Class="items-center justify-between">
-                                    <!-- Assignee avatars -->
-                                    <Flex Class="items-center -space-x-1.5">
-                                        @foreach (var initials in c.AssigneeInitials)
-                                        {
-                                            <Avatar Class="h-6 w-6 ring-2 ring-card">
-                                                <AvatarFallback Class="text-[9px]">@initials</AvatarFallback>
-                                            </Avatar>
-                                        }
-                                    </Flex>
-                                    <!-- Metadata -->
-                                    <Flex Class="items-center gap-2.5 text-muted-foreground">
-                                        <Flex Class="items-center gap-0.5">
-                                            <DynamicIcon Name="CalendarDays" Class="h-3 w-3" />
-                                            <Lumeo.Text Class="text-[10px]">@c.DueDate</Lumeo.Text>
-                                        </Flex>
-                                        @if (c.Subtasks > 0)
-                                        {
-                                            <Flex Class="items-center gap-0.5">
-                                                <DynamicIcon Name="CheckSquare" Class="h-3 w-3" />
-                                                <Lumeo.Text Class="text-[10px]">@c.Subtasks</Lumeo.Text>
-                                            </Flex>
-                                        }
-                                        <Flex Class="items-center gap-0.5">
-                                            <DynamicIcon Name="MessageCircle" Class="h-3 w-3" />
-                                            <Lumeo.Text Class="text-[10px]">@c.Comments</Lumeo.Text>
-                                        </Flex>
-                                    </Flex>
-                                </Flex>
-                            </div>
-                        </div>
+                        <Tooltip Content="@a.Name">
+                            <Avatar Size="Lumeo.Size.Sm" Class="ring-2 ring-background cursor-pointer">
+                                <AvatarFallback Class="text-[10px]">@a.Initials</AvatarFallback>
+                            </Avatar>
+                        </Tooltip>
                     }
+                    <div class="flex items-center justify-center h-8 w-8 rounded-full bg-muted ring-2 ring-background text-[10px] text-muted-foreground font-medium cursor-pointer">+2</div>
+                </Flex>
+                <Button Variant="Button.ButtonVariant.Default" Size="Button.ButtonSize.Sm">
+                    <DynamicIcon Name="Plus" Class="h-4 w-4 mr-1.5" />
+                    New Task
+                </Button>
+            </Flex>
+        </Flex>
+
+        <!-- Kanban board -->
+        <div class="flex gap-4 items-start overflow-x-auto pb-4">
+            @foreach (var col in _columnOrder)
+            {
+                var colKey = col;
+                var colCards = _columns[colKey];
+                var colMeta = _columnMeta[colKey];
+                var isOver = _dragOverColumn == colKey;
+
+                <div class="@($"flex flex-col gap-2 min-w-[280px] max-w-[320px] w-[300px] rounded-[var(--radius-lg)] p-3 transition-all duration-150 {(isOver ? "bg-primary/5 ring-2 ring-primary/30" : "bg-muted/30")}")"
+                     @ondragover:preventDefault="true"
+                     @ondragenter="@(() => _dragOverColumn = colKey)"
+                     @ondragleave="@(() => { if (_dragOverColumn == colKey) _dragOverColumn = null; })"
+                     @ondrop="@(() => HandleDrop(colKey))">
+
+                    <!-- Column header -->
+                    <Flex Class="items-center justify-between mb-1">
+                        <Flex Class="items-center gap-2">
+                            <div class="h-2.5 w-2.5 rounded-full @colMeta.DotColor"></div>
+                            <Lumeo.Text As="h3" Class="text-sm font-semibold text-foreground">@colMeta.Title</Lumeo.Text>
+                            <Badge Variant="Badge.BadgeVariant.Secondary" Class="text-xs h-5 px-1.5 min-w-[20px] text-center">@colCards.Count</Badge>
+                        </Flex>
+                        <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Icon" Class="h-7 w-7 shrink-0">
+                            <DynamicIcon Name="Plus" Class="h-3.5 w-3.5" />
+                        </Button>
+                    </Flex>
+
+                    <!-- Cards drop zone -->
+                    <div class="flex flex-col gap-2 min-h-[80px]">
+                        @foreach (var card in colCards)
+                        {
+                            var c = card;
+                            <div draggable="true"
+                                 class="@($"group rounded-[var(--radius-lg)] border border-border/40 bg-card overflow-hidden cursor-grab active:cursor-grabbing hover:shadow-md hover:border-border/70 transition-all duration-150 {(_draggedCard?.Id == c.Id ? "opacity-50 scale-[0.98]" : "opacity-100")}")"
+                                 @ondragstart="@(() => HandleDragStart(c, colKey))"
+                                 @ondragend="@(() => HandleDragEnd())">
+
+                                <!-- Priority strip -->
+                                <div class="h-1 w-full @GetPriorityStrip(c.Priority)"></div>
+
+                                <div class="p-3 flex flex-col gap-2">
+                                    <!-- Top row: category tag + priority badge -->
+                                    <Flex Class="items-center justify-between gap-2">
+                                        <Badge Variant="Badge.BadgeVariant.Outline" Class="text-[10px] h-4 px-1.5 font-normal">@c.Category</Badge>
+                                        <Flex Class="items-center gap-1">
+                                            <DynamicIcon Name="@GetPriorityIcon(c.Priority)" Class="@($"h-3 w-3 {GetPriorityIconColor(c.Priority)}")" />
+                                            <Lumeo.Text Class="@($"text-[10px] font-medium {GetPriorityIconColor(c.Priority)}")">@c.Priority</Lumeo.Text>
+                                        </Flex>
+                                    </Flex>
+
+                                    <!-- Title -->
+                                    <Lumeo.Text Class="text-sm font-medium text-foreground leading-snug">@c.Title</Lumeo.Text>
+
+                                    <!-- Description -->
+                                    <Lumeo.Text Class="text-xs text-muted-foreground leading-relaxed line-clamp-2">@c.Description</Lumeo.Text>
+
+                                    <!-- Tags -->
+                                    @if (c.Tags.Length > 0)
+                                    {
+                                        <Flex Class="items-center gap-1 flex-wrap">
+                                            @foreach (var tag in c.Tags)
+                                            {
+                                                <Badge Variant="Badge.BadgeVariant.Secondary" Class="text-[10px] h-4 px-1.5 font-normal">@tag</Badge>
+                                            }
+                                        </Flex>
+                                    }
+
+                                    <Separator />
+
+                                    <!-- Footer -->
+                                    <Flex Class="items-center justify-between">
+                                        <!-- Assignee avatars -->
+                                        <Flex Class="items-center -space-x-1.5">
+                                            @foreach (var initials in c.AssigneeInitials)
+                                            {
+                                                <Avatar Class="h-6 w-6 ring-2 ring-card">
+                                                    <AvatarFallback Class="text-[9px]">@initials</AvatarFallback>
+                                                </Avatar>
+                                            }
+                                        </Flex>
+                                        <!-- Metadata -->
+                                        <Flex Class="items-center gap-2.5 text-muted-foreground">
+                                            <Flex Class="items-center gap-0.5">
+                                                <DynamicIcon Name="CalendarDays" Class="h-3 w-3" />
+                                                <Lumeo.Text Class="text-[10px]">@c.DueDate</Lumeo.Text>
+                                            </Flex>
+                                            @if (c.Subtasks > 0)
+                                            {
+                                                <Flex Class="items-center gap-0.5">
+                                                    <DynamicIcon Name="CheckSquare" Class="h-3 w-3" />
+                                                    <Lumeo.Text Class="text-[10px]">@c.Subtasks</Lumeo.Text>
+                                                </Flex>
+                                            }
+                                            <Flex Class="items-center gap-0.5">
+                                                <DynamicIcon Name="MessageCircle" Class="h-3 w-3" />
+                                                <Lumeo.Text Class="text-[10px]">@c.Comments</Lumeo.Text>
+                                            </Flex>
+                                        </Flex>
+                                    </Flex>
+                                </div>
+                            </div>
+                        }
+                    </div>
                 </div>
-            </div>
-        }
-    </div>
+            }
+        </div>
 
-</Stack>
-
+    </Stack>
+</AppShell>
 </ComponentDemo>
 
 @code {
@@ -327,49 +327,148 @@
     // ── Code snippet ───────────────────────────────────────────────────────────
 
     private const string _code = """
-        <!-- Native HTML5 drag-and-drop Kanban board -->
-        <div class="flex gap-4">
-            @foreach (var col in _columnOrder)
-            {
-                var colKey = col;
-                <div @ondragover:preventDefault="true"
-                     @ondragenter="@(() => _dragOverColumn = colKey)"
-                     @ondragleave="@(() => _dragOverColumn = null)"
-                     @ondrop="@(() => HandleDrop(colKey))">
+        @* AppShell is the docs host: shadcn's sidebar-07 shell, copy it from /blocks/sidebar. *@
+        <AppShell Section="Projects" Page="Sprint 24">
+            <Stack Gap="6" Class="w-full">
 
-                    @foreach (var card in _columns[colKey])
+                <!-- Header bar -->
+                <Flex Class="items-center justify-between gap-4">
+                    <Stack Gap="0">
+                        <Lumeo.Text As="h2" Class="text-xl font-semibold text-foreground leading-none">Sprint 24</Lumeo.Text>
+                        <Lumeo.Text Class="text-sm text-muted-foreground mt-1">Apr 14 – Apr 25, 2026 · @_allCards.Count tasks</Lumeo.Text>
+                    </Stack>
+                    <Flex Class="items-center gap-3">
+                        <Button Variant="Button.ButtonVariant.Outline" Size="Button.ButtonSize.Sm">
+                            <DynamicIcon Name="Filter" Class="h-4 w-4 mr-1.5" />
+                            Filter
+                        </Button>
+                        <!-- Assignee avatar stack -->
+                        <Flex Class="items-center -space-x-2">
+                            @foreach (var a in _assignees)
+                            {
+                                <Tooltip Content="@a.Name">
+                                    <Avatar Size="Lumeo.Size.Sm" Class="ring-2 ring-background cursor-pointer">
+                                        <AvatarFallback Class="text-[10px]">@a.Initials</AvatarFallback>
+                                    </Avatar>
+                                </Tooltip>
+                            }
+                            <div class="flex items-center justify-center h-8 w-8 rounded-full bg-muted ring-2 ring-background text-[10px] text-muted-foreground font-medium cursor-pointer">+2</div>
+                        </Flex>
+                        <Button Variant="Button.ButtonVariant.Default" Size="Button.ButtonSize.Sm">
+                            <DynamicIcon Name="Plus" Class="h-4 w-4 mr-1.5" />
+                            New Task
+                        </Button>
+                    </Flex>
+                </Flex>
+
+                <!-- Kanban board -->
+                <div class="flex gap-4 items-start overflow-x-auto pb-4">
+                    @foreach (var col in _columnOrder)
                     {
-                        var c = card;
-                        <div draggable="true"
-                             @ondragstart="@(() => HandleDragStart(c, colKey))"
-                             @ondragend="@(() => HandleDragEnd())">
-                            @c.Title
+                        var colKey = col;
+                        var colCards = _columns[colKey];
+                        var colMeta = _columnMeta[colKey];
+                        var isOver = _dragOverColumn == colKey;
+
+                        <div class="@($"flex flex-col gap-2 min-w-[280px] max-w-[320px] w-[300px] rounded-[var(--radius-lg)] p-3 transition-all duration-150 {(isOver ? "bg-primary/5 ring-2 ring-primary/30" : "bg-muted/30")}")"
+                             @ondragover:preventDefault="true"
+                             @ondragenter="@(() => _dragOverColumn = colKey)"
+                             @ondragleave="@(() => { if (_dragOverColumn == colKey) _dragOverColumn = null; })"
+                             @ondrop="@(() => HandleDrop(colKey))">
+
+                            <!-- Column header -->
+                            <Flex Class="items-center justify-between mb-1">
+                                <Flex Class="items-center gap-2">
+                                    <div class="h-2.5 w-2.5 rounded-full @colMeta.DotColor"></div>
+                                    <Lumeo.Text As="h3" Class="text-sm font-semibold text-foreground">@colMeta.Title</Lumeo.Text>
+                                    <Badge Variant="Badge.BadgeVariant.Secondary" Class="text-xs h-5 px-1.5 min-w-[20px] text-center">@colCards.Count</Badge>
+                                </Flex>
+                                <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Icon" Class="h-7 w-7 shrink-0">
+                                    <DynamicIcon Name="Plus" Class="h-3.5 w-3.5" />
+                                </Button>
+                            </Flex>
+
+                            <!-- Cards drop zone -->
+                            <div class="flex flex-col gap-2 min-h-[80px]">
+                                @foreach (var card in colCards)
+                                {
+                                    var c = card;
+                                    <div draggable="true"
+                                         class="@($"group rounded-[var(--radius-lg)] border border-border/40 bg-card overflow-hidden cursor-grab active:cursor-grabbing hover:shadow-md hover:border-border/70 transition-all duration-150 {(_draggedCard?.Id == c.Id ? "opacity-50 scale-[0.98]" : "opacity-100")}")"
+                                         @ondragstart="@(() => HandleDragStart(c, colKey))"
+                                         @ondragend="@(() => HandleDragEnd())">
+
+                                        <!-- Priority strip -->
+                                        <div class="h-1 w-full @GetPriorityStrip(c.Priority)"></div>
+
+                                        <div class="p-3 flex flex-col gap-2">
+                                            <!-- Top row: category tag + priority badge -->
+                                            <Flex Class="items-center justify-between gap-2">
+                                                <Badge Variant="Badge.BadgeVariant.Outline" Class="text-[10px] h-4 px-1.5 font-normal">@c.Category</Badge>
+                                                <Flex Class="items-center gap-1">
+                                                    <DynamicIcon Name="@GetPriorityIcon(c.Priority)" Class="@($"h-3 w-3 {GetPriorityIconColor(c.Priority)}")" />
+                                                    <Lumeo.Text Class="@($"text-[10px] font-medium {GetPriorityIconColor(c.Priority)}")">@c.Priority</Lumeo.Text>
+                                                </Flex>
+                                            </Flex>
+
+                                            <!-- Title -->
+                                            <Lumeo.Text Class="text-sm font-medium text-foreground leading-snug">@c.Title</Lumeo.Text>
+
+                                            <!-- Description -->
+                                            <Lumeo.Text Class="text-xs text-muted-foreground leading-relaxed line-clamp-2">@c.Description</Lumeo.Text>
+
+                                            <!-- Tags -->
+                                            @if (c.Tags.Length > 0)
+                                            {
+                                                <Flex Class="items-center gap-1 flex-wrap">
+                                                    @foreach (var tag in c.Tags)
+                                                    {
+                                                        <Badge Variant="Badge.BadgeVariant.Secondary" Class="text-[10px] h-4 px-1.5 font-normal">@tag</Badge>
+                                                    }
+                                                </Flex>
+                                            }
+
+                                            <Separator />
+
+                                            <!-- Footer -->
+                                            <Flex Class="items-center justify-between">
+                                                <!-- Assignee avatars -->
+                                                <Flex Class="items-center -space-x-1.5">
+                                                    @foreach (var initials in c.AssigneeInitials)
+                                                    {
+                                                        <Avatar Class="h-6 w-6 ring-2 ring-card">
+                                                            <AvatarFallback Class="text-[9px]">@initials</AvatarFallback>
+                                                        </Avatar>
+                                                    }
+                                                </Flex>
+                                                <!-- Metadata -->
+                                                <Flex Class="items-center gap-2.5 text-muted-foreground">
+                                                    <Flex Class="items-center gap-0.5">
+                                                        <DynamicIcon Name="CalendarDays" Class="h-3 w-3" />
+                                                        <Lumeo.Text Class="text-[10px]">@c.DueDate</Lumeo.Text>
+                                                    </Flex>
+                                                    @if (c.Subtasks > 0)
+                                                    {
+                                                        <Flex Class="items-center gap-0.5">
+                                                            <DynamicIcon Name="CheckSquare" Class="h-3 w-3" />
+                                                            <Lumeo.Text Class="text-[10px]">@c.Subtasks</Lumeo.Text>
+                                                        </Flex>
+                                                    }
+                                                    <Flex Class="items-center gap-0.5">
+                                                        <DynamicIcon Name="MessageCircle" Class="h-3 w-3" />
+                                                        <Lumeo.Text Class="text-[10px]">@c.Comments</Lumeo.Text>
+                                                    </Flex>
+                                                </Flex>
+                                            </Flex>
+                                        </div>
+                                    </div>
+                                }
+                            </div>
                         </div>
                     }
                 </div>
-            }
-        </div>
 
-        @code {
-            private TaskCard? _draggedCard;
-            private string?   _dragSourceColumn;
-            private string?   _dragOverColumn;
-
-            private void HandleDragStart(TaskCard card, string col) {
-                _draggedCard = card;
-                _dragSourceColumn = col;
-            }
-
-            private void HandleDragEnd() {
-                _draggedCard = _dragSourceColumn = _dragOverColumn = null;
-            }
-
-            private void HandleDrop(string target) {
-                if (_draggedCard is null || _dragSourceColumn == target) return;
-                _columns[_dragSourceColumn!].Remove(_draggedCard);
-                _columns[target].Add(_draggedCard);
-                HandleDragEnd();
-            }
-        }
+            </Stack>
+        </AppShell>
         """;
 }

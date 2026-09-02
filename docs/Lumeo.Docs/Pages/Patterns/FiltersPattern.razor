@@ -6,346 +6,348 @@
 <PageHeader Title="Filters" Description="A full faceted-search product browser with a sticky filter sidebar, live category/brand/rating/price/date/stock filters, active chips, and a responsive product grid with favorites." />
 
 <ComponentDemo Title="Product Filter &amp; Browse" Code="@_code">
-    <div class="w-full min-w-[720px]">
+    <AppShell Section="Catalog" Page="Products">
+        <div class="w-full">
 
-        <!-- Page header row -->
-        <div class="flex items-center justify-between mb-5">
-            <div>
-                <Heading Level="2" Class="text-2xl font-bold text-foreground tracking-tight">Marketplace</Heading>
-                <Lumeo.Text Class="text-sm text-muted-foreground mt-0.5">
-                    @FilteredProducts.Count of @_allProducts.Count products
-                </Lumeo.Text>
-            </div>
-            <div class="flex items-center gap-2">
-                <Select Value="@_sortBy" ValueChanged="@(v => _sortBy = v ?? "Relevance")" Class="w-48">
-                    <SelectTrigger Class="text-sm">
-                        <DynamicIcon Name="ArrowUpDown" Class="h-3.5 w-3.5 mr-1.5 text-muted-foreground" />
-                        <span>@_sortBy</span>
-                    </SelectTrigger>
-                    <SelectContent>
-                        <SelectItem Value="Relevance">Relevance</SelectItem>
-                        <SelectItem Value="Price: Low to High">Price: Low → High</SelectItem>
-                        <SelectItem Value="Price: High to Low">Price: High → Low</SelectItem>
-                        <SelectItem Value="Newest">Newest</SelectItem>
-                        <SelectItem Value="Highest Rated">Highest Rated</SelectItem>
-                    </SelectContent>
-                </Select>
-            </div>
-        </div>
-
-        <!-- Active filter chips -->
-        @if (HasActiveFilters)
-        {
-            <div class="flex flex-wrap gap-2 mb-4 items-center">
-                <Lumeo.Text As="span" Class="text-xs font-medium text-muted-foreground shrink-0">Active:</Lumeo.Text>
-                @if (_searchQuery != "")
-                {
-                    <FilterPill Label="Search" Value="@($"\"{_searchQuery}\"")" OnDismiss="@(() => _searchQuery = "")" />
-                }
-                @foreach (var cat in _selectedCategories.ToList())
-                {
-                    var c = cat;
-                    <FilterPill Label="Category" Value="@c" OnDismiss="@(() => _selectedCategories.Remove(c))" />
-                }
-                @foreach (var brand in _selectedBrands.ToList())
-                {
-                    var b = brand;
-                    <FilterPill Label="Brand" Value="@b" OnDismiss="@(() => _selectedBrands.Remove(b))" />
-                }
-                @if (_selectedRating > 0)
-                {
-                    <FilterPill Label="Rating" Value="@($"{_selectedRating}+ stars")" OnDismiss="@(() => _selectedRating = 0)" />
-                }
-                @if (_priceMin > 0 || _priceMax < 1000)
-                {
-                    <FilterPill Label="Price" Value="@($"${_priceMin}–${_priceMax}")" OnDismiss="@(() => { _priceMin = 0; _priceMax = 1000; })" />
-                }
-                @if (_inStockOnly)
-                {
-                    <FilterPill Label="Stock" Value="In stock only" OnDismiss="@(() => _inStockOnly = false)" />
-                }
-                @if (_dateFrom.HasValue || _dateTo.HasValue)
-                {
-                    var label = _dateFrom.HasValue && _dateTo.HasValue
-                        ? $"{_dateFrom!.Value:MMM d} – {_dateTo!.Value:MMM d}"
-                        : _dateFrom.HasValue ? $"From {_dateFrom.Value:MMM d}" : $"Until {_dateTo!.Value:MMM d}";
-                    <FilterPill Label="Added" Value="@label" OnDismiss="@(() => { _dateFrom = null; _dateTo = null; })" />
-                }
-                @foreach (var color in _selectedColors.ToList())
-                {
-                    var col = color;
-                    <FilterPill Label="Color" Value="@col" OnDismiss="@(() => _selectedColors.Remove(col))" />
-                }
-                <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Sm"
-                        Class="h-6 text-xs text-muted-foreground hover:text-destructive transition-colors px-2"
-                        @onclick="ClearAllFilters">
-                    <DynamicIcon Name="X" Class="h-3 w-3 mr-1" />
-                    Clear all
-                </Button>
-            </div>
-        }
-
-        <div class="flex gap-6">
-
-            <!-- ── Filter Sidebar ───────────────────────────────────── -->
-            <div class="w-64 shrink-0 space-y-5">
-
-                <!-- Search -->
+            <!-- Page header row -->
+            <div class="flex items-center justify-between mb-5">
                 <div>
-                    <Lumeo.Text Class="text-xs font-semibold text-foreground uppercase tracking-widest mb-2">Search</Lumeo.Text>
-                    <div class="relative">
-                        <DynamicIcon Name="Search" Class="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-                        <Input Value="@_searchQuery"
-                               ValueChanged="@(v => _searchQuery = v ?? "")"
-                               placeholder="Search products…"
-                               Class="pl-9" />
-                    </div>
+                    <Heading Level="2" Class="text-2xl font-bold text-foreground tracking-tight">Marketplace</Heading>
+                    <Lumeo.Text Class="text-sm text-muted-foreground mt-0.5">
+                        @FilteredProducts.Count of @_allProducts.Count products
+                    </Lumeo.Text>
                 </div>
-
-                <Separator />
-
-                <!-- Category -->
-                <div>
-                    <Lumeo.Text Class="text-xs font-semibold text-foreground uppercase tracking-widest mb-2">Category</Lumeo.Text>
-                    <div class="space-y-2">
-                        @foreach (var cat in _allCategories)
-                        {
-                            var c = cat;
-                            var count = _allProducts.Count(p => p.Category == c);
-                            <div class="flex items-center gap-2.5">
-                                <Checkbox Id="@($"cat-{c}")"
-                                          Checked="@_selectedCategories.Contains(c)"
-                                          CheckedChanged="@(v => ToggleItem(_selectedCategories, c, v))" />
-                                <label for="@($"cat-{c}")" class="flex items-center justify-between w-full text-sm text-foreground cursor-pointer select-none">
-                                    @c
-                                    <Lumeo.Text As="span" Class="text-xs text-muted-foreground tabular-nums">@count</Lumeo.Text>
-                                </label>
-                            </div>
-                        }
-                    </div>
+                <div class="flex items-center gap-2">
+                    <Select Value="@_sortBy" ValueChanged="@(v => _sortBy = v ?? "Relevance")" Class="w-48">
+                        <SelectTrigger Class="text-sm">
+                            <DynamicIcon Name="ArrowUpDown" Class="h-3.5 w-3.5 mr-1.5 text-muted-foreground" />
+                            <span>@_sortBy</span>
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem Value="Relevance">Relevance</SelectItem>
+                            <SelectItem Value="Price: Low to High">Price: Low → High</SelectItem>
+                            <SelectItem Value="Price: High to Low">Price: High → Low</SelectItem>
+                            <SelectItem Value="Newest">Newest</SelectItem>
+                            <SelectItem Value="Highest Rated">Highest Rated</SelectItem>
+                        </SelectContent>
+                    </Select>
                 </div>
+            </div>
 
-                <Separator />
+            <!-- Active filter chips -->
+            @if (HasActiveFilters)
+            {
+                <div class="flex flex-wrap gap-2 mb-4 items-center">
+                    <Lumeo.Text As="span" Class="text-xs font-medium text-muted-foreground shrink-0">Active:</Lumeo.Text>
+                    @if (_searchQuery != "")
+                    {
+                        <FilterPill Label="Search" Value="@($"\"{_searchQuery}\"")" OnDismiss="@(() => _searchQuery = "")" />
+                    }
+                    @foreach (var cat in _selectedCategories.ToList())
+                    {
+                        var c = cat;
+                        <FilterPill Label="Category" Value="@c" OnDismiss="@(() => _selectedCategories.Remove(c))" />
+                    }
+                    @foreach (var brand in _selectedBrands.ToList())
+                    {
+                        var b = brand;
+                        <FilterPill Label="Brand" Value="@b" OnDismiss="@(() => _selectedBrands.Remove(b))" />
+                    }
+                    @if (_selectedRating > 0)
+                    {
+                        <FilterPill Label="Rating" Value="@($"{_selectedRating}+ stars")" OnDismiss="@(() => _selectedRating = 0)" />
+                    }
+                    @if (_priceMin > 0 || _priceMax < 1000)
+                    {
+                        <FilterPill Label="Price" Value="@($"${_priceMin}–${_priceMax}")" OnDismiss="@(() => { _priceMin = 0; _priceMax = 1000; })" />
+                    }
+                    @if (_inStockOnly)
+                    {
+                        <FilterPill Label="Stock" Value="In stock only" OnDismiss="@(() => _inStockOnly = false)" />
+                    }
+                    @if (_dateFrom.HasValue || _dateTo.HasValue)
+                    {
+                        var label = _dateFrom.HasValue && _dateTo.HasValue
+                            ? $"{_dateFrom!.Value:MMM d} – {_dateTo!.Value:MMM d}"
+                            : _dateFrom.HasValue ? $"From {_dateFrom.Value:MMM d}" : $"Until {_dateTo!.Value:MMM d}";
+                        <FilterPill Label="Added" Value="@label" OnDismiss="@(() => { _dateFrom = null; _dateTo = null; })" />
+                    }
+                    @foreach (var color in _selectedColors.ToList())
+                    {
+                        var col = color;
+                        <FilterPill Label="Color" Value="@col" OnDismiss="@(() => _selectedColors.Remove(col))" />
+                    }
+                    <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Sm"
+                            Class="h-6 text-xs text-muted-foreground hover:text-destructive transition-colors px-2"
+                            @onclick="ClearAllFilters">
+                        <DynamicIcon Name="X" Class="h-3 w-3 mr-1" />
+                        Clear all
+                    </Button>
+                </div>
+            }
 
-                <!-- Price range -->
-                <div>
-                    <div class="flex items-center justify-between mb-2">
-                        <Lumeo.Text Class="text-xs font-semibold text-foreground uppercase tracking-widest">Price range</Lumeo.Text>
-                        <Lumeo.Text As="span" Class="text-xs text-muted-foreground tabular-nums">$@((int)_priceMin) – $@((int)_priceMax)</Lumeo.Text>
-                    </div>
-                    <div class="space-y-2.5">
-                        <div>
-                            <Lumeo.Text Class="text-[11px] text-muted-foreground mb-1">Min: $@((int)_priceMin)</Lumeo.Text>
-                            <Slider Value="@_priceMin" ValueChanged="@(v => _priceMin = Math.Min(v, _priceMax - 10))" Min="0" Max="1000" Step="10" />
-                        </div>
-                        <div>
-                            <Lumeo.Text Class="text-[11px] text-muted-foreground mb-1">Max: $@((int)_priceMax)</Lumeo.Text>
-                            <Slider Value="@_priceMax" ValueChanged="@(v => _priceMax = Math.Max(v, _priceMin + 10))" Min="0" Max="1000" Step="10" />
+            <div class="flex gap-6">
+
+                <!-- ── Filter Sidebar ───────────────────────────────────── -->
+                <div class="w-64 shrink-0 space-y-5">
+
+                    <!-- Search -->
+                    <div>
+                        <Lumeo.Text Class="text-xs font-semibold text-foreground uppercase tracking-widest mb-2">Search</Lumeo.Text>
+                        <div class="relative">
+                            <DynamicIcon Name="Search" Class="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+                            <Input Value="@_searchQuery"
+                                   ValueChanged="@(v => _searchQuery = v ?? "")"
+                                   placeholder="Search products…"
+                                   Class="pl-9" />
                         </div>
                     </div>
-                </div>
 
-                <Separator />
+                    <Separator />
 
-                <!-- Rating -->
-                <div>
-                    <Lumeo.Text Class="text-xs font-semibold text-foreground uppercase tracking-widest mb-2">Minimum rating</Lumeo.Text>
-                    <div class="space-y-1.5">
-                        @foreach (var rating in new[] { 5, 4, 3, 2 })
-                        {
-                            var r = rating;
-                            <label class="flex items-center gap-2.5 cursor-pointer group select-none">
-                                <input type="radio"
-                                       name="rating-filter"
-                                       class="accent-primary cursor-pointer"
-                                       checked="@(_selectedRating == r)"
-                                       @onchange="@(() => _selectedRating = _selectedRating == r ? 0 : r)" />
-                                <div class="flex items-center gap-1">
-                                    @for (var i = 1; i <= 5; i++)
-                                    {
-                                        <DynamicIcon Name="Star" Class="@($"h-3.5 w-3.5 {(i <= r ? "text-warning-text fill-warning-text" : "text-muted-foreground/30")}")" />
-                                    }
-                                    <Lumeo.Text As="span" Class="text-xs text-muted-foreground ml-0.5">@(r == 5 ? "only" : "& up")</Lumeo.Text>
+                    <!-- Category -->
+                    <div>
+                        <Lumeo.Text Class="text-xs font-semibold text-foreground uppercase tracking-widest mb-2">Category</Lumeo.Text>
+                        <div class="space-y-2">
+                            @foreach (var cat in _allCategories)
+                            {
+                                var c = cat;
+                                var count = _allProducts.Count(p => p.Category == c);
+                                <div class="flex items-center gap-2.5">
+                                    <Checkbox Id="@($"cat-{c}")"
+                                              Checked="@_selectedCategories.Contains(c)"
+                                              CheckedChanged="@(v => ToggleItem(_selectedCategories, c, v))" />
+                                    <label for="@($"cat-{c}")" class="flex items-center justify-between w-full text-sm text-foreground cursor-pointer select-none">
+                                        @c
+                                        <Lumeo.Text As="span" Class="text-xs text-muted-foreground tabular-nums">@count</Lumeo.Text>
+                                    </label>
                                 </div>
-                            </label>
-                        }
-                    </div>
-                </div>
-
-                <Separator />
-
-                <!-- Brand -->
-                <div>
-                    <Lumeo.Text Class="text-xs font-semibold text-foreground uppercase tracking-widest mb-2">Brand</Lumeo.Text>
-                    <div class="space-y-2">
-                        @foreach (var brand in _allBrands)
-                        {
-                            var b = brand;
-                            var count = _allProducts.Count(p => p.Brand == b);
-                            <div class="flex items-center gap-2.5">
-                                <Checkbox Id="@($"brand-{b}")"
-                                          Checked="@_selectedBrands.Contains(b)"
-                                          CheckedChanged="@(v => ToggleItem(_selectedBrands, b, v))" />
-                                <label for="@($"brand-{b}")" class="flex items-center justify-between w-full text-sm text-foreground cursor-pointer select-none">
-                                    @b
-                                    <Lumeo.Text As="span" Class="text-xs text-muted-foreground tabular-nums">@count</Lumeo.Text>
-                                </label>
-                            </div>
-                        }
-                    </div>
-                </div>
-
-                <Separator />
-
-                <!-- Availability -->
-                <div>
-                    <Lumeo.Text Class="text-xs font-semibold text-foreground uppercase tracking-widest mb-2">Availability</Lumeo.Text>
-                    <div class="flex items-center gap-2.5">
-                        <Switch Id="in-stock" @bind-Checked="_inStockOnly" />
-                        <label for="in-stock" class="text-sm text-foreground cursor-pointer select-none">In stock only</label>
-                    </div>
-                </div>
-
-                <Separator />
-
-                <!-- Color -->
-                <div>
-                    <Lumeo.Text Class="text-xs font-semibold text-foreground uppercase tracking-widest mb-2">Color</Lumeo.Text>
-                    <div class="flex flex-wrap gap-2">
-                        @foreach (var color in _allColors)
-                        {
-                            var col = color;
-                            var isSelected = _selectedColors.Contains(col.Name);
-                            <Tooltip>
-                                <TooltipTrigger>
-                                    <button @onclick="@(() => { if (isSelected) _selectedColors.Remove(col.Name); else _selectedColors.Add(col.Name); })"
-                                            class="@($"h-7 w-7 rounded-full border-2 transition-all {(isSelected ? "border-foreground scale-110 shadow-sm" : "border-transparent hover:border-border")} {col.Bg}")">
-                                    </button>
-                                </TooltipTrigger>
-                                <TooltipContent Side="Lumeo.Side.Top">@col.Name</TooltipContent>
-                            </Tooltip>
-                        }
-                    </div>
-                </div>
-
-                <Separator />
-
-                <!-- Date Added -->
-                <div>
-                    <Lumeo.Text Class="text-xs font-semibold text-foreground uppercase tracking-widest mb-2">Date added</Lumeo.Text>
-                    <DateRangePicker @bind-StartDate="_dateFrom" @bind-EndDate="_dateTo" Clearable="true" />
-                </div>
-
-                <Separator />
-
-                <!-- Clear all -->
-                <Button Variant="Button.ButtonVariant.Ghost" Class="w-full text-muted-foreground hover:text-destructive" @onclick="ClearAllFilters">
-                    <DynamicIcon Name="RotateCcw" Class="h-4 w-4 mr-2" />
-                    Clear all filters
-                </Button>
-
-            </div>
-
-            <!-- ── Product Grid ──────────────────────────────────────── -->
-            <div class="flex-1 min-w-0 space-y-4">
-
-                @if (FilteredProducts.Count == 0)
-                {
-                    <div class="flex flex-col items-center justify-center py-24 text-center">
-                        <div class="h-16 w-16 rounded-full bg-muted flex items-center justify-center mb-4">
-                            <DynamicIcon Name="SearchX" Class="h-8 w-8 text-muted-foreground" />
+                            }
                         </div>
-                        <Lumeo.Text Class="text-sm font-medium text-foreground">No products found</Lumeo.Text>
-                        <Lumeo.Text Class="text-xs text-muted-foreground mt-1 max-w-xs">Try adjusting your filters or search query.</Lumeo.Text>
-                        <Button Variant="Button.ButtonVariant.Outline" Size="Button.ButtonSize.Sm" Class="mt-4" @onclick="ClearAllFilters">
-                            Clear filters
-                        </Button>
                     </div>
-                }
-                else
-                {
-                    <div class="grid grid-cols-3 gap-4">
-                        @foreach (var product in SortedProducts)
-                        {
-                            var p = product;
-                            <div class="group cursor-pointer rounded-[var(--radius-lg)] border border-border/40 bg-card overflow-hidden hover:border-border/80 hover:shadow-md transition-all">
-                                <!-- Product image -->
-                                <div class="relative overflow-hidden" style="aspect-ratio:4/3">
-                                    <img src="https://images.unsplash.com/photo-@(p.UnsplashId)?w=400&auto=format&fit=crop&q=60"
-                                         alt="@p.Name"
-                                         class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
-                                    <div class="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent" />
-                                    <!-- Badges -->
-                                    <div class="absolute top-2 left-2 flex flex-col gap-1">
-                                        @if (p.IsNew)
-                                        {
-                                            <Badge Variant="Badge.BadgeVariant.Default" Class="text-[10px] py-0 px-1.5 h-4">New</Badge>
-                                        }
-                                        @if (p.DiscountPct > 0)
-                                        {
-                                            <Badge Variant="Badge.BadgeVariant.Destructive" Class="text-[10px] py-0 px-1.5 h-4">-@p.DiscountPct%</Badge>
-                                        }
-                                    </div>
-                                    <!-- Favorite -->
-                                    <button class="@($"absolute top-2 right-2 h-7 w-7 rounded-full bg-background/80 backdrop-blur-sm flex items-center justify-center transition-all {(p.IsFavorite ? "opacity-100" : "opacity-0 group-hover:opacity-100")}")"
-                                            @onclick:stopPropagation="true"
-                                            @onclick="@(() => p.IsFavorite = !p.IsFavorite)">
-                                        <DynamicIcon Name="Heart" Class="@($"h-4 w-4 transition-colors {(p.IsFavorite ? "text-destructive fill-destructive" : "text-muted-foreground")}")" />
-                                    </button>
-                                </div>
-                                <!-- Product info -->
-                                <div class="p-3">
-                                    <Lumeo.Text Class="text-[10px] text-muted-foreground uppercase tracking-widest mb-0.5">@p.Brand</Lumeo.Text>
-                                    <Lumeo.Text Class="text-sm font-semibold text-foreground truncate leading-snug">@p.Name</Lumeo.Text>
-                                    <!-- Stars -->
-                                    <div class="flex items-center gap-1 mt-1 mb-2">
+
+                    <Separator />
+
+                    <!-- Price range -->
+                    <div>
+                        <div class="flex items-center justify-between mb-2">
+                            <Lumeo.Text Class="text-xs font-semibold text-foreground uppercase tracking-widest">Price range</Lumeo.Text>
+                            <Lumeo.Text As="span" Class="text-xs text-muted-foreground tabular-nums">$@((int)_priceMin) – $@((int)_priceMax)</Lumeo.Text>
+                        </div>
+                        <div class="space-y-2.5">
+                            <div>
+                                <Lumeo.Text Class="text-[11px] text-muted-foreground mb-1">Min: $@((int)_priceMin)</Lumeo.Text>
+                                <Slider Value="@_priceMin" ValueChanged="@(v => _priceMin = Math.Min(v, _priceMax - 10))" Min="0" Max="1000" Step="10" />
+                            </div>
+                            <div>
+                                <Lumeo.Text Class="text-[11px] text-muted-foreground mb-1">Max: $@((int)_priceMax)</Lumeo.Text>
+                                <Slider Value="@_priceMax" ValueChanged="@(v => _priceMax = Math.Max(v, _priceMin + 10))" Min="0" Max="1000" Step="10" />
+                            </div>
+                        </div>
+                    </div>
+
+                    <Separator />
+
+                    <!-- Rating -->
+                    <div>
+                        <Lumeo.Text Class="text-xs font-semibold text-foreground uppercase tracking-widest mb-2">Minimum rating</Lumeo.Text>
+                        <div class="space-y-1.5">
+                            @foreach (var rating in new[] { 5, 4, 3, 2 })
+                            {
+                                var r = rating;
+                                <label class="flex items-center gap-2.5 cursor-pointer group select-none">
+                                    <input type="radio"
+                                           name="rating-filter"
+                                           class="accent-primary cursor-pointer"
+                                           checked="@(_selectedRating == r)"
+                                           @onchange="@(() => _selectedRating = _selectedRating == r ? 0 : r)" />
+                                    <div class="flex items-center gap-1">
                                         @for (var i = 1; i <= 5; i++)
                                         {
-                                            <DynamicIcon Name="Star" Class="@($"h-3 w-3 {(i <= p.Rating ? "text-warning-text fill-warning-text" : "text-muted-foreground/30")}")" />
+                                            <DynamicIcon Name="Star" Class="@($"h-3.5 w-3.5 {(i <= r ? "text-warning-text fill-warning-text" : "text-muted-foreground/30")}")" />
                                         }
-                                        <Lumeo.Text As="span" Class="text-[11px] text-muted-foreground ml-0.5">(@p.ReviewCount)</Lumeo.Text>
+                                        <Lumeo.Text As="span" Class="text-xs text-muted-foreground ml-0.5">@(r == 5 ? "only" : "& up")</Lumeo.Text>
                                     </div>
-                                    <!-- Price + stock -->
-                                    <div class="flex items-center justify-between">
-                                        <div class="flex items-center gap-1.5">
-                                            <Lumeo.Text Class="text-sm font-bold text-foreground">$@p.Price.ToString("F0")</Lumeo.Text>
-                                            @if (p.OriginalPrice > p.Price)
-                                            {
-                                                <Lumeo.Text As="span" Class="text-xs text-muted-foreground line-through">$@p.OriginalPrice.ToString("F0")</Lumeo.Text>
-                                            }
-                                        </div>
-                                        @if (!p.InStock)
-                                        {
-                                            <Badge Variant="Badge.BadgeVariant.Secondary" Class="text-[10px] py-0 px-1.5 h-4">Out of stock</Badge>
-                                        }
-                                    </div>
-                                </div>
-                            </div>
-                        }
-                    </div>
-
-                    <!-- Pagination footer -->
-                    <div class="flex items-center justify-between pt-4 border-t border-border/40">
-                        <Lumeo.Text As="span" Class="text-sm text-muted-foreground">
-                            Showing @FilteredProducts.Count result@(FilteredProducts.Count != 1 ? "s" : "")
-                        </Lumeo.Text>
-                        <div class="flex items-center gap-2">
-                            <Button Variant="Button.ButtonVariant.Outline" Size="Button.ButtonSize.Sm" Disabled="true">
-                                <DynamicIcon Name="ChevronLeft" Class="h-4 w-4 mr-1" />
-                                Previous
-                            </Button>
-                            <Badge Variant="Badge.BadgeVariant.Secondary" Class="px-3 h-8 text-sm">1</Badge>
-                            <Button Variant="Button.ButtonVariant.Outline" Size="Button.ButtonSize.Sm" Disabled="true">
-                                Next
-                                <DynamicIcon Name="ChevronRight" Class="h-4 w-4 ml-1" />
-                            </Button>
+                                </label>
+                            }
                         </div>
                     </div>
-                }
 
+                    <Separator />
+
+                    <!-- Brand -->
+                    <div>
+                        <Lumeo.Text Class="text-xs font-semibold text-foreground uppercase tracking-widest mb-2">Brand</Lumeo.Text>
+                        <div class="space-y-2">
+                            @foreach (var brand in _allBrands)
+                            {
+                                var b = brand;
+                                var count = _allProducts.Count(p => p.Brand == b);
+                                <div class="flex items-center gap-2.5">
+                                    <Checkbox Id="@($"brand-{b}")"
+                                              Checked="@_selectedBrands.Contains(b)"
+                                              CheckedChanged="@(v => ToggleItem(_selectedBrands, b, v))" />
+                                    <label for="@($"brand-{b}")" class="flex items-center justify-between w-full text-sm text-foreground cursor-pointer select-none">
+                                        @b
+                                        <Lumeo.Text As="span" Class="text-xs text-muted-foreground tabular-nums">@count</Lumeo.Text>
+                                    </label>
+                                </div>
+                            }
+                        </div>
+                    </div>
+
+                    <Separator />
+
+                    <!-- Availability -->
+                    <div>
+                        <Lumeo.Text Class="text-xs font-semibold text-foreground uppercase tracking-widest mb-2">Availability</Lumeo.Text>
+                        <div class="flex items-center gap-2.5">
+                            <Switch Id="in-stock" @bind-Checked="_inStockOnly" />
+                            <label for="in-stock" class="text-sm text-foreground cursor-pointer select-none">In stock only</label>
+                        </div>
+                    </div>
+
+                    <Separator />
+
+                    <!-- Color -->
+                    <div>
+                        <Lumeo.Text Class="text-xs font-semibold text-foreground uppercase tracking-widest mb-2">Color</Lumeo.Text>
+                        <div class="flex flex-wrap gap-2">
+                            @foreach (var color in _allColors)
+                            {
+                                var col = color;
+                                var isSelected = _selectedColors.Contains(col.Name);
+                                <Tooltip>
+                                    <TooltipTrigger>
+                                        <button @onclick="@(() => { if (isSelected) _selectedColors.Remove(col.Name); else _selectedColors.Add(col.Name); })"
+                                                class="@($"h-7 w-7 rounded-full border-2 transition-all {(isSelected ? "border-foreground scale-110 shadow-sm" : "border-transparent hover:border-border")} {col.Bg}")">
+                                        </button>
+                                    </TooltipTrigger>
+                                    <TooltipContent Side="Lumeo.Side.Top">@col.Name</TooltipContent>
+                                </Tooltip>
+                            }
+                        </div>
+                    </div>
+
+                    <Separator />
+
+                    <!-- Date Added -->
+                    <div>
+                        <Lumeo.Text Class="text-xs font-semibold text-foreground uppercase tracking-widest mb-2">Date added</Lumeo.Text>
+                        <DateRangePicker @bind-StartDate="_dateFrom" @bind-EndDate="_dateTo" Clearable="true" />
+                    </div>
+
+                    <Separator />
+
+                    <!-- Clear all -->
+                    <Button Variant="Button.ButtonVariant.Ghost" Class="w-full text-muted-foreground hover:text-destructive" @onclick="ClearAllFilters">
+                        <DynamicIcon Name="RotateCcw" Class="h-4 w-4 mr-2" />
+                        Clear all filters
+                    </Button>
+
+                </div>
+
+                <!-- ── Product Grid ──────────────────────────────────────── -->
+                <div class="flex-1 min-w-0 space-y-4">
+
+                    @if (FilteredProducts.Count == 0)
+                    {
+                        <div class="flex flex-col items-center justify-center py-24 text-center">
+                            <div class="h-16 w-16 rounded-full bg-muted flex items-center justify-center mb-4">
+                                <DynamicIcon Name="SearchX" Class="h-8 w-8 text-muted-foreground" />
+                            </div>
+                            <Lumeo.Text Class="text-sm font-medium text-foreground">No products found</Lumeo.Text>
+                            <Lumeo.Text Class="text-xs text-muted-foreground mt-1 max-w-xs">Try adjusting your filters or search query.</Lumeo.Text>
+                            <Button Variant="Button.ButtonVariant.Outline" Size="Button.ButtonSize.Sm" Class="mt-4" @onclick="ClearAllFilters">
+                                Clear filters
+                            </Button>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="grid grid-cols-3 gap-4">
+                            @foreach (var product in SortedProducts)
+                            {
+                                var p = product;
+                                <div class="group cursor-pointer rounded-[var(--radius-lg)] border border-border/40 bg-card overflow-hidden hover:border-border/80 hover:shadow-md transition-all">
+                                    <!-- Product image -->
+                                    <div class="relative overflow-hidden" style="aspect-ratio:4/3">
+                                        <img src="https://images.unsplash.com/photo-@(p.UnsplashId)?w=400&auto=format&fit=crop&q=60"
+                                             alt="@p.Name"
+                                             class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+                                        <div class="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent" />
+                                        <!-- Badges -->
+                                        <div class="absolute top-2 left-2 flex flex-col gap-1">
+                                            @if (p.IsNew)
+                                            {
+                                                <Badge Variant="Badge.BadgeVariant.Default" Class="text-[10px] py-0 px-1.5 h-4">New</Badge>
+                                            }
+                                            @if (p.DiscountPct > 0)
+                                            {
+                                                <Badge Variant="Badge.BadgeVariant.Destructive" Class="text-[10px] py-0 px-1.5 h-4">-@p.DiscountPct%</Badge>
+                                            }
+                                        </div>
+                                        <!-- Favorite -->
+                                        <button class="@($"absolute top-2 right-2 h-7 w-7 rounded-full bg-background/80 backdrop-blur-sm flex items-center justify-center transition-all {(p.IsFavorite ? "opacity-100" : "opacity-0 group-hover:opacity-100")}")"
+                                                @onclick:stopPropagation="true"
+                                                @onclick="@(() => p.IsFavorite = !p.IsFavorite)">
+                                            <DynamicIcon Name="Heart" Class="@($"h-4 w-4 transition-colors {(p.IsFavorite ? "text-destructive fill-destructive" : "text-muted-foreground")}")" />
+                                        </button>
+                                    </div>
+                                    <!-- Product info -->
+                                    <div class="p-3">
+                                        <Lumeo.Text Class="text-[10px] text-muted-foreground uppercase tracking-widest mb-0.5">@p.Brand</Lumeo.Text>
+                                        <Lumeo.Text Class="text-sm font-semibold text-foreground truncate leading-snug">@p.Name</Lumeo.Text>
+                                        <!-- Stars -->
+                                        <div class="flex items-center gap-1 mt-1 mb-2">
+                                            @for (var i = 1; i <= 5; i++)
+                                            {
+                                                <DynamicIcon Name="Star" Class="@($"h-3 w-3 {(i <= p.Rating ? "text-warning-text fill-warning-text" : "text-muted-foreground/30")}")" />
+                                            }
+                                            <Lumeo.Text As="span" Class="text-[11px] text-muted-foreground ml-0.5">(@p.ReviewCount)</Lumeo.Text>
+                                        </div>
+                                        <!-- Price + stock -->
+                                        <div class="flex items-center justify-between">
+                                            <div class="flex items-center gap-1.5">
+                                                <Lumeo.Text Class="text-sm font-bold text-foreground">$@p.Price.ToString("F0")</Lumeo.Text>
+                                                @if (p.OriginalPrice > p.Price)
+                                                {
+                                                    <Lumeo.Text As="span" Class="text-xs text-muted-foreground line-through">$@p.OriginalPrice.ToString("F0")</Lumeo.Text>
+                                                }
+                                            </div>
+                                            @if (!p.InStock)
+                                            {
+                                                <Badge Variant="Badge.BadgeVariant.Secondary" Class="text-[10px] py-0 px-1.5 h-4">Out of stock</Badge>
+                                            }
+                                        </div>
+                                    </div>
+                                </div>
+                            }
+                        </div>
+
+                        <!-- Pagination footer -->
+                        <div class="flex items-center justify-between pt-4 border-t border-border/40">
+                            <Lumeo.Text As="span" Class="text-sm text-muted-foreground">
+                                Showing @FilteredProducts.Count result@(FilteredProducts.Count != 1 ? "s" : "")
+                            </Lumeo.Text>
+                            <div class="flex items-center gap-2">
+                                <Button Variant="Button.ButtonVariant.Outline" Size="Button.ButtonSize.Sm" Disabled="true">
+                                    <DynamicIcon Name="ChevronLeft" Class="h-4 w-4 mr-1" />
+                                    Previous
+                                </Button>
+                                <Badge Variant="Badge.BadgeVariant.Secondary" Class="px-3 h-8 text-sm">1</Badge>
+                                <Button Variant="Button.ButtonVariant.Outline" Size="Button.ButtonSize.Sm" Disabled="true">
+                                    Next
+                                    <DynamicIcon Name="ChevronRight" Class="h-4 w-4 ml-1" />
+                                </Button>
+                            </div>
+                        </div>
+                    }
+
+                </div>
             </div>
         </div>
-    </div>
+    </AppShell>
 </ComponentDemo>
 
 @code {
@@ -474,49 +476,347 @@
         _dateTo = null;
     }
 
-    private string _code = @"<!-- Filters + Product grid — Lumeo pattern -->
-<div class=""w-full"">
-  <!-- Active chip row -->
-  <div class=""flex flex-wrap gap-2 mb-4 items-center"">
-    <FilterPill Label=""Category"" Value=""Audio"" OnDismiss=""@(() => {})"" />
-    <FilterPill Label=""Price"" Value=""$0–$300"" OnDismiss=""@(() => {})"" />
-    <Button Variant=""Button.ButtonVariant.Ghost"" Size=""Button.ButtonSize.Sm"" Class=""text-muted-foreground hover:text-destructive"">
-      <DynamicIcon Name=""X"" Class=""h-3 w-3 mr-1"" /> Clear all
-    </Button>
-  </div>
+    private string _code = @"@* AppShell is the docs host: shadcn's sidebar-07 shell, copy it from /blocks/sidebar. *@
+<AppShell Section=""Catalog"" Page=""Products"">
+    <div class=""w-full"">
 
-  <div class=""flex gap-6"">
-    <!-- Filter sidebar w-64 -->
-    <div class=""w-64 shrink-0 space-y-5"">
-      <!-- Search -->
-      <Input placeholder=""Search products…"" Class=""pl-9"" />
-      <Separator />
-      <!-- Category checkboxes with live counts -->
-      @foreach (var cat in _allCategories) {
-        <div class=""flex items-center gap-2.5"">
-          <Checkbox Checked=""@_selectedCategories.Contains(cat)"" CheckedChanged=""@(v => ToggleItem(_selectedCategories, cat, v))"" />
-          <label class=""text-sm text-foreground"">@cat</label>
+        <!-- Page header row -->
+        <div class=""flex items-center justify-between mb-5"">
+            <div>
+                <Heading Level=""2"" Class=""text-2xl font-bold text-foreground tracking-tight"">Marketplace</Heading>
+                <Lumeo.Text Class=""text-sm text-muted-foreground mt-0.5"">
+                    @FilteredProducts.Count of @_allProducts.Count products
+                </Lumeo.Text>
+            </div>
+            <div class=""flex items-center gap-2"">
+                <Select Value=""@_sortBy"" ValueChanged=""@(v => _sortBy = v ?? ""Relevance"")"" Class=""w-48"">
+                    <SelectTrigger Class=""text-sm"">
+                        <DynamicIcon Name=""ArrowUpDown"" Class=""h-3.5 w-3.5 mr-1.5 text-muted-foreground"" />
+                        <span>@_sortBy</span>
+                    </SelectTrigger>
+                    <SelectContent>
+                        <SelectItem Value=""Relevance"">Relevance</SelectItem>
+                        <SelectItem Value=""Price: Low to High"">Price: Low → High</SelectItem>
+                        <SelectItem Value=""Price: High to Low"">Price: High → Low</SelectItem>
+                        <SelectItem Value=""Newest"">Newest</SelectItem>
+                        <SelectItem Value=""Highest Rated"">Highest Rated</SelectItem>
+                    </SelectContent>
+                </Select>
+            </div>
         </div>
-      }
-      <Separator />
-      <!-- Dual price sliders -->
-      <Slider Value=""@_priceMin"" ValueChanged=""@(v => _priceMin = v)"" Min=""0"" Max=""1000"" Step=""10"" />
-      <Slider Value=""@_priceMax"" ValueChanged=""@(v => _priceMax = v)"" Min=""0"" Max=""1000"" Step=""10"" />
-      <Separator />
-      <!-- Star rating radios -->
-      @foreach (var r in new[]{5,4,3,2}) {
-        <input type=""radio"" name=""rating"" class=""accent-primary"" @onchange=""@(() => _selectedRating = r)"" />
-      }
-      <Separator />
-      <!-- Brand checkboxes, Availability switch, Color chips, Date range picker ... -->
-      <Switch @bind-Checked=""_inStockOnly"" /><label>In stock only</label>
-      <DateRangePicker @bind-StartDate=""_dateFrom"" @bind-EndDate=""_dateTo"" Clearable=""true"" />
-    </div>
 
-    <!-- Product grid 3-col, hover scale, Unsplash images, star rating, discount badge -->
-    <div class=""flex-1 grid grid-cols-3 gap-4"">
-      @foreach (var p in SortedProducts) { /* product card ... */ }
+        <!-- Active filter chips -->
+        @if (HasActiveFilters)
+        {
+            <div class=""flex flex-wrap gap-2 mb-4 items-center"">
+                <Lumeo.Text As=""span"" Class=""text-xs font-medium text-muted-foreground shrink-0"">Active:</Lumeo.Text>
+                @if (_searchQuery != """")
+                {
+                    <FilterPill Label=""Search"" Value=""@($""\""{_searchQuery}\"""")"" OnDismiss=""@(() => _searchQuery = """")"" />
+                }
+                @foreach (var cat in _selectedCategories.ToList())
+                {
+                    var c = cat;
+                    <FilterPill Label=""Category"" Value=""@c"" OnDismiss=""@(() => _selectedCategories.Remove(c))"" />
+                }
+                @foreach (var brand in _selectedBrands.ToList())
+                {
+                    var b = brand;
+                    <FilterPill Label=""Brand"" Value=""@b"" OnDismiss=""@(() => _selectedBrands.Remove(b))"" />
+                }
+                @if (_selectedRating > 0)
+                {
+                    <FilterPill Label=""Rating"" Value=""@($""{_selectedRating}+ stars"")"" OnDismiss=""@(() => _selectedRating = 0)"" />
+                }
+                @if (_priceMin > 0 || _priceMax < 1000)
+                {
+                    <FilterPill Label=""Price"" Value=""@($""${_priceMin}–${_priceMax}"")"" OnDismiss=""@(() => { _priceMin = 0; _priceMax = 1000; })"" />
+                }
+                @if (_inStockOnly)
+                {
+                    <FilterPill Label=""Stock"" Value=""In stock only"" OnDismiss=""@(() => _inStockOnly = false)"" />
+                }
+                @if (_dateFrom.HasValue || _dateTo.HasValue)
+                {
+                    var label = _dateFrom.HasValue && _dateTo.HasValue
+                        ? $""{_dateFrom!.Value:MMM d} – {_dateTo!.Value:MMM d}""
+                        : _dateFrom.HasValue ? $""From {_dateFrom.Value:MMM d}"" : $""Until {_dateTo!.Value:MMM d}"";
+                    <FilterPill Label=""Added"" Value=""@label"" OnDismiss=""@(() => { _dateFrom = null; _dateTo = null; })"" />
+                }
+                @foreach (var color in _selectedColors.ToList())
+                {
+                    var col = color;
+                    <FilterPill Label=""Color"" Value=""@col"" OnDismiss=""@(() => _selectedColors.Remove(col))"" />
+                }
+                <Button Variant=""Button.ButtonVariant.Ghost"" Size=""Button.ButtonSize.Sm""
+                        Class=""h-6 text-xs text-muted-foreground hover:text-destructive transition-colors px-2""
+                        @onclick=""ClearAllFilters"">
+                    <DynamicIcon Name=""X"" Class=""h-3 w-3 mr-1"" />
+                    Clear all
+                </Button>
+            </div>
+        }
+
+        <div class=""flex gap-6"">
+
+            <!-- ── Filter Sidebar ───────────────────────────────────── -->
+            <div class=""w-64 shrink-0 space-y-5"">
+
+                <!-- Search -->
+                <div>
+                    <Lumeo.Text Class=""text-xs font-semibold text-foreground uppercase tracking-widest mb-2"">Search</Lumeo.Text>
+                    <div class=""relative"">
+                        <DynamicIcon Name=""Search"" Class=""absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none"" />
+                        <Input Value=""@_searchQuery""
+                               ValueChanged=""@(v => _searchQuery = v ?? """")""
+                               placeholder=""Search products…""
+                               Class=""pl-9"" />
+                    </div>
+                </div>
+
+                <Separator />
+
+                <!-- Category -->
+                <div>
+                    <Lumeo.Text Class=""text-xs font-semibold text-foreground uppercase tracking-widest mb-2"">Category</Lumeo.Text>
+                    <div class=""space-y-2"">
+                        @foreach (var cat in _allCategories)
+                        {
+                            var c = cat;
+                            var count = _allProducts.Count(p => p.Category == c);
+                            <div class=""flex items-center gap-2.5"">
+                                <Checkbox Id=""@($""cat-{c}"")""
+                                          Checked=""@_selectedCategories.Contains(c)""
+                                          CheckedChanged=""@(v => ToggleItem(_selectedCategories, c, v))"" />
+                                <label for=""@($""cat-{c}"")"" class=""flex items-center justify-between w-full text-sm text-foreground cursor-pointer select-none"">
+                                    @c
+                                    <Lumeo.Text As=""span"" Class=""text-xs text-muted-foreground tabular-nums"">@count</Lumeo.Text>
+                                </label>
+                            </div>
+                        }
+                    </div>
+                </div>
+
+                <Separator />
+
+                <!-- Price range -->
+                <div>
+                    <div class=""flex items-center justify-between mb-2"">
+                        <Lumeo.Text Class=""text-xs font-semibold text-foreground uppercase tracking-widest"">Price range</Lumeo.Text>
+                        <Lumeo.Text As=""span"" Class=""text-xs text-muted-foreground tabular-nums"">$@((int)_priceMin) – $@((int)_priceMax)</Lumeo.Text>
+                    </div>
+                    <div class=""space-y-2.5"">
+                        <div>
+                            <Lumeo.Text Class=""text-[11px] text-muted-foreground mb-1"">Min: $@((int)_priceMin)</Lumeo.Text>
+                            <Slider Value=""@_priceMin"" ValueChanged=""@(v => _priceMin = Math.Min(v, _priceMax - 10))"" Min=""0"" Max=""1000"" Step=""10"" />
+                        </div>
+                        <div>
+                            <Lumeo.Text Class=""text-[11px] text-muted-foreground mb-1"">Max: $@((int)_priceMax)</Lumeo.Text>
+                            <Slider Value=""@_priceMax"" ValueChanged=""@(v => _priceMax = Math.Max(v, _priceMin + 10))"" Min=""0"" Max=""1000"" Step=""10"" />
+                        </div>
+                    </div>
+                </div>
+
+                <Separator />
+
+                <!-- Rating -->
+                <div>
+                    <Lumeo.Text Class=""text-xs font-semibold text-foreground uppercase tracking-widest mb-2"">Minimum rating</Lumeo.Text>
+                    <div class=""space-y-1.5"">
+                        @foreach (var rating in new[] { 5, 4, 3, 2 })
+                        {
+                            var r = rating;
+                            <label class=""flex items-center gap-2.5 cursor-pointer group select-none"">
+                                <input type=""radio""
+                                       name=""rating-filter""
+                                       class=""accent-primary cursor-pointer""
+                                       checked=""@(_selectedRating == r)""
+                                       @onchange=""@(() => _selectedRating = _selectedRating == r ? 0 : r)"" />
+                                <div class=""flex items-center gap-1"">
+                                    @for (var i = 1; i <= 5; i++)
+                                    {
+                                        <DynamicIcon Name=""Star"" Class=""@($""h-3.5 w-3.5 {(i <= r ? ""text-warning-text fill-warning-text"" : ""text-muted-foreground/30"")}"")"" />
+                                    }
+                                    <Lumeo.Text As=""span"" Class=""text-xs text-muted-foreground ml-0.5"">@(r == 5 ? ""only"" : ""& up"")</Lumeo.Text>
+                                </div>
+                            </label>
+                        }
+                    </div>
+                </div>
+
+                <Separator />
+
+                <!-- Brand -->
+                <div>
+                    <Lumeo.Text Class=""text-xs font-semibold text-foreground uppercase tracking-widest mb-2"">Brand</Lumeo.Text>
+                    <div class=""space-y-2"">
+                        @foreach (var brand in _allBrands)
+                        {
+                            var b = brand;
+                            var count = _allProducts.Count(p => p.Brand == b);
+                            <div class=""flex items-center gap-2.5"">
+                                <Checkbox Id=""@($""brand-{b}"")""
+                                          Checked=""@_selectedBrands.Contains(b)""
+                                          CheckedChanged=""@(v => ToggleItem(_selectedBrands, b, v))"" />
+                                <label for=""@($""brand-{b}"")"" class=""flex items-center justify-between w-full text-sm text-foreground cursor-pointer select-none"">
+                                    @b
+                                    <Lumeo.Text As=""span"" Class=""text-xs text-muted-foreground tabular-nums"">@count</Lumeo.Text>
+                                </label>
+                            </div>
+                        }
+                    </div>
+                </div>
+
+                <Separator />
+
+                <!-- Availability -->
+                <div>
+                    <Lumeo.Text Class=""text-xs font-semibold text-foreground uppercase tracking-widest mb-2"">Availability</Lumeo.Text>
+                    <div class=""flex items-center gap-2.5"">
+                        <Switch Id=""in-stock"" @bind-Checked=""_inStockOnly"" />
+                        <label for=""in-stock"" class=""text-sm text-foreground cursor-pointer select-none"">In stock only</label>
+                    </div>
+                </div>
+
+                <Separator />
+
+                <!-- Color -->
+                <div>
+                    <Lumeo.Text Class=""text-xs font-semibold text-foreground uppercase tracking-widest mb-2"">Color</Lumeo.Text>
+                    <div class=""flex flex-wrap gap-2"">
+                        @foreach (var color in _allColors)
+                        {
+                            var col = color;
+                            var isSelected = _selectedColors.Contains(col.Name);
+                            <Tooltip>
+                                <TooltipTrigger>
+                                    <button @onclick=""@(() => { if (isSelected) _selectedColors.Remove(col.Name); else _selectedColors.Add(col.Name); })""
+                                            class=""@($""h-7 w-7 rounded-full border-2 transition-all {(isSelected ? ""border-foreground scale-110 shadow-sm"" : ""border-transparent hover:border-border"")} {col.Bg}"")"">
+                                    </button>
+                                </TooltipTrigger>
+                                <TooltipContent Side=""Lumeo.Side.Top"">@col.Name</TooltipContent>
+                            </Tooltip>
+                        }
+                    </div>
+                </div>
+
+                <Separator />
+
+                <!-- Date Added -->
+                <div>
+                    <Lumeo.Text Class=""text-xs font-semibold text-foreground uppercase tracking-widest mb-2"">Date added</Lumeo.Text>
+                    <DateRangePicker @bind-StartDate=""_dateFrom"" @bind-EndDate=""_dateTo"" Clearable=""true"" />
+                </div>
+
+                <Separator />
+
+                <!-- Clear all -->
+                <Button Variant=""Button.ButtonVariant.Ghost"" Class=""w-full text-muted-foreground hover:text-destructive"" @onclick=""ClearAllFilters"">
+                    <DynamicIcon Name=""RotateCcw"" Class=""h-4 w-4 mr-2"" />
+                    Clear all filters
+                </Button>
+
+            </div>
+
+            <!-- ── Product Grid ──────────────────────────────────────── -->
+            <div class=""flex-1 min-w-0 space-y-4"">
+
+                @if (FilteredProducts.Count == 0)
+                {
+                    <div class=""flex flex-col items-center justify-center py-24 text-center"">
+                        <div class=""h-16 w-16 rounded-full bg-muted flex items-center justify-center mb-4"">
+                            <DynamicIcon Name=""SearchX"" Class=""h-8 w-8 text-muted-foreground"" />
+                        </div>
+                        <Lumeo.Text Class=""text-sm font-medium text-foreground"">No products found</Lumeo.Text>
+                        <Lumeo.Text Class=""text-xs text-muted-foreground mt-1 max-w-xs"">Try adjusting your filters or search query.</Lumeo.Text>
+                        <Button Variant=""Button.ButtonVariant.Outline"" Size=""Button.ButtonSize.Sm"" Class=""mt-4"" @onclick=""ClearAllFilters"">
+                            Clear filters
+                        </Button>
+                    </div>
+                }
+                else
+                {
+                    <div class=""grid grid-cols-3 gap-4"">
+                        @foreach (var product in SortedProducts)
+                        {
+                            var p = product;
+                            <div class=""group cursor-pointer rounded-[var(--radius-lg)] border border-border/40 bg-card overflow-hidden hover:border-border/80 hover:shadow-md transition-all"">
+                                <!-- Product image -->
+                                <div class=""relative overflow-hidden"" style=""aspect-ratio:4/3"">
+                                    <img src=""https://images.unsplash.com/photo-@(p.UnsplashId)?w=400&auto=format&fit=crop&q=60""
+                                         alt=""@p.Name""
+                                         class=""w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"" />
+                                    <div class=""absolute inset-0 bg-gradient-to-t from-black/20 to-transparent"" />
+                                    <!-- Badges -->
+                                    <div class=""absolute top-2 left-2 flex flex-col gap-1"">
+                                        @if (p.IsNew)
+                                        {
+                                            <Badge Variant=""Badge.BadgeVariant.Default"" Class=""text-[10px] py-0 px-1.5 h-4"">New</Badge>
+                                        }
+                                        @if (p.DiscountPct > 0)
+                                        {
+                                            <Badge Variant=""Badge.BadgeVariant.Destructive"" Class=""text-[10px] py-0 px-1.5 h-4"">-@p.DiscountPct%</Badge>
+                                        }
+                                    </div>
+                                    <!-- Favorite -->
+                                    <button class=""@($""absolute top-2 right-2 h-7 w-7 rounded-full bg-background/80 backdrop-blur-sm flex items-center justify-center transition-all {(p.IsFavorite ? ""opacity-100"" : ""opacity-0 group-hover:opacity-100"")}"")""
+                                            @onclick:stopPropagation=""true""
+                                            @onclick=""@(() => p.IsFavorite = !p.IsFavorite)"">
+                                        <DynamicIcon Name=""Heart"" Class=""@($""h-4 w-4 transition-colors {(p.IsFavorite ? ""text-destructive fill-destructive"" : ""text-muted-foreground"")}"")"" />
+                                    </button>
+                                </div>
+                                <!-- Product info -->
+                                <div class=""p-3"">
+                                    <Lumeo.Text Class=""text-[10px] text-muted-foreground uppercase tracking-widest mb-0.5"">@p.Brand</Lumeo.Text>
+                                    <Lumeo.Text Class=""text-sm font-semibold text-foreground truncate leading-snug"">@p.Name</Lumeo.Text>
+                                    <!-- Stars -->
+                                    <div class=""flex items-center gap-1 mt-1 mb-2"">
+                                        @for (var i = 1; i <= 5; i++)
+                                        {
+                                            <DynamicIcon Name=""Star"" Class=""@($""h-3 w-3 {(i <= p.Rating ? ""text-warning-text fill-warning-text"" : ""text-muted-foreground/30"")}"")"" />
+                                        }
+                                        <Lumeo.Text As=""span"" Class=""text-[11px] text-muted-foreground ml-0.5"">(@p.ReviewCount)</Lumeo.Text>
+                                    </div>
+                                    <!-- Price + stock -->
+                                    <div class=""flex items-center justify-between"">
+                                        <div class=""flex items-center gap-1.5"">
+                                            <Lumeo.Text Class=""text-sm font-bold text-foreground"">$@p.Price.ToString(""F0"")</Lumeo.Text>
+                                            @if (p.OriginalPrice > p.Price)
+                                            {
+                                                <Lumeo.Text As=""span"" Class=""text-xs text-muted-foreground line-through"">$@p.OriginalPrice.ToString(""F0"")</Lumeo.Text>
+                                            }
+                                        </div>
+                                        @if (!p.InStock)
+                                        {
+                                            <Badge Variant=""Badge.BadgeVariant.Secondary"" Class=""text-[10px] py-0 px-1.5 h-4"">Out of stock</Badge>
+                                        }
+                                    </div>
+                                </div>
+                            </div>
+                        }
+                    </div>
+
+                    <!-- Pagination footer -->
+                    <div class=""flex items-center justify-between pt-4 border-t border-border/40"">
+                        <Lumeo.Text As=""span"" Class=""text-sm text-muted-foreground"">
+                            Showing @FilteredProducts.Count result@(FilteredProducts.Count != 1 ? ""s"" : """")
+                        </Lumeo.Text>
+                        <div class=""flex items-center gap-2"">
+                            <Button Variant=""Button.ButtonVariant.Outline"" Size=""Button.ButtonSize.Sm"" Disabled=""true"">
+                                <DynamicIcon Name=""ChevronLeft"" Class=""h-4 w-4 mr-1"" />
+                                Previous
+                            </Button>
+                            <Badge Variant=""Badge.BadgeVariant.Secondary"" Class=""px-3 h-8 text-sm"">1</Badge>
+                            <Button Variant=""Button.ButtonVariant.Outline"" Size=""Button.ButtonSize.Sm"" Disabled=""true"">
+                                Next
+                                <DynamicIcon Name=""ChevronRight"" Class=""h-4 w-4 ml-1"" />
+                            </Button>
+                        </div>
+                    </div>
+                }
+
+            </div>
+        </div>
     </div>
-  </div>
-</div>";
+</AppShell>";
 }

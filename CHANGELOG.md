@@ -5,6 +5,26 @@ All notable changes to Lumeo will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.3.1] - 2026-09-02
+
+### Fixed
+
+- **Every border defaults to the border token.** shadcn's base layer sets
+  `border-color` to the border token on every element, so a bare `border` class draws
+  the hairline; Lumeo's CSS never did, and `border` in a consumer's markup, or in a
+  verbatim shadcn port, drew `currentColor`, a near-black frame. The rule lives in
+  `@layer base` in `lumeo.css`, so utilities like `border-primary` still win.
+
+### Docs
+
+- **Mail and Music** are shadcn's examples, ported one to one from the last commit
+  that carried them: the resizable three-pane inbox with the collapsing folder rail,
+  and the Menubar-driven music app with album context menus.
+- **The eleven remaining full pages sit in shadcn's sidebar-07 shell** (Analytics,
+  Calendar, Chat, E-Commerce, File Manager, Filters, Form Wizard, Kanban,
+  Notifications, Settings, Social Feed): team switcher, nested navigation, user menu
+  and a breadcrumb header, with each page's own frame removed.
+
 ## [5.3.0] - 2026-09-02
 
 5.2.1 was tagged and never published; its three fixes ship here.

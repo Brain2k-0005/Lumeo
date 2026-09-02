@@ -1,349 +1,637 @@
 @page "/blocks/music"
 @namespace Lumeo.Docs.Pages.Patterns
 
-<PageTitle>Music Player — Lumeo Patterns</PageTitle>
+<PageTitle>Music — Lumeo Blocks</PageTitle>
 
-<PageHeader Title="Music Player" Description="A full-screen music application with sidebar library navigation, album grid browsing, a 'Made for You' row, and a persistent bottom playback bar with progress and volume controls." />
+<PageHeader Title="Music"
+            Description="shadcn's Music example, ported one to one: a five-menu Menubar with sub-menus, checkbox and radio items, a library sidebar with a scrolling playlist list, Music and Podcasts tabs, album rows whose covers open a ContextMenu with an Add-to-Playlist sub-menu, and an empty-state placeholder that opens an Add Podcast dialog." />
 
-<ComponentDemo Title="Music Player App" Code="@_code">
-    <Stack Class="w-full min-w-[760px] border border-border/40 rounded-[var(--radius-lg)] overflow-hidden" style="height: 620px;">
-        <Flex Class="h-full">
-
-            <!-- Sidebar -->
-            <Flex Direction="col" Class="w-60 border-r border-border/40 bg-card shrink-0">
-                <!-- Logo -->
-                <Flex Class="items-center gap-2.5 px-5 py-4 border-b border-border/40">
-                    <Flex Class="h-7 w-7 items-center justify-center rounded-md bg-primary shrink-0">
-                        <DynamicIcon Name="Music" Class="h-4 w-4 text-primary-foreground" />
-                    </Flex>
-                    <Lumeo.Text Class="text-base font-bold text-foreground tracking-tight">Wavefront</Lumeo.Text>
-                </Flex>
-
-                <Stack Class="px-3 py-3 flex-1 overflow-y-auto gap-0">
-                    <!-- Discover -->
-                    <Lumeo.Text Class="px-2 mb-1 mt-1 text-[10px] font-semibold text-muted-foreground uppercase tracking-widest">Discover</Lumeo.Text>
-                    <button class="flex items-center gap-2.5 w-full rounded-md px-2 py-1.5 text-sm font-medium bg-accent text-accent-foreground transition-colors mb-0.5">
-                        <DynamicIcon Name="Home" Class="h-4 w-4 shrink-0" />
-                        Home
-                    </button>
-                    <button class="flex items-center gap-2.5 w-full rounded-md px-2 py-1.5 text-sm text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors mb-0.5">
-                        <DynamicIcon Name="Search" Class="h-4 w-4 shrink-0" />
-                        Browse
-                    </button>
-                    <button class="flex items-center gap-2.5 w-full rounded-md px-2 py-1.5 text-sm text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors mb-0.5">
-                        <DynamicIcon Name="Radio" Class="h-4 w-4 shrink-0" />
-                        Radio
-                    </button>
-
-                    <Separator Class="my-3" />
-
-                    <!-- Library -->
-                    <Lumeo.Text Class="px-2 mb-1 text-[10px] font-semibold text-muted-foreground uppercase tracking-widest">Your Library</Lumeo.Text>
-                    <button class="flex items-center gap-2.5 w-full rounded-md px-2 py-1.5 text-sm text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors mb-0.5">
-                        <DynamicIcon Name="ListMusic" Class="h-4 w-4 shrink-0" />
-                        Playlists
-                        <Badge Variant="Badge.BadgeVariant.Secondary" Class="ml-auto text-[10px] py-0 px-1.5">12</Badge>
-                    </button>
-                    <button class="flex items-center gap-2.5 w-full rounded-md px-2 py-1.5 text-sm text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors mb-0.5">
-                        <DynamicIcon Name="Music" Class="h-4 w-4 shrink-0" />
-                        Songs
-                    </button>
-                    <button class="flex items-center gap-2.5 w-full rounded-md px-2 py-1.5 text-sm text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors mb-0.5">
-                        <DynamicIcon Name="Mic" Class="h-4 w-4 shrink-0" />
-                        Artists
-                    </button>
-                    <button class="flex items-center gap-2.5 w-full rounded-md px-2 py-1.5 text-sm text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors mb-0.5">
-                        <DynamicIcon Name="Disc" Class="h-4 w-4 shrink-0" />
-                        Albums
-                    </button>
-
-                    <Separator Class="my-3" />
-
-                    <!-- Recent Playlists -->
-                    <Lumeo.Text Class="px-2 mb-1 text-[10px] font-semibold text-muted-foreground uppercase tracking-widest">Playlists</Lumeo.Text>
-                    @foreach (var pl in _playlists)
-                    {
-                        <button class="flex items-center gap-2.5 w-full rounded-md px-2 py-1.5 text-sm text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors mb-0.5 truncate">
-                            <DynamicIcon Name="ListMusic" Class="h-3.5 w-3.5 shrink-0 opacity-60" />
-                            <span class="truncate">@pl</span>
-                        </button>
-                    }
-                </Stack>
-            </Flex>
-
-            <!-- Main Content -->
-            <Flex Direction="col" Class="flex-1 overflow-hidden bg-background">
-                <Stack Class="flex-1 overflow-y-auto p-6 gap-0">
-
-                    <!-- Recently Played -->
-                    <Stack Class="mb-7">
-                        <Flex Class="items-center justify-between mb-4">
-                            <Heading Level="3" Class="text-xl font-semibold text-foreground tracking-tight">Recently Played</Heading>
-                            <button class="text-sm text-primary hover:underline flex items-center gap-1 transition-colors">
-                                See all <DynamicIcon Name="ChevronRight" Class="h-3.5 w-3.5" />
-                            </button>
-                        </Flex>
-                        <Grid Class="grid-cols-2 lg:grid-cols-4 gap-4">
-                            @foreach (var album in _featuredAlbums)
-                            {
-                                var a = album;
-                                <div class="group cursor-pointer" @onclick="@(() => SelectSong(a.Title, a.Artist, a.Duration))">
-                                    <div class="relative rounded-[var(--radius-md)] overflow-hidden @a.BgClass mb-3" style="aspect-ratio:1">
-                                        <div class="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent" />
-                                        <div class="absolute inset-0 flex items-center justify-center">
-                                            <DynamicIcon Name="Music" Class="h-12 w-12 text-white/20" />
-                                        </div>
-                                        <!-- Play overlay on hover -->
-                                        <div class="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                                            <div class="h-10 w-10 rounded-full bg-primary flex items-center justify-center shadow-lg">
-                                                <DynamicIcon Name="Play" Class="h-5 w-5 text-primary-foreground ml-0.5" />
-                                            </div>
-                                        </div>
-                                        <div class="absolute bottom-0 left-0 right-0 px-3 py-2.5 bg-gradient-to-t from-black/60 to-transparent">
-                                            <Lumeo.Text Class="text-white text-xs font-semibold leading-tight truncate">@a.Title</Lumeo.Text>
-                                        </div>
+<Stack Gap="10" Class="mt-8">
+    <ComponentDemo Id="music" Title="Music" Description="A music app shell built with Menubar, Tabs, ScrollArea and ContextMenu." Code="@_code">
+        <div class="w-full overflow-hidden rounded-[var(--radius-lg)] border border-border/40 bg-background">
+            <Menubar Class="rounded-none border-b border-none px-2 lg:px-4">
+                <MenubarMenu>
+                    <MenubarTrigger Class="font-bold">Music</MenubarTrigger>
+                    <MenubarContent>
+                        <MenubarItem>About Music</MenubarItem>
+                        <MenubarSeparator />
+                        <MenubarItem>Preferences... <MenubarShortcut>⌘,</MenubarShortcut></MenubarItem>
+                        <MenubarSeparator />
+                        <MenubarItem>Hide Music... <MenubarShortcut>⌘H</MenubarShortcut></MenubarItem>
+                        <MenubarItem>Hide Others... <MenubarShortcut>⇧⌘H</MenubarShortcut></MenubarItem>
+                        <MenubarShortcut />
+                        <MenubarItem>Quit Music <MenubarShortcut>⌘Q</MenubarShortcut></MenubarItem>
+                    </MenubarContent>
+                </MenubarMenu>
+                <MenubarMenu>
+                    <MenubarTrigger Class="relative">File</MenubarTrigger>
+                    <MenubarContent>
+                        <MenubarSub>
+                            <MenubarSubTrigger>New</MenubarSubTrigger>
+                            <MenubarSubContent Class="w-[230px]">
+                                <MenubarItem>Playlist <MenubarShortcut>⌘N</MenubarShortcut></MenubarItem>
+                                <MenubarItem Disabled="true">Playlist from Selection <MenubarShortcut>⇧⌘N</MenubarShortcut></MenubarItem>
+                                <MenubarItem>Smart Playlist... <MenubarShortcut>⌥⌘N</MenubarShortcut></MenubarItem>
+                                <MenubarItem>Playlist Folder</MenubarItem>
+                                <MenubarItem Disabled="true">Genius Playlist</MenubarItem>
+                            </MenubarSubContent>
+                        </MenubarSub>
+                        <MenubarItem>Open Stream URL... <MenubarShortcut>⌘U</MenubarShortcut></MenubarItem>
+                        <MenubarItem>Close Window <MenubarShortcut>⌘W</MenubarShortcut></MenubarItem>
+                        <MenubarSeparator />
+                        <MenubarSub>
+                            <MenubarSubTrigger>Library</MenubarSubTrigger>
+                            <MenubarSubContent>
+                                <MenubarItem>Update Cloud Library</MenubarItem>
+                                <MenubarItem>Update Genius</MenubarItem>
+                                <MenubarSeparator />
+                                <MenubarItem>Organize Library...</MenubarItem>
+                                <MenubarItem>Export Library...</MenubarItem>
+                                <MenubarSeparator />
+                                <MenubarItem>Import Playlist...</MenubarItem>
+                                <MenubarItem Disabled="true">Export Playlist...</MenubarItem>
+                                <MenubarItem>Show Duplicate Items</MenubarItem>
+                                <MenubarSeparator />
+                                <MenubarItem>Get Album Artwork</MenubarItem>
+                                <MenubarItem Disabled="true">Get Track Names</MenubarItem>
+                            </MenubarSubContent>
+                        </MenubarSub>
+                        <MenubarItem>Import... <MenubarShortcut>⌘O</MenubarShortcut></MenubarItem>
+                        <MenubarItem Disabled="true">Burn Playlist to Disc...</MenubarItem>
+                        <MenubarSeparator />
+                        <MenubarItem>Show in Finder <MenubarShortcut>⇧⌘R</MenubarShortcut></MenubarItem>
+                        <MenubarItem>Convert</MenubarItem>
+                        <MenubarSeparator />
+                        <MenubarItem>Page Setup...</MenubarItem>
+                        <MenubarItem Disabled="true">Print... <MenubarShortcut>⌘P</MenubarShortcut></MenubarItem>
+                    </MenubarContent>
+                </MenubarMenu>
+                <MenubarMenu>
+                    <MenubarTrigger>Edit</MenubarTrigger>
+                    <MenubarContent>
+                        <MenubarItem Disabled="true">Undo <MenubarShortcut>⌘Z</MenubarShortcut></MenubarItem>
+                        <MenubarItem Disabled="true">Redo <MenubarShortcut>⇧⌘Z</MenubarShortcut></MenubarItem>
+                        <MenubarSeparator />
+                        <MenubarItem Disabled="true">Cut <MenubarShortcut>⌘X</MenubarShortcut></MenubarItem>
+                        <MenubarItem Disabled="true">Copy <MenubarShortcut>⌘C</MenubarShortcut></MenubarItem>
+                        <MenubarItem Disabled="true">Paste <MenubarShortcut>⌘V</MenubarShortcut></MenubarItem>
+                        <MenubarSeparator />
+                        <MenubarItem>Select All <MenubarShortcut>⌘A</MenubarShortcut></MenubarItem>
+                        <MenubarItem Disabled="true">Deselect All <MenubarShortcut>⇧⌘A</MenubarShortcut></MenubarItem>
+                        <MenubarSeparator />
+                        <MenubarItem>Smart Dictation... <MenubarShortcut><svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="h-4 w-4" viewBox="0 0 24 24"><path d="m12 8-9.04 9.06a2.82 2.82 0 1 0 3.98 3.98L16 12" /><circle cx="17" cy="7" r="5" /></svg></MenubarShortcut></MenubarItem>
+                        <MenubarItem>Emoji &amp; Symbols <MenubarShortcut><svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="h-4 w-4" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" /><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" /></svg></MenubarShortcut></MenubarItem>
+                    </MenubarContent>
+                </MenubarMenu>
+                <MenubarMenu>
+                    <MenubarTrigger>View</MenubarTrigger>
+                    <MenubarContent>
+                        <MenubarCheckboxItem Checked="@_showPlayingNext" CheckedChanged="@(v => _showPlayingNext = v)">Show Playing Next</MenubarCheckboxItem>
+                        <MenubarCheckboxItem Checked="@_showLyrics" CheckedChanged="@(v => _showLyrics = v)">Show Lyrics</MenubarCheckboxItem>
+                        <MenubarSeparator />
+                        <MenubarItem Inset="true" Disabled="true">Show Status Bar</MenubarItem>
+                        <MenubarSeparator />
+                        <MenubarItem Inset="true">Hide Sidebar</MenubarItem>
+                        <MenubarItem Inset="true" Disabled="true">Enter Full Screen</MenubarItem>
+                    </MenubarContent>
+                </MenubarMenu>
+                <MenubarMenu>
+                    <MenubarTrigger Class="hidden md:block">Account</MenubarTrigger>
+                    <MenubarContent>
+                        <MenubarLabel Inset="true">Switch Account</MenubarLabel>
+                        <MenubarSeparator />
+                        <MenubarRadioGroup Value="@_accountName" ValueChanged="@(v => _accountName = v)">
+                            <MenubarRadioItem Value="andy">Andy</MenubarRadioItem>
+                            <MenubarRadioItem Value="benoit">Benoit</MenubarRadioItem>
+                            <MenubarRadioItem Value="Luis">Luis</MenubarRadioItem>
+                        </MenubarRadioGroup>
+                        <MenubarSeparator />
+                        <MenubarItem Inset="true">Manage Family...</MenubarItem>
+                        <MenubarSeparator />
+                        <MenubarItem Inset="true">Add Account...</MenubarItem>
+                    </MenubarContent>
+                </MenubarMenu>
+            </Menubar>
+            <div class="border-t border-border">
+                <div class="bg-background">
+                    <div class="grid lg:grid-cols-5">
+                        <div class="hidden pb-12 lg:block">
+                            <div class="space-y-4 py-4">
+                                <div class="px-3 py-2">
+                                    <h2 class="mb-2 px-4 text-lg font-semibold tracking-tight">Discover</h2>
+                                    <div class="space-y-1">
+                                        <Button Variant="Button.ButtonVariant.Secondary" Class="w-full justify-start"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mr-2 h-4 w-4"><circle cx="12" cy="12" r="10" /><polygon points="10 8 16 12 10 16 10 8" /></svg>Listen Now</Button>
+                                        <Button Variant="Button.ButtonVariant.Ghost" Class="w-full justify-start"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mr-2 h-4 w-4"><rect width="7" height="7" x="3" y="3" rx="1" /><rect width="7" height="7" x="14" y="3" rx="1" /><rect width="7" height="7" x="14" y="14" rx="1" /><rect width="7" height="7" x="3" y="14" rx="1" /></svg>Browse</Button>
+                                        <Button Variant="Button.ButtonVariant.Ghost" Class="w-full justify-start"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mr-2 h-4 w-4"><path d="M4.9 19.1C1 15.2 1 8.8 4.9 4.9" /><path d="M7.8 16.2c-2.3-2.3-2.3-6.1 0-8.5" /><circle cx="12" cy="12" r="2" /><path d="M16.2 7.8c2.3 2.3 2.3 6.1 0 8.5" /><path d="M19.1 4.9C23 8.8 23 15.1 19.1 19" /></svg>Radio</Button>
                                     </div>
-                                    <Lumeo.Text Class="text-sm font-semibold text-foreground truncate leading-tight">@a.Title</Lumeo.Text>
-                                    <Lumeo.Text Class="text-xs text-muted-foreground truncate mt-0.5">@a.Artist</Lumeo.Text>
                                 </div>
-                            }
-                        </Grid>
-                    </Stack>
-
-                    <!-- Made For You -->
-                    <Stack>
-                        <Flex Class="items-center justify-between mb-4">
-                            <Heading Level="3" Class="text-xl font-semibold text-foreground tracking-tight">Made For You</Heading>
-                            <button class="text-sm text-primary hover:underline flex items-center gap-1 transition-colors">
-                                See all <DynamicIcon Name="ChevronRight" Class="h-3.5 w-3.5" />
-                            </button>
-                        </Flex>
-                        <Grid Class="grid-cols-3 lg:grid-cols-6 gap-3">
-                            @foreach (var mix in _madeForYou)
-                            {
-                                var m = mix;
-                                <div class="group cursor-pointer" @onclick="@(() => SelectSong(m.Title, m.Artist, m.Duration))">
-                                    <div class="relative rounded-[var(--radius-md)] overflow-hidden @m.BgClass mb-2 group-hover:opacity-90 transition-opacity" style="aspect-ratio:1">
-                                        <div class="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent" />
-                                        <div class="absolute inset-0 flex items-center justify-center">
-                                            <DynamicIcon Name="Music" Class="h-7 w-7 text-white/25" />
-                                        </div>
+                                <div class="px-3 py-2">
+                                    <h2 class="mb-2 px-4 text-lg font-semibold tracking-tight">Library</h2>
+                                    <div class="space-y-1">
+                                        <Button Variant="Button.ButtonVariant.Ghost" Class="w-full justify-start"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mr-2 h-4 w-4"><path d="M21 15V6" /><path d="M18.5 18a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5Z" /><path d="M12 12H3" /><path d="M16 6H3" /><path d="M12 18H3" /></svg>Playlists</Button>
+                                        <Button Variant="Button.ButtonVariant.Ghost" Class="w-full justify-start"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mr-2 h-4 w-4"><circle cx="8" cy="18" r="4" /><path d="M12 18V2l7 4" /></svg>Songs</Button>
+                                        <Button Variant="Button.ButtonVariant.Ghost" Class="w-full justify-start"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mr-2 h-4 w-4"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></svg>Made for You</Button>
+                                        <Button Variant="Button.ButtonVariant.Ghost" Class="w-full justify-start"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mr-2 h-4 w-4"><path d="m12 8-9.04 9.06a2.82 2.82 0 1 0 3.98 3.98L16 12" /><circle cx="17" cy="7" r="5" /></svg>Artists</Button>
+                                        <Button Variant="Button.ButtonVariant.Ghost" Class="w-full justify-start"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mr-2 h-4 w-4"><path d="m16 6 4 14" /><path d="M12 6v14" /><path d="M8 8v12" /><path d="M4 4v16" /></svg>Albums</Button>
                                     </div>
-                                    <Lumeo.Text Class="text-xs font-medium text-foreground truncate leading-snug">@m.Title</Lumeo.Text>
-                                    <Lumeo.Text Class="text-[11px] text-muted-foreground truncate">@m.Artist</Lumeo.Text>
                                 </div>
-                            }
-                        </Grid>
-                    </Stack>
-
-                </Stack>
-
-                <!-- Bottom Player Bar -->
-                <Stack Class="border-t border-border/40 bg-card px-5 py-3 shrink-0">
-                    <Flex Class="items-center gap-4">
-
-                        <!-- Current Track Info -->
-                        <Flex Class="items-center gap-3 w-52 shrink-0 min-w-0">
-                            <div class="relative h-11 w-11 rounded-md overflow-hidden @_currentBg shrink-0">
-                                <div class="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent" />
-                                <div class="absolute inset-0 flex items-center justify-center">
-                                    <DynamicIcon Name="Music" Class="h-4 w-4 text-white/30" />
+                                <div class="py-2">
+                                    <h2 class="relative px-7 text-lg font-semibold tracking-tight">Playlists</h2>
+                                    <ScrollArea Class="h-[300px] px-1">
+                                        <div class="space-y-1 p-2">
+                                            @foreach (var playlist in Playlists)
+                                            {
+                                                <Button Variant="Button.ButtonVariant.Ghost" Class="w-full justify-start font-normal"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mr-2 h-4 w-4"><path d="M21 15V6" /><path d="M18.5 18a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5Z" /><path d="M12 12H3" /><path d="M16 6H3" /><path d="M12 18H3" /></svg>@playlist</Button>
+                                            }
+                                        </div>
+                                    </ScrollArea>
                                 </div>
                             </div>
-                            <Stack Class="min-w-0 flex-1">
-                                <Lumeo.Text Class="text-sm font-medium text-foreground truncate leading-tight">@_currentSong</Lumeo.Text>
-                                <Lumeo.Text Class="text-xs text-muted-foreground truncate">@_currentArtist</Lumeo.Text>
-                            </Stack>
-                            <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Icon" Class="h-7 w-7 shrink-0" @onclick="() => _isLiked = !_isLiked">
-                                <DynamicIcon Name="Heart" Class="@(_isLiked ? "h-4 w-4 text-destructive fill-destructive transition-colors" : "h-4 w-4 text-muted-foreground transition-colors")" />
-                            </Button>
-                        </Flex>
-
-                        <!-- Playback Controls -->
-                        <Flex Direction="col" Class="flex-1 items-center gap-1.5 min-w-0">
-                            <Flex Class="items-center gap-1">
-                                <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Icon" Class="h-8 w-8 text-muted-foreground hover:text-foreground transition-colors">
-                                    <DynamicIcon Name="Shuffle" Class="h-4 w-4" />
-                                </Button>
-                                <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Icon" Class="h-8 w-8 text-muted-foreground hover:text-foreground transition-colors" @onclick="PrevSong">
-                                    <DynamicIcon Name="SkipBack" Class="h-4 w-4" />
-                                </Button>
-                                <Button Variant="Button.ButtonVariant.Default" Size="Button.ButtonSize.Icon" Class="rounded-full" @onclick="TogglePlay">
-                                    @if (_isPlaying)
-                                    {
-                                        <DynamicIcon Name="Pause" Class="h-4 w-4" />
-                                    }
-                                    else
-                                    {
-                                        <DynamicIcon Name="Play" Class="h-4 w-4 ml-0.5" />
-                                    }
-                                </Button>
-                                <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Icon" Class="h-8 w-8 text-muted-foreground hover:text-foreground transition-colors" @onclick="NextSong">
-                                    <DynamicIcon Name="SkipForward" Class="h-4 w-4" />
-                                </Button>
-                                <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Icon" Class="h-8 w-8 text-muted-foreground hover:text-foreground transition-colors">
-                                    <DynamicIcon Name="Repeat" Class="h-4 w-4" />
-                                </Button>
-                            </Flex>
-                            <Flex Class="items-center gap-2 w-full max-w-sm">
-                                <Lumeo.Text As="span" Class="text-[11px] text-muted-foreground w-8 text-right tabular-nums shrink-0">@FormatTime(_progress)</Lumeo.Text>
-                                <Slider @bind-Value="_progress" Min="0" Max="@_currentDuration" Class="flex-1" />
-                                <Lumeo.Text As="span" Class="text-[11px] text-muted-foreground w-8 tabular-nums shrink-0">@FormatTime(_currentDuration)</Lumeo.Text>
-                            </Flex>
-                        </Flex>
-
-                        <!-- Volume -->
-                        <Flex Class="items-center gap-2 w-28 shrink-0">
-                            <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Icon" Class="h-7 w-7 shrink-0 text-muted-foreground hover:text-foreground transition-colors">
-                                <DynamicIcon Name="Volume2" Class="h-4 w-4" />
-                            </Button>
-                            <Slider @bind-Value="_volume" Min="0" Max="100" Class="flex-1" />
-                        </Flex>
-
-                    </Flex>
-                </Stack>
-            </Flex>
-
-        </Flex>
-    </Stack>
-</ComponentDemo>
-
-@code {
-    private string _currentSong = "Neon Bloom";
-    private string _currentArtist = "Hollow Echoes";
-    private string _currentBg = "bg-primary";
-    private bool _isPlaying = false;
-    private bool _isLiked = false;
-    private double _progress = 67;
-    private double _volume = 72;
-    private double _currentDuration = 214;
-
-    private readonly List<string> _playlists = new()
-    {
-        "Late Night Drive", "Focus Mode", "Summer 2024", "Indie Essentials"
-    };
-
-    private record AlbumItem(string Title, string Artist, string BgClass, double Duration);
-
-    private readonly List<AlbumItem> _featuredAlbums = new()
-    {
-        new("Neon Bloom",       "Hollow Echoes",     "bg-primary",         214),
-        new("Solar Static",     "Nova Circuit",      "bg-destructive/80",  198),
-        new("Tide & Current",   "Blue Harbor",       "bg-chart-1/80",      227),
-        new("Concrete Jungle",  "Milo & The Beat",   "bg-chart-2/80",      183),
-    };
-
-    private readonly List<AlbumItem> _madeForYou = new()
-    {
-        new("Chill Mix",        "Various Artists",   "bg-primary/60",      0),
-        new("Focus Flow",       "Various Artists",   "bg-chart-1/60",      0),
-        new("Late Night",       "Various Artists",   "bg-chart-2/60",      0),
-        new("Morning Vibes",    "Various Artists",   "bg-chart-3/60",      0),
-        new("Workout Hits",     "Various Artists",   "bg-destructive/60",  0),
-        new("Jazz Hour",        "Various Artists",   "bg-chart-4/60",      0),
-    };
-
-    private void SelectSong(string title, string artist, double duration)
-    {
-        _currentSong = title;
-        _currentArtist = artist;
-        _currentDuration = duration > 0 ? duration : 210;
-        _currentBg = _featuredAlbums.FirstOrDefault(a => a.Title == title)?.BgClass ?? "bg-primary";
-        _isPlaying = true;
-        _progress = 0;
-    }
-
-    private void TogglePlay() => _isPlaying = !_isPlaying;
-
-    private void PrevSong() => _progress = 0;
-
-    private void NextSong()
-    {
-        _progress = 0;
-        _isPlaying = true;
-    }
-
-    private string FormatTime(double seconds)
-    {
-        var ts = TimeSpan.FromSeconds(seconds);
-        return $"{(int)ts.TotalMinutes}:{ts.Seconds:D2}";
-    }
-
-    private string _code = @"<!-- Music Player Layout -->
-<Stack Class=""border border-border/40 rounded-[var(--radius-lg)] overflow-hidden"" style=""height:620px"">
-<Flex Class=""h-full"">
-
-  <!-- Sidebar -->
-  <Flex Direction=""col"" Class=""w-60 border-r border-border/40 bg-card shrink-0"">
-    <Flex Class=""items-center gap-2.5 px-5 py-4 border-b border-border/40"">
-      <Flex Class=""h-7 w-7 items-center justify-center rounded-md bg-primary shrink-0"">
-        <DynamicIcon Name=""Music"" Class=""h-4 w-4 text-primary-foreground"" />
-      </Flex>
-      <Lumeo.Text Class=""text-base font-bold text-foreground"">Wavefront</Lumeo.Text>
-    </Flex>
-    <Stack Class=""px-3 py-3 flex-1 overflow-y-auto"">
-      <!-- Nav items with hover:bg-accent transition-colors -->
-      <button class=""...active"">Home</button>
-      <button class=""...muted hover"">Browse</button>
-      <Separator Class=""my-3"" />
-      <!-- Library + Playlists sections ... -->
-    </Stack>
-  </Flex>
-
-  <!-- Main -->
-  <Flex Direction=""col"" Class=""flex-1 overflow-hidden bg-background"">
-    <Stack Class=""flex-1 overflow-y-auto p-6"">
-
-      <!-- Recently Played grid -->
-      <Heading Level=""3"">Recently Played</Heading>
-      <Grid Class=""grid-cols-4 gap-4"">
-        @foreach (var album in _featuredAlbums)
-        {
-          <div class=""group cursor-pointer"" @onclick=""() => SelectSong(album)"">
-            <div class=""relative rounded-[var(--radius-md)] @album.BgClass overflow-hidden"" style=""aspect-ratio:1"">
-              <!-- Play overlay on group-hover -->
-              <div class=""absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"">
-                <div class=""h-10 w-10 rounded-full bg-primary flex items-center justify-center"">
-                  <DynamicIcon Name=""Play"" Class=""h-5 w-5 text-primary-foreground"" />
+                        </div>
+                        <div class="col-span-3 lg:col-span-4 lg:border-l lg:border-border">
+                            <div class="h-full px-4 py-6 lg:px-8">
+                                <Tabs ActiveValue="@_tab" ActiveValueChanged="@(v => _tab = v)" Class="h-full space-y-6">
+                                    <div class="space-between flex items-center">
+                                        <TabsList>
+                                            <TabsTrigger Value="music" Class="relative">Music</TabsTrigger>
+                                            <TabsTrigger Value="podcasts">Podcasts</TabsTrigger>
+                                            <TabsTrigger Value="live" Disabled="true">Live</TabsTrigger>
+                                        </TabsList>
+                                        <div class="ml-auto mr-4">
+                                            <Button>
+                                                <SvgGlyph Svg="@(Lucide.CirclePlus)" />
+                                                Add music
+                                            </Button>
+                                        </div>
+                                    </div>
+                                    <TabsContent Value="music" Class="border-none p-0 outline-none">
+                                        <div class="flex items-center justify-between">
+                                            <div class="space-y-1">
+                                                <h2 class="text-2xl font-semibold tracking-tight">Listen Now</h2>
+                                                <p class="text-sm text-muted-foreground">Top picks for you. Updated daily.</p>
+                                            </div>
+                                        </div>
+                                        <Separator Class="my-4" />
+                                        <div class="relative">
+                                            <div class="flex space-x-4 overflow-x-auto pb-4">
+                                                @foreach (var album in ListenNowAlbums)
+                                                {
+                                                    <div class="w-[250px] shrink-0 space-y-3">
+                                                        <ContextMenu>
+                                                            <ContextMenuTrigger>
+                                                                <div class="overflow-hidden rounded-md">
+                                                                    <img src="@album.Cover" alt="@album.Name" width="250" height="330" class="h-auto w-auto object-cover transition-all hover:scale-105 aspect-[3/4]" />
+                                                                </div>
+                                                            </ContextMenuTrigger>
+                                                            <ContextMenuContent Class="w-40">
+                                                                <ContextMenuItem>Add to Library</ContextMenuItem>
+                                                                <ContextMenuSub>
+                                                                    <ContextMenuSubTrigger>Add to Playlist</ContextMenuSubTrigger>
+                                                                    <ContextMenuSubContent Class="w-48">
+                                                                        <ContextMenuItem><SvgGlyph Svg="@(Lucide.CirclePlus)" class="mr-2 h-4 w-4" />New Playlist</ContextMenuItem>
+                                                                        <ContextMenuSeparator />
+                                                                        @foreach (var playlist in Playlists)
+                                                                        {
+                                                                            <ContextMenuItem><svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="mr-2 h-4 w-4" viewBox="0 0 24 24"><path d="M21 15V6M18.5 18a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5ZM12 12H3M16 6H3M12 18H3" /></svg>@playlist</ContextMenuItem>
+                                                                        }
+                                                                    </ContextMenuSubContent>
+                                                                </ContextMenuSub>
+                                                                <ContextMenuSeparator />
+                                                                <ContextMenuItem>Play Next</ContextMenuItem>
+                                                                <ContextMenuItem>Play Later</ContextMenuItem>
+                                                                <ContextMenuItem>Create Station</ContextMenuItem>
+                                                                <ContextMenuSeparator />
+                                                                <ContextMenuItem>Like</ContextMenuItem>
+                                                                <ContextMenuItem>Share</ContextMenuItem>
+                                                            </ContextMenuContent>
+                                                        </ContextMenu>
+                                                        <div class="space-y-1 text-sm">
+                                                            <h3 class="font-medium leading-none">@album.Name</h3>
+                                                            <p class="text-xs text-muted-foreground">@album.Artist</p>
+                                                        </div>
+                                                    </div>
+                                                }
+                                            </div>
+                                        </div>
+                                        <div class="mt-6 space-y-1">
+                                            <h2 class="text-2xl font-semibold tracking-tight">Made for You</h2>
+                                            <p class="text-sm text-muted-foreground">Your personal playlists. Updated daily.</p>
+                                        </div>
+                                        <Separator Class="my-4" />
+                                        <div class="relative">
+                                            <div class="flex space-x-4 overflow-x-auto pb-4">
+                                                @foreach (var album in MadeForYouAlbums)
+                                                {
+                                                    <div class="w-[150px] shrink-0 space-y-3">
+                                                        <ContextMenu>
+                                                            <ContextMenuTrigger>
+                                                                <div class="overflow-hidden rounded-md">
+                                                                    <img src="@album.Cover" alt="@album.Name" width="150" height="150" class="h-auto w-auto object-cover transition-all hover:scale-105 aspect-square" />
+                                                                </div>
+                                                            </ContextMenuTrigger>
+                                                            <ContextMenuContent Class="w-40">
+                                                                <ContextMenuItem>Add to Library</ContextMenuItem>
+                                                                <ContextMenuSub>
+                                                                    <ContextMenuSubTrigger>Add to Playlist</ContextMenuSubTrigger>
+                                                                    <ContextMenuSubContent Class="w-48">
+                                                                        <ContextMenuItem><SvgGlyph Svg="@(Lucide.CirclePlus)" class="mr-2 h-4 w-4" />New Playlist</ContextMenuItem>
+                                                                        <ContextMenuSeparator />
+                                                                        @foreach (var playlist in Playlists)
+                                                                        {
+                                                                            <ContextMenuItem><svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="mr-2 h-4 w-4" viewBox="0 0 24 24"><path d="M21 15V6M18.5 18a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5ZM12 12H3M16 6H3M12 18H3" /></svg>@playlist</ContextMenuItem>
+                                                                        }
+                                                                    </ContextMenuSubContent>
+                                                                </ContextMenuSub>
+                                                                <ContextMenuSeparator />
+                                                                <ContextMenuItem>Play Next</ContextMenuItem>
+                                                                <ContextMenuItem>Play Later</ContextMenuItem>
+                                                                <ContextMenuItem>Create Station</ContextMenuItem>
+                                                                <ContextMenuSeparator />
+                                                                <ContextMenuItem>Like</ContextMenuItem>
+                                                                <ContextMenuItem>Share</ContextMenuItem>
+                                                            </ContextMenuContent>
+                                                        </ContextMenu>
+                                                        <div class="space-y-1 text-sm">
+                                                            <h3 class="font-medium leading-none">@album.Name</h3>
+                                                            <p class="text-xs text-muted-foreground">@album.Artist</p>
+                                                        </div>
+                                                    </div>
+                                                }
+                                            </div>
+                                        </div>
+                                    </TabsContent>
+                                    <TabsContent Value="podcasts" Class="h-full flex-col border-none p-0 data-[state=active]:flex">
+                                        <div class="flex items-center justify-between">
+                                            <div class="space-y-1">
+                                                <h2 class="text-2xl font-semibold tracking-tight">New Episodes</h2>
+                                                <p class="text-sm text-muted-foreground">Your favorite podcasts. Updated daily.</p>
+                                            </div>
+                                        </div>
+                                        <Separator Class="my-4" />
+                                        <div class="flex h-[450px] shrink-0 items-center justify-center rounded-md border border-dashed border-border">
+                                            <div class="mx-auto flex max-w-[420px] flex-col items-center justify-center text-center">
+                                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="h-10 w-10 text-muted-foreground" viewBox="0 0 24 24"><circle cx="12" cy="11" r="1" /><path d="M11 17a1 1 0 0 1 2 0c0 .5-.34 3-.5 4.5a.5.5 0 0 1-1 0c-.16-1.5-.5-4-.5-4.5ZM8 14a5 5 0 1 1 8 0" /><path d="M17 18.5a9 9 0 1 0-10 0" /></svg>
+                                                <h3 class="mt-4 text-lg font-semibold">No episodes added</h3>
+                                                <p class="mb-4 mt-2 text-sm text-muted-foreground">You have not added any podcasts. Add one below.</p>
+                                                <Dialog>
+                                                    <DialogTrigger>
+                                                        <Button Size="Button.ButtonSize.Sm" Class="relative">Add Podcast</Button>
+                                                    </DialogTrigger>
+                                                    <DialogContent>
+                                                        <DialogHeader>
+                                                            <DialogTitle>Add Podcast</DialogTitle>
+                                                            <DialogDescription>Copy and paste the podcast feed URL to import.</DialogDescription>
+                                                        </DialogHeader>
+                                                        <div class="grid gap-4 py-4">
+                                                            <div class="grid gap-2">
+                                                                <Label For="podcast-url">Podcast URL</Label>
+                                                                <Input id="podcast-url" Placeholder="https://example.com/feed.xml" />
+                                                            </div>
+                                                        </div>
+                                                        <DialogFooter>
+                                                            <Button>Import Podcast</Button>
+                                                        </DialogFooter>
+                                                    </DialogContent>
+                                                </Dialog>
+                                            </div>
+                                        </div>
+                                    </TabsContent>
+                                </Tabs>
+                            </div>
+                        </div>
+                    </div>
                 </div>
-              </div>
             </div>
-            <Lumeo.Text Class=""text-sm font-semibold text-foreground"">@album.Title</Lumeo.Text>
-            <Lumeo.Text Class=""text-xs text-muted-foreground"">@album.Artist</Lumeo.Text>
-          </div>
-        }
-      </Grid>
-
-      <!-- Made For You row -->
-      <Heading Level=""3"">Made For You</Heading>
-      <Grid Class=""grid-cols-6 gap-3""><!-- mix tiles --></Grid>
-
-    </Stack>
-
-    <!-- Player Bar -->
-    <Stack Class=""border-t border-border/40 bg-card px-5 py-3 shrink-0"">
-      <Flex Class=""items-center gap-4"">
-        <!-- Track info (w-52) -->
-        <!-- Playback controls (flex-1 center, gap-1) -->
-        <!--   Shuffle | SkipBack | Play/Pause (rounded-full) | SkipForward | Repeat -->
-        <!--   Progress slider with time labels -->
-        <!-- Volume (w-28) -->
-      </Flex>
-    </Stack>
-  </Flex>
-
-</Flex>
+        </div>
+    </ComponentDemo>
 </Stack>
 
 @code {
-  private string _currentSong = ""Neon Bloom"";
-  private string _currentArtist = ""Hollow Echoes"";
-  private bool _isPlaying = false;
-  private bool _isLiked = false;
-  private double _progress = 67;
-  private double _volume = 72;
+    private const string _code = @"<div class=""w-full overflow-hidden rounded-[var(--radius-lg)] border border-border/40 bg-background"">
+    <Menubar Class=""rounded-none border-b border-none px-2 lg:px-4"">
+        <MenubarMenu>
+            <MenubarTrigger Class=""font-bold"">Music</MenubarTrigger>
+            <MenubarContent>
+                <MenubarItem>About Music</MenubarItem>
+                <MenubarSeparator />
+                <MenubarItem>Preferences... <MenubarShortcut>⌘,</MenubarShortcut></MenubarItem>
+                <MenubarSeparator />
+                <MenubarItem>Hide Music... <MenubarShortcut>⌘H</MenubarShortcut></MenubarItem>
+                <MenubarItem>Hide Others... <MenubarShortcut>⇧⌘H</MenubarShortcut></MenubarItem>
+                <MenubarShortcut />
+                <MenubarItem>Quit Music <MenubarShortcut>⌘Q</MenubarShortcut></MenubarItem>
+            </MenubarContent>
+        </MenubarMenu>
+        <MenubarMenu>
+            <MenubarTrigger Class=""relative"">File</MenubarTrigger>
+            <MenubarContent>
+                <MenubarSub>
+                    <MenubarSubTrigger>New</MenubarSubTrigger>
+                    <MenubarSubContent Class=""w-[230px]"">
+                        <MenubarItem>Playlist <MenubarShortcut>⌘N</MenubarShortcut></MenubarItem>
+                        <MenubarItem Disabled=""true"">Playlist from Selection <MenubarShortcut>⇧⌘N</MenubarShortcut></MenubarItem>
+                        <MenubarItem>Smart Playlist... <MenubarShortcut>⌥⌘N</MenubarShortcut></MenubarItem>
+                        <MenubarItem>Playlist Folder</MenubarItem>
+                        <MenubarItem Disabled=""true"">Genius Playlist</MenubarItem>
+                    </MenubarSubContent>
+                </MenubarSub>
+                <MenubarItem>Open Stream URL... <MenubarShortcut>⌘U</MenubarShortcut></MenubarItem>
+                <MenubarItem>Close Window <MenubarShortcut>⌘W</MenubarShortcut></MenubarItem>
+                <MenubarSeparator />
+                <MenubarSub>
+                    <MenubarSubTrigger>Library</MenubarSubTrigger>
+                    <MenubarSubContent>
+                        <MenubarItem>Update Cloud Library</MenubarItem>
+                        <MenubarItem>Update Genius</MenubarItem>
+                        <MenubarSeparator />
+                        <MenubarItem>Organize Library...</MenubarItem>
+                        <MenubarItem>Export Library...</MenubarItem>
+                        <MenubarSeparator />
+                        <MenubarItem>Import Playlist...</MenubarItem>
+                        <MenubarItem Disabled=""true"">Export Playlist...</MenubarItem>
+                        <MenubarItem>Show Duplicate Items</MenubarItem>
+                        <MenubarSeparator />
+                        <MenubarItem>Get Album Artwork</MenubarItem>
+                        <MenubarItem Disabled=""true"">Get Track Names</MenubarItem>
+                    </MenubarSubContent>
+                </MenubarSub>
+                <MenubarItem>Import... <MenubarShortcut>⌘O</MenubarShortcut></MenubarItem>
+                <MenubarItem Disabled=""true"">Burn Playlist to Disc...</MenubarItem>
+                <MenubarSeparator />
+                <MenubarItem>Show in Finder <MenubarShortcut>⇧⌘R</MenubarShortcut></MenubarItem>
+                <MenubarItem>Convert</MenubarItem>
+                <MenubarSeparator />
+                <MenubarItem>Page Setup...</MenubarItem>
+                <MenubarItem Disabled=""true"">Print... <MenubarShortcut>⌘P</MenubarShortcut></MenubarItem>
+            </MenubarContent>
+        </MenubarMenu>
+        <MenubarMenu>
+            <MenubarTrigger>Edit</MenubarTrigger>
+            <MenubarContent>
+                <MenubarItem Disabled=""true"">Undo <MenubarShortcut>⌘Z</MenubarShortcut></MenubarItem>
+                <MenubarItem Disabled=""true"">Redo <MenubarShortcut>⇧⌘Z</MenubarShortcut></MenubarItem>
+                <MenubarSeparator />
+                <MenubarItem Disabled=""true"">Cut <MenubarShortcut>⌘X</MenubarShortcut></MenubarItem>
+                <MenubarItem Disabled=""true"">Copy <MenubarShortcut>⌘C</MenubarShortcut></MenubarItem>
+                <MenubarItem Disabled=""true"">Paste <MenubarShortcut>⌘V</MenubarShortcut></MenubarItem>
+                <MenubarSeparator />
+                <MenubarItem>Select All <MenubarShortcut>⌘A</MenubarShortcut></MenubarItem>
+                <MenubarItem Disabled=""true"">Deselect All <MenubarShortcut>⇧⌘A</MenubarShortcut></MenubarItem>
+                <MenubarSeparator />
+                <MenubarItem>Smart Dictation... <MenubarShortcut><svg xmlns=""http://www.w3.org/2000/svg"" fill=""none"" stroke=""currentColor"" stroke-linecap=""round"" stroke-linejoin=""round"" stroke-width=""2"" class=""h-4 w-4"" viewBox=""0 0 24 24""><path d=""m12 8-9.04 9.06a2.82 2.82 0 1 0 3.98 3.98L16 12"" /><circle cx=""17"" cy=""7"" r=""5"" /></svg></MenubarShortcut></MenubarItem>
+                <MenubarItem>Emoji &amp; Symbols <MenubarShortcut><svg xmlns=""http://www.w3.org/2000/svg"" fill=""none"" stroke=""currentColor"" stroke-linecap=""round"" stroke-linejoin=""round"" stroke-width=""2"" class=""h-4 w-4"" viewBox=""0 0 24 24""><circle cx=""12"" cy=""12"" r=""10"" /><path d=""M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"" /></svg></MenubarShortcut></MenubarItem>
+            </MenubarContent>
+        </MenubarMenu>
+        <MenubarMenu>
+            <MenubarTrigger>View</MenubarTrigger>
+            <MenubarContent>
+                <MenubarCheckboxItem Checked=""@_showPlayingNext"" CheckedChanged=""@(v => _showPlayingNext = v)"">Show Playing Next</MenubarCheckboxItem>
+                <MenubarCheckboxItem Checked=""@_showLyrics"" CheckedChanged=""@(v => _showLyrics = v)"">Show Lyrics</MenubarCheckboxItem>
+                <MenubarSeparator />
+                <MenubarItem Inset=""true"" Disabled=""true"">Show Status Bar</MenubarItem>
+                <MenubarSeparator />
+                <MenubarItem Inset=""true"">Hide Sidebar</MenubarItem>
+                <MenubarItem Inset=""true"" Disabled=""true"">Enter Full Screen</MenubarItem>
+            </MenubarContent>
+        </MenubarMenu>
+        <MenubarMenu>
+            <MenubarTrigger Class=""hidden md:block"">Account</MenubarTrigger>
+            <MenubarContent>
+                <MenubarLabel Inset=""true"">Switch Account</MenubarLabel>
+                <MenubarSeparator />
+                <MenubarRadioGroup Value=""@_accountName"" ValueChanged=""@(v => _accountName = v)"">
+                    <MenubarRadioItem Value=""andy"">Andy</MenubarRadioItem>
+                    <MenubarRadioItem Value=""benoit"">Benoit</MenubarRadioItem>
+                    <MenubarRadioItem Value=""Luis"">Luis</MenubarRadioItem>
+                </MenubarRadioGroup>
+                <MenubarSeparator />
+                <MenubarItem Inset=""true"">Manage Family...</MenubarItem>
+                <MenubarSeparator />
+                <MenubarItem Inset=""true"">Add Account...</MenubarItem>
+            </MenubarContent>
+        </MenubarMenu>
+    </Menubar>
+    <div class=""border-t border-border"">
+        <div class=""bg-background"">
+            <div class=""grid lg:grid-cols-5"">
+                <div class=""hidden pb-12 lg:block"">
+                    <div class=""space-y-4 py-4"">
+                        <div class=""px-3 py-2"">
+                            <h2 class=""mb-2 px-4 text-lg font-semibold tracking-tight"">Discover</h2>
+                            <div class=""space-y-1"">
+                                <Button Variant=""Button.ButtonVariant.Secondary"" Class=""w-full justify-start""><svg xmlns=""http://www.w3.org/2000/svg"" viewBox=""0 0 24 24"" fill=""none"" stroke=""currentColor"" stroke-width=""2"" stroke-linecap=""round"" stroke-linejoin=""round"" class=""mr-2 h-4 w-4""><circle cx=""12"" cy=""12"" r=""10"" /><polygon points=""10 8 16 12 10 16 10 8"" /></svg>Listen Now</Button>
+                                <Button Variant=""Button.ButtonVariant.Ghost"" Class=""w-full justify-start""><svg xmlns=""http://www.w3.org/2000/svg"" viewBox=""0 0 24 24"" fill=""none"" stroke=""currentColor"" stroke-width=""2"" stroke-linecap=""round"" stroke-linejoin=""round"" class=""mr-2 h-4 w-4""><rect width=""7"" height=""7"" x=""3"" y=""3"" rx=""1"" /><rect width=""7"" height=""7"" x=""14"" y=""3"" rx=""1"" /><rect width=""7"" height=""7"" x=""14"" y=""14"" rx=""1"" /><rect width=""7"" height=""7"" x=""3"" y=""14"" rx=""1"" /></svg>Browse</Button>
+                                <Button Variant=""Button.ButtonVariant.Ghost"" Class=""w-full justify-start""><svg xmlns=""http://www.w3.org/2000/svg"" viewBox=""0 0 24 24"" fill=""none"" stroke=""currentColor"" stroke-width=""2"" stroke-linecap=""round"" stroke-linejoin=""round"" class=""mr-2 h-4 w-4""><path d=""M4.9 19.1C1 15.2 1 8.8 4.9 4.9"" /><path d=""M7.8 16.2c-2.3-2.3-2.3-6.1 0-8.5"" /><circle cx=""12"" cy=""12"" r=""2"" /><path d=""M16.2 7.8c2.3 2.3 2.3 6.1 0 8.5"" /><path d=""M19.1 4.9C23 8.8 23 15.1 19.1 19"" /></svg>Radio</Button>
+                            </div>
+                        </div>
+                        <div class=""px-3 py-2"">
+                            <h2 class=""mb-2 px-4 text-lg font-semibold tracking-tight"">Library</h2>
+                            <div class=""space-y-1"">
+                                <Button Variant=""Button.ButtonVariant.Ghost"" Class=""w-full justify-start""><svg xmlns=""http://www.w3.org/2000/svg"" viewBox=""0 0 24 24"" fill=""none"" stroke=""currentColor"" stroke-width=""2"" stroke-linecap=""round"" stroke-linejoin=""round"" class=""mr-2 h-4 w-4""><path d=""M21 15V6"" /><path d=""M18.5 18a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5Z"" /><path d=""M12 12H3"" /><path d=""M16 6H3"" /><path d=""M12 18H3"" /></svg>Playlists</Button>
+                                <Button Variant=""Button.ButtonVariant.Ghost"" Class=""w-full justify-start""><svg xmlns=""http://www.w3.org/2000/svg"" viewBox=""0 0 24 24"" fill=""none"" stroke=""currentColor"" stroke-width=""2"" stroke-linecap=""round"" stroke-linejoin=""round"" class=""mr-2 h-4 w-4""><circle cx=""8"" cy=""18"" r=""4"" /><path d=""M12 18V2l7 4"" /></svg>Songs</Button>
+                                <Button Variant=""Button.ButtonVariant.Ghost"" Class=""w-full justify-start""><svg xmlns=""http://www.w3.org/2000/svg"" viewBox=""0 0 24 24"" fill=""none"" stroke=""currentColor"" stroke-width=""2"" stroke-linecap=""round"" stroke-linejoin=""round"" class=""mr-2 h-4 w-4""><path d=""M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"" /><circle cx=""12"" cy=""7"" r=""4"" /></svg>Made for You</Button>
+                                <Button Variant=""Button.ButtonVariant.Ghost"" Class=""w-full justify-start""><svg xmlns=""http://www.w3.org/2000/svg"" viewBox=""0 0 24 24"" fill=""none"" stroke=""currentColor"" stroke-width=""2"" stroke-linecap=""round"" stroke-linejoin=""round"" class=""mr-2 h-4 w-4""><path d=""m12 8-9.04 9.06a2.82 2.82 0 1 0 3.98 3.98L16 12"" /><circle cx=""17"" cy=""7"" r=""5"" /></svg>Artists</Button>
+                                <Button Variant=""Button.ButtonVariant.Ghost"" Class=""w-full justify-start""><svg xmlns=""http://www.w3.org/2000/svg"" viewBox=""0 0 24 24"" fill=""none"" stroke=""currentColor"" stroke-width=""2"" stroke-linecap=""round"" stroke-linejoin=""round"" class=""mr-2 h-4 w-4""><path d=""m16 6 4 14"" /><path d=""M12 6v14"" /><path d=""M8 8v12"" /><path d=""M4 4v16"" /></svg>Albums</Button>
+                            </div>
+                        </div>
+                        <div class=""py-2"">
+                            <h2 class=""relative px-7 text-lg font-semibold tracking-tight"">Playlists</h2>
+                            <ScrollArea Class=""h-[300px] px-1"">
+                                <div class=""space-y-1 p-2"">
+                                    @foreach (var playlist in Playlists)
+                                    {
+                                        <Button Variant=""Button.ButtonVariant.Ghost"" Class=""w-full justify-start font-normal""><svg xmlns=""http://www.w3.org/2000/svg"" viewBox=""0 0 24 24"" fill=""none"" stroke=""currentColor"" stroke-width=""2"" stroke-linecap=""round"" stroke-linejoin=""round"" class=""mr-2 h-4 w-4""><path d=""M21 15V6"" /><path d=""M18.5 18a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5Z"" /><path d=""M12 12H3"" /><path d=""M16 6H3"" /><path d=""M12 18H3"" /></svg>@playlist</Button>
+                                    }
+                                </div>
+                            </ScrollArea>
+                        </div>
+                    </div>
+                </div>
+                <div class=""col-span-3 lg:col-span-4 lg:border-l lg:border-border"">
+                    <div class=""h-full px-4 py-6 lg:px-8"">
+                        <Tabs ActiveValue=""@_tab"" ActiveValueChanged=""@(v => _tab = v)"" Class=""h-full space-y-6"">
+                            <div class=""space-between flex items-center"">
+                                <TabsList>
+                                    <TabsTrigger Value=""music"" Class=""relative"">Music</TabsTrigger>
+                                    <TabsTrigger Value=""podcasts"">Podcasts</TabsTrigger>
+                                    <TabsTrigger Value=""live"" Disabled=""true"">Live</TabsTrigger>
+                                </TabsList>
+                                <div class=""ml-auto mr-4"">
+                                    <Button>
+                                        <SvgGlyph Svg=""@(Lucide.CirclePlus)"" />
+                                        Add music
+                                    </Button>
+                                </div>
+                            </div>
+                            <TabsContent Value=""music"" Class=""border-none p-0 outline-none"">
+                                <div class=""flex items-center justify-between"">
+                                    <div class=""space-y-1"">
+                                        <h2 class=""text-2xl font-semibold tracking-tight"">Listen Now</h2>
+                                        <p class=""text-sm text-muted-foreground"">Top picks for you. Updated daily.</p>
+                                    </div>
+                                </div>
+                                <Separator Class=""my-4"" />
+                                <div class=""relative"">
+                                    <div class=""flex space-x-4 overflow-x-auto pb-4"">
+                                        @foreach (var album in ListenNowAlbums)
+                                        {
+                                            <div class=""w-[250px] shrink-0 space-y-3"">
+                                                <ContextMenu>
+                                                    <ContextMenuTrigger>
+                                                        <div class=""overflow-hidden rounded-md"">
+                                                            <img src=""@album.Cover"" alt=""@album.Name"" width=""250"" height=""330"" class=""h-auto w-auto object-cover transition-all hover:scale-105 aspect-[3/4]"" />
+                                                        </div>
+                                                    </ContextMenuTrigger>
+                                                    <ContextMenuContent Class=""w-40"">
+                                                        <ContextMenuItem>Add to Library</ContextMenuItem>
+                                                        <ContextMenuSub>
+                                                            <ContextMenuSubTrigger>Add to Playlist</ContextMenuSubTrigger>
+                                                            <ContextMenuSubContent Class=""w-48"">
+                                                                <ContextMenuItem><SvgGlyph Svg=""@(Lucide.CirclePlus)"" class=""mr-2 h-4 w-4"" />New Playlist</ContextMenuItem>
+                                                                <ContextMenuSeparator />
+                                                                @foreach (var playlist in Playlists)
+                                                                {
+                                                                    <ContextMenuItem><svg xmlns=""http://www.w3.org/2000/svg"" fill=""none"" stroke=""currentColor"" stroke-linecap=""round"" stroke-linejoin=""round"" stroke-width=""2"" class=""mr-2 h-4 w-4"" viewBox=""0 0 24 24""><path d=""M21 15V6M18.5 18a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5ZM12 12H3M16 6H3M12 18H3"" /></svg>@playlist</ContextMenuItem>
+                                                                }
+                                                            </ContextMenuSubContent>
+                                                        </ContextMenuSub>
+                                                        <ContextMenuSeparator />
+                                                        <ContextMenuItem>Play Next</ContextMenuItem>
+                                                        <ContextMenuItem>Play Later</ContextMenuItem>
+                                                        <ContextMenuItem>Create Station</ContextMenuItem>
+                                                        <ContextMenuSeparator />
+                                                        <ContextMenuItem>Like</ContextMenuItem>
+                                                        <ContextMenuItem>Share</ContextMenuItem>
+                                                    </ContextMenuContent>
+                                                </ContextMenu>
+                                                <div class=""space-y-1 text-sm"">
+                                                    <h3 class=""font-medium leading-none"">@album.Name</h3>
+                                                    <p class=""text-xs text-muted-foreground"">@album.Artist</p>
+                                                </div>
+                                            </div>
+                                        }
+                                    </div>
+                                </div>
+                                <div class=""mt-6 space-y-1"">
+                                    <h2 class=""text-2xl font-semibold tracking-tight"">Made for You</h2>
+                                    <p class=""text-sm text-muted-foreground"">Your personal playlists. Updated daily.</p>
+                                </div>
+                                <Separator Class=""my-4"" />
+                                <div class=""relative"">
+                                    <div class=""flex space-x-4 overflow-x-auto pb-4"">
+                                        @foreach (var album in MadeForYouAlbums)
+                                        {
+                                            <div class=""w-[150px] shrink-0 space-y-3"">
+                                                <ContextMenu>
+                                                    <ContextMenuTrigger>
+                                                        <div class=""overflow-hidden rounded-md"">
+                                                            <img src=""@album.Cover"" alt=""@album.Name"" width=""150"" height=""150"" class=""h-auto w-auto object-cover transition-all hover:scale-105 aspect-square"" />
+                                                        </div>
+                                                    </ContextMenuTrigger>
+                                                    <ContextMenuContent Class=""w-40"">
+                                                        <ContextMenuItem>Add to Library</ContextMenuItem>
+                                                        <ContextMenuSub>
+                                                            <ContextMenuSubTrigger>Add to Playlist</ContextMenuSubTrigger>
+                                                            <ContextMenuSubContent Class=""w-48"">
+                                                                <ContextMenuItem><SvgGlyph Svg=""@(Lucide.CirclePlus)"" class=""mr-2 h-4 w-4"" />New Playlist</ContextMenuItem>
+                                                                <ContextMenuSeparator />
+                                                                @foreach (var playlist in Playlists)
+                                                                {
+                                                                    <ContextMenuItem><svg xmlns=""http://www.w3.org/2000/svg"" fill=""none"" stroke=""currentColor"" stroke-linecap=""round"" stroke-linejoin=""round"" stroke-width=""2"" class=""mr-2 h-4 w-4"" viewBox=""0 0 24 24""><path d=""M21 15V6M18.5 18a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5ZM12 12H3M16 6H3M12 18H3"" /></svg>@playlist</ContextMenuItem>
+                                                                }
+                                                            </ContextMenuSubContent>
+                                                        </ContextMenuSub>
+                                                        <ContextMenuSeparator />
+                                                        <ContextMenuItem>Play Next</ContextMenuItem>
+                                                        <ContextMenuItem>Play Later</ContextMenuItem>
+                                                        <ContextMenuItem>Create Station</ContextMenuItem>
+                                                        <ContextMenuSeparator />
+                                                        <ContextMenuItem>Like</ContextMenuItem>
+                                                        <ContextMenuItem>Share</ContextMenuItem>
+                                                    </ContextMenuContent>
+                                                </ContextMenu>
+                                                <div class=""space-y-1 text-sm"">
+                                                    <h3 class=""font-medium leading-none"">@album.Name</h3>
+                                                    <p class=""text-xs text-muted-foreground"">@album.Artist</p>
+                                                </div>
+                                            </div>
+                                        }
+                                    </div>
+                                </div>
+                            </TabsContent>
+                            <TabsContent Value=""podcasts"" Class=""h-full flex-col border-none p-0 data-[state=active]:flex"">
+                                <div class=""flex items-center justify-between"">
+                                    <div class=""space-y-1"">
+                                        <h2 class=""text-2xl font-semibold tracking-tight"">New Episodes</h2>
+                                        <p class=""text-sm text-muted-foreground"">Your favorite podcasts. Updated daily.</p>
+                                    </div>
+                                </div>
+                                <Separator Class=""my-4"" />
+                                <div class=""flex h-[450px] shrink-0 items-center justify-center rounded-md border border-dashed border-border"">
+                                    <div class=""mx-auto flex max-w-[420px] flex-col items-center justify-center text-center"">
+                                        <svg xmlns=""http://www.w3.org/2000/svg"" fill=""none"" stroke=""currentColor"" stroke-linecap=""round"" stroke-linejoin=""round"" stroke-width=""2"" class=""h-10 w-10 text-muted-foreground"" viewBox=""0 0 24 24""><circle cx=""12"" cy=""11"" r=""1"" /><path d=""M11 17a1 1 0 0 1 2 0c0 .5-.34 3-.5 4.5a.5.5 0 0 1-1 0c-.16-1.5-.5-4-.5-4.5ZM8 14a5 5 0 1 1 8 0"" /><path d=""M17 18.5a9 9 0 1 0-10 0"" /></svg>
+                                        <h3 class=""mt-4 text-lg font-semibold"">No episodes added</h3>
+                                        <p class=""mb-4 mt-2 text-sm text-muted-foreground"">You have not added any podcasts. Add one below.</p>
+                                        <Dialog>
+                                            <DialogTrigger>
+                                                <Button Size=""Button.ButtonSize.Sm"" Class=""relative"">Add Podcast</Button>
+                                            </DialogTrigger>
+                                            <DialogContent>
+                                                <DialogHeader>
+                                                    <DialogTitle>Add Podcast</DialogTitle>
+                                                    <DialogDescription>Copy and paste the podcast feed URL to import.</DialogDescription>
+                                                </DialogHeader>
+                                                <div class=""grid gap-4 py-4"">
+                                                    <div class=""grid gap-2"">
+                                                        <Label For=""podcast-url"">Podcast URL</Label>
+                                                        <Input id=""podcast-url"" Placeholder=""https://example.com/feed.xml"" />
+                                                    </div>
+                                                </div>
+                                                <DialogFooter>
+                                                    <Button>Import Podcast</Button>
+                                                </DialogFooter>
+                                            </DialogContent>
+                                        </Dialog>
+                                    </div>
+                                </div>
+                            </TabsContent>
+                        </Tabs>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>";
 
-  private void TogglePlay() => _isPlaying = !_isPlaying;
-  private string FormatTime(double s) => $""{(int)(s/60)}:{((int)s%60):D2}"";
-}";
+    // shadcn's data/albums.ts and data/playlists.ts.
+    private sealed record Album(string Name, string Artist, string Cover);
+
+    private static readonly Album[] ListenNowAlbums =
+    [
+        new("React Rendezvous", "Ethan Byte", "https://images.unsplash.com/photo-1611348586804-61bf6c080437?w=300&dpr=2&q=80"),
+        new("Async Awakenings", "Nina Netcode", "https://images.unsplash.com/photo-1468817814611-b7edf94b5d60?w=300&dpr=2&q=80"),
+        new("The Art of Reusability", "Lena Logic", "https://images.unsplash.com/photo-1528143358888-6d3c7f67bd5d?w=300&dpr=2&q=80"),
+        new("Stateful Symphony", "Beth Binary", "https://images.unsplash.com/photo-1490300472339-79e4adc6be4a?w=300&dpr=2&q=80"),
+    ];
+
+    private static readonly Album[] MadeForYouAlbums =
+    [
+        new("Thinking Components", "Lena Logic", "https://images.unsplash.com/photo-1615247001958-f4bc92fa6a4a?w=300&dpr=2&q=80"),
+        new("Functional Fury", "Beth Binary", "https://images.unsplash.com/photo-1513745405825-efaf9a49315f?w=300&dpr=2&q=80"),
+        new("React Rendezvous", "Ethan Byte", "https://images.unsplash.com/photo-1614113489855-66422ad300a4?w=300&dpr=2&q=80"),
+        new("Stateful Symphony", "Beth Binary", "https://images.unsplash.com/photo-1446185250204-f94591f7d702?w=300&dpr=2&q=80"),
+        new("Async Awakenings", "Nina Netcode", "https://images.unsplash.com/photo-1468817814611-b7edf94b5d60?w=300&dpr=2&q=80"),
+        new("The Art of Reusability", "Lena Logic", "https://images.unsplash.com/photo-1490300472339-79e4adc6be4a?w=300&dpr=2&q=80"),
+    ];
+
+    private static readonly string[] Playlists =
+    [
+        "Recently Added", "Recently Played", "Top Songs", "Top Albums", "Top Artists", "Logic Discography",
+        "Bedtime Beats", "Feeling Happy", "I miss Y2K Pop", "Runtober", "Mellow Days", "Eminem Essentials",
+    ];
+
+    private string _tab = "music";
+    private bool _showPlayingNext;
+    private bool _showLyrics = true;
+    private string _accountName = "benoit";
 }
