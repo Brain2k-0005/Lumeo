@@ -1,4 +1,5 @@
 @namespace Lumeo
+@using System.Globalization
 @inject Lumeo.Services.Localization.ILumeoLocalizer L
 
 @* Render the label, control and helper/error as ONE self-contained vertical block so the
@@ -30,8 +31,8 @@
                     }
                 </div>
             }
-            <div class="relative h-full w-2 rounded-[var(--radius)] @(EffectiveInvalid ? "bg-destructive/20" : "bg-primary/20")" data-orientation="@OrientationData" data-disabled="@DisabledData">
-                <div class="absolute bottom-0 w-full rounded-[var(--radius)] @(EffectiveInvalid ? "bg-destructive" : "bg-primary")" style="height: @(GetPercent(Value))%" data-orientation="@OrientationData" data-disabled="@DisabledData"></div>
+            <div class="relative h-full w-1.5 rounded-full @(EffectiveInvalid ? "bg-destructive/20" : "bg-muted")" data-orientation="@OrientationData" data-disabled="@DisabledData">
+                <div class="absolute bottom-0 w-full rounded-full @(EffectiveInvalid ? "bg-destructive" : "bg-primary")" style="height: @(GetPercent(Value))%" data-orientation="@OrientationData" data-disabled="@DisabledData"></div>
                 <input type="range" min="@Min" max="@Max" step="@Step" value="@Value" disabled="@Disabled"
                        name="@Name"
                        aria-label="@AriaLabel" aria-valuemin="@Min" aria-valuemax="@Max" aria-valuenow="@Value" aria-valuetext="@ValueText(Value)"
@@ -61,10 +62,10 @@ else if (IsRange)
     <div class="@CssClass" data-orientation="@OrientationData" data-disabled="@DisabledData" @attributes="AdditionalAttributes">
         <div class="relative w-full">
             <div class="absolute inset-0 flex items-center">
-                <div class="h-2 w-full rounded-[var(--radius)] @(EffectiveInvalid ? "bg-destructive/20" : "bg-primary/20")" data-orientation="@OrientationData" data-disabled="@DisabledData"></div>
+                <div class="h-1.5 w-full rounded-full @(EffectiveInvalid ? "bg-destructive/20" : "bg-muted")" data-orientation="@OrientationData" data-disabled="@DisabledData"></div>
             </div>
             <div class="absolute inset-0 flex items-center" style="pointer-events: none;">
-                <div class="h-2 rounded-[var(--radius)] @(EffectiveInvalid ? "bg-destructive" : "bg-primary")" style="margin-left: @(StartPercent)%; width: @(RangePercent)%;" data-orientation="@OrientationData" data-disabled="@DisabledData"></div>
+                <div class="h-1.5 rounded-full @(EffectiveInvalid ? "bg-destructive" : "bg-primary")" style="margin-left: @(StartPercent)%; width: @(RangePercent)%;" data-orientation="@OrientationData" data-disabled="@DisabledData"></div>
             </div>
             <div class="relative flex items-center" style="pointer-events: none;">
                 @* Both inputs overlay the full track, so hit-testing must live on
@@ -122,6 +123,7 @@ else
                        id="@FormFieldControlId" aria-describedby="@FormFieldDescribedBy"
                        data-orientation="@OrientationData" data-disabled="@DisabledData"
                        class="@InputClasses"
+                       style="@FillStyle"
                        @oninput="OnInput"
                        @onpointerenter="() => _showTooltipThumb = true"
                        @onpointerleave="() => _showTooltipThumb = false"
@@ -306,11 +308,15 @@ else
     // slider, or which range thumb, is focused. The rounded ring follows the track.
     private const string FocusRing = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background";
 
-    private string InputClasses => $"w-full h-2 cursor-pointer appearance-none rounded-[var(--radius)] {(EffectiveInvalid ? "bg-destructive/20 accent-destructive" : "bg-primary/20 accent-primary")} {FocusRing} disabled:cursor-not-allowed disabled:opacity-50";
+    private string InputClasses => $"w-full h-1.5 cursor-pointer appearance-none rounded-full {(EffectiveInvalid ? "bg-destructive/20 accent-destructive" : "bg-muted accent-primary")} {FocusRing} disabled:cursor-not-allowed disabled:opacity-50";
 
-    private string VerticalInputClasses => $"absolute inset-0 h-full w-full cursor-pointer appearance-none rounded-[var(--radius)] bg-transparent {(EffectiveInvalid ? "accent-destructive" : "accent-primary")} {FocusRing} disabled:cursor-not-allowed disabled:opacity-50 [writing-mode:vertical-lr] [direction:rtl]";
+    // shadcn fills the track up to the thumb with the primary colour; a native range input
+    // gets the same look from a two-stop gradient over the muted track.
+    private string FillStyle => $"background: linear-gradient(to right, {(EffectiveInvalid ? "var(--color-destructive)" : "var(--color-primary)")} {GetPercent(Value).ToString("0.##", CultureInfo.InvariantCulture)}%, {(EffectiveInvalid ? "color-mix(in oklab, var(--color-destructive) 20%, transparent)" : "var(--color-muted)")} 0)";
 
-    private static readonly string RangeInputClasses = $"w-full h-2 cursor-pointer appearance-none rounded-[var(--radius)] bg-transparent accent-primary {FocusRing} disabled:cursor-not-allowed disabled:opacity-50 pointer-events-none [&::-webkit-slider-thumb]:pointer-events-auto [&::-moz-range-thumb]:pointer-events-auto";
+    private string VerticalInputClasses => $"absolute inset-0 h-full w-full cursor-pointer appearance-none rounded-full bg-transparent {(EffectiveInvalid ? "accent-destructive" : "accent-primary")} {FocusRing} disabled:cursor-not-allowed disabled:opacity-50 [writing-mode:vertical-lr] [direction:rtl]";
+
+    private static readonly string RangeInputClasses = $"w-full h-1.5 cursor-pointer appearance-none rounded-full bg-transparent accent-primary {FocusRing} disabled:cursor-not-allowed disabled:opacity-50 pointer-events-none [&::-webkit-slider-thumb]:pointer-events-auto [&::-moz-range-thumb]:pointer-events-auto";
 
     private double StartPercent => Max > Min ? ((Math.Min(Value, ValueEnd) - Min) / (Max - Min)) * 100 : 0;
     private double RangePercent => Max > Min ? ((Math.Abs(ValueEnd - Value)) / (Max - Min)) * 100 : 0;
