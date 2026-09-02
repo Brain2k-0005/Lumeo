@@ -1,6 +1,6 @@
 # Lumeo component catalog
 
-All 165 components by category, plus 16 full-page patterns and the 58 theme tokens. Generated from `components-api.json` (`node skills/lumeo/gen-catalog.mjs`).
+All 166 components by category, plus 16 full-page patterns and the 58 theme tokens. Generated from `components-api.json` (`node skills/lumeo/gen-catalog.mjs`).
 
 > This is the **offline fallback**. When the `lumeo-mcp` server is connected, prefer `lumeo_search` / `lumeo_get_component` / `lumeo_get_example` — they give the live, complete per-parameter API.
 
@@ -158,7 +158,7 @@ Satellite packages: a component tagged **[Charts]** needs `Lumeo.Charts`, **[Dat
 - **NavigationMenu** — Top-level site nav with animated dropdown panels. _(sub-components: NavigationMenuContent, NavigationMenuHamburger, NavigationMenuIndicator, NavigationMenuItem, NavigationMenuLink, NavigationMenuList, NavigationMenuMobile, NavigationMenuTrigger, NavigationMenuViewport)_
 - **Pagination** — Page number bar with prev/next and configurable ranges. _(sub-components: PaginationContent, PaginationEllipsis, PaginationItem, PaginationNext, PaginationPrevious)_
 - **Scrollspy** — Highlights the nav item matching the current scroll section. _(sub-components: ScrollspyLink, ScrollspySection)_
-- **Sidebar** — Collapsible app sidebar with groups, menu, and trigger. _(sub-components: SidebarContent, SidebarFooter, SidebarGroup, SidebarGroupLabel, SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarProvider, SidebarSeparator, SidebarTrigger)_
+- **Sidebar** — Collapsible app sidebar with groups, menu, and trigger. _(sub-components: SidebarContent, SidebarFooter, SidebarGroup, SidebarGroupAction, SidebarGroupContent, SidebarGroupLabel, SidebarHeader, SidebarInput, SidebarInset, SidebarMenu, SidebarMenuAction, SidebarMenuBadge, SidebarMenuButton, SidebarMenuItem, SidebarMenuSkeleton, SidebarMenuSub, SidebarMenuSubButton, SidebarMenuSubItem, SidebarProvider, SidebarRail, SidebarSeparator, SidebarTrigger)_
 - **SpeedDial** — Floating action button that fans out sub-actions.
 - **Splitter** — Resizable split pane for horizontal/vertical layouts. _(sub-components: SplitterDivider, SplitterPane)_
 - **Stepper** — Stateful multi-step wizard with navigation, validation gating, and header indicators. _(sub-components: StepperStep)_
@@ -198,6 +198,7 @@ Satellite packages: a component tagged **[Charts]** needs `Lumeo.Charts`, **[Dat
 - **DensityScope** — Density Scope component.
 - **DirectionProvider** — Direction Provider component.
 - **DropdownButton** — Dropdown Button component.
+- **Field** — Field component. _(sub-components: FieldContent, FieldDescription, FieldError, FieldGroup, FieldLabel, FieldLegend, FieldSeparator, FieldSet, FieldTitle)_
 - **Icon** — Icon wrapper — renders the built-in LumeoIcons set (Lucide-derived) or any IconSource natively. _(sub-components: SvgGlyph)_
 - **Kbd** — Keyboard shortcut glyph — renders <kbd> with styling.
 - **Label** — Form label that links to a control via for/id.
