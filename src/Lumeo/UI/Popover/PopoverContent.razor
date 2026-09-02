@@ -20,6 +20,13 @@
     [Parameter] public Lumeo.Align Align { get; set; } = Lumeo.Align.Center;
     [Parameter] public Lumeo.Side Side { get; set; } = Lumeo.Side.Bottom;
     [Parameter] public bool ShowArrow { get; set; }
+
+    /// <summary>Gap between the trigger and the content in pixels, Radix's <c>sideOffset</c>. Default 4.</summary>
+    [Parameter] public int SideOffset { get; set; } = 4;
+
+    /// <summary>Shift along the alignment axis in pixels, Radix's <c>alignOffset</c>: positive moves a
+    /// bottom or top placement toward the end (right in LTR), a left or right placement down. Default 0.</summary>
+    [Parameter] public int AlignOffset { get; set; }
     /// <summary>
     /// When <c>true</c> (default), focus moves into the popover surface on open so its
     /// <c>@onkeydown</c> handler receives Escape and keyboard users land inside the dialog
@@ -94,7 +101,7 @@
     {
         if (Context.IsOpen && !_registered)
         {
-            await Interop.PositionFixed(_contentId, Context.WrapperId, AlignStr, false, SideStr);
+            await Interop.PositionFixed(_contentId, Context.WrapperId, AlignStr, false, SideStr, SideOffset, AlignOffset);
             _appliedAnchor = (SideStr, AlignStr);
             await Interop.RegisterClickOutside(_contentId, Context.WrapperId, async () =>
             {
@@ -129,7 +136,7 @@
             // #86 — Side/Align changed while the popover stayed open: re-run
             // PositionFixed against the new anchor. The tuple compare keeps a
             // same-anchor re-render from churning the floating-ui placement.
-            await Interop.PositionFixed(_contentId, Context.WrapperId, AlignStr, false, SideStr);
+            await Interop.PositionFixed(_contentId, Context.WrapperId, AlignStr, false, SideStr, SideOffset, AlignOffset);
             _appliedAnchor = (SideStr, AlignStr);
         }
         else if (!Context.IsOpen && _registered)

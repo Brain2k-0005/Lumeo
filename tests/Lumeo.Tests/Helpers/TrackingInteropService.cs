@@ -190,6 +190,19 @@ public class TrackingInteropService : IComponentInteropService
     public ValueTask UnregisterViewportListener() => ValueTask.CompletedTask;
     // No JS in tests — echo the requested side back (no collision flip), matching the live fallback.
     public ValueTask<string> PositionFixed(string contentId, string referenceId, string align = "start", bool matchWidth = false, string side = "bottom") => ValueTask.FromResult(side);
+    private readonly List<(string ContentId, string Align, string Side, int Offset, int AlignOffset)> _positionFixedCalls = new();
+    /// <summary>Every offset-carrying placement, so a test can read the SideOffset/AlignOffset a content passed.</summary>
+    public IReadOnlyList<(string ContentId, string Align, string Side, int Offset, int AlignOffset)> PositionFixedCalls => _positionFixedCalls;
+    public ValueTask<string> PositionFixed(string contentId, string referenceId, string align, bool matchWidth, string side, int offset, int alignOffset)
+    {
+        _positionFixedCalls.Add((contentId, align, side, offset, alignOffset));
+        return ValueTask.FromResult(side);
+    }
+    public ValueTask<string> PositionFixed(string contentId, string referenceId, string align, bool matchWidth, string side, int offset, int alignOffset, Func<string, Task>? onSideChanged)
+    {
+        _positionFixedCalls.Add((contentId, align, side, offset, alignOffset));
+        return ValueTask.FromResult(side);
+    }
     public ValueTask UnpositionFixed(string contentId) => ValueTask.CompletedTask;
 
     // ContextMenu root-menu viewport clamp (#224) — opens at click coords with

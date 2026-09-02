@@ -137,6 +137,12 @@ public interface IComponentInteropService : IAsyncDisposable, IDisposable
     /// </summary>
     ValueTask<string> PositionFixed(string contentId, string referenceId, string align, bool matchWidth, string side, int offset) =>
         PositionFixed(contentId, referenceId, align, matchWidth, side);
+
+    /// <summary>Positions with a trigger gap (<paramref name="offset"/>, Radix's sideOffset) and a
+    /// shift along the alignment axis (<paramref name="alignOffset"/>, Radix's alignOffset).
+    /// Additive DIM: a legacy implementation ignores the align offset.</summary>
+    ValueTask<string> PositionFixed(string contentId, string referenceId, string align, bool matchWidth, string side, int offset, int alignOffset) =>
+        PositionFixed(contentId, referenceId, align, matchWidth, side, offset);
     /// <summary>
     /// round-14 — extended overload that ALSO reports LIVE collision flips: the synchronous return only
     /// covers the initial placement, but a later scroll/resize reposition can flip the box to a different
@@ -149,6 +155,10 @@ public interface IComponentInteropService : IAsyncDisposable, IDisposable
     /// </summary>
     ValueTask<string> PositionFixed(string contentId, string referenceId, string align, bool matchWidth, string side, int offset, Func<string, Task>? onSideChanged) =>
         PositionFixed(contentId, referenceId, align, matchWidth, side, offset);
+
+    /// <summary>The live-side-change overload with an align offset. Additive DIM.</summary>
+    ValueTask<string> PositionFixed(string contentId, string referenceId, string align, bool matchWidth, string side, int offset, int alignOffset, Func<string, Task>? onSideChanged) =>
+        PositionFixed(contentId, referenceId, align, matchWidth, side, offset, onSideChanged);
     ValueTask UnpositionFixed(string contentId);
 
     /// <summary>

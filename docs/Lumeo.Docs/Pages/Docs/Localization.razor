@@ -1,5 +1,6 @@
 @page "/docs/localization"
 @namespace Lumeo.Docs.Pages.Docs
+@using Lumeo.Docs.Data
 
 <PageTitle>Localization — Lumeo</PageTitle>
 
@@ -67,6 +68,47 @@
 
     <Separator Class="my-4" />
 
+    <Separator Class="my-4" />
+
+    <Stack Gap="4">
+        <Heading Level="2">Adding a locale Lumeo does not ship</Heading>
+        <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
+            Lumeo ships @LocalizationKeyCatalog.ShippedLocales locales. Dates, month and weekday names come from the
+            <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">Culture</code> you pass and need nothing from you; the component strings below do. For a culture the
+            package has no bucket for (Croatian, say) every key falls back to English, so supply the bucket in
+            <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">AddLumeo</code>: the catalogue lists every key with its English default, and a partial bucket is fine,
+            the rest keeps falling back.
+        </Lumeo.Text>
+        <pre class="code-block rounded-lg border border-border/40 bg-muted px-4 py-3 font-mono text-xs text-foreground whitespace-pre overflow-x-auto">@_addLocaleCode</pre>
+    </Stack>
+
+    <Separator Class="my-4" />
+
+    <Stack Gap="4">
+        <Heading Level="2">Every key</Heading>
+        <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
+            All @LocalizationKeyCatalog.Entries.Count keys the components read through <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">ILumeoLocalizer</code>, generated
+            from the library source (<code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">scripts/i18n/generate-key-catalog.py</code>).
+            Placeholders like <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">{0}</code> are string.Format arguments.
+        </Lumeo.Text>
+        <Input Value="@_keyFilter" ValueChanged="@(v => _keyFilter = v ?? "")" Placeholder="Filter keys, e.g. DataGrid or Calendar" Class="max-w-sm" />
+        <div class="overflow-x-auto rounded-md border border-border/40">
+            <table class="w-full text-sm">
+                <thead><tr class="border-b border-border/40 bg-muted/40"><th class="px-3 py-2 text-left text-xs font-medium">Key</th><th class="px-3 py-2 text-left text-xs font-medium">English</th><th class="px-3 py-2 text-left text-xs font-medium">German</th><th class="px-3 py-2 text-left text-xs font-medium">Locales</th></tr></thead>
+                <tbody class="[&_tr]:border-b [&_tr]:border-border/40">
+                    @foreach (var e in FilteredKeys.Take(200))
+                    {
+                        <tr><td class="px-3 py-1.5 font-mono text-xs text-primary whitespace-nowrap">@e.Key</td><td class="px-3 py-1.5 text-xs">@e.English</td><td class="px-3 py-1.5 text-xs text-muted-foreground">@e.German</td><td class="px-3 py-1.5 text-xs text-muted-foreground">@e.Locales / @LocalizationKeyCatalog.ShippedLocales</td></tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+        @if (FilteredKeys.Count > 200)
+        {
+            <Lumeo.Text Size="sm" Color="muted">Showing the first 200 of @FilteredKeys.Count matches; narrow the filter to see the rest.</Lumeo.Text>
+        }
+    </Stack>
+
     <!-- See also -->
     <Stack>
         <Heading Level="2">See also</Heading>
@@ -78,6 +120,24 @@
 </Stack>
 
 @code {
+    private string _keyFilter = "";
+
+    private List<Lumeo.Docs.Data.LocalizationKeyCatalog.Entry> FilteredKeys => Lumeo.Docs.Data.LocalizationKeyCatalog.Entries
+        .Where(e => _keyFilter.Length == 0 || e.Key.Contains(_keyFilter, StringComparison.OrdinalIgnoreCase) || e.English.Contains(_keyFilter, StringComparison.OrdinalIgnoreCase))
+        .ToList();
+
+    private const string _addLocaleCode = @"builder.Services.AddLumeo(options =>
+{
+    options.Localization.AddMany(""hr"", new Dictionary<string, string>
+    {
+        [""Calendar.PreviousMonth""] = ""Prethodni mjesec"",
+        [""Calendar.NextMonth""] = ""Sljedeći mjesec"",
+        [""DataGrid.SelectAll""] = ""Odaberi sve"",
+        [""DataGrid.SelectRow""] = ""Odaberi redak"",
+        // ... every key from the catalogue below
+    });
+});";
+
     private const string _pinCultureCode = @"using System.Globalization;
 
 var builder = WebAssemblyHostBuilder.CreateDefault(args);

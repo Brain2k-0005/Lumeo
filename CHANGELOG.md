@@ -5,6 +5,35 @@ All notable changes to Lumeo will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.6.0] - 2026-09-02
+
+The remaining items from the DocFlow field report.
+
+### Added
+
+- **`SideOffset` and `AlignOffset`** on `DropdownMenuContent`, `DropdownMenuSubContent`,
+  `ContextMenuSubContent`, `PopoverContent` and `HoverCardContent` (Radix's `sideOffset` /
+  `alignOffset`), and `AlignOffset` beside the existing `Offset` on `TooltipContent`. The
+  defaults (4px gap, no shift) are what placed the contents before, so nothing moves.
+  `IComponentInteropService.PositionFixed` gains the align-offset overloads as additive
+  default members. Field report 4.4.
+- **The localization key catalogue.** The localization page lists every one of the 500
+  component-string keys with its English default, the German text and how many of the 14
+  shipped locales carry it, generated from the source by
+  `scripts/i18n/generate-key-catalog.py`, with a section on adding a locale Lumeo does not
+  ship through `LumeoLocalizationOptions.AddMany` (Croatian as the example). Field report
+  1.19 / 1.20.
+
+### Fixed
+
+- **A click on a modal backdrop no longer takes the keyboard out of the dialog.** The
+  backdrop moved focus to the page body, or to an outer dialog when one dialog sat inside
+  another, so the next Escape closed nothing or the wrong dialog; an `AlertDialog`, whose
+  backdrop does not dismiss, stranded the user. Dialog, AlertDialog, Sheet and Drawer
+  backdrops cancel the mousedown default now, so focus stays inside and Escape closes the
+  innermost dialog first. Reproduced headless with a dialog nested in a dialog, both as a
+  sibling and declared inside `DialogContent`. Field report 4.14, #444.
+
 ## [5.5.0] - 2026-09-02
 
 Issue #434, in the order the field report suggested: stable override contracts first,

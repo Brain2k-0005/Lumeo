@@ -484,7 +484,7 @@ export async function attachOverlayExitEnd(elementId, dotnetRef) {
 
 const positionCleanups = new Map();
 
-export function positionFixed(contentId, referenceId, align, matchWidth, side, offset, dotnetRef) {
+export function positionFixed(contentId, referenceId, align, matchWidth, side, offset, dotnetRef, alignOffset) {
     const content = document.getElementById(contentId);
     const reference = document.getElementById(referenceId);
     if (!content || !reference) {
@@ -605,6 +605,13 @@ export function positionFixed(contentId, referenceId, align, matchWidth, side, o
         }
 
         // Apply, then re-measure for the flip/clamp guards below.
+        // AlignOffset (Radix's alignOffset): a shift along the alignment axis, so a menu can
+        // hang a few pixels past its trigger's edge. Logical on the horizontal axis.
+        const shift = (typeof alignOffset === 'number' && Number.isFinite(alignOffset)) ? alignOffset : 0;
+        if (shift) {
+            if (resolvedSide === 'top' || resolvedSide === 'bottom') left += isRtl ? -shift : shift;
+            else top += shift;
+        }
         content.style.top = `${top}px`;
         content.style.left = `${left}px`;
         content.style.right = '';
