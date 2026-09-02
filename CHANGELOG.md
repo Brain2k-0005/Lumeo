@@ -5,6 +5,33 @@ All notable changes to Lumeo will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.5.0] - 2026-09-02
+
+Issue #434, in the order the field report suggested: stable override contracts first,
+then a small fixed token set. Nothing renders differently until you use them.
+
+### Added
+
+- **`data-slot` on every component.** All 324 element-rooted components mark their root
+  with `data-slot="<component-in-kebab-case>"` (`button`, `sidebar-menu-button`,
+  `dropdown-menu-item`, ...); a component with two root branches marks both, and form
+  controls whose root is the field wrapper also mark the control itself as
+  `<name>-control` (`input-control`, `textarea-control`, `checkbox-control`, ...). A
+  stylesheet written against `[data-slot=…]` survives a release that renames a utility
+  class; one written against `.h-7` does not. Card and Sidebar had this since 5.2 and 5.3.
+- **Geometry tokens.** Twelve CSS variables carry the geometry products tune most, each
+  read as `var(--lumeo-…, <today's value>)` on the component's Comfortable rung:
+  `--lumeo-control-h` (with `-xs`, `-sm`, `-lg`) for Button and every field-shaped control
+  (Input, Select, DatePicker, TimePicker, Cascader, TreeSelect, ColorPicker, TagInput,
+  NumberInput, PasswordInput), `--lumeo-icon-size` for an unsized icon inside a button,
+  menu item, command item, tab trigger or sidebar item, `--lumeo-sidebar-item-h` (with
+  `-sm`, `-lg`), `--lumeo-table-head-h` and `--lumeo-table-cell-p`, `--lumeo-grid-cell-px`
+  and `-py`. Defaults follow Tailwind's `--spacing`, so a rescaled spacing scale moves them
+  too; `Density.Compact` and `Density.Spacious` stay one step below and above as fixed
+  presets. Set a token on `:root` for the app or on any ancestor for a region: six lines
+  replace a hundred of class-literal overrides. Documented on the theme-overrides page,
+  with a guard test that keeps every fallback equal to the declared default.
+
 ## [5.4.0] - 2026-09-02
 
 ### Added
