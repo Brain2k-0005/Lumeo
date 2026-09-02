@@ -5,6 +5,23 @@ All notable changes to Lumeo will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.2.1] - 2026-09-02
+
+### Fixed
+
+- **The "dark" and "light" menu colours set the whole sidebar token set.** The theme
+  customizer's menu colour used to write only `--color-sidebar` and its foreground, so a
+  dark sidebar on a light page kept the light theme's `sidebar-primary` (near-black on
+  near-black: the team switcher's logo box vanished), the light accent (every hover a
+  light slab), and the light border. All eight `--color-sidebar-*` tokens now follow the
+  chosen colour, using lumeo.css's own dark and light sidebar defaults; resetting the
+  option clears all eight.
+- **`AvatarFallback` sets `text-foreground`.** Its `bg-muted` disc is a page-tone
+  surface, so its initials are page-tone too instead of inheriting: inside a dark sidebar
+  they were white on a light disc.
+- **The sidebar-07 block's avatar is square**, as shadcn's is; `Class="rounded-lg"`
+  alone did not reach the avatar's inner clip.
+
 ## [5.2.0] - 2026-09-02
 
 The blocks catalogue starts moving onto shadcn's own blocks, ported one to one rather

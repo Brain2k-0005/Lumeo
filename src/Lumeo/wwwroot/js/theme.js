@@ -151,15 +151,36 @@ window.themeManager = {
         }
         // Menu color
         const menuColor = localStorage.getItem('theme-menu-color') || lumeoDefault(defaults, 'menuColor');
-        if (menuColor === 'dark') {
-            document.documentElement.style.setProperty('--color-sidebar', 'hsl(220 13% 10%)');
-            document.documentElement.style.setProperty('--color-sidebar-foreground', 'hsl(0 0% 95%)');
-        } else if (menuColor === 'light') {
-            document.documentElement.style.setProperty('--color-sidebar', 'hsl(0 0% 100%)');
-            document.documentElement.style.setProperty('--color-sidebar-foreground', 'hsl(220 13% 10%)');
-        } else {
-            document.documentElement.style.removeProperty('--color-sidebar');
-            document.documentElement.style.removeProperty('--color-sidebar-foreground');
+        // The menu colour is the WHOLE sidebar token set, not just the surface and its text:
+        // a dark sidebar with the light theme's sidebar-primary (near-black) hid the team
+        // switcher's logo box, and the light accent made every hover a light slab on dark.
+        // The two sets are lumeo.css's own dark and light sidebar defaults.
+        const sidebarTokens = {
+            dark: {
+                '--color-sidebar': 'hsl(220 13% 10%)',
+                '--color-sidebar-foreground': 'hsl(0 0% 95%)',
+                '--color-sidebar-primary': 'oklch(0.9848 0 0)',
+                '--color-sidebar-primary-foreground': 'oklch(0.2103 0.0059 285.88)',
+                '--color-sidebar-accent': 'oklch(0.2741 0.0055 286.03)',
+                '--color-sidebar-accent-foreground': 'oklch(0.9848 0 0)',
+                '--color-sidebar-border': 'oklch(0.2741 0.0055 286.03)',
+                '--color-sidebar-ring': 'oklch(0.9848 0 0)',
+            },
+            light: {
+                '--color-sidebar': 'hsl(0 0% 100%)',
+                '--color-sidebar-foreground': 'hsl(220 13% 10%)',
+                '--color-sidebar-primary': 'oklch(0.2103 0.0059 285.88)',
+                '--color-sidebar-primary-foreground': 'oklch(0.9848 0 0)',
+                '--color-sidebar-accent': 'oklch(0.9676 0.0013 286.38)',
+                '--color-sidebar-accent-foreground': 'oklch(0.2103 0.0059 285.88)',
+                '--color-sidebar-border': 'oklch(0.9197 0.004 286.32)',
+                '--color-sidebar-ring': 'oklch(0.2103 0.0059 285.88)',
+            },
+        };
+        const chosen = sidebarTokens[menuColor];
+        for (const name of Object.keys(sidebarTokens.dark)) {
+            if (chosen) document.documentElement.style.setProperty(name, chosen[name]);
+            else document.documentElement.style.removeProperty(name);
         }
         // Direction (RTL / LTR). Applied early so first paint is correct and
         // browser-native logical properties flip with no visible reflow.
@@ -281,8 +302,9 @@ window.themeManager = {
     setMenuColor: function (menuColor) {
         if (!menuColor || menuColor === 'default') {
             localStorage.removeItem('theme-menu-color');
-            document.documentElement.style.removeProperty('--color-sidebar');
-            document.documentElement.style.removeProperty('--color-sidebar-foreground');
+            for (const name of ['--color-sidebar', '--color-sidebar-foreground', '--color-sidebar-primary', '--color-sidebar-primary-foreground', '--color-sidebar-accent', '--color-sidebar-accent-foreground', '--color-sidebar-border', '--color-sidebar-ring']) {
+                document.documentElement.style.removeProperty(name);
+            }
         } else {
             localStorage.setItem('theme-menu-color', menuColor);
             if (menuColor === 'dark') {
