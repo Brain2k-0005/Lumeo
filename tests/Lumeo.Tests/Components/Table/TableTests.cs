@@ -207,8 +207,8 @@ public class TableTests : IAsyncLifetime
     {
         var cut = _ctx.Render<L.TableHead>(p => p.AddChildContent(""));
         var cls = cut.Find("th").GetAttribute("class") ?? "";
-        Assert.Contains("h-10", cls);
-        Assert.Contains("px-2", cls);
+        Assert.Contains("h-[var(--lumeo-table-head-h,calc(var(--spacing,0.25rem)*10))]", cls);
+        Assert.Contains("px-[var(--lumeo-table-cell-p,calc(var(--spacing,0.25rem)*2))]", cls);
         Assert.Contains("font-medium", cls);
     }
 
@@ -252,7 +252,7 @@ public class TableTests : IAsyncLifetime
     {
         var cut = _ctx.Render<L.TableCell>(p => p.AddChildContent(""));
         var cls = cut.Find("td").GetAttribute("class") ?? "";
-        Assert.Contains("p-2", cls);
+        Assert.Contains("p-[var(--lumeo-table-cell-p,calc(var(--spacing,0.25rem)*2))]", cls);
         Assert.Contains("align-middle", cls);
     }
 

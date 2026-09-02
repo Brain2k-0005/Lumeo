@@ -41,7 +41,7 @@
        as a button" case. <a> can't be natively disabled, so a disabled/loading
        link gets aria-disabled + pointer-events-none/opacity directly (the
        `disabled:` utility variant only targets a real :disabled element). *@
-    <a @ref="_el" href="@Href" id="@Slot?.Id" class="@LinkCssClass"
+    <a data-slot="button" @ref="_el" href="@Href" id="@Slot?.Id" class="@LinkCssClass"
        aria-disabled="@((IsLoading || Disabled) ? "true" : null)"
        tabindex="@((IsLoading || Disabled) ? "-1" : null)"
        @attributes="MergedAttributes" @onclick="HandleClick"
@@ -49,7 +49,7 @@
 }
 else
 {
-    <button @ref="_el" type="@TypeAttr" id="@Slot?.Id" class="@CssClass" disabled="@(IsLoading || Disabled)" @attributes="MergedAttributes" @onclick="HandleClick" @onclick:stopPropagation="StopPropagation" @onclick:preventDefault="PreventDefault">@inner</button>
+    <button data-slot="button" @ref="_el" type="@TypeAttr" id="@Slot?.Id" class="@CssClass" disabled="@(IsLoading || Disabled)" @attributes="MergedAttributes" @onclick="HandleClick" @onclick:stopPropagation="StopPropagation" @onclick:preventDefault="PreventDefault">@inner</button>
 }
 
 @code {
@@ -196,7 +196,7 @@ else
     // <a>), so fold the inactive styling in directly.
     private string LinkCssClass => Cx.Merge(CssClass, Cx.When(IsLoading || Disabled, "pointer-events-none opacity-50"));
 
-    private const string BaseClasses = "inline-flex shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-colors [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-']):not([class*='h-'])]:size-4 focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50";
+    private const string BaseClasses = "inline-flex shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-colors [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-']):not([class*='h-'])]:size-[var(--lumeo-icon-size,calc(var(--spacing,0.25rem)*4))] focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50";
 
     private string? PressEffectClass => PressEffect switch
     {
@@ -233,19 +233,19 @@ else
                 // a name, since Spacious at Default lands back on h-9 px-3.
                 (ButtonSize.Xs, Lumeo.Density.Compact)    => ("h-5",  "px-1.5",  "h-5 w-5"),
                 (ButtonSize.Xs, Lumeo.Density.Spacious)   => ("h-7",  "px-2.5",  "h-7 w-7"),
-                (ButtonSize.Xs, _)                        => ("h-6",  "px-2",    "h-6 w-6"),
+                (ButtonSize.Xs, _)                        => ("h-[var(--lumeo-control-h-xs,calc(var(--spacing,0.25rem)*6))]",  "px-2",    "h-[var(--lumeo-control-h-xs,calc(var(--spacing,0.25rem)*6))] w-[var(--lumeo-control-h-xs,calc(var(--spacing,0.25rem)*6))]"),
                 (ButtonSize.Sm, Lumeo.Density.Compact)    => ("h-6",  "px-2",    "h-6 w-6"),
                 (ButtonSize.Sm, Lumeo.Density.Spacious)   => ("h-8",  "px-3",    "h-8 w-8"),
-                (ButtonSize.Sm, _)                        => ("h-7",  "px-2.5",  "h-7 w-7"),
+                (ButtonSize.Sm, _)                        => ("h-[var(--lumeo-control-h-sm,calc(var(--spacing,0.25rem)*7))]",  "px-2.5",  "h-[var(--lumeo-control-h-sm,calc(var(--spacing,0.25rem)*7))] w-[var(--lumeo-control-h-sm,calc(var(--spacing,0.25rem)*7))]"),
                 (ButtonSize.Lg, Lumeo.Density.Compact)    => ("h-8",  "px-2",    "h-8 w-8"),
                 (ButtonSize.Lg, Lumeo.Density.Spacious)   => ("h-10", "px-3",    "h-10 w-10"),
-                (ButtonSize.Lg, _)                        => ("h-9",  "px-2.5",  "h-9 w-9"),
+                (ButtonSize.Lg, _)                        => ("h-[var(--lumeo-control-h-lg,calc(var(--spacing,0.25rem)*9))]",  "px-2.5",  "h-[var(--lumeo-control-h-lg,calc(var(--spacing,0.25rem)*9))] w-[var(--lumeo-control-h-lg,calc(var(--spacing,0.25rem)*9))]"),
                 (ButtonSize.Default, Lumeo.Density.Compact)  => ("h-7",  "px-2",  "h-7 w-7"),
                 (ButtonSize.Default, Lumeo.Density.Spacious) => ("h-9",  "px-3",  "h-9 w-9"),
-                (ButtonSize.Default, _)                      => ("h-8",  "px-2.5", "h-8 w-8"),
+                (ButtonSize.Default, _)                      => ("h-[var(--lumeo-control-h,calc(var(--spacing,0.25rem)*8))]",  "px-2.5", "h-[var(--lumeo-control-h,calc(var(--spacing,0.25rem)*8))] w-[var(--lumeo-control-h,calc(var(--spacing,0.25rem)*8))]"),
                 (ButtonSize.Icon, Lumeo.Density.Compact)  => ("h-7",  "",       "h-7 w-7"),
                 (ButtonSize.Icon, Lumeo.Density.Spacious) => ("h-9",  "",       "h-9 w-9"),
-                (ButtonSize.Icon, _)                      => ("h-8",  "",       "h-8 w-8"),
+                (ButtonSize.Icon, _)                      => ("h-[var(--lumeo-control-h,calc(var(--spacing,0.25rem)*8))]",  "",       "h-[var(--lumeo-control-h,calc(var(--spacing,0.25rem)*8))] w-[var(--lumeo-control-h,calc(var(--spacing,0.25rem)*8))]"),
                 _ => ("", "", "")
             };
             var radiusClass = Size is ButtonSize.Sm or ButtonSize.Lg ? " rounded-md" : "";

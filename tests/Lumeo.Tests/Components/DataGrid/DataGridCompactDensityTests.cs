@@ -63,9 +63,9 @@ public class DataGridCompactDensityTests : IAsyncLifetime
     public void Default_Density_Keeps_Standard_Padding()
     {
         var cut = RenderGrid(compact: false);
-        Assert.Contains("px-3 py-2", CellClass(cut));
+        Assert.Contains("px-[var(--lumeo-grid-cell-px,calc(var(--spacing,0.25rem)*3))] py-[var(--lumeo-grid-cell-py,calc(var(--spacing,0.25rem)*2))]", CellClass(cut));
         Assert.DoesNotContain("px-2 py-1", CellClass(cut));
-        Assert.Contains("px-3 py-2", HeaderClass(cut));
+        Assert.Contains("px-[var(--lumeo-grid-cell-px,calc(var(--spacing,0.25rem)*3))] py-[var(--lumeo-grid-cell-py,calc(var(--spacing,0.25rem)*2))]", HeaderClass(cut));
     }
 
     [Fact]
@@ -80,7 +80,7 @@ public class DataGridCompactDensityTests : IAsyncLifetime
             .Add(g => g.Items, Data)
             .Add(g => g.Compact, false)
             .Add(g => g.Columns, cols));
-        Assert.Contains("px-3 py-2", CellClass(cut));
+        Assert.Contains("px-[var(--lumeo-grid-cell-px,calc(var(--spacing,0.25rem)*3))] py-[var(--lumeo-grid-cell-py,calc(var(--spacing,0.25rem)*2))]", CellClass(cut));
 
         cut.Render(p => p
             .Add(g => g.Items, Data)
