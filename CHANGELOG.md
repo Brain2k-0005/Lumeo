@@ -5,6 +5,48 @@ All notable changes to Lumeo will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.3.0] - 2026-09-02
+
+shadcn's four example apps are in the blocks catalogue now, ported one to one from
+the current sources, and porting them verbatim showed where four primitives still
+drew their own thing. Each of those lands on shadcn v4 here.
+
+### Added
+
+- **`CardAction`** and a two-row `CardHeader` grid, ported from shadcn's `card.tsx`:
+  the header grows a second column only when an action is present, and the action
+  spans both rows so it sits beside title and description. Card, CardHeader,
+  CardContent, CardFooter, CardTitle and CardDescription carry their `data-slot`
+  attributes, so shadcn's `*:data-[slot=card]:` selectors work on Lumeo cards.
+- **Blocks**: shadcn's **Dashboard** (dashboard-01: app sidebar, stat cards, the
+  interactive area chart, a tabbed data table), **Tasks** (faceted filters with
+  counts, sortable and hideable columns, row actions, pagination on the 100 sample
+  tasks), **Playground** (preset combobox, three editing modes, a model combobox
+  that previews the highlighted model, sampling sliders explained by HoverCards) and
+  **Authentication** (the split hero with the create-account form). Dashboard
+  replaces "Dashboard (full)", Tasks replaces "Task Tracker", Authentication replaces
+  the three-screen page; Playground is new.
+
+### Changed
+
+- **`Slider` looks like shadcn's**: a 16px white thumb with a primary hairline and
+  `shadow-sm` that grows a 4px ring on hover and focus, a 6px muted track with
+  rounded ends, and the track filled up to the thumb in the primary colour. It was a
+  20px primary-filled thumb on an 8px `primary/20` track.
+- **`TableHead` is `text-foreground`** and head and cells are `whitespace-nowrap`,
+  as in shadcn v4; the head used to be muted (shadcn v3). A row whose trigger is
+  expanded tints like a hovered one.
+- **Icons inside `Badge`, `CommandItem` and `TabsTrigger` size themselves**: an
+  unsized `<svg>` is 12px in a badge and 16px in a command item or tab trigger, and
+  does not intercept the pointer; a command-item icon without its own text colour
+  is muted. They used to render at the icon's natural size.
+
+### Fixed
+
+- **Chart gradient stops resolved to `0`** when a series colour was a token that
+  pointed at another token (`--chart-1: var(--color-primary)`): the interop's
+  colour probe followed one level only. It resolves the chain now.
+
 ## [5.2.1] - 2026-09-02
 
 ### Fixed
