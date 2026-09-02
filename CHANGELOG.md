@@ -5,6 +5,50 @@ All notable changes to Lumeo will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.2.0] - 2026-09-02
+
+The blocks catalogue starts moving onto shadcn's own blocks, ported one to one rather
+than re-imagined. Doing that honestly exposed two families the library was missing:
+shadcn's form-layout primitive, and half of its sidebar. Both ship here, measured live
+on ui.shadcn.com on 2026-09-02.
+
+### Added
+
+- **The Field family** — `Field`, `FieldGroup`, `FieldSet`, `FieldLegend`, `FieldLabel`,
+  `FieldTitle`, `FieldContent`, `FieldDescription`, `FieldSeparator`, `FieldError` —
+  ported from shadcn's `field.tsx`. A `FieldGroup` spaces fields 20px apart, a `Field`
+  spaces its label, control and description 8px apart, `Orientation="Horizontal"` puts
+  a checkbox or switch beside its text, `FieldSeparator` sits a caption on a rule, and
+  `FieldError` renders nothing when it has nothing to say and collapses duplicate
+  messages. Every one of shadcn's login and signup blocks is built from these; a Lumeo
+  form used to be a Stack with hand-picked gaps.
+- **Sidebar members** — `SidebarInset`, `SidebarRail`, `SidebarMenuSub`,
+  `SidebarMenuSubItem`, `SidebarMenuSubButton`, `SidebarMenuAction`, `SidebarMenuBadge`,
+  `SidebarGroupContent`, `SidebarGroupAction`, `SidebarInput`, `SidebarMenuSkeleton` —
+  ported from `sidebar.tsx`. `SidebarMenuButton` gains `Size` (Default 32px, Sm 28px,
+  Lg 48px for the two-line team switcher and user chip) and `Variant="Outline"`,
+  renders a `<button>` when it has no `Href`, and carries the `data-slot` / `data-size`
+  / `data-active` contract the action and badge position against. `SidebarComponent`
+  takes `Rail="true"`. Field report 3.1 asked for the sub-menu.
+- **Blocks**: shadcn's `login-01`…`login-05`, `signup-01`…`signup-05` and `sidebar-07`,
+  each as its own demo with source, replacing the hand-built Sign In / Sign Up pages.
+
+### Changed
+
+- **`SidebarHeader` and `SidebarFooter` no longer draw a border by default**, and the
+  aside drops its permanent edge border: shadcn's sidebar has neither, the `--sidebar`
+  tint separates it from the page. Pass `Bordered="true"` for the old look.
+- **`SidebarMenuButton` colours are shadcn's**: `text-sidebar-foreground` at rest,
+  `bg-sidebar-accent text-sidebar-accent-foreground` on hover, instead of
+  `text-muted-foreground` / `hover:text-foreground`.
+
+### Fixed
+
+- **A collapsed icon rail reaches the bottom of its shell.** `h-full` on the in-flow
+  aside resolved to `auto` inside a wrapper that only had a `min-height`, which defeated
+  the flex stretch: the rail ended at its content and the footer floated mid-way. The
+  in-flow variants use `self-stretch` now; the absolute ones keep `h-full`.
+
 ## [5.1.1] - 2026-09-02
 
 The other half of "Lumeo looks clunky next to shadcn". After 5.1.0 the geometry
