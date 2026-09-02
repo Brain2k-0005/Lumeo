@@ -1,0 +1,44 @@
+@namespace Lumeo
+@* shadcn's SidebarRail: the 16px grab strip on the sidebar's outer edge that toggles it.
+   Lumeo's aside clips its overflow, so the rail is a zero-width flex sibling placed right
+   after the aside (SidebarComponent renders it when Rail="true") with the button hanging
+   off it. The 2px line appears on hover, as theirs does. *@
+@if (State is { IsMobileSheet: false })
+{
+    <div class="relative hidden w-0 shrink-0 sm:block" aria-hidden="false">
+        <button type="button"
+                data-slot="sidebar-rail"
+                data-sidebar="rail"
+                aria-label="Toggle Sidebar"
+                title="Toggle Sidebar"
+                tabindex="-1"
+                class="@CssClass"
+                @onclick="Toggle"
+                @attributes="AdditionalAttributes"></button>
+    </div>
+}
+
+@code {
+    [CascadingParameter] public SidebarProvider.SidebarState? State { get; set; }
+
+    /// <summary>Which edge the sidebar sits on; decides the resize cursor's direction.</summary>
+    [Parameter] public Lumeo.Side Side { get; set; } = Lumeo.Side.Left;
+
+    /// <summary>Additional CSS classes, merged after the defaults.</summary>
+    [Parameter] public string? Class { get; set; }
+
+    /// <summary>Unmatched attributes splatted onto the button.</summary>
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private bool Collapsed => State?.EffectiveCollapsed ?? State?.IsCollapsed ?? false;
+
+    private string Cursor => (Side == Lumeo.Side.Right) == Collapsed ? "cursor-w-resize" : "cursor-e-resize";
+
+    private string CssClass => Cx.Merge(
+        "absolute inset-y-0 z-20 w-4 -translate-x-1/2 transition-all ease-linear",
+        "after:absolute after:inset-y-0 after:left-1/2 after:w-[2px] hover:after:bg-sidebar-border",
+        Cursor,
+        Class);
+
+    private Task Toggle() => State?.Toggle.InvokeAsync() ?? Task.CompletedTask;
+}
