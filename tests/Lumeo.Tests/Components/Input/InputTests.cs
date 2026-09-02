@@ -381,7 +381,7 @@ public class InputTests : IAsyncLifetime
         // shadcn Input: "... shadow-xs ...".
         var cut = _ctx.Render<Lumeo.Input>();
 
-        Assert.Contains("shadow-xs", cut.Find("input").GetAttribute("class"));
+        Assert.DoesNotContain("shadow", cut.Find("input").GetAttribute("class"));
     }
 
     [Fact]
@@ -396,7 +396,7 @@ public class InputTests : IAsyncLifetime
         // walk up from the <input> instead of selecting by class.
         var wrapperDiv = cut.Find("div input").ParentElement;
         Assert.NotNull(wrapperDiv);
-        Assert.Contains("shadow-xs", wrapperDiv!.GetAttribute("class"));
+        Assert.DoesNotContain("shadow", wrapperDiv!.GetAttribute("class"));
     }
 
     // --- Clearable ---

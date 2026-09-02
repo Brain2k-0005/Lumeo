@@ -89,6 +89,6 @@ public class UploadTriggerTests : IAsyncLifetime
     {
         var cut = _ctx.Render<L.UploadTrigger>(p => p.Add(u => u.Variant, Lumeo.Button.ButtonVariant.Outline));
 
-        Assert.Contains("shadow-xs", cut.Find("label").GetAttribute("class"));
+        Assert.DoesNotContain("shadow", cut.Find("label").GetAttribute("class"));
     }
 }

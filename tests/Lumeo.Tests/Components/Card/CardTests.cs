@@ -145,8 +145,8 @@ public class CardTests : IAsyncLifetime
         var cls = cut.Find("div").GetAttribute("class");
         Assert.Contains("flex", cls);
         Assert.Contains("flex-col", cls);
-        Assert.Contains("space-y-1.5", cls);
-        Assert.Contains("p-6", cls);
+        Assert.Contains("gap-1", cls);
+        Assert.Contains("px-[var(--card-spacing,1rem)]", cls);
     }
 
     [Fact]
@@ -166,7 +166,7 @@ public class CardTests : IAsyncLifetime
 
         var cls = cut.Find("div").GetAttribute("class");
         Assert.Contains("header-class", cls);
-        Assert.Contains("p-6", cls);
+        Assert.Contains("px-[var(--card-spacing,1rem)]", cls);
     }
 
     [Fact]
@@ -198,8 +198,7 @@ public class CardTests : IAsyncLifetime
         var cut = _ctx.Render<L.CardContent>(p => p.AddChildContent("Body"));
 
         var cls = cut.Find("div").GetAttribute("class");
-        Assert.Contains("p-6", cls);
-        Assert.Contains("pt-0", cls);
+        Assert.Contains("px-[var(--card-spacing,1rem)]", cls);
     }
 
     [Fact]
@@ -219,7 +218,7 @@ public class CardTests : IAsyncLifetime
 
         var cls = cut.Find("div").GetAttribute("class");
         Assert.Contains("content-class", cls);
-        Assert.Contains("p-6", cls);
+        Assert.Contains("px-[var(--card-spacing,1rem)]", cls);
     }
 
     [Fact]
@@ -253,8 +252,7 @@ public class CardTests : IAsyncLifetime
         var cls = cut.Find("div").GetAttribute("class");
         Assert.Contains("flex", cls);
         Assert.Contains("items-center", cls);
-        Assert.Contains("p-6", cls);
-        Assert.Contains("pt-0", cls);
+        Assert.Contains("px-[var(--card-spacing,1rem)]", cls);
     }
 
     [Fact]

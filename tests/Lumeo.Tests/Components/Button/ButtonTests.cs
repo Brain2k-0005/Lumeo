@@ -215,14 +215,14 @@ public class ButtonTests : IAsyncLifetime
     }
 
     [Fact]
-    public void Outline_Variant_Has_ShadowXs()
+    public void Outline_Variant_Has_No_Shadow()
     {
-        // shadcn `outline`: "border bg-background shadow-xs hover:bg-accent ...".
+        // shadcn (measured live 2026-09-02): no resting shadow on any button variant.
         var cut = _ctx.Render<Lumeo.Button>(p => p
             .Add(b => b.Variant, Lumeo.Button.ButtonVariant.Outline)
             .AddChildContent("Outline"));
 
-        Assert.Contains("shadow-xs", cut.Find("button").GetAttribute("class"));
+        Assert.DoesNotContain("shadow", cut.Find("button").GetAttribute("class"));
     }
 
     [Fact]

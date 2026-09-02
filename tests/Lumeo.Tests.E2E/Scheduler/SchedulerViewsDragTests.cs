@@ -183,10 +183,11 @@ public class SchedulerViewsDragTests : PlaywrightTestBase
         var monthSection = Page.Locator("[data-testid='month-section']");
         await monthSection.ScrollIntoViewIfNeededAsync();
 
-        // Two adjacent empty cells, never day 15/20/22 (the CanDrop-log tests' own reserved
-        // targets) and never one of the seeded event days.
-        var fromCell = monthSection.Locator("[data-cell-date$='-05']").First;
-        var toCell = monthSection.Locator("[data-cell-date$='-06']").First;
+        // Two adjacent EMPTY cells, chosen from the live grid rather than pinned to the 5th and
+        // 6th: e2e-1/2/3 are seeded relative to today so the week view can show them, which
+        // means twice a month one of them lands on a pinned day and the "empty background" drag
+        // moves an event instead (it did, on 2026-09-02). Reserved days stay excluded.
+        var (fromCell, toCell) = await EmptyAdjacentPairAsync(monthSection);
         await fromCell.ScrollIntoViewIfNeededAsync();
 
         var from = await CenterOf(fromCell);
@@ -204,8 +205,7 @@ public class SchedulerViewsDragTests : PlaywrightTestBase
         var monthSection = Page.Locator("[data-testid='month-section']");
         await monthSection.ScrollIntoViewIfNeededAsync();
 
-        var fromCell = monthSection.Locator("[data-cell-date$='-05']").First;
-        var toCell = monthSection.Locator("[data-cell-date$='-06']").First;
+        var (fromCell, toCell) = await EmptyAdjacentPairAsync(monthSection);
         await fromCell.ScrollIntoViewIfNeededAsync();
 
         var from = await CenterOf(fromCell);
@@ -281,5 +281,25 @@ public class SchedulerViewsDragTests : PlaywrightTestBase
         var expectedPx = expectedMinutes * (48.0 / 60.0);
 
         Assert.InRange(topPx, expectedPx - 40, expectedPx + 40); // ~50 minutes of slack for CI clock skew
+    }
+
+    // The first two in-month cells that are consecutive days, hold no event, and are not one
+    // of the days other tests reserve (3 candrop, 11 overflow, 15 reject, 20/21 move target,
+    // 22 -> 23 snap). Returned as exact-date locators so both tests drag the same pair.
+    private async Task<(ILocator From, ILocator To)> EmptyAdjacentPairAsync(ILocator monthSection)
+    {
+        var pair = await monthSection.EvaluateAsync<string[]>(@"section => {
+            const reserved = new Set([3, 11, 15, 20, 21, 22, 23]);
+            const cells = [...section.querySelectorAll('[data-cell-date]:not([data-off])')]
+                .filter(c => !c.querySelector('[data-event-id]'))
+                .map(c => c.getAttribute('data-cell-date'))
+                .filter(d => !reserved.has(parseInt(d.slice(-2), 10)));
+            for (let i = 0; i + 1 < cells.length; i++) {
+                if (parseInt(cells[i + 1].slice(-2), 10) === parseInt(cells[i].slice(-2), 10) + 1) return [cells[i], cells[i + 1]];
+            }
+            return [];
+        }");
+        Assert.True(pair.Length == 2, "no two adjacent empty, unreserved cells in the month grid");
+        return (monthSection.Locator($"[data-cell-date='{pair[0]}']").First, monthSection.Locator($"[data-cell-date='{pair[1]}']").First);
     }
 }

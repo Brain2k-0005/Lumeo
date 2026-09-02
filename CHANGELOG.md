@@ -5,6 +5,32 @@ All notable changes to Lumeo will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.1.1] - 2026-09-02
+
+The other half of "Lumeo looks clunky next to shadcn". After 5.1.0 the geometry
+measured equal; what still read as heavier was the resting shadow Lumeo put on every
+control, and a card that spaced itself the way shadcn's did two versions ago. Both
+measured live on ui.shadcn.com and reui.io on 2026-09-02, and the two agree.
+
+### Changed
+
+- **BREAKING — controls carry no resting shadow.** Button (every variant),
+  AlertDialogAction and AlertDialogCancel, UploadTrigger, Badge, Input, Switch lose
+  their `shadow` / `shadow-sm` / `shadow-xs`. shadcn and reui both render
+  `box-shadow: none` on all of them; the outline and secondary buttons had been
+  carrying shadcn's pre-v4 values. Popover, DropdownMenu and Select content step down
+  from `shadow-lg` to `shadow-md`.
+- **BREAKING — Card spaces itself with `--card-spacing`.** The card is a flex column
+  with `gap` and vertical padding from the token; CardHeader, CardContent and
+  CardFooter take their horizontal inset from it, and CardHeader's rows are `gap-1`.
+  The token is `1rem`, shadcn's and reui's value, so a card is 16px inside instead of
+  the old `p-6` (24px) on each part with no gap between them. Set `--card-spacing` to
+  re-space every card at once; `Density` moves it to `0.75rem` / `1.5rem`. A part used
+  outside a Card falls back to `1rem`.
+- **`TabsContent` has no top margin** (field report 4.3). shadcn's has none; the
+  `mt-2` was Lumeo's, and every consumer who put tabs in a flex column had to
+  override it.
+
 ## [5.1.0] - 2026-09-01
 
 A team rebuilding a dense, production Next.js/shadcn application in Blazor sent a
