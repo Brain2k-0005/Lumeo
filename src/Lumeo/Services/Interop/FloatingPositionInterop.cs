@@ -18,7 +18,8 @@ internal sealed class FloatingPositionInterop
         string align = "start",
         bool matchWidth = false,
         string side = "bottom",
-        int offset = 4)
+        int offset = 4,
+        int alignOffset = 0)
     {
         // The JS returns the side the box ACTUALLY resolved to (a collision flip can move a preferred-Top
         // box below its trigger, etc.). NULL means an older/stale cached script that returns nothing at
@@ -26,7 +27,7 @@ internal sealed class FloatingPositionInterop
         // value. An EMPTY string is the current script reporting that it placed nothing, because the
         // reference element was not in the DOM; that has to reach the caller, or a caller that records
         // "applied" state latches a placement which never happened (Codex review of PR #428).
-        var resolved = await module.InvokeAsync<string?>("positionFixed", contentId, referenceId, align, matchWidth, side, offset);
+        var resolved = await module.InvokeAsync<string?>("positionFixed", contentId, referenceId, align, matchWidth, side, offset, null, alignOffset);
         return resolved ?? side;
     }
 
@@ -43,16 +44,17 @@ internal sealed class FloatingPositionInterop
         bool matchWidth,
         string side,
         int offset,
-        Func<string, Task>? onSideChanged)
+        Func<string, Task>? onSideChanged,
+        int alignOffset = 0)
     {
         if (onSideChanged is null)
         {
             _sideChangeHandlers.Remove(contentId);
-            return await PositionFixed(module, contentId, referenceId, align, matchWidth, side, offset);
+            return await PositionFixed(module, contentId, referenceId, align, matchWidth, side, offset, alignOffset);
         }
         _sideChangeHandlers[contentId] = onSideChanged;
         // Same distinction as the overload above: null is a stale script, empty is "nothing placed".
-        var resolved = await module.InvokeAsync<string?>("positionFixed", contentId, referenceId, align, matchWidth, side, offset, selfRef);
+        var resolved = await module.InvokeAsync<string?>("positionFixed", contentId, referenceId, align, matchWidth, side, offset, selfRef, alignOffset);
 
         // The handler is stored BEFORE the call, because the JS can report a flip during it. When
         // nothing was placed there is no watcher to report anything, and a surface torn down before
