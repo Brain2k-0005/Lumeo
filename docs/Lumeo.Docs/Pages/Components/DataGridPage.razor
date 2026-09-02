@@ -432,6 +432,15 @@
         </DataGrid>
     </ComponentDemo>
 
+    <ComponentDemo Title="Column Menu" Description="ColumnMenu turns the header click into shadcn/ReUI's column menu: sort ascending or descending, fit to content, pin left or right, move left or right. Each entry follows the column's Sortable, Resizable, Pinnable and Reorderable flags, a checked entry shows the current state and picking it again clears it. OnHeaderClick fires first and can cancel with PreventDefault." Code="@_columnMenuCode">
+        <DataGrid TItem="Employee" Items="@_employees" PageSize="5" ShowPagination="true" ColumnMenu="true" Reorderable="true">
+            <DataGridColumnDef TItem="Employee" Title="Name" Field="Name" Sortable="true" Pinnable="true" Resizable="true" />
+            <DataGridColumnDef TItem="Employee" Title="Department" Field="Department" Sortable="true" Pinnable="true" Resizable="true" />
+            <DataGridColumnDef TItem="Employee" Title="Salary" Field="Salary" Format="$#,##0" Sortable="true" Resizable="true" />
+            <DataGridColumnDef TItem="Employee" Title="Status" Field="Status" Resizable="true" />
+        </DataGrid>
+    </ComponentDemo>
+
     <ComponentDemo Title="Conditional Row Styling" Description="Apply dynamic CSS classes or inline styles to rows based on data. Useful for highlighting specific records." Code="@_rowStyleCode">
         <DataGrid TItem="Employee" Items="@_employees" PageSize="5" ShowPagination="true"
                   RowClass="@(e => e.Status == "Inactive" ? "opacity-50" : "")"
@@ -524,6 +533,7 @@
 &lt;Button OnClick="LoadLayout"&gt;Load layout&lt;/Button&gt;
 
 @@code {
+
     private DataGrid&lt;Order&gt;? _grid;
     [Inject] MyAppDbContext Db { get; set; } = default!;
 
@@ -865,6 +875,8 @@
                         <tr><td class="px-4 py-2 font-mono text-xs text-primary">Hoverable</td><td class="px-4 py-2 font-mono text-xs">bool</td><td class="px-4 py-2 text-xs">true</td><td class="px-4 py-2 text-muted-foreground">Highlight rows on hover.</td></tr>
                         <tr><td class="px-4 py-2 font-mono text-xs text-primary">Height</td><td class="px-4 py-2 font-mono text-xs">string?</td><td class="px-4 py-2 text-xs">--</td><td class="px-4 py-2 text-muted-foreground">Fixed height with scrollable body (e.g., "400px").</td></tr>
                         <tr><td class="px-4 py-2 font-mono text-xs text-primary">Reorderable</td><td class="px-4 py-2 font-mono text-xs">bool</td><td class="px-4 py-2 text-xs">false</td><td class="px-4 py-2 text-muted-foreground">Enable drag-and-drop column reordering.</td></tr>
+                        <tr><td class="px-4 py-2 font-mono text-xs text-primary">ColumnMenu</td><td class="px-4 py-2 font-mono text-xs">bool</td><td class="px-4 py-2 text-xs">false</td><td class="px-4 py-2 text-muted-foreground">A header click opens the column menu (sort, fit to content, pin, move) instead of toggling the sort, as the shadcn/ReUI data grid does.</td></tr>
+                        <tr><td class="px-4 py-2 font-mono text-xs text-primary">OnHeaderClick</td><td class="px-4 py-2 font-mono text-xs">EventCallback&lt;ColumnHeaderClickEventArgs&gt;</td><td class="px-4 py-2 text-xs">&mdash;</td><td class="px-4 py-2 text-muted-foreground">Fires before a header click's default response; set PreventDefault on the args to handle the click yourself.</td></tr>
                         <tr><td class="px-4 py-2 font-mono text-xs text-primary">RowReorderable</td><td class="px-4 py-2 font-mono text-xs">bool</td><td class="px-4 py-2 text-xs">false</td><td class="px-4 py-2 text-muted-foreground">Enable row reordering via a dedicated pointer-driven drag handle (mouse, touch, and pen — dragging is initiated from the handle only, since the row itself is a click-to-select surface). Live sibling shift previews the drop position as you drag; Escape or releasing off-grid cancels. Only active for flat, non-virtualized grids — grouped, tree-grid, and virtualized bodies show the handle but leave it inert (no stable row↔index mapping to drag against).</td></tr>
                         <tr><td class="px-4 py-2 font-mono text-xs text-primary">RowClass</td><td class="px-4 py-2 font-mono text-xs">Func&lt;TItem, string&gt;?</td><td class="px-4 py-2 text-xs">--</td><td class="px-4 py-2 text-muted-foreground">Function returning CSS class(es) for each row.</td></tr>
                         <tr><td class="px-4 py-2 font-mono text-xs text-primary">RowStyle</td><td class="px-4 py-2 font-mono text-xs">Func&lt;TItem, string&gt;?</td><td class="px-4 py-2 text-xs">--</td><td class="px-4 py-2 text-muted-foreground">Function returning inline style for each row.</td></tr>
@@ -1229,6 +1241,21 @@
 </div>
 
 @code {
+    private const string _columnMenuCode = @"<DataGrid TItem=""Employee"" Items=""@_employees"" ColumnMenu=""true"" Reorderable=""true"">
+    <DataGridColumnDef TItem=""Employee"" Title=""Name"" Field=""Name"" Sortable=""true"" Pinnable=""true"" Resizable=""true"" />
+    <DataGridColumnDef TItem=""Employee"" Title=""Department"" Field=""Department"" Sortable=""true"" Pinnable=""true"" Resizable=""true"" />
+    <DataGridColumnDef TItem=""Employee"" Title=""Salary"" Field=""Salary"" Format=""$#,##0"" Sortable=""true"" Resizable=""true"" />
+    <DataGridColumnDef TItem=""Employee"" Title=""Status"" Field=""Status"" Resizable=""true"" />
+</DataGrid>
+
+@code {
+    // Optional: OnHeaderClick runs first and can cancel the grid's response.
+    private void HeaderClicked(ColumnHeaderClickEventArgs args)
+    {
+        if (args.Field == ""Status"") args.PreventDefault = true;
+    }
+}";
+
     // ---- Virtualised server mode demo ----------------------------------
     // Simulates a 50,000-row backend on top of the existing _employees seed.
     // Sort/filter/search context arrives in DataGridRangeRequest; we apply

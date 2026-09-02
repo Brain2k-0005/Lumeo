@@ -81,6 +81,11 @@ internal sealed class ResizeInterop
         await module.InvokeVoidAsync("nudgeColumnResize", handleId, delta);
     }
 
+    public async ValueTask<bool> AutoFitColumn(IJSObjectReference module, string handleId)
+    {
+        return await module.InvokeAsync<bool>("autoFitColumn", handleId);
+    }
+
     public async Task OnColumnResize(string handleId, double delta)
     {
         if (_columnResizeHandlers.TryGetValue(handleId, out var handler))

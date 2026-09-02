@@ -805,6 +805,12 @@ public sealed class ComponentInteropService : IComponentInteropService
         await _resize.NudgeColumnResize(module, handleId, delta);
     }
 
+    public async ValueTask<bool> AutoFitColumn(string handleId)
+    {
+        var module = await GetModuleAsync();
+        return await _resize.AutoFitColumn(module, handleId);
+    }
+
     [JSInvokable]
     public async Task OnColumnResize(string handleId, double delta) => await _resize.OnColumnResize(handleId, delta);
 

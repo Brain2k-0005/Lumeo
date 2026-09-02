@@ -3885,6 +3885,16 @@ export function registerColumnResize(handleId, dotnetRef, minWidth, maxWidth) {
 // means "toward the visual right"). Reuses the registered min/max + commit path,
 // so a keyboard resize persists exactly like a pointer drag. Discrete (one call
 // per keypress) so a .NET round-trip here is well within the hot-path law.
+// Menu-driven auto-fit: the column menu's "Fit to content" runs the same path as a
+// double-click on the resize handle, so measuring, clamping, the shared drag arbiter
+// and the OnColumnResizeCommit round-trip stay in one place.
+export function autoFitColumn(handleId) {
+    const h = columnResizeHandlers.get(handleId);
+    if (!h) return false;
+    h.onDoubleClick(new Event('dblclick', { cancelable: true }));
+    return true;
+}
+
 export function nudgeColumnResize(handleId, delta) {
     const h = columnResizeHandlers.get(handleId);
     if (!h) return 0;

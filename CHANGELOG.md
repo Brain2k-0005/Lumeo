@@ -5,6 +5,23 @@ All notable changes to Lumeo will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.4.0] - 2026-09-02
+
+### Added
+
+- **`DataGrid` column menu.** `ColumnMenu="true"` turns the header click into the
+  shadcn/ReUI column menu instead of a sort toggle: sort ascending / descending (a check
+  marks the current direction, picking it again clears), fit to content, pin left / right,
+  move left / right. Entries follow the column's `Sortable`, `Resizable`, `Pinnable` and
+  `Reorderable` flags; a pinned column does not move. The menu is 160px wide with 28px
+  rows, as the reference measures. Field report 1.18.
+- **`DataGrid.OnHeaderClick`** fires before the grid's own response to a header click, with
+  `ColumnHeaderClickEventArgs.PreventDefault` to take the click over entirely. Field
+  report 1.18 asked for exactly this hook.
+- **`IComponentInteropService.AutoFitColumn`** runs a column's fit-to-content from code,
+  through the same path a double-click on the resize handle takes.
+- Six new localization strings for the menu, in all 14 locales.
+
 ## [5.3.1] - 2026-09-02
 
 ### Fixed
