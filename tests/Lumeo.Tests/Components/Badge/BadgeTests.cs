@@ -233,7 +233,7 @@ public class BadgeTests : IAsyncLifetime
                 "gap-1", "whitespace-nowrap", "border", "font-medium", "leading-none",
                 "transition-colors",
                 "focus:outline-none", "rounded-sm", "text-[10px]", "min-h-4.5", "min-w-4.5", "px-1", "py-0.25",
-                "border-transparent", "bg-primary", "text-primary-foreground", "shadow"
+                "border-transparent", "bg-primary", "text-primary-foreground"
             },
             Tokens(cut.Find("div")));
     }
@@ -250,7 +250,7 @@ public class BadgeTests : IAsyncLifetime
                 "gap-1", "whitespace-nowrap", "border", "font-medium", "leading-none",
                 "transition-colors",
                 "focus:outline-none", "rounded-sm", "text-xs", "min-h-5", "min-w-5", "px-1.25", "py-0.5",
-                "border-transparent", "bg-primary", "text-primary-foreground", "shadow"
+                "border-transparent", "bg-primary", "text-primary-foreground"
             },
             Tokens(cut.Find("div")));
     }
@@ -269,7 +269,7 @@ public class BadgeTests : IAsyncLifetime
                 "gap-1", "whitespace-nowrap", "border", "font-medium", "leading-none",
                 "transition-colors",
                 "focus:outline-none", "rounded-sm", "text-sm", "min-h-5.5", "min-w-5.5", "px-1.5", "py-0.5",
-                "border-transparent", "bg-primary", "text-primary-foreground", "shadow"
+                "border-transparent", "bg-primary", "text-primary-foreground"
             },
             Tokens(cut.Find("div")));
     }
