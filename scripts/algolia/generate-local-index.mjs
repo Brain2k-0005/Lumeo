@@ -82,7 +82,6 @@ const blocks = [
     { label: 'OTP Verify',     slug: 'otp-verify' },
     { label: 'Pricing Table',  slug: 'pricing' },
     { label: 'Hero Section',   slug: 'hero' },
-    { label: 'Dashboard Block', slug: 'dashboard-block' },
     { label: 'Settings Page',  slug: 'settings-page' },
     { label: 'Playground',     slug: 'playground' },
     { label: 'Playground',     slug: 'playground' },

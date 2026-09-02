@@ -80,9 +80,9 @@ const extras = [
         id: 'pattern:dashboard',
         type: 'pattern',
         title: 'Dashboard',
-        url: '/patterns/dashboard',
+        url: '/blocks/dashboard',
         category: 'Patterns',
-        summary: 'Stats, charts, and a data table together.',
+        summary: "shadcn's dashboard-01: app sidebar, stat cards, an interactive area chart and a data table.",
     },
     {
         id: 'pattern:e-commerce',
@@ -205,14 +205,6 @@ const extras = [
         summary: "shadcn's Playground example: a prompt editor with presets, three editing modes and model and sampling controls.",
     },
     // ── Blocks ────────────────────────────────────────────────────────────────
-    {
-        id: 'block:dashboard',
-        type: 'block',
-        title: 'Dashboard Block',
-        url: '/blocks/dashboard',
-        category: 'Blocks',
-        summary: 'Drop-in dashboard layout block with KPI cards and charts.',
-    },
     {
         id: 'block:hero',
         type: 'block',
