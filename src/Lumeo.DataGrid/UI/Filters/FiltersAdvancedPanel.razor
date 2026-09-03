@@ -1,0 +1,309 @@
+@namespace Lumeo
+@implements IAsyncDisposable
+@inject IComponentInteropService Interop
+
+@* The nested condition builder: rows and groups with a combinator per group, an add-row and
+   add-group footer, keyboard travel across the cells, drag between groups, and the field's own
+   validation on rows whose value was edited. *@
+@{
+    var rules = Query.Rules;
+    var count = FilterQueries.Count(Query);
+}
+<div data-slot="filters-advanced"
+     role="group"
+     aria-label="@Context.Labels.AdvancedFilter"
+     aria-description="@(Context.ReadOnly ? Context.Labels.CountAnnouncement(count) + " " + Context.Labels.ReadOnly : Context.Labels.CountAnnouncement(count))"
+     data-readonly="@(Context.ReadOnly ? "true" : null)"
+     style="@($"--filter-panel-pad: {(Mode == FiltersAdvancedMode.Inline ? "0px" : "0.75rem")}")"
+     class="@Cx.Merge("flex w-full min-w-0 flex-col gap-2", Class)"
+     @attributes="AdditionalAttributes">
+    <CascadingValue Value="this" IsFixed="true">
+        @if (Context.ReadOnly)
+        {
+            <p data-slot="filters-readonly" class="lumeo-filter-gutter text-xs text-muted-foreground">@Context.Labels.ReadOnly</p>
+        }
+        @if (rules.Count > 0)
+        {
+            <div @ref="_body" data-slot="filters-advanced-body" class="lumeo-filter-gutter flex min-w-0 flex-col gap-3">
+                @for (var i = 0; i < rules.Count; i++)
+                {
+                    var node = rules[i];
+                    <FilterAdvancedNode @key="node.Id" Node="node" Index="i" ParentId="@Query.Id" Combinator="Query.Combinator" Depth="1" />
+                }
+            </div>
+        }
+        else if (EmptyTemplate is not null)
+        {
+            @EmptyTemplate
+        }
+        else
+        {
+            <div data-slot="filters-advanced-empty" class="lumeo-filter-gutter flex flex-col items-center justify-center gap-1 py-8 text-center">
+                <span aria-hidden="true" class="mb-1 flex size-9 items-center justify-center rounded-[calc(var(--radius)*2)] bg-muted text-muted-foreground [&_svg]:size-4">
+                    <SvgGlyph Svg="@(LumeoIcons.ListFilter)" />
+                </span>
+                <p class="text-sm font-medium">@Context.Labels.BuilderEmpty</p>
+                @if (!Context.ReadOnly)
+                {
+                    <p class="text-xs text-muted-foreground">@Context.Labels.BuilderEmptyHint</p>
+                }
+            </div>
+        }
+        <div data-slot="filters-advanced-footer"
+             data-drop-parent="@Query.Id"
+             data-drop-index="@rules.Count"
+             data-depth="0"
+             class="@FooterClass(rules.Count > 0)">
+            <button type="button" data-slot="filters-advanced-add" class="@ButtonClass" disabled="@Context.Disabled" aria-disabled="@(Context.ReadOnly ? "true" : null)" @onclick="AddRow">
+                <SvgGlyph Svg="@(LumeoIcons.Plus)" class="h-4 w-4" />
+                <span>@Context.Labels.AddCondition</span>
+            </button>
+            <button type="button" data-slot="filters-advanced-add-group" class="@ButtonClass" disabled="@Context.Disabled" aria-disabled="@(Context.ReadOnly ? "true" : null)" @onclick="AddGroup">
+                <SvgGlyph Svg="@(LumeoIcons.FolderPlus)" class="h-4 w-4" />
+                <span>@Context.Labels.AddGroup</span>
+            </button>
+            @if (count > 0)
+            {
+                <button type="button" data-slot="filters-advanced-clear" class="@Cx.Join(GhostClass, "ms-auto")" disabled="@Context.Disabled" aria-disabled="@(Context.ReadOnly ? "true" : null)" @onclick="() => Context.ClearQuery()">@Context.Labels.ClearAll</button>
+            }
+        </div>
+    </CascadingValue>
+</div>
+
+@code {
+    [CascadingParameter] public FiltersContext Context { get; set; } = default!;
+    [Parameter] public FiltersAdvancedMode Mode { get; set; } = FiltersAdvancedMode.Popover;
+    /// <summary>State passed through so the panel re-renders with the bar.</summary>
+    [Parameter] public FilterQuery Query { get; set; } = FilterQuery.Empty();
+    [Parameter] public FilterDraft? Draft { get; set; }
+    [Parameter] public string? FocusId { get; set; }
+    [Parameter] public int AnnouncementSeq { get; set; }
+    /// <summary>Replaces the empty state.</summary>
+    [Parameter] public RenderFragment? EmptyTemplate { get; set; }
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    internal static readonly FilterChipSegment[] ContentBand = { FilterChipSegment.Combinator, FilterChipSegment.Field, FilterChipSegment.Operator, FilterChipSegment.Value };
+    internal static readonly FilterChipSegment[] ActionBand = { FilterChipSegment.Drag, FilterChipSegment.Menu, FilterChipSegment.Add, FilterChipSegment.Remove };
+
+    private readonly string _panelId = FilterIds.New("filters-adv");
+    private ElementReference _body;
+    private string? _dragRegisteredOn;
+    private DotNetObjectReference<FiltersAdvancedPanel>? _self;
+    private int _visibleIssueCount;
+    private int _lastAnnouncementSeq;
+    private IReadOnlyDictionary<string, FilterIssue> _issues = new Dictionary<string, FilterIssue>();
+
+    private string ButtonClass => Cx.Join(
+        "inline-flex shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-md border border-input bg-background text-sm font-normal shadow-xs hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none",
+        FilterStyles.ControlHeight(Context.Size), FilterStyles.PaddingX(Context.Size));
+    private string GhostClass => Cx.Join(
+        "inline-flex shrink-0 items-center justify-center rounded-md text-sm font-normal text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none",
+        FilterStyles.ControlHeight(Context.Size), FilterStyles.PaddingX(Context.Size));
+    private string FooterClass(bool hasRows) => Cx.Join(
+        "lumeo-filter-footer relative flex flex-wrap items-center gap-2",
+        hasRows ? "-mt-3 pt-5" : null);
+
+    /// <summary>The DOM id of a cell, for focus travel.</summary>
+    public string CellId(string nodeId, FilterChipSegment column) => $"{_panelId}-cell-{nodeId}-{column.ToString().ToLowerInvariant()}";
+
+    /// <summary>The issue a row or group shows: a field's own validation once the value was edited.</summary>
+    public FilterIssue? IssueFor(string nodeId) => _issues.GetValueOrDefault(nodeId);
+
+    protected override void OnParametersSet()
+    {
+        _issues = Context.VisibleIssues.ToDictionary(i => i.Key, i => i.Value);
+        if (AnnouncementSeq == _lastAnnouncementSeq && _issues.Count > _visibleIssueCount)
+            Context.Announce(string.Format(Context.Labels.IssueSummary, _issues.Count));
+        _visibleIssueCount = _issues.Count;
+        _lastAnnouncementSeq = AnnouncementSeq;
+    }
+
+    private void AddRow() => Context.AddRow();
+
+    private void AddGroup()
+    {
+        var id = Context.AddGroup();
+        if (id.Length > 0) Context.SetFocus(id, FilterChipSegment.Add);
+    }
+
+    // ---- rows in visual order, with their cells ----
+    internal sealed record RowInfo(string Id, IReadOnlyList<FilterChipSegment> Columns, int ParentIndex);
+
+    internal IReadOnlyList<FilterChipSegment> ColumnsOf(FilterNode node, int index, bool canMove)
+    {
+        var list = new List<FilterChipSegment>();
+        if (index == 1) list.Add(FilterChipSegment.Combinator);
+        if (node is FilterGroup)
+        {
+            list.Add(FilterChipSegment.Add);
+        }
+        else
+        {
+            var rule = (FilterRule)node;
+            if (Context.Index.Get(rule.Path) is not { } field) { list.Add(FilterChipSegment.Remove); return list; }
+            list.Add(FilterChipSegment.Field);
+            if (!Context.IsPending(rule.Id))
+            {
+                list.Add(FilterChipSegment.Operator);
+                var op = FilterOperators.Get(Context.ResolveOperators(field), rule.Operator);
+                if (rule.Operator.Length > 0 && FilterOperators.TakesValue(op)) list.Add(FilterChipSegment.Value);
+            }
+        }
+        if (canMove) list.Add(FilterChipSegment.Drag);
+        list.Add(FilterChipSegment.Menu);
+        return list;
+    }
+
+    internal bool CanMove(FilterGroup parent) => Context.Reorderable && (parent.Id != Query.Id || Query.Rules.Count > 1);
+
+    private List<RowInfo> RowsInOrder(FilterQuery? query = null)
+    {
+        var rows = new List<RowInfo>();
+        query ??= Query;
+        void Walk(FilterGroup group)
+        {
+            for (var i = 0; i < group.Rules.Count; i++)
+            {
+                var node = group.Rules[i];
+                rows.Add(new RowInfo(node.Id, ColumnsOf(node, i, CanMove(group)), i));
+                if (node is FilterGroup g) Walk(g);
+            }
+        }
+        Walk(query);
+        return rows;
+    }
+
+    /// <summary>Whether a cell is the panel's tab stop: the focused row's focused column (or its
+    /// first), else the first cell of the first row when nothing holds focus.</summary>
+    internal bool IsActive(string nodeId, FilterChipSegment column, IReadOnlyList<FilterChipSegment> columns, bool isFirstRow)
+    {
+        if (Context.FocusId == nodeId)
+        {
+            var active = Context.FocusSegment is { } s && columns.Contains(s) ? s : columns[0];
+            return active == column;
+        }
+        return Context.FocusId is null && isFirstRow && column == columns[0];
+    }
+
+    private static FilterChipSegment? Nearest(FilterChipSegment[] band, FilterChipSegment from, IReadOnlyList<FilterChipSegment> available)
+    {
+        var at = Array.IndexOf(band, from);
+        if (at < 0) return available.FirstOrDefault(available.Count > 0 ? available[0] : default);
+        for (var step = 0; step < band.Length; step++)
+        {
+            if (at - step >= 0 && available.Contains(band[at - step])) return band[at - step];
+            if (at + step < band.Length && available.Contains(band[at + step])) return band[at + step];
+        }
+        return null;
+    }
+
+    private Task Focus(string nodeId, FilterChipSegment column)
+    {
+        Context.SetFocus(nodeId, column);
+        return Context.FocusElement(CellId(nodeId, column));
+    }
+
+    /// <summary>Keyboard travel from a cell: arrows within the row and between rows of the same
+    /// band, Home/End, Delete removes the row, Alt with Up/Down reorders. An editing cell (an
+    /// inline value input) keeps the horizontal keys for itself.</summary>
+    internal async Task HandleCellKey(string nodeId, FilterChipSegment column, KeyboardEventArgs e, bool editing)
+    {
+        var rows = RowsInOrder();
+        var ri = rows.FindIndex(r => r.Id == nodeId);
+        if (ri < 0) return;
+        var cells = rows[ri].Columns;
+        var ci = cells.ToList().IndexOf(column);
+        var band = ContentBand.Contains(column) ? ContentBand : ActionBand;
+        var bandRows = rows.Where(r => r.Columns.Any(c => band.Contains(c))).ToList();
+        var bi = bandRows.FindIndex(r => r.Id == nodeId);
+
+        async Task FocusRow(int step)
+        {
+            var target = bi + step >= 0 && bi + step < bandRows.Count ? bandRows[bi + step] : null;
+            if (target is null) return;
+            var col = Nearest(band, column, target.Columns) ?? target.Columns[0];
+            await Focus(target.Id, col);
+        }
+
+        switch (e.Key)
+        {
+            case "ArrowUp" when e.AltKey:
+            case "ArrowDown" when e.AltKey:
+                if (Context.Locked || !Context.Reorderable) return;
+                Context.MoveNode(nodeId, e.Key == "ArrowDown" ? 1 : -1);
+                return;
+            case "ArrowDown": await FocusRow(1); return;
+            case "ArrowUp": await FocusRow(-1); return;
+        }
+        if (editing) return;
+        switch (e.Key)
+        {
+            case "ArrowRight":
+                if (ci + 1 < cells.Count) await Focus(nodeId, cells[ci + 1]);
+                return;
+            case "ArrowLeft":
+                if (ci > 0) await Focus(nodeId, cells[ci - 1]);
+                return;
+            case "Home":
+                if (e.CtrlKey) await Focus(rows[0].Id, rows[0].Columns[0]);
+                else await Focus(nodeId, cells[0]);
+                return;
+            case "End":
+                if (e.CtrlKey) await Focus(rows[^1].Id, rows[^1].Columns[^1]);
+                else await Focus(nodeId, cells[^1]);
+                return;
+            case "Backspace":
+            case "Delete":
+                if (Context.Locked) return;
+                Context.RemoveNode(nodeId);
+                // the parameter still holds the old tree until the next render; the context has the new one
+                var remaining = RowsInOrder(Context.Query);
+                if (remaining.Count > 0)
+                {
+                    var target = remaining[Math.Min(ri, remaining.Count - 1)];
+                    await Focus(target.Id, target.Columns[0]);
+                }
+                return;
+        }
+    }
+
+    // ---- drag ----
+    [JSInvokable]
+    public Task OnFilterDrop(string nodeId, string parentId, int index, bool copy)
+        => InvokeAsync(() =>
+        {
+            if (copy) Context.CopyNodeTo(nodeId, parentId, index);
+            else Context.MoveNodeTo(nodeId, parentId, index);
+        });
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!Context.Reorderable || Context.Locked || Query.Rules.Count == 0)
+        {
+            if (_dragRegisteredOn is not null)
+            {
+                _dragRegisteredOn = null;
+                try { await Interop.UnregisterFilterDrag(_body); } catch (JSDisconnectedException) { }
+            }
+            return;
+        }
+        if (_dragRegisteredOn == _body.Id) return;
+        _self ??= DotNetObjectReference.Create(this);
+        _dragRegisteredOn = _body.Id;
+        try { await Interop.RegisterFilterDrag(_body, _self); }
+        catch (JSDisconnectedException) { }
+        catch (InvalidOperationException) { }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_dragRegisteredOn is not null)
+        {
+            try { await Interop.UnregisterFilterDrag(_body); }
+            catch (JSDisconnectedException) { }
+            catch (InvalidOperationException) { }
+        }
+        _self?.Dispose();
+    }
+}

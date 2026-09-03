@@ -1,0 +1,49 @@
+@namespace Lumeo
+
+@* The first column of an advanced row: "Where" on the first row, a toggle button on the second
+   (it flips the group's combinator), and the echoed word on every row after. *@
+@if (Index == 0)
+{
+    <span class="@TextClass">@Context.Labels.Where</span>
+}
+else if (Index > 1)
+{
+    <span class="@TextClass">@Word</span>
+}
+else
+{
+    <button type="button"
+            id="@Panel.CellId(NodeId, FilterChipSegment.Combinator)"
+            data-filter-cell="combinator"
+            tabindex="@(Active ? 0 : -1)"
+            class="@ButtonClass"
+            aria-label="@string.Format(Context.Labels.CombinatorLabel, Word)"
+            title="@string.Format(Context.Labels.CombinatorLabel, Word)"
+            disabled="@Context.Disabled"
+            aria-disabled="@(Context.ReadOnly ? "true" : null)"
+            @onfocus="() => Context.SetFocus(NodeId, FilterChipSegment.Combinator)"
+            @onkeydown="e => Panel.HandleCellKey(NodeId, FilterChipSegment.Combinator, e, false)"
+            @onclick="() => Context.ToggleCombinator(ParentId)">
+        <span class="truncate">@Word</span>
+        <span aria-hidden="true" class="pointer-events-none absolute end-1 opacity-0 transition-opacity group-hover/combinator:opacity-60 group-focus-visible/combinator:opacity-60 [&_svg]:size-3">
+            <SvgGlyph Svg="@(LumeoIcons.RefreshCw)" />
+        </span>
+    </button>
+}
+
+@code {
+    [CascadingParameter] public FiltersContext Context { get; set; } = default!;
+    [CascadingParameter] public FiltersAdvancedPanel Panel { get; set; } = default!;
+    [Parameter, EditorRequired] public string NodeId { get; set; } = "";
+    [Parameter] public string ParentId { get; set; } = "";
+    [Parameter] public int Index { get; set; }
+    [Parameter] public FilterCombinator Combinator { get; set; }
+    /// <summary>Whether this cell is the row's tab stop.</summary>
+    [Parameter] public bool Active { get; set; }
+
+    private string Word => Combinator == FilterCombinator.And ? Context.Labels.And : Context.Labels.Or;
+    private const string TextClass = "w-full truncate px-1 text-center text-sm text-muted-foreground";
+    private string ButtonClass => Cx.Join(
+        "group/combinator relative inline-flex w-full min-w-0 items-center justify-center rounded-md border border-input bg-background px-1.5 text-sm font-normal shadow-xs hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none",
+        FilterStyles.ControlHeight(Context.Size));
+}

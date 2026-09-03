@@ -20,6 +20,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `FilterQueries` and `Flatten()` for an API call; every string comes from the `Filters.*`
   locale keys. `Command` gains `SearchChanged` and `ShouldFilter` for lists that filter or
   load their items themselves.
+- **`Filters` advanced variant** (`Variant="Advanced"`): a nested condition builder, inline or
+  behind a trigger that counts the rules. Rows with a combinator per group (Where / And / Or,
+  the second row toggles it), groups that nest, a text or number value edited in place, every
+  other value in its editor, a menu that duplicates, negates, wraps a row in a group, moves it
+  to another group or removes it, a group menu that ungroups. `Reorderable` adds drag handles
+  (a pointer drag between groups, Alt copies) and Alt with the arrow keys; the keyboard
+  travels the cells with arrows, Home and End, Delete removes a row. A field's `Validate`
+  message shows on the row once its value was edited. `IComponentInteropService` gains
+  `RegisterFilterDrag` / `UnregisterFilterDrag`. A saved query round-trips through
+  `System.Text.Json` (`$type` on the nodes, values back in their shape); `Filters.CollectIssues()`
+  reports everything that keeps a query from running, a field's `Validate` message included;
+  a field's `DefaultOperator` skips the condition step; the date editor reads the phrases its
+  locale shows (`heute`, `in 2 Wochen`); a chip's field segment reopens the attribute picker;
+  a restored query naming a field or operator the schema no longer has is reported as an issue
+  (`UnknownField`, `UnknownOperator`); a `DateOnly` or `DateTime` value keeps its type through
+  JSON.
 
 ### Fixed
 - **Shift-click selects a range in virtualized server mode.** With `Virtualized="true"` and

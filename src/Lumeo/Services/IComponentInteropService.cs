@@ -351,6 +351,14 @@ public interface IComponentInteropService : IAsyncDisposable, IDisposable
     /// resize handle is registered for <paramref name="handleId"/>. Additive DIM.</summary>
     ValueTask<bool> AutoFitColumn(string handleId) => ValueTask.FromResult(false);
 
+    /// <summary>Registers pointer drag of Filters rows and groups within an advanced-builder panel.
+    /// The panel's <c>[JSInvokable] OnFilterDrop(nodeId, parentId, index, copy)</c> receives each
+    /// drop; Escape cancels a drag. Default no-op.</summary>
+    ValueTask RegisterFilterDrag<[System.Diagnostics.CodeAnalysis.DynamicallyAccessedMembers(System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicMethods)] T>(Microsoft.AspNetCore.Components.ElementReference panel, DotNetObjectReference<T> dotNetRef) where T : class => ValueTask.CompletedTask;
+
+    /// <summary>Tears down the drag registered by <see cref="RegisterFilterDrag{T}"/>. Default no-op.</summary>
+    ValueTask UnregisterFilterDrag(Microsoft.AspNetCore.Components.ElementReference panel) => ValueTask.CompletedTask;
+
     // DataGrid Column Reorder (pointer-based touch/pen) — one delegated listener per
     // grid; commitHandler(sourceColumnId, targetColumnId) fires once on release.
     // Additive DIMs (round-9 #4) — no-op default so existing implementers / test

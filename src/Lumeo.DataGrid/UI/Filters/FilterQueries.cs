@@ -65,11 +65,21 @@ public static class FilterQueries
 
     private static FilterQuery AsQuery(FilterGroup group) => (FilterQuery)group;
 
-    /// <summary>Replaces the rule with the given id by a changed copy.</summary>
+    /// <summary>Replaces the rule with the given id by a changed copy; the same tree comes back when
+    /// the copy equals the rule.</summary>
     public static FilterQuery UpdateRule(FilterQuery query, string id, Func<FilterRule, FilterRule> update)
         => AsQuery(Rewrite(query,
             g => g.Rules.Any(c => c.Id == id && c is FilterRule),
-            g => g with { Rules = g.Rules.Select(c => c.Id == id && c is FilterRule r ? update(r) : c).ToList() }));
+            g =>
+            {
+                var index = g.Rules.ToList().FindIndex(c => c.Id == id && c is FilterRule);
+                var before = (FilterRule)g.Rules[index];
+                var after = update(before);
+                if (ReferenceEquals(after, before) || after.Equals(before)) return g;
+                var rules = g.Rules.ToList();
+                rules[index] = after;
+                return g with { Rules = rules };
+            }));
 
     /// <summary>Removes the node; a group left empty by that is removed too.</summary>
     public static FilterQuery Remove(FilterQuery query, string id)
@@ -251,7 +261,13 @@ public static class FilterQueries
                 var arity = arityOf(rule);
                 if (arity is null) continue;
                 if (!IsComplete(rule)) { issues.Add(new FilterIssue(rule.Id, FilterIssueColumn.Operator, FilterIssueReason.MissingOperator)); continue; }
-                if (arity == FilterArity.None) continue;
+                // The field's own check runs once the built-in one for the operator's arity passes.
+                void Custom()
+                {
+                    if (validate?.Invoke(rule) is { Length: > 0 } message)
+                        issues.Add(new FilterIssue(rule.Id, FilterIssueColumn.Value, FilterIssueReason.Custom, message));
+                }
+                if (arity == FilterArity.None) { Custom(); continue; }
                 var values = rule.Values;
                 if (arity == FilterArity.Range)
                 {
@@ -261,7 +277,11 @@ public static class FilterQueries
                         continue;
                     }
                     if (FilterValues.CompareBounds(values[0], values[1]) > 0)
+                    {
                         issues.Add(new FilterIssue(rule.Id, FilterIssueColumn.Value, FilterIssueReason.ReversedRange));
+                        continue;
+                    }
+                    Custom();
                     continue;
                 }
                 if (values.Count == 0 || values.All(FilterValues.IsBlank))
@@ -269,8 +289,7 @@ public static class FilterQueries
                     issues.Add(new FilterIssue(rule.Id, FilterIssueColumn.Value, FilterIssueReason.MissingValue));
                     continue;
                 }
-                if (validate?.Invoke(rule) is { Length: > 0 } message)
-                    issues.Add(new FilterIssue(rule.Id, FilterIssueColumn.Value, FilterIssueReason.Custom, message));
+                Custom();
             }
         }
         Visit(query, true);

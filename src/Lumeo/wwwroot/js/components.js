@@ -6913,3 +6913,153 @@ export function getMediaState(el) {
         currentTime: Number.isFinite(t) ? t : 0
     };
 }
+
+
+// ---------------------------------------------------------------------------
+// Filters (advanced builder): pointer drag of rows and groups between groups.
+// A drag starts on [data-filter-drag] inside a registered panel, carries a
+// ghost, marks the drop target (data-drop-edge on a row, data-drop-into on a
+// zone and its group card) and reports the drop to .NET as
+// OnFilterDrop(nodeId, parentId, index, copy). Escape cancels.
+// ---------------------------------------------------------------------------
+const filterDragRegistrations = new Map(); // panelEl -> { dotNetRef, onPointerDown }
+const FILTER_DRAG_MOVE_PX = 5;
+const FILTER_ROW_SEAM_PX = 6;
+
+function filterDropContains(box, x, y, grow) {
+    return x >= box.left && x <= box.right && y >= box.top - grow && y <= box.bottom + grow;
+}
+
+function resolveFilterDrop(zones, rows, x, y) {
+    let zone = null;
+    for (const c of zones) {
+        if (!filterDropContains(c, x, y, 0)) continue;
+        if (!zone || c.depth > zone.depth) zone = c;
+    }
+    if (zone) return { target: zone, edge: null };
+    let row = null;
+    for (const c of rows) {
+        if (!filterDropContains(c, x, y, FILTER_ROW_SEAM_PX)) continue;
+        if (!row || c.depth > row.depth) row = c;
+    }
+    if (!row) return null;
+    const after = y > row.top + (row.bottom - row.top) / 2;
+    return { target: { ...row, index: row.index + (after ? 1 : 0) }, edge: after ? 'after' : 'before' };
+}
+
+export function registerFilterDrag(panelEl, dotNetRef) {
+    if (!panelEl) return;
+    const existing = filterDragRegistrations.get(panelEl);
+    if (existing) { existing.dotNetRef = dotNetRef; return; }
+    const reg = { dotNetRef, onPointerDown: null, cancel: null };
+
+    reg.onPointerDown = (e) => {
+        if (e.button !== 0) return;
+        const handle = e.target.closest('[data-filter-drag]');
+        if (!handle || !panelEl.contains(handle)) return;
+        const row = handle.closest('[data-slot="filter-row"]');
+        if (!row) return;
+        const nodeId = row.dataset.nodeId;
+        const originParent = row.dataset.parentId;
+        const originIndex = parseInt(row.dataset.index, 10);
+        if (!nodeId) return;
+        e.preventDefault();
+
+        const pointerId = e.pointerId;
+        try { handle.setPointerCapture(pointerId); } catch { /* not capturable */ }
+        const startX = e.clientX, startY = e.clientY;
+        let started = false, ghost = null, current = null, done = false;
+
+        const clearMarks = () => {
+            for (const el of panelEl.querySelectorAll('[data-drop-edge]')) el.removeAttribute('data-drop-edge');
+            for (const el of panelEl.querySelectorAll('[data-drop-into]')) el.removeAttribute('data-drop-into');
+        };
+        const measure = () => {
+            const zones = [], rows = [];
+            for (const z of panelEl.querySelectorAll('[data-drop-parent]')) {
+                if (row.contains(z)) continue;
+                const r = z.getBoundingClientRect();
+                zones.push({ el: z, top: r.top, bottom: r.bottom, left: r.left, right: r.right, parentId: z.dataset.dropParent, index: parseInt(z.dataset.dropIndex, 10), depth: parseInt(z.dataset.depth || '0', 10) });
+            }
+            for (const rw of panelEl.querySelectorAll('[data-slot="filter-row"]')) {
+                if (rw === row || row.contains(rw)) continue;
+                const r = rw.getBoundingClientRect();
+                rows.push({ el: rw, top: r.top, bottom: r.bottom, left: r.left, right: r.right, parentId: rw.dataset.parentId, index: parseInt(rw.dataset.index, 10), depth: parseInt(rw.dataset.depth || '1', 10) });
+            }
+            return { zones, rows };
+        };
+        const isNoop = (res, copy) => {
+            if (!res || copy) return false;
+            if (res.target.parentId !== originParent) return false;
+            return res.target.index === originIndex || res.target.index === originIndex + 1;
+        };
+        const onMove = (ev) => {
+            if (done) return;
+            if (!started) {
+                if (Math.hypot(ev.clientX - startX, ev.clientY - startY) < FILTER_DRAG_MOVE_PX) return;
+                started = true;
+                row.setAttribute('data-dragging', '');
+                ghost = row.cloneNode(true);
+                ghost.removeAttribute('id');
+                ghost.style.position = 'fixed';
+                ghost.style.left = '0'; ghost.style.top = '0';
+                ghost.style.width = row.getBoundingClientRect().width + 'px';
+                ghost.style.opacity = '0.85';
+                ghost.style.pointerEvents = 'none';
+                ghost.style.zIndex = '60';
+                ghost.style.boxShadow = '0 2px 8px rgba(0,0,0,0.15)';
+                ghost.style.background = 'var(--color-popover)';
+                document.body.appendChild(ghost);
+            }
+            ghost.style.transform = `translate(${ev.clientX + 12}px, ${ev.clientY + 12}px)`;
+            const { zones, rows } = measure();
+            const res = resolveFilterDrop(zones, rows, ev.clientX, ev.clientY);
+            clearMarks();
+            current = res;
+            if (!res) return;
+            if (res.edge) res.target.el.setAttribute('data-drop-edge', res.edge);
+            else {
+                res.target.el.setAttribute('data-drop-into', '');
+                const card = res.target.el.closest('[data-slot="filter-group"]');
+                if (card) card.setAttribute('data-drop-into', '');
+            }
+        };
+        const finish = (commit, ev) => {
+            if (done) return;
+            done = true;
+            window.removeEventListener('pointermove', onMove);
+            window.removeEventListener('pointerup', onUp);
+            window.removeEventListener('pointercancel', onCancel);
+            window.removeEventListener('keydown', onKey, true);
+            reg.cancel = null;
+            try { handle.releasePointerCapture(pointerId); } catch { /* released */ }
+            clearMarks();
+            row.removeAttribute('data-dragging');
+            if (ghost) ghost.remove();
+            const copy = !!(ev && ev.altKey);
+            if (commit && started && current && !isNoop(current, copy)) {
+                reg.dotNetRef.invokeMethodAsync('OnFilterDrop', nodeId, current.target.parentId, current.target.index, copy).catch(() => {});
+            }
+        };
+        const onUp = (ev) => finish(true, ev);
+        const onCancel = () => finish(false);
+        const onKey = (ev) => { if (ev.key === 'Escape') { ev.preventDefault(); finish(false); } };
+        // On window, so the events arrive even when pointer capture was refused or the handle left the DOM.
+        window.addEventListener('pointermove', onMove);
+        window.addEventListener('pointerup', onUp);
+        window.addEventListener('pointercancel', onCancel);
+        window.addEventListener('keydown', onKey, true);
+        reg.cancel = () => finish(false);
+    };
+
+    panelEl.addEventListener('pointerdown', reg.onPointerDown);
+    filterDragRegistrations.set(panelEl, reg);
+}
+
+export function unregisterFilterDrag(panelEl) {
+    const reg = filterDragRegistrations.get(panelEl);
+    if (!reg) return;
+    if (reg.cancel) reg.cancel();
+    panelEl.removeEventListener('pointerdown', reg.onPointerDown);
+    filterDragRegistrations.delete(panelEl);
+}

@@ -1,0 +1,73 @@
+@namespace Lumeo
+
+@* The advanced builder: inline in the page, or behind a trigger in a popover with a rule count. *@
+@if (Mode == FiltersAdvancedMode.Inline)
+{
+    <FiltersAdvancedPanel Mode="Mode" Query="Query" Draft="Draft" FocusId="@FocusId" AnnouncementSeq="AnnouncementSeq" Class="@Class" @attributes="AdditionalAttributes" />
+}
+else
+{
+    <Popover Open="_open" OpenChanged="SetOpen">
+        <PopoverTrigger AsChild>
+            <ChildContentSlot Context="slot">
+                @if (Trigger is not null)
+                {
+                    <span id="@slot.Id" @attributes="slot.Attributes" @onclick="slot.OnClick" class="contents">@Trigger</span>
+                }
+                else
+                {
+                    <button type="button"
+                            data-slot="filters-advanced-trigger"
+                            id="@slot.Id"
+                            @attributes="slot.Attributes"
+                            @onclick="slot.OnClick"
+                            class="@TriggerClass"
+                            disabled="@Context.Disabled"
+                            aria-label="@(Count > 0 ? $"{Context.Labels.AdvancedFilter}, {Context.Labels.CountAnnouncement(Count)}" : null)">
+                        <SvgGlyph Svg="@(LumeoIcons.ListFilter)" class="h-4 w-4 shrink-0" />
+                        <span>@Context.Labels.AdvancedFilter</span>
+                        @if (Count > 0)
+                        {
+                            <span aria-hidden="true" class="rounded-sm bg-muted px-1.5 text-xs tabular-nums text-muted-foreground">@Count</span>
+                        }
+                    </button>
+                }
+            </ChildContentSlot>
+        </PopoverTrigger>
+        <PopoverContent Align="@Align" Class="w-[42rem] max-w-[95vw] p-0" FocusOnOpen="false" aria-label="@Context.Labels.AdvancedFilter">
+            @if (_open)
+            {
+                <FiltersAdvancedPanel Mode="Mode" Query="Query" Draft="Draft" FocusId="@FocusId" AnnouncementSeq="AnnouncementSeq" Class="@Class" @attributes="AdditionalAttributes" />
+            }
+        </PopoverContent>
+    </Popover>
+}
+
+@code {
+    [CascadingParameter] public FiltersContext Context { get; set; } = default!;
+    [Parameter] public FiltersAdvancedMode Mode { get; set; } = FiltersAdvancedMode.Popover;
+    [Parameter] public RenderFragment? Trigger { get; set; }
+    [Parameter] public Lumeo.Align Align { get; set; } = Lumeo.Align.Start;
+    /// <summary>State passed through so the panel re-renders with the bar.</summary>
+    [Parameter] public FilterQuery Query { get; set; } = FilterQuery.Empty();
+    [Parameter] public FilterDraft? Draft { get; set; }
+    [Parameter] public string? FocusId { get; set; }
+    [Parameter] public int AnnouncementSeq { get; set; }
+    /// <summary>Classes and attributes for the panel.</summary>
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private bool _open;
+
+    /// <summary>A disabled bar does not open, whatever trigger asked.</summary>
+    private void SetOpen(bool open)
+    {
+        if (open && Context.Disabled) return;
+        _open = open;
+    }
+    private int Count => FilterQueries.Count(Query);
+
+    private string TriggerClass => Cx.Merge(
+        "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md border border-input bg-background text-sm font-medium shadow-xs hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50",
+        FilterStyles.ControlHeight(Context.Size), FilterStyles.PaddingX(Context.Size));
+}

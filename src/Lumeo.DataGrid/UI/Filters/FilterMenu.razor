@@ -8,7 +8,7 @@
     <div class="@(Searchable ? null : "sr-only")">
         <CommandInput id="@AutoFocusId" Placeholder="@(SearchPlaceholder ?? Context.Labels.SearchOptions)" AutoFocus="@(AutoFocusId is null)" aria-label="@AriaLabel" />
     </div>
-    <CommandList Class="@ListClass">
+    <CommandList Class="@ListClass" style="@ListStyle">
         <CommandEmpty>@(State?.Error == true ? Context.Labels.Error : State?.Loading == true ? Context.Labels.Empty : Context.Labels.Empty)</CommandEmpty>
         @{
             var rows = Rows;
@@ -98,7 +98,8 @@
     private string _query = "";
     private string? _snapshot;
 
-    private string ListClass => $"max-h-[{MaxHeight}px] overflow-y-auto p-1";
+    private string ListClass => "overflow-y-auto p-1";
+    private string ListStyle => $"max-height:{MaxHeight}px";
 
     protected override void OnInitialized()
     {
@@ -111,8 +112,20 @@
         {
             var pinnedKey = !PinSelected ? "" : SortSelected == FilterSortSelected.Snapshot ? _snapshot ?? "" : string.Join("\0", Selected);
             var pinned = pinnedKey.Length == 0 ? new HashSet<string>() : pinnedKey.Split('\0').ToHashSet();
-            var exclusive = Items.Where(i => i.Exclusive).ToList();
-            var values = exclusive.Count > 0 ? Items.Where(i => !i.Exclusive).ToList() : Items.ToList();
+            var items = Items;
+            if (State is { IsAsync: true })
+            {
+                // A saved selection that the loaded page does not hold still shows (resolved through
+                // the shared cache), so it can be seen and removed; a search narrows it like the rest.
+                var q = _query.Trim();
+                var restored = Selected.Where(v => !items.Any(i => i.Value == v))
+                    .Select(v => State.Resolve(v) ?? new FilterChoice(v, v))
+                    .Where(c => q.Length == 0 || FilterIndex.Matches(c, q))
+                    .ToList();
+                if (restored.Count > 0) items = restored.Concat(items).ToList();
+            }
+            var exclusive = items.Where(i => i.Exclusive).ToList();
+            var values = exclusive.Count > 0 ? items.Where(i => !i.Exclusive).ToList() : items.ToList();
             var chosen = pinned.Count > 0 ? values.Where(i => pinned.Contains(i.Value)).ToList() : new List<FilterChoice>();
             var rest = pinned.Count > 0 ? values.Where(i => !pinned.Contains(i.Value)).ToList() : values;
             if (SortSelected == FilterSortSelected.Label)

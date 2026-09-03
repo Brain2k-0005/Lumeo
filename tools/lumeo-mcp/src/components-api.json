@@ -1,11 +1,11 @@
 {
   "$schema": "https://lumeo.nativ.sh/components-api-schema.json",
   "version": "5.8.0",
-  "generated": "2026-09-03T16:05:00.2974633Z",
+  "generated": "2026-09-03T17:20:12.4286148Z",
   "stats": {
     "componentCount": 167,
-    "totalParameters": 4774,
-    "totalEnums": 102,
+    "totalParameters": 4827,
+    "totalEnums": 103,
     "totalRecords": 65,
     "serviceCount": 33,
     "thinFallbacks": []
@@ -1180,6 +1180,18 @@
           "name": "AutoFitColumn",
           "returnType": "ValueTask<bool>",
           "signature": "AutoFitColumn(string handleId)",
+          "summary": null
+        },
+        {
+          "name": "RegisterFilterDrag",
+          "returnType": "ValueTask",
+          "signature": "RegisterFilterDrag<[System.Diagnostics.CodeAnalysis.DynamicallyAccessedMembers(System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicMethods)] T>(Microsoft.AspNetCore.Components.ElementReference panel, DotNetObjectReference<T> dotNetRef)",
+          "summary": null
+        },
+        {
+          "name": "UnregisterFilterDrag",
+          "returnType": "ValueTask",
+          "signature": "UnregisterFilterDrag(Microsoft.AspNetCore.Components.ElementReference panel)",
           "summary": null
         },
         {
@@ -2671,6 +2683,18 @@
           "returnType": "ValueTask<bool>",
           "signature": "AutoFitColumn(string handleId)",
           "summary": "Fits a resizable column to its content, exactly as a double-click on its resize handle does (the width commits through the registered handler). Returns false when no resize handle is registered for handleId. Additive DIM."
+        },
+        {
+          "name": "RegisterFilterDrag",
+          "returnType": "ValueTask",
+          "signature": "RegisterFilterDrag<[System.Diagnostics.CodeAnalysis.DynamicallyAccessedMembers(System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicMethods)] T>(Microsoft.AspNetCore.Components.ElementReference panel, DotNetObjectReference<T> dotNetRef)",
+          "summary": "Registers pointer drag of Filters rows and groups within an advanced-builder panel. The panel's [JSInvokable] OnFilterDrop(nodeId, parentId, index, copy) receives each drop; Escape cancels a drag. Default no-op."
+        },
+        {
+          "name": "UnregisterFilterDrag",
+          "returnType": "ValueTask",
+          "signature": "UnregisterFilterDrag(Microsoft.AspNetCore.Components.ElementReference panel)",
+          "summary": "Tears down the drag registered by RegisterFilterDrag{T}. Default no-op."
         },
         {
           "name": "RegisterColumnReorder",
@@ -34046,10 +34070,15 @@
       "description": "Filter builder: attribute, condition and value edited inside the chip, an editor per value kind, a query tree an API can consume.",
       "nugetPackage": "Lumeo.DataGrid",
       "files": [
+        "UI/Filters/FilterAdvancedGroup.razor",
+        "UI/Filters/FilterAdvancedNode.razor",
+        "UI/Filters/FilterAdvancedRow.razor",
         "UI/Filters/FilterBooleanEditor.razor",
         "UI/Filters/FilterChip.razor",
+        "UI/Filters/FilterCombinatorCell.razor",
         "UI/Filters/FilterDateEditor.razor",
         "UI/Filters/FilterDates.cs",
+        "UI/Filters/FilterDisplay.cs",
         "UI/Filters/FilterDraft.cs",
         "UI/Filters/FilterEditing.cs",
         "UI/Filters/FilterEditorButtons.razor",
@@ -34059,15 +34088,19 @@
         "UI/Filters/FilterLabels.cs",
         "UI/Filters/FilterMenu.razor",
         "UI/Filters/FilterModel.cs",
+        "UI/Filters/FilterMoveToMenuItems.razor",
         "UI/Filters/FilterMultiSelectEditor.razor",
         "UI/Filters/FilterNumberEditor.razor",
         "UI/Filters/FilterOperators.cs",
         "UI/Filters/FilterQueries.cs",
         "UI/Filters/FilterRangeEditor.razor",
+        "UI/Filters/FilterRowHandle.razor",
         "UI/Filters/FilterRuleMenuItems.razor",
         "UI/Filters/FilterSelectEditor.razor",
         "UI/Filters/FilterTextEditor.razor",
         "UI/Filters/Filters.razor",
+        "UI/Filters/FiltersAdvanced.razor",
+        "UI/Filters/FiltersAdvancedPanel.razor",
         "UI/Filters/FiltersBuilder.razor",
         "UI/Filters/FiltersContext.cs"
       ],
@@ -34326,6 +34359,14 @@
           "description": "The segment of a chip that holds focus or should open."
         },
         {
+          "name": "FilterCombinator",
+          "values": [
+            "And",
+            "Or"
+          ],
+          "description": "How the rules of a FilterGroup combine."
+        },
+        {
           "name": "FilterSortSelected",
           "values": [
             "None",
@@ -34358,10 +34399,12 @@
         "--color-accent-foreground",
         "--color-background",
         "--color-border",
+        "--color-destructive",
         "--color-foreground",
         "--color-input",
         "--color-muted",
         "--color-muted-foreground",
+        "--color-primary",
         "--color-ring",
         "--radius"
       ],
@@ -34384,6 +34427,242 @@
         }
       ],
       "subComponents": {
+        "FilterAdvancedGroup": {
+          "componentName": "FilterAdvancedGroup",
+          "fileName": "FilterAdvancedGroup.razor",
+          "namespace": "Lumeo",
+          "inheritsFrom": null,
+          "implements": [],
+          "parameters": [
+            {
+              "name": "Context",
+              "type": "FiltersContext",
+              "default": "default!",
+              "description": null,
+              "isCascading": true,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "Panel",
+              "type": "FiltersAdvancedPanel",
+              "default": "default!",
+              "description": null,
+              "isCascading": true,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "Group",
+              "type": "FilterGroup",
+              "default": "default!",
+              "description": null,
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": true
+            },
+            {
+              "name": "Index",
+              "type": "int",
+              "default": "0",
+              "description": null,
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "ParentId",
+              "type": "string",
+              "default": "\"\"",
+              "description": null,
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "Combinator",
+              "type": "FilterCombinator",
+              "default": null,
+              "description": null,
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "Depth",
+              "type": "int",
+              "default": "1",
+              "description": null,
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "Class",
+              "type": "string?",
+              "default": null,
+              "description": null,
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "AdditionalAttributes",
+              "type": "Dictionary<string, object>?",
+              "default": null,
+              "description": null,
+              "isCascading": false,
+              "captureUnmatched": true,
+              "isEditorRequired": false
+            }
+          ],
+          "events": [],
+          "enums": [],
+          "records": [],
+          "gotchas": [],
+          "parseFailed": false,
+          "parseError": null
+        },
+        "FilterAdvancedNode": {
+          "componentName": "FilterAdvancedNode",
+          "fileName": "FilterAdvancedNode.razor",
+          "namespace": "Lumeo",
+          "inheritsFrom": null,
+          "implements": [],
+          "parameters": [
+            {
+              "name": "Node",
+              "type": "FilterNode",
+              "default": "default!",
+              "description": null,
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": true
+            },
+            {
+              "name": "Index",
+              "type": "int",
+              "default": "0",
+              "description": null,
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "ParentId",
+              "type": "string",
+              "default": "\"\"",
+              "description": null,
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "Combinator",
+              "type": "FilterCombinator",
+              "default": null,
+              "description": null,
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "Depth",
+              "type": "int",
+              "default": "1",
+              "description": null,
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            }
+          ],
+          "events": [],
+          "enums": [],
+          "records": [],
+          "gotchas": [],
+          "parseFailed": false,
+          "parseError": null
+        },
+        "FilterAdvancedRow": {
+          "componentName": "FilterAdvancedRow",
+          "fileName": "FilterAdvancedRow.razor",
+          "namespace": "Lumeo",
+          "inheritsFrom": null,
+          "implements": [
+            "IDisposable"
+          ],
+          "parameters": [
+            {
+              "name": "Context",
+              "type": "FiltersContext",
+              "default": "default!",
+              "description": null,
+              "isCascading": true,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "Panel",
+              "type": "FiltersAdvancedPanel",
+              "default": "default!",
+              "description": null,
+              "isCascading": true,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "Rule",
+              "type": "FilterRule",
+              "default": "default!",
+              "description": null,
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": true
+            },
+            {
+              "name": "Index",
+              "type": "int",
+              "default": "0",
+              "description": null,
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "ParentId",
+              "type": "string",
+              "default": "\"\"",
+              "description": null,
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "Combinator",
+              "type": "FilterCombinator",
+              "default": null,
+              "description": null,
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "Depth",
+              "type": "int",
+              "default": "1",
+              "description": null,
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            }
+          ],
+          "events": [],
+          "enums": [],
+          "records": [],
+          "gotchas": [],
+          "parseFailed": false,
+          "parseError": null
+        },
         "FilterBooleanEditor": {
           "componentName": "FilterBooleanEditor",
           "fileName": "FilterBooleanEditor.razor",
@@ -34488,6 +34767,84 @@
               "description": null
             }
           ],
+          "enums": [],
+          "records": [],
+          "gotchas": [],
+          "parseFailed": false,
+          "parseError": null
+        },
+        "FilterCombinatorCell": {
+          "componentName": "FilterCombinatorCell",
+          "fileName": "FilterCombinatorCell.razor",
+          "namespace": "Lumeo",
+          "inheritsFrom": null,
+          "implements": [],
+          "parameters": [
+            {
+              "name": "Context",
+              "type": "FiltersContext",
+              "default": "default!",
+              "description": null,
+              "isCascading": true,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "Panel",
+              "type": "FiltersAdvancedPanel",
+              "default": "default!",
+              "description": null,
+              "isCascading": true,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "NodeId",
+              "type": "string",
+              "default": "\"\"",
+              "description": null,
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": true
+            },
+            {
+              "name": "ParentId",
+              "type": "string",
+              "default": "\"\"",
+              "description": null,
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "Index",
+              "type": "int",
+              "default": "0",
+              "description": null,
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "Combinator",
+              "type": "FilterCombinator",
+              "default": null,
+              "description": null,
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "Active",
+              "type": "bool",
+              "default": "false",
+              "description": "Whether this cell is the row's tab stop.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            }
+          ],
+          "events": [],
           "enums": [],
           "records": [],
           "gotchas": [],
@@ -34817,6 +35174,39 @@
           "parseFailed": false,
           "parseError": null
         },
+        "FilterMoveToMenuItems": {
+          "componentName": "FilterMoveToMenuItems",
+          "fileName": "FilterMoveToMenuItems.razor",
+          "namespace": "Lumeo",
+          "inheritsFrom": null,
+          "implements": [],
+          "parameters": [
+            {
+              "name": "Context",
+              "type": "FiltersContext",
+              "default": "default!",
+              "description": null,
+              "isCascading": true,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "NodeId",
+              "type": "string",
+              "default": "\"\"",
+              "description": null,
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": true
+            }
+          ],
+          "events": [],
+          "enums": [],
+          "records": [],
+          "gotchas": [],
+          "parseFailed": false,
+          "parseError": null
+        },
         "FilterMultiSelectEditor": {
           "componentName": "FilterMultiSelectEditor",
           "fileName": "FilterMultiSelectEditor.razor",
@@ -34880,6 +35270,57 @@
               "isCascading": false,
               "captureUnmatched": false,
               "isEditorRequired": true
+            }
+          ],
+          "events": [],
+          "enums": [],
+          "records": [],
+          "gotchas": [],
+          "parseFailed": false,
+          "parseError": null
+        },
+        "FilterRowHandle": {
+          "componentName": "FilterRowHandle",
+          "fileName": "FilterRowHandle.razor",
+          "namespace": "Lumeo",
+          "inheritsFrom": null,
+          "implements": [],
+          "parameters": [
+            {
+              "name": "Context",
+              "type": "FiltersContext",
+              "default": "default!",
+              "description": null,
+              "isCascading": true,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "Panel",
+              "type": "FiltersAdvancedPanel",
+              "default": "default!",
+              "description": null,
+              "isCascading": true,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "NodeId",
+              "type": "string",
+              "default": "\"\"",
+              "description": null,
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": true
+            },
+            {
+              "name": "Active",
+              "type": "bool",
+              "default": "false",
+              "description": null,
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
             }
           ],
           "events": [],
@@ -35012,6 +35453,209 @@
           "parseFailed": false,
           "parseError": null
         },
+        "FiltersAdvanced": {
+          "componentName": "FiltersAdvanced",
+          "fileName": "FiltersAdvanced.razor",
+          "namespace": "Lumeo",
+          "inheritsFrom": null,
+          "implements": [],
+          "parameters": [
+            {
+              "name": "Context",
+              "type": "FiltersContext",
+              "default": "default!",
+              "description": null,
+              "isCascading": true,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "Mode",
+              "type": "FiltersAdvancedMode",
+              "default": "FiltersAdvancedMode.Popover",
+              "description": null,
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "Trigger",
+              "type": "RenderFragment?",
+              "default": null,
+              "description": null,
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "Align",
+              "type": "Lumeo.Align",
+              "default": "Lumeo.Align.Start",
+              "description": null,
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "Query",
+              "type": "FilterQuery",
+              "default": "FilterQuery.Empty()",
+              "description": "State passed through so the panel re-renders with the bar.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "Draft",
+              "type": "FilterDraft?",
+              "default": null,
+              "description": null,
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "FocusId",
+              "type": "string?",
+              "default": null,
+              "description": null,
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "AnnouncementSeq",
+              "type": "int",
+              "default": "0",
+              "description": null,
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "Class",
+              "type": "string?",
+              "default": null,
+              "description": "Classes and attributes for the panel.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "AdditionalAttributes",
+              "type": "Dictionary<string, object>?",
+              "default": null,
+              "description": null,
+              "isCascading": false,
+              "captureUnmatched": true,
+              "isEditorRequired": false
+            }
+          ],
+          "events": [],
+          "enums": [],
+          "records": [],
+          "gotchas": [],
+          "parseFailed": false,
+          "parseError": null
+        },
+        "FiltersAdvancedPanel": {
+          "componentName": "FiltersAdvancedPanel",
+          "fileName": "FiltersAdvancedPanel.razor",
+          "namespace": "Lumeo",
+          "inheritsFrom": null,
+          "implements": [
+            "IAsyncDisposable"
+          ],
+          "parameters": [
+            {
+              "name": "Context",
+              "type": "FiltersContext",
+              "default": "default!",
+              "description": null,
+              "isCascading": true,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "Mode",
+              "type": "FiltersAdvancedMode",
+              "default": "FiltersAdvancedMode.Popover",
+              "description": null,
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "Query",
+              "type": "FilterQuery",
+              "default": "FilterQuery.Empty()",
+              "description": "State passed through so the panel re-renders with the bar.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "Draft",
+              "type": "FilterDraft?",
+              "default": null,
+              "description": null,
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "FocusId",
+              "type": "string?",
+              "default": null,
+              "description": null,
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "AnnouncementSeq",
+              "type": "int",
+              "default": "0",
+              "description": null,
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "EmptyTemplate",
+              "type": "RenderFragment?",
+              "default": null,
+              "description": "Replaces the empty state.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "Class",
+              "type": "string?",
+              "default": null,
+              "description": null,
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "AdditionalAttributes",
+              "type": "Dictionary<string, object>?",
+              "default": null,
+              "description": null,
+              "isCascading": false,
+              "captureUnmatched": true,
+              "isEditorRequired": false
+            }
+          ],
+          "events": [],
+          "enums": [],
+          "records": [],
+          "gotchas": [],
+          "parseFailed": false,
+          "parseError": null
+        },
         "FiltersBuilder": {
           "componentName": "FiltersBuilder",
           "fileName": "FiltersBuilder.razor",
@@ -35074,13 +35718,18 @@
           "aria-checked",
           "aria-description",
           "aria-disabled",
+          "aria-hidden",
+          "aria-invalid",
+          "aria-keyshortcuts",
           "aria-label",
           "aria-live",
           "aria-orientation"
         ],
         "keys": [
+          "ArrowDown",
           "ArrowLeft",
           "ArrowRight",
+          "ArrowUp",
           "Backspace",
           "Delete",
           "End",
