@@ -213,11 +213,12 @@ public class BadgeTests : IAsyncLifetime
     // whitespace-nowrap were added because inline-flex alone still stretches inside a flex column
     // or a stretched grid cell, so a badge in a table column rendered as wide as the column
     // (measured: 300px against 77.6px for the same content) and wrapped to two lines when squeezed.
-    // They moved a second time in the 5.0 alignment, and that time the size-dependent tokens
-    // moved too: the badge is anchored on reui's own ladder now (px-1.25 py-0.5 h-5 at the
-    // default rung, rounded-sm, font-medium), because where reui defines a component it takes
-    // precedence over shadcn - and the two genuinely differ here. What the tests still guard is
-    // that the rungs stay distinct and that nothing silently drifts between releases.
+    // They moved a second time in the 5.0 alignment onto reui's ladder (px-1.25 py-0.5 h-5 at
+    // the default rung), and a third time in 5.7.0: the default rung is shadcn's badge again
+    // (px-2 py-0.5 text-xs on a 16px line, 22px tall) because reui's leading-none clipped
+    // descenders inside a truncating span (field report 2.2), and Lg moved up one step to stay
+    // above it. What the tests still guard is that the rungs stay distinct and that nothing
+    // silently drifts between releases.
     // A caller can still override the width: w-* is a merge conflict group, so Class="w-full" wins.
     [Fact]
     public void Size_Sm_Renders_Byte_Identical_To_Pre_Migration_BadgeSize_Sm()
@@ -247,9 +248,9 @@ public class BadgeTests : IAsyncLifetime
             new[]
             {
                 "relative", "inline-flex", "w-fit", "shrink-0", "items-center", "justify-center",
-                "gap-1", "whitespace-nowrap", "border", "font-medium", "leading-none",
+                "gap-1", "whitespace-nowrap", "border", "font-medium",
                 "transition-colors",
-                "focus:outline-none", "[&>svg]:size-3", "[&>svg]:pointer-events-none", "rounded-sm", "text-xs", "min-h-5", "min-w-5", "px-1.25", "py-0.5",
+                "focus:outline-none", "[&>svg]:size-3", "[&>svg]:pointer-events-none", "rounded-sm", "text-xs", "leading-4", "min-h-5.5", "min-w-5.5", "px-2", "py-0.5",
                 "border-transparent", "bg-primary", "text-primary-foreground"
             },
             Tokens(cut.Find("div")));
@@ -268,7 +269,7 @@ public class BadgeTests : IAsyncLifetime
                 "relative", "inline-flex", "w-fit", "shrink-0", "items-center", "justify-center",
                 "gap-1", "whitespace-nowrap", "border", "font-medium", "leading-none",
                 "transition-colors",
-                "focus:outline-none", "[&>svg]:size-3", "[&>svg]:pointer-events-none", "rounded-sm", "text-sm", "min-h-5.5", "min-w-5.5", "px-1.5", "py-0.5",
+                "focus:outline-none", "[&>svg]:size-3", "[&>svg]:pointer-events-none", "rounded-sm", "text-sm", "min-h-6", "min-w-6", "px-2", "py-0.5",
                 "border-transparent", "bg-primary", "text-primary-foreground"
             },
             Tokens(cut.Find("div")));

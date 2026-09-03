@@ -31,7 +31,7 @@
            panel = group — see components.js's registerColumnReorder). C = the
            action-cluster buttons after it (group-drag hint icon, filter, pin) —
            exclusive, never a drag source, never sorts. *@
-        @if (EffectiveReorderable)
+        @if (EffectiveReorderable && Context?.ShowReorderHandle != false)
         {
             <span data-reorder-grip
                   class="-ms-1 inline-flex items-center justify-center h-5 w-4 shrink-0 rounded text-muted-foreground cursor-grab active:cursor-grabbing touch-none lumeo-dg-reorder-grip"
@@ -67,7 +67,16 @@
                     @onclick="HandleHeaderClick"
                     disabled="@(!Column.Sortable && !EffectiveReorderable && !ColumnMenu)">
                 <span class="truncate">@(Column.Title ?? Column.Field ?? "")</span>
-                @if (Column.Sortable && SortDirection != SortDirection.None)
+                @if (Column.Sortable && Context?.SortIconTemplate is { } sortIcon)
+                {
+                    @* The host's own glyph for none / ascending / descending. *@
+                    @sortIcon(SortDirection)
+                    @if (SortDirection != SortDirection.None && TotalSortCount > 1 && SortPriority > 0)
+                    {
+                        <span class="flex items-center justify-center h-3.5 w-3.5 rounded-[calc(var(--radius)*2)] bg-primary text-primary-foreground text-[9px] font-bold leading-none">@SortPriority</span>
+                    }
+                }
+                else if (Column.Sortable && SortDirection != SortDirection.None)
                 {
                     @if (SortDirection == SortDirection.Ascending)
                     {
@@ -138,7 +147,7 @@
            right / Unpin) that raises the exact same pin change as the column
            chooser through ParentGrid.ApplyColumnPin, so both entry points share one
            state transition (partition + sticky offsets). *@
-        @if (Column.Pinnable)
+        @if (Column.Pinnable && Context?.ShowPinButton != false)
         {
             <button type="button"
                     id="@_pinTriggerId"
@@ -172,7 +181,7 @@
         </div>
     }
 
-    @if (_pinMenuOpen && Column.Pinnable)
+    @if (_pinMenuOpen && Column.Pinnable && Context?.ShowPinButton != false)
     {
         @* Positioned with position:fixed and pinned to the trigger via
            Interop.PositionFixed (same Floating-UI-style approach as the filter
@@ -356,6 +365,12 @@
 
                 </button>
 
+            }
+
+            @if (Context?.ColumnMenuContent is { } extra)
+            {
+                <div role="separator" class="-mx-1 my-1 h-px bg-border"></div>
+                @extra(Column)
             }
 
         </div>

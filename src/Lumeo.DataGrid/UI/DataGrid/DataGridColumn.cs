@@ -20,6 +20,9 @@ public class DataGridColumn<TItem>
     /// column the table is the sum of the widths and may be narrower than its container;
     /// with one, that column takes the remainder so the grid still spans the container.</summary>
     public bool FillWidth { get; set; }
+    /// <summary>The sort the grid starts with for this column, applied when the column registers
+    /// and no sort exists for its field yet. A saved layout still wins.</summary>
+    public SortDirection DefaultSort { get; set; } = SortDirection.None;
     public double? MinWidth { get; set; }
     public double? MaxWidth { get; set; }
     public bool Sortable { get; set; }

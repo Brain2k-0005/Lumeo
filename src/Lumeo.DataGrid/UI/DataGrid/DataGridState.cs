@@ -315,3 +315,7 @@ public record DataGridColumnLayout(
     double? Width,
     PinDirection? Pin
 );
+
+/// <summary>What <c>DataGrid.FooterTemplate</c> receives: the displayed rows, their count and the
+/// total the grid knows about (every row in client mode, the server's total in server mode).</summary>
+public record DataGridFooterContext<TItem>(int RowCount, int TotalCount, IReadOnlyList<TItem> Items);

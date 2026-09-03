@@ -5,6 +5,61 @@ All notable changes to Lumeo will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.7.0] - 2026-09-03
+
+The items of the DocFlow field report that were still open after 5.6.0, re-checked
+against the current source. Several entries the report still lists as open had been
+shipped between 5.1.0 and 5.6.0 and are only re-confirmed here; the ones below changed.
+
+### Added
+- **DataGrid `SelectOnRowClick`** (field report 1.8). `false` keeps selection on the checkbox
+  column and leaves the row click to `OnRowClick`, e.g. to open a detail view.
+- **DataGrid `ShowReorderHandle` / `ShowPinButton`** (1.11). Hide the grip and the pin button;
+  dragging the header and the column menu still reorder and pin.
+- **`DataGridColumnDef.DefaultSort`** and `DataGridColumn.DefaultSort` (1.10). The sort a
+  column starts with; a saved layout still wins, and in server mode the initial request
+  carries it.
+- **DataGrid `SortIconTemplate`** (1.15). Your own glyphs for none / ascending / descending.
+- **DataGrid `FooterTemplate`** (1.9). A footer strip with the displayed row count, the total
+  and the displayed items, with or without column aggregates.
+- **DataGrid `ColumnMenuContent`** (1.18). Entries appended to the column menu after a
+  separator, so a host command sits next to sort, fit, pin and move.
+- **Calendar geometry tokens** (4.10). `--lumeo-calendar-cell-size` (32px) and
+  `--lumeo-calendar-p` (12px) size the day cells and the frame; the week grid follows.
+
+### Changed
+- **Badge's default rung is shadcn's badge** (2.2): `px-2 py-0.5 text-xs` on a 16px line,
+  22px tall, so descenders no longer clip inside a truncating span. The larger rungs moved
+  up one step to keep the ladder ordered. 5.0 to 5.6 sat on reui's 20px `leading-none`
+  badge.
+- **Tabs root is `flex gap-2`** (4.15), column-wise when horizontal, as shadcn's: the 8px
+  between the list and the panel come from the root, `TabsList` is `w-fit` and
+  `TabsContent` is `flex-1`. Pages that added their own margin can drop it.
+- **CardHeader `gap-2` and `[.border-b]:pb-*`, CardFooter `[.border-t]:pt-*`**, shadcn's
+  current card.tsx.
+- **AccordionTrigger is `items-start gap-4 rounded-md`**, shadcn's accordion.tsx.
+- **Row separators are the border colour** (1.13). `TableRow`, `TableHeader`, `TableFooter`,
+  the table skeleton and DataGrid rows use `border-b` / `border-t` instead of
+  `border-border/40`, as shadcn's table.tsx does.
+- **Menus no longer clip** (4.4.1). DropdownMenu, ContextMenu and Menubar contents are
+  `overflow-visible`: they have no scroll height of their own, and a sub-menu is a DOM child
+  that `overflow-hidden` clipped whenever a host's CSS gave the content a containing block.
+
+### Fixed
+- **A single-value Select shows its label** (4.1b). A `SelectTrigger` without custom
+  content rendered nothing for the selected value, against its own documentation. It now
+  shows the item's label, and a closed composition-mode Select registers its items so a
+  pre-selected value reads right before the list was ever opened.
+- **`DataGridColumnDef.Title` is reactive** (1.5). A changed title reaches the header, so a
+  runtime language switch no longer needs `@key` on the grid.
+
+### Docs
+- Localization: the `BlazorWebAssemblyLoadAllGlobalizationData` property a runtime culture
+  switch needs (5.1).
+- ToggleGroup: bind `SelectedValues` to an `IEnumerable<string>` (4.6). Popover: what
+  `Class` on the anchor wrapper does (4.5, 4.8). Field: the alias for a host with its own
+  `Field` type (4.16). Calendar and theme overrides: the new tokens.
+
 ## [5.6.0] - 2026-09-02
 
 The remaining items from the DocFlow field report.

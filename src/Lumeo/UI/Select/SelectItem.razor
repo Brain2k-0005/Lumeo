@@ -1,7 +1,7 @@
 @namespace Lumeo
 @implements IDisposable
 
-@if (Visible)
+@if (Visible && !RegisterOnly)
 {
     <button data-slot="select-item" type="button" id="@_itemId" role="option" aria-selected="@IsSelected.ToString().ToLower()"
             aria-disabled="@Disabled.ToString().ToLower()"
@@ -20,6 +20,8 @@
     [CascadingParameter] public Select.SelectContext Context { get; set; } = default!;
     // Present when the item sits inside one or more SelectGroups (nearest group wins).
     [CascadingParameter] public SelectGroup.SelectGroupContext? Group { get; set; }
+    // Set by a closed SelectContent: register the value and label, render nothing.
+    [CascadingParameter(Name = "SelectRegisterOnly")] private bool RegisterOnly { get; set; }
     /// <summary>The option's visible content (label, and optionally an icon/description).</summary>
     [Parameter] public RenderFragment? ChildContent { get; set; }
     /// <summary>The value this item represents when selected. Required.</summary>
@@ -83,7 +85,9 @@
 
     protected override void OnParametersSet()
     {
-        if (Visible)
+        // The registration-only pass of a closed SelectContent registers every item, also one
+        // inside a collapsed group, so the trigger can show any pre-selected value's label.
+        if (Visible || RegisterOnly)
         {
             // SearchValue (falling back to Value) is the text the search filter and
             // type-to-jump match against — keep both features consistent. Disabled

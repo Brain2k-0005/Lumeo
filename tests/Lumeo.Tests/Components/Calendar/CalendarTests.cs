@@ -187,7 +187,7 @@ public class CalendarTests : IAsyncLifetime
     {
         var cut = RenderCalendar();
         var div = cut.Find("div");
-        Assert.Contains("p-3", div.GetAttribute("class"));
+        Assert.Contains("p-[var(--lumeo-calendar-p,", div.GetAttribute("class"));
     }
 
     // --- rc.20 booking-API additions: DateTooltip + DateBadge ---

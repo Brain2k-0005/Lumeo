@@ -97,6 +97,11 @@
     {
         // init-only body property, so it is set here rather than passed positionally.
         ToggleSelectionModified = ToggleSelectionModified,
+        SelectOnRowClick = SelectOnRowClick,
+        ShowReorderHandle = ShowReorderHandle,
+        ShowPinButton = ShowPinButton,
+        SortIconTemplate = SortIconTemplate,
+        ColumnMenuContent = ColumnMenuContent,
     };
 }
 
@@ -371,6 +376,13 @@
                         AllItems="@_processedItems"
                         HasDetailTemplate="@(DetailTemplate is not null)" />
 
+        @if (FooterTemplate is not null)
+        {
+            <div data-slot="datagrid-footer" class="flex items-center border-t border-border/40 px-3 py-2 text-xs text-muted-foreground">
+                @FooterTemplate(new DataGridFooterContext<TItem>(_displayedItems.Count, EffectiveTotalCount, _displayedItems.AsReadOnly()))
+            </div>
+        }
+
         @if (ShowPagination && !IsLoading && !_useServerVirtualization)
         {
             <DataGridPagination TItem="TItem"
@@ -583,6 +595,23 @@
     /// Default false.</summary>
     [Parameter] public bool ColumnMenu { get; set; }
 
+    /// <summary>Extra entries appended to the column menu after a separator; receives the column.
+    /// The host's own commands sit next to sort, fit, pin and move.</summary>
+    [Parameter] public RenderFragment<DataGridColumn<TItem>>? ColumnMenuContent { get; set; }
+
+    /// <summary>Renders the reorder grip in each header cell when <see cref="Reorderable"/>. With
+    /// <c>false</c> the header stays clean; dragging the header itself and the column menu's
+    /// move entries still reorder.</summary>
+    [Parameter] public bool ShowReorderHandle { get; set; } = true;
+
+    /// <summary>Renders the pin button in each pinnable header cell. With <c>false</c> pinning
+    /// stays reachable through the column menu and the column chooser.</summary>
+    [Parameter] public bool ShowPinButton { get; set; } = true;
+
+    /// <summary>Replaces the header's sort glyphs: receives <see cref="SortDirection.None"/>,
+    /// Ascending or Descending and renders the icon for that state.</summary>
+    [Parameter] public RenderFragment<SortDirection>? SortIconTemplate { get; set; }
+
     /// <summary>Enables drag-to-reorder rows via a pointer drag on the row. Default false.</summary>
     [Parameter] public bool RowReorderable { get; set; }
 
@@ -751,6 +780,15 @@
     // --- Events ---
     /// <summary>Fires when a row is single-clicked, carrying the clicked item.</summary>
     [Parameter] public EventCallback<TItem> OnRowClick { get; set; }
+
+    /// <summary>Whether a click anywhere in a row toggles its selection (<see cref="SelectionMode"/>
+    /// Single or Multiple). <c>false</c> keeps selection on the checkbox column and leaves the
+    /// row click to <see cref="OnRowClick"/> alone, e.g. to open a detail view.</summary>
+    [Parameter] public bool SelectOnRowClick { get; set; } = true;
+
+    /// <summary>A footer strip below the rows, receiving the displayed row count, the total count
+    /// and the displayed items. Rendered whether or not any column aggregates.</summary>
+    [Parameter] public RenderFragment<DataGridFooterContext<TItem>>? FooterTemplate { get; set; }
 
     /// <summary>Fires when a row is double-clicked, carrying the clicked item.</summary>
     [Parameter] public EventCallback<TItem> OnRowDoubleClick { get; set; }
@@ -1538,6 +1576,7 @@
             existing.ColumnGroupId = column.ColumnGroupId;
             existing.CellTemplate = column.CellTemplate;
             existing.HeaderTemplate = column.HeaderTemplate;
+            existing.DefaultSort = column.DefaultSort;
             existing.EditTemplate = column.EditTemplate;
             existing.FilterOptions = column.FilterOptions;
             existing.Operators = column.Operators;
@@ -1562,6 +1601,14 @@
 
         _columnDefs.Add(column);
         SyncOrderedColumns();
+        if (SeedDefaultSort(column))
+        {
+            // A child DataGridColumnDef registers during the first render, after
+            // OnInitializedAsync sent the initial server request: ask once more with the
+            // seeded sort. Client mode re-sorts in place.
+            if (!ServerMode) ProcessClientData();
+            else if (_initialServerRequestSent) _ = RequestServerData();
+        }
         // If the parameter seed ran before this column existed and dropped a
         // requested group field because of it, re-seed now that the column is
         // here and rebuild the row set so GroupBy/GroupByFields take effect
@@ -1717,8 +1764,38 @@
         RefreshVisibleColumns();
     }
 
+    // Fields whose DefaultSort has been applied once, so a re-render never re-imposes it
+    // after the user cleared or changed the sort.
+    private readonly HashSet<string> _defaultSortSeeded = new();
+
+    // Set by ApplyLayoutAsync: an applied layout (SavedLayout, a persisted one, a named one)
+    // owns the sort state from then on. A DefaultSort seeded after it would add a second
+    // sort field to the restored list.
+    private bool _layoutApplied;
+
+    // A column's starting sort (DataGridColumn.DefaultSort). Seeded once per field, only
+    // when no sort for that field exists yet and no layout has been applied, so a saved user
+    // sort still wins. Runs before the initial server request for Columns-parameter columns;
+    // a child DataGridColumnDef that registers later re-requests (see AddColumnDef).
+    private bool SeedDefaultSort(DataGridColumn<TItem> column)
+    {
+        if (_layoutApplied) return false;
+        if (column.DefaultSort == SortDirection.None || column.Field is null) return false;
+        if (!_defaultSortSeeded.Add(column.Field)) return false;
+        if (_sorts.Any(s => s.Field == column.Field)) return false;
+        _sorts.Add(new SortDescriptor(column.Field, column.DefaultSort));
+        return true;
+    }
+
+    private void SeedDefaultSorts()
+    {
+        foreach (var column in EffectiveColumns) SeedDefaultSort(column);
+    }
+
     protected override async Task OnParametersSetAsync()
     {
+        SeedDefaultSorts();
+
         // ServerMode used to be read exactly once, in OnInitializedAsync. A host that binds
         // it to a field it resolves asynchronously, or to a feature flag, therefore never got
         // a request at all (#442).
@@ -2080,6 +2157,9 @@
 
         if (ServerMode)
         {
+            // Columns handed in through the Columns parameter are known here, so their
+            // DefaultSort rides on the very first request.
+            SeedDefaultSorts();
             await RequestServerData();
         }
     }
@@ -4080,6 +4160,18 @@
     /// unconditionally re-registering every cascading-context refresh went through
     /// AddColumnDef's new-column bookkeeping and thrashed the layout autosave debounce.
     /// </summary>
+    /// <summary>Pushes a changed <c>Title</c> / <c>HeaderTemplate</c> into an already registered
+    /// column so a runtime language switch reaches the header. Only a changed title re-renders.</summary>
+    public void UpdateColumnHeader(string columnKey, string? title, RenderFragment? headerTemplate)
+    {
+        var column = _columnDefs.FirstOrDefault(c => ColumnKey(c) == columnKey);
+        if (column is null) return;
+        column.HeaderTemplate = headerTemplate;
+        if (column.Title == title) return;
+        column.Title = title;
+        _ = InvokeAsync(StateHasChanged);
+    }
+
     public void UpdateColumnFlags(string columnKey, bool sortable, bool filterable, bool resizable, bool pinnable)
     {
         var column = _columnDefs.FirstOrDefault(c => ColumnKey(c) == columnKey);
@@ -4245,6 +4337,8 @@
 
     public async Task ApplyLayoutAsync(DataGridLayout layout)
     {
+        _layoutApplied = true;
+
         // Restore column order, width, visibility, pin
         if (layout.Columns.Count > 0)
         {
