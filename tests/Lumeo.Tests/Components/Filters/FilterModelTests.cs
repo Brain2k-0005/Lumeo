@@ -172,7 +172,7 @@ public class FilterModelTests
         Assert.Equal("Name > Last name", index.FormatPath(new[] { "name", "last" }, " > "));
         Assert.Equal(new[] { "first", "last" }, index.Children(new[] { "name" }).Select(f => f.Id));
         Assert.Equal(new[] { "last" }, index.SearchDeep("surname").Select(e => e.Field.Id));
-        Assert.Empty(index.SearchDeep("name").Where(e => e.Field.IsBranch));
+        Assert.DoesNotContain(index.SearchDeep("name"), e => e.Field.IsBranch);
     }
 
     [Fact]
