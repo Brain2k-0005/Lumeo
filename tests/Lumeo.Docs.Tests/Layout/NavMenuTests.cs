@@ -21,7 +21,7 @@ public class NavMenuTests : IDisposable
         });
         _ctx.AddDocsServices();
         // NavMenu calls lumeoNavScrollActiveIntoView in OnAfterRenderAsync
-        _ctx.JSInterop.SetupVoid("lumeoNavScrollActiveIntoView", _ => true);
+        _ctx.JSInterop.SetupVoid("lumeoNavScrollActiveIntoView", _ => true).SetVoidResult();
     }
 
     public void Dispose() => _ctx.Dispose();
