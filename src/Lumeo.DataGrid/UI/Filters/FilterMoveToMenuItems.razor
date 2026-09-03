@@ -1,0 +1,42 @@
+@namespace Lumeo
+
+@* "Move to top" and "Move to group n" entries of a row or group menu, only while reordering is on. *@
+@foreach (var destination in Destinations)
+{
+    var d = destination;
+    <DropdownMenuItem Disabled="Context.Locked" OnClick="() => Context.MoveNodeTo(NodeId, d.Id, d.Size)">
+        <SvgGlyph Svg="@(LumeoIcons.ChevronRight)" class="h-4 w-4" />
+        <span class="min-w-0 truncate">@d.Label</span>
+    </DropdownMenuItem>
+}
+
+@code {
+    [CascadingParameter] public FiltersContext Context { get; set; } = default!;
+    [Parameter, EditorRequired] public string NodeId { get; set; } = "";
+
+    private IReadOnlyList<(string Id, string Label, int Size)> Destinations
+    {
+        get
+        {
+            if (!Context.Reorderable) return Array.Empty<(string, string, int)>();
+            var query = Context.Query;
+            if (FilterQueries.Find(query, NodeId) is not { Parent: { } parent }) return Array.Empty<(string, string, int)>();
+            var list = new List<(string, string, int)>();
+            if (parent.Id != query.Id) list.Add((query.Id, Context.Labels.MoveToTop, query.Rules.Count));
+            var position = 0;
+            void Visit(FilterGroup group, bool inside)
+            {
+                foreach (var child in group.Rules)
+                {
+                    if (child is not FilterGroup g) continue;
+                    position++;
+                    var within = inside || g.Id == NodeId;
+                    if (!within && g.Id != parent.Id) list.Add((g.Id, string.Format(Context.Labels.MoveToGroup, position), g.Rules.Count));
+                    Visit(g, within);
+                }
+            }
+            Visit(query, false);
+            return list;
+        }
+    }
+}

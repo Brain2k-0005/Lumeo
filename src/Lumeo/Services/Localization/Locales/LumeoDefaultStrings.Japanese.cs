@@ -502,7 +502,7 @@ internal static partial class LumeoDefaultStrings
         ["Filters.DateYears"] = "年",
         ["Filters.DateFrom"] = "開始",
         ["Filters.DateTo"] = "終了",
-        ["Filters.DatePlaceholder"] = "今日、来週、2024-05-01...",
+        ["Filters.DatePlaceholder"] = "今日、1週間後、2024-05-01...",
         ["Filters.Op.contains"] = "を含む",
         ["Filters.Op.not_contains"] = "を含まない",
         ["Filters.Op.starts_with"] = "で始まる",

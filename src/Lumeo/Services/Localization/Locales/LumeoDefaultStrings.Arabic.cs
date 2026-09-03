@@ -575,7 +575,7 @@ internal static partial class LumeoDefaultStrings
         ["Filters.DateYears"] = "سنوات",
         ["Filters.DateFrom"] = "من",
         ["Filters.DateTo"] = "إلى",
-        ["Filters.DatePlaceholder"] = "اليوم، الأسبوع القادم، 2024-05-01...",
+        ["Filters.DatePlaceholder"] = "اليوم، بعد 1 أسبوع، 2024-05-01...",
         ["Filters.Op.contains"] = "يحتوي على",
         ["Filters.Op.not_contains"] = "لا يحتوي على",
         ["Filters.Op.starts_with"] = "يبدأ بـ",

@@ -823,6 +823,26 @@ public sealed class ComponentInteropService : IComponentInteropService
         return await _resize.AutoFitColumn(module, handleId);
     }
 
+    public async ValueTask RegisterFilterDrag<[System.Diagnostics.CodeAnalysis.DynamicallyAccessedMembers(System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicMethods)] T>(Microsoft.AspNetCore.Components.ElementReference panel, DotNetObjectReference<T> dotNetRef) where T : class
+    {
+        try
+        {
+            var module = await GetModuleAsync();
+            await module.InvokeVoidAsync("registerFilterDrag", panel, dotNetRef);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
+    public async ValueTask UnregisterFilterDrag(Microsoft.AspNetCore.Components.ElementReference panel)
+    {
+        try
+        {
+            var module = await GetModuleAsync();
+            await module.InvokeVoidAsync("unregisterFilterDrag", panel);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
     [JSInvokable]
     public async Task OnColumnResize(string handleId, double delta) => await _resize.OnColumnResize(handleId, delta);
 

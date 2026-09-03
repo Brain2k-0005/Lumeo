@@ -219,4 +219,67 @@ public class FilterModelTests
         Assert.Equal("Choose a condition for Name", labels.StepAnnouncement(FilterDraftStep.Operator, "Name"));
         Assert.Equal(FilterOperators.AllValues.Count, labels.OperatorLabels.Count);
     }
+
+
+    // ---------------------------------------------------------------- review follow-ups
+
+    [Fact]
+    public void UpdateRule_Returns_The_Same_Tree_When_Nothing_Changed()
+    {
+        var q = FilterQuery.Of(R("a", "name", "contains", "x"), new FilterGroup("g", FilterCombinator.Or, new FilterNode[] { R("b", "city", "is", "Bern") }));
+        Assert.Same(q, FilterQueries.UpdateRule(q, "a", r => r));
+        Assert.Same(q, FilterQueries.UpdateRule(q, "b", r => r with { Value = "Bern" }));
+        Assert.NotSame(q, FilterQueries.UpdateRule(q, "b", r => r with { Value = "Basel" }));
+    }
+
+    [Fact]
+    public void Query_Round_Trips_Through_System_Text_Json()
+    {
+        var q = FilterQuery.Of(
+            R("r1", "title", "contains", "a"),
+            new FilterGroup("g", FilterCombinator.Or, new FilterNode[]
+            {
+                R("r2", "tags", "has_any_of", new[] { "x", "y" }),
+                R("r3", "amount", "between", new FilterRange(1.0, 5.0)),
+                R("r4", "due", "is", new FilterDateValue(Relative: FilterRelativeDate.Tomorrow)),
+                R("r5", "archived", "is", true),
+            }));
+
+        var json = System.Text.Json.JsonSerializer.Serialize(q);
+        var back = System.Text.Json.JsonSerializer.Deserialize<FilterQuery>(json)!;
+
+        Assert.Equal(
+            q.Flatten().Select(t => (t.Field, t.Operator, string.Join(",", t.Values.Select(v => v?.ToString())))),
+            back.Flatten().Select(t => (t.Field, t.Operator, string.Join(",", t.Values.Select(v => v?.ToString())))));
+        var group = Assert.IsType<FilterGroup>(back.Rules[1]);
+        Assert.Equal(FilterCombinator.Or, group.Combinator);
+        Assert.IsAssignableFrom<IReadOnlyList<string>>(((FilterRule)group.Rules[0]).Value);
+        Assert.Equal(new FilterRange(1.0, 5.0), ((FilterRule)group.Rules[1]).Value);
+        Assert.Equal(new FilterDateValue(Relative: FilterRelativeDate.Tomorrow), ((FilterRule)group.Rules[2]).Value);
+        Assert.Equal(true, ((FilterRule)group.Rules[3]).Value);
+        Assert.DoesNotContain("\"Values\"", json);
+    }
+
+    [Fact]
+    public void Dates_Parse_The_Phrases_The_Labels_Show()
+    {
+        var de = new FilterLabels
+        {
+            DateToday = "heute", DateTomorrow = "morgen", DateYesterday = "gestern",
+            DateInFormat = "in {0} {1}", DateAgoFormat = "vor {0} {1}", DateThisFormat = "diese(n/s) {0}",
+            DateDay = "Tag", DateDays = "Tagen", DateWeek = "Woche", DateWeeks = "Wochen", DateMonth = "Monat", DateMonths = "Monaten", DateYear = "Jahr", DateYears = "Jahren",
+        };
+        Assert.Equal(FilterRelativeDate.Today, FilterDates.Parse("Heute", labels: de)!.Relative);
+        Assert.Equal(new FilterRelativeDate(FilterDateUnit.Week, 1), FilterDates.Parse("in 1 Woche", labels: de)!.Relative);
+        Assert.Equal(new FilterRelativeDate(FilterDateUnit.Day, -3), FilterDates.Parse("vor 3 Tagen", labels: de)!.Relative);
+        Assert.Equal(new FilterRelativeDate(FilterDateUnit.Month, 0), FilterDates.Parse("diese(n/s) Monat", labels: de)!.Relative);
+        // what the labels format is what they parse
+        var value = new FilterDateValue(Relative: new FilterRelativeDate(FilterDateUnit.Year, 2));
+        Assert.Equal(value, FilterDates.Parse(FilterDates.Format(value, de), labels: de));
+        // English keeps working next to the labels
+        Assert.Equal(new FilterRelativeDate(FilterDateUnit.Week, 1), FilterDates.Parse("next week", labels: de)!.Relative);
+        // a format without spaces between count and unit parses too
+        var zh = new FilterLabels { DateInFormat = "{0}{1}\u540e", DateWeek = "\u5468", DateWeeks = "\u5468" };
+        Assert.Equal(new FilterRelativeDate(FilterDateUnit.Week, 2), FilterDates.Parse("2\u5468\u540e", labels: zh)!.Relative);
+    }
 }

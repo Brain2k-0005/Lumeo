@@ -33,6 +33,7 @@ else
     var incomplete = Rule.Operator == "";
     var hasValue = !incomplete && FilterOperators.TakesValue(Operator);
     var display = Display;
+    var issue = Context.IssueFor(Rule.Id);
     var valueName = display.ValueEmpty && field.ValueText is null ? Context.Labels.NoValue : display.ValueText;
     var condition = $"{display.PathText} {display.OperatorLabel}{(hasValue ? " " + valueName : "")}".Trim() + (incomplete ? ", " + Context.Labels.Incomplete : "");
     <div data-slot="filter-chip"
@@ -49,10 +50,35 @@ else
          @onfocus="() => _selfFocused = true"
          @onblur="() => _selfFocused = false"
          @onkeydown="HandleKeyDown">
-        <div data-slot="filter-segment" data-segment="field" class="@SegmentClass(first: true, last: false, interactive: false)" title="@(display.PathCollapsed ? null : display.PathText)">
-            @field.Icon
-            <span class="flex items-center">@display.PathLabel</span>
-        </div>
+        <Popover Open="_fieldOpen" OpenChanged="OnFieldOpenChanged">
+            <PopoverTrigger AsChild>
+                <ChildContentSlot Context="slot">
+                    <button type="button"
+                            data-slot="filter-segment"
+                            data-segment="field"
+                            id="@slot.Id"
+                            @attributes="slot.Attributes"
+                            @onclick="slot.OnClick"
+                            @onpointerdown="() => Context.SetFocus(Rule.Id, FilterChipSegment.Field)"
+                            class="@SegmentClass(first: true, last: false, interactive: true)"
+                            title="@(display.PathCollapsed ? display.PathText : null)"
+                            disabled="@Context.Disabled"
+                            aria-disabled="@(Context.ReadOnly ? "true" : null)">
+                        @field.Icon
+                        <span class="flex items-center">@display.PathLabel</span>
+                    </button>
+                </ChildContentSlot>
+            </PopoverTrigger>
+            <PopoverContent Align="Lumeo.Align.Start" Class="w-auto min-w-56 p-0" FocusTargetId="@_fieldSearchId">
+                @if (_fieldOpen)
+                {
+                    <FilterFieldPicker Path="_pickerPath" Query="@_pickerQuery" SearchId="@_fieldSearchId"
+                                       OnPathChange="p => { _pickerPath = p; _pickerQuery = string.Empty; }"
+                                       OnQueryChange="q => _pickerQuery = q"
+                                       OnSelect="PickField" />
+                }
+            </PopoverContent>
+        </Popover>
 
         <Popover Open="_operatorOpen" OpenChanged="OnOperatorOpenChanged">
             <PopoverTrigger AsChild>
@@ -98,9 +124,11 @@ else
                                 @attributes="slot.Attributes"
                                 @onclick="slot.OnClick"
                                 @onpointerdown="() => Context.SetFocus(Rule.Id, FilterChipSegment.Value)"
-                                class="@SegmentClass(first: false, last: false, interactive: true) @(display.ValueEmpty ? "text-muted-foreground" : null)"
+                                class="@SegmentClass(first: false, last: false, interactive: true) @(display.ValueEmpty ? "text-muted-foreground" : null) @(issue is not null ? "text-destructive" : null)"
                                 aria-label="@(Context.Locked ? display.ValueFullText : display.ValueText)"
-                                title="@(display.ValueFullText == display.ValueText ? null : display.ValueFullText)"
+                                aria-invalid="@(issue is not null ? "true" : null)"
+                                aria-description="@issue?.Message"
+                                title="@(issue?.Message ?? (display.ValueFullText == display.ValueText ? null : display.ValueFullText))"
                                 disabled="@Context.Disabled"
                                 aria-disabled="@(Context.ReadOnly ? "true" : null)">
                             @display.ValueLabel
@@ -156,6 +184,10 @@ else
 
     private readonly string _operatorSearchId = FilterIds.New("filter-op");
     private readonly string _editorFocusId = FilterIds.New("filter-value");
+    private readonly string _fieldSearchId = FilterIds.New("filter-field");
+    private bool _fieldOpen;
+    private IReadOnlyList<string> _pickerPath = Array.Empty<string>();
+    private string _pickerQuery = "";
     private bool _operatorOpen;
     private bool _valueOpen;
     private bool _menuOpen;
@@ -187,6 +219,7 @@ else
         {
             if (segment == FilterChipSegment.Operator && !_operatorOpen) _operatorOpen = true;
             else if (segment == FilterChipSegment.Value && !_valueOpen) OpenValue();
+            else if (segment == FilterChipSegment.Field && !_fieldOpen) OpenField();
             Context.ConsumeAutoOpen(Rule.Id, segment);
         }
         if (Field is { } f && f.ResolveValues is not null) Context.EnsureResolved(f, FilterValues.AsStrings(Rule.Value));
@@ -281,6 +314,34 @@ else
         }
     }
 
+    // ---- field ----
+    private void OpenField()
+    {
+        _pickerPath = Array.Empty<string>();
+        _pickerQuery = "";
+        _fieldOpen = true;
+    }
+
+    private void OnFieldOpenChanged(bool open)
+    {
+        if (open && Context.Locked) return;
+        if (open) OpenField(); else _fieldOpen = false;
+        if (!open) Context.SetFocus(Rule.Id, FilterChipSegment.Field);
+    }
+
+    /// <summary>A new field starts the rule over at its default condition, with the operator menu
+    /// open; the same field only closes the picker.</summary>
+    private void PickField(IReadOnlyList<string> path)
+    {
+        _fieldOpen = false;
+        if (path.SequenceEqual(Rule.Path)) { Context.SetFocus(Rule.Id, FilterChipSegment.Field); return; }
+        if (Context.Index.Get(path) is not { } field) return;
+        var explicitOperator = Context.ExplicitDefaultOperator(field);
+        Context.UpdateRule(Rule.Id, r => r with { Path = path, Operator = explicitOperator ?? "", Value = null, Negated = false });
+        var (segment, autoOpen) = Context.NextStepAfterField(field, explicitOperator);
+        Context.SetFocus(Rule.Id, segment, autoOpen);
+    }
+
     // ---- operator popover ----
     private void OnOperatorOpenChanged(bool open)
     {
@@ -365,7 +426,7 @@ else
         {
             case "ArrowRight" when e.AltKey:
             case "ArrowLeft" when e.AltKey:
-                if (locked) return;
+                if (locked || !Context.Reorderable) return;
                 Context.MoveNode(Rule.Id, e.Key == "ArrowRight" ? 1 : -1);
                 return;
             case "ArrowRight": Context.Owner.FocusChipAt(Index + 1); return;

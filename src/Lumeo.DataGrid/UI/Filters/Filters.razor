@@ -18,6 +18,10 @@
         {
             @ChildContent
         }
+        else if (Variant == FiltersVariant.Advanced)
+        {
+            <FiltersAdvanced Mode="AdvancedMode" Trigger="Trigger" Query="_ctx.Query" Draft="_ctx.Draft" FocusId="@_ctx.FocusId" AnnouncementSeq="_ctx.AnnouncementSeq" />
+        }
         else
         {
             @* Basic: the chip row. The toolbar owns the arrow keys between chips; each chip handles
@@ -131,11 +135,19 @@
     private IReadOnlyList<FilterField>? _indexedFields;
     private FilterLabels? _labelsParam;
     private FilterLabels? _defaultLabels;
+    private string? _defaultLabelsCulture;
     private string? _pendingFocusId;
 
     private bool IsControlled => Query is not null;
 
-    private string RootClass => Cx.Merge("flex flex-wrap items-center", Size == Lumeo.Size.Sm ? "gap-1.5" : "gap-2", Cx.When(_ctx.RuleCount == 0, "gap-0"), Class);
+    /// <summary>Every issue in the current query, including each field's own <see cref="FilterField.Validate"/>
+    /// message: what a host checks before it runs the query.</summary>
+    public IReadOnlyList<FilterIssue> CollectIssues() => _ctx.CollectIssues();
+
+    // The chip row wraps and centres its chips; the advanced builder is a block that fills its host.
+    private string RootClass => Variant == FiltersVariant.Advanced && ChildContent is null
+        ? Cx.Merge("flex w-full min-w-0 flex-col", Class)
+        : Cx.Merge("flex flex-wrap items-center", Size == Lumeo.Size.Sm ? "gap-1.5" : "gap-2", Cx.When(_ctx.RuleCount == 0, "gap-0"), Class);
     private string BarClass => Cx.Merge("flex flex-wrap items-center", Size == Lumeo.Size.Sm ? "gap-1.5" : "gap-2", Cx.When(_ctx.RuleCount == 0, "hidden"));
 
     protected override void OnInitialized()
@@ -153,7 +165,9 @@
         }
         if (Labels is null)
         {
-            _defaultLabels ??= FilterLabels.FromLocalizer(L);
+            // The defaults are a snapshot of the locale catalogue; a culture switch at runtime takes a new one.
+            var culture = System.Globalization.CultureInfo.CurrentUICulture.Name;
+            if (_defaultLabels is null || _defaultLabelsCulture != culture) { _defaultLabels = FilterLabels.FromLocalizer(L); _defaultLabelsCulture = culture; }
             if (!ReferenceEquals(_ctx.Labels, _defaultLabels)) { _ctx.Labels = _defaultLabels; _ctx.Catalogue = FilterOperators.Build(_defaultLabels.OperatorLabels); }
         }
         else if (!ReferenceEquals(_labelsParam, Labels))

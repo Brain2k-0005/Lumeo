@@ -188,4 +188,71 @@ public class FiltersTests : IAsyncLifetime
         Assert.Null(chip.QuerySelector("[data-segment='value']"));
         Assert.Equal("is empty", chip.QuerySelector("[data-segment='operator']")!.TextContent.Trim());
     }
+
+
+    // ---------------------------------------------------------------- review follow-ups
+
+    [Fact]
+    public void A_Fields_Default_Operator_Skips_The_Condition_Step()
+    {
+        FilterQuery? last = null;
+        var fields = new[] { new FilterField { Id = "title", Label = "Title", DefaultOperator = "starts_with" } };
+        var cut = _ctx.Render<Lumeo.Filters>(p => p.Add(f => f.Fields, fields).Add(f => f.QueryChanged, EventCallback.Factory.Create<FilterQuery>(this, q => last = q)));
+
+        cut.Find("[data-slot='filter-add']").Click();
+        cut.FindAll("[data-slot='filter-field-picker'] [data-slot='command-item']").First(e => e.TextContent.Contains("Title")).Click();
+
+        Assert.Equal("starts_with", last!.Flatten()[0].Operator);
+        Assert.Equal("starts with", Chips(cut)[0].QuerySelector("[data-segment='operator']")!.TextContent.Trim());
+        // the value editor opened right away
+        Assert.NotNull(cut.Find("[data-slot='filter-editor'] input"));
+    }
+
+    [Fact]
+    public void The_Field_Segment_Reopens_The_Picker_And_A_New_Field_Starts_The_Rule_Over()
+    {
+        FilterQuery? last = null;
+        var cut = Render(p => p.Add(f => f.DefaultQuery, Preset()).Add(f => f.QueryChanged, EventCallback.Factory.Create<FilterQuery>(this, q => last = q)));
+
+        Chips(cut)[0].QuerySelector("[data-segment='field']")!.Click();
+        cut.FindAll("[data-slot='filter-field-picker'] [data-slot='command-item']").First(e => e.TextContent.Contains("Title")).Click();
+
+        var rule = (FilterRule)last!.Rules[0];
+        Assert.Equal(("title", "", 0), (rule.Field, rule.Operator, rule.Values.Count));
+        Assert.Equal("Title", Chips(cut)[0].QuerySelector("[data-segment='field']")!.TextContent.Trim());
+        // and the condition menu opened for the new field
+        Assert.NotEmpty(cut.FindAll("[data-slot='filter-menu'] [data-slot='command-item']"));
+    }
+
+    [Fact]
+    public void Alt_Arrow_Reorders_Only_When_Reorderable()
+    {
+        FilterQuery? last = null;
+        var cut = Render(p => p.Add(f => f.DefaultQuery, Preset()).Add(f => f.QueryChanged, EventCallback.Factory.Create<FilterQuery>(this, q => last = q)));
+        Chips(cut)[0].Focus();
+        Chips(cut)[0].KeyDown(new KeyboardEventArgs { Key = "ArrowRight", AltKey = true });
+        Assert.Null(last);
+
+        var reorderable = Render(p => p.Add(f => f.DefaultQuery, Preset()).Add(f => f.Reorderable, true).Add(f => f.QueryChanged, EventCallback.Factory.Create<FilterQuery>(this, q => last = q)));
+        Chips(reorderable)[0].Focus();
+        Chips(reorderable)[0].KeyDown(new KeyboardEventArgs { Key = "ArrowRight", AltKey = true });
+        Assert.Equal("r2", last!.Rules[0].Id);
+    }
+
+    [Fact]
+    public void A_Fields_Validate_Message_Shows_On_The_Chip_And_In_CollectIssues()
+    {
+        var fields = new[] { new FilterField { Id = "amount", Label = "Amount", Kind = FilterValueKind.Number, Validate = c => c.Value is double d && d < 0 ? "No negatives" : null } };
+        var cut = _ctx.Render<Lumeo.Filters>(p => p.Add(f => f.Fields, fields).Add(f => f.DefaultQuery, FilterQuery.Of(new FilterRule("r", new[] { "amount" }, "gt", 5.0))));
+
+        Chips(cut)[0].QuerySelector("[data-segment='value']")!.Click();
+        cut.Find("[data-slot='filter-editor'] input").Input("-3");
+        cut.Find("[data-slot='filter-editor']").KeyDown(new KeyboardEventArgs { Key = "Enter" });
+
+        var value = Chips(cut)[0].QuerySelector("[data-segment='value']")!;
+        Assert.Equal("true", value.GetAttribute("aria-invalid"));
+        Assert.Equal("No negatives", value.GetAttribute("aria-description"));
+        var issue = Assert.Single(cut.Instance.CollectIssues());
+        Assert.Equal((FilterIssueReason.Custom, "No negatives"), (issue.Reason, issue.Message));
+    }
 }

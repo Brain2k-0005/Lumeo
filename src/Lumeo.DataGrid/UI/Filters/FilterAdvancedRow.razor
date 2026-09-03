@@ -1,0 +1,418 @@
+@namespace Lumeo
+@implements IDisposable
+
+@* One rule as a row of the advanced builder: combinator | field | condition | value | handle |
+   menu. A text or number value edits in place; every other value opens its editor in a popover.
+   A row added by the footer is pending until its field is picked and hides the rest until then. *@
+@{
+    var field = Context.Index.Get(Rule.Path);
+    var columns = Panel.ColumnsOf(Rule, Index, CanMove);
+    var isFirstRow = Depth == 1 && Index == 0;
+}
+@if (field is null)
+{
+    <div role="group"
+         aria-label="@($"{string.Join(Context.Labels.PathSeparator, Rule.Path)}, level {Depth}")"
+         data-slot="filter-row" data-node-id="@Rule.Id" data-parent-id="@ParentId" data-index="@Index" data-depth="@Depth" data-unknown="true"
+         class="@Cx.Join("flex min-w-0 items-center gap-1.5", DropIndicatorClass)">
+        <span class="min-w-0 flex-1 truncate text-sm text-muted-foreground">@string.Join(Context.Labels.PathSeparator, Rule.Path)</span>
+        <div class="flex shrink-0 items-center gap-0.5 pe-1 text-muted-foreground">
+            <button type="button" id="@Panel.CellId(Rule.Id, FilterChipSegment.Remove)" data-filter-cell="remove" tabindex="@(Panel.IsActive(Rule.Id, FilterChipSegment.Remove, columns, isFirstRow) ? 0 : -1)"
+                    class="@IconButtonClass(Context.Size)" aria-label="@Context.Labels.Remove" disabled="@Context.Disabled" aria-disabled="@(Context.ReadOnly ? "true" : null)"
+                    @onfocus="() => Context.SetFocus(Rule.Id, FilterChipSegment.Remove)" @onkeydown="e => Panel.HandleCellKey(Rule.Id, FilterChipSegment.Remove, e, false)" @onclick="() => Context.RemoveNode(Rule.Id)">
+                <SvgGlyph Svg="@(LumeoIcons.X)" class="h-4 w-4" />
+            </button>
+        </div>
+    </div>
+}
+else
+{
+    var operators = Context.ResolveOperators(field);
+    var op = FilterOperators.Get(operators, Rule.Operator);
+    var pending = Context.IsPending(Rule.Id);
+    var takesValue = Rule.Operator.Length > 0 && FilterOperators.TakesValue(op);
+    var inline = takesValue && FilterDisplay.UsesInlineEditor(Context, field, op);
+    var issue = Panel.IssueFor(Rule.Id);
+    var issueText = issue is null ? "" : Context.Labels.IssueLabel(issue);
+    var pathText = Context.Index.FormatPath(Rule.Path, Context.Labels.PathSeparator);
+    var operatorLabel = FilterDisplay.OperatorLabel(Context, Rule, op);
+    var valueText = FilterDisplay.ValueText(Context, Rule, field, op);
+    var valueFull = FilterDisplay.FullText(Context, Rule, field, op);
+    var valueEmpty = FilterValues.IsBlank(Rule.Value);
+    var f = field;
+    <div role="group"
+         aria-label="@($"{pathText} {operatorLabel}, level {Depth}")"
+         data-slot="filter-row"
+         data-node-id="@Rule.Id"
+         data-parent-id="@ParentId"
+         data-index="@Index"
+         data-depth="@Depth"
+         data-pending="@(pending ? "true" : null)"
+         class="@Cx.Join("group/row flex min-w-0 items-center gap-1.5", DropIndicatorClass)">
+        <div class="@CombinatorBoxClass">
+            <FilterCombinatorCell NodeId="@Rule.Id" ParentId="@ParentId" Index="Index" Combinator="Combinator" Active="@Panel.IsActive(Rule.Id, FilterChipSegment.Combinator, columns, isFirstRow)" />
+        </div>
+        <div class="flex min-w-0 flex-1 items-center gap-1.5">
+            <div class="@Cx.Join(CellBoxClass, "lumeo-filter-cell-field")">
+                <Popover Open="_pickerOpen" OpenChanged="OnPickerOpenChanged" Class="w-full">
+                    <PopoverTrigger AsChild>
+                        <ChildContentSlot Context="slot">
+                            <button type="button"
+                                    id="@Panel.CellId(Rule.Id, FilterChipSegment.Field)"
+                                    data-filter-cell="field"
+                                    tabindex="@(Panel.IsActive(Rule.Id, FilterChipSegment.Field, columns, isFirstRow) ? 0 : -1)"
+                                    @attributes="slot.Attributes"
+                                    @onclick="slot.OnClick"
+                                    class="@CellClass"
+                                    aria-label="@pathText"
+                                    title="@pathText"
+                                    disabled="@Context.Disabled"
+                                    aria-disabled="@(Context.ReadOnly ? "true" : null)"
+                                    @onfocus="() => Context.SetFocus(Rule.Id, FilterChipSegment.Field)"
+                                    @onkeydown="e => Panel.HandleCellKey(Rule.Id, FilterChipSegment.Field, e, false)">
+                                <span class="flex min-w-0 items-center gap-1.5 truncate">@f.Icon<span class="truncate">@pathText</span></span>
+                                <SvgGlyph Svg="@(LumeoIcons.ChevronDown)" class="h-4 w-4 shrink-0" />
+                            </button>
+                        </ChildContentSlot>
+                    </PopoverTrigger>
+                    <PopoverContent Align="Lumeo.Align.Start" Class="w-auto min-w-56 p-0" FocusTargetId="@_pickerSearchId">
+                        @if (_pickerOpen)
+                        {
+                            <FilterFieldPicker Path="_pickerPath" Query="@_pickerQuery" SearchId="@_pickerSearchId"
+                                               OnPathChange="p => { _pickerPath = p; _pickerQuery = string.Empty; }"
+                                               OnQueryChange="q => _pickerQuery = q"
+                                               OnSelect="PickField" />
+                        }
+                    </PopoverContent>
+                </Popover>
+            </div>
+            @if (!pending)
+            {
+                <div class="@Cx.Join(CellBoxClass, "lumeo-filter-cell-operator")">
+                    <Popover Open="_operatorOpen" OpenChanged="OnOperatorOpenChanged" Class="w-full">
+                        <PopoverTrigger AsChild>
+                            <ChildContentSlot Context="slot">
+                                <button type="button"
+                                        id="@Panel.CellId(Rule.Id, FilterChipSegment.Operator)"
+                                        data-filter-cell="operator"
+                                        tabindex="@(Panel.IsActive(Rule.Id, FilterChipSegment.Operator, columns, isFirstRow) ? 0 : -1)"
+                                        @attributes="slot.Attributes"
+                                        @onclick="slot.OnClick"
+                                        class="@Cx.Join(CellClass, "text-muted-foreground", Invalid(issue, FilterIssueColumn.Operator))"
+                                        title="@operatorLabel"
+                                        aria-invalid="@(issue?.Column == FilterIssueColumn.Operator ? "true" : null)"
+                                        aria-description="@(issue?.Column == FilterIssueColumn.Operator ? issueText : null)"
+                                        disabled="@Context.Disabled"
+                                        aria-disabled="@(Context.ReadOnly ? "true" : null)"
+                                        @onfocus="() => Context.SetFocus(Rule.Id, FilterChipSegment.Operator)"
+                                        @onkeydown="e => Panel.HandleCellKey(Rule.Id, FilterChipSegment.Operator, e, false)">
+                                    <span class="truncate">@operatorLabel</span>
+                                    <SvgGlyph Svg="@(LumeoIcons.ChevronDown)" class="h-4 w-4 shrink-0" />
+                                </button>
+                            </ChildContentSlot>
+                        </PopoverTrigger>
+                        <PopoverContent Align="Lumeo.Align.Start" Class="w-auto min-w-40 p-0" FocusTargetId="@_operatorSearchId">
+                            @if (_operatorOpen)
+                            {
+                                <FilterMenu Items="@FilterOperators.Visible(operators).Select(o => new FilterChoice(o.Value, o.Label)).ToList()"
+                                            Selected="@(Rule.Operator.Length == 0 ? Array.Empty<string>() : new[] { Rule.Operator })"
+                                            Searchable="false" AriaLabel="@f.Label" SearchPlaceholder="@Context.Labels.SearchOperators" MaxHeight="320"
+                                            AutoFocusId="@_operatorSearchId" OnSelectionChange="v => OnOperatorPick(v, operators)" />
+                            }
+                        </PopoverContent>
+                    </Popover>
+                </div>
+                <div class="@Cx.Join(CellBoxClass, "lumeo-filter-cell-value relative self-stretch")">
+                    @if (takesValue && inline)
+                    {
+                        <Input id="@Panel.CellId(Rule.Id, FilterChipSegment.Value)"
+                               data-filter-cell="value"
+                               data-filter-cell-input="true"
+                               tabindex="@(Panel.IsActive(Rule.Id, FilterChipSegment.Value, columns, isFirstRow) ? 0 : -1)"
+                               type="@(f.Kind == FilterValueKind.Number ? "number" : "text")"
+                               ShowStepButtons="false"
+                               Value="@_inlineDraft"
+                               OnInput="e => _inlineDraft = e.Value?.ToString() ?? string.Empty"
+                               Placeholder="@(f.Placeholder ?? Context.Labels.ValuePlaceholder)"
+                               Size="Context.Size"
+                               Class="@Cx.Join("w-full", issueText.Length > 0 ? "pe-7" : null, Invalid(issue, FilterIssueColumn.Value))"
+                               aria-label="@f.Label"
+                               aria-invalid="@(issue?.Column == FilterIssueColumn.Value ? "true" : null)"
+                               aria-description="@(issue?.Column == FilterIssueColumn.Value ? issueText : null)"
+                               Disabled="Context.Disabled"
+                               aria-disabled="@(Context.ReadOnly ? "true" : null)"
+                               readonly="@(Context.ReadOnly ? "true" : null)"
+                               @onfocus="() => Context.SetFocus(Rule.Id, FilterChipSegment.Value)"
+                               @onblur="CommitInline"
+                               @onkeydown="e => HandleInlineKey(e, f)" />
+                        @if (issueText.Length > 0)
+                        {
+                            <span data-slot="filter-row-issue" aria-hidden="true" title="@issueText" class="pointer-events-none absolute end-2 top-1/2 flex -translate-y-1/2 items-center text-destructive [&_svg]:size-3.5">
+                                <SvgGlyph Svg="@(LumeoIcons.CircleAlert)" />
+                            </span>
+                        }
+                    }
+                    else if (takesValue)
+                    {
+                        <Popover Open="_valueOpen" OpenChanged="OnValueOpenChanged" Class="w-full self-stretch">
+                            <PopoverTrigger AsChild>
+                                <ChildContentSlot Context="slot">
+                                    <button type="button"
+                                            id="@Panel.CellId(Rule.Id, FilterChipSegment.Value)"
+                                            data-filter-cell="value"
+                                            tabindex="@(Panel.IsActive(Rule.Id, FilterChipSegment.Value, columns, isFirstRow) ? 0 : -1)"
+                                            @attributes="slot.Attributes"
+                                            @onclick="slot.OnClick"
+                                            class="@Cx.Join(CellClass, "h-full", valueEmpty ? "text-muted-foreground" : null, Invalid(issue, FilterIssueColumn.Value))"
+                                            aria-label="@(Context.Locked ? valueFull : valueText)"
+                                            title="@valueFull"
+                                            aria-invalid="@(issue?.Column == FilterIssueColumn.Value ? "true" : null)"
+                                            aria-description="@(issue?.Column == FilterIssueColumn.Value ? issueText : null)"
+                                            disabled="@Context.Disabled"
+                                            aria-disabled="@(Context.ReadOnly ? "true" : null)"
+                                            @onfocus="() => Context.SetFocus(Rule.Id, FilterChipSegment.Value)"
+                                            @onkeydown="e => Panel.HandleCellKey(Rule.Id, FilterChipSegment.Value, e, false)">
+                                        <span class="min-w-0 flex-1 truncate text-start">
+                                            @if ((Context.ValueTemplate ?? f.ValueTemplate) is { } template)
+                                            {
+                                                @template(FilterDisplay.ValueContext(Context, Rule, f, op))
+                                            }
+                                            else
+                                            {
+                                                @valueText
+                                            }
+                                        </span>
+                                        @if (issueText.Length > 0)
+                                        {
+                                            <span data-slot="filter-row-issue" aria-hidden="true" title="@issueText" class="flex shrink-0 items-center text-destructive [&_svg]:size-3.5"><SvgGlyph Svg="@(LumeoIcons.CircleAlert)" /></span>
+                                        }
+                                    </button>
+                                </ChildContentSlot>
+                            </PopoverTrigger>
+                            <PopoverContent Align="Lumeo.Align.Start" Class="w-auto p-0" FocusTargetId="@_editorFocusId">
+                                @if (_valueOpen && op is not null && Context.ResolveEditor(f, op) is { } editor && _options is not null)
+                                {
+                                    @editor(EditorContext(f, op))
+                                }
+                            </PopoverContent>
+                        </Popover>
+                    }
+                </div>
+            }
+        </div>
+        <div class="flex shrink-0 items-center gap-0.5 pe-1 text-muted-foreground">
+            @if (CanMove)
+            {
+                <FilterRowHandle NodeId="@Rule.Id" Active="@Panel.IsActive(Rule.Id, FilterChipSegment.Drag, columns, isFirstRow)" />
+            }
+            <DropdownMenu Open="_menuOpen" OpenChanged="v => { if (v && Context.Locked) return; _menuOpen = v; }">
+                <DropdownMenuTrigger AsChild Disabled="Context.Disabled">
+                    <ChildContentSlot Context="slot">
+                        <button type="button"
+                                id="@Panel.CellId(Rule.Id, FilterChipSegment.Menu)"
+                                data-filter-cell="menu"
+                                tabindex="@(Panel.IsActive(Rule.Id, FilterChipSegment.Menu, columns, isFirstRow) ? 0 : -1)"
+                                @attributes="slot.Attributes"
+                                @onclick="slot.OnClick"
+                                class="@IconButtonClass(Context.Size)"
+                                aria-label="@string.Format(Context.Labels.ChipMenu, f.Label)"
+                                disabled="@Context.Disabled"
+                                aria-disabled="@(Context.ReadOnly ? "true" : null)"
+                                @onfocus="() => Context.SetFocus(Rule.Id, FilterChipSegment.Menu)"
+                                @onkeydown="e => Panel.HandleCellKey(Rule.Id, FilterChipSegment.Menu, e, false)">
+                            <SvgGlyph Svg="@(LumeoIcons.EllipsisVertical)" class="h-4 w-4" />
+                        </button>
+                    </ChildContentSlot>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent Align="Lumeo.Align.End" Class="@Cx.Merge(FilterStyles.MenuClass, Context.MenuClass)">
+                    <FilterRuleMenuItems RuleId="@Rule.Id" AllowGrouping="true" />
+                </DropdownMenuContent>
+            </DropdownMenu>
+        </div>
+    </div>
+}
+
+@code {
+    [CascadingParameter] public FiltersContext Context { get; set; } = default!;
+    [CascadingParameter] public FiltersAdvancedPanel Panel { get; set; } = default!;
+    [Parameter, EditorRequired] public FilterRule Rule { get; set; } = default!;
+    [Parameter] public int Index { get; set; }
+    [Parameter] public string ParentId { get; set; } = "";
+    [Parameter] public FilterCombinator Combinator { get; set; }
+    [Parameter] public int Depth { get; set; } = 1;
+
+    internal const string DropIndicatorClass = "relative rounded-md data-[dragging]:opacity-60 data-[drop-edge]:after:absolute data-[drop-edge]:after:start-0 data-[drop-edge]:after:end-1 data-[drop-edge]:after:z-10 data-[drop-edge]:after:h-0.5 data-[drop-edge]:after:bg-primary data-[drop-edge=before]:after:bottom-full data-[drop-edge=before]:after:mb-[5px] data-[drop-edge=after]:after:top-full data-[drop-edge=after]:after:mt-[5px]";
+    internal const string CombinatorBoxClass = "@container/cell me-1.5 flex w-16 min-w-0 shrink-0 items-center justify-center";
+    internal const string CellBoxClass = "@container/cell flex min-w-0 shrink grow-0";
+    internal static string IconButtonClass(Lumeo.Size size) => Cx.Join(
+        "inline-flex shrink-0 items-center justify-center rounded-md text-muted-foreground hover:inset-ring hover:inset-ring-border hover:text-foreground focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none data-[state=open]:inset-ring data-[state=open]:inset-ring-border",
+        FilterStyles.ControlHeight(size), FilterStyles.IconWidth(size));
+
+    private string CellClass => Cx.Join(
+        "inline-flex w-full min-w-0 items-center justify-between gap-1.5 rounded-md border border-input bg-background text-sm font-normal shadow-xs [&>svg]:text-muted-foreground hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none @max-[7rem]/cell:gap-0 @max-[7rem]/cell:[&>svg]:hidden",
+        FilterStyles.ControlHeight(Context.Size), FilterStyles.PaddingX(Context.Size));
+
+    private static string? Invalid(FilterIssue? issue, FilterIssueColumn column) => issue?.Column == column ? "ring-1 ring-destructive/40" : null;
+
+    private readonly string _pickerSearchId = FilterIds.New("filter-field");
+    private readonly string _operatorSearchId = FilterIds.New("filter-op");
+    private readonly string _editorFocusId = FilterIds.New("filter-value");
+    private bool _pickerOpen, _operatorOpen, _valueOpen, _menuOpen;
+    private IReadOnlyList<string> _pickerPath = Array.Empty<string>();
+    private string _pickerQuery = "";
+    private object? _valueDraft;
+    private FilterOptionsState? _options;
+    private string _inlineDraft = "";
+    private string _inlineSeed = "";
+
+    private bool CanMove => Context.Reorderable && (ParentId != Panel.Query.Id || Panel.Query.Rules.Count > 1);
+
+    protected override void OnParametersSet()
+    {
+        var committed = Rule.Value switch
+        {
+            null => "",
+            double d => d.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            IFormattable fm => fm.ToString(null, System.Globalization.CultureInfo.InvariantCulture) ?? "",
+            _ => Rule.Value.ToString() ?? "",
+        };
+        if (committed != _inlineSeed) { _inlineSeed = committed; _inlineDraft = committed; }
+
+        if (Context.FocusId == Rule.Id && Context.AutoOpen && Context.FocusSegment is { } segment && !Context.Locked)
+        {
+            switch (segment)
+            {
+                case FilterChipSegment.Field:
+                    if (!_pickerOpen) { _pickerPath = Rule.Path.Take(Math.Max(0, Rule.Path.Count - 1)).ToList(); _pickerQuery = ""; _pickerOpen = true; }
+                    break;
+                case FilterChipSegment.Operator:
+                    _operatorOpen = true;
+                    break;
+                case FilterChipSegment.Value:
+                    if (Context.Index.Get(Rule.Path) is { } field && FilterDisplay.UsesInlineEditor(Context, field, FilterOperators.Get(Context.ResolveOperators(field), Rule.Operator)))
+                        _ = Context.FocusElement(Panel.CellId(Rule.Id, FilterChipSegment.Value));
+                    else if (!_valueOpen) OpenValue();
+                    break;
+            }
+            Context.ConsumeAutoOpen(Rule.Id, segment);
+        }
+        if (Context.Index.Get(Rule.Path) is { ResolveValues: not null } rf) Context.EnsureResolved(rf, FilterValues.AsStrings(Rule.Value));
+    }
+
+    // ---- field ----
+    private void OnPickerOpenChanged(bool open)
+    {
+        if (open && Context.Locked) return;
+        if (open) { _pickerPath = Rule.Path.Take(Math.Max(0, Rule.Path.Count - 1)).ToList(); _pickerQuery = ""; }
+        _pickerOpen = open;
+        if (!open) Context.SetFocus(Rule.Id, FilterChipSegment.Field);
+    }
+
+    private void PickField(IReadOnlyList<string> path)
+    {
+        _pickerOpen = false;
+        var wasPending = Context.IsPending(Rule.Id);
+        Context.ResolvePending(Rule.Id);
+        if (path.SequenceEqual(Rule.Path))
+        {
+            Context.SetFocus(Rule.Id, wasPending ? FilterChipSegment.Operator : FilterChipSegment.Field, autoOpen: wasPending);
+            return;
+        }
+        var field = Context.Index.Get(path);
+        // A pending row takes the field's explicit default operator (if any) and moves on to the
+        // value; without one its condition menu opens. A changed field on a settled row starts over.
+        var explicitOperator = field is null ? null : Context.ExplicitDefaultOperator(field);
+        var op = wasPending ? explicitOperator ?? "" : field is null ? "" : FilterOperators.Default(field, Context.ResolveOperators(field)) ?? "";
+        Context.UpdateRule(Rule.Id, r => r with { Path = path, Operator = op, Value = null, Negated = false });
+        if (wasPending && field is not null)
+        {
+            var (segment, autoOpen) = Context.NextStepAfterField(field, explicitOperator);
+            Context.SetFocus(Rule.Id, segment, autoOpen);
+        }
+        else Context.SetFocus(Rule.Id, FilterChipSegment.Field);
+    }
+
+    // ---- operator ----
+    private void OnOperatorOpenChanged(bool open)
+    {
+        if (open && Context.Locked) return;
+        _operatorOpen = open;
+        if (!open) Context.SetFocus(Rule.Id, FilterChipSegment.Operator);
+    }
+
+    private void OnOperatorPick(IReadOnlyList<string> values, IReadOnlyList<FilterOperatorDef> operators)
+    {
+        var value = values.Count > 0 ? values[0] : null;
+        _operatorOpen = false;
+        if (value is null) { Context.SetFocus(Rule.Id, FilterChipSegment.Operator); return; }
+        var chosen = FilterOperators.Get(operators, value);
+        var current = FilterOperators.Get(operators, Rule.Operator);
+        var building = Rule.Operator.Length == 0;
+        Context.UpdateRule(Rule.Id, r => r with { Operator = value, Value = FilterValues.Coerce(r.Value, FilterOperators.ArityOf(current), FilterOperators.ArityOf(chosen)) });
+        if (building && FilterOperators.TakesValue(chosen)) Context.SetFocus(Rule.Id, FilterChipSegment.Value, autoOpen: true);
+        else Context.SetFocus(Rule.Id, FilterChipSegment.Operator);
+    }
+
+    // ---- inline value ----
+    private void CommitInline()
+    {
+        if (_inlineDraft == _inlineSeed) return;
+        var field = Context.Index.Get(Rule.Path);
+        object? next;
+        if (field?.Kind == FilterValueKind.Number)
+        {
+            var text = _inlineDraft.Trim();
+            if (text.Length == 0) next = null;
+            else if (double.TryParse(text, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var d)) next = d;
+            else { _inlineDraft = _inlineSeed; return; }
+        }
+        else next = _inlineDraft;
+        Context.UpdateRule(Rule.Id, r => r with { Value = next });
+    }
+
+    private async Task HandleInlineKey(KeyboardEventArgs e, FilterField field)
+    {
+        if (e.Key == "Enter") { CommitInline(); return; }
+        if (e.Key == "Escape") { _inlineDraft = _inlineSeed; return; }
+        await Panel.HandleCellKey(Rule.Id, FilterChipSegment.Value, e, editing: true);
+    }
+
+    // ---- value popover ----
+    private void OpenValue()
+    {
+        if (Context.Index.Get(Rule.Path) is not { } field) return;
+        _valueDraft = Rule.Value;
+        _options?.Dispose();
+        _options = new FilterOptionsState(field, Context, enabled: true, () => _ = InvokeAsync(StateHasChanged));
+        _valueOpen = true;
+    }
+
+    private void CloseValue()
+    {
+        _valueOpen = false;
+        _options?.Dispose();
+        _options = null;
+        Context.SetFocus(Rule.Id, FilterChipSegment.Value);
+    }
+
+    private void OnValueOpenChanged(bool open)
+    {
+        if (open && Context.Locked) return;
+        if (open) OpenValue(); else CloseValue();
+    }
+
+    private FilterEditorContext EditorContext(FilterField field, FilterOperatorDef op) => new(
+        field, op, _valueDraft, FilterEditorHost.Amend, _options!, Context.Labels, Context.Size, _editorFocusId,
+        setValue: v => _valueDraft = v,
+        commit: (v, close) =>
+        {
+            Context.UpdateRule(Rule.Id, r => r with { Value = v });
+            _valueDraft = v;
+            if (close) CloseValue();
+            return Task.CompletedTask;
+        },
+        cancel: CloseValue,
+        back: CloseValue);
+
+    public void Dispose() => _options?.Dispose();
+}

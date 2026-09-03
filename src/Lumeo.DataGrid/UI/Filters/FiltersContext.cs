@@ -15,6 +15,8 @@ public sealed class FiltersContext
     private readonly Dictionary<string, HashSet<string>> _claimed = new();
     private int _idCounter;
     private readonly string _idSeed;
+    private readonly HashSet<string> _pending = new();
+    private readonly HashSet<string> _touched = new();
 
     internal FiltersContext(Filters owner, string idSeed)
     {
@@ -178,9 +180,86 @@ public sealed class FiltersContext
     public void UpdateRule(string id, Func<FilterRule, FilterRule> update)
     {
         if (Locked) return;
+        var before = FilterQueries.FindRule(Query, id);
         var next = FilterQueries.UpdateRule(Query, id, update);
         if (ReferenceEquals(next, Query)) return;
-        Emit(next, FilterChangeReason.Update, FilterQueries.FindRule(next, id));
+        var after = FilterQueries.FindRule(next, id);
+        if (before is not null && after is not null)
+        {
+            // A new field starts the row over; an edited value makes its validation visible.
+            if (!before.Path.SequenceEqual(after.Path)) _touched.Remove(id);
+            else if (!Equals(before.Value, after.Value)) _touched.Add(id);
+        }
+        Emit(next, FilterChangeReason.Update, after);
+    }
+
+    /// <summary>True for a row added by the advanced builder that has not picked its field yet:
+    /// its condition and value stay hidden until then.</summary>
+    public bool IsPending(string id) => _pending.Contains(id);
+
+    /// <summary>The row picked its field.</summary>
+    public void ResolvePending(string id)
+    {
+        if (_pending.Remove(id)) Render();
+    }
+
+    /// <summary>True once the row's value was edited; a field's own validation shows only then.</summary>
+    public bool IsTouched(string id) => _touched.Contains(id);
+
+    /// <summary>The operator a new rule of the field starts with when the field names one through
+    /// <see cref="FilterField.DefaultOperator"/>; null otherwise, so the condition menu opens instead.</summary>
+    internal string? ExplicitDefaultOperator(FilterField field)
+        => string.IsNullOrEmpty(field.DefaultOperator) ? null : FilterOperators.Get(ResolveOperators(field), field.DefaultOperator)?.Value;
+
+    /// <summary>Every issue in the query (the current one by default): a rule without an operator or
+    /// value, half or reversed ranges, empty groups, and each field's own <see cref="FilterField.Validate"/>
+    /// message, resolved against the field's operator catalogue.</summary>
+    public IReadOnlyList<FilterIssue> CollectIssues(FilterQuery? query = null)
+        => FilterQueries.CollectIssues(query ?? Query,
+            rule => Index.Get(rule.Path) is { } f ? FilterOperators.ArityOf(FilterOperators.Get(ResolveOperators(f), rule.Operator)) : null,
+            rule =>
+            {
+                if (Index.Get(rule.Path) is not { Validate: not null } f) return null;
+                var op = FilterOperators.Get(ResolveOperators(f), rule.Operator);
+                if (op is null) return null;
+                return f.Validate(new FilterValidateContext(rule.Value, rule.Values, f, op, op.Arity, rule, Labels));
+            });
+
+    private FilterQuery? _issueQuery;
+    private Dictionary<string, FilterIssue> _issueMap = new();
+
+    /// <summary>The custom issues a rule shows: its field's message, once the value was edited.</summary>
+    public IReadOnlyDictionary<string, FilterIssue> VisibleIssues
+    {
+        get
+        {
+            if (!ReferenceEquals(_issueQuery, Query))
+            {
+                _issueQuery = Query;
+                _issueMap = CollectIssues().Where(i => i.Reason == FilterIssueReason.Custom && _touched.Contains(i.NodeId)).ToDictionary(i => i.NodeId);
+            }
+            return _issueMap;
+        }
+    }
+
+    /// <summary>The issue a rule shows, or null.</summary>
+    public FilterIssue? IssueFor(string ruleId) => VisibleIssues.GetValueOrDefault(ruleId);
+
+    /// <summary>Adds a row for the first pickable field with no condition, pending its field pick,
+    /// and asks its field cell to open. Returns the new rule's id, or null when locked or no
+    /// field is pickable.</summary>
+    public string? AddRow(string? parentId = null)
+    {
+        if (Locked) return null;
+        var entry = Index.All.FirstOrDefault(e => e.Field.IsPickable);
+        if (entry.Field is null) return null;
+        var id = NextId();
+        var next = FilterQueries.Insert(Query, new FilterRule(id, entry.Path, ""), parentId);
+        if (!Emit(next, FilterChangeReason.Add, FilterQueries.FindRule(next, id))) return null;
+        _pending.Add(id);
+        Announce(Labels.CountAnnouncement(FilterQueries.Count(next)));
+        SetFocus(id, FilterChipSegment.Field, autoOpen: true);
+        return id;
     }
 
     public void RemoveNode(string id)
@@ -189,6 +268,8 @@ public sealed class FiltersContext
         var removed = FilterQueries.FindRule(Query, id);
         var next = FilterQueries.Remove(Query, id);
         if (ReferenceEquals(next, Query)) return;
+        _pending.Remove(id);
+        _touched.Remove(id);
         if (!Emit(next, FilterChangeReason.Remove, removed)) return;
         Announce(removed is not null ? Labels.CountAnnouncement(FilterQueries.Count(next)) : Labels.GroupRemoved);
     }
@@ -343,17 +424,29 @@ public sealed class FiltersContext
         if (Index.Get(path) is not { } field) return;
         var defaultOperator = FilterOperators.Default(field, ResolveOperators(field));
         var draft = Draft.SelectField(path, defaultOperator);
+        // A field that names its default operator skips the condition step and opens the value.
+        var explicitOperator = ExplicitDefaultOperator(field);
+        var (segment, autoOpen) = NextStepAfterField(field, explicitOperator);
         if (draft.RuleId is { } ruleId)
         {
             Draft = null;
-            UpdateRule(ruleId, r => r with { Path = path, Operator = "", Value = null, Negated = false });
-            SetFocus(ruleId, FilterChipSegment.Operator, autoOpen: true);
+            UpdateRule(ruleId, r => r with { Path = path, Operator = explicitOperator ?? "", Value = null, Negated = false });
+            SetFocus(ruleId, segment, autoOpen);
             return;
         }
         var id = NextId();
         Draft = null;
-        AddRule(new FilterRule(id, path, ""));
-        SetFocus(id, FilterChipSegment.Operator, autoOpen: true);
+        AddRule(new FilterRule(id, path, explicitOperator ?? ""));
+        SetFocus(id, segment, autoOpen);
+    }
+
+    /// <summary>Where a rule goes after its field: the condition menu, or straight to the value when
+    /// the field's default operator is set and takes one.</summary>
+    internal (FilterChipSegment Segment, bool AutoOpen) NextStepAfterField(FilterField field, string? explicitOperator)
+    {
+        if (explicitOperator is null) return (FilterChipSegment.Operator, true);
+        var arity = FilterOperators.ArityOf(FilterOperators.Get(ResolveOperators(field), explicitOperator));
+        return arity == FilterArity.None ? (FilterChipSegment.Operator, false) : (FilterChipSegment.Value, true);
     }
 
     internal void Render() => _owner.RequestRender();

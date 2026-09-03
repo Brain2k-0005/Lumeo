@@ -568,7 +568,7 @@ internal static partial class LumeoDefaultStrings
         ["Filters.DateYears"] = "yıl",
         ["Filters.DateFrom"] = "Başlangıç",
         ["Filters.DateTo"] = "Bitiş",
-        ["Filters.DatePlaceholder"] = "bugün, gelecek hafta, 01.05.2024...",
+        ["Filters.DatePlaceholder"] = "bugün, 1 hafta sonra, 01.05.2024...",
         ["Filters.Op.contains"] = "içerir",
         ["Filters.Op.not_contains"] = "içermez",
         ["Filters.Op.starts_with"] = "ile başlar",

@@ -568,7 +568,7 @@ internal static partial class LumeoDefaultStrings
         ["Filters.DateYears"] = "年",
         ["Filters.DateFrom"] = "起始",
         ["Filters.DateTo"] = "结束",
-        ["Filters.DatePlaceholder"] = "今天、下周、2024-05-01...",
+        ["Filters.DatePlaceholder"] = "今天、1周后、2024-05-01...",
         ["Filters.Op.contains"] = "包含",
         ["Filters.Op.not_contains"] = "不包含",
         ["Filters.Op.starts_with"] = "开头为",

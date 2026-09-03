@@ -57,6 +57,17 @@
         </Stack>
     </ComponentDemo>
 
+    <ComponentDemo Title="Advanced: nested conditions" Description="Variant=Advanced renders a condition builder: rows with a combinator per group, groups that nest, a menu to wrap a row in a group or move it, and Alt with the arrow keys or the drag handle (Reorderable) to reorder. Inline here; the default puts it behind a trigger in a popover." Code="@_advancedCode">
+        <Stack Gap="4" Class="w-full">
+            <Filters Fields="_fields" @bind-Query="_advancedQuery" Variant="FiltersVariant.Advanced" AdvancedMode="FiltersAdvancedMode.Inline" Reorderable="true" />
+            <QueryDump Query="_advancedQuery" />
+        </Stack>
+    </ComponentDemo>
+
+    <ComponentDemo Title="Advanced in a popover" Description="The same builder behind a trigger that counts the rules; a chip row can hand over to it through OnConvertToAdvanced." Code="@_advancedPopoverCode">
+        <Filters Fields="_fields" DefaultQuery="_advancedPreset" Variant="FiltersVariant.Advanced" Reorderable="true" />
+    </ComponentDemo>
+
     <ComponentDemo Title="Events and veto" Description="OnQueryChanged carries the new query and the reason; OnBeforeQueryChange returns false to refuse a change. Here a fourth rule is refused." Code="@_eventsCode">
         <Stack Gap="3">
             <Filters Fields="_fields" @bind-Query="_eventsQuery" OnQueryChanged="c => _lastReason = c.Details.Reason.ToString()" OnBeforeQueryChange="c => c.Query.Count <= 3" />
@@ -89,6 +100,8 @@
                 <code class="rounded bg-muted px-1 text-xs">Flatten()</code> returns the complete rules as <code class="rounded bg-muted px-1 text-xs">FilterTerm</code>s (Field, Operator, Values, Negated) for an API call;
                 <code class="rounded bg-muted px-1 text-xs">FilterQueries</code> holds every operation (insert, update, remove, duplicate, move, wrap, unwrap, prune, CollectIssues) as pure functions.
                 A value is a string, double, bool or <code class="rounded bg-muted px-1 text-xs">FilterDateValue</code>, an <code class="rounded bg-muted px-1 text-xs">IReadOnlyList&lt;string&gt;</code> for a many-valued operator, or a <code class="rounded bg-muted px-1 text-xs">FilterRange</code>.
+                The tree round-trips through <code class="rounded bg-muted px-1 text-xs">System.Text.Json</code> (nodes carry a <code class="rounded bg-muted px-1 text-xs">$type</code> discriminator, values come back in their shape), so a saved search stores the query as is.
+                <code class="rounded bg-muted px-1 text-xs">CollectIssues()</code> on the component reports what is not ready to run, a field's own <code class="rounded bg-muted px-1 text-xs">Validate</code> message included.
             </Lumeo.Text>
         </Stack>
     </Stack>
@@ -143,6 +156,16 @@
 
     private FilterQuery _query = FilterQuery.Empty();
     private FilterQuery _eventsQuery = FilterQuery.Empty();
+    private FilterQuery _advancedQuery = FilterQuery.Of(
+        new FilterRule("a1", new[] { "status" }, "is", "review"),
+        new FilterGroup("ag", FilterCombinator.Or, new FilterNode[]
+        {
+            new FilterRule("a2", new[] { "amount" }, "gt", 100.0),
+            new FilterRule("a3", new[] { "tags" }, "has_any_of", new List<string> { "urgent" }),
+        }));
+    private readonly FilterQuery _advancedPreset = FilterQuery.Of(
+        new FilterRule("p1", new[] { "title" }, "contains", "invoice"),
+        new FilterRule("p2", new[] { "archived" }, "is", false));
     private string? _lastReason;
 
     private readonly FilterQuery _preset = FilterQuery.Of(
@@ -261,6 +284,20 @@ new FilterField
     Id = ""rating"", Label = ""Rating"", Kind = FilterValueKind.Number,
     EditorTemplate = ctx => @<StarPicker Value=""ctx.Value"" OnPick=""n => ctx.Commit(n)"" />,
 }";
+
+    private string _advancedCode = @"<Filters Fields=""_fields"" @bind-Query=""_query""
+         Variant=""FiltersVariant.Advanced"" AdvancedMode=""FiltersAdvancedMode.Inline"" Reorderable=""true"" />
+
+// a query with a nested group: title contains ""a"" AND (amount > 100 OR tags has any of urgent)
+FilterQuery.Of(
+    new FilterRule(""a1"", new[] { ""status"" }, ""is"", ""review""),
+    new FilterGroup(""ag"", FilterCombinator.Or, new FilterNode[]
+    {
+        new FilterRule(""a2"", new[] { ""amount"" }, ""gt"", 100.0),
+        new FilterRule(""a3"", new[] { ""tags"" }, ""has_any_of"", new List<string> { ""urgent"" }),
+    }))";
+
+    private string _advancedPopoverCode = @"<Filters Fields=""_fields"" Variant=""FiltersVariant.Advanced"" Reorderable=""true"" />";
 
     private string _lockedCode = @"<Filters Fields=""_fields"" DefaultQuery=""_preset"" ReadOnly=""true"" ShowClear=""true"" />
 <Filters Fields=""_fields"" DefaultQuery=""_preset"" Disabled=""true"" ShowClear=""true"" />";

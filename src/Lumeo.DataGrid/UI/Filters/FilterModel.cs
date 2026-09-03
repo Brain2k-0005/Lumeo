@@ -1,3 +1,5 @@
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Components;
 
 namespace Lumeo;
@@ -35,20 +37,26 @@ public enum FiltersAdvancedMode { Popover, Inline }
 /// <summary>How selected options sort inside an option list when <see cref="FilterField.PinSelected"/> is on.</summary>
 public enum FilterSortSelected { None, Label, Snapshot }
 
-/// <summary>A node of the query tree: a <see cref="FilterRule"/> or a <see cref="FilterGroup"/>.</summary>
+/// <summary>A node of the query tree: a <see cref="FilterRule"/> or a <see cref="FilterGroup"/>. The
+/// tree round-trips through <c>System.Text.Json</c>: nodes carry a <c>$type</c> discriminator and a
+/// rule's value comes back as the shape it went in (string, number, bool, list, range or date).</summary>
+[JsonPolymorphic(TypeDiscriminatorPropertyName = "$type")]
+[JsonDerivedType(typeof(FilterRule), "rule")]
+[JsonDerivedType(typeof(FilterGroup), "group")]
+[JsonDerivedType(typeof(FilterQuery), "query")]
 public abstract record FilterNode(string Id);
 
 /// <summary>One condition: a field (as a path, so nested fields work), an operator and a value.
 /// <see cref="Value"/> is a scalar (string, double, bool, DateOnly), an <c>IReadOnlyList&lt;string&gt;</c>
 /// for a <see cref="FilterArity.Many"/> operator, or a <see cref="FilterRange"/> for a range.</summary>
-public sealed record FilterRule(string Id, IReadOnlyList<string> Path, string Operator, object? Value = null, bool Negated = false) : FilterNode(Id)
+public sealed record FilterRule(string Id, IReadOnlyList<string> Path, string Operator, [property: JsonConverter(typeof(FilterValueJsonConverter))] object? Value = null, bool Negated = false) : FilterNode(Id)
 {
     /// <summary>The first path segment: the top-level field id.</summary>
-    public string Field => Path.Count > 0 ? Path[0] : "";
+    [JsonIgnore] public string Field => Path.Count > 0 ? Path[0] : "";
 
     /// <summary>The value as a list: empty for null, the list itself for a many-valued rule, the two
     /// bounds for a range, otherwise the one scalar.</summary>
-    public IReadOnlyList<object?> Values => FilterValues.AsList(Value);
+    [JsonIgnore] public IReadOnlyList<object?> Values => FilterValues.AsList(Value);
 }
 
 /// <summary>Rules (and nested groups) joined by one combinator.</summary>
@@ -68,10 +76,61 @@ public sealed record FilterQuery(string Id, FilterCombinator Combinator, IReadOn
     public IReadOnlyList<FilterTerm> Flatten() => FilterQueries.FlattenTerms(this);
 
     /// <summary>The number of rules in the tree.</summary>
-    public int Count => FilterQueries.Count(this);
+    [JsonIgnore] public int Count => FilterQueries.Count(this);
 
     /// <summary>True when no rule exists.</summary>
-    public bool IsEmpty => Count == 0;
+    [JsonIgnore] public bool IsEmpty => Count == 0;
+}
+
+/// <summary>Reads a rule value back into the shape the bar works with: a string, a number, a bool,
+/// a list of strings, a <see cref="FilterRange"/> (an object with <c>from</c>/<c>to</c>) or a
+/// <see cref="FilterDateValue"/> (an object with <c>date</c>/<c>relative</c>). Writes whatever the
+/// value is.</summary>
+public sealed class FilterValueJsonConverter : JsonConverter<object?>
+{
+    public override bool HandleNull => true;
+
+    public override object? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+        => FromElement(JsonElement.ParseValue(ref reader), options);
+
+    public override void Write(Utf8JsonWriter writer, object? value, JsonSerializerOptions options)
+    {
+        if (value is null) { writer.WriteNullValue(); return; }
+        JsonSerializer.Serialize(writer, value, value.GetType(), options);
+    }
+
+    internal static object? FromElement(JsonElement e, JsonSerializerOptions options) => e.ValueKind switch
+    {
+        JsonValueKind.Null or JsonValueKind.Undefined => null,
+        JsonValueKind.String => e.GetString(),
+        JsonValueKind.Number => e.GetDouble(),
+        JsonValueKind.True => true,
+        JsonValueKind.False => false,
+        JsonValueKind.Array => FromArray(e, options),
+        JsonValueKind.Object => FromObject(e, options),
+        _ => null,
+    };
+
+    private static object FromArray(JsonElement e, JsonSerializerOptions options)
+    {
+        var items = e.EnumerateArray().Select(x => FromElement(x, options)).ToList();
+        return items.All(i => i is string) ? items.Cast<string>().ToList() : items;
+    }
+
+    private static object FromObject(JsonElement e, JsonSerializerOptions options)
+    {
+        JsonElement? Prop(string name)
+        {
+            foreach (var p in e.EnumerateObject())
+                if (string.Equals(p.Name, name, StringComparison.OrdinalIgnoreCase)) return p.Value;
+            return null;
+        }
+        if (Prop("from") is not null || Prop("to") is not null)
+            return new FilterRange(Prop("from") is { } f ? FromElement(f, options) : null, Prop("to") is { } t ? FromElement(t, options) : null);
+        if (Prop("date") is not null || Prop("relative") is not null)
+            return JsonSerializer.Deserialize<FilterDateValue>(e.GetRawText(), options) ?? new FilterDateValue();
+        return e.Clone();
+    }
 }
 
 /// <summary>The two bounds of a range value; either may be null while the user is still typing.</summary>

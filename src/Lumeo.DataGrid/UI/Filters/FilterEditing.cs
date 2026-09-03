@@ -90,7 +90,15 @@ public sealed class FilterOptionsState : IDisposable
     {
         if (Query == query) return;
         Query = query;
-        if (_enabled && IsAsync) Schedule(250);
+        if (_enabled && IsAsync)
+        {
+            // A page that arrives for the old text after this must not land: cancel it now and
+            // mark the list as loading while the new request waits for the debounce.
+            _cts?.Cancel();
+            _request++;
+            Loading = true; Error = false; HasMore = false;
+            Schedule(250);
+        }
         _changed();
     }
 

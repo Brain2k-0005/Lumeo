@@ -65,11 +65,21 @@ public static class FilterQueries
 
     private static FilterQuery AsQuery(FilterGroup group) => (FilterQuery)group;
 
-    /// <summary>Replaces the rule with the given id by a changed copy.</summary>
+    /// <summary>Replaces the rule with the given id by a changed copy; the same tree comes back when
+    /// the copy equals the rule.</summary>
     public static FilterQuery UpdateRule(FilterQuery query, string id, Func<FilterRule, FilterRule> update)
         => AsQuery(Rewrite(query,
             g => g.Rules.Any(c => c.Id == id && c is FilterRule),
-            g => g with { Rules = g.Rules.Select(c => c.Id == id && c is FilterRule r ? update(r) : c).ToList() }));
+            g =>
+            {
+                var index = g.Rules.ToList().FindIndex(c => c.Id == id && c is FilterRule);
+                var before = (FilterRule)g.Rules[index];
+                var after = update(before);
+                if (ReferenceEquals(after, before) || after.Equals(before)) return g;
+                var rules = g.Rules.ToList();
+                rules[index] = after;
+                return g with { Rules = rules };
+            }));
 
     /// <summary>Removes the node; a group left empty by that is removed too.</summary>
     public static FilterQuery Remove(FilterQuery query, string id)

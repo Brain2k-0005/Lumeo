@@ -502,7 +502,7 @@ internal static partial class LumeoDefaultStrings
         ["Filters.DateYears"] = "jaar",
         ["Filters.DateFrom"] = "Van",
         ["Filters.DateTo"] = "Tot",
-        ["Filters.DatePlaceholder"] = "vandaag, volgende week, 01-05-2024...",
+        ["Filters.DatePlaceholder"] = "vandaag, over 1 week, 01-05-2024...",
         ["Filters.Op.contains"] = "bevat",
         ["Filters.Op.not_contains"] = "bevat niet",
         ["Filters.Op.starts_with"] = "begint met",

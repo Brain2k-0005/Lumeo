@@ -1478,7 +1478,7 @@ internal static partial class LumeoDefaultStrings
         ["Filters.DateYears"] = "Jahren",
         ["Filters.DateFrom"] = "Von",
         ["Filters.DateTo"] = "Bis",
-        ["Filters.DatePlaceholder"] = "heute, nächste Woche, 01.05.2024...",
+        ["Filters.DatePlaceholder"] = "heute, in 1 Woche, 01.05.2024...",
         ["Filters.Op.contains"] = "enthält",
         ["Filters.Op.not_contains"] = "enthält nicht",
         ["Filters.Op.starts_with"] = "beginnt mit",

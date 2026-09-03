@@ -573,7 +573,7 @@ internal static partial class LumeoDefaultStrings
         ["Filters.DateYears"] = "г.",
         ["Filters.DateFrom"] = "С",
         ["Filters.DateTo"] = "По",
-        ["Filters.DatePlaceholder"] = "сегодня, следующая неделя, 01.05.2024...",
+        ["Filters.DatePlaceholder"] = "сегодня, через 1 неделя, 01.05.2024...",
         ["Filters.Op.contains"] = "содержит",
         ["Filters.Op.not_contains"] = "не содержит",
         ["Filters.Op.starts_with"] = "начинается с",

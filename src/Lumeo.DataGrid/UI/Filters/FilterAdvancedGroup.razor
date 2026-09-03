@@ -1,0 +1,122 @@
+@namespace Lumeo
+
+@* A nested group: its combinator cell, a card with its rows, a footer that adds a row to it and
+   holds its drag handle and menu. The header, an empty card and the footer are drop zones. *@
+@{
+    var columns = Panel.ColumnsOf(Group, Index, CanMove);
+    var description = Group.Combinator == FilterCombinator.And ? Context.Labels.GroupAll : Context.Labels.GroupAny;
+    var issue = Panel.IssueFor(Group.Id);
+    var isFirstRow = Depth == 1 && Index == 0;
+}
+<div role="group"
+     aria-label="@($"{description} level {Depth}")"
+     data-slot="filter-row"
+     data-node-id="@Group.Id"
+     data-parent-id="@ParentId"
+     data-index="@Index"
+     data-depth="@Depth"
+     class="@Cx.Join("flex flex-wrap items-center gap-1.5", FilterAdvancedRow.DropIndicatorClass)">
+    <div class="@Cx.Join(FilterAdvancedRow.CombinatorBoxClass, "@max-[26rem]/track:w-full")">
+        <FilterCombinatorCell NodeId="@Group.Id" ParentId="@ParentId" Index="Index" Combinator="Combinator" Active="@Panel.IsActive(Group.Id, FilterChipSegment.Combinator, columns, isFirstRow)" />
+    </div>
+    <div data-slot="filter-group"
+         data-invalid="@(issue is not null ? "true" : null)"
+         class="min-w-0 flex-1 rounded-md bg-muted/40 inset-ring inset-ring-border ps-2 pe-0 data-[invalid]:inset-ring-destructive/50 data-[drop-into]:bg-muted/60 data-[drop-into]:outline-1 data-[drop-into]:outline-solid data-[drop-into]:outline-border data-[drop-into]:-outline-offset-2">
+        <div data-slot="filter-group-header" class="flex h-2 items-center" data-drop-parent="@Group.Id" data-drop-index="0" data-depth="@(Depth + 1)"></div>
+        <div class="@Cx.Join("@container/track flex flex-col gap-3")">
+            @if (Group.Rules.Count == 0)
+            {
+                <p data-slot="filter-group-empty" data-drop-parent="@Group.Id" data-drop-index="0" data-depth="@(Depth + 1)"
+                   class="rounded-md border border-dashed px-2 py-3 text-center text-xs text-foreground/70 data-[drop-into]:border-primary/60 data-[drop-into]:bg-primary/5 data-[drop-into]:text-primary">
+                    @Context.Labels.GroupPlaceholder
+                </p>
+            }
+            else
+            {
+                @for (var i = 0; i < Group.Rules.Count; i++)
+                {
+                    var node = Group.Rules[i];
+                    <FilterAdvancedNode @key="node.Id" Node="node" Index="i" ParentId="@Group.Id" Combinator="Group.Combinator" Depth="@(Depth + 1)" />
+                }
+            }
+        </div>
+        <div data-slot="filter-group-footer" class="flex flex-nowrap items-center gap-2 pb-2 pt-2 text-muted-foreground" data-drop-parent="@Group.Id" data-drop-index="@Group.Rules.Count" data-depth="@(Depth + 1)">
+            <button type="button"
+                    id="@Panel.CellId(Group.Id, FilterChipSegment.Add)"
+                    data-filter-cell="add"
+                    tabindex="@(Panel.IsActive(Group.Id, FilterChipSegment.Add, columns, isFirstRow) ? 0 : -1)"
+                    class="@Cx.Join(AddClass, issue is not null ? "ring-1 ring-destructive/40" : null)"
+                    aria-label="@Context.Labels.AddToGroup"
+                    aria-invalid="@(issue is not null ? "true" : null)"
+                    aria-description="@(issue is not null ? Context.Labels.IssueLabel(issue) : null)"
+                    disabled="@Context.Disabled"
+                    aria-disabled="@(Context.ReadOnly ? "true" : null)"
+                    @onfocus="() => Context.SetFocus(Group.Id, FilterChipSegment.Add)"
+                    @onkeydown="e => Panel.HandleCellKey(Group.Id, FilterChipSegment.Add, e, false)"
+                    @onclick="() => Context.AddRow(Group.Id)">
+                <SvgGlyph Svg="@(LumeoIcons.Plus)" class="h-4 w-4" />
+                <span class="truncate">@Context.Labels.AddCondition</span>
+            </button>
+            <div class="ms-auto flex shrink-0 items-center gap-0.5 pe-1 text-muted-foreground">
+                @if (CanMove)
+                {
+                    <FilterRowHandle NodeId="@Group.Id" Active="@Panel.IsActive(Group.Id, FilterChipSegment.Drag, columns, isFirstRow)" />
+                }
+                <DropdownMenu Open="_menuOpen" OpenChanged="v => { if (v && Context.Locked) return; _menuOpen = v; }">
+                    <DropdownMenuTrigger AsChild Disabled="Context.Disabled">
+                        <ChildContentSlot Context="slot">
+                            <button type="button"
+                                    id="@Panel.CellId(Group.Id, FilterChipSegment.Menu)"
+                                    data-filter-cell="menu"
+                                    tabindex="@(Panel.IsActive(Group.Id, FilterChipSegment.Menu, columns, isFirstRow) ? 0 : -1)"
+                                    @attributes="slot.Attributes"
+                                    @onclick="slot.OnClick"
+                                    class="@FilterAdvancedRow.IconButtonClass(Context.Size)"
+                                    aria-label="@Context.Labels.GroupMenu"
+                                    disabled="@Context.Disabled"
+                                    aria-disabled="@(Context.ReadOnly ? "true" : null)"
+                                    @onfocus="() => Context.SetFocus(Group.Id, FilterChipSegment.Menu)"
+                                    @onkeydown="e => Panel.HandleCellKey(Group.Id, FilterChipSegment.Menu, e, false)">
+                                <SvgGlyph Svg="@(LumeoIcons.EllipsisVertical)" class="h-4 w-4" />
+                            </button>
+                        </ChildContentSlot>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent Align="Lumeo.Align.End" Class="@Cx.Merge(FilterStyles.MenuClass, Context.MenuClass)">
+                        <DropdownMenuItem Disabled="Context.Locked" OnClick="() => Context.DuplicateNode(Group.Id)">
+                            <SvgGlyph Svg="@(LumeoIcons.Copy)" class="h-4 w-4" />
+                            <span class="min-w-0 truncate">@Context.Labels.Duplicate</span>
+                        </DropdownMenuItem>
+                        <DropdownMenuItem Disabled="Context.Locked" OnClick="() => Context.UnwrapGroup(Group.Id)">
+                            <SvgGlyph Svg="@(LumeoIcons.Layers)" class="h-4 w-4" />
+                            <span class="min-w-0 truncate">@Context.Labels.Ungroup</span>
+                        </DropdownMenuItem>
+                        <FilterMoveToMenuItems NodeId="@Group.Id" />
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem Variant="MenuItemVariant.Destructive" Disabled="Context.Locked" OnClick="() => Context.RemoveNode(Group.Id)">
+                            <SvgGlyph Svg="@(LumeoIcons.Trash2)" class="h-4 w-4" />
+                            <span class="min-w-0 truncate">@Context.Labels.RemoveGroup</span>
+                        </DropdownMenuItem>
+                    </DropdownMenuContent>
+                </DropdownMenu>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    [CascadingParameter] public FiltersContext Context { get; set; } = default!;
+    [CascadingParameter] public FiltersAdvancedPanel Panel { get; set; } = default!;
+    [Parameter, EditorRequired] public FilterGroup Group { get; set; } = default!;
+    [Parameter] public int Index { get; set; }
+    [Parameter] public string ParentId { get; set; } = "";
+    [Parameter] public FilterCombinator Combinator { get; set; }
+    [Parameter] public int Depth { get; set; } = 1;
+
+    private bool _menuOpen;
+
+    private bool CanMove => Context.Reorderable && (ParentId != Panel.Query.Id || Panel.Query.Rules.Count > 1);
+
+    private string AddClass => Cx.Join(
+        "inline-flex min-w-0 shrink items-center gap-2 overflow-hidden whitespace-nowrap rounded-md border border-input bg-background text-sm font-normal shadow-xs hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none",
+        FilterStyles.ControlHeight(Context.Size), FilterStyles.PaddingX(Context.Size));
+}

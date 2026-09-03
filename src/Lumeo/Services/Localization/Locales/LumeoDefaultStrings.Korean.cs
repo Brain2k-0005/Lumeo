@@ -568,7 +568,7 @@ internal static partial class LumeoDefaultStrings
         ["Filters.DateYears"] = "년",
         ["Filters.DateFrom"] = "시작",
         ["Filters.DateTo"] = "끝",
-        ["Filters.DatePlaceholder"] = "오늘, 다음 주, 2024-05-01...",
+        ["Filters.DatePlaceholder"] = "오늘, 1주 후, 2024-05-01...",
         ["Filters.Op.contains"] = "포함",
         ["Filters.Op.not_contains"] = "포함하지 않음",
         ["Filters.Op.starts_with"] = "다음으로 시작",
