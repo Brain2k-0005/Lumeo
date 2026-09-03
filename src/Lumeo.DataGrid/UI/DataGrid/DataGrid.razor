@@ -97,6 +97,7 @@
     {
         // init-only body property, so it is set here rather than passed positionally.
         ToggleSelectionModified = ToggleSelectionModified,
+        ToggleSelectionModifiedAt = ToggleSelectionModifiedAt,
         SelectOnRowClick = SelectOnRowClick,
         ShowReorderHandle = ShowReorderHandle,
         ShowPinButton = ShowPinButton,
@@ -1175,8 +1176,13 @@
     public Task RefreshAsync() =>
         ServerMode ? InvokeAsync(RequestServerData) : Task.CompletedTask;
 
-    public Task RefreshVirtualizedAsync() =>
-        _bodyRef is not null ? _bodyRef.RefreshVirtualizeAsync() : Task.CompletedTask;
+    public Task RefreshVirtualizedAsync()
+    {
+        // Row indices change with the sort, filter and search: a range anchored before the
+        // refresh would fetch the wrong rows, so the next Shift-click starts over.
+        _selectionAnchorIndex = null;
+        return _bodyRef is not null ? _bodyRef.RefreshVirtualizeAsync() : Task.CompletedTask;
+    }
 
     private List<DataGridColumn<TItem>> _columnDefs = new();
     private List<DataGridColumn<TItem>> _orderedColumns = new();
@@ -3189,6 +3195,85 @@
         }
 
         ToggleSelection(item);
+    }
+
+    // Index of the anchor row in the current sort, filter and search, recorded with every
+    // Shift-less toggle that comes through a row. Virtualized server mode keeps no row list on
+    // the client (rows go from OnRangeRequest straight into <Virtualize>, DisplayedItems stays
+    // empty), so a Shift-click range there is fetched by index instead of looked up.
+    private int? _selectionAnchorIndex;
+
+    private void ToggleSelectionModifiedAt(TItem item, int index, bool shift, bool ctrl)
+    {
+        if (shift && SelectionMode == DataGridSelectionMode.Multiple && _selectionAnchorKey is not null)
+        {
+            if (_useServerVirtualization)
+            {
+                if (_selectionAnchorIndex is { } anchor) _ = SelectRangeAsync(anchor, index);
+                else ToggleSelection(item);
+                return;
+            }
+            SelectRangeFromAnchor(item);
+            return;
+        }
+
+        _selectionAnchorIndex = index;
+        ToggleSelection(item);
+    }
+
+    /// <summary>
+    /// Selects every row from <paramref name="fromIndex"/> to <paramref name="toIndex"/>
+    /// inclusive, in either order, within the grid's current sort, filter and search. This is
+    /// what a Shift-click does. In virtualized server mode the rows are fetched through
+    /// <see cref="OnRangeRequest"/>, so the range can reach beyond the rows currently loaded;
+    /// otherwise the indices address the displayed rows. No-op unless
+    /// <see cref="SelectionMode"/> is Multiple.
+    /// </summary>
+    public async Task SelectRangeAsync(int fromIndex, int toIndex)
+    {
+        if (SelectionMode != DataGridSelectionMode.Multiple) return;
+        if (fromIndex > toIndex) (fromIndex, toIndex) = (toIndex, fromIndex);
+        if (fromIndex < 0) fromIndex = 0;
+
+        IEnumerable<TItem> rows;
+        if (_useServerVirtualization && OnRangeRequest is not null)
+        {
+            DataGridRangeResponse<TItem> response;
+            try
+            {
+                response = await OnRangeRequest(new DataGridRangeRequest(
+                    fromIndex,
+                    toIndex - fromIndex + 1,
+                    _sorts.Count > 0 ? new List<SortDescriptor>(_sorts) : null,
+                    _filters.Count > 0 ? new List<FilterDescriptor>(_filters) : null,
+                    _globalSearch));
+            }
+            catch (Exception ex) when (OnError.HasDelegate)
+            {
+                await OnError.InvokeAsync(ex);
+                return;
+            }
+            rows = response.Items;
+        }
+        else
+        {
+            if (fromIndex >= _displayedItems.Count) return;
+            toIndex = Math.Min(toIndex, _displayedItems.Count - 1);
+            rows = _displayedItems.GetRange(fromIndex, toIndex - fromIndex + 1);
+        }
+
+        var added = false;
+        foreach (var row in rows)
+        {
+            if (FindSelectionMatch(row).found) continue;
+            _selectedSet.Add(row);
+            _selectedItems.Add(row);
+            added = true;
+        }
+        if (!added) return;
+
+        NotifySelectionChanged();
+        await InvokeAsync(StateHasChanged);
     }
 
     /// <summary>

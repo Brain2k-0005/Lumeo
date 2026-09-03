@@ -5,6 +5,17 @@ All notable changes to Lumeo will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.8.0] - Unreleased
+
+### Fixed
+- **Shift-click selects a range in virtualized server mode.** With `Virtualized="true"` and
+  `OnRangeRequest`, rows go from the provider straight into `<Virtualize>` and the grid holds
+  no row list, so a Shift-click could not find the anchor and quietly toggled the one row
+  instead. The range is now fetched by index through `OnRangeRequest`, so it can reach beyond
+  the rows currently loaded; a sort, filter or search change drops the anchor. `DataGrid`
+  gains `SelectRangeAsync(fromIndex, toIndex)` for a host that runs its own selection UI, and
+  `DataGridContext.ToggleSelectionModifiedAt` carries the row index.
+
 ## [5.7.0] - 2026-09-03
 
 The items of the DocFlow field report that were still open after 5.6.0, re-checked
