@@ -388,7 +388,11 @@
                 // Shift/Ctrl go to the modifier-aware path when the grid supplies one; the
                 // plain toggle stays the fallback so a host cascading its own context still
                 // selects (#440).
-                if (Context.ToggleSelectionModified is { } modified)
+                if (Context.ToggleSelectionModifiedAt is { } modifiedAt)
+                {
+                    modifiedAt(Item, RowIndex, e.ShiftKey, e.CtrlKey);
+                }
+                else if (Context.ToggleSelectionModified is { } modified)
                 {
                     modified(Item, e.ShiftKey, e.CtrlKey);
                 }
@@ -424,7 +428,9 @@
 
     private async Task OnCheckChanged(bool value)
     {
-        Context?.ToggleSelection(Item);
+        // The index-aware path records this row as the anchor of the next Shift-click range.
+        if (Context?.ToggleSelectionModifiedAt is { } modifiedAt) modifiedAt(Item, RowIndex, false, false);
+        else Context?.ToggleSelection(Item);
     }
 
     /// <summary>
@@ -435,7 +441,8 @@
     private void HandleSelectionCellClick(MouseEventArgs e)
     {
         if (!e.ShiftKey) return;
-        if (Context?.ToggleSelectionModified is { } modified) modified(Item, true, e.CtrlKey);
+        if (Context?.ToggleSelectionModifiedAt is { } modifiedAt) modifiedAt(Item, RowIndex, true, e.CtrlKey);
+        else if (Context?.ToggleSelectionModified is { } modified) modified(Item, true, e.CtrlKey);
     }
 
     // --- Row Editing ---

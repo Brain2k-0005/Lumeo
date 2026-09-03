@@ -179,6 +179,11 @@ public record DataGridContext<TItem>(
     /// </summary>
     public Action<TItem, bool, bool>? ToggleSelectionModified { get; init; }
 
+    /// <summary>Like <see cref="ToggleSelectionModified"/>, with the row's index in the current
+    /// sort, filter and search. The index is what a Shift-click range needs in virtualized
+    /// server mode, where the client holds no row list (5.8.0). Rows call this when present.</summary>
+    public Action<TItem, int, bool, bool>? ToggleSelectionModifiedAt { get; init; }
+
     /// <summary>Whether a row click toggles selection; see <c>DataGrid.SelectOnRowClick</c>.</summary>
     public bool SelectOnRowClick { get; init; } = true;
 
