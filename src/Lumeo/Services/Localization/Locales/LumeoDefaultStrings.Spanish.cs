@@ -484,6 +484,7 @@ internal static partial class LumeoDefaultStrings
         ["Filters.IssueRangeOrder"] = "El final del rango es anterior a su inicio",
         ["Filters.IssueEmptyGroup"] = "Este grupo aún no tiene condiciones",
         ["Filters.IssueSummary"] = "{0} filas necesitan atención",
+["Filters.RowLevel"] = "{0}, nivel {1}",
         ["Filters.True"] = "Verdadero",
         ["Filters.False"] = "Falso",
         ["Filters.DateToday"] = "hoy",

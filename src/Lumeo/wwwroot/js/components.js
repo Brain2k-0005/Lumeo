@@ -6951,7 +6951,7 @@ export function registerFilterDrag(panelEl, dotNetRef) {
     if (!panelEl) return;
     const existing = filterDragRegistrations.get(panelEl);
     if (existing) { existing.dotNetRef = dotNetRef; return; }
-    const reg = { dotNetRef, onPointerDown: null };
+    const reg = { dotNetRef, onPointerDown: null, cancel: null };
 
     reg.onPointerDown = (e) => {
         if (e.button !== 0) return;
@@ -7027,26 +7027,29 @@ export function registerFilterDrag(panelEl, dotNetRef) {
         const finish = (commit, ev) => {
             if (done) return;
             done = true;
-            handle.removeEventListener('pointermove', onMove);
-            handle.removeEventListener('pointerup', onUp);
-            handle.removeEventListener('pointercancel', onCancel);
+            window.removeEventListener('pointermove', onMove);
+            window.removeEventListener('pointerup', onUp);
+            window.removeEventListener('pointercancel', onCancel);
             window.removeEventListener('keydown', onKey, true);
+            reg.cancel = null;
             try { handle.releasePointerCapture(pointerId); } catch { /* released */ }
             clearMarks();
             row.removeAttribute('data-dragging');
             if (ghost) ghost.remove();
             const copy = !!(ev && ev.altKey);
             if (commit && started && current && !isNoop(current, copy)) {
-                reg.dotNetRef.invokeMethodAsync('OnFilterDrop', nodeId, current.target.parentId, current.target.index, copy);
+                reg.dotNetRef.invokeMethodAsync('OnFilterDrop', nodeId, current.target.parentId, current.target.index, copy).catch(() => {});
             }
         };
         const onUp = (ev) => finish(true, ev);
         const onCancel = () => finish(false);
         const onKey = (ev) => { if (ev.key === 'Escape') { ev.preventDefault(); finish(false); } };
-        handle.addEventListener('pointermove', onMove);
-        handle.addEventListener('pointerup', onUp);
-        handle.addEventListener('pointercancel', onCancel);
+        // On window, so the events arrive even when pointer capture was refused or the handle left the DOM.
+        window.addEventListener('pointermove', onMove);
+        window.addEventListener('pointerup', onUp);
+        window.addEventListener('pointercancel', onCancel);
         window.addEventListener('keydown', onKey, true);
+        reg.cancel = () => finish(false);
     };
 
     panelEl.addEventListener('pointerdown', reg.onPointerDown);
@@ -7056,6 +7059,7 @@ export function registerFilterDrag(panelEl, dotNetRef) {
 export function unregisterFilterDrag(panelEl) {
     const reg = filterDragRegistrations.get(panelEl);
     if (!reg) return;
+    if (reg.cancel) reg.cancel();
     panelEl.removeEventListener('pointerdown', reg.onPointerDown);
     filterDragRegistrations.delete(panelEl);
 }

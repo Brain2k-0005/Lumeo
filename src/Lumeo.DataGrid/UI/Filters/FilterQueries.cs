@@ -261,7 +261,13 @@ public static class FilterQueries
                 var arity = arityOf(rule);
                 if (arity is null) continue;
                 if (!IsComplete(rule)) { issues.Add(new FilterIssue(rule.Id, FilterIssueColumn.Operator, FilterIssueReason.MissingOperator)); continue; }
-                if (arity == FilterArity.None) continue;
+                // The field's own check runs once the built-in one for the operator's arity passes.
+                void Custom()
+                {
+                    if (validate?.Invoke(rule) is { Length: > 0 } message)
+                        issues.Add(new FilterIssue(rule.Id, FilterIssueColumn.Value, FilterIssueReason.Custom, message));
+                }
+                if (arity == FilterArity.None) { Custom(); continue; }
                 var values = rule.Values;
                 if (arity == FilterArity.Range)
                 {
@@ -271,7 +277,11 @@ public static class FilterQueries
                         continue;
                     }
                     if (FilterValues.CompareBounds(values[0], values[1]) > 0)
+                    {
                         issues.Add(new FilterIssue(rule.Id, FilterIssueColumn.Value, FilterIssueReason.ReversedRange));
+                        continue;
+                    }
+                    Custom();
                     continue;
                 }
                 if (values.Count == 0 || values.All(FilterValues.IsBlank))
@@ -279,8 +289,7 @@ public static class FilterQueries
                     issues.Add(new FilterIssue(rule.Id, FilterIssueColumn.Value, FilterIssueReason.MissingValue));
                     continue;
                 }
-                if (validate?.Invoke(rule) is { Length: > 0 } message)
-                    issues.Add(new FilterIssue(rule.Id, FilterIssueColumn.Value, FilterIssueReason.Custom, message));
+                Custom();
             }
         }
         Visit(query, true);

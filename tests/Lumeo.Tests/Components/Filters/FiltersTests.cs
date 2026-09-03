@@ -255,4 +255,18 @@ public class FiltersTests : IAsyncLifetime
         var issue = Assert.Single(cut.Instance.CollectIssues());
         Assert.Equal((FilterIssueReason.Custom, "No negatives"), (issue.Reason, issue.Message));
     }
+
+
+    [Fact]
+    public void Unknown_Fields_And_Operators_Are_Issues()
+    {
+        var cut = Render(p => p.Add(f => f.DefaultQuery, FilterQuery.Of(
+            new FilterRule("gone", new[] { "removed" }, "is", "x"),
+            new FilterRule("op", new[] { "title" }, "sounds_like", "x"),
+            new FilterRule("ok", new[] { "title" }, "contains", "x"))));
+
+        var issues = cut.Instance.CollectIssues();
+        Assert.Equal(new[] { ("gone", FilterIssueReason.UnknownField, FilterIssueColumn.Field), ("op", FilterIssueReason.UnknownOperator, FilterIssueColumn.Operator) },
+            issues.Select(i => (i.NodeId, i.Reason, i.Column)));
+    }
 }

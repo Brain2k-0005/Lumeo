@@ -550,6 +550,7 @@ internal static partial class LumeoDefaultStrings
         ["Filters.IssueRangeOrder"] = "范围的结束早于开始",
         ["Filters.IssueEmptyGroup"] = "此分组尚无条件",
         ["Filters.IssueSummary"] = "{0} 行需要处理",
+["Filters.RowLevel"] = "{0}，第 {1} 级",
         ["Filters.True"] = "是",
         ["Filters.False"] = "否",
         ["Filters.DateToday"] = "今天",

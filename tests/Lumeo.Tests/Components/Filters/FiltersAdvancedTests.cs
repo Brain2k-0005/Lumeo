@@ -174,4 +174,40 @@ public class FiltersAdvancedTests : IAsyncLifetime
         Assert.Empty(Rows(cut));
         Assert.NotNull(cut.Find("[data-slot='filters-advanced-empty']"));
     }
+
+
+    [Fact]
+    public void A_Vetoed_Field_Pick_Keeps_The_Row_Pending()
+    {
+        var cut = Render(p => p.Add(f => f.OnBeforeQueryChange, (FilterQueryChange c) => c.Details.Reason != FilterChangeReason.Update));
+        cut.Find("[data-slot='filters-advanced-add']").Click();
+        Assert.Equal("true", Assert.Single(Rows(cut)).GetAttribute("data-pending"));
+
+        cut.FindAll("[data-slot='filter-field-picker'] [data-slot='command-item']").First(e => e.TextContent.Contains("Status")).Click();
+
+        var row = Assert.Single(Rows(cut));
+        Assert.Equal("true", row.GetAttribute("data-pending"));
+        Assert.Null(row.QuerySelector("[data-filter-cell='operator']"));
+    }
+
+    [Fact]
+    public void Changing_A_Settled_Rows_Field_Starts_It_Over_At_The_Condition()
+    {
+        FilterQuery? last = null;
+        var cut = Render(p => p.Add(f => f.DefaultQuery, Preset()).Add(f => f.QueryChanged, EventCallback.Factory.Create<FilterQuery>(this, q => last = q)));
+        Rows(cut)[0].QuerySelector("[data-filter-cell='field']")!.Click();
+        cut.FindAll("[data-slot='filter-field-picker'] [data-slot='command-item']").First(e => e.TextContent.Contains("Amount")).Click();
+
+        var rule = (FilterRule)last!.Rules[0];
+        Assert.Equal(("amount", ""), (rule.Field, rule.Operator));
+        Assert.NotEmpty(cut.FindAll("[data-slot='filter-menu'] [data-slot='command-item']"));
+    }
+
+    [Fact]
+    public void Rows_Announce_Their_Depth_Through_The_Labels()
+    {
+        var cut = Render(p => p.Add(f => f.DefaultQuery, Preset()).Add(f => f.Labels, new FilterLabels { RowLevel = "{0} (Ebene {1})" }));
+        Assert.EndsWith("(Ebene 2)", Rows(cut)[2].GetAttribute("aria-label"));
+        Assert.EndsWith("(Ebene 1)", cut.Find("[data-slot='filter-row'][data-node-id='g1']").GetAttribute("aria-label"));
+    }
 }

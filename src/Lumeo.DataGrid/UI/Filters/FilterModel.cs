@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Components;
@@ -23,10 +24,10 @@ public enum FilterDraftStep { Field, Operator, Value }
 public enum FilterEditorHost { Create, Amend }
 
 /// <summary>Why a rule or group is not ready to filter; see <see cref="FilterQueries.CollectIssues"/>.</summary>
-public enum FilterIssueReason { MissingOperator, MissingValue, IncompleteRange, ReversedRange, EmptyGroup, Custom }
+public enum FilterIssueReason { MissingOperator, MissingValue, IncompleteRange, ReversedRange, EmptyGroup, Custom, UnknownField, UnknownOperator }
 
 /// <summary>Which part of a row an issue points at.</summary>
-public enum FilterIssueColumn { Operator, Value, Group }
+public enum FilterIssueColumn { Operator, Value, Group, Field }
 
 /// <summary>The two shapes of <see cref="Filters"/>: a chip row, or a nested condition builder.</summary>
 public enum FiltersVariant { Basic, Advanced }
@@ -95,8 +96,15 @@ public sealed class FilterValueJsonConverter : JsonConverter<object?>
 
     public override void Write(Utf8JsonWriter writer, object? value, JsonSerializerOptions options)
     {
-        if (value is null) { writer.WriteNullValue(); return; }
-        JsonSerializer.Serialize(writer, value, value.GetType(), options);
+        switch (value)
+        {
+            case null: writer.WriteNullValue(); return;
+            // A bare day or instant would come back as a string; a tagged object keeps its type.
+            case DateOnly day: writer.WriteStartObject(); writer.WriteString("$date", day.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)); writer.WriteEndObject(); return;
+            case DateTime dt: writer.WriteStartObject(); writer.WriteString("$datetime", dt.ToString("o", CultureInfo.InvariantCulture)); writer.WriteEndObject(); return;
+            case DateTimeOffset dto: writer.WriteStartObject(); writer.WriteString("$datetimeoffset", dto.ToString("o", CultureInfo.InvariantCulture)); writer.WriteEndObject(); return;
+            default: JsonSerializer.Serialize(writer, value, value.GetType(), options); return;
+        }
     }
 
     internal static object? FromElement(JsonElement e, JsonSerializerOptions options) => e.ValueKind switch
@@ -125,6 +133,9 @@ public sealed class FilterValueJsonConverter : JsonConverter<object?>
                 if (string.Equals(p.Name, name, StringComparison.OrdinalIgnoreCase)) return p.Value;
             return null;
         }
+        if (Prop("$date") is { } day && DateOnly.TryParseExact(day.GetString(), "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var parsedDay)) return parsedDay;
+        if (Prop("$datetime") is { } instant && DateTime.TryParse(instant.GetString(), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var parsedInstant)) return parsedInstant;
+        if (Prop("$datetimeoffset") is { } offset && DateTimeOffset.TryParse(offset.GetString(), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var parsedOffset)) return parsedOffset;
         if (Prop("from") is not null || Prop("to") is not null)
             return new FilterRange(Prop("from") is { } f ? FromElement(f, options) : null, Prop("to") is { } t ? FromElement(t, options) : null);
         if (Prop("date") is not null || Prop("relative") is not null)

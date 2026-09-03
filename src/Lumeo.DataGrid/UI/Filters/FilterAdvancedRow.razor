@@ -12,7 +12,7 @@
 @if (field is null)
 {
     <div role="group"
-         aria-label="@($"{string.Join(Context.Labels.PathSeparator, Rule.Path)}, level {Depth}")"
+         aria-label="@string.Format(Context.Labels.RowLevel, string.Join(Context.Labels.PathSeparator, Rule.Path), Depth)"
          data-slot="filter-row" data-node-id="@Rule.Id" data-parent-id="@ParentId" data-index="@Index" data-depth="@Depth" data-unknown="true"
          class="@Cx.Join("flex min-w-0 items-center gap-1.5", DropIndicatorClass)">
         <span class="min-w-0 flex-1 truncate text-sm text-muted-foreground">@string.Join(Context.Labels.PathSeparator, Rule.Path)</span>
@@ -41,7 +41,7 @@ else
     var valueEmpty = FilterValues.IsBlank(Rule.Value);
     var f = field;
     <div role="group"
-         aria-label="@($"{pathText} {operatorLabel}, level {Depth}")"
+         aria-label="@string.Format(Context.Labels.RowLevel, $"{pathText} {operatorLabel}", Depth)"
          data-slot="filter-row"
          data-node-id="@Rule.Id"
          data-parent-id="@ParentId"
@@ -308,28 +308,27 @@ else
         if (!open) Context.SetFocus(Rule.Id, FilterChipSegment.Field);
     }
 
+    /// <summary>A picked field starts the row at its explicit default operator (if any) and moves on
+    /// to the value, else opens the condition menu; the same field on a settled row only closes the
+    /// picker. A pending row stays pending when the host vetoes the change.</summary>
     private void PickField(IReadOnlyList<string> path)
     {
         _pickerOpen = false;
         var wasPending = Context.IsPending(Rule.Id);
-        Context.ResolvePending(Rule.Id);
-        if (path.SequenceEqual(Rule.Path))
+        if (Context.Index.Get(path) is not { } field) { Context.SetFocus(Rule.Id, FilterChipSegment.Field); return; }
+        var explicitOperator = Context.ExplicitDefaultOperator(field);
+        var same = path.SequenceEqual(Rule.Path);
+        if (same && !wasPending) { Context.SetFocus(Rule.Id, FilterChipSegment.Field); return; }
+        var op = explicitOperator ?? "";
+        var changed = !same || Rule.Operator != op;
+        if (changed && !Context.UpdateRule(Rule.Id, r => r with { Path = path, Operator = op, Value = null, Negated = false }))
         {
-            Context.SetFocus(Rule.Id, wasPending ? FilterChipSegment.Operator : FilterChipSegment.Field, autoOpen: wasPending);
+            Context.SetFocus(Rule.Id, FilterChipSegment.Field);
             return;
         }
-        var field = Context.Index.Get(path);
-        // A pending row takes the field's explicit default operator (if any) and moves on to the
-        // value; without one its condition menu opens. A changed field on a settled row starts over.
-        var explicitOperator = field is null ? null : Context.ExplicitDefaultOperator(field);
-        var op = wasPending ? explicitOperator ?? "" : field is null ? "" : FilterOperators.Default(field, Context.ResolveOperators(field)) ?? "";
-        Context.UpdateRule(Rule.Id, r => r with { Path = path, Operator = op, Value = null, Negated = false });
-        if (wasPending && field is not null)
-        {
-            var (segment, autoOpen) = Context.NextStepAfterField(field, explicitOperator);
-            Context.SetFocus(Rule.Id, segment, autoOpen);
-        }
-        else Context.SetFocus(Rule.Id, FilterChipSegment.Field);
+        Context.ResolvePending(Rule.Id);
+        var (segment, autoOpen) = Context.NextStepAfterField(field, explicitOperator);
+        Context.SetFocus(Rule.Id, segment, autoOpen);
     }
 
     // ---- operator ----

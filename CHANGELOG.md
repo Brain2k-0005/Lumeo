@@ -32,7 +32,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `System.Text.Json` (`$type` on the nodes, values back in their shape); `Filters.CollectIssues()`
   reports everything that keeps a query from running, a field's `Validate` message included;
   a field's `DefaultOperator` skips the condition step; the date editor reads the phrases its
-  locale shows (`heute`, `in 2 Wochen`); a chip's field segment reopens the attribute picker.
+  locale shows (`heute`, `in 2 Wochen`); a chip's field segment reopens the attribute picker;
+  a restored query naming a field or operator the schema no longer has is reported as an issue
+  (`UnknownField`, `UnknownOperator`); a `DateOnly` or `DateTime` value keeps its type through
+  JSON.
 
 ### Fixed
 - **Shift-click selects a range in virtualized server mode.** With `Virtualized="true"` and

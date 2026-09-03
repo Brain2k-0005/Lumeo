@@ -484,6 +484,7 @@ internal static partial class LumeoDefaultStrings
         ["Filters.IssueRangeOrder"] = "範囲の終わりが始まりより前です",
         ["Filters.IssueEmptyGroup"] = "このグループにはまだ条件がありません",
         ["Filters.IssueSummary"] = "{0} 行に確認が必要です",
+["Filters.RowLevel"] = "{0}、レベル {1}",
         ["Filters.True"] = "真",
         ["Filters.False"] = "偽",
         ["Filters.DateToday"] = "今日",

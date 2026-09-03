@@ -103,6 +103,8 @@ public sealed class FilterLabels
     public string IssueEmptyGroup { get; set; } = "This group has no conditions yet";
     /// <summary>Format with the count.</summary>
     public string IssueSummary { get; set; } = "{0} rows need attention";
+    /// <summary>The accessible name of a builder row: {0} the row's text, {1} its depth.</summary>
+    public string RowLevel { get; set; } = "{0}, level {1}";
     public string True { get; set; } = "True";
     public string False { get; set; } = "False";
     public string DateToday { get; set; } = "today";

@@ -550,6 +550,7 @@ internal static partial class LumeoDefaultStrings
         ["Filters.IssueRangeOrder"] = "Aralığın sonu başlangıcından önce",
         ["Filters.IssueEmptyGroup"] = "Bu grupta henüz koşul yok",
         ["Filters.IssueSummary"] = "{0} satır dikkat istiyor",
+["Filters.RowLevel"] = "{0}, seviye {1}",
         ["Filters.True"] = "Doğru",
         ["Filters.False"] = "Yanlış",
         ["Filters.DateToday"] = "bugün",

@@ -555,6 +555,7 @@ internal static partial class LumeoDefaultStrings
         ["Filters.IssueRangeOrder"] = "Конец диапазона раньше его начала",
         ["Filters.IssueEmptyGroup"] = "В этой группе пока нет условий",
         ["Filters.IssueSummary"] = "Строк требуют внимания: {0}",
+["Filters.RowLevel"] = "{0}, уровень {1}",
         ["Filters.True"] = "Да",
         ["Filters.False"] = "Нет",
         ["Filters.DateToday"] = "сегодня",

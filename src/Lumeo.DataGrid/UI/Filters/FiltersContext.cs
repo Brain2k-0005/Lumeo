@@ -177,20 +177,30 @@ public sealed class FiltersContext
         return id;
     }
 
-    public void UpdateRule(string id, Func<FilterRule, FilterRule> update)
+    /// <summary>Replaces the rule by a changed copy. True when the change went through; false when
+    /// nothing changed, the bar is locked, or <c>OnBeforeQueryChange</c> vetoed it.</summary>
+    public bool UpdateRule(string id, Func<FilterRule, FilterRule> update)
     {
-        if (Locked) return;
+        if (Locked) return false;
         var before = FilterQueries.FindRule(Query, id);
         var next = FilterQueries.UpdateRule(Query, id, update);
-        if (ReferenceEquals(next, Query)) return;
+        if (ReferenceEquals(next, Query)) return false;
         var after = FilterQueries.FindRule(next, id);
+        if (!Emit(next, FilterChangeReason.Update, after)) return false;
         if (before is not null && after is not null)
         {
             // A new field starts the row over; an edited value makes its validation visible.
-            if (!before.Path.SequenceEqual(after.Path)) _touched.Remove(id);
-            else if (!Equals(before.Value, after.Value)) _touched.Add(id);
+            if (!before.Path.SequenceEqual(after.Path)) Touch(id, false);
+            else if (!Equals(before.Value, after.Value)) Touch(id, true);
         }
-        Emit(next, FilterChangeReason.Update, after);
+        return true;
+    }
+
+    private int _touchedVersion;
+
+    private void Touch(string id, bool touched)
+    {
+        if (touched ? _touched.Add(id) : _touched.Remove(id)) _touchedVersion++;
     }
 
     /// <summary>True for a row added by the advanced builder that has not picked its field yet:
@@ -215,7 +225,17 @@ public sealed class FiltersContext
     /// value, half or reversed ranges, empty groups, and each field's own <see cref="FilterField.Validate"/>
     /// message, resolved against the field's operator catalogue.</summary>
     public IReadOnlyList<FilterIssue> CollectIssues(FilterQuery? query = null)
-        => FilterQueries.CollectIssues(query ?? Query,
+    {
+        var target = query ?? Query;
+        // A restored query can name a field or operator the schema no longer has; neither can run.
+        var unknown = new List<FilterIssue>();
+        foreach (var rule in FilterQueries.Flatten(target))
+        {
+            if (Index.Get(rule.Path) is not { } f) { unknown.Add(new FilterIssue(rule.Id, FilterIssueColumn.Field, FilterIssueReason.UnknownField)); continue; }
+            if (rule.Operator.Length > 0 && FilterOperators.Get(ResolveOperators(f), rule.Operator) is null)
+                unknown.Add(new FilterIssue(rule.Id, FilterIssueColumn.Operator, FilterIssueReason.UnknownOperator));
+        }
+        var known = FilterQueries.CollectIssues(target,
             rule => Index.Get(rule.Path) is { } f ? FilterOperators.ArityOf(FilterOperators.Get(ResolveOperators(f), rule.Operator)) : null,
             rule =>
             {
@@ -224,18 +244,25 @@ public sealed class FiltersContext
                 if (op is null) return null;
                 return f.Validate(new FilterValidateContext(rule.Value, rule.Values, f, op, op.Arity, rule, Labels));
             });
+        if (unknown.Count == 0) return known;
+        var flagged = unknown.Select(i => i.NodeId).ToHashSet();
+        return unknown.Concat(known.Where(i => !flagged.Contains(i.NodeId))).ToList();
+    }
 
-    private FilterQuery? _issueQuery;
+    private (FilterQuery Query, FilterIndex Index, FilterLabels Labels, object Catalogue, int Touched)? _issueKey;
     private Dictionary<string, FilterIssue> _issueMap = new();
 
-    /// <summary>The custom issues a rule shows: its field's message, once the value was edited.</summary>
+    /// <summary>The custom issues a rule shows: its field's message, once the value was edited.
+    /// Recomputed when the query, the schema, the labels or the edited set change.</summary>
     public IReadOnlyDictionary<string, FilterIssue> VisibleIssues
     {
         get
         {
-            if (!ReferenceEquals(_issueQuery, Query))
+            var key = (Query: Query, Index: Index, Labels: Labels, Catalogue: (object)Catalogue, Touched: _touchedVersion);
+            if (_issueKey is not { } k || !ReferenceEquals(k.Query, key.Query) || !ReferenceEquals(k.Index, key.Index)
+                || !ReferenceEquals(k.Labels, key.Labels) || !ReferenceEquals(k.Catalogue, key.Catalogue) || k.Touched != key.Touched)
             {
-                _issueQuery = Query;
+                _issueKey = key;
                 _issueMap = CollectIssues().Where(i => i.Reason == FilterIssueReason.Custom && _touched.Contains(i.NodeId)).ToDictionary(i => i.NodeId);
             }
             return _issueMap;
@@ -269,7 +296,7 @@ public sealed class FiltersContext
         var next = FilterQueries.Remove(Query, id);
         if (ReferenceEquals(next, Query)) return;
         _pending.Remove(id);
-        _touched.Remove(id);
+        Touch(id, false);
         if (!Emit(next, FilterChangeReason.Remove, removed)) return;
         Announce(removed is not null ? Labels.CountAnnouncement(FilterQueries.Count(next)) : Labels.GroupRemoved);
     }

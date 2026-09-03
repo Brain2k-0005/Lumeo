@@ -55,6 +55,8 @@ public sealed class FilterOptionsState : IDisposable
     private CancellationTokenSource? _cts;
     private System.Threading.Timer? _debounce;
     private int _request;
+    private int _scheduled;
+    private bool _disposed;
     private string? _cursor;
 
     internal FilterOptionsState(FilterField field, FiltersContext? shared, bool enabled, Action changed)
@@ -122,7 +124,9 @@ public sealed class FilterOptionsState : IDisposable
     {
         _debounce?.Dispose();
         var query = Query;
-        _debounce = new System.Threading.Timer(_ => _ = Run(query, null, append: false), null, delay, Timeout.Infinite);
+        var generation = ++_scheduled;
+        // A timer already queued when the next one was scheduled must not run the older text.
+        _debounce = new System.Threading.Timer(_ => { if (generation == _scheduled && !_disposed) _ = Run(query, null, append: false); }, null, delay, Timeout.Infinite);
     }
 
     private async Task Run(string query, string? cursor, bool append)
@@ -156,6 +160,7 @@ public sealed class FilterOptionsState : IDisposable
 
     public void Dispose()
     {
+        _disposed = true;
         _debounce?.Dispose();
         _cts?.Cancel();
         _cts?.Dispose();

@@ -3,11 +3,11 @@
 @* The advanced builder: inline in the page, or behind a trigger in a popover with a rule count. *@
 @if (Mode == FiltersAdvancedMode.Inline)
 {
-    <FiltersAdvancedPanel Mode="Mode" Query="Query" Draft="Draft" FocusId="@FocusId" AnnouncementSeq="AnnouncementSeq" />
+    <FiltersAdvancedPanel Mode="Mode" Query="Query" Draft="Draft" FocusId="@FocusId" AnnouncementSeq="AnnouncementSeq" Class="@Class" @attributes="AdditionalAttributes" />
 }
 else
 {
-    <Popover Open="_open" OpenChanged="v => _open = v">
+    <Popover Open="_open" OpenChanged="SetOpen">
         <PopoverTrigger AsChild>
             <ChildContentSlot Context="slot">
                 @if (Trigger is not null)
@@ -37,7 +37,7 @@ else
         <PopoverContent Align="@Align" Class="w-[42rem] max-w-[95vw] p-0" FocusOnOpen="false" aria-label="@Context.Labels.AdvancedFilter">
             @if (_open)
             {
-                <FiltersAdvancedPanel Mode="Mode" Query="Query" Draft="Draft" FocusId="@FocusId" AnnouncementSeq="AnnouncementSeq" />
+                <FiltersAdvancedPanel Mode="Mode" Query="Query" Draft="Draft" FocusId="@FocusId" AnnouncementSeq="AnnouncementSeq" Class="@Class" @attributes="AdditionalAttributes" />
             }
         </PopoverContent>
     </Popover>
@@ -53,8 +53,18 @@ else
     [Parameter] public FilterDraft? Draft { get; set; }
     [Parameter] public string? FocusId { get; set; }
     [Parameter] public int AnnouncementSeq { get; set; }
+    /// <summary>Classes and attributes for the panel.</summary>
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     private bool _open;
+
+    /// <summary>A disabled bar does not open, whatever trigger asked.</summary>
+    private void SetOpen(bool open)
+    {
+        if (open && Context.Disabled) return;
+        _open = open;
+    }
     private int Count => FilterQueries.Count(Query);
 
     private string TriggerClass => Cx.Merge(

@@ -484,6 +484,7 @@ internal static partial class LumeoDefaultStrings
         ["Filters.IssueRangeOrder"] = "Het einde van het bereik ligt voor het begin",
         ["Filters.IssueEmptyGroup"] = "Deze groep heeft nog geen voorwaarden",
         ["Filters.IssueSummary"] = "{0} rijen hebben aandacht nodig",
+["Filters.RowLevel"] = "{0}, niveau {1}",
         ["Filters.True"] = "Waar",
         ["Filters.False"] = "Onwaar",
         ["Filters.DateToday"] = "vandaag",

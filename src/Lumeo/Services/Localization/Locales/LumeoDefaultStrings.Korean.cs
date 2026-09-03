@@ -550,6 +550,7 @@ internal static partial class LumeoDefaultStrings
         ["Filters.IssueRangeOrder"] = "범위의 끝이 시작보다 앞입니다",
         ["Filters.IssueEmptyGroup"] = "이 그룹에는 아직 조건이 없습니다",
         ["Filters.IssueSummary"] = "{0}개 행에 확인이 필요합니다",
+["Filters.RowLevel"] = "{0}, {1}단계",
         ["Filters.True"] = "참",
         ["Filters.False"] = "거짓",
         ["Filters.DateToday"] = "오늘",

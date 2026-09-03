@@ -282,4 +282,28 @@ public class FilterModelTests
         var zh = new FilterLabels { DateInFormat = "{0}{1}\u540e", DateWeek = "\u5468", DateWeeks = "\u5468" };
         Assert.Equal(new FilterRelativeDate(FilterDateUnit.Week, 2), FilterDates.Parse("2\u5468\u540e", labels: zh)!.Relative);
     }
+
+
+    [Fact]
+    public void Dates_Keep_Their_Type_Through_Json()
+    {
+        var q = FilterQuery.Of(R("a", "created", "is", new DateOnly(2024, 5, 1)), R("b", "seen", "is_after", new DateTime(2024, 5, 1, 8, 30, 0, DateTimeKind.Utc)));
+        var back = System.Text.Json.JsonSerializer.Deserialize<FilterQuery>(System.Text.Json.JsonSerializer.Serialize(q))!;
+        Assert.Equal(new DateOnly(2024, 5, 1), ((FilterRule)back.Rules[0]).Value);
+        Assert.Equal(new DateTime(2024, 5, 1, 8, 30, 0, DateTimeKind.Utc), ((FilterRule)back.Rules[1]).Value);
+    }
+
+    [Fact]
+    public void CollectIssues_Runs_The_Custom_Check_For_Every_Arity()
+    {
+        var q = FilterQuery.Of(R("range", "amount", "between", new FilterRange(1.0, 2.0)), R("none", "title", "empty"), R("one", "title", "is", "x"));
+        var issues = FilterQueries.CollectIssues(q,
+            r => r.Operator switch { "between" => FilterArity.Range, "empty" => FilterArity.None, _ => FilterArity.One },
+            r => "no " + r.Id);
+        Assert.Equal(new[] { "range", "none", "one" }, issues.Select(i => i.NodeId));
+        Assert.All(issues, i => Assert.Equal(FilterIssueReason.Custom, i.Reason));
+        // a built-in failure wins over the custom check
+        var reversed = FilterQueries.CollectIssues(FilterQuery.Of(R("r", "amount", "between", new FilterRange(5.0, 1.0))), _ => FilterArity.Range, _ => "custom");
+        Assert.Equal(FilterIssueReason.ReversedRange, Assert.Single(reversed).Reason);
+    }
 }

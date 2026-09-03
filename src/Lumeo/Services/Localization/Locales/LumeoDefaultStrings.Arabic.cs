@@ -557,6 +557,7 @@ internal static partial class LumeoDefaultStrings
         ["Filters.IssueRangeOrder"] = "نهاية النطاق قبل بدايته",
         ["Filters.IssueEmptyGroup"] = "لا تحتوي هذه المجموعة على شروط بعد",
         ["Filters.IssueSummary"] = "{0} صفوف تحتاج إلى انتباه",
+["Filters.RowLevel"] = "{0}، المستوى {1}",
         ["Filters.True"] = "صحيح",
         ["Filters.False"] = "خطأ",
         ["Filters.DateToday"] = "اليوم",

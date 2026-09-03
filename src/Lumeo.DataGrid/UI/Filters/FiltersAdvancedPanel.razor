@@ -15,7 +15,8 @@
      aria-description="@(Context.ReadOnly ? Context.Labels.CountAnnouncement(count) + " " + Context.Labels.ReadOnly : Context.Labels.CountAnnouncement(count))"
      data-readonly="@(Context.ReadOnly ? "true" : null)"
      style="@($"--filter-panel-pad: {(Mode == FiltersAdvancedMode.Inline ? "0px" : "0.75rem")}")"
-     class="@Cx.Merge("flex w-full min-w-0 flex-col gap-2", Class)">
+     class="@Cx.Merge("flex w-full min-w-0 flex-col gap-2", Class)"
+     @attributes="AdditionalAttributes">
     <CascadingValue Value="this" IsFixed="true">
         @if (Context.ReadOnly)
         {
@@ -66,7 +67,6 @@
                 <button type="button" data-slot="filters-advanced-clear" class="@Cx.Join(GhostClass, "ms-auto")" disabled="@Context.Disabled" aria-disabled="@(Context.ReadOnly ? "true" : null)" @onclick="() => Context.ClearQuery()">@Context.Labels.ClearAll</button>
             }
         </div>
-        <div aria-live="polite" role="status" class="sr-only"><span @key="AnnouncementSeq">@Context.Announcement</span></div>
     </CascadingValue>
 </div>
 
@@ -81,6 +81,7 @@
     /// <summary>Replaces the empty state.</summary>
     [Parameter] public RenderFragment? EmptyTemplate { get; set; }
     [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     internal static readonly FilterChipSegment[] ContentBand = { FilterChipSegment.Combinator, FilterChipSegment.Field, FilterChipSegment.Operator, FilterChipSegment.Value };
     internal static readonly FilterChipSegment[] ActionBand = { FilterChipSegment.Drag, FilterChipSegment.Menu, FilterChipSegment.Add, FilterChipSegment.Remove };
@@ -156,9 +157,10 @@
 
     internal bool CanMove(FilterGroup parent) => Context.Reorderable && (parent.Id != Query.Id || Query.Rules.Count > 1);
 
-    private List<RowInfo> RowsInOrder()
+    private List<RowInfo> RowsInOrder(FilterQuery? query = null)
     {
         var rows = new List<RowInfo>();
+        query ??= Query;
         void Walk(FilterGroup group)
         {
             for (var i = 0; i < group.Rules.Count; i++)
@@ -168,7 +170,7 @@
                 if (node is FilterGroup g) Walk(g);
             }
         }
-        Walk(Query);
+        Walk(query);
         return rows;
     }
 
@@ -255,7 +257,8 @@
             case "Delete":
                 if (Context.Locked) return;
                 Context.RemoveNode(nodeId);
-                var remaining = RowsInOrder();
+                // the parameter still holds the old tree until the next render; the context has the new one
+                var remaining = RowsInOrder(Context.Query);
                 if (remaining.Count > 0)
                 {
                     var target = remaining[Math.Min(ri, remaining.Count - 1)];
