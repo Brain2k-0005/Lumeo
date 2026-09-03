@@ -179,6 +179,21 @@ public record DataGridContext<TItem>(
     /// </summary>
     public Action<TItem, bool, bool>? ToggleSelectionModified { get; init; }
 
+    /// <summary>Whether a row click toggles selection; see <c>DataGrid.SelectOnRowClick</c>.</summary>
+    public bool SelectOnRowClick { get; init; } = true;
+
+    /// <summary>Whether header cells render the reorder grip; see <c>DataGrid.ShowReorderHandle</c>.</summary>
+    public bool ShowReorderHandle { get; init; } = true;
+
+    /// <summary>Whether pinnable header cells render the pin button; see <c>DataGrid.ShowPinButton</c>.</summary>
+    public bool ShowPinButton { get; init; } = true;
+
+    /// <summary>The host's sort glyphs, or null for the grid's own; see <c>DataGrid.SortIconTemplate</c>.</summary>
+    public RenderFragment<SortDirection>? SortIconTemplate { get; init; }
+
+    /// <summary>Extra column-menu entries, or null; see <c>DataGrid.ColumnMenuContent</c>.</summary>
+    public RenderFragment<DataGridColumn<TItem>>? ColumnMenuContent { get; init; }
+
     /// <summary>Padding utilities for a body data cell, tightened under <see cref="Compact"/>.
     /// Kept here (rather than duplicated per cell) so the compact/normal values can't drift
     /// between <see cref="DataGridCell{TItem}"/> and the row's structural cells.</summary>

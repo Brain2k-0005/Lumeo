@@ -105,7 +105,7 @@ public class DateTimePickerRovingSeedTests : IAsyncLifetime
         // for the seed (00:00 default is disabled, so no enabled option equals the
         // live time -> seed kicks in).
         cut.FindAll("button")
-            .First(b => b.TextContent.Trim() == "10" && (b.GetAttribute("class") ?? "").Contains("h-8 w-8"))
+            .First(b => b.TextContent.Trim() == "10" && (b.GetAttribute("class") ?? "").Contains("--lumeo-calendar-cell-size"))
             .Click();
 
         var hoursCol = cut.FindAll("[role='listbox']")[0];

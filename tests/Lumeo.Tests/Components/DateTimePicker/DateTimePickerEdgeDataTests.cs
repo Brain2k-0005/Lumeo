@@ -44,7 +44,7 @@ public class DateTimePickerEdgeDataTests : IAsyncLifetime
 
     private static void ClickCalendarDay(IRenderedComponent<L.DateTimePicker> cut, string day)
         => cut.FindAll("button")
-            .First(b => b.TextContent.Trim() == day && (b.GetAttribute("class") ?? "").Contains("h-8 w-8"))
+            .First(b => b.TextContent.Trim() == day && (b.GetAttribute("class") ?? "").Contains("--lumeo-calendar-cell-size"))
             .Click();
 
     // ---- n=31 : boundary-day date change clamps a stale out-of-range time ----

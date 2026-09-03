@@ -63,7 +63,7 @@ public class DateTimePickerPendingTimeTests : IAsyncLifetime
 
         // Now pick a date — calendar day buttons carry the h-8 w-8 cell classes.
         cut.FindAll("button")
-            .First(b => b.TextContent.Trim() == "15" && (b.GetAttribute("class") ?? "").Contains("h-8 w-8"))
+            .First(b => b.TextContent.Trim() == "15" && (b.GetAttribute("class") ?? "").Contains("--lumeo-calendar-cell-size"))
             .Click();
 
         Assert.NotNull(committed);

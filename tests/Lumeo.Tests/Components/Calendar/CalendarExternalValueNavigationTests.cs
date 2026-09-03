@@ -135,7 +135,7 @@ public class CalendarExternalValueNavigationTests : IAsyncLifetime
 
         // Click a day of the displayed month (button text "10" with day-cell classes).
         cut.FindAll("button[type='button']")
-            .First(b => b.TextContent.Trim() == "10" && (b.GetAttribute("class") ?? "").Contains("h-8 w-8"))
+            .First(b => b.TextContent.Trim() == "10" && (b.GetAttribute("class") ?? "").Contains("--lumeo-calendar-cell-size"))
             .Click();
 
         // Browse forward one month.

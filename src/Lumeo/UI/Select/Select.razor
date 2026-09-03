@@ -385,7 +385,13 @@
         else
             _items[idx] = (id, value, text, disabled, label);
 
+        var known = _labelCache.ContainsKey(value);
         if (label is not null) _labelCache[value] = label;
+        // A closed composition-mode Select registers its items AFTER the trigger rendered
+        // (SelectContent's registration-only pass, 5.7.0): the first label seen for the
+        // selected value re-renders the trigger once so it shows that label, not the raw
+        // value. Existence-gated, so the per-render re-registrations can never loop.
+        if (!known && label is not null && !Multiple && value == Value) _ = InvokeAsync(StateHasChanged);
     }
 
     // Resolves the display label for a SELECTED value shown as a Multiple-mode trigger

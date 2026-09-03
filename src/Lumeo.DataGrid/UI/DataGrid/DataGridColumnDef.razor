@@ -66,6 +66,9 @@
     /// <summary>Custom header cell content, as an alternative to plain <see cref="Title"/> text.</summary>
     [Parameter] public RenderFragment? HeaderTemplate { get; set; }
 
+    /// <summary>The sort the grid starts with for this column, unless a saved layout says otherwise.</summary>
+    [Parameter] public SortDirection DefaultSort { get; set; } = SortDirection.None;
+
     /// <summary>Custom inline-edit UI for the cell, given a <see cref="CellEditContext{TItem}"/>.
     /// Falls back to a plain text <c>&lt;input&gt;</c> when unset.</summary>
     [Parameter] public RenderFragment<CellEditContext<TItem>>? EditTemplate { get; set; }
@@ -146,6 +149,8 @@
     private bool _lastFilterable;
     private bool _lastResizable;
     private bool _lastPinnable;
+    private string? _lastTitle;
+    private RenderFragment? _lastHeaderTemplate;
 
     protected override void OnInitialized() => Register();
 
@@ -184,6 +189,18 @@
             _lastPinnable = Pinnable;
             ParentGrid?.UpdateColumnFlags(_registeredKey, Sortable, Filterable, Resizable, Pinnable);
         }
+
+        // Title and HeaderTemplate were read once at registration. A host that switches its UI
+        // language at runtime re-renders with a new Title and expects the header to follow
+        // (field report 1.5). Only a changed Title re-renders the grid; a re-created
+        // HeaderTemplate delegate is stored without a render so this can never loop.
+        if (_registeredKey is not null &&
+            (Title != _lastTitle || !ReferenceEquals(HeaderTemplate, _lastHeaderTemplate)))
+        {
+            _lastTitle = Title;
+            _lastHeaderTemplate = HeaderTemplate;
+            ParentGrid?.UpdateColumnHeader(_registeredKey, Title, HeaderTemplate);
+        }
     }
 
     private void Register()
@@ -206,6 +223,7 @@
             Pin = Pin,
             CellTemplate = CellTemplate,
             HeaderTemplate = HeaderTemplate,
+            DefaultSort = DefaultSort,
             EditTemplate = EditTemplate,
             FilterOptions = FilterOptions,
             Operators = Operators,
@@ -233,6 +251,8 @@
         _lastFilterable = Filterable;
         _lastResizable = Resizable;
         _lastPinnable = Pinnable;
+        _lastTitle = Title;
+        _lastHeaderTemplate = HeaderTemplate;
 
         ParentGrid?.AddColumnDef(column);
     }

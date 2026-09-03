@@ -45,6 +45,7 @@ public class GeometryTokenGuardTests
             "--lumeo-control-h-xs", "--lumeo-control-h-sm", "--lumeo-control-h", "--lumeo-control-h-lg", "--lumeo-icon-size",
             "--lumeo-sidebar-item-h-sm", "--lumeo-sidebar-item-h", "--lumeo-sidebar-item-h-lg",
             "--lumeo-table-head-h", "--lumeo-table-cell-p", "--lumeo-grid-cell-px", "--lumeo-grid-cell-py",
+            "--lumeo-calendar-cell-size", "--lumeo-calendar-p",
         };
         foreach (var token in geometry)
         {

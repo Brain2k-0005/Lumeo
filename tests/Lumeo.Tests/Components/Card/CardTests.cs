@@ -145,7 +145,7 @@ public class CardTests : IAsyncLifetime
         var cls = cut.Find("div").GetAttribute("class");
         Assert.Contains("grid", cls);
         Assert.Contains("grid-rows-[auto_auto]", cls);
-        Assert.Contains("gap-1.5", cls);
+        Assert.Contains("gap-2", cls);
         Assert.Contains("has-data-[slot=card-action]:grid-cols-[1fr_auto]", cls);
         Assert.Contains("px-[var(--card-spacing,1rem)]", cls);
     }
