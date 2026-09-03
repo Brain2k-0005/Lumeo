@@ -1,6 +1,6 @@
 # Lumeo component catalog
 
-All 166 components by category, plus 17 full-page patterns and the 58 theme tokens. Generated from `components-api.json` (`node skills/lumeo/gen-catalog.mjs`).
+All 167 components by category, plus 17 full-page patterns and the 58 theme tokens. Generated from `components-api.json` (`node skills/lumeo/gen-catalog.mjs`).
 
 > This is the **offline fallback**. When the `lumeo-mcp` server is connected, prefer `lumeo_search` / `lumeo_get_component` / `lumeo_get_example` — they give the live, complete per-parameter API.
 
@@ -37,6 +37,7 @@ Satellite packages: a component tagged **[Charts]** needs `Lumeo.Charts`, **[Dat
 - **FileManager** — Headless file and folder explorer — folder tree, breadcrumb path, list/grid views, lazy loading, inline rename, context-menu operations.
 - **FileViewer** — Universal file preview — auto-detects type from MIME / extension and renders PDF, images, video, audio, Markdown, JSON, CSV, source code (CodeMirror), and plain text inline; unknown types fall back to a download CTA. Pluggable per-kind renderer overrides; auth-aware HttpClient hook.
 - **Filter** **[DataGrid]** — Composable faceted filter builder with chips. _(sub-components: FilterPill)_
+- **Filters** **[DataGrid]** — Filter builder: attribute, condition and value edited inside the chip, an editor per value kind, a query tree an API can consume. _(sub-components: FilterBooleanEditor, FilterChip, FilterDateEditor, FilterEditorButtons, FilterFieldPicker, FilterMenu, FilterMultiSelectEditor, FilterNumberEditor, FilterRangeEditor, FilterRuleMenuItems, FilterSelectEditor, FilterTextEditor, FiltersBuilder)_
 - **Gantt** **[Gantt]** — Gantt component.
 - **GanttChart** **[Gantt]** — Project timeline with dependency arrows, milestones, hierarchy tree pane, summary rollups, and a reject/accept/adjust drag commit gate. _(sub-components: GanttArrowLayer, GanttBar, GanttNav, GanttSettingsMenu, GanttSummaryBar, GanttTimeline, GanttTree, GanttZoomControl)_
 - **Gauge** — Single-value gauge with radial, arc, and linear variants and threshold colour bands.
