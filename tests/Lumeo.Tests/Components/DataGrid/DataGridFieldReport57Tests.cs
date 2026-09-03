@@ -44,8 +44,6 @@ public class DataGridFieldReport57Tests : IAsyncLifetime
     private static AngleSharp.Dom.IElement Header(IRenderedComponent<DataGrid<Row>> cut, int col)
         => cut.FindAll("th[data-slot=\"datagrid-header-cell\"]")[col];
 
-    private static List<string> FirstColumnCells(IRenderedComponent<DataGrid<Row>> cut)
-        => cut.FindAll("tr[data-slot=\"datagrid-row\"]").Select(r => r.QuerySelectorAll("td").Last(c => c.GetAttribute("role") == "gridcell" || true).TextContent.Trim()).ToList();
 
     // ---------------------------------------------------------------- 1.8
 
@@ -104,6 +102,52 @@ public class DataGridFieldReport57Tests : IAsyncLifetime
         Assert.Equal("descending", Header(cut, 0).GetAttribute("aria-sort"));
         var names = cut.FindAll("tr[data-slot=\"datagrid-row\"]").Select(r => r.QuerySelectorAll("td")[0].TextContent.Trim()).ToList();
         Assert.Equal(new[] { "Charlie", "Bob", "Alice" }, names);
+    }
+
+    [Fact]
+    public void DefaultSort_Rides_On_The_First_Server_Request()
+    {
+        var requests = new List<DataGridServerRequest>();
+        _ctx.Render<DataGrid<Row>>(p => p
+            .Add(x => x.Columns, Columns(SortDirection.Descending))
+            .Add(x => x.ServerMode, true)
+            .Add(x => x.ShowPagination, false)
+            .Add(x => x.ShowToolbar, false)
+            .Add(x => x.OnServerRequest, EventCallback.Factory.Create<DataGridServerRequest>(this, r => requests.Add(r))));
+
+        Assert.NotEmpty(requests);
+        var first = requests[0];
+        Assert.NotNull(first.Sorts);
+        Assert.Contains(first.Sorts!, s => s.Field == "Name" && s.Direction == SortDirection.Descending);
+    }
+
+    [Fact]
+    public void A_Declared_Column_DefaultSort_Reaches_The_Server()
+    {
+        var requests = new List<DataGridServerRequest>();
+        var cut = _ctx.Render<DataGrid<Row>>(p => p
+            .Add(x => x.ServerMode, true)
+            .Add(x => x.ShowPagination, false)
+            .Add(x => x.ShowToolbar, false)
+            .Add(x => x.OnServerRequest, EventCallback.Factory.Create<DataGridServerRequest>(this, r => requests.Add(r)))
+            .AddChildContent<DataGridColumnDef<Row>>(c => c.Add(d => d.Field, "Name").Add(d => d.Title, "Name").Add(d => d.Sortable, true).Add(d => d.DefaultSort, SortDirection.Descending)));
+
+        // the child registers after the initial request went out, so a second request carries the sort
+        cut.WaitForAssertion(() => Assert.Contains(requests, r => r.Sorts?.Any(s => s.Field == "Name" && s.Direction == SortDirection.Descending) == true));
+        Assert.Equal("descending", Header(cut, 0).GetAttribute("aria-sort"));
+    }
+
+    [Fact]
+    public void A_Saved_Layout_Wins_Over_DefaultSort()
+    {
+        var saved = new DataGridLayout { Sorts = new List<SortDescriptor> { new("City", SortDirection.Ascending) } };
+        var cut = RenderGrid(p => p.Add(x => x.SavedLayout, saved), defaultSort: SortDirection.Descending);
+
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Equal("ascending", Header(cut, 1).GetAttribute("aria-sort"));
+            Assert.Equal("none", Header(cut, 0).GetAttribute("aria-sort"));
+        });
     }
 
     // ---------------------------------------------------------------- 1.15

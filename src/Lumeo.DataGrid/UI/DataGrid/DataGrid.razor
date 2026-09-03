@@ -1601,7 +1601,14 @@
 
         _columnDefs.Add(column);
         SyncOrderedColumns();
-        if (SeedDefaultSort(column) && !ServerMode) ProcessClientData();
+        if (SeedDefaultSort(column))
+        {
+            // A child DataGridColumnDef registers during the first render, after
+            // OnInitializedAsync sent the initial server request: ask once more with the
+            // seeded sort. Client mode re-sorts in place.
+            if (!ServerMode) ProcessClientData();
+            else if (_initialServerRequestSent) _ = RequestServerData();
+        }
         // If the parameter seed ran before this column existed and dropped a
         // requested group field because of it, re-seed now that the column is
         // here and rebuild the row set so GroupBy/GroupByFields take effect
@@ -1761,12 +1768,18 @@
     // after the user cleared or changed the sort.
     private readonly HashSet<string> _defaultSortSeeded = new();
 
-    // A column's starting sort (DataGridColumn.DefaultSort). Seeded once per field, and only
-    // when no sort for that field exists yet. A layout restored later replaces _sorts
-    // wholesale, so a saved user sort still wins; in server mode the initial request carries
-    // the seeded sort because this runs before it is sent.
+    // Set by ApplyLayoutAsync: an applied layout (SavedLayout, a persisted one, a named one)
+    // owns the sort state from then on. A DefaultSort seeded after it would add a second
+    // sort field to the restored list.
+    private bool _layoutApplied;
+
+    // A column's starting sort (DataGridColumn.DefaultSort). Seeded once per field, only
+    // when no sort for that field exists yet and no layout has been applied, so a saved user
+    // sort still wins. Runs before the initial server request for Columns-parameter columns;
+    // a child DataGridColumnDef that registers later re-requests (see AddColumnDef).
     private bool SeedDefaultSort(DataGridColumn<TItem> column)
     {
+        if (_layoutApplied) return false;
         if (column.DefaultSort == SortDirection.None || column.Field is null) return false;
         if (!_defaultSortSeeded.Add(column.Field)) return false;
         if (_sorts.Any(s => s.Field == column.Field)) return false;
@@ -2144,6 +2157,9 @@
 
         if (ServerMode)
         {
+            // Columns handed in through the Columns parameter are known here, so their
+            // DefaultSort rides on the very first request.
+            SeedDefaultSorts();
             await RequestServerData();
         }
     }
@@ -4321,6 +4337,8 @@
 
     public async Task ApplyLayoutAsync(DataGridLayout layout)
     {
+        _layoutApplied = true;
+
         // Restore column order, width, visibility, pin
         if (layout.Columns.Count > 0)
         {

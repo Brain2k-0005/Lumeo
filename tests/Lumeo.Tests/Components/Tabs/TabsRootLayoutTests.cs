@@ -55,6 +55,7 @@ public class TabsRootLayoutTests : IAsyncLifetime
     {
         var cut = Render(L.Orientation.Vertical);
         var cls = cut.Find("[data-slot=\"tabs\"]").GetAttribute("class") ?? "";
+        Assert.Contains("flex", cls.Split(' '));
         Assert.Contains("flex-row", cls.Split(' '));
         Assert.Contains("gap-2", cls.Split(' '));
     }
