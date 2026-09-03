@@ -68,6 +68,7 @@ var componentToPackage = new Dictionary<string, string>(StringComparer.OrdinalIg
     ["DataGrid"] = "Lumeo.DataGrid",
     ["DataTable"] = "Lumeo.DataGrid",
     ["Filter"] = "Lumeo.DataGrid",
+    ["Filters"] = "Lumeo.DataGrid",
     // CodeEditor satellite
     ["CodeEditor"] = "Lumeo.CodeEditor",
     // Editor satellite
@@ -310,6 +311,7 @@ var categoryMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCas
     ["Sortable"] = "Drag & Drop",
     ["Transfer"] = "Drag & Drop",
     ["Filter"] = "Data Display",
+    ["Filters"] = "Data Display",
     // Charts (subgroup of Data Display per docs nav v2)
     ["Chart"] = "Data Display",
     // Utility
@@ -391,6 +393,7 @@ var descriptions = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCa
     ["EmptyState"] = "Illustrated placeholder for empty lists with call-to-action.",
     ["FileUpload"] = "Drag-and-drop file dropzone with progress and validation.",
     ["Filter"] = "Composable faceted filter builder with chips.",
+    ["Filters"] = "Filter builder: attribute, condition and value edited inside the chip, an editor per value kind, a query tree an API can consume.",
     ["Flex"] = "Flexbox wrapper exposing direction, gap, align, justify as props.",
     ["Form"] = "EditForm wrapper with styled validation, field groups, and submit state.",
     ["Grid"] = "CSS grid wrapper with columns + gap as props.",

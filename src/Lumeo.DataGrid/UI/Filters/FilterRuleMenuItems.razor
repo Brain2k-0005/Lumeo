@@ -1,0 +1,72 @@
+@namespace Lumeo
+
+@* The entries of a chip's (or an advanced row's) menu: duplicate, negate, the grouping entries of
+   the advanced builder, the hand-over to an advanced editor, remove. *@
+<DropdownMenuItem Disabled="Context.Locked" OnClick="() => Context.DuplicateNode(RuleId)">
+    <SvgGlyph Svg="@(LumeoIcons.Copy)" class="h-4 w-4" />
+    <span class="min-w-0 truncate">@Context.Labels.Duplicate</span>
+</DropdownMenuItem>
+<DropdownMenuItem Disabled="Context.Locked" OnClick="() => Context.NegateRule(RuleId)">
+    <SvgGlyph Svg="@(LumeoIcons.ArrowLeftRight)" class="h-4 w-4" />
+    <span class="min-w-0 truncate">@Context.Labels.Negate</span>
+</DropdownMenuItem>
+@if (AllowGrouping)
+{
+    <DropdownMenuItem Disabled="Context.Locked" OnClick="() => Context.WrapInGroup(RuleId)">
+        <SvgGlyph Svg="@(LumeoIcons.Layers)" class="h-4 w-4" />
+        <span class="min-w-0 truncate">@Context.Labels.WrapInGroup</span>
+    </DropdownMenuItem>
+    @foreach (var destination in Destinations)
+    {
+        var d = destination;
+        <DropdownMenuItem Disabled="Context.Locked" OnClick="() => Context.MoveNodeTo(RuleId, d.Id, d.Size)">
+            <SvgGlyph Svg="@(LumeoIcons.ChevronRight)" class="h-4 w-4" />
+            <span class="min-w-0 truncate">@d.Label</span>
+        </DropdownMenuItem>
+    }
+}
+@if (Context.CanConvertToAdvanced)
+{
+    <DropdownMenuItem OnClick="() => OnConvertToAdvanced.InvokeAsync()">
+        <SvgGlyph Svg="@(LumeoIcons.SlidersHorizontal)" class="h-4 w-4" />
+        <span class="min-w-0 truncate">@Context.Labels.ConvertToAdvanced</span>
+    </DropdownMenuItem>
+}
+<DropdownMenuItem Variant="MenuItemVariant.Destructive" Disabled="Context.Locked" OnClick="() => Context.RemoveNode(RuleId)">
+    <SvgGlyph Svg="@(LumeoIcons.Trash2)" class="h-4 w-4" />
+    <span class="min-w-0 truncate">@Context.Labels.Remove</span>
+</DropdownMenuItem>
+
+@code {
+    [CascadingParameter] public FiltersContext Context { get; set; } = default!;
+    [Parameter, EditorRequired] public string RuleId { get; set; } = "";
+    /// <summary>Shows the wrap-in-group and move-to-group entries of the advanced builder.</summary>
+    [Parameter] public bool AllowGrouping { get; set; }
+    [Parameter] public EventCallback OnConvertToAdvanced { get; set; }
+
+    private IReadOnlyList<(string Id, string Label, int Size)> Destinations
+    {
+        get
+        {
+            if (!Context.Reorderable) return Array.Empty<(string, string, int)>();
+            var query = Context.Query;
+            if (FilterQueries.Find(query, RuleId) is not { Parent: { } parent }) return Array.Empty<(string, string, int)>();
+            var list = new List<(string, string, int)>();
+            if (parent.Id != query.Id) list.Add((query.Id, Context.Labels.MoveToTop, query.Rules.Count));
+            var position = 0;
+            void Visit(FilterGroup group, bool inside)
+            {
+                foreach (var child in group.Rules)
+                {
+                    if (child is not FilterGroup g) continue;
+                    position++;
+                    var within = inside || g.Id == RuleId;
+                    if (!within && g.Id != parent.Id) list.Add((g.Id, string.Format(Context.Labels.MoveToGroup, position), g.Rules.Count));
+                    Visit(g, within);
+                }
+            }
+            Visit(query, false);
+            return list;
+        }
+    }
+}

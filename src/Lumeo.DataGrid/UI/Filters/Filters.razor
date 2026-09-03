@@ -1,0 +1,233 @@
+@namespace Lumeo
+@inject IComponentInteropService Interop
+@inject Lumeo.Services.Localization.ILumeoLocalizer L
+
+@{
+    var rules = FilterQueries.Flatten(_ctx.Query);
+    var count = rules.Count;
+}
+<CascadingValue Value="_ctx" IsFixed="true">
+    <div data-slot="filters"
+         id="@_rootId"
+         data-empty="@(count == 0 ? "true" : null)"
+         data-readonly="@(ReadOnly ? "true" : null)"
+         data-size="@(Size == Lumeo.Size.Sm ? "sm" : "default")"
+         class="@RootClass"
+         @attributes="AdditionalAttributes">
+        @if (ChildContent is not null)
+        {
+            @ChildContent
+        }
+        else
+        {
+            @* Basic: the chip row. The toolbar owns the arrow keys between chips; each chip handles
+               its own keys and asks the context to move focus. *@
+            <div role="toolbar"
+                 aria-label="@_ctx.Labels.FiltersLabel"
+                 aria-orientation="horizontal"
+                 aria-description="@(ReadOnly ? _ctx.Labels.ReadOnly : null)"
+                 class="@BarClass">
+                @for (var i = 0; i < rules.Count; i++)
+                {
+                    var rule = rules[i];
+                    <FilterChip @key="rule.Id"
+                                Rule="rule"
+                                Index="i"
+                                Focused="@(_ctx.FocusId == rule.Id)"
+                                IsTabStop="@(_ctx.FocusId == rule.Id || (_ctx.FocusId is null && i == 0))"
+                                AutoOpenSegment="@(_ctx.FocusId == rule.Id && _ctx.AutoOpen ? _ctx.FocusSegment : null)" />
+                }
+            </div>
+            <FiltersBuilder Draft="_ctx.Draft" RuleCount="count" Trigger="Trigger" />
+            @if (ShowClear && count > 0)
+            {
+                <Button data-slot="filter-clear"
+                        Variant="Button.ButtonVariant.Outline"
+                        Size="FilterStyles.ButtonSizeOf(Size)"
+                        Class="ms-auto"
+                        Disabled="Disabled"
+                        aria-disabled="@(ReadOnly ? "true" : null)"
+                        OnClick="() => _ctx.ClearQuery()">
+                    @_ctx.Labels.Clear
+                </Button>
+            }
+        }
+        @* Keyed on the sequence so the same sentence twice is announced twice. *@
+        <div aria-live="polite" role="status" class="sr-only"><span @key="_ctx.AnnouncementSeq">@_ctx.Announcement</span></div>
+    </div>
+</CascadingValue>
+
+@code {
+    /// <summary>The attributes the user can filter by, with their kinds, options and operators.</summary>
+    [Parameter, EditorRequired] public IReadOnlyList<FilterField> Fields { get; set; } = Array.Empty<FilterField>();
+
+    /// <summary>The query, for two-way binding. Leave unbound and the bar keeps the query itself.</summary>
+    [Parameter] public FilterQuery? Query { get; set; }
+    [Parameter] public EventCallback<FilterQuery> QueryChanged { get; set; }
+
+    /// <summary>The query an unbound bar starts with.</summary>
+    [Parameter] public FilterQuery? DefaultQuery { get; set; }
+
+    /// <summary>Fires after every change with the new query and why it changed.</summary>
+    [Parameter] public EventCallback<FilterQueryChange> OnQueryChanged { get; set; }
+
+    /// <summary>A veto point: return false to refuse a change.</summary>
+    [Parameter] public Func<FilterQueryChange, bool>? OnBeforeQueryChange { get; set; }
+
+    /// <summary>Every string the bar shows; defaults to the <c>Filters.*</c> keys of the locale catalogue. See <see cref="FilterLabels.FromLocalizer"/>.</summary>
+    [Parameter] public FilterLabels? Labels { get; set; }
+
+    /// <summary>Value editors by key, replacing or extending <see cref="FilterEditors.Default"/>.</summary>
+    [Parameter] public IReadOnlyDictionary<string, RenderFragment<FilterEditorContext>>? Editors { get; set; }
+
+    /// <summary>A chip row (<c>Basic</c>) or a nested condition builder (<c>Advanced</c>).</summary>
+    [Parameter] public FiltersVariant Variant { get; set; } = FiltersVariant.Basic;
+
+    /// <summary>Where the advanced builder renders.</summary>
+    [Parameter] public FiltersAdvancedMode AdvancedMode { get; set; } = FiltersAdvancedMode.Popover;
+
+    /// <summary>Whether rows can be reordered (Alt + arrow keys, and drag in the advanced builder).</summary>
+    [Parameter] public bool Reorderable { get; set; }
+
+    /// <summary>The rung of every chip, button and editor control: <c>Sm</c> (28px) or <c>Md</c> (32px).</summary>
+    [Parameter] public Lumeo.Size Size { get; set; } = Lumeo.Size.Md;
+
+    /// <summary>No tab stops, no edits.</summary>
+    [Parameter] public bool Disabled { get; set; }
+
+    /// <summary>Focusable and readable, refuses every edit.</summary>
+    [Parameter] public bool ReadOnly { get; set; }
+
+    /// <summary>Shows a Clear button once a rule exists.</summary>
+    [Parameter] public bool ShowClear { get; set; }
+
+    /// <summary>Replaces the add-filter button; the popover opens on its click.</summary>
+    [Parameter] public RenderFragment? Trigger { get; set; }
+
+    /// <summary>Custom rendering of every chip's value segment.</summary>
+    [Parameter] public RenderFragment<FilterValueContext>? ValueTemplate { get; set; }
+
+    /// <summary>Replaces the whole chip for a rule.</summary>
+    [Parameter] public RenderFragment<FilterRule>? ChipTemplate { get; set; }
+
+    /// <summary>Fires when the user picks "Advanced editor" in a chip menu; the entry only shows while set.</summary>
+    [Parameter] public EventCallback OnConvertToAdvanced { get; set; }
+
+    /// <summary>Classes merged onto the chip and group menus.</summary>
+    [Parameter] public string? MenuClass { get; set; }
+
+    /// <summary>How many path segments a nested field's chip shows before collapsing the middle.</summary>
+    [Parameter] public int MaxPathSegments { get; set; } = 3;
+
+    /// <summary>A custom layout: receives the cascaded <see cref="FiltersContext"/> and renders the bar itself.</summary>
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private readonly string _rootId = FilterIds.New("filters");
+    private FiltersContext _ctx = default!;
+    private FilterQuery _internal = FilterQuery.Empty();
+    private IReadOnlyList<FilterField>? _indexedFields;
+    private FilterLabels? _labelsParam;
+    private FilterLabels? _defaultLabels;
+    private string? _pendingFocusId;
+
+    private bool IsControlled => Query is not null;
+
+    private string RootClass => Cx.Merge("flex flex-wrap items-center", Size == Lumeo.Size.Sm ? "gap-1.5" : "gap-2", Cx.When(_ctx.RuleCount == 0, "gap-0"), Class);
+    private string BarClass => Cx.Merge("flex flex-wrap items-center", Size == Lumeo.Size.Sm ? "gap-1.5" : "gap-2", Cx.When(_ctx.RuleCount == 0, "hidden"));
+
+    protected override void OnInitialized()
+    {
+        _ctx = new FiltersContext(this, _rootId);
+        _internal = DefaultQuery ?? FilterQuery.Empty();
+    }
+
+    protected override void OnParametersSet()
+    {
+        if (!ReferenceEquals(_indexedFields, Fields))
+        {
+            _indexedFields = Fields;
+            _ctx.Index = new FilterIndex(Fields);
+        }
+        if (Labels is null)
+        {
+            _defaultLabels ??= FilterLabels.FromLocalizer(L);
+            if (!ReferenceEquals(_ctx.Labels, _defaultLabels)) { _ctx.Labels = _defaultLabels; _ctx.Catalogue = FilterOperators.Build(_defaultLabels.OperatorLabels); }
+        }
+        else if (!ReferenceEquals(_labelsParam, Labels))
+        {
+            _labelsParam = Labels;
+            _ctx.Labels = Labels;
+            _ctx.Catalogue = FilterOperators.Build(Labels.OperatorLabels);
+        }
+        _ctx.Editors = FilterEditors.With(Editors);
+        _ctx.Size = Size;
+        _ctx.Disabled = Disabled;
+        _ctx.ReadOnly = ReadOnly;
+        _ctx.Variant = Variant;
+        _ctx.Reorderable = Reorderable;
+        _ctx.MaxPathSegments = MaxPathSegments;
+        _ctx.MenuClass = MenuClass;
+        _ctx.CanConvertToAdvanced = OnConvertToAdvanced.HasDelegate && Variant != FiltersVariant.Advanced;
+        _ctx.ValueTemplate = ValueTemplate;
+        _ctx.ChipTemplate = ChipTemplate;
+        _ctx.Query = IsControlled ? Query! : _internal;
+
+        // A rule that disappeared (a controlled query replaced it) takes the focus record with it.
+        if (_ctx.FocusId is { } id && FilterQueries.Find(_ctx.Query, id) is null) _ctx.SetFocus(null, null);
+    }
+
+    /// <summary>Applies a change unless the veto refuses it; stores it when unbound, raises the callbacks.</summary>
+    internal bool Emit(FilterQuery next, FilterChangeDetails details)
+    {
+        if (ReferenceEquals(next, _ctx.Query)) return false;
+        var change = new FilterQueryChange(next, details);
+        if (OnBeforeQueryChange?.Invoke(change) == false) return false;
+        if (!IsControlled) _internal = next;
+        _ctx.Query = next;
+        if (QueryChanged.HasDelegate) _ = QueryChanged.InvokeAsync(next);
+        if (OnQueryChanged.HasDelegate) _ = OnQueryChanged.InvokeAsync(change);
+        StateHasChanged();
+        return true;
+    }
+
+    internal void RequestRender() => _ = InvokeAsync(StateHasChanged);
+
+    internal Task Dispatch(Action action) => InvokeAsync(action);
+
+    internal Task FocusElementAsync(string id)
+    {
+        _pendingFocusId = id;
+        return InvokeAsync(StateHasChanged);
+    }
+
+    /// <summary>The DOM id of a rule's chip, for focus moves.</summary>
+    public string ChipElementId(string ruleId) => $"{_rootId}-chip-{ruleId}";
+
+    /// <summary>Moves keyboard focus to the chip at an index (clamped), after the next render.</summary>
+    internal void FocusChipAt(int index)
+    {
+        var rules = FilterQueries.Flatten(_ctx.Query);
+        if (rules.Count == 0) return;
+        var target = rules[Math.Clamp(index, 0, rules.Count - 1)];
+        _ctx.SetFocus(target.Id, null);
+        _pendingFocusId = ChipElementId(target.Id);
+        StateHasChanged();
+    }
+
+    /// <summary>What the advanced builder and the chips call to flip a segment open on the next render.</summary>
+    internal FiltersContext Context => _ctx;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_pendingFocusId is { } id)
+        {
+            _pendingFocusId = null;
+            try { await Interop.FocusElement(id); }
+            catch (JSDisconnectedException) { }
+            catch (InvalidOperationException) { }
+        }
+    }
+}

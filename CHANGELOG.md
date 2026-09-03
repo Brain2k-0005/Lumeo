@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [5.8.0] - Unreleased
 
+### Added
+- **`Filters`, a filter builder in `Lumeo.DataGrid`** (field report §15, ReUI's Filters ported).
+  Add a filter, pick the attribute in a searchable list (nested attributes drill down), then the
+  condition and the value inside the chip; the chip's menu duplicates, negates or removes.
+  Seven value kinds with their operator catalogue (text, number, range, date, select,
+  multiselect, boolean), an editor per kind, async options with debounce, paging and retry
+  (`LoadOptions`, `ResolveValues`), an exclusive "none" option, custom editors and value
+  rendering, a size ladder on the geometry tokens, `ReadOnly` and `Disabled`, keyboard
+  (arrows, Home/End, Delete, Enter, Alt+arrows to reorder) and live announcements. The model is
+  a query tree (`FilterQuery`, `FilterRule`, `FilterGroup`) with pure operations in
+  `FilterQueries` and `Flatten()` for an API call; every string comes from the `Filters.*`
+  locale keys. `Command` gains `SearchChanged` and `ShouldFilter` for lists that filter or
+  load their items themselves.
+
 ### Fixed
 - **Shift-click selects a range in virtualized server mode.** With `Virtualized="true"` and
   `OnRangeRequest`, rows go from the provider straight into `<Virtualize>` and the grid holds

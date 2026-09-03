@@ -1,0 +1,148 @@
+@namespace Lumeo
+@implements IDisposable
+
+@* The option list the operator popover, the select editors and the boolean editor share: a
+   searchable list with check marks, selected options pinned above a divider, an exclusive option
+   ("none") below one, and the loading, error and load-more rows of an async field. *@
+<Command data-slot="filter-menu" ShouldFilter="@(!PreFiltered)" SearchChanged="HandleSearch" Class="rounded-md">
+    <div class="@(Searchable ? null : "sr-only")">
+        <CommandInput id="@AutoFocusId" Placeholder="@(SearchPlaceholder ?? Context.Labels.SearchOptions)" AutoFocus="@(AutoFocusId is null)" aria-label="@AriaLabel" />
+    </div>
+    <CommandList Class="@ListClass">
+        <CommandEmpty>@(State?.Error == true ? Context.Labels.Error : State?.Loading == true ? Context.Labels.Empty : Context.Labels.Empty)</CommandEmpty>
+        @{
+            var rows = Rows;
+            var selected = Selected.ToHashSet();
+        }
+        @for (var i = 0; i < rows.Count; i++)
+        {
+            var (item, divider) = rows[i];
+            if (divider)
+            {
+                <CommandSeparator />
+            }
+            var value = item.Value;
+            var isSelected = selected.Contains(value);
+            <CommandItem @key="value"
+                         FilterValue="@(item.Label + " " + string.Join(" ", item.Keywords ?? Array.Empty<string>()))"
+                         Disabled="item.Disabled"
+                         data-checked="@(isSelected ? "true" : null)"
+                         aria-checked="@(Multiple ? (isSelected ? "true" : "false") : null)"
+                         Class="pe-8"
+                         OnSelect="() => Toggle(value)">
+                @if (item.Icon is not null)
+                {
+                    <span data-slot="filter-menu-icon" class="flex shrink-0 items-center justify-center text-muted-foreground">@item.Icon</span>
+                }
+                <span class="flex min-w-0 flex-1 flex-col items-start gap-0.5">
+                    <span class="w-full truncate text-start">@item.Label</span>
+                    @if (item.Description is not null)
+                    {
+                        <span class="w-full truncate text-start text-xs text-muted-foreground">@item.Description</span>
+                    }
+                </span>
+                @if (item.Exclusive && Context.Labels.ExclusiveHint.Length > 0)
+                {
+                    <span class="sr-only">, @Context.Labels.ExclusiveHint</span>
+                }
+                @if (isSelected)
+                {
+                    <span data-slot="filter-menu-check" class="pointer-events-none absolute end-2 flex h-4 w-4 items-center justify-center">
+                        <SvgGlyph Svg="@(LumeoIcons.Check)" class="h-4 w-4" />
+                    </span>
+                }
+            </CommandItem>
+        }
+        @if (State?.Error == true)
+        {
+            <CommandItem @key="@("retry")" FilterValue="" OnSelect="() => State.Retry()">
+                <SvgGlyph Svg="@(LumeoIcons.RefreshCw)" class="h-3.5 w-3.5" />
+                <span>@Context.Labels.Retry</span>
+            </CommandItem>
+        }
+        else if (State?.HasMore == true)
+        {
+            <CommandItem @key="@("more")" FilterValue="" Disabled="State.Loading" OnSelect="() => State.LoadMore()">
+                <span>@(State.Loading ? Context.Labels.LoadingMore : Context.Labels.LoadMore)</span>
+            </CommandItem>
+        }
+        else if (State?.Loading == true && rows.Count == 0)
+        {
+            <div class="px-2 py-1.5 text-sm text-muted-foreground">@Context.Labels.Loading</div>
+        }
+    </CommandList>
+</Command>
+
+@code {
+    [CascadingParameter] public FiltersContext Context { get; set; } = default!;
+    [Parameter, EditorRequired] public IReadOnlyList<FilterChoice> Items { get; set; } = Array.Empty<FilterChoice>();
+    [Parameter] public IReadOnlyList<string> Selected { get; set; } = Array.Empty<string>();
+    [Parameter] public bool Multiple { get; set; }
+    /// <summary>The new selection after a pick. Single mode hands one value, or none when the current one was pressed again.</summary>
+    [Parameter] public EventCallback<IReadOnlyList<string>> OnSelectionChange { get; set; }
+    [Parameter] public string? AriaLabel { get; set; }
+    [Parameter] public string? SearchPlaceholder { get; set; }
+    /// <summary>Whether the search box is visible. Hidden, it still owns the keyboard.</summary>
+    [Parameter] public bool Searchable { get; set; } = true;
+    [Parameter] public int MaxHeight { get; set; } = 256;
+    [Parameter] public bool PinSelected { get; set; }
+    [Parameter] public FilterSortSelected SortSelected { get; set; }
+    /// <summary>True when the host already filtered the items (async options); the list then shows every item.</summary>
+    [Parameter] public bool PreFiltered { get; set; }
+    /// <summary>The id of the search box, so a popover can focus it.</summary>
+    [Parameter] public string? AutoFocusId { get; set; }
+    [Parameter] public EventCallback<string> OnQueryChange { get; set; }
+    /// <summary>Loading, error and paging of an async field.</summary>
+    [Parameter] public FilterOptionsState? State { get; set; }
+
+    private string _query = "";
+    private string? _snapshot;
+
+    private string ListClass => $"max-h-[{MaxHeight}px] overflow-y-auto p-1";
+
+    protected override void OnInitialized()
+    {
+        _snapshot = PinSelected ? string.Join("\0", Selected) : null;
+    }
+
+    private IReadOnlyList<(FilterChoice Item, bool Divider)> Rows
+    {
+        get
+        {
+            var pinnedKey = !PinSelected ? "" : SortSelected == FilterSortSelected.Snapshot ? _snapshot ?? "" : string.Join("\0", Selected);
+            var pinned = pinnedKey.Length == 0 ? new HashSet<string>() : pinnedKey.Split('\0').ToHashSet();
+            var exclusive = Items.Where(i => i.Exclusive).ToList();
+            var values = exclusive.Count > 0 ? Items.Where(i => !i.Exclusive).ToList() : Items.ToList();
+            var chosen = pinned.Count > 0 ? values.Where(i => pinned.Contains(i.Value)).ToList() : new List<FilterChoice>();
+            var rest = pinned.Count > 0 ? values.Where(i => !pinned.Contains(i.Value)).ToList() : values;
+            if (SortSelected == FilterSortSelected.Label)
+            {
+                chosen = chosen.OrderBy(i => i.Label, StringComparer.CurrentCulture).ToList();
+                rest = rest.OrderBy(i => i.Label, StringComparer.CurrentCulture).ToList();
+                exclusive = exclusive.OrderBy(i => i.Label, StringComparer.CurrentCulture).ToList();
+            }
+            var rows = new List<(FilterChoice, bool)>();
+            var dividerAfterChosen = chosen.Count > 0 && _query.Trim().Length == 0;
+            foreach (var c in chosen) rows.Add((c, false));
+            for (var i = 0; i < rest.Count; i++) rows.Add((rest[i], i == 0 && dividerAfterChosen));
+            for (var i = 0; i < exclusive.Count; i++) rows.Add((exclusive[i], i == 0 && rows.Count > 0));
+            return rows;
+        }
+    }
+
+    private Task HandleSearch(string text)
+    {
+        _query = text;
+        return OnQueryChange.InvokeAsync(text);
+    }
+
+    private Task Toggle(string value)
+    {
+        if (!Multiple)
+            return OnSelectionChange.InvokeAsync(Selected.Contains(value) ? Array.Empty<string>() : new[] { value });
+        var next = Selected.Contains(value) ? Selected.Where(v => v != value).ToList() : Selected.Append(value).ToList();
+        return OnSelectionChange.InvokeAsync(next);
+    }
+
+    public void Dispose() { }
+}

@@ -1,0 +1,69 @@
+@namespace Lumeo
+
+@* The add-filter button and its field picker. The popover is open exactly while a draft with no
+   rule id exists; picking a field adds the rule and closes it, the chip takes over from there. *@
+<Popover Open="@Open" OpenChanged="HandleOpenChanged">
+    <PopoverTrigger AsChild Class="@(Context.Locked ? "pointer-events-none" : null)">
+        <ChildContentSlot Context="slot">
+            @if (Trigger is not null)
+            {
+                <span id="@slot.Id" @attributes="slot.Attributes" @onclick="slot.OnClick" class="contents">@Trigger</span>
+            }
+            else
+            {
+                <button type="button"
+                        data-slot="filter-add"
+                        id="@slot.Id"
+                        @attributes="slot.Attributes"
+                        @onclick="slot.OnClick"
+                        class="@AddClass"
+                        disabled="@Context.Disabled"
+                        aria-disabled="@(Context.ReadOnly ? "true" : null)"
+                        aria-label="@(Compact ? Context.Labels.AddFilter : null)">
+                    <SvgGlyph Svg="@(LumeoIcons.ListFilter)" class="h-4 w-4 shrink-0" />
+                    @if (!Compact)
+                    {
+                        <span>@Context.Labels.AddFilter</span>
+                    }
+                </button>
+            }
+        </ChildContentSlot>
+    </PopoverTrigger>
+    <PopoverContent Align="Lumeo.Align.Start" Class="w-auto min-w-56 p-0" FocusTargetId="@_searchId">
+        @if (Open)
+        {
+            <FilterFieldPicker Path="@(Draft?.PickerPath ?? Array.Empty<string>())"
+                               Query="@(Draft?.Query ?? "")"
+                               SearchId="@_searchId"
+                               OnPathChange="p => Context.SetDraftPickerPath(p)"
+                               OnQueryChange="q => Context.SetDraftQuery(q)"
+                               OnSelect="p => Context.SelectDraftField(p)" />
+        }
+    </PopoverContent>
+</Popover>
+
+@code {
+    [CascadingParameter] public FiltersContext Context { get; set; } = default!;
+    /// <summary>The current draft; the popover is open while it builds a new rule.</summary>
+    [Parameter] public FilterDraft? Draft { get; set; }
+    /// <summary>How many rules exist; the button collapses to its icon once there is one.</summary>
+    [Parameter] public int RuleCount { get; set; }
+    /// <summary>Replaces the button.</summary>
+    [Parameter] public RenderFragment? Trigger { get; set; }
+
+    private readonly string _searchId = FilterIds.New("filter-search");
+
+    private bool Open => Draft is { RuleId: null };
+    private bool Compact => RuleCount > 0;
+
+    private string AddClass => Cx.Merge(
+        "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md border border-input bg-background text-sm font-medium shadow-xs transition-[color,background-color,border-color,box-shadow] hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50",
+        FilterStyles.ControlHeight(Context.Size),
+        Compact ? Cx.Join(FilterStyles.IconWidth(Context.Size), "px-0") : FilterStyles.PaddingX(Context.Size));
+
+    private void HandleOpenChanged(bool open)
+    {
+        if (open) Context.OpenCreate();
+        else Context.CloseDraft();
+    }
+}

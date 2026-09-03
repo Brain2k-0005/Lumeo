@@ -1,0 +1,51 @@
+@namespace Lumeo
+
+<div data-slot="filter-editor" class="@Cx.Merge("w-48 min-w-0", Context.Field.Class)">
+    <FilterMenu Items="Context.Options.Items"
+                Selected="Selected"
+                Multiple="Multiple"
+                OnSelectionChange="OnChange"
+                AriaLabel="@Context.Field.Label"
+                SearchPlaceholder="@Context.Field.Placeholder"
+                Searchable="Context.Field.Searchable"
+                PinSelected="Context.Field.PinSelected"
+                SortSelected="Context.Field.SortSelected"
+                PreFiltered="true"
+                AutoFocusId="@Context.AutoFocusId"
+                OnQueryChange="q => Context.Options.SetQuery(q)"
+                State="Context.Options" />
+</div>
+
+@code {
+    [CascadingParameter] public FiltersContext Filters { get; set; } = default!;
+    [Parameter, EditorRequired] public FilterEditorContext Context { get; set; } = default!;
+    /// <summary>Many values (has any of) or one.</summary>
+    [Parameter] public bool Multiple { get; set; }
+
+    private IReadOnlyList<string> Selected => FilterValues.AsStrings(Context.Value);
+
+    private async Task OnChange(IReadOnlyList<string> raw)
+    {
+        // The one place the exclusive rule applies, so click and keyboard cannot disagree.
+        var previous = Selected;
+        var values = FilterIndex.ApplyExclusive(raw, previous, v => Context.Options.Resolve(v)?.Exclusive == true);
+        if (!ReferenceEquals(values, raw))
+        {
+            var arrived = values.FirstOrDefault(v => !previous.Contains(v));
+            var cleared = raw.Count - values.Count;
+            if (arrived is not null && cleared > 0)
+                Filters.Announce(string.Format(Context.Labels.ExclusiveAnnouncement, Context.Options.Resolve(arrived)?.Label ?? arrived, cleared));
+        }
+        if (!Multiple)
+        {
+            var next = values.Count > 0 ? values[0] : null;
+            if (next is null) { Context.Cancel(); return; }
+            Context.SetValue(next);
+            await Context.Commit(next);
+            return;
+        }
+        var list = values.ToList();
+        Context.SetValue(list);
+        await Context.Commit(list, close: false);
+    }
+}
