@@ -1,0 +1,48 @@
+@namespace Lumeo
+
+<div data-slot="filter-editor" class="@Cx.Merge("flex w-72 min-w-0 flex-col gap-2 p-2", Context.Field.Class)" @onkeydown="HandleKeyDown">
+    <div class="flex items-center gap-1.5">
+        <Input id="@Context.AutoFocusId"
+               type="number"
+               ShowStepButtons="false"
+               Value="@Text(Range.From)"
+               OnInput="e => Set(from: FilterNumberEditor.Parse(e.Value?.ToString()), to: Range.To)"
+               Size="Context.Size"
+               Class="w-full"
+               aria-label="@string.Format(Context.Labels.RangeFrom, Context.Field.Label)" />
+        <span class="text-xs text-muted-foreground">@Context.Labels.RangeSeparator</span>
+        <Input type="number"
+               ShowStepButtons="false"
+               Value="@Text(Range.To)"
+               OnInput="e => Set(from: Range.From, to: FilterNumberEditor.Parse(e.Value?.ToString()))"
+               Size="Context.Size"
+               Class="w-full"
+               aria-label="@string.Format(Context.Labels.RangeTo, Context.Field.Label)" />
+    </div>
+    @if (Context.Host == FilterEditorHost.Amend)
+    {
+        <FilterEditorButtons Context="Context" Fused="false" />
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public FilterEditorContext Context { get; set; } = default!;
+
+    private FilterRange Range => Context.Value as FilterRange ?? new FilterRange(null, null);
+
+    private static string Text(object? v) => v switch
+    {
+        null => "",
+        double d => d.ToString(System.Globalization.CultureInfo.InvariantCulture),
+        IFormattable f => f.ToString(null, System.Globalization.CultureInfo.InvariantCulture) ?? "",
+        _ => v.ToString() ?? "",
+    };
+
+    private void Set(object? from, object? to) => Context.SetValue(new FilterRange(from, to));
+
+    private async Task HandleKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") await Context.Commit();
+        else if (e.Key == "Escape") Context.Cancel();
+    }
+}

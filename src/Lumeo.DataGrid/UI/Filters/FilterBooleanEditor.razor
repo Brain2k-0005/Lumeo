@@ -1,0 +1,25 @@
+@namespace Lumeo
+
+<div data-slot="filter-editor" class="@Cx.Merge("w-40 min-w-0", Context.Field.Class)">
+    <FilterMenu Items="Items"
+                Selected="@(Context.Value is true ? new[] { "true" } : Context.Value is false ? new[] { "false" } : Array.Empty<string>())"
+                OnSelectionChange="OnChange"
+                AriaLabel="@Context.Field.Label"
+                Searchable="false"
+                AutoFocusId="@Context.AutoFocusId" />
+</div>
+
+@code {
+    [Parameter, EditorRequired] public FilterEditorContext Context { get; set; } = default!;
+
+    private IReadOnlyList<FilterChoice> Items => new[] { new FilterChoice("true", Context.Labels.True), new FilterChoice("false", Context.Labels.False) };
+
+    private async Task OnChange(IReadOnlyList<string> values)
+    {
+        // Pressing the chosen row again is a no-op, not a commit of false.
+        if (values.Count == 0) return;
+        var next = values[0] == "true";
+        Context.SetValue(next);
+        await Context.Commit(next);
+    }
+}

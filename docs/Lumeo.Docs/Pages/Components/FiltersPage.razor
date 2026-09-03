@@ -1,0 +1,271 @@
+@page "/components/filters"
+
+<PageTitle>Filters — Lumeo</PageTitle>
+
+<PageHeader Title="Filters" Description="A filter builder: add a filter, pick the attribute, the condition and the value inside the chip, with an editor per value kind. ReUI's Filters, ported: the same operator catalogue, the same query tree, the same chip anatomy." />
+
+<InstallUsage Component="Filters" />
+
+<div class="mt-10 space-y-3">
+    <Heading Id="when-to-use" Level="2" Class="scroll-mt-20">When to Use</Heading>
+    <ul class="list-disc list-inside space-y-1 text-muted-foreground text-sm">
+        <li>A toolbar over a table or list where users build their own conditions: field, operator, value</li>
+        <li>A saved-search or report screen that stores a query tree and restores it later</li>
+        <li>Anything <a href="/components/filter-bar" class="text-primary hover:underline">FilterBar</a> is too small for: FilterBar shows active filters, Filters lets the user write them</li>
+    </ul>
+</div>
+
+<Stack Gap="8" Class="mt-8">
+    <ComponentDemo Title="Default" Description="Text, number, select, multiselect, date and boolean fields. The add-filter button opens the attribute list; picking one adds a chip and opens its condition, then its value. Each chip segment reopens on click, the menu duplicates, negates or removes." Code="@_defaultCode">
+        <Stack Gap="4">
+            <Filters Fields="_fields" @bind-Query="_query" ShowClear="true" />
+            <QueryDump Query="_query" />
+        </Stack>
+    </ComponentDemo>
+
+    <ComponentDemo Title="Small" Description="Size=Sm puts every chip, button and editor control on the 28px rung." Code="@_smallCode">
+        <Filters Fields="_fields" Size="Lumeo.Size.Sm" ShowClear="true" DefaultQuery="_preset" />
+    </ComponentDemo>
+
+    <ComponentDemo Title="Nested attributes" Description="A field with child fields becomes a branch the picker drills into; a search reaches every level. The chip shows the path and collapses a long one." Code="@_nestedCode">
+        <Filters Fields="_nestedFields" DefaultQuery="_nestedPreset" />
+    </ComponentDemo>
+
+    <ComponentDemo Title="Async options" Description="LoadOptions receives the search text and a cursor and returns a page; the list shows loading, retry and load-more rows. ResolveValues gives a restored chip its labels before the list was ever opened." Code="@_asyncCode">
+        <Filters Fields="_asyncFields" DefaultQuery="_asyncPreset" />
+    </ComponentDemo>
+
+    <ComponentDemo Title="Custom editor and value" Description="EditorTemplate replaces the editor of one field, ValueTemplate the value segment of every chip." Code="@_customCode">
+        <Filters Fields="_customFields" DefaultQuery="_customPreset">
+            <ValueTemplate Context="v">
+                @if (v.Field.Id == "rating" && v.Value is double d)
+                {
+                    <span class="flex items-center gap-0.5">@for (var i = 0; i < 5; i++) { <span class="@(i < d ? "text-foreground" : "text-muted-foreground/40")">★</span> }</span>
+                }
+                else
+                {
+                    <span>@(v.Values.Count == 0 ? v.Labels.NoValue : string.Join(", ", v.Values))</span>
+                }
+            </ValueTemplate>
+        </Filters>
+    </ComponentDemo>
+
+    <ComponentDemo Title="Read only and disabled" Description="Read only keeps every chip focusable and readable and refuses edits; disabled removes the tab stops as well." Code="@_lockedCode">
+        <Stack Gap="4">
+            <Filters Fields="_fields" DefaultQuery="_preset" ReadOnly="true" ShowClear="true" />
+            <Filters Fields="_fields" DefaultQuery="_preset" Disabled="true" ShowClear="true" />
+        </Stack>
+    </ComponentDemo>
+
+    <ComponentDemo Title="Events and veto" Description="OnQueryChanged carries the new query and the reason; OnBeforeQueryChange returns false to refuse a change. Here a fourth rule is refused." Code="@_eventsCode">
+        <Stack Gap="3">
+            <Filters Fields="_fields" @bind-Query="_eventsQuery" OnQueryChanged="c => _lastReason = c.Details.Reason.ToString()" OnBeforeQueryChange="c => c.Query.Count <= 3" />
+            <Lumeo.Text Size="sm" Color="muted">Last change: @(_lastReason ?? "none"), @_eventsQuery.Count rule(s)</Lumeo.Text>
+        </Stack>
+    </ComponentDemo>
+</Stack>
+
+<!-- API Reference -->
+<Stack Gap="6" Class="mt-12">
+    <Heading Level="2">API Reference</Heading>
+    <Stack Gap="8">
+        <Stack Gap="3">
+            <Heading Level="3">Filters</Heading>
+            <PropsTable Slug="filters" />
+        </Stack>
+        <Stack Gap="3">
+            <Heading Level="3">FilterField</Heading>
+            <Lumeo.Text Size="sm" Color="muted">
+                <code class="rounded bg-muted px-1 text-xs">Id</code>, <code class="rounded bg-muted px-1 text-xs">Label</code>, <code class="rounded bg-muted px-1 text-xs">Kind</code> (Text, Number, Range, Date, Select, MultiSelect, Boolean),
+                <code class="rounded bg-muted px-1 text-xs">Options</code> or <code class="rounded bg-muted px-1 text-xs">LoadOptions</code> and <code class="rounded bg-muted px-1 text-xs">ResolveValues</code> for option-backed fields,
+                <code class="rounded bg-muted px-1 text-xs">Fields</code> for a branch, <code class="rounded bg-muted px-1 text-xs">Operators</code> and <code class="rounded bg-muted px-1 text-xs">DefaultOperator</code> to replace the catalogue,
+                <code class="rounded bg-muted px-1 text-xs">Editor</code> / <code class="rounded bg-muted px-1 text-xs">EditorTemplate</code>, <code class="rounded bg-muted px-1 text-xs">ValueTemplate</code> / <code class="rounded bg-muted px-1 text-xs">ValueText</code>, <code class="rounded bg-muted px-1 text-xs">Validate</code>.
+            </Lumeo.Text>
+        </Stack>
+        <Stack Gap="3">
+            <Heading Level="3">FilterQuery</Heading>
+            <Lumeo.Text Size="sm" Color="muted">
+                A tree of <code class="rounded bg-muted px-1 text-xs">FilterRule</code> (Path, Operator, Value, Negated) and <code class="rounded bg-muted px-1 text-xs">FilterGroup</code> (Combinator, Rules); the root is always a group.
+                <code class="rounded bg-muted px-1 text-xs">Flatten()</code> returns the complete rules as <code class="rounded bg-muted px-1 text-xs">FilterTerm</code>s (Field, Operator, Values, Negated) for an API call;
+                <code class="rounded bg-muted px-1 text-xs">FilterQueries</code> holds every operation (insert, update, remove, duplicate, move, wrap, unwrap, prune, CollectIssues) as pure functions.
+                A value is a string, double, bool or <code class="rounded bg-muted px-1 text-xs">FilterDateValue</code>, an <code class="rounded bg-muted px-1 text-xs">IReadOnlyList&lt;string&gt;</code> for a many-valued operator, or a <code class="rounded bg-muted px-1 text-xs">FilterRange</code>.
+            </Lumeo.Text>
+        </Stack>
+    </Stack>
+</Stack>
+
+<div class="mt-12">
+    <Heading Id="operators" Level="2" Class="scroll-mt-20">Operators per kind</Heading>
+    <div class="mt-3 overflow-x-auto rounded-md border border-border/40">
+        <table class="w-full text-sm">
+            <thead><tr class="border-b border-border/40 bg-muted/40"><th class="px-4 py-2 text-left text-xs font-medium">Kind</th><th class="px-4 py-2 text-left text-xs font-medium">Operators</th></tr></thead>
+            <tbody class="[&_tr]:border-b [&_tr]:border-border/40">
+                <tr><td class="px-4 py-2 font-mono text-xs text-primary">Text</td><td class="px-4 py-2 text-xs">contains, not_contains, starts_with, ends_with, is, is_not, empty, not_empty</td></tr>
+                <tr><td class="px-4 py-2 font-mono text-xs text-primary">Number</td><td class="px-4 py-2 text-xs">eq, neq, gt, gte, lt, lte, between, not_between, empty, not_empty</td></tr>
+                <tr><td class="px-4 py-2 font-mono text-xs text-primary">Range</td><td class="px-4 py-2 text-xs">between, not_between, empty, not_empty</td></tr>
+                <tr><td class="px-4 py-2 font-mono text-xs text-primary">Date</td><td class="px-4 py-2 text-xs">is, is_not, is_before, is_after, is_on_or_before, is_on_or_after, between, not_between, empty, not_empty</td></tr>
+                <tr><td class="px-4 py-2 font-mono text-xs text-primary">Select</td><td class="px-4 py-2 text-xs">is, is_not, is_any_of, is_none_of, empty, not_empty</td></tr>
+                <tr><td class="px-4 py-2 font-mono text-xs text-primary">MultiSelect</td><td class="px-4 py-2 text-xs">has_any_of, has_all_of, has_none_of, empty, not_empty</td></tr>
+                <tr><td class="px-4 py-2 font-mono text-xs text-primary">Boolean</td><td class="px-4 py-2 text-xs">is, is_not, empty, not_empty</td></tr>
+            </tbody>
+        </table>
+    </div>
+    <Lumeo.Text Size="sm" Color="muted" Class="mt-3">Operator labels come from the <code class="rounded bg-muted px-1 text-xs">Filters.Op.*</code> keys of the locale catalogue; every other string from <code class="rounded bg-muted px-1 text-xs">Filters.*</code>. Build a <code class="rounded bg-muted px-1 text-xs">FilterLabels</code> with <code class="rounded bg-muted px-1 text-xs">FilterLabels.FromLocalizer(L)</code>, change a property, and hand it to <code class="rounded bg-muted px-1 text-xs">Labels</code> to override one.</Lumeo.Text>
+</div>
+
+<div class="mt-12">
+    <Heading Id="related" Level="2" Class="scroll-mt-20">Related Components</Heading>
+    <ul class="mt-4 space-y-2 text-sm">
+        <li><a href="/components/filter-bar" class="text-primary hover:underline">FilterBar</a> — Shows active filters as pills; Filters builds them.</li>
+        <li><a href="/components/data-grid" class="text-primary hover:underline">DataGrid</a> — Map the flattened terms onto <code class="rounded bg-muted px-1 text-xs">FilterDescriptor</code>s, or onto your server request.</li>
+    </ul>
+</div>
+
+@code {
+    private static readonly IReadOnlyList<FilterChoice> _statuses = new[]
+    {
+        new FilterChoice("draft", "Draft"), new FilterChoice("review", "In review"), new FilterChoice("published", "Published"), new FilterChoice("archived", "Archived"),
+    };
+    private static readonly IReadOnlyList<FilterChoice> _tags = new[]
+    {
+        new FilterChoice("urgent", "Urgent"), new FilterChoice("finance", "Finance"), new FilterChoice("ops", "Operations"), new FilterChoice("none", "No tag") { Exclusive = true },
+    };
+
+    private readonly IReadOnlyList<FilterField> _fields = new[]
+    {
+        new FilterField { Id = "title", Label = "Title", Placeholder = "part of the title" },
+        new FilterField { Id = "status", Label = "Status", Kind = FilterValueKind.Select, Options = _statuses },
+        new FilterField { Id = "tags", Label = "Tags", Kind = FilterValueKind.MultiSelect, Options = _tags },
+        new FilterField { Id = "amount", Label = "Amount", Kind = FilterValueKind.Number },
+        new FilterField { Id = "created", Label = "Created", Kind = FilterValueKind.Date },
+        new FilterField { Id = "archived", Label = "Archived", Kind = FilterValueKind.Boolean },
+    };
+
+    private FilterQuery _query = FilterQuery.Empty();
+    private FilterQuery _eventsQuery = FilterQuery.Empty();
+    private string? _lastReason;
+
+    private readonly FilterQuery _preset = FilterQuery.Of(
+        new FilterRule("r1", new[] { "status" }, "is", "review"),
+        new FilterRule("r2", new[] { "amount" }, "gt", 100.0));
+
+    private readonly IReadOnlyList<FilterField> _nestedFields = new[]
+    {
+        new FilterField { Id = "title", Label = "Title" },
+        new FilterField
+        {
+            Id = "customer", Label = "Customer",
+            Fields = new[]
+            {
+                new FilterField { Id = "name", Label = "Name" },
+                new FilterField { Id = "number", Label = "Number", Kind = FilterValueKind.Number },
+                new FilterField { Id = "address", Label = "Address", Fields = new[] { new FilterField { Id = "city", Label = "City" }, new FilterField { Id = "country", Label = "Country", Kind = FilterValueKind.Select, Options = new[] { new FilterChoice("de", "Germany"), new FilterChoice("hr", "Croatia"), new FilterChoice("at", "Austria") } } } },
+            },
+        },
+    };
+    private readonly FilterQuery _nestedPreset = FilterQuery.Of(new FilterRule("n1", new[] { "customer", "address", "country" }, "is", "hr"));
+
+    private static readonly IReadOnlyList<FilterChoice> _people = Enumerable.Range(1, 60).Select(i => new FilterChoice($"p{i}", $"Person {i}")).ToList();
+    private readonly IReadOnlyList<FilterField> _asyncFields = new[]
+    {
+        new FilterField
+        {
+            Id = "owner", Label = "Owner", Kind = FilterValueKind.Select,
+            LoadOptions = async req =>
+            {
+                await Task.Delay(400, req.CancellationToken);
+                var start = int.TryParse(req.Cursor, out var c) ? c : 0;
+                var matches = _people.Where(p => p.Label.Contains(req.Query, StringComparison.OrdinalIgnoreCase)).ToList();
+                var page = matches.Skip(start).Take(20).ToList();
+                return new FilterLoadResult(page, start + 20 < matches.Count ? (start + 20).ToString() : null);
+            },
+            ResolveValues = values => Task.FromResult<IReadOnlyList<FilterChoice>>(_people.Where(p => values.Contains(p.Value)).ToList()),
+        },
+        new FilterField { Id = "title", Label = "Title" },
+    };
+    private readonly FilterQuery _asyncPreset = FilterQuery.Of(new FilterRule("a1", new[] { "owner" }, "is", "p42"));
+
+    private IReadOnlyList<FilterField> _customFields = Array.Empty<FilterField>();
+
+    protected override void OnInitialized() => _customFields = new[]
+    {
+        new FilterField
+        {
+            Id = "rating", Label = "Rating", Kind = FilterValueKind.Number,
+            EditorTemplate = ctx => @<div data-slot="filter-editor" class="flex gap-1 p-2">
+                @for (var i = 1; i <= 5; i++)
+                {
+                    var n = (double)i;
+                    <button type="button" class="@("rounded px-1.5 text-lg " + (ctx.Value is double d && d >= n ? "text-foreground" : "text-muted-foreground/40 hover:text-foreground"))" aria-label="@($"{i} of 5")" @onclick="() => ctx.Commit(n)">★</button>
+                }
+            </div>,
+        },
+        new FilterField { Id = "title", Label = "Title" },
+    };
+    private readonly FilterQuery _customPreset = FilterQuery.Of(new FilterRule("c1", new[] { "rating" }, "gte", 3.0));
+
+    private string _defaultCode = @"<Filters Fields=""_fields"" @bind-Query=""_query"" ShowClear=""true"" />
+
+@code {
+    private readonly IReadOnlyList<FilterField> _fields = new[]
+    {
+        new FilterField { Id = ""title"", Label = ""Title"" },
+        new FilterField { Id = ""status"", Label = ""Status"", Kind = FilterValueKind.Select,
+            Options = new[] { new FilterChoice(""draft"", ""Draft""), new FilterChoice(""published"", ""Published"") } },
+        new FilterField { Id = ""tags"", Label = ""Tags"", Kind = FilterValueKind.MultiSelect, Options = _tags },
+        new FilterField { Id = ""amount"", Label = ""Amount"", Kind = FilterValueKind.Number },
+        new FilterField { Id = ""created"", Label = ""Created"", Kind = FilterValueKind.Date },
+        new FilterField { Id = ""archived"", Label = ""Archived"", Kind = FilterValueKind.Boolean },
+    };
+    private FilterQuery _query = FilterQuery.Empty();
+
+    // What an API call needs: field, operator, values, negated
+    IReadOnlyList<FilterTerm> Terms => _query.Flatten();
+}";
+
+    private string _smallCode = @"<Filters Fields=""_fields"" Size=""Lumeo.Size.Sm"" ShowClear=""true""
+         DefaultQuery=""@FilterQuery.Of(new FilterRule(""r1"", new[] { ""status"" }, ""is"", ""review""))"" />";
+
+    private string _nestedCode = @"new FilterField
+{
+    Id = ""customer"", Label = ""Customer"",
+    Fields = new[]
+    {
+        new FilterField { Id = ""name"", Label = ""Name"" },
+        new FilterField { Id = ""address"", Label = ""Address"", Fields = new[] { new FilterField { Id = ""city"", Label = ""City"" } } },
+    },
+}
+// a rule's Path holds the whole chain: [""customer"", ""address"", ""city""]";
+
+    private string _asyncCode = @"new FilterField
+{
+    Id = ""owner"", Label = ""Owner"", Kind = FilterValueKind.Select,
+    LoadOptions = async req =>
+    {
+        var page = await api.SearchPeople(req.Query, cursor: req.Cursor, take: 20, req.CancellationToken);
+        return new FilterLoadResult(page.Items.Select(p => new FilterChoice(p.Id, p.Name)).ToList(), page.NextCursor);
+    },
+    // labels for values restored from a saved query
+    ResolveValues = async ids => (await api.PeopleByIds(ids)).Select(p => new FilterChoice(p.Id, p.Name)).ToList(),
+}";
+
+    private string _customCode = @"<Filters Fields=""_fields"">
+    <ValueTemplate Context=""v"">
+        @if (v.Field.Id == ""rating"" && v.Value is double d) { <Stars Count=""d"" /> }
+        else { <span>@string.Join("", "", v.Values)</span> }
+    </ValueTemplate>
+</Filters>
+
+new FilterField
+{
+    Id = ""rating"", Label = ""Rating"", Kind = FilterValueKind.Number,
+    EditorTemplate = ctx => @<StarPicker Value=""ctx.Value"" OnPick=""n => ctx.Commit(n)"" />,
+}";
+
+    private string _lockedCode = @"<Filters Fields=""_fields"" DefaultQuery=""_preset"" ReadOnly=""true"" ShowClear=""true"" />
+<Filters Fields=""_fields"" DefaultQuery=""_preset"" Disabled=""true"" ShowClear=""true"" />";
+
+    private string _eventsCode = @"<Filters Fields=""_fields"" @bind-Query=""_query""
+         OnQueryChanged=""c => _lastReason = c.Details.Reason.ToString()""
+         OnBeforeQueryChange=""c => c.Query.Count <= 3"" />";
+}

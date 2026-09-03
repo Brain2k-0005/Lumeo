@@ -1,0 +1,78 @@
+@namespace Lumeo
+
+@* A day or a day range. The text box takes "today", "next week", "3 days ago", a weekday or a
+   date in the current culture; the calendar picks a fixed day. A single day commits on the pick,
+   a range waits for Apply. *@
+<div data-slot="filter-editor" class="@Cx.Merge("flex min-w-0 flex-col gap-2 p-2", Context.Field.Class)" @onkeydown="HandleKeyDown">
+    @if (IsRange)
+    {
+        <div class="flex items-center gap-1.5">
+            <Input id="@Context.AutoFocusId" Value="@_fromText" OnInput="e => { _fromText = e.Value?.ToString() ?? string.Empty; ApplyText(0, _fromText); }" Placeholder="@Context.Labels.DateFrom" Size="Context.Size" Class="w-full" aria-label="@string.Format(Context.Labels.RangeFrom, Context.Field.Label)" />
+            <span class="text-xs text-muted-foreground">@Context.Labels.RangeSeparator</span>
+            <Input Value="@_toText" OnInput="e => { _toText = e.Value?.ToString() ?? string.Empty; ApplyText(1, _toText); }" Placeholder="@Context.Labels.DateTo" Size="Context.Size" Class="w-full" aria-label="@string.Format(Context.Labels.RangeTo, Context.Field.Label)" />
+        </div>
+        <Calendar IsRange="true"
+                  RangeStart="@Bound(0)?.Resolve()"
+                  RangeEnd="@Bound(1)?.Resolve()"
+                  RangeStartChanged="d => SetBound(0, d)"
+                  RangeEndChanged="d => SetBound(1, d)" />
+        <FilterEditorButtons Context="Context" Fused="false" />
+    }
+    else
+    {
+        <Input id="@Context.AutoFocusId" Value="@_text" OnInput="e => _text = e.Value?.ToString() ?? string.Empty" Placeholder="@(Context.Field.Placeholder ?? Context.Labels.DatePlaceholder)" Size="Context.Size" Class="w-full" aria-label="@Context.Field.Label" />
+        <Calendar Value="@Single?.Resolve()" ValueChanged="PickDay" />
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public FilterEditorContext Context { get; set; } = default!;
+
+    private string _text = "";
+    private string _fromText = "";
+    private string _toText = "";
+
+    private bool IsRange => Context.Operator.Arity == FilterArity.Range;
+    private FilterDateValue? Single => FilterDates.Coerce(Context.Value);
+    private FilterRange Range => Context.Value as FilterRange ?? new FilterRange(null, null);
+    private FilterDateValue? Bound(int i) => FilterDates.Coerce(i == 0 ? Range.From : Range.To);
+
+    protected override void OnInitialized()
+    {
+        _text = Single is { } s ? FilterDates.Format(s, Context.Labels) : "";
+        _fromText = Bound(0) is { } f ? FilterDates.Format(f, Context.Labels) : "";
+        _toText = Bound(1) is { } t ? FilterDates.Format(t, Context.Labels) : "";
+    }
+
+    private Task PickDay(DateOnly? day)
+    {
+        if (day is null) return Task.CompletedTask;
+        var value = FilterDateValue.Of(day.Value);
+        _text = FilterDates.Format(value, Context.Labels);
+        return Context.Commit(value);
+    }
+
+    private void ApplyText(int i, string text)
+    {
+        var parsed = FilterDates.Parse(text);
+        if (parsed is null && text.Trim().Length > 0) return;
+        Context.SetValue(i == 0 ? new FilterRange(parsed, Range.To) : new FilterRange(Range.From, parsed));
+    }
+
+    private void SetBound(int i, DateOnly? day)
+    {
+        var value = day is null ? null : FilterDateValue.Of(day.Value);
+        if (i == 0) _fromText = value is null ? "" : FilterDates.Format(value, Context.Labels);
+        else _toText = value is null ? "" : FilterDates.Format(value, Context.Labels);
+        Context.SetValue(i == 0 ? new FilterRange(value, Range.To) : new FilterRange(Range.From, value));
+    }
+
+    private async Task HandleKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape") { Context.Cancel(); return; }
+        if (e.Key != "Enter") return;
+        if (IsRange) { await Context.Commit(); return; }
+        var parsed = FilterDates.Parse(_text);
+        if (parsed is not null) await Context.Commit(parsed);
+    }
+}

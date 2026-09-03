@@ -1,0 +1,30 @@
+@namespace Lumeo
+
+@* Apply and discard: fused to the input as icon buttons, or as a footer row. Only an editor
+   amending a rule shows them; a rule being built commits through the flow itself. *@
+@if (Fused)
+{
+    <button type="button" class="@Cx.Join(ButtonClass, "-ms-px rounded-none")" aria-label="@Context.Labels.Apply" @onclick="() => Context.Commit()">
+        <SvgGlyph Svg="@(LumeoIcons.Check)" class="h-4 w-4" />
+    </button>
+    <button type="button" class="@Cx.Join(ButtonClass, "-ms-px rounded-s-none rounded-e-md")" aria-label="@Context.Labels.Discard" @onclick="() => Context.Cancel()">
+        <SvgGlyph Svg="@(LumeoIcons.X)" class="h-4 w-4" />
+    </button>
+}
+else
+{
+    <div class="flex items-center justify-end gap-1.5 pt-1">
+        <Button Variant="Button.ButtonVariant.Ghost" Size="FilterStyles.ButtonSizeOf(Context.Size)" OnClick="() => Context.Cancel()">@Context.Labels.Discard</Button>
+        <Button Size="FilterStyles.ButtonSizeOf(Context.Size)" OnClick="() => Context.Commit()">@Context.Labels.Apply</Button>
+    </div>
+}
+
+@code {
+    [Parameter, EditorRequired] public FilterEditorContext Context { get; set; } = default!;
+    /// <summary>Icon buttons fused to the input (true) or a footer row (false).</summary>
+    [Parameter] public bool Fused { get; set; }
+
+    private string ButtonClass => Cx.Join(
+        "inline-flex shrink-0 items-center justify-center border border-input bg-background hover:bg-accent hover:text-accent-foreground focus-visible:z-10 focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring",
+        FilterStyles.ControlHeight(Context.Size), FilterStyles.IconWidth(Context.Size));
+}

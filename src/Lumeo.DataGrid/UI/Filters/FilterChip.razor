@@ -1,0 +1,392 @@
+@namespace Lumeo
+@implements IDisposable
+
+@* One rule as a chip: field | operator | value | menu. The field segment only displays; the
+   operator and value segments are popover triggers; the menu duplicates, negates or removes.
+   Segments are fused by hand (rounded ends, overlapping borders) because each trigger sits in its
+   own popover wrapper and a ButtonGroup only fuses direct children. *@
+@if (Context.ChipTemplate is not null)
+{
+    @Context.ChipTemplate(Rule)
+}
+else if (Field is null)
+{
+    <div data-slot="filter-chip"
+         data-unknown="true"
+         id="@ElementId"
+         role="group"
+         aria-label="@string.Join(Context.Labels.PathSeparator, Rule.Path)"
+         data-rule-id="@Rule.Id"
+         data-index="@Index"
+         tabindex="@(IsTabStop ? 0 : -1)"
+         class="@ChipClass"
+         @onfocusin="HandleFocusIn">
+        <div data-slot="filter-segment" data-segment="field" class="@SegmentClass(first: true, last: false, interactive: false) text-muted-foreground">@string.Join(Context.Labels.PathSeparator, Rule.Path)</div>
+        <button type="button" data-slot="filter-segment" data-segment="remove" class="@SegmentClass(first: false, last: true, interactive: true, icon: true)" aria-label="@Context.Labels.Remove" disabled="@Context.Disabled" aria-disabled="@(Context.ReadOnly ? "true" : null)" @onclick="() => Context.RemoveNode(Rule.Id)">
+            <SvgGlyph Svg="@(LumeoIcons.X)" class="h-3.5 w-3.5" />
+        </button>
+    </div>
+}
+else
+{
+    var field = Field;
+    var incomplete = Rule.Operator == "";
+    var hasValue = !incomplete && FilterOperators.TakesValue(Operator);
+    var display = Display;
+    var valueName = display.ValueEmpty && field.ValueText is null ? Context.Labels.NoValue : display.ValueText;
+    var condition = $"{display.PathText} {display.OperatorLabel}{(hasValue ? " " + valueName : "")}".Trim() + (incomplete ? ", " + Context.Labels.Incomplete : "");
+    <div data-slot="filter-chip"
+         id="@ElementId"
+         role="group"
+         aria-label="@condition"
+         data-focused="@(Focused ? "true" : null)"
+         data-incomplete="@(incomplete ? "true" : null)"
+         data-rule-id="@Rule.Id"
+         data-index="@Index"
+         tabindex="@(IsTabStop ? 0 : -1)"
+         class="@ChipClass"
+         @onfocusin="HandleFocusIn"
+         @onfocus="() => _selfFocused = true"
+         @onblur="() => _selfFocused = false"
+         @onkeydown="HandleKeyDown">
+        <div data-slot="filter-segment" data-segment="field" class="@SegmentClass(first: true, last: false, interactive: false)" title="@(display.PathCollapsed ? null : display.PathText)">
+            @field.Icon
+            <span class="flex items-center">@display.PathLabel</span>
+        </div>
+
+        <Popover Open="_operatorOpen" OpenChanged="OnOperatorOpenChanged">
+            <PopoverTrigger AsChild>
+                <ChildContentSlot Context="slot">
+                    <button type="button"
+                            data-slot="filter-segment"
+                            data-segment="operator"
+                            id="@slot.Id"
+                            @attributes="slot.Attributes"
+                            @onclick="slot.OnClick"
+                            @onpointerdown="() => Context.SetFocus(Rule.Id, FilterChipSegment.Operator)"
+                            class="@SegmentClass(first: false, last: false, interactive: true) @(incomplete ? "text-foreground" : "text-muted-foreground")"
+                            disabled="@Context.Disabled"
+                            aria-disabled="@(Context.ReadOnly ? "true" : null)">
+                        @display.OperatorLabel
+                    </button>
+                </ChildContentSlot>
+            </PopoverTrigger>
+            <PopoverContent Align="Lumeo.Align.Start" Class="w-auto min-w-40 p-0" FocusTargetId="@_operatorSearchId">
+                @if (_operatorOpen)
+                {
+                    <FilterMenu Items="OperatorChoices"
+                                Selected="@(incomplete ? Array.Empty<string>() : new[] { Rule.Operator })"
+                                Searchable="false"
+                                AriaLabel="@field.Label"
+                                SearchPlaceholder="@Context.Labels.SearchOperators"
+                                MaxHeight="320"
+                                AutoFocusId="@_operatorSearchId"
+                                OnSelectionChange="OnOperatorPick" />
+                }
+            </PopoverContent>
+        </Popover>
+
+        @if (hasValue)
+        {
+            <Popover Open="_valueOpen" OpenChanged="OnValueOpenChanged">
+                <PopoverTrigger AsChild>
+                    <ChildContentSlot Context="slot">
+                        <button type="button"
+                                data-slot="filter-segment"
+                                data-segment="value"
+                                id="@slot.Id"
+                                @attributes="slot.Attributes"
+                                @onclick="slot.OnClick"
+                                @onpointerdown="() => Context.SetFocus(Rule.Id, FilterChipSegment.Value)"
+                                class="@SegmentClass(first: false, last: false, interactive: true) @(display.ValueEmpty ? "text-muted-foreground" : null)"
+                                aria-label="@(Context.Locked ? display.ValueFullText : display.ValueText)"
+                                title="@(display.ValueFullText == display.ValueText ? null : display.ValueFullText)"
+                                disabled="@Context.Disabled"
+                                aria-disabled="@(Context.ReadOnly ? "true" : null)">
+                            @display.ValueLabel
+                        </button>
+                    </ChildContentSlot>
+                </PopoverTrigger>
+                <PopoverContent Align="Lumeo.Align.Start" Class="w-auto p-0" FocusTargetId="@_editorFocusId">
+                    @if (_valueOpen && Operator is { } op && Context.ResolveEditor(field, op) is { } editor && _options is not null)
+                    {
+                        @editor(EditorContext(field, op))
+                    }
+                </PopoverContent>
+            </Popover>
+        }
+
+        <DropdownMenu Open="_menuOpen" OpenChanged="OnMenuOpenChanged">
+            <DropdownMenuTrigger AsChild Disabled="Context.Disabled">
+                <ChildContentSlot Context="slot">
+                    <button type="button"
+                            data-slot="filter-segment"
+                            data-segment="menu"
+                            id="@slot.Id"
+                            @attributes="slot.Attributes"
+                            @onclick="slot.OnClick"
+                            @onpointerdown="() => Context.SetFocus(Rule.Id, FilterChipSegment.Menu)"
+                            class="@SegmentClass(first: false, last: true, interactive: true, icon: true)"
+                            aria-label="@string.Format(Context.Labels.ChipMenu, field.Label)"
+                            disabled="@Context.Disabled"
+                            aria-disabled="@(Context.ReadOnly ? "true" : null)">
+                        <SvgGlyph Svg="@(LumeoIcons.EllipsisVertical)" class="h-3.5 w-3.5" />
+                    </button>
+                </ChildContentSlot>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent Align="Lumeo.Align.End" Class="@Cx.Merge(FilterStyles.MenuClass, Context.MenuClass)">
+                <FilterRuleMenuItems RuleId="@Rule.Id" AllowGrouping="@(Context.Variant == FiltersVariant.Advanced)" OnConvertToAdvanced="OnConvertToAdvanced" />
+            </DropdownMenuContent>
+        </DropdownMenu>
+    </div>
+}
+
+@code {
+    [CascadingParameter] public FiltersContext Context { get; set; } = default!;
+    [Parameter, EditorRequired] public FilterRule Rule { get; set; } = default!;
+    /// <summary>The chip's position in the row, for the arrow keys.</summary>
+    [Parameter] public int Index { get; set; }
+    /// <summary>Whether this chip holds the row's focus record.</summary>
+    [Parameter] public bool Focused { get; set; }
+    /// <summary>Whether this chip is the row's tab stop (the focused one, else the first).</summary>
+    [Parameter] public bool IsTabStop { get; set; }
+    /// <summary>A segment asked to open on this render (after the field or operator step).</summary>
+    [Parameter] public FilterChipSegment? AutoOpenSegment { get; set; }
+    [Parameter] public EventCallback OnConvertToAdvanced { get; set; }
+
+    private readonly string _operatorSearchId = FilterIds.New("filter-op");
+    private readonly string _editorFocusId = FilterIds.New("filter-value");
+    private bool _operatorOpen;
+    private bool _valueOpen;
+    private bool _menuOpen;
+    private bool _selfFocused;
+    private object? _valueDraft;
+    private FilterOptionsState? _options;
+
+    private string ElementId => Context.ChipElementId(Rule.Id);
+
+    private FilterField? Field => Context.Index.Get(Rule.Path);
+    private IReadOnlyList<FilterOperatorDef> Operators => Field is null ? Array.Empty<FilterOperatorDef>() : Context.ResolveOperators(Field);
+    private FilterOperatorDef? Operator => FilterOperators.Get(Operators, Rule.Operator);
+    private IReadOnlyList<FilterChoice> OperatorChoices => FilterOperators.Visible(Operators).Select(o => new FilterChoice(o.Value, o.Label)).ToList();
+
+    private string ChipClass => Cx.Merge("inline-flex items-stretch rounded-md focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-2");
+
+    private string SegmentClass(bool first, bool last, bool interactive, bool icon = false) => Cx.Join(
+        "inline-flex items-center gap-1.5 whitespace-nowrap border border-input bg-background text-sm select-none min-w-0",
+        FilterStyles.ControlHeight(Context.Size),
+        icon ? Cx.Join(FilterStyles.IconWidth(Context.Size), "justify-center px-0") : FilterStyles.PaddingX(Context.Size),
+        first ? "rounded-s-md" : "-ms-px",
+        last ? "rounded-e-md" : null,
+        !first && !last ? "rounded-none" : null,
+        interactive ? "relative cursor-default hover:bg-accent hover:text-accent-foreground focus-visible:z-10 focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none" : "cursor-default");
+
+    protected override void OnParametersSet()
+    {
+        if (AutoOpenSegment is { } segment && !Context.Locked)
+        {
+            if (segment == FilterChipSegment.Operator && !_operatorOpen) _operatorOpen = true;
+            else if (segment == FilterChipSegment.Value && !_valueOpen) OpenValue();
+            Context.ConsumeAutoOpen(Rule.Id, segment);
+        }
+        if (Field is { } f && f.ResolveValues is not null) Context.EnsureResolved(f, FilterValues.AsStrings(Rule.Value));
+    }
+
+    // ---- display ----
+    private sealed record RuleDisplay(string PathText, RenderFragment PathLabel, bool PathCollapsed, string OperatorLabel, RenderFragment ValueLabel, string ValueText, string ValueFullText, bool ValueEmpty);
+
+    private RuleDisplay Display
+    {
+        get
+        {
+            var fld = Field!;
+            var labels = Context.Labels;
+            var pathText = Context.Index.FormatPath(Rule.Path, labels.PathSeparator);
+            var chain = Context.Index.Chain(Rule.Path);
+            var collapsed = chain.Count > Context.MaxPathSegments && Context.MaxPathSegments >= 2;
+            RenderFragment pathLabel = b =>
+            {
+                if (chain.Count == 0) { b.AddContent(0, pathText); return; }
+                var shown = collapsed ? new[] { chain[0], null, chain[^1] } : chain.ToArray();
+                var seq = 0;
+                for (var i = 0; i < shown.Length; i++)
+                {
+                    if (i > 0)
+                    {
+                        b.OpenComponent<SvgGlyph>(seq++);
+                        b.AddAttribute(seq++, "Svg", LumeoIcons.ChevronRight);
+                        b.AddAttribute(seq++, "class", "mx-[3px] inline-block size-3 shrink-0 self-center text-muted-foreground");
+                        b.AddAttribute(seq++, "aria-hidden", "true");
+                        b.CloseComponent();
+                    }
+                    b.OpenElement(seq++, "span");
+                    if (shown[i] is null) { b.AddAttribute(seq++, "class", "text-muted-foreground"); b.AddAttribute(seq++, "title", pathText); b.AddContent(seq++, "..."); }
+                    else b.AddContent(seq++, shown[i]!.Label);
+                    b.CloseElement();
+                }
+            };
+            var op = Operator;
+            var operatorLabel = op is not null ? (Rule.Negated ? string.Format(labels.Negated, op.Label) : op.Label) : (Rule.Operator.Length > 0 ? Rule.Operator : labels.SelectCondition);
+            var values = Rule.Values;
+            var valueEmpty = FilterValues.IsBlank(Rule.Value) || values.Count == 0;
+            var optionBacked = fld.Kind is FilterValueKind.Select or FilterValueKind.MultiSelect || fld.HasOptions;
+            var context = new FilterValueContext(Rule.Value, values, fld, op ?? new FilterOperatorDef(Rule.Operator, Rule.Operator), values.Select(v => v is null ? null : Context.ResolveOption(fld, v.ToString()!)).Where(o => o is not null).Select(o => o!).ToList(), labels);
+            var valueText = fld.ValueText is not null ? fld.ValueText(context) : DefaultValueText(fld, op, optionBacked);
+            var template = Context.ValueTemplate ?? fld.ValueTemplate;
+            RenderFragment valueLabel = template is not null ? template(context) : (b =>
+            {
+                var single = values.Count == 1 && values[0] is not null ? values[0]!.ToString() : null;
+                var icon = single is null ? null : Context.ResolveOption(fld, single)?.Icon;
+                if (icon is null) { b.AddContent(0, valueText); return; }
+                b.OpenElement(1, "span"); b.AddAttribute(2, "class", "flex items-center gap-1.5"); b.AddContent(3, icon); b.AddContent(4, valueText); b.CloseElement();
+            });
+            var fullText = fld.ValueText is not null || Rule.Value is not System.Collections.IEnumerable || Rule.Value is string || FilterOperators.ArityOf(op) == FilterArity.Range || values.Count < 2
+                ? valueText
+                : string.Format(labels.ValueDetail, valueText, string.Join(", ", values.Select(v => v is null ? "" : Context.ResolveOption(fld, v.ToString()!)?.Label ?? v.ToString())));
+            return new RuleDisplay(pathText, pathLabel, collapsed, operatorLabel, valueLabel, valueText, fullText, valueEmpty);
+        }
+    }
+
+    private string DefaultValueText(FilterField field, FilterOperatorDef? op, bool optionBacked)
+    {
+        var labels = Context.Labels;
+        var value = Rule.Value;
+        var emptyLabel = optionBacked ? labels.SelectPlaceholder : field.Placeholder ?? labels.ValuePlaceholder;
+        if (FilterValues.IsBlank(value)) return emptyLabel;
+        if (FilterOperators.ArityOf(op) == FilterArity.Range && value is FilterRange range)
+            return string.Format(labels.ValueRange, One(field, range.From), One(field, range.To));
+        if (value is not string && value is System.Collections.IEnumerable list)
+        {
+            var items = list.Cast<object?>().ToList();
+            if (items.Count == 0) return emptyLabel;
+            if (items.Count == 1) return One(field, items[0]);
+            return string.Format(labels.ValueCount, items.Count);
+        }
+        return One(field, value);
+    }
+
+    private string One(FilterField field, object? value)
+    {
+        var labels = Context.Labels;
+        switch (value)
+        {
+            case null: return "";
+            case bool b: return b ? labels.True : labels.False;
+            case FilterDateValue d: return FilterDates.Format(d, labels);
+            case DateOnly d: return FilterDates.Format(FilterDateValue.Of(d), labels);
+            case DateTime dt: return FilterDates.Format(FilterDateValue.Of(DateOnly.FromDateTime(dt)), labels);
+            default:
+                var text = value.ToString() ?? "";
+                return Context.ResolveOption(field, text)?.Label ?? text;
+        }
+    }
+
+    // ---- operator popover ----
+    private void OnOperatorOpenChanged(bool open)
+    {
+        if (open && Context.Locked) return;
+        _operatorOpen = open;
+        if (!open) Context.SetFocus(Rule.Id, FilterChipSegment.Operator);
+    }
+
+    private void OnOperatorPick(IReadOnlyList<string> values)
+    {
+        var value = values.Count > 0 ? values[0] : null;
+        if (value is null) { _operatorOpen = false; Context.SetFocus(Rule.Id, FilterChipSegment.Operator); return; }
+        var chosen = FilterOperators.Get(Operators, value);
+        var building = Rule.Operator == "";
+        var current = Operator;
+        Context.UpdateRule(Rule.Id, r => r with { Operator = value, Value = FilterValues.Coerce(r.Value, FilterOperators.ArityOf(current), FilterOperators.ArityOf(chosen)) });
+        _operatorOpen = false;
+        if (building && FilterOperators.TakesValue(chosen))
+        {
+            // The step after the condition is the value: open it once this popover has closed.
+            Context.SetFocus(Rule.Id, FilterChipSegment.Value, autoOpen: true);
+            return;
+        }
+        Context.SetFocus(Rule.Id, FilterChipSegment.Operator);
+    }
+
+    // ---- value popover ----
+    private void OpenValue()
+    {
+        if (Field is null) return;
+        _valueDraft = Rule.Value;
+        _options?.Dispose();
+        _options = new FilterOptionsState(Field, Context, enabled: true, () => _ = InvokeAsync(StateHasChanged));
+        _valueOpen = true;
+    }
+
+    private void CloseValue()
+    {
+        _valueOpen = false;
+        _options?.Dispose();
+        _options = null;
+        Context.SetFocus(Rule.Id, FilterChipSegment.Value);
+    }
+
+    private void OnValueOpenChanged(bool open)
+    {
+        if (open && Context.Locked) return;
+        if (open) OpenValue(); else CloseValue();
+    }
+
+    private FilterEditorContext EditorContext(FilterField field, FilterOperatorDef op) => new(
+        field, op, _valueDraft, FilterEditorHost.Amend, _options!, Context.Labels, Context.Size, _editorFocusId,
+        setValue: v => _valueDraft = v,
+        commit: (v, close) =>
+        {
+            Context.UpdateRule(Rule.Id, r => r with { Value = v });
+            _valueDraft = v;
+            if (close) CloseValue();
+            return Task.CompletedTask;
+        },
+        cancel: CloseValue,
+        back: CloseValue);
+
+    // ---- menu ----
+    private void OnMenuOpenChanged(bool open)
+    {
+        if (open && Context.Locked) return;
+        _menuOpen = open;
+    }
+
+    // ---- focus and keys ----
+    private void HandleFocusIn()
+    {
+        if (!Focused) Context.SetFocus(Rule.Id, null);
+    }
+
+    private async Task HandleKeyDown(KeyboardEventArgs e)
+    {
+        if (!_selfFocused) return;
+        var locked = Context.Locked;
+        switch (e.Key)
+        {
+            case "ArrowRight" when e.AltKey:
+            case "ArrowLeft" when e.AltKey:
+                if (locked) return;
+                Context.MoveNode(Rule.Id, e.Key == "ArrowRight" ? 1 : -1);
+                return;
+            case "ArrowRight": Context.Owner.FocusChipAt(Index + 1); return;
+            case "ArrowLeft": Context.Owner.FocusChipAt(Index - 1); return;
+            case "Home": Context.Owner.FocusChipAt(0); return;
+            case "End": Context.Owner.FocusChipAt(int.MaxValue); return;
+            case "Backspace":
+            case "Delete":
+                if (locked) return;
+                Context.RemoveNode(Rule.Id);
+                Context.Owner.FocusChipAt(Index);
+                return;
+            case "Enter":
+            case " ":
+                if (locked) return;
+                var segment = Rule.Operator.Length > 0 && FilterOperators.TakesValue(Operator) ? FilterChipSegment.Value : FilterChipSegment.Operator;
+                Context.SetFocus(Rule.Id, segment, autoOpen: true);
+                await Task.CompletedTask;
+                return;
+        }
+    }
+
+    public void Dispose() => _options?.Dispose();
+}

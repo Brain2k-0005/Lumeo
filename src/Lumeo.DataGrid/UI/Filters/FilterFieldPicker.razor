@@ -1,0 +1,95 @@
+@namespace Lumeo
+
+@* The attribute list of the add-filter popover: the current level of the schema with a search
+   that reaches every level, a breadcrumb into a branch, and a way back. *@
+<Command data-slot="filter-field-picker" ShouldFilter="false" SearchChanged="OnQueryChange" Class="rounded-md">
+    <CommandInput id="@SearchId" Placeholder="@Context.Labels.SearchFields" AutoFocus="true" aria-label="@Context.Labels.FieldsLabel" />
+    @if (Path.Count > 0 && Query.Length == 0)
+    {
+        <div data-slot="filter-field-breadcrumb" class="flex items-center gap-1 border-b border-border/40 px-2 py-1 text-xs text-muted-foreground">
+            <button type="button" class="inline-flex items-center gap-1 rounded-sm hover:text-foreground focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring" @onclick="() => OnPathChange.InvokeAsync(Array.Empty<string>())">
+                <SvgGlyph Svg="@(LumeoIcons.ChevronLeft)" class="h-3 w-3" />
+                <span>@Context.Labels.Back</span>
+            </button>
+            <span class="truncate">@Context.Index.FormatPath(Path, Context.Labels.PathSeparator)</span>
+        </div>
+    }
+    <CommandList Class="@ListClass">
+        <CommandEmpty>@Context.Labels.Empty</CommandEmpty>
+        @if (Query.Trim().Length > 0)
+        {
+            @foreach (var (field, path) in Context.Index.SearchDeep(Query.Trim()))
+            {
+                var p = path;
+                <CommandItem @key="FilterIndex.Join(p)" Disabled="field.Disabled" OnSelect="() => OnSelect.InvokeAsync(p)">
+                    @field.Icon
+                    <span class="flex min-w-0 flex-1 flex-col items-start gap-0.5">
+                        <span class="w-full truncate text-start">@field.Label</span>
+                        @if (p.Count > 1)
+                        {
+                            <span class="w-full truncate text-start text-xs text-muted-foreground">@Context.Index.FormatPath(p.Take(p.Count - 1).ToList(), Context.Labels.PathSeparator)</span>
+                        }
+                        else if (field.Description is not null)
+                        {
+                            <span class="w-full truncate text-start text-xs text-muted-foreground">@field.Description</span>
+                        }
+                    </span>
+                </CommandItem>
+            }
+        }
+        else
+        {
+            @if (Path.Count > 0 && Context.Index.Get(Path) is { Selectable: true } branch)
+            {
+                <CommandItem @key="@("self")" OnSelect="() => OnSelect.InvokeAsync(Path)">
+                    @branch.Icon
+                    <span class="flex-1 truncate text-start">@branch.Label</span>
+                </CommandItem>
+            }
+            @foreach (var field in Context.Index.Children(Path))
+            {
+                var f = field;
+                var p = Path.Append(f.Id).ToList();
+                <CommandItem @key="f.Id" Disabled="f.Disabled" OnSelect="() => Pick(f, p)">
+                    @f.Icon
+                    <span class="flex min-w-0 flex-1 flex-col items-start gap-0.5">
+                        <span class="w-full truncate text-start">@f.Label</span>
+                        @if (f.Description is not null)
+                        {
+                            <span class="w-full truncate text-start text-xs text-muted-foreground">@f.Description</span>
+                        }
+                    </span>
+                    @if (f.IsBranch)
+                    {
+                        <span class="ms-auto flex shrink-0 items-center gap-1 text-xs text-muted-foreground">
+                            <span>@string.Format(Context.Labels.ItemCount, f.Count ?? f.Fields!.Count)</span>
+                            <SvgGlyph Svg="@(LumeoIcons.ChevronRight)" class="h-3.5 w-3.5" />
+                            <span class="sr-only">, @Context.Labels.BranchAffordance</span>
+                        </span>
+                    }
+                </CommandItem>
+            }
+        }
+    </CommandList>
+</Command>
+
+@code {
+    [CascadingParameter] public FiltersContext Context { get; set; } = default!;
+    /// <summary>The branch the list shows; empty for the top level.</summary>
+    [Parameter] public IReadOnlyList<string> Path { get; set; } = Array.Empty<string>();
+    /// <summary>The search text; non-empty searches every level.</summary>
+    [Parameter] public string Query { get; set; } = "";
+    /// <summary>The id of the search box, so the popover can focus it.</summary>
+    [Parameter] public string? SearchId { get; set; }
+    /// <summary>The list in pixels the list may grow to before it scrolls.</summary>
+    [Parameter] public int MaxHeight { get; set; } = 260;
+    [Parameter] public EventCallback<IReadOnlyList<string>> OnPathChange { get; set; }
+    [Parameter] public EventCallback<string> OnQueryChange { get; set; }
+    /// <summary>A field was picked, by its path.</summary>
+    [Parameter] public EventCallback<IReadOnlyList<string>> OnSelect { get; set; }
+
+    private string ListClass => $"max-h-[{MaxHeight}px] overflow-y-auto p-1";
+
+    private Task Pick(FilterField field, IReadOnlyList<string> path)
+        => field.IsBranch ? OnPathChange.InvokeAsync(path) : OnSelect.InvokeAsync(path);
+}

@@ -1,0 +1,41 @@
+@namespace Lumeo
+
+<div data-slot="filter-editor" class="@Cx.Merge("flex w-56 min-w-0 flex-col gap-2 p-2", Context.Field.Class)" @onkeydown="HandleKeyDown">
+    <div class="flex w-full items-stretch">
+        <Input id="@Context.AutoFocusId"
+               type="number"
+               ShowStepButtons="false"
+               Value="@Text"
+               OnInput="e => Context.SetValue(Parse(e.Value?.ToString()))"
+               Placeholder="@Context.Field.Placeholder"
+               Size="Context.Size"
+               Class="@(Context.Host == FilterEditorHost.Amend ? "w-full rounded-e-none" : "w-full")"
+               aria-label="@Context.Field.Label" />
+        @if (Context.Host == FilterEditorHost.Amend)
+        {
+            <FilterEditorButtons Context="Context" Fused="true" />
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public FilterEditorContext Context { get; set; } = default!;
+
+    private string Text => Context.Value switch
+    {
+        null => "",
+        double d => d.ToString(System.Globalization.CultureInfo.InvariantCulture),
+        IFormattable f => f.ToString(null, System.Globalization.CultureInfo.InvariantCulture) ?? "",
+        _ => Context.Value.ToString() ?? "",
+    };
+
+    internal static object? Parse(string? raw)
+        => string.IsNullOrWhiteSpace(raw) ? null
+            : double.TryParse(raw, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var d) ? d : raw;
+
+    private async Task HandleKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") await Context.Commit();
+        else if (e.Key == "Escape") Context.Cancel();
+    }
+}

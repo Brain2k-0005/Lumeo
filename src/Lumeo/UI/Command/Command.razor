@@ -17,7 +17,10 @@
         visibleItems.Count,
         _listId,
         highlighted?.ItemId,
-        this);
+        this)
+    {
+        ShouldFilter = ShouldFilter,
+    };
 }
 
 <div data-slot="command" class="@CssClass" @attributes="AdditionalAttributes">
@@ -32,6 +35,15 @@
 
     /// <summary>Additional CSS classes merged onto the root element.</summary>
     [Parameter] public string? Class { get; set; }
+
+    /// <summary>Fires with the search text on every keystroke, for a host that filters or loads the
+    /// items itself (see <see cref="ShouldFilter"/>).</summary>
+    [Parameter] public EventCallback<string> SearchChanged { get; set; }
+
+    /// <summary>Whether the palette hides items whose <c>FilterValue</c> does not match the search.
+    /// <c>false</c> hands filtering to the host (cmdk's <c>shouldFilter</c>): every item stays
+    /// visible and the host reacts to <see cref="SearchChanged"/>.</summary>
+    [Parameter] public bool ShouldFilter { get; set; } = true;
 
     /// <summary>Unmatched attributes splatted onto the root element.</summary>
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
@@ -104,7 +116,7 @@
 
     /// <summary>Registered items that pass the current filter, in DOM order.</summary>
     private List<CommandItem> VisibleItems
-        => _items.Where(i => MatchesFilter(SearchText, i.ItemFilterValue)).ToList();
+        => ShouldFilter ? _items.Where(i => MatchesFilter(SearchText, i.ItemFilterValue)).ToList() : _items.ToList();
 
     internal void RegisterItem(CommandItem item)
     {
@@ -132,15 +144,15 @@
     /// </summary>
     internal void NotifyItemChanged() => StateHasChanged();
 
-    private Task OnSearchChanged(string text)
+    private async Task OnSearchChanged(string text)
     {
         SearchText = text;
+        if (SearchChanged.HasDelegate) await SearchChanged.InvokeAsync(text);
         // cmdk resets the highlight to the first selectable result on every
         // filter change so Enter always acts on the top of what the user sees.
         // This is the ONLY place that deliberately re-seeds the highlight.
         _highlighted = VisibleItems.FirstOrDefault(i => !i.IsDisabled);
         StateHasChanged();
-        return Task.CompletedTask;
     }
 
     // Keyboard navigation driven from the CommandInput while it keeps focus
@@ -255,5 +267,9 @@
         int VisibleItemCount,
         string ListId,
         string? HighlightedItemId,
-        Command Owner);
+        Command Owner)
+    {
+        /// <summary>False when the host filters the items itself; every item then stays visible.</summary>
+        public bool ShouldFilter { get; init; } = true;
+    }
 }

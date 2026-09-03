@@ -1,0 +1,36 @@
+@namespace Lumeo.Docs.Shared
+
+@* The flattened terms of a filter query, as a demo would send them to an API. *@
+<div data-slot="query-dump" class="rounded-md border border-border/40 bg-muted/30 px-3 py-2 font-mono text-xs text-muted-foreground">
+    @if (Query is null || Query.IsEmpty)
+    {
+        <span>no rules</span>
+    }
+    else
+    {
+        var terms = Query.Flatten();
+        if (terms.Count == 0)
+        {
+            <span>@Query.Count rule(s), none complete yet</span>
+        }
+        else
+        {
+            @foreach (var t in terms)
+            {
+                <div>@string.Join(".", t.Path) <span class="text-foreground">@t.Operator</span> @(t.Negated ? "(negated) " : "")@string.Join(", ", t.Values.Select(Show))</div>
+            }
+        }
+    }
+</div>
+
+@code {
+    [Parameter] public FilterQuery? Query { get; set; }
+
+    private static string Show(object? v) => v switch
+    {
+        null => "null",
+        FilterDateValue d => d.ToString(),
+        string s => "\"" + s + "\"",
+        _ => v.ToString() ?? "",
+    };
+}

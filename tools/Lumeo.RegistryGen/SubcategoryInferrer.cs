@@ -60,6 +60,7 @@ public static class SubcategoryInferrer
         ["DataGrid"] = "Tables",
         ["DataTable"] = "Tables",
         ["Filter"] = "Tables",
+        ["Filters"] = "Tables",
 
         ["Card"] = "Cards & Layout",
         ["KpiCard"] = "Cards & Layout",
