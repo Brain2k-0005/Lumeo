@@ -3,13 +3,13 @@
 @* A day or a day range. The text box takes "today", "next week", "3 days ago", a weekday or a
    date in the current culture; the calendar picks a fixed day. A single day commits on the pick,
    a range waits for Apply. *@
-<div data-slot="filter-editor" class="@Cx.Merge("flex min-w-0 flex-col gap-2 p-2", Context.Field.Class)" @onkeydown="HandleKeyDown">
+<div data-slot="filter-editor" class="@Cx.Merge("flex min-w-0 flex-col gap-2 p-2", Context.Field.Class, Class)" @attributes="AdditionalAttributes" @onkeydown="HandleKeyDown">
     @if (IsRange)
     {
         <div class="flex items-center gap-1.5">
-            <Input id="@Context.AutoFocusId" Value="@_fromText" OnInput="e => { _fromText = e.Value?.ToString() ?? string.Empty; ApplyText(0, _fromText); }" Placeholder="@Context.Labels.DateFrom" Size="Context.Size" Class="w-full" aria-label="@string.Format(Context.Labels.RangeFrom, Context.Field.Label)" />
+            <Input id="@Context.AutoFocusId" Value="@_fromText" OnInput="e => { _fromText = e.Value?.ToString() ?? string.Empty; ApplyText(0, _fromText); }" Placeholder="@Context.Labels.DateFrom" Size="Context.Size" Class="@FilterStyles.InputClass(Context.Size, fused: false)" aria-label="@string.Format(Context.Labels.RangeFrom, Context.Field.Label)" />
             <span class="text-xs text-muted-foreground">@Context.Labels.RangeSeparator</span>
-            <Input Value="@_toText" OnInput="e => { _toText = e.Value?.ToString() ?? string.Empty; ApplyText(1, _toText); }" Placeholder="@Context.Labels.DateTo" Size="Context.Size" Class="w-full" aria-label="@string.Format(Context.Labels.RangeTo, Context.Field.Label)" />
+            <Input Value="@_toText" OnInput="e => { _toText = e.Value?.ToString() ?? string.Empty; ApplyText(1, _toText); }" Placeholder="@Context.Labels.DateTo" Size="Context.Size" Class="@FilterStyles.InputClass(Context.Size, fused: false)" aria-label="@string.Format(Context.Labels.RangeTo, Context.Field.Label)" />
         </div>
         <Calendar IsRange="true"
                   RangeStart="@Bound(0)?.Resolve()"
@@ -20,13 +20,15 @@
     }
     else
     {
-        <Input id="@Context.AutoFocusId" Value="@_text" OnInput="e => _text = e.Value?.ToString() ?? string.Empty" Placeholder="@(Context.Field.Placeholder ?? Context.Labels.DatePlaceholder)" Size="Context.Size" Class="w-full" aria-label="@Context.Field.Label" />
+        <Input id="@Context.AutoFocusId" Value="@_text" OnInput="e => _text = e.Value?.ToString() ?? string.Empty" Placeholder="@(Context.Field.Placeholder ?? Context.Labels.DatePlaceholder)" Size="Context.Size" Class="@FilterStyles.InputClass(Context.Size, fused: false)" aria-label="@Context.Field.Label" />
         <Calendar Value="@Single?.Resolve()" ValueChanged="PickDay" />
     }
 </div>
 
 @code {
     [Parameter, EditorRequired] public FilterEditorContext Context { get; set; } = default!;
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     private string _text = "";
     private string _fromText = "";

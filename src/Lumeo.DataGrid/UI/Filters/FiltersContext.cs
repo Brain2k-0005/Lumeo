@@ -39,6 +39,21 @@ public sealed class FiltersContext
     public int MaxPathSegments { get; internal set; } = 3;
     public string? MenuClass { get; internal set; }
     public bool CanConvertToAdvanced { get; internal set; }
+    /// <summary>The menu entries every rule offers; a field narrows them through <see cref="FilterField.MenuActions"/>.</summary>
+    public FilterMenuActions MenuActions { get; internal set; } = FilterMenuActions.All;
+
+    /// <summary>The menu entries a rule of the field shows: the bar's set narrowed by the field's.</summary>
+    public FilterMenuActions MenuActionsFor(FilterField? field) => (field?.MenuActions ?? FilterMenuActions.All) & MenuActions;
+
+    /// <summary>Whether a rule's menu has anything to show; a chip drops its menu segment otherwise.</summary>
+    public bool HasMenuEntries(string ruleId)
+    {
+        if (CanConvertToAdvanced) return true;
+        var rule = FilterQueries.FindRule(Query, ruleId);
+        var actions = MenuActionsFor(rule is null ? null : Index.Get(rule.Path));
+        if (Variant != FiltersVariant.Advanced) actions &= ~FilterMenuActions.Group;
+        return actions != FilterMenuActions.None;
+    }
     public RenderFragment<FilterValueContext>? ValueTemplate { get; internal set; }
     public RenderFragment<FilterRule>? ChipTemplate { get; internal set; }
 

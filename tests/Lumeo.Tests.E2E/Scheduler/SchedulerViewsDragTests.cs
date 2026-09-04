@@ -51,7 +51,7 @@ public class SchedulerViewsDragTests : PlaywrightTestBase
         await pill.ScrollIntoViewIfNeededAsync();
 
         // A day the event is NOT already on. The 20th was hard-coded while the seed is
-        // relative — `e2e-1` sits on DateTime.Today.AddDays(2) — so on the 18th of any month
+        // relative — `e2e-1` sits on DateTime.Today — so on the 20th of any month
         // the two coincide, CommitDrag sees newStart == ev.Start and returns without
         // committing, and this test failed on that date alone. Day 15 stays reserved for the
         // fail-closed sibling below.

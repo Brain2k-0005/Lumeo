@@ -56,6 +56,20 @@ public static class FilterStyles
 
     public static string PaddingX(Lumeo.Size size) => size == Lumeo.Size.Sm ? "px-2" : "px-2.5";
 
+    /// <summary>The one box an inline editor's input and its fused apply/discard buttons share:
+    /// the border, the radius and the focus ring sit on the group, the parts inside are flat, so
+    /// the editor reads as a single control instead of an input with two buttons glued on.</summary>
+    public static string FieldGroup => "flex w-full items-stretch overflow-hidden rounded-md border border-input bg-background shadow-xs transition-[color,box-shadow] focus-within:border-ring focus-within:ring-[3px] focus-within:ring-ring/20";
+    /// <summary>The input inside <see cref="FieldGroup"/>: no border, radius, shadow or ring of its own.</summary>
+    public static string FusedInput => "w-full min-w-0 rounded-none border-0 bg-transparent shadow-none focus-visible:ring-0 focus-within:ring-0";
+
+    /// <summary>An editor's input on the chip geometry: the bar's control height, 14px text and
+    /// the chips' padding, instead of the Input component's own size ladder (whose Sm rung is
+    /// 32px with 12px text while the chips beside it are 28px with 14px). Fused, it also drops
+    /// its own border, radius and ring for the group's.</summary>
+    public static string InputClass(Lumeo.Size size, bool fused)
+        => Cx.Join(fused ? FusedInput : "w-full", ControlHeight(size), "py-0 text-sm md:text-sm", PaddingX(size));
+
     public static global::Lumeo.Button.ButtonSize ButtonSizeOf(Lumeo.Size size) => size == Lumeo.Size.Sm ? global::Lumeo.Button.ButtonSize.Sm : global::Lumeo.Button.ButtonSize.Default;
 
     /// <summary>The menu width the chip menu and the group menu share.</summary>

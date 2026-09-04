@@ -2,15 +2,25 @@
 
 @* The entries of a chip's (or an advanced row's) menu: duplicate, negate, the grouping entries of
    the advanced builder, the hand-over to an advanced editor, remove. *@
-<DropdownMenuItem Disabled="Context.Locked" OnClick="() => Context.DuplicateNode(RuleId)">
-    <SvgGlyph Svg="@(LumeoIcons.Copy)" class="h-4 w-4" />
-    <span class="min-w-0 truncate">@Context.Labels.Duplicate</span>
-</DropdownMenuItem>
-<DropdownMenuItem Disabled="Context.Locked" OnClick="() => Context.NegateRule(RuleId)">
-    <SvgGlyph Svg="@(LumeoIcons.ArrowLeftRight)" class="h-4 w-4" />
-    <span class="min-w-0 truncate">@Context.Labels.Negate</span>
-</DropdownMenuItem>
-@if (AllowGrouping)
+@{
+    var rule = FilterQueries.FindRule(Context.Query, RuleId);
+    var actions = Context.MenuActionsFor(rule is null ? null : Context.Index.Get(rule.Path));
+}
+@if (actions.HasFlag(FilterMenuActions.Duplicate))
+{
+    <DropdownMenuItem Disabled="Context.Locked" OnClick="() => Context.DuplicateNode(RuleId)">
+        <SvgGlyph Svg="@(LumeoIcons.Copy)" class="h-4 w-4" />
+        <span class="min-w-0 truncate">@Context.Labels.Duplicate</span>
+    </DropdownMenuItem>
+}
+@if (actions.HasFlag(FilterMenuActions.Negate))
+{
+    <DropdownMenuItem Disabled="Context.Locked" OnClick="() => Context.NegateRule(RuleId)">
+        <SvgGlyph Svg="@(LumeoIcons.ArrowLeftRight)" class="h-4 w-4" />
+        <span class="min-w-0 truncate">@Context.Labels.Negate</span>
+    </DropdownMenuItem>
+}
+@if (AllowGrouping && actions.HasFlag(FilterMenuActions.Group))
 {
     <DropdownMenuItem Disabled="Context.Locked" OnClick="() => Context.WrapInGroup(RuleId)">
         <SvgGlyph Svg="@(LumeoIcons.Layers)" class="h-4 w-4" />
@@ -25,10 +35,13 @@
         <span class="min-w-0 truncate">@Context.Labels.ConvertToAdvanced</span>
     </DropdownMenuItem>
 }
-<DropdownMenuItem Variant="MenuItemVariant.Destructive" Disabled="Context.Locked" OnClick="() => Context.RemoveNode(RuleId)">
-    <SvgGlyph Svg="@(LumeoIcons.Trash2)" class="h-4 w-4" />
-    <span class="min-w-0 truncate">@Context.Labels.Remove</span>
-</DropdownMenuItem>
+@if (actions.HasFlag(FilterMenuActions.Remove))
+{
+    <DropdownMenuItem Variant="MenuItemVariant.Destructive" Disabled="Context.Locked" OnClick="() => Context.RemoveNode(RuleId)">
+        <SvgGlyph Svg="@(LumeoIcons.Trash2)" class="h-4 w-4" />
+        <span class="min-w-0 truncate">@Context.Labels.Remove</span>
+    </DropdownMenuItem>
+}
 
 @code {
     [CascadingParameter] public FiltersContext Context { get; set; } = default!;

@@ -57,6 +57,10 @@
         </Stack>
     </ComponentDemo>
 
+    <ComponentDemo Title="Menu actions" Description="MenuActions on the bar sets what every rule's menu offers, a field's MenuActions narrows it further. Here the bar drops Negate (the backing API knows no negation) and the Status field keeps only Remove." Code="@_menuActionsCode">
+        <Filters Fields="_menuActionFields" DefaultQuery="_menuActionPreset" MenuActions="@(FilterMenuActions.All & ~FilterMenuActions.Negate)" ShowClear="true" />
+    </ComponentDemo>
+
     <ComponentDemo Title="Advanced: nested conditions" Description="Variant=Advanced renders a condition builder: rows with a combinator per group, groups that nest, a menu to wrap a row in a group or move it, and Alt with the arrow keys or the drag handle (Reorderable) to reorder. Inline here; the default puts it behind a trigger in a popover." Code="@_advancedCode">
         <Stack Gap="4" Class="w-full">
             <Filters Fields="_fields" @bind-Query="_advancedQuery" Variant="FiltersVariant.Advanced" AdvancedMode="FiltersAdvancedMode.Inline" Reorderable="true" />
@@ -298,6 +302,23 @@ FilterQuery.Of(
     }))";
 
     private string _advancedPopoverCode = @"<Filters Fields=""_fields"" Variant=""FiltersVariant.Advanced"" Reorderable=""true"" />";
+
+    private readonly IReadOnlyList<FilterField> _menuActionFields = new[]
+    {
+        new FilterField { Id = "title", Label = "Title" },
+        new FilterField { Id = "status", Label = "Status", Kind = FilterValueKind.Select, MenuActions = FilterMenuActions.Remove,
+            Options = new[] { new FilterChoice("draft", "Draft"), new FilterChoice("review", "In review"), new FilterChoice("done", "Done") } },
+    };
+    private readonly FilterQuery _menuActionPreset = FilterQuery.Of(
+        new FilterRule("m1", new[] { "title" }, "contains", "invoice"),
+        new FilterRule("m2", new[] { "status" }, "is", "review"));
+
+    private string _menuActionsCode = @"<Filters Fields=""_fields"" MenuActions=""@(FilterMenuActions.All & ~FilterMenuActions.Negate)"" />
+
+@code {
+    // a field narrows the bar's set further; it cannot add an entry the bar hides
+    new FilterField { Id = ""status"", Label = ""Status"", Kind = FilterValueKind.Select, MenuActions = FilterMenuActions.Remove, Options = ... }
+}";
 
     private string _lockedCode = @"<Filters Fields=""_fields"" DefaultQuery=""_preset"" ReadOnly=""true"" ShowClear=""true"" />
 <Filters Fields=""_fields"" DefaultQuery=""_preset"" Disabled=""true"" ShowClear=""true"" />";
