@@ -5,6 +5,14 @@ All notable changes to Lumeo will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.10.0] - Unreleased
+
+### Fixed
+- **A select editor of `Filters` is as wide as its widest option** (field report §16.6). The
+  panel was a fixed 12rem, which cut long labels such as a document type with its code in
+  half. It is now `w-max` between 12rem and 36rem (and never wider than the viewport); past the
+  ceiling the labels truncate as before. `FilterField.Class` still overrides it.
+
 ## [5.9.1] - 2026-09-04
 
 ### Fixed
