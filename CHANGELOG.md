@@ -13,6 +13,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   half. It is now `w-max` between 12rem and 36rem (and never wider than the viewport); past the
   ceiling the labels truncate as before. A field that sets any width of its own through
   `FilterField.Class` (`w-40`, `min-w-max`, `max-w-[48rem]`) gets exactly that, as before.
+- **The column-resize guideline spans the grid's scroll container, not the table** (field
+  report §18.4). Under virtualization the table is as tall as every row and its top sits far
+  above the viewport once scrolled, so the fixed-position line ran from above the toolbar to
+  below the window. It now takes the scroll container's rectangle, clamped to the viewport.
 - **`lumeo-classes.txt` lists the classes inside `class="@Cx.Merge("…", Class)"`.** The
   extractor paired quotes per line, and in that shape the class string sits between a closing
   and an opening quote, so a class used only there was missing from the manifest a consumer's
