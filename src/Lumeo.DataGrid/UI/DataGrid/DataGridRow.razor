@@ -61,11 +61,15 @@
            which toggles selection again — net no-op. The single-select cell below
            already does this on its <button>. *@
         <td role="gridcell" class="@($"{(Context.Compact ? "px-2 py-1" : "px-3 py-2")} w-10{(Context.HasPinnedLeft ? " sticky left-0 z-10 group-hover/row:bg-muted/50" : "")}")" style="@SelectionPinStyle"
+            @onpointerdown="HandleSelectionPointerDown"
             @onclick="HandleSelectionCellClick"
             @onclick:stopPropagation="true">
             @* button-name (axe): icon-only checkbox, no visible label — row-context
                name so a screen reader announces WHICH row it toggles. *@
-            <Checkbox Checked="@IsSelected" CheckedChanged="@OnCheckChanged" AriaLabel="@L["DataGrid.SelectRow", AriaRowIndex]" />
+            @* data-range-sync: the Checkbox flips its own Checked before it reports, and a Shift
+               range that already holds this row leaves the grid's state as it was, so nothing
+               would make Blazor re-apply Checked; a changed unmatched attribute does. *@
+            <Checkbox Checked="@IsSelected" CheckedChanged="@OnCheckChanged" AriaLabel="@L["DataGrid.SelectRow", AriaRowIndex]" data-range-sync="@_rangeSync" />
         </td>
     }
     else if (Context?.SelectionMode == DataGridSelectionMode.Single)
@@ -426,20 +430,43 @@
         Context?.ToggleRowExpand(Item);
     }
 
+    // Whether the pointer that is about to click the checkbox holds Shift. The Checkbox's
+    // own click handler runs before the cell's (innermost first), and a plain toggle there
+    // would re-anchor the range on the row just clicked, so the cell's Shift handler then
+    // filled a range of one (field report §16.2: "only the two clicked rows"). The pointerdown
+    // on the cell fires before either click, so the checkbox path can route Shift itself.
+    private bool _shiftPointer;
+    private bool _shiftHandled;
+    private int _rangeSync;
+
+    private void HandleSelectionPointerDown(PointerEventArgs e) => _shiftPointer = e.ShiftKey;
+
     private async Task OnCheckChanged(bool value)
     {
+        var shift = _shiftPointer;
+        _shiftPointer = false;
+        if (shift && Context?.SelectionMode == DataGridSelectionMode.Multiple)
+        {
+            // Shift-click on the checkbox: extend from the anchor instead of toggling, and
+            // tell the cell's click handler (next in the bubble) that this one is done.
+            _shiftHandled = true;
+            _rangeSync++;
+            if (Context.ToggleSelectionModifiedAt is { } rangeAt) { rangeAt(Item, RowIndex, true, false); return; }
+            if (Context.ToggleSelectionModified is { } range) { range(Item, true, false); return; }
+        }
         // The index-aware path records this row as the anchor of the next Shift-click range.
         if (Context?.ToggleSelectionModifiedAt is { } modifiedAt) modifiedAt(Item, RowIndex, false, false);
         else Context?.ToggleSelection(Item);
     }
 
     /// <summary>
-    /// Shift-click on the checkbox cell. The Checkbox has already toggled this row by the
-    /// time the click bubbles here, and that is fine: the range fill is additive, so it
-    /// turns the row on whichever way the checkbox just flipped it.
+    /// Shift-click on the checkbox cell outside the checkbox itself (a click on the checkbox
+    /// is handled in <see cref="OnCheckChanged"/> and only marks itself done here).
     /// </summary>
     private void HandleSelectionCellClick(MouseEventArgs e)
     {
+        _shiftPointer = false;
+        if (_shiftHandled) { _shiftHandled = false; return; }
         if (!e.ShiftKey) return;
         if (Context?.ToggleSelectionModifiedAt is { } modifiedAt) modifiedAt(Item, RowIndex, true, e.CtrlKey);
         else if (Context?.ToggleSelectionModified is { } modified) modified(Item, true, e.CtrlKey);

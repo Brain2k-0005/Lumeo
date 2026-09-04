@@ -258,6 +258,8 @@ public static class LumeoIcons
     public static global::Lumeo.IconSource List => global::Lumeo.IconSource.Stroke("<path d=\"M3 5h.01\" /><path d=\"M3 12h.01\" /><path d=\"M3 19h.01\" /><path d=\"M8 5h13\" /><path d=\"M8 12h13\" /><path d=\"M8 19h13\" />");
     /// <summary>Lucide <c>list-filter</c>.</summary>
     public static global::Lumeo.IconSource ListFilter => global::Lumeo.IconSource.Stroke("<path d=\"M2 5h20\" /><path d=\"M6 12h12\" /><path d=\"M9 19h6\" />");
+    /// <summary>Lucide <c>list-filter-plus</c>.</summary>
+    public static global::Lumeo.IconSource ListFilterPlus => global::Lumeo.IconSource.Stroke("<path d=\"M12 5H2\" /><path d=\"M6 12h12\" /><path d=\"M9 19h6\" /><path d=\"M16 5h6\" /><path d=\"M19 8V2\" />");
     /// <summary>Lucide <c>list-music</c>.</summary>
     public static global::Lumeo.IconSource ListMusic => global::Lumeo.IconSource.Stroke("<path d=\"M16 5H3\" /><path d=\"M11 12H3\" /><path d=\"M11 19H3\" /><path d=\"M21 16V5\" /><circle cx=\"18\" cy=\"16\" r=\"3\" />");
     /// <summary>Lucide <c>list-ordered</c>.</summary>

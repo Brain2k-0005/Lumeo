@@ -38,6 +38,21 @@ public enum FiltersAdvancedMode { Popover, Inline }
 /// <summary>How selected options sort inside an option list when <see cref="FilterField.PinSelected"/> is on.</summary>
 public enum FilterSortSelected { None, Label, Snapshot }
 
+/// <summary>The entries of a rule's menu. <c>Filters.MenuActions</c> sets them for the bar, a field's
+/// <see cref="FilterField.MenuActions"/> narrows them further; a rule shows the intersection. A host
+/// whose API knows no negation drops <see cref="Negate"/>, for example.</summary>
+[Flags]
+public enum FilterMenuActions
+{
+    None = 0,
+    Duplicate = 1,
+    Negate = 2,
+    /// <summary>The advanced builder's wrap-in-group and move-to entries.</summary>
+    Group = 4,
+    Remove = 8,
+    All = Duplicate | Negate | Group | Remove,
+}
+
 /// <summary>A node of the query tree: a <see cref="FilterRule"/> or a <see cref="FilterGroup"/>. The
 /// tree round-trips through <c>System.Text.Json</c>: nodes carry a <c>$type</c> discriminator and a
 /// rule's value comes back as the shape it went in (string, number, bool, list, range or date).</summary>
@@ -221,6 +236,9 @@ public sealed class FilterField
     /// <summary>Keep the selected options at the top of the list.</summary>
     public bool PinSelected { get; init; }
     public FilterSortSelected SortSelected { get; init; } = FilterSortSelected.None;
+    /// <summary>The menu entries a rule of this field offers; null takes the bar's. A rule shows
+    /// the intersection of both, so a field can drop an entry but not add one the bar hides.</summary>
+    public FilterMenuActions? MenuActions { get; init; }
     /// <summary>Extra validation: return a message to flag the rule, null to accept.</summary>
     public Func<FilterValidateContext, string?>? Validate { get; init; }
     /// <summary>Classes merged onto the editor panel (a width, typically).</summary>

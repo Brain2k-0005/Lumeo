@@ -34,6 +34,7 @@ else
     var hasValue = !incomplete && FilterOperators.TakesValue(Operator);
     var display = Display;
     var issue = Context.IssueFor(Rule.Id);
+    var showMenu = Context.HasMenuEntries(Rule.Id);
     var valueName = display.ValueEmpty && field.ValueText is null ? Context.Labels.NoValue : display.ValueText;
     var condition = $"{display.PathText} {display.OperatorLabel}{(hasValue ? " " + valueName : "")}".Trim() + (incomplete ? ", " + Context.Labels.Incomplete : "");
     <div data-slot="filter-chip"
@@ -90,7 +91,7 @@ else
                             @attributes="slot.Attributes"
                             @onclick="slot.OnClick"
                             @onpointerdown="() => Context.SetFocus(Rule.Id, FilterChipSegment.Operator)"
-                            class="@SegmentClass(first: false, last: false, interactive: true) @(incomplete ? "text-foreground" : "text-muted-foreground")"
+                            class="@SegmentClass(first: false, last: !hasValue && !showMenu, interactive: true) @(incomplete ? "text-foreground" : "text-muted-foreground")"
                             disabled="@Context.Disabled"
                             aria-disabled="@(Context.ReadOnly ? "true" : null)">
                         @display.OperatorLabel
@@ -124,7 +125,7 @@ else
                                 @attributes="slot.Attributes"
                                 @onclick="slot.OnClick"
                                 @onpointerdown="() => Context.SetFocus(Rule.Id, FilterChipSegment.Value)"
-                                class="@SegmentClass(first: false, last: false, interactive: true) @(display.ValueEmpty ? "text-muted-foreground" : null) @(issue is not null ? "text-destructive" : null)"
+                                class="@SegmentClass(first: false, last: !showMenu, interactive: true) @(display.ValueEmpty ? "text-muted-foreground" : null) @(issue is not null ? "text-destructive" : null)"
                                 aria-label="@(Context.Locked ? display.ValueFullText : display.ValueText)"
                                 aria-invalid="@(issue is not null ? "true" : null)"
                                 aria-description="@issue?.Message"
@@ -144,28 +145,31 @@ else
             </Popover>
         }
 
-        <DropdownMenu Open="_menuOpen" OpenChanged="OnMenuOpenChanged">
-            <DropdownMenuTrigger AsChild Disabled="Context.Disabled">
-                <ChildContentSlot Context="slot">
-                    <button type="button"
-                            data-slot="filter-segment"
-                            data-segment="menu"
-                            id="@slot.Id"
-                            @attributes="slot.Attributes"
-                            @onclick="slot.OnClick"
-                            @onpointerdown="() => Context.SetFocus(Rule.Id, FilterChipSegment.Menu)"
-                            class="@SegmentClass(first: false, last: true, interactive: true, icon: true)"
-                            aria-label="@string.Format(Context.Labels.ChipMenu, field.Label)"
-                            disabled="@Context.Disabled"
-                            aria-disabled="@(Context.ReadOnly ? "true" : null)">
-                        <SvgGlyph Svg="@(LumeoIcons.EllipsisVertical)" class="h-3.5 w-3.5" />
-                    </button>
-                </ChildContentSlot>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent Align="Lumeo.Align.End" Class="@Cx.Merge(FilterStyles.MenuClass, Context.MenuClass)">
-                <FilterRuleMenuItems RuleId="@Rule.Id" AllowGrouping="@(Context.Variant == FiltersVariant.Advanced)" OnConvertToAdvanced="OnConvertToAdvanced" />
-            </DropdownMenuContent>
-        </DropdownMenu>
+        @if (showMenu)
+        {
+            <DropdownMenu Open="_menuOpen" OpenChanged="OnMenuOpenChanged">
+                <DropdownMenuTrigger AsChild Disabled="Context.Disabled">
+                    <ChildContentSlot Context="slot">
+                        <button type="button"
+                                data-slot="filter-segment"
+                                data-segment="menu"
+                                id="@slot.Id"
+                                @attributes="slot.Attributes"
+                                @onclick="slot.OnClick"
+                                @onpointerdown="() => Context.SetFocus(Rule.Id, FilterChipSegment.Menu)"
+                                class="@SegmentClass(first: false, last: true, interactive: true, icon: true)"
+                                aria-label="@string.Format(Context.Labels.ChipMenu, field.Label)"
+                                disabled="@Context.Disabled"
+                                aria-disabled="@(Context.ReadOnly ? "true" : null)">
+                            <SvgGlyph Svg="@(LumeoIcons.EllipsisVertical)" class="h-3.5 w-3.5" />
+                        </button>
+                    </ChildContentSlot>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent Align="Lumeo.Align.End" Class="@Cx.Merge(FilterStyles.MenuClass, Context.MenuClass)">
+                    <FilterRuleMenuItems RuleId="@Rule.Id" AllowGrouping="@(Context.Variant == FiltersVariant.Advanced)" OnConvertToAdvanced="OnConvertToAdvanced" />
+                </DropdownMenuContent>
+            </DropdownMenu>
+        }
     </div>
 }
 

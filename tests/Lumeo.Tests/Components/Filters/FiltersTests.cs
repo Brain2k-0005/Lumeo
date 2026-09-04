@@ -269,4 +269,45 @@ public class FiltersTests : IAsyncLifetime
         Assert.Equal(new[] { ("gone", FilterIssueReason.UnknownField, FilterIssueColumn.Field), ("op", FilterIssueReason.UnknownOperator, FilterIssueColumn.Operator) },
             issues.Select(i => (i.NodeId, i.Reason, i.Column)));
     }
+
+
+    // ---------------------------------------------------------------- menu actions (field report §16)
+
+    private static IEnumerable<string> MenuEntries(IRenderedComponent<Lumeo.Filters> cut)
+        => cut.FindAll("[role='menuitem']").Select(e => e.TextContent.Trim());
+
+    [Fact]
+    public void Menu_Actions_On_The_Bar_Drop_An_Entry_For_Every_Rule()
+    {
+        var cut = Render(p => p.Add(f => f.DefaultQuery, Preset()).Add(f => f.MenuActions, FilterMenuActions.All & ~FilterMenuActions.Negate));
+        Chips(cut)[0].QuerySelector("[data-segment='menu']")!.Click();
+        Assert.Equal(new[] { "Duplicate", "Remove" }, MenuEntries(cut));
+    }
+
+    [Fact]
+    public void A_Fields_Menu_Actions_Narrow_The_Bars()
+    {
+        var fields = new[]
+        {
+            new FilterField { Id = "title", Label = "Title" },
+            new FilterField { Id = "amount", Label = "Amount", Kind = FilterValueKind.Number, MenuActions = FilterMenuActions.Remove | FilterMenuActions.Negate },
+        };
+        var query = FilterQuery.Of(new FilterRule("r1", new[] { "title" }, "contains", "a"), new FilterRule("r2", new[] { "amount" }, "gt", 1.0));
+        var cut = _ctx.Render<Lumeo.Filters>(p => p.Add(f => f.Fields, fields).Add(f => f.DefaultQuery, query).Add(f => f.MenuActions, FilterMenuActions.All & ~FilterMenuActions.Negate));
+
+        Chips(cut)[1].QuerySelector("[data-segment='menu']")!.Click();
+        // the field keeps Remove; Negate is gone because the bar hides it, Duplicate because the field does
+        Assert.Equal(new[] { "Remove" }, MenuEntries(cut));
+    }
+
+    [Fact]
+    public void A_Chip_Without_Menu_Entries_Drops_Its_Menu_Segment()
+    {
+        var fields = new[] { new FilterField { Id = "title", Label = "Title", MenuActions = FilterMenuActions.None } };
+        var cut = _ctx.Render<Lumeo.Filters>(p => p.Add(f => f.Fields, fields).Add(f => f.DefaultQuery, FilterQuery.Of(new FilterRule("r1", new[] { "title" }, "contains", "a"))));
+
+        Assert.Null(Chips(cut)[0].QuerySelector("[data-segment='menu']"));
+        Assert.Contains("rounded-e-md", Chips(cut)[0].QuerySelector("[data-segment='value']")!.ClassName);
+    }
+
 }
