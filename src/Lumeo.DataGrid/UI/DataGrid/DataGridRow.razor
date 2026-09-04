@@ -62,6 +62,9 @@
            already does this on its <button>. *@
         <td role="gridcell" class="@($"{(Context.Compact ? "px-2 py-1" : "px-3 py-2")} w-10{(Context.HasPinnedLeft ? " sticky left-0 z-10 group-hover/row:bg-muted/50" : "")}")" style="@SelectionPinStyle"
             @onpointerdown="HandleSelectionPointerDown"
+            @onpointercancel="ClearSelectionPointer"
+            @onpointerleave="ClearSelectionPointer"
+            @onkeydown="ClearSelectionPointer"
             @onclick="HandleSelectionCellClick"
             @onclick:stopPropagation="true">
             @* button-name (axe): icon-only checkbox, no visible label — row-context
@@ -440,6 +443,10 @@
     private int _rangeSync;
 
     private void HandleSelectionPointerDown(PointerEventArgs e) => _shiftPointer = e.ShiftKey;
+
+    // A gesture that never clicks this cell (cancelled, or released elsewhere) must not leave
+    // Shift armed for a later keyboard or assistive-technology activation of the checkbox.
+    private void ClearSelectionPointer() => _shiftPointer = false;
 
     private async Task OnCheckChanged(bool value)
     {
