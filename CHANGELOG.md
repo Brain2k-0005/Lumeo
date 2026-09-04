@@ -18,6 +18,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   plus) instead of the plain filter glyph, so the collapsed icon-only button reads as "add".
   `LumeoIcons` gains `ListFilterPlus`.
 
+- **The inline text and number editors of `Filters` are one control.** The input and its
+  apply / discard buttons used to be three boxes glued together, each with its own border and
+  radius, and the input's focus ring drew a heavy dark outline around the input alone. The
+  border, the radius and a soft focus ring now sit on the group; the input and the buttons
+  inside are flat, the buttons divided by a hairline. The editors' inputs also sit on the chip
+  geometry now (the bar's control height, 14px text, the chips' padding): at `Size="Sm"` the
+  Input component's own rung is 32px with 12px text while the chips beside it are 28px with
+  14px. `Input` itself learned two things on the way: a font-size override in `Class` reaches
+  the inner field of the wrapped (number, prefix, suffix) variant instead of losing to its
+  `md:text-xs`, and that inner field shrinks with its wrapper (`min-w-0`) instead of
+  overflowing it.
+
 ### Fixed
 - **Shift-click on the selection checkbox selects the range** (field report §16.2, follows
   #440). The Checkbox's own click ran before the cell's, toggled the row and re-anchored the

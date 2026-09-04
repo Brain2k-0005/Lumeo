@@ -582,7 +582,13 @@ else
     // (no Prefix/Suffix/Search/Clearable) number input rendered via the OTHER branch's CssClass,
     // which already carries disabled:opacity-50 directly on the <input> — so routing type=number
     // through here without this class would have visibly regressed the disabled look (Codex P2).
-    private string WrappedInputClass => $"flex-1 bg-transparent {WrappedInputSizeClasses} py-1 placeholder:text-muted-foreground focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50 {NumberAppearanceClass}".Trim();
+    // A font-size override in Class lands on the wrapper; the inner <input> then drops its own
+    // text-* classes so it inherits the override instead of beating it with `md:text-xs`.
+    private string WrappedInputClass => $"flex-1 min-w-0 bg-transparent {(HasFontSizeOverride ? WithoutFontSizes(WrappedInputSizeClasses) : WrappedInputSizeClasses)} py-1 placeholder:text-muted-foreground focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50 {NumberAppearanceClass}".Trim();
+
+    private static string WithoutFontSizes(string classes)
+        => string.Join(" ", classes.Split(' ', StringSplitOptions.RemoveEmptyEntries)
+            .Where(c => !System.Text.RegularExpressions.Regex.IsMatch(c, @"^(?:[a-z-]+:)?text-(?:\[[^\]]+\]|xs|sm|base|lg|xl|\dxl)$")));
 
     protected override void OnParametersSet()
     {
