@@ -59,9 +59,9 @@ public static class FilterStyles
     /// <summary>The one box an inline editor's input and its fused apply/discard buttons share:
     /// the border, the radius and the focus ring sit on the group, the parts inside are flat, so
     /// the editor reads as a single control instead of an input with two buttons glued on.</summary>
-    public const string FieldGroup = "flex w-full items-stretch overflow-hidden rounded-md border border-input bg-background shadow-xs transition-[color,box-shadow] focus-within:border-ring focus-within:ring-[3px] focus-within:ring-ring/20";
+    public static string FieldGroup => "flex w-full items-stretch overflow-hidden rounded-md border border-input bg-background shadow-xs transition-[color,box-shadow] focus-within:border-ring focus-within:ring-[3px] focus-within:ring-ring/20";
     /// <summary>The input inside <see cref="FieldGroup"/>: no border, radius, shadow or ring of its own.</summary>
-    public const string FusedInput = "w-full min-w-0 rounded-none border-0 bg-transparent shadow-none focus-visible:ring-0 focus-within:ring-0";
+    public static string FusedInput => "w-full min-w-0 rounded-none border-0 bg-transparent shadow-none focus-visible:ring-0 focus-within:ring-0";
 
     /// <summary>An editor's input on the chip geometry: the bar's control height, 14px text and
     /// the chips' padding, instead of the Input component's own size ladder (whose Sm rung is

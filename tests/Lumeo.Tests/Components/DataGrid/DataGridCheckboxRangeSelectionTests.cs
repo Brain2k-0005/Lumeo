@@ -156,4 +156,18 @@ public class DataGridCheckboxRangeSelectionTests : IAsyncLifetime
         Assert.Equal(5, selected.Count);
         Assert.Equal("true", Checkboxes(cut)[2].GetAttribute("aria-checked"));
     }
+
+    [Fact]
+    public void A_Secondary_Button_Press_Does_Not_Arm_Shift()
+    {
+        var selected = new List<Row>();
+        var cut = Grid(Rows(10), selected);
+
+        Checkboxes(cut)[0].Click();
+        // a right-button press with Shift held never clicks the checkbox; the plain click after it must toggle one row
+        Checkboxes(cut)[5].PointerDown(new PointerEventArgs { Button = 2, ShiftKey = true });
+        Checkboxes(cut)[5].Click();
+
+        Assert.Equal(new[] { 0, 5 }, selected.Select(r => r.Id).OrderBy(i => i));
+    }
 }
