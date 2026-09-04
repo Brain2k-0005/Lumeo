@@ -60,7 +60,7 @@ public static class FilterStyles
     /// no border of its own: the editor's popover is the frame, so the popover is exactly one
     /// control tall (the chip's height plus the popover's 1px border), not a boxed input inside a
     /// padded panel. The parts inside are flat, the buttons divided by a hairline.</summary>
-    public static string FieldGroup => "flex w-full items-stretch overflow-hidden rounded-md bg-popover";
+    public static string FieldGroup => "flex w-full items-stretch overflow-hidden rounded-md bg-popover focus-within:ring-1 focus-within:ring-inset focus-within:ring-ring/25";
     /// <summary>The input inside <see cref="FieldGroup"/>: no border, radius, shadow or ring of its own.</summary>
     public static string FusedInput => "w-full min-w-0 rounded-none border-0 bg-transparent shadow-none focus-visible:ring-0 focus-within:ring-0";
 
