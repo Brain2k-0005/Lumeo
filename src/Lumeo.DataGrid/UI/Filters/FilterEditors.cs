@@ -56,10 +56,11 @@ public static class FilterStyles
 
     public static string PaddingX(Lumeo.Size size) => size == Lumeo.Size.Sm ? "px-2" : "px-2.5";
 
-    /// <summary>The one box an inline editor's input and its fused apply/discard buttons share:
-    /// the border, the radius and the focus ring sit on the group, the parts inside are flat, so
-    /// the editor reads as a single control instead of an input with two buttons glued on.</summary>
-    public static string FieldGroup => "flex w-full items-stretch overflow-hidden rounded-md border border-input bg-background shadow-xs transition-[color,box-shadow] focus-within:border-ring focus-within:ring-[3px] focus-within:ring-ring/20";
+    /// <summary>The row an inline editor's input and its fused apply/discard buttons share. It has
+    /// no border of its own: the editor's popover is the frame, so the popover is exactly one
+    /// control tall (the chip's height plus the popover's 1px border), not a boxed input inside a
+    /// padded panel. The parts inside are flat, the buttons divided by a hairline.</summary>
+    public static string FieldGroup => "flex w-full items-stretch overflow-hidden rounded-md bg-popover focus-within:ring-1 focus-within:ring-inset focus-within:ring-ring/25";
     /// <summary>The input inside <see cref="FieldGroup"/>: no border, radius, shadow or ring of its own.</summary>
     public static string FusedInput => "w-full min-w-0 rounded-none border-0 bg-transparent shadow-none focus-visible:ring-0 focus-within:ring-0";
 
