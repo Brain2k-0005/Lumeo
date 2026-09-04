@@ -329,4 +329,29 @@ public class FiltersTests : IAsyncLifetime
         Assert.Empty(cut.FindAll("[data-slot='filter-editor']"));
         Assert.Null(last);
     }
+
+    [Fact]
+    public void A_Select_Editor_Is_Sized_By_Its_Options_Unless_The_Field_Sets_A_Width()
+    {
+        var fields = new[]
+        {
+            new FilterField { Id = "status", Label = "Status", Kind = FilterValueKind.Select, Options = new[] { new FilterChoice("a", "A") } },
+            new FilterField { Id = "kind", Label = "Kind", Kind = FilterValueKind.Select, Class = "w-40", Options = new[] { new FilterChoice("b", "B") } },
+        };
+        var cut = _ctx.Render<Lumeo.Filters>(p => p.Add(f => f.Fields, fields).Add(f => f.DefaultQuery, FilterQuery.Of(
+            new FilterRule("r1", new[] { "status" }, "is", "a"), new FilterRule("r2", new[] { "kind" }, "is", "b"))));
+
+        Chips(cut)[0].QuerySelector("[data-segment='value']")!.Click();
+        var panel = cut.Find("[data-slot='filter-editor']").ClassName!;
+        Assert.Contains("w-max", panel);
+        Assert.Contains("min-w-48", panel);
+        Assert.Contains("max-w-[min(36rem,calc(100vw-2rem))]", panel);
+        Chips(cut)[0].QuerySelector("[data-segment='value']")!.Click();
+
+        Chips(cut)[1].QuerySelector("[data-segment='value']")!.Click();
+        panel = cut.Find("[data-slot='filter-editor']").ClassName!;
+        Assert.Contains("w-40", panel);
+        Assert.DoesNotContain("min-w-48", panel);
+        Assert.DoesNotContain("max-w-[", panel);
+    }
 }

@@ -5,6 +5,24 @@ All notable changes to Lumeo will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.10.0] - Unreleased
+
+### Fixed
+- **A select editor of `Filters` is as wide as its widest option** (field report §16.6). The
+  panel was a fixed 12rem, which cut long labels such as a document type with its code in
+  half. It is now `w-max` between 12rem and 36rem (and never wider than the viewport); past the
+  ceiling the labels truncate as before. A field that sets any width of its own through
+  `FilterField.Class` (`w-40`, `min-w-max`, `max-w-[48rem]`) gets exactly that, as before.
+- **The column-resize guideline spans the grid's scroll container, not the table** (field
+  report §18.4). Under virtualization the table is as tall as every row and its top sits far
+  above the viewport once scrolled, so the fixed-position line ran from above the toolbar to
+  below the window. It now takes the scroll container's rectangle, clamped to the viewport.
+- **`lumeo-classes.txt` lists the classes inside `class="@Cx.Merge("…", Class)"`.** The
+  extractor paired quotes per line, and in that shape the class string sits between a closing
+  and an opening quote, so a class used only there was missing from the manifest a consumer's
+  own Tailwind build reads (card spacing, the filter cells, gradients). A second pass takes
+  every literal that follows a `(` or `,`.
+
 ## [5.9.1] - 2026-09-04
 
 ### Fixed

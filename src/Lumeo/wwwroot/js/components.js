@@ -3540,9 +3540,30 @@ let resizeGuideline = null;
 // viewport-relative, the same coordinate holds under horizontal scroll and with
 // pinned (sticky) columns with no extra math. `rtl` is passed in (captured once
 // per drag) so there's no getComputedStyle on the per-frame hot path.
+// The line spans the grid's SCROLL CONTAINER, clamped to the viewport, not the <table>: under
+// virtualization the table is as tall as every row (tens of thousands of px) and its top sits
+// far above the viewport once the user has scrolled, so a line spanning the table ran from
+// above the toolbar to below the window (field report §18.4). The scroller is resolved once per
+// table (getComputedStyle is off the per-move hot path); its rect is read per frame.
+const resizeScrollerOf = new WeakMap();
+function resizeGuidelineFrame(th, table) {
+    let scroller = table ? resizeScrollerOf.get(table) : null;
+    if (scroller === undefined) {
+        scroller = null;
+        for (let el = table.parentElement; el && el !== document.body; el = el.parentElement) {
+            const oy = getComputedStyle(el).overflowY;
+            if (oy === 'auto' || oy === 'scroll' || oy === 'overlay') { scroller = el; break; }
+        }
+        resizeScrollerOf.set(table, scroller);
+    }
+    const rect = (scroller || table || th).getBoundingClientRect();
+    const top = Math.max(rect.top, 0);
+    const bottom = Math.min(rect.bottom, window.innerHeight);
+    return { top, height: Math.max(bottom - top, 0) };
+}
 function showResizeGuideline(th, rtl) {
     const table = th.closest('table');
-    const tableRect = (table || th).getBoundingClientRect();
+    const tableRect = resizeGuidelineFrame(th, table);
     const thRect = th.getBoundingClientRect();
     const edgeX = rtl ? thRect.left : thRect.right;
     if (!resizeGuideline) {

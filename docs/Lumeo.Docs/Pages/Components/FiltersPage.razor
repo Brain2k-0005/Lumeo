@@ -61,6 +61,10 @@
         <Filters Fields="_menuActionFields" DefaultQuery="_menuActionPreset" MenuActions="@(FilterMenuActions.All & ~FilterMenuActions.Negate)" ShowClear="true" />
     </ComponentDemo>
 
+    <ComponentDemo Title="Long options" Description="A select editor grows to its widest option, from 12rem up to 36rem; past that the labels truncate. Document types with their code, as a receipt search lists them." Code="@_longOptionsCode">
+        <Filters Fields="_longOptionFields" DefaultQuery="_longOptionPreset" ShowClear="true" />
+    </ComponentDemo>
+
     <ComponentDemo Title="Advanced: nested conditions" Description="Variant=Advanced renders a condition builder: rows with a combinator per group, groups that nest, a menu to wrap a row in a group or move it, and Alt with the arrow keys or the drag handle (Reorderable) to reorder. Inline here; the default puts it behind a trigger in a popover." Code="@_advancedCode">
         <Stack Gap="4" Class="w-full">
             <Filters Fields="_fields" @bind-Query="_advancedQuery" Variant="FiltersVariant.Advanced" AdvancedMode="FiltersAdvancedMode.Inline" Reorderable="true" />
@@ -318,6 +322,27 @@ FilterQuery.Of(
 @code {
     // a field narrows the bar's set further; it cannot add an entry the bar hides
     new FilterField { Id = ""status"", Label = ""Status"", Kind = FilterValueKind.Select, MenuActions = FilterMenuActions.Remove, Options = ... }
+}";
+
+    private readonly IReadOnlyList<FilterField> _longOptionFields = new[]
+    {
+        new FilterField { Id = "type", Label = "Document type", Kind = FilterValueKind.Select, Options = new[]
+        {
+            new FilterChoice("1001", "Goods receipt (1001)"),
+            new FilterChoice("1003", "Goods receipt EU, Zagreb warehouse (1003)"),
+            new FilterChoice("2001", "Incoming invoice (2001)"),
+            new FilterChoice("2004", "Incoming credit note with reference to a prior invoice (2004)"),
+            new FilterChoice("3001", "Outgoing invoice (3001)"),
+            new FilterChoice("3007", "Outgoing invoice, intra-community supply without VAT (3007)"),
+        } },
+    };
+    private readonly FilterQuery _longOptionPreset = FilterQuery.Of(new FilterRule("t1", new[] { "type" }, "is", "2004"));
+
+    private string _longOptionsCode = @"<Filters Fields=""_longOptionFields"" DefaultQuery=""_longOptionPreset"" ShowClear=""true"" />
+
+@code {
+    // the select editor's panel is w-max min-w-48 max-w-[min(36rem,calc(100vw-2rem))]; FilterField.Class overrides it
+    new FilterField { Id = ""type"", Label = ""Document type"", Kind = FilterValueKind.Select, Options = new[] { new FilterChoice(""2004"", ""Incoming credit note with reference to a prior invoice (2004)""), ... } }
 }";
 
     private string _lockedCode = @"<Filters Fields=""_fields"" DefaultQuery=""_preset"" ReadOnly=""true"" ShowClear=""true"" />
