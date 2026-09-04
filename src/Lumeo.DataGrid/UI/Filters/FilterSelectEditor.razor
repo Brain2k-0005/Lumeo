@@ -3,7 +3,7 @@
 @* Sized by its widest option (field report §16.6): a fixed 12rem cut long labels in half.
    12rem stays the floor so a short list is not a sliver, 36rem the ceiling so one long label
    does not pull the popover across the page; past that the labels truncate as before. *@
-<div data-slot="filter-editor" class="@Cx.Merge("w-max min-w-48 max-w-[min(36rem,calc(100vw-2rem))]", Context.Field.Class, Class)" @attributes="AdditionalAttributes">
+<div data-slot="filter-editor" class="@Cx.Merge(PanelWidth, Context.Field.Class, Class)" @attributes="AdditionalAttributes">
     <FilterMenu Items="Context.Options.Items"
                 Selected="Selected"
                 Multiple="Multiple"
@@ -22,6 +22,17 @@
 @code {
     [CascadingParameter] public FiltersContext Filters { get; set; } = default!;
     [Parameter, EditorRequired] public FilterEditorContext Context { get; set; } = default!;
+
+    // A field that sets any width of its own (w-40, min-w-max, max-w-[48rem]) gets exactly that,
+    // as before this default existed: width, min-width and max-width are separate merge groups,
+    // so the default's floor and ceiling would otherwise still clamp an explicit width.
+    private string PanelWidth => HasOwnWidth(Context.Field.Class) || HasOwnWidth(Class)
+        ? "min-w-0"
+        : "w-max min-w-48 max-w-[min(36rem,calc(100vw-2rem))]";
+
+    private static bool HasOwnWidth(string? classes)
+        => classes is not null && classes.Split(' ', StringSplitOptions.RemoveEmptyEntries)
+            .Any(c => c.StartsWith("w-", StringComparison.Ordinal) || c.StartsWith("min-w-", StringComparison.Ordinal) || c.StartsWith("max-w-", StringComparison.Ordinal));
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
     /// <summary>Many values (has any of) or one.</summary>

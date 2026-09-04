@@ -39,7 +39,13 @@ for (const f of files) {
   // Per line, so a stray quote inside a doc comment cannot shift the pairing for the rest
   // of the file (it did: one quoted character in a <c> tag hid every class string below it).
   for (const line of readFileSync(f, "utf8").split(/\r?\n/)) {
-    for (const m of line.matchAll(/"([^"]*)"/g)) {
+    // Two passes. Pairing quotes finds plain attributes and C# strings; in
+    // class="@Cx.Merge("w-max min-w-48", Class)" the class string sits between a closing and
+    // an opening quote, so the second pass takes every literal that follows a "(" or "," as a
+    // C# argument. (Scanning every segment between quotes instead drowned the manifest in
+    // code tokens: 2200 candidates became 9600.)
+    const literals = [...line.matchAll(/"([^"]*)"/g), ...line.matchAll(/[(,]\s*"([^"]*)"/g)];
+    for (const m of literals) {
       for (const t of m[1].split(/\s+/)) {
         if (!t || t.includes("{") || t.includes("}") || t.length > 120) continue;
         if (!token.test(t)) continue;
