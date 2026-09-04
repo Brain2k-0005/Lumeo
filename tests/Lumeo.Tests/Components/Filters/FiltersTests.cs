@@ -310,4 +310,23 @@ public class FiltersTests : IAsyncLifetime
         Assert.Contains("rounded-e-md", Chips(cut)[0].QuerySelector("[data-segment='value']")!.ClassName);
     }
 
+    [Fact]
+    public void Discard_And_An_Unchanged_Apply_Close_The_Value_Editor()
+    {
+        FilterQuery? last = null;
+        var cut = Render(p => p.Add(f => f.DefaultQuery, FilterQuery.Of(new FilterRule("r", new[] { "title" }, "contains", "invoice")))
+            .Add(f => f.QueryChanged, EventCallback.Factory.Create<FilterQuery>(this, q => last = q)));
+
+        Chips(cut)[0].QuerySelector("[data-segment='value']")!.Click();
+        cut.Find("[data-slot='filter-editor'] input").Input("changed");
+        cut.Find("[data-slot='filter-editor'] button[aria-label='Discard changes']").Click();
+        Assert.Empty(cut.FindAll("[data-slot='filter-editor']"));
+        Assert.Null(last);
+        Assert.Equal("invoice", Chips(cut)[0].QuerySelector("[data-segment='value']")!.TextContent.Trim());
+
+        Chips(cut)[0].QuerySelector("[data-segment='value']")!.Click();
+        cut.Find("[data-slot='filter-editor'] button[aria-label='Apply']").Click();
+        Assert.Empty(cut.FindAll("[data-slot='filter-editor']"));
+        Assert.Null(last);
+    }
 }

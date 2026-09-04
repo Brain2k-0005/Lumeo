@@ -14,6 +14,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   popover is now the field's only frame: no panel padding, no border or ring of the group's own,
   so the editor is the chip's height plus the popover's 1px border; keyboard focus shows as a
   1px inset line at a quarter strength.
+- **The editor's X (discard) and an apply that changes nothing close the editor.** Both reach
+  the chip from the editor's own click handler, which re-rendered the editor and not the chip,
+  so the popover stayed open; the chip and the advanced row now re-render when they close it.
 - **Class strings in `.cs` helpers reach the CSS bundles.** Both Tailwind builds (the package's
   `lumeo-utilities.css` and the docs) scanned `UI/**/*.razor` only, so a class that lived in a
   helper such as `FilterStyles` shipped only when a `.razor` file happened to repeat it; the

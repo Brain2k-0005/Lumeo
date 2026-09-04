@@ -210,4 +210,15 @@ public class FiltersAdvancedTests : IAsyncLifetime
         Assert.EndsWith("(Ebene 2)", Rows(cut)[2].GetAttribute("aria-label"));
         Assert.EndsWith("(Ebene 1)", cut.Find("[data-slot='filter-row'][data-node-id='g1']").GetAttribute("aria-label"));
     }
+
+    [Fact]
+    public void Discard_Closes_A_Rows_Value_Popover()
+    {
+        var cut = Render(p => p.Add(f => f.DefaultQuery, FilterQuery.Of(new FilterRule("r", new[] { "amount" }, "between", new FilterRange(1.0, 5.0)))));
+        Rows(cut)[0].QuerySelector("[data-filter-cell='value']")!.Click();
+        Assert.NotEmpty(cut.FindAll("[data-slot='filter-editor']"));
+
+        cut.FindAll("[data-slot='filter-editor'] button").First(b => b.TextContent.Trim() == "Discard changes").Click();
+        Assert.Empty(cut.FindAll("[data-slot='filter-editor']"));
+    }
 }
