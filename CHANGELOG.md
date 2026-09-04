@@ -5,6 +5,19 @@ All notable changes to Lumeo will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.10.0] - Unreleased
+
+### Fixed
+- **The inline filter editor's popover is one control tall.** The text and number editors sat as
+  a bordered group inside a padded popover, so the popover stood 16px taller than the chip it
+  edits and framed the field twice; the group's dark focus frame made it heavier still. The
+  popover is now the field's only frame: no panel padding, no border or ring of the group's own,
+  so the editor is the chip's height plus the popover's 1px border.
+- **Class strings in `.cs` helpers reach the CSS bundles.** Both Tailwind builds (the package's
+  `lumeo-utilities.css` and the docs) scanned `UI/**/*.razor` only, so a class that lived in a
+  helper such as `FilterStyles` shipped only when a `.razor` file happened to repeat it; the
+  source globs now include `UI/**/*.cs`.
+
 ## [5.9.0] - 2026-09-04
 
 ### Added
