@@ -8,7 +8,8 @@
      stroke-width="@(Stroke ? StrokeWidthEff : null)"
      stroke-linecap="@(Stroke ? "round" : null)"
      stroke-linejoin="@(Stroke ? "round" : null)"
-     @attributes="AdditionalAttributes">@((MarkupString)Svg.Content)</svg>
+     class="@EffectiveClass"
+     @attributes="AttributesForSplat">@((MarkupString)Svg.Content)</svg>
 
 @code {
     /// <summary>
@@ -26,10 +27,22 @@
     [Parameter] public double? StrokeWidth { get; set; }
 
     /// <summary>
-    /// Arbitrary attributes (<c>class</c>, <c>aria-*</c>, <c>role</c>, <c>title</c>, …) splatted
-    /// onto the root <c>&lt;svg&gt;</c>. Sizing is done here via classes (e.g. <c>h-4 w-4</c>),
+    /// Additional CSS classes for the root <c>&lt;svg&gt;</c> (e.g. <c>h-4 w-4</c>). Merged with a
+    /// lowercase <c>class</c> attribute supplied via <see cref="AdditionalAttributes"/>, if any,
+    /// using <see cref="Cx.Merge(string?[])"/>. Blazor matches component attributes to parameters
+    /// case-sensitively, so a capitalized <c>Class="…"</c> on a component invocation binds here
+    /// rather than being splatted onto the <c>&lt;svg&gt;</c> as a literal (and, on SVG elements,
+    /// inert) <c>Class</c> attribute.
+    /// </summary>
+    [Parameter] public string? Class { get; set; }
+
+    /// <summary>
+    /// Arbitrary attributes (<c>aria-*</c>, <c>role</c>, <c>title</c>, a lowercase <c>class</c>, …)
+    /// splatted onto the root <c>&lt;svg&gt;</c>. Sizing is done here via classes (e.g. <c>h-4 w-4</c>),
     /// exactly like the icon component it replaces. A consumer-supplied attribute that collides
-    /// with one this component sets (e.g. <c>fill</c>) wins, because the splat is applied last.
+    /// with one this component sets (e.g. <c>fill</c>) wins, because the splat is applied last. A
+    /// <c>class</c> entry is merged with <see cref="Class"/> rather than splatted directly (see
+    /// <see cref="EffectiveClass"/>).
     /// </summary>
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
@@ -41,4 +54,45 @@
     /// own value) so decimal widths never localize to a comma in the emitted attribute.
     /// </summary>
     private string StrokeWidthEff => (StrokeWidth ?? Svg.StrokeWidth).ToString(CultureInfo.InvariantCulture);
+
+    /// <summary>
+    /// The <c>class</c> value rendered explicitly on the root <c>&lt;svg&gt;</c>. This is a hot
+    /// path (~760 call sites), so it is kept allocation-free in the two common cases and only
+    /// pays for <see cref="Cx.Merge(string?[])"/> plus a stripped-copy of
+    /// <see cref="AdditionalAttributes"/> (see <see cref="AttributesForSplat"/>) when BOTH
+    /// <see cref="Class"/> and a splatted lowercase <c>class</c> are present:
+    /// <list type="bullet">
+    /// <item>No splatted <c>class</c> in <see cref="AdditionalAttributes"/>: render <see cref="Class"/>
+    /// as-is (splat passes <see cref="AdditionalAttributes"/> through unchanged; <c>null</c> omits
+    /// the attribute, matching pre-<see cref="Class"/> behaviour).</item>
+    /// <item><see cref="Class"/> is <c>null</c>: render <c>null</c> here (the attribute is omitted)
+    /// and let the splatted <c>class</c> apply unchanged, exactly as before this parameter existed.</item>
+    /// <item>Both present: merge them via <see cref="Cx.Merge(string?[])"/> so neither clobbers the
+    /// other.</item>
+    /// </list>
+    /// </summary>
+    private string? EffectiveClass
+    {
+        get
+        {
+            if (AdditionalAttributes is null || !AdditionalAttributes.TryGetValue("class", out var splatted))
+                return Class;
+
+            if (Class is null)
+                return null;
+
+            return Cx.Merge(Class, splatted?.ToString());
+        }
+    }
+
+    /// <summary>
+    /// Attributes splatted onto the root <c>&lt;svg&gt;</c>. Passed through unchanged (no
+    /// allocation) unless BOTH <see cref="Class"/> and a splatted <c>class</c> are present, in
+    /// which case the <c>class</c> entry is stripped so it doesn't collide with the explicitly
+    /// merged one rendered via <see cref="EffectiveClass"/>.
+    /// </summary>
+    private Dictionary<string, object>? AttributesForSplat =>
+        Class is null || AdditionalAttributes is null || !AdditionalAttributes.ContainsKey("class")
+            ? AdditionalAttributes
+            : AdditionalAttributes.Where(kv => kv.Key != "class").ToDictionary(kv => kv.Key, kv => kv.Value);
 }
