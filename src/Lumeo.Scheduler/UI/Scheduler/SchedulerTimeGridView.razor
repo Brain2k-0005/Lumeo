@@ -657,6 +657,16 @@
             _registeredNowIndicatorRefs = new[] { _hostRef };
         }
         catch (Microsoft.JSInterop.JSDisconnectedException) { }
+        // Same "scheduler-views.js missing/broken" scenario the drag-registration sites guard
+        // against (SchedulerMonthView's SyncMorePopoverClickOutsideAsync/OnAfterRenderAsync and
+        // this file's own SyncDragRegistrationAsync) — widened to catch ANY exception rather
+        // than just JSDisconnectedException, degrading to "no now-indicator line this render"
+        // instead of an uncaught JSException crashing the view (field report #464, finding A —
+        // round-1 fix review flagged this site as missed in the initial inventory). Unlike the
+        // drag sites' `_dragRegistered && hash == _lastHash` guard, `_lastNowIndicatorHash` above
+        // is already latched BEFORE this try runs, so a failure here does NOT retry on every
+        // subsequent render at the same hash — no tight loop.
+        catch (Exception) { }
     }
 
     private void BuildEventLayout()

@@ -91,4 +91,44 @@ public class SchedulerOnInitErrorGuardTests : IAsyncLifetime
             await ctx.DisposeAsync();
         }
     }
+
+    /// <summary>
+    /// Round-1 fix-review finding (Critical): the initial re-inventory of remaining
+    /// <c>Interop.Scheduler*</c> calls missed <see cref="L.SchedulerTimeGridView"/>'s
+    /// now-indicator registration — <c>SyncNowIndicatorAsync</c> only caught
+    /// <see cref="JSDisconnectedException"/> around <c>SchedulerViewsRegisterNowIndicatorAsync</c>,
+    /// so the identical "scheduler-views.js missing/broken" scenario the drag-registration sites
+    /// already guard against would throw uncaught there instead — and <c>NowIndicator</c> defaults
+    /// to true, so Week/Day views hit this on an ordinary render, not an edge case.
+    /// </summary>
+    private sealed class ThrowingNowIndicatorInterop : TrackingInteropService, IComponentInteropService
+    {
+        public new Task SchedulerViewsRegisterNowIndicatorAsync(ElementReference el, object options) =>
+            throw new JSException("scheduler-views.js: registerNowIndicator is not a function");
+    }
+
+    [Fact]
+    public async Task A_Broken_Now_Indicator_Registration_Call_Does_Not_Crash_The_Render()
+    {
+        var ctx = new BunitContext();
+        try
+        {
+            ctx.AddLumeoServices();
+            ctx.Services.AddSingleton<IComponentInteropService>(new ThrowingNowIndicatorInterop());
+
+            // Week view: NowIndicator defaults to true, so this exercises the ordinary render
+            // path (not an opt-in edge case) — matches the reviewer's "runs on every render...
+            // NowIndicator defaults to true" concern.
+            var ex = Record.Exception(() => ctx.Render<L.Scheduler>(p => p
+                .Add(c => c.InitialView, L.SchedulerView.Week)
+                .Add(c => c.InitialDate, new DateTime(2026, 3, 15))
+                .Add(c => c.Events, Array.Empty<L.SchedulerEvent>())));
+
+            Assert.Null(ex);
+        }
+        finally
+        {
+            await ctx.DisposeAsync();
+        }
+    }
 }
