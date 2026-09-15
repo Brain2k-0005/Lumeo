@@ -124,8 +124,18 @@ public class TrackingInteropService : IComponentInteropService
     // interop is still in flight" race deterministically — see
     // OverlayExitAnimationRaceTests (B11: exit animation must not depend on the open
     // interop having completed).
-    public virtual ValueTask LockScroll() => ValueTask.CompletedTask;
-    public virtual ValueTask UnlockScroll() => ValueTask.CompletedTask;
+    // Fix round 1 (task review) — call-count tracking so a test can assert an
+    // exact number of Lock/Unlock calls (e.g. a Modal flip mid-open must not
+    // leak an extra UnlockScroll, or skip one it owes). Overridden LockScroll
+    // in DrawerGestureRegistrationRaceTests/OverlayExitAnimationRaceTests
+    // doesn't call base, so this counter simply doesn't increment there —
+    // those tests don't need it.
+    private int _lockScrollCallCount;
+    private int _unlockScrollCallCount;
+    public int LockScrollCallCount => _lockScrollCallCount;
+    public int UnlockScrollCallCount => _unlockScrollCallCount;
+    public virtual ValueTask LockScroll() { _lockScrollCallCount++; return ValueTask.CompletedTask; }
+    public virtual ValueTask UnlockScroll() { _unlockScrollCallCount++; return ValueTask.CompletedTask; }
 
     // Records (className, active) for each SetHtmlClass call so tests can assert
     // html-class lifecycle (e.g. fullscreen-active added on enter / removed on

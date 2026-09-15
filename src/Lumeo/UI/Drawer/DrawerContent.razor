@@ -230,6 +230,16 @@ else if (Context.IsOpen || _exiting)
     // something to undo (mirrors the tracked-registration idiom
     // _swipeRegistered/_gestureRegistered already use elsewhere in this file).
     private bool _scaleApplied;
+    // Fix round 1 (task review) — mirrors _scaleApplied: whether THIS open
+    // session actually locked scroll / trapped focus, so Cleanup tears down
+    // based on what was APPLIED, not the live Modal value. Modal is a plain
+    // [Parameter], so a consumer can flip it while the drawer stays open
+    // (e.g. via SetParametersAndRender) — reading Modal live at Cleanup time
+    // would either leak the global ref-counted scrollLockCount (locked at
+    // open, Modal flipped false before close, Cleanup's old `if (Modal)`
+    // skipped UnlockScroll) or wrongly unlock/untrap for an instance that
+    // never applied either (Modal flipped true after a non-modal open).
+    private bool _modalApplied;
     // Exit-animation state — see DialogContent / SheetContent. Only set when
     // PlayExitAnimation is true (service-opened drawers) and not in snap mode.
     private bool _exiting;
@@ -589,9 +599,13 @@ else if (Context.IsOpen || _exiting)
             try
             {
                 // #346 — a non-modal drawer never locks scroll or traps focus;
-                // the page stays fully interactive while it's open.
+                // the page stays fully interactive while it's open. Latch
+                // _modalApplied BEFORE the awaits (mirrors _scaleApplied) so
+                // Cleanup tears down based on what THIS session actually did,
+                // not a possibly-since-changed live Modal value.
                 if (Modal)
                 {
+                    _modalApplied = true;
                     await Interop.LockScroll();
                     await Interop.SetupFocusTrap(_contentId);
                 }
@@ -934,10 +948,15 @@ else if (Context.IsOpen || _exiting)
         try
         {
             await UnregisterGestureAsync();
-            // #346 — mirror the open-side gate: nothing to tear down for a
-            // non-modal drawer, which never locked scroll or trapped focus.
-            if (Modal)
+            // Fix round 1 — tear down based on _modalApplied (what THIS
+            // session actually locked/trapped at open), not the live Modal
+            // value: a Modal flip while the drawer stayed open must not leak
+            // the global ref-counted scrollLockCount (Modal true->false) nor
+            // call Remove/Unlock for a session that never applied either
+            // (Modal false->true). Mirrors _scaleApplied immediately below.
+            if (_modalApplied)
             {
+                _modalApplied = false;
                 await Interop.RemoveFocusTrap(_contentId);
                 await Interop.UnlockScroll();
             }

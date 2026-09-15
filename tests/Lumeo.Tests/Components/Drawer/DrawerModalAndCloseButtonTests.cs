@@ -129,6 +129,61 @@ public class DrawerModalAndCloseButtonTests : IAsyncLifetime
         Assert.Empty(_interop.FocusTrapRemovals);
     }
 
+    // Fix round 1 (task review) — DrawerContent used to read the LIVE Modal
+    // value at both the open branch and Cleanup(). A Modal flip WHILE the
+    // drawer stays open, followed by close, used to either leak the global
+    // ref-counted scrollLockCount (locked at open under Modal=true, Cleanup's
+    // `if (Modal)` skips UnlockScroll because Modal is now false) or wrongly
+    // call Remove/Unlock for a session that never applied them. Fixed via a
+    // _modalApplied flag (mirrors _scaleApplied) latched at open time and
+    // read — not Modal — at Cleanup time.
+    [Fact]
+    public void Modal_Flipped_False_While_Open_Still_Balances_Lock_And_Trap_On_Close()
+    {
+        var cut = _ctx.Render<L.Drawer>(p => p
+            .Add(d => d.Open, true)
+            .AddChildContent<L.DrawerContent>(cp => cp.Add(c => c.Modal, true).AddChildContent("Body")));
+
+        Assert.Equal(1, _interop.LockScrollCallCount);
+        Assert.Single(_interop.FocusTrapSetups);
+
+        // Flip Modal false WHILE the drawer stays open (SetParametersAndRender
+        // via bUnit's typed Render, targeting DrawerContent directly this time
+        // so Open itself doesn't change).
+        var drawerContent = cut.FindComponent<L.DrawerContent>();
+        drawerContent.Render(p => p.Add(c => c.Modal, false).Add(c => c.ChildContent, (RenderFragment)(b => b.AddContent(0, "Body"))));
+
+        cut.Render(p => p.Add(d => d.Open, false));
+
+        // Exactly one Unlock/Remove — the pair this session actually applied
+        // at open, no more (no leak from the live-Modal read) and no less
+        // (Cleanup still tears down what was really locked/trapped).
+        Assert.Equal(1, _interop.UnlockScrollCallCount);
+        Assert.Single(_interop.FocusTrapRemovals);
+    }
+
+    [Fact]
+    public void Modal_Flipped_True_While_Open_After_A_NonModal_Open_Never_Calls_Unlock_Or_Remove()
+    {
+        // Mirror case: opened non-modal (never locked/trapped), Modal flips
+        // true while it stays open, then closes. Cleanup must not call
+        // Unlock/Remove for a lock/trap this session never applied.
+        var cut = _ctx.Render<L.Drawer>(p => p
+            .Add(d => d.Open, true)
+            .AddChildContent<L.DrawerContent>(cp => cp.Add(c => c.Modal, false).AddChildContent("Body")));
+
+        Assert.Equal(0, _interop.LockScrollCallCount);
+        Assert.Empty(_interop.FocusTrapSetups);
+
+        var drawerContent = cut.FindComponent<L.DrawerContent>();
+        drawerContent.Render(p => p.Add(c => c.Modal, true).Add(c => c.ChildContent, (RenderFragment)(b => b.AddContent(0, "Body"))));
+
+        cut.Render(p => p.Add(d => d.Open, false));
+
+        Assert.Equal(0, _interop.UnlockScrollCallCount);
+        Assert.Empty(_interop.FocusTrapRemovals);
+    }
+
     [Fact]
     public void Modal_Is_Independent_Of_PreventClose_NonModal_Can_Still_Be_PreventClose()
     {
