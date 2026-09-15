@@ -14,7 +14,10 @@
    remarks for the "Scheduler.razor is the only component with public parameters" note. *@
 <div class="@RootClasses" @attributes="AdditionalAttributes">
     @* See SchedulerMonthView's own live-region remarks — rendered empty at
-       mount so assistive tech is already observing the node. *@
+       mount so assistive tech is already observing the node. `relative` in
+       RootClasses below is what keeps this `sr-only` (position:absolute) span
+       contained instead of escaping to a positioned ancestor further up the
+       host page and enlarging ITS scroll area (field report #464, finding B). *@
     <span class="sr-only" aria-live="polite" aria-atomic="true"
           data-testid="scheduler-live-region" data-announce-epoch="@_announcementEpoch">@AnnouncementText</span>
 
@@ -370,6 +373,13 @@
     [Parameter] public Func<SchedulerEvent, string?>? ResolveEventColor { get; set; }
     [Parameter] public Func<SchedulerEvent, string?>? ResolveEventClassNames { get; set; }
 
+    /// <summary>
+    /// Resolves the DISPLAY name for an event's <see cref="SchedulerEvent.ResourceId"/> for the
+    /// hover tooltip. See <see cref="SchedulerMonthView.ResolveEventResourceName"/>'s remarks —
+    /// same contract, same field-report finding (#464, finding D).
+    /// </summary>
+    [Parameter] public Func<SchedulerEvent, string?>? ResolveEventResourceName { get; set; }
+
     /// <summary>Allows events to be dragged (move) and edge-resized. Default true.</summary>
     [Parameter] public bool Editable { get; set; } = true;
 
@@ -584,6 +594,9 @@
             _dragRegistered = true;
         }
         catch (Microsoft.JSInterop.JSDisconnectedException) { }
+        // See SchedulerMonthView's identical registration catch for why this is widened to any
+        // Exception rather than just JSDisconnectedException (field report #464, finding A).
+        catch (Exception) { }
     }
 
     private object BuildDragOptions()
@@ -807,13 +820,22 @@
     private static readonly DayOfWeek[] DefaultBusinessDays =
         { DayOfWeek.Monday, DayOfWeek.Tuesday, DayOfWeek.Wednesday, DayOfWeek.Thursday, DayOfWeek.Friday };
 
-    /// <summary>Hover-tooltip label for an event chip: title + time range (spec §3.4's promised "title, time range, resource" — resource omitted here since neither view resolves a resource DISPLAY NAME, only the raw <see cref="SchedulerEvent.ResourceId"/>; falls back to that id, labelled, when present).</summary>
-    private static string TooltipLabel(SchedulerEvent ev, SchedulerEventInstance inst)
+    /// <summary>
+    /// Hover-tooltip label for an event chip: title + time range + resource. Mirrors
+    /// SchedulerMonthView's own TooltipLabel — same contract, same field report finding (#464,
+    /// finding D): prefers <see cref="ResolveEventResourceName"/>'s display name, falls back to
+    /// the raw <see cref="SchedulerEvent.ResourceId"/> only when nothing resolves.
+    /// </summary>
+    internal string TooltipLabel(SchedulerEvent ev, SchedulerEventInstance inst)
     {
         var time = ev.AllDay ? null : $"{inst.Start:t}–{inst.End:t}";
         var parts = new List<string> { ev.Title };
         if (time is not null) parts.Add(time);
-        if (!string.IsNullOrEmpty(ev.ResourceId)) parts.Add(ev.ResourceId);
+        if (!string.IsNullOrEmpty(ev.ResourceId))
+        {
+            var name = ResolveEventResourceName?.Invoke(ev);
+            parts.Add(string.IsNullOrEmpty(name) ? ev.ResourceId : name);
+        }
         return string.Join(" · ", parts);
     }
 
@@ -934,8 +956,8 @@
     /// identically without being a scroll container, so the header reaches the box that does move.
     /// </summary>
     private string RootClasses => SelfScrolling
-        ? $"flex flex-col w-full rounded-md border border-border/60 overflow-hidden {Class}".Trim()
-        : $"flex flex-col w-full rounded-md border border-border/60 overflow-clip {Class}".Trim();
+        ? $"relative flex flex-col w-full rounded-md border border-border/60 overflow-hidden {Class}".Trim()
+        : $"relative flex flex-col w-full rounded-md border border-border/60 overflow-clip {Class}".Trim();
 
     /// <summary>
     /// A stable id for a timed pill, so its tooltip can be positioned against the PILL. The
