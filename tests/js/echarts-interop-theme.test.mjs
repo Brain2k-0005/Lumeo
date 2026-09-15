@@ -280,16 +280,115 @@ test('bar: geometry-gap pass — tighter barCategoryGap/barGap and a raised barM
     assert.equal(theme.bar.barMaxWidth, 40);
 });
 
-test('pie gradient: itemStyle.color is a callback that builds a centre-lightened RADIAL gradient from params.color', async () => {
+test('pie theme: itemStyle carries no colour callback — per-slice gradients are applied separately (see applyPieItemGradients)', async () => {
+    // Field report #464 finding 4: a previous pass built the per-slice
+    // "glassy" radial gradient via a theme-level itemStyle.color CALLBACK,
+    // reading params.color to know which base colour to lighten. Confirmed
+    // via a live probe against the real `echarts` package (SSR renderer): once
+    // itemStyle.color is a function, params.dataIndex correctly varies per
+    // slice but params.color does NOT — it stays pinned to the series' single
+    // default palette entry for every call, so every slice was tinted from
+    // the SAME base colour. The theme no longer sets a colour callback at all;
+    // applyPieItemGradients computes each slice's gradient explicitly instead
+    // (see the tests below).
     const { __testing } = await importInterop();
     const theme = __testing.buildLumeoTheme(fakeCssVar, false);
-    assert.equal(typeof theme.pie.itemStyle.color, 'function');
+    assert.equal('color' in theme.pie.itemStyle, false);
+    assert.equal(theme.pie.itemStyle.borderColor, fakeCssVar('--color-popover'));
+    assert.equal(theme.pie.itemStyle.borderWidth, 2);
+});
 
-    const gradient = theme.pie.itemStyle.color({ color: '#00bb00' });
-    assert.equal(gradient.type, 'radial');
-    assert.deepEqual({ x: gradient.x, y: gradient.y, r: gradient.r }, { x: 0.5, y: 0.5, r: 0.7 });
-    assert.equal(gradient.colorStops[0].color, __testing.lighten('#00bb00', 0.28));
-    assert.equal(gradient.colorStops[1].color, '#00bb00');
+test('applyPieItemGradients: default palette (no options.color) cycles the theme chart-1..5 tokens by data index', async () => {
+    const { __testing } = await importInterop();
+    const options = {
+        series: [{
+            type: 'pie',
+            data: [{ name: 'A', value: 1 }, { name: 'B', value: 2 }, { name: 'C', value: 3 }, { name: 'D', value: 4 }],
+        }],
+    };
+
+    __testing.applyPieItemGradients(options, fakeCssVar);
+
+    const data = options.series[0].data;
+    const bases = data.map((d) => d.itemStyle.color.colorStops[1].color);
+    assert.deepEqual(bases, ['#aa0000', '#00bb00', '#0000cc', '#dddd00']);
+    // Every slice distinct — the exact regression this fix targets.
+    assert.equal(new Set(bases).size, 4);
+    // Centre stop is the SAME base colour, lightened — same recipe as before.
+    assert.equal(data[0].itemStyle.color.colorStops[0].color, __testing.lighten('#aa0000', 0.28));
+    assert.equal(data[0].itemStyle.color.type, 'radial');
+});
+
+test('applyPieItemGradients: a consumer Colors/ColorPalette array (options.color) wins over the theme default, and wraps around', async () => {
+    const { __testing } = await importInterop();
+    const options = {
+        color: ['#111111', '#222222'], // only 2 colours for 3 slices — must wrap
+        series: [{
+            type: 'pie',
+            data: [{ name: 'A', value: 1 }, { name: 'B', value: 2 }, { name: 'C', value: 3 }],
+        }],
+    };
+
+    __testing.applyPieItemGradients(options, fakeCssVar);
+
+    const bases = options.series[0].data.map((d) => d.itemStyle.color.colorStops[1].color);
+    assert.deepEqual(bases, ['#111111', '#222222', '#111111']);
+});
+
+test('applyPieItemGradients: a var(--token) palette entry resolves against the live cssVar getter, not a literal token string', async () => {
+    const { __testing } = await importInterop();
+    const options = {
+        color: ['var(--color-chart-2)'],
+        series: [{ type: 'pie', data: [{ name: 'A', value: 1 }] }],
+    };
+
+    __testing.applyPieItemGradients(options, fakeCssVar);
+
+    assert.equal(options.series[0].data[0].itemStyle.color.colorStops[1].color, '#00bb00');
+});
+
+test('applyPieItemGradients: a data item with its own explicit itemStyle.color is left untouched', async () => {
+    const { __testing } = await importInterop();
+    const explicit = { name: 'A', value: 1, itemStyle: { color: '#ff00ff' } };
+    const options = {
+        series: [{ type: 'pie', data: [explicit, { name: 'B', value: 2 }] }],
+    };
+
+    __testing.applyPieItemGradients(options, fakeCssVar);
+
+    assert.equal(options.series[0].data[0].itemStyle.color, '#ff00ff'); // untouched
+    assert.equal(typeof options.series[0].data[1].itemStyle.color, 'object'); // fixed up
+});
+
+test('applyPieItemGradients: preserves an existing itemStyle.decal on the same item while adding the colour', async () => {
+    const { __testing } = await importInterop();
+    const options = {
+        series: [{
+            type: 'pie',
+            data: [{ name: 'A', value: 1, itemStyle: { decal: { symbol: 'rect' } } }],
+        }],
+    };
+
+    __testing.applyPieItemGradients(options, fakeCssVar);
+
+    const itemStyle = options.series[0].data[0].itemStyle;
+    assert.deepEqual(itemStyle.decal, { symbol: 'rect' });
+    assert.equal(itemStyle.color.type, 'radial');
+});
+
+test('applyPieItemGradients: non-pie series and empty series are left completely alone', async () => {
+    const { __testing } = await importInterop();
+    const options = {
+        series: [
+            { type: 'bar', data: [1, 2, 3] },
+            { type: 'pie', data: [] },
+        ],
+    };
+    const before = JSON.stringify(options);
+
+    __testing.applyPieItemGradients(options, fakeCssVar);
+
+    assert.equal(JSON.stringify(options), before);
 });
 
 test('reveal: bar/pie/scatter get a capped, staggered animationDelay; line relies on its native draw-in instead', async () => {

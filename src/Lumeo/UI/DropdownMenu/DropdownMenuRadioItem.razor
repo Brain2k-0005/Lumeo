@@ -12,6 +12,12 @@
 
 @code {
     [CascadingParameter] public DropdownMenuRadioGroup.DropdownMenuRadioGroupContext Context { get; set; } = default!;
+    // The enclosing DropdownMenu's open/close context (distinct from Context above,
+    // which is the radio GROUP's selection context) — matched by type, not name, so it
+    // cascades in alongside Context without a naming collision. Radix closes the menu
+    // on both radio and checkbox item selection, same as a plain item; this radio item
+    // previously never closed the menu (field report #464, finding 2).
+    [CascadingParameter] public DropdownMenu.DropdownMenuContext? MenuContext { get; set; }
     [CascadingParameter] private Lumeo.Density? Density { get; set; }
     /// <summary>The item's label content, rendered after the selection dot.</summary>
     [Parameter] public RenderFragment? ChildContent { get; set; }
@@ -38,5 +44,12 @@
 
     private string CssClass => Cx.Merge("relative flex w-full cursor-default select-none items-center gap-2 rounded-sm", PadYClass, "ps-8 pe-2 text-sm outline-none transition-colors hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground", Class);
 
-    private async Task Select() => await Context.OnSelect.InvokeAsync(Value);
+    private async Task Select()
+    {
+        await Context.OnSelect.InvokeAsync(Value);
+        if (MenuContext is not null)
+        {
+            await MenuContext.SetOpen.InvokeAsync(false);
+        }
+    }
 }
