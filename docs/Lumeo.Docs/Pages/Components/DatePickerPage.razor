@@ -176,6 +176,26 @@
             }
         </Container>
     </ComponentDemo>
+
+    <ComponentDemo Title="Sizes" Code="@_interactiveSizeCode">
+        <Stack Gap="4" Class="w-full max-w-xs">
+            <Lumeo.Text Size="sm" Color="muted">
+                All 7 Lumeo.Size rungs are supported. The trigger's height, text and horizontal
+                padding scale with Size — at the default Md rung this matches Select's trigger
+                exactly. The popover calendar itself never scales with Size.
+            </Lumeo.Text>
+            <Segmented @bind-Value="_previewSize">
+                <SegmentedItem Value="Xxs">Xxs</SegmentedItem>
+                <SegmentedItem Value="Xs">Xs</SegmentedItem>
+                <SegmentedItem Value="Sm">Sm</SegmentedItem>
+                <SegmentedItem Value="Md">Md</SegmentedItem>
+                <SegmentedItem Value="Lg">Lg</SegmentedItem>
+                <SegmentedItem Value="Xl">Xl</SegmentedItem>
+                <SegmentedItem Value="Xxl">Xxl</SegmentedItem>
+            </Segmented>
+            <DatePicker Size="_datePickerSizeEnum" AllowKeyboardInput="false" Placeholder="@($"Size = {_previewSize}")" />
+        </Stack>
+    </ComponentDemo>
 </Stack>
 
 <div class="mt-12 space-y-4">
@@ -279,6 +299,8 @@
                 <TableRow><TableCell Class="font-mono text-xs">FirstDayOfWeek</TableCell><TableCell Class="font-mono text-xs">DayOfWeek?</TableCell><TableCell Class="font-mono text-xs">null</TableCell><TableCell>Override the first day of the week. When null, falls back to the current culture's setting.</TableCell></TableRow>
                 <TableRow><TableCell Class="font-mono text-xs">Class</TableCell><TableCell Class="font-mono text-xs">string?</TableCell><TableCell Class="font-mono text-xs">null</TableCell><TableCell>Additional CSS classes.</TableCell></TableRow>
                 <TableRow><TableCell Class="font-mono text-xs">FullWidth</TableCell><TableCell Class="font-mono text-xs">bool</TableCell><TableCell Class="font-mono text-xs">false</TableCell><TableCell>Expands the date picker to fill its container width (equivalent to <code>FullWidth</code> on Button).</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">Size</TableCell><TableCell Class="font-mono text-xs">Lumeo.Size</TableCell><TableCell Class="font-mono text-xs">Md</TableCell><TableCell>Trigger height, text size and horizontal padding. All 7 rungs supported; matches Select's trigger at Md. The popover calendar itself does not scale.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">Density</TableCell><TableCell Class="font-mono text-xs">Lumeo.Density?</TableCell><TableCell Class="font-mono text-xs">null</TableCell><TableCell>Overrides the ambient DensityScope for the trigger's height/padding. Falls back to the cascaded density, then Comfortable.</TableCell></TableRow>
                 <TableRow><TableCell Class="font-mono text-xs">AutoFocus</TableCell><TableCell Class="font-mono text-xs">bool</TableCell><TableCell Class="font-mono text-xs">false</TableCell><TableCell>Focuses the date-picker trigger on first render.</TableCell></TableRow>
                 <TableRow><TableCell Class="font-mono text-xs">AllowKeyboardInput</TableCell><TableCell Class="font-mono text-xs">bool</TableCell><TableCell Class="font-mono text-xs">true</TableCell><TableCell>Lets the trigger's text be typed directly instead of only picked from the calendar. No effect for Range/Multiple mode, the Wheel variant, Inline, or a custom TriggerContent.</TableCell></TableRow>
                 <TableRow><TableCell Class="font-mono text-xs">OnParseError</TableCell><TableCell Class="font-mono text-xs">EventCallback&lt;string&gt;</TableCell><TableCell Class="font-mono text-xs">—</TableCell><TableCell>Fires when typed keyboard input fails to parse to a valid, in-range date; the buffer reverts to the last valid value. The argument is the offending raw text.</TableCell></TableRow>
@@ -324,6 +346,7 @@
                 <TableRow><TableCell Class="font-mono text-xs">Disabled</TableCell><TableCell Class="font-mono text-xs">bool</TableCell><TableCell Class="font-mono text-xs">false</TableCell><TableCell>Disables the date range picker.</TableCell></TableRow>
                 <TableRow><TableCell Class="font-mono text-xs">Clearable</TableCell><TableCell Class="font-mono text-xs">bool</TableCell><TableCell Class="font-mono text-xs">true</TableCell><TableCell>Shows a clear button to reset the date range.</TableCell></TableRow>
                 <TableRow><TableCell Class="font-mono text-xs">FullWidth</TableCell><TableCell Class="font-mono text-xs">bool</TableCell><TableCell Class="font-mono text-xs">false</TableCell><TableCell>Expands the date range picker to fill its container width. Forwarded to the inner DatePicker.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">Size</TableCell><TableCell Class="font-mono text-xs">Lumeo.Size</TableCell><TableCell Class="font-mono text-xs">Md</TableCell><TableCell>Trigger height, text size and horizontal padding. Forwarded directly to the inner DatePicker.</TableCell></TableRow>
                 <TableRow><TableCell Class="font-mono text-xs">FirstDayOfWeek</TableCell><TableCell Class="font-mono text-xs">DayOfWeek?</TableCell><TableCell Class="font-mono text-xs">null</TableCell><TableCell>Override the first day of the week. When null, falls back to the current culture's setting.</TableCell></TableRow>
                 <TableRow><TableCell Class="font-mono text-xs">ShowWeekNumbers</TableCell><TableCell Class="font-mono text-xs">bool</TableCell><TableCell Class="font-mono text-xs">false</TableCell><TableCell>Shows ISO week numbers alongside the calendar rows.</TableCell></TableRow>
                 <TableRow><TableCell Class="font-mono text-xs">IsDateDisabled</TableCell><TableCell Class="font-mono text-xs">Func&lt;DateTime, bool&gt;?</TableCell><TableCell Class="font-mono text-xs">null</TableCell><TableCell>Predicate called for each calendar day; return true to disable that date (e.g. booked rooms).</TableCell></TableRow>
@@ -492,6 +515,21 @@
     private List<DateOnly>? _multipleDates;
     private DateOnly? _twoMonthDate;
     private string _wheelCode = @"<DatePicker @bind-Value=""_date"" Variant=""DatePicker.DatePickerVariant.Wheel"" />";
+
+    private string _previewSize = "Md";
+    private Lumeo.Size _datePickerSizeEnum =>
+        Enum.TryParse<Lumeo.Size>(_previewSize, out var s) ? s : Lumeo.Size.Md;
+
+    private string _interactiveSizeCode = @"<Segmented @bind-Value=""_size"">
+    <SegmentedItem Value=""Xxs"">Xxs</SegmentedItem>
+    <SegmentedItem Value=""Xs"">Xs</SegmentedItem>
+    <SegmentedItem Value=""Sm"">Sm</SegmentedItem>
+    <SegmentedItem Value=""Md"">Md</SegmentedItem>
+    <SegmentedItem Value=""Lg"">Lg</SegmentedItem>
+    <SegmentedItem Value=""Xl"">Xl</SegmentedItem>
+    <SegmentedItem Value=""Xxl"">Xxl</SegmentedItem>
+</Segmented>
+<DatePicker Size=""@Enum.Parse<Lumeo.Size>(_size)"" AllowKeyboardInput=""false"" Placeholder=""@($""Size = {_size}"")"" />";
 
     private string _modeInteractiveCode = @"<Segmented @bind-Value=""_mode"">
     <SegmentedItem Value=""Single"">Single</SegmentedItem>

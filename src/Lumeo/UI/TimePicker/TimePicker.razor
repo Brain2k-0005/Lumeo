@@ -282,6 +282,15 @@ else
     /// horizontal padding shift between values.</summary>
     [Parameter] public Density? Density { get; set; }
     [CascadingParameter] private Density? InheritedDensity { get; set; }
+    /// <summary>
+    /// Controls the List variant trigger's height, text size and horizontal padding.
+    /// Supports all 7 <see cref="Lumeo.Size"/> values (Xxs-Xxl) using the same
+    /// height/padding ladder as <see cref="Input"/> and <see cref="DatePicker"/>; at
+    /// the default <see cref="Lumeo.Size.Md"/> rung this matches
+    /// <see cref="SelectTrigger"/>'s own height/padding at the same <see cref="Lumeo.Density"/>.
+    /// Has no effect on the Wheel variant. Default <see cref="Lumeo.Size.Md"/>.
+    /// </summary>
+    [Parameter] public Lumeo.Size Size { get; set; } = Lumeo.Size.Md;
     /// <summary>Additional CSS classes merged onto the List variant's trigger button, or
     /// the Wheel variant's root element.</summary>
     [Parameter] public string? Class { get; set; }
@@ -510,19 +519,56 @@ else
 
     private Lumeo.Density EffectiveDensity => Density ?? InheritedDensity ?? Lumeo.Density.Comfortable;
 
-    // Trigger height + horizontal padding track density; Comfortable
-    // follows Input's ladder, one rung lower since the 5.0 alignment.
-    private string SizeClasses => EffectiveDensity switch
+    // Trigger height + horizontal padding per (Size, Density) — the same height/padding
+    // ladder Input.razor's SizeClasses uses for its plain <input> path (identical
+    // h-*/px-* tokens per rung). At Size.Md this reproduces the pre-5.10 Density-only
+    // table exactly (h-7/px-2 Compact, h-9/px-3 Spacious,
+    // h-[var(--lumeo-control-h,calc(var(--spacing,0.25rem)*8))]/px-2.5 Comfortable),
+    // which also matches SelectTrigger.SizeClasses at every density — the SelectTrigger
+    // parity the field report asked for. leading-none at Compact/Xxs/Xs/Xs-Compact is
+    // kept for the same line-box-overflow reason Input carries it.
+    private string SizeClasses => (Size, EffectiveDensity) switch
     {
+        (Lumeo.Size.Xxs, Lumeo.Density.Compact)  => "h-5 px-1 leading-none",
+        (Lumeo.Size.Xxs, Lumeo.Density.Spacious) => "h-7 px-2 leading-none",
+        (Lumeo.Size.Xxs, _)                      => "h-6 px-1.5 leading-none",
+        (Lumeo.Size.Xs, Lumeo.Density.Compact)   => "h-6 px-1.5 leading-none",
+        (Lumeo.Size.Xs, Lumeo.Density.Spacious)  => "h-8 px-2",
+        (Lumeo.Size.Xs, _)                       => "h-7 px-2",
+        (Lumeo.Size.Sm, Lumeo.Density.Compact)   => "h-7 px-2 leading-none",
+        (Lumeo.Size.Sm, Lumeo.Density.Spacious)  => "h-9 px-3",
+        (Lumeo.Size.Sm, _)                       => "h-[var(--lumeo-control-h,calc(var(--spacing,0.25rem)*8))] px-2.5",
+        (Lumeo.Size.Lg, Lumeo.Density.Compact)   => "h-10 px-3",
+        (Lumeo.Size.Lg, Lumeo.Density.Spacious)  => "h-12 px-5",
+        (Lumeo.Size.Lg, _)                       => "h-11 px-4",
+        (Lumeo.Size.Xl, Lumeo.Density.Compact)   => "h-12 px-3.5",
+        (Lumeo.Size.Xl, Lumeo.Density.Spacious)  => "h-14 px-6",
+        (Lumeo.Size.Xl, _)                       => "h-[52px] px-5",
+        (Lumeo.Size.Xxl, Lumeo.Density.Compact)  => "h-14 px-4",
+        (Lumeo.Size.Xxl, Lumeo.Density.Spacious) => "h-16 px-7",
+        (Lumeo.Size.Xxl, _)                      => "h-[60px] px-6",
         // leading-none at Compact for the same reason Input carries it: h-7 leaves 18px
         // after py-1 and the border, and text-sm's line box is 20px. Without it the time
         // spills into its own padding.
-        Lumeo.Density.Compact => "h-7 px-2 py-1 leading-none",
-        Lumeo.Density.Spacious => "h-9 px-3 py-2",
-        _ => "h-[var(--lumeo-control-h,calc(var(--spacing,0.25rem)*8))] px-2.5 py-1.5"
+        (_, Lumeo.Density.Compact)               => "h-7 px-2 leading-none",
+        (_, Lumeo.Density.Spacious)              => "h-9 px-3",
+        _                                        => "h-[var(--lumeo-control-h,calc(var(--spacing,0.25rem)*8))] px-2.5"
     };
 
-    private string CssClass => Cx.Merge("group flex", SizeClasses, Cx.When(FullWidth, "w-full"), "items-center rounded-md border", (EffectiveInvalid ? "border-destructive ring-1 ring-destructive/20" : "border-input"), "bg-transparent text-sm shadow-sm hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50", Class);
+    // Text size per Size rung only (density never shifts it — matches SelectTrigger's
+    // own fixed text-sm across all 3 densities). Md keeps the pre-5.10 text-sm.
+    private string TextSizeClasses => Size switch
+    {
+        Lumeo.Size.Xxs => "text-[8px]",
+        Lumeo.Size.Xs => "text-[10px]",
+        Lumeo.Size.Sm => "text-xs",
+        Lumeo.Size.Lg => "text-base",
+        Lumeo.Size.Xl => "text-lg",
+        Lumeo.Size.Xxl => "text-xl",
+        _ => "text-sm"
+    };
+
+    private string CssClass => Cx.Merge("group flex", SizeClasses, Cx.When(FullWidth, "w-full"), "items-center rounded-md border", (EffectiveInvalid ? "border-destructive ring-1 ring-destructive/20" : "border-input"), "bg-transparent", TextSizeClasses, "shadow-sm hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50", Class);
 
     private string FormatTime(TimeSpan time)
     {
