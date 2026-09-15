@@ -60,24 +60,28 @@
         </ChildContentSlot>
     </PopoverTrigger>
 
-    <PopoverContent Align="Lumeo.Align.Start" Class="w-72 p-0 overflow-hidden" FocusTargetId="@(Searchable ? _searchId : _gridId)">
+    <PopoverContent Align="Lumeo.Align.Start" Class="w-auto p-0 overflow-hidden" style="@PopoverContentStyle" FocusTargetId="@(Searchable ? _searchId : _gridId)">
         <div class="flex flex-col">
             @if (Searchable)
             {
                 <div class="border-b border-border/40 p-2">
-                    <div class="relative">
-                        <SvgGlyph Svg="@(LumeoIcons.Search)" class="absolute start-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                        <input id="@_searchId"
-                               type="text"
-                               value="@_search"
-                               placeholder="@L["IconPicker.SearchPlaceholder"]"
+                    @* Detach the FormField cascade for the nested search Input: it is a
+                       sub-widget of THIS IconPicker's popover, not an independently
+                       field-associated control. Left cascaded, it would compute the SAME
+                       FormFieldControlId as the trigger button above and render a
+                       duplicate DOM id (mirrors DatePicker's nested TimePicker fix). *@
+                    <CascadingValue Value="(FormField.FormFieldContext?)null" IsFixed="true">
+                        <Input Size="@Size"
+                               Variant="Input.InputVariant.Search"
+                               Value="@_search"
+                               ValueChanged="OnSearchChanged"
+                               Placeholder="@L["IconPicker.SearchPlaceholder"]"
+                               id="@_searchId"
                                aria-label="@L["IconPicker.SearchPlaceholder"]"
                                aria-controls="@_gridId"
                                aria-activedescendant="@(_focusedIndex >= 0 && _focusedIndex < FilteredIcons.Count ? ItemId(_focusedIndex) : null)"
-                               class="flex h-8 w-full min-w-0 rounded-md border border-input bg-transparent ps-8 pe-2.5 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring"
-                               @oninput="OnSearchInput"
                                @onkeydown="HandleGridKeyDown" />
-                    </div>
+                    </CascadingValue>
                 </div>
             }
             @* Fix round 1: dropped the ScrollArea wrapper — its viewport div carries an
@@ -240,7 +244,47 @@
 
     private readonly record struct IconRow(int RowIndex, List<IconPickerItem> Items);
 
-    private const float RowItemSize = 40f;
+    // Single source of truth for how the grid scales with Size: cell (button) size,
+    // glyph size and the gap between cells/rows, in px, plus the matching static
+    // Tailwind classes for the cell/glyph. Ladder from the owner's field report:
+    // cell 24/28/32/36/40/44/48px, glyph 12/14/16/18/20/22/24px across the 7 rungs.
+    // Gap grows alongside the cell so denser rungs (Xxs/Xs) sit tighter than Xxl.
+    // Internal (not private) so IconPickerTests can assert the ladder directly
+    // (InternalsVisibleTo Lumeo.Tests) instead of scraping computed CSS classes.
+    internal readonly record struct IconGridMetrics(int Cell, int Glyph, int Gap, string CellClass, string GlyphClass);
+
+    internal IconGridMetrics Metrics => Size switch
+    {
+        Lumeo.Size.Xxs => new IconGridMetrics(24, 12, 2, "h-6 w-6", "h-3 w-3"),
+        Lumeo.Size.Xs  => new IconGridMetrics(28, 14, 3, "h-7 w-7", "h-3.5 w-3.5"),
+        Lumeo.Size.Sm  => new IconGridMetrics(32, 16, 4, "h-8 w-8", "h-4 w-4"),
+        Lumeo.Size.Lg  => new IconGridMetrics(40, 20, 6, "h-10 w-10", "h-5 w-5"),
+        Lumeo.Size.Xl  => new IconGridMetrics(44, 22, 6, "h-11 w-11", "h-[22px] w-[22px]"),
+        Lumeo.Size.Xxl => new IconGridMetrics(48, 24, 8, "h-12 w-12", "h-6 w-6"),
+        _              => new IconGridMetrics(36, 18, 4, "h-9 w-9", "h-[18px] w-[18px]"), // Md
+    };
+
+    // Virtualize's per-item height: the rendered row (cell height) plus the
+    // margin-bottom RenderRow applies for row-to-row spacing (see below) — kept in
+    // lockstep with the actual markup so the virtualized list doesn't jump/overlap
+    // while scrolling (the previous constant 40f didn't track Size at all).
+    internal float RowItemSize => Metrics.Cell + Metrics.Gap;
+
+    // Popover content width: Columns * cell + the column gaps between them + the
+    // grid container's own p-2 (8px each side = 16px) padding. Applied as an inline
+    // style (see PopoverContentStyle) so it's exact per rung/Columns rather than the
+    // previous fixed w-72 that never varied. max-width clamps it to the viewport.
+    private int PopoverContentWidth
+    {
+        get
+        {
+            var cols = Math.Max(1, Columns);
+            return cols * Metrics.Cell + Math.Max(0, cols - 1) * Metrics.Gap + 16;
+        }
+    }
+
+    private string PopoverContentStyle => $"width:{PopoverContentWidth}px;max-width:calc(100vw - 2rem);";
+
     private const int VirtualizeThreshold = 500;
 
     private bool UseVirtualize => FilteredIcons.Count > VirtualizeThreshold;
@@ -364,11 +408,11 @@
 
     private string ItemId(int index) => $"{_gridId}-item-{index}";
 
-    private async Task OnSearchInput(ChangeEventArgs e)
+    private Task OnSearchChanged(string? value)
     {
-        _search = e.Value?.ToString() ?? "";
+        _search = value ?? "";
         _focusedIndex = -1;
-        await Task.CompletedTask;
+        return Task.CompletedTask;
     }
 
     private async Task SetOpen(bool value)
@@ -481,9 +525,15 @@
         // ARIA grid pattern's row/gridcell), and a plain generic wrapper div between a
         // listbox and its options is an allowed "owned element" under the ARIA spec, so
         // screen readers still see a flat option list despite the visual row chunking.
+        var metrics = Metrics;
+        var cols = Math.Max(1, Columns);
+
         builder.OpenElement(seq++, "div");
-        builder.AddAttribute(seq++, "class", "grid gap-1");
-        builder.AddAttribute(seq++, "style", $"grid-template-columns: repeat({Math.Max(1, Columns)}, minmax(0, 1fr))");
+        builder.AddAttribute(seq++, "class", "grid");
+        // Column gap (between cells in this row) AND row-to-row spacing (this row's
+        // own trailing margin) both come from the same Size-derived gap — kept as an
+        // inline style since it's a computed per-rung px value, not a static class.
+        builder.AddAttribute(seq++, "style", $"grid-template-columns: repeat({cols}, minmax(0, 1fr)); gap: {metrics.Gap}px; margin-bottom: {metrics.Gap}px;");
         for (var i = 0; i < row.Items.Count; i++)
         {
             var item = row.Items[i];
@@ -499,14 +549,15 @@
             builder.AddAttribute(seq++, "aria-label", item.Name);
             builder.AddAttribute(seq++, "tabindex", "-1");
             builder.AddAttribute(seq++, "class", Cx.Merge(
-                "flex h-8 w-8 items-center justify-center rounded-md text-foreground/80 outline-none",
+                "flex items-center justify-center rounded-md text-foreground/80 outline-none",
+                metrics.CellClass,
                 "hover:bg-accent hover:text-accent-foreground cursor-pointer",
                 Cx.When(isSelected, "bg-primary/10 text-primary"),
                 Cx.When(isFocused, "ring-[1.5px] ring-ring")));
             builder.AddAttribute(seq++, "onclick", EventCallback.Factory.Create(this, () => SelectIndex(index)));
             builder.OpenComponent<SvgGlyph>(seq++);
             builder.AddAttribute(seq++, "Svg", item.Svg);
-            builder.AddAttribute(seq++, "class", "h-4 w-4");
+            builder.AddAttribute(seq++, "class", metrics.GlyphClass);
             builder.CloseComponent();
             builder.CloseElement(); // button
         }
