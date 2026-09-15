@@ -1,10 +1,10 @@
 {
   "$schema": "https://lumeo.nativ.sh/components-api-schema.json",
   "version": "5.10.0",
-  "generated": "2026-09-15T06:29:56.1429808Z",
+  "generated": "2026-09-15T07:03:39.8163344Z",
   "stats": {
     "componentCount": 167,
-    "totalParameters": 4845,
+    "totalParameters": 4849,
     "totalEnums": 104,
     "totalRecords": 65,
     "serviceCount": 33,
@@ -634,6 +634,12 @@
           "name": "SetHtmlClass",
           "returnType": "ValueTask",
           "signature": "SetHtmlClass(string className, bool active)",
+          "summary": null
+        },
+        {
+          "name": "SetDrawerBackgroundScaled",
+          "returnType": "ValueTask",
+          "signature": "SetDrawerBackgroundScaled(bool active)",
           "summary": null
         },
         {
@@ -2239,6 +2245,12 @@
           "returnType": "ValueTask",
           "signature": "SetHtmlClass(string className, bool active)",
           "summary": "Toggles a class on document.documentElement. Useful for global modes (e.g. hiding floating chrome while a DataGrid is fullscreen)."
+        },
+        {
+          "name": "SetDrawerBackgroundScaled",
+          "returnType": "ValueTask",
+          "signature": "SetDrawerBackgroundScaled(bool active)",
+          "summary": "vaul-style background scaling (#346, Drawer.ScaleBackground). Toggles data-lumeo-drawer-scaled on the CONSUMER'S own [data-lumeo-drawer-wrapper] element (not rendered by Lumeo — it lives outside any overlay's DOM, typically the app's page root), which lumeo.css uses to scale/round/translate it via a CSS transition while a bottom Drawer with ScaleBackground is open. A no-op if no such element exists. Default implementation is a no-op so existing implementers / test doubles keep compiling."
         },
         {
           "name": "SetupFocusTrap",
@@ -30377,6 +30389,15 @@
           "isCascading": false,
           "captureUnmatched": false,
           "isEditorRequired": false
+        },
+        {
+          "name": "ScaleBackground",
+          "type": "bool",
+          "default": "false",
+          "description": "vaul-style shouldScaleBackground (#346). When true (default false) and the open DrawerContent is a Bottom drawer, the app's own page-root element — marked with data-lumeo-drawer-wrapper by the CONSUMER; Lumeo never renders this element itself — gets scaled down, rounded, and nudged via CSS transitions in lumeo.css while the drawer is open, mimicking the native \"page recedes behind the sheet\" iOS effect. No-op if no element with that attribute exists, and ignored for Top/Left/Right sides (vaul only scales for a bottom sheet).",
+          "isCascading": false,
+          "captureUnmatched": false,
+          "isEditorRequired": false
         }
       ],
       "events": [
@@ -30409,6 +30430,7 @@
         "--color-background",
         "--color-muted",
         "--color-muted-foreground",
+        "--color-ring",
         "--radius"
       ],
       "examples": [
@@ -30425,8 +30447,8 @@
           "code": "<Drawer @bind-Open=\"_preventDrawerOpen\">\n    <DrawerTrigger>\n        <Button Variant=\"Button.ButtonVariant.Outline\">Open Protected Drawer</Button>\n    </DrawerTrigger>\n    <DrawerContent PreventClose=\"true\">\n        <DrawerHeader>\n            <DrawerTitle>Confirm Action</DrawerTitle>\n            <DrawerDescription>You must choose an option to continue.</DrawerDescription>\n        </DrawerHeader>\n        <Stack Gap=\"2\" Class=\"p-4\">\n            <Button Class=\"w-full\" OnClick=\"@(() => _preventDrawerOpen = false)\">Confirm</Button>\n            <Button Variant=\"Button.ButtonVariant.Outline\" Class=\"w-full\" OnClick=\"@(() => _preventDrawerOpen = false)\">Cancel</Button>\n        </Stack>\n    </DrawerContent>\n</Drawer>\n\n@code {\n    private bool _preventDrawerOpen;\n}"
         },
         {
-          "title": "Snap points (touch)",
-          "code": "<Drawer @bind-Open=\"_snapOpen\">\n    <DrawerTrigger>\n        <Button Variant=\"Button.ButtonVariant.Outline\">Open Snap Drawer</Button>\n    </DrawerTrigger>\n    <DrawerContent SnapPoints=\"_snapPoints\" @bind-ActiveSnapPoint=\"_snapIndex\">\n        <DrawerHeader>\n            <DrawerTitle>Snap Drawer</DrawerTitle>\n            <DrawerDescription>Drag the handle to snap between 40%, 75%, and full height.</DrawerDescription>\n        </DrawerHeader>\n        <Stack Gap=\"2\" Class=\"p-4\">\n            @* …content… *@\n        </Stack>\n        <DrawerFooter>\n            <DrawerClose><Button Class=\"w-full\">Close</Button></DrawerClose>\n        </DrawerFooter>\n    </DrawerContent>\n</Drawer>\n\n@code {\n    private bool _snapOpen;\n    private int _snapIndex = 1;                      // open at 75%\n    private double[] _snapPoints = { 0.4, 0.75, 1.0 };\n}"
+          "title": "Drawer with a form",
+          "code": "<Drawer @bind-Open=\"_open\">\n    <DrawerTrigger>\n        <Button Variant=\"Button.ButtonVariant.Outline\">New contact</Button>\n    </DrawerTrigger>\n    <DrawerContent>\n        <form @onsubmit=\"HandleSubmit\">\n            <DrawerHeader>\n                <DrawerTitle>New contact</DrawerTitle>\n            </DrawerHeader>\n            <Stack Gap=\"3\" Class=\"px-4 pb-4\">\n                <Stack Gap=\"1.5\">\n                    <Label>Name</Label>\n                    <Input @bind-Value=\"_name\" />\n                </Stack>\n                <Stack Gap=\"1.5\">\n                    <Label>Email</Label>\n                    <Input @bind-Value=\"_email\" />\n                </Stack>\n            </Stack>\n            <DrawerFooter>\n                <Button Type=\"Button.ButtonType.Submit\" Class=\"w-full\">Save</Button>\n            </DrawerFooter>\n        </form>\n    </DrawerContent>\n</Drawer>\n\n@code {\n    private bool _open;\n    private string? _name;\n    private string? _email;\n\n    private void HandleSubmit()\n    {\n        // ...save...\n        _open = false;\n    }\n}"
         }
       ],
       "subComponents": {
@@ -30510,6 +30532,15 @@
               "isEditorRequired": false
             },
             {
+              "name": "ScaleBackgroundFromDrawer",
+              "type": "bool",
+              "default": "false",
+              "description": null,
+              "isCascading": true,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
               "name": "ChildContent",
               "type": "RenderFragment?",
               "default": null,
@@ -30541,6 +30572,24 @@
               "type": "bool",
               "default": "false",
               "description": "Disables Escape, backdrop-click and swipe dismissal; the drawer can then only be closed programmatically (or, in snap mode, settles at the lowest snap instead of closing). Default false.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "Modal",
+              "type": "bool",
+              "default": "true",
+              "description": "When true (default), the drawer is modal: it renders a backdrop, traps focus, and locks page scroll while open — mirrors vaul's modal prop. Set to false for a non-modal drawer that lets the page stay interactive: no backdrop, no focus trap, no scroll lock, and outside clicks pass straight through to the page beneath. Independent of PreventClose (vaul's dismissible): Modal controls whether the drawer BLOCKS the page while open; PreventClose controls whether the user can dismiss it at all — the two compose freely (e.g. a non-modal drawer can still be PreventClose to disable its swipe gesture). (#346)",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "ShowCloseButton",
+              "type": "bool?",
+              "default": null,
+              "description": "Whether the top-end close (X) button renders. null (default) keeps the legacy coupling — X shows whenever PreventClose is false. true forces the X on regardless of PreventClose (it still routes through the same dismiss guard as every other close path); false hides it. Mirrors SheetContent.ShowCloseButton's name, default and semantics. (#346)",
               "isCascading": false,
               "captureUnmatched": false,
               "isEditorRequired": false
@@ -30937,6 +30986,7 @@
           "aria-describedby",
           "aria-expanded",
           "aria-haspopup",
+          "aria-label",
           "aria-labelledby",
           "aria-modal"
         ],
