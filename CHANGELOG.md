@@ -5,6 +5,30 @@ All notable changes to Lumeo will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.10.1] - Unreleased
+
+### Fixed
+- **`SvgGlyph` has a real `Class` parameter.** It took `class` only through the attribute
+  splat, so a call site writing `Class="h-4 w-4"` set an attribute literally named `Class` on
+  the `<svg>`, which on an SVG element is not `class`: after WASM hydration the glyph had no
+  size and filled its button. Visible on every `DropdownButton` and `SplitButton` chevron (53px
+  in a 32px button); the prerendered HTML hid it because the HTML parser lowercases the name.
+  `Class` and a splatted `class` now merge, and the two common cases allocate nothing extra.
+- **`IconPicker`'s popover scales with `Size`.** The search box is the Lumeo `Input`
+  (`Variant=Search`, same rung as the trigger, Lumeo focus ring), and one ladder drives the cell,
+  glyph, gap, row height (so `Virtualize` never jumps) and the popover width for all seven rungs.
+- **Composites use Lumeo controls, not native ones.** The DataGrid docs' custom cell editor, the
+  QueryBuilder's field/operator/value pickers and the Scheduler dialog's calendar picker
+  rendered a raw `<select>`; they are `Select` now, sized to their surroundings, with the
+  QueryBuilder placeholders localized. The Scheduler's calendar field takes its id from
+  `FormField`, so the click-outside handler finds the trigger again.
+- **Search boxes inside composites are the Lumeo `Input`.** Cascader, TreeSelect, Transfer,
+  PickList, TreeView and the DataGrid toolbar rendered their own `<input>`; each is now
+  `Input` with `Variant=Search` at the rung that matches its previous height, so density and
+  future Input changes reach them and keyboard navigation is unchanged. The Scheduler's
+  appointment editor uses `DatePicker` (all-day) or `DateTimePicker` (timed) for start and
+  end instead of the browser's native date inputs.
+
 ## [5.10.0] - 2026-09-15
 
 Field report #464 (a Blazor WASM product on 5.0.0) is worked through in this release: the four
