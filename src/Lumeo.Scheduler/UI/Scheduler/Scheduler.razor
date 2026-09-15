@@ -363,8 +363,15 @@
 
                 @if (Calendars is { Count: > 0 })
                 {
-                    <div class="flex flex-col gap-1.5">
-                        <Label For="scheduler-dialog-calendar">@L["Scheduler.Calendars"]</Label>
+                    @* FormField (not a manual <Label For="scheduler-dialog-calendar">) so the label's
+                       `for` and the trigger's `id` both come from the SAME generated ControlId — Select
+                       adopts it automatically via the cascaded FormFieldContext (EffectiveTriggerId).
+                       Splatting a fixed id onto SelectTrigger directly (as this used to) overrides its
+                       own `id="@Context.TriggerId"` in the render tree, but SelectContent's click-outside
+                       registration still looks the trigger up BY Context.TriggerId — now a dangling id
+                       with nothing in the DOM — so every mousedown on the open trigger read as "outside"
+                       and closing-by-click-again silently reopened it. *@
+                    <FormField Label="@L["Scheduler.Calendars"]">
                         @* Select's Value/ValueChanged own the calendar id directly — unlike a native
                            <select>, an empty-string value doesn't need a synthetic option to "hold"
                            its selection, and an id the parent has since dropped (orphan) still round-
@@ -372,7 +379,7 @@
                            (Codex review of PR #426 concern still covered, just no longer needed). *@
                         <Select Value="@(_dialogCalendarId ?? string.Empty)"
                                 ValueChanged="@((string? v) => _dialogCalendarId = string.IsNullOrEmpty(v) ? null : v)">
-                            <SelectTrigger id="scheduler-dialog-calendar" data-scheduler-dialog-calendar Class="h-8">
+                            <SelectTrigger data-scheduler-dialog-calendar Class="h-8">
                                 <span class="truncate">@SelectedCalendarLabel</span>
                             </SelectTrigger>
                             <SelectContent>
@@ -391,7 +398,7 @@
                                 }
                             </SelectContent>
                         </Select>
-                    </div>
+                    </FormField>
                 }
             </div>
 
