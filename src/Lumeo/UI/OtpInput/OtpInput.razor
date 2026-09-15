@@ -244,16 +244,30 @@
         // Truncate to capacity; do NOT pad — padding produced trailing/interior
         // whitespace that leaked into the surfaced value (#178).
         Value = filtered.Length > Length ? filtered[..Length] : filtered;
+
+        if (Value.Length > 0 && Value.Length < Length)
+        {
+            _pendingFocusId = $"{_baseId}-{Value.Length}";
+        }
+
         await ValueChanged.InvokeAsync(Value);
 
         if (Value.Length == Length)
         {
             await OnComplete.InvokeAsync(Value);
         }
-        else if (Value.Length > 0)
-        {
-            _pendingFocusId = $"{_baseId}-{Value.Length}";
-        }
+
+        // HandlePaste is reached from a JS callback (registerOtpPaste ->
+        // OnOtpPaste -> the handler stored in UtilityInterop), NOT through a
+        // markup-bound event on THIS component — so, unlike @oninput/@onkeydown
+        // handlers, Blazor does not automatically re-render OtpInput afterward.
+        // A caller with a bare ValueChanged (no @bind-Value round trip feeding
+        // Value back in as a parameter) would otherwise never re-render: the
+        // pasted digits wouldn't paint, and _pendingFocusId above would never
+        // be consumed by OnAfterRenderAsync. InvokeAsync marshals onto this
+        // component's renderer sync context before requesting the render,
+        // which is safe regardless of which context the JS callback arrived on.
+        await InvokeAsync(StateHasChanged);
     }
 
     private bool IsValidChar(char c) => InputMode switch
@@ -309,7 +323,6 @@
         var cells = CellsFromValue();
         cells[index] = lastChar;
         Value = BuildValue(cells);
-        await ValueChanged.InvokeAsync(Value);
 
         // BuildValue left-collapses interior gaps, so typing into a non-leading
         // EMPTY box relocates the char to position Value.Length-1. Focus the next
@@ -321,6 +334,8 @@
         {
             _pendingFocusId = $"{_baseId}-{nextEmpty}";
         }
+
+        await ValueChanged.InvokeAsync(Value);
 
         if (Value.Length == Length)
         {
@@ -375,16 +390,16 @@
         {
             cells[index] = Empty;
             Value = BuildValue(cells);
-            await ValueChanged.InvokeAsync(Value);
             if (index > 0)
                 _pendingFocusId = $"{_baseId}-{index - 1}";
+            await ValueChanged.InvokeAsync(Value);
         }
         else if (index > 0)
         {
             cells[index - 1] = Empty;
             Value = BuildValue(cells);
-            await ValueChanged.InvokeAsync(Value);
             _pendingFocusId = $"{_baseId}-{index - 1}";
+            await ValueChanged.InvokeAsync(Value);
         }
     }
 
