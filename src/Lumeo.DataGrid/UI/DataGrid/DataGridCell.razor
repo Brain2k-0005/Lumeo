@@ -132,6 +132,19 @@
             return;
         }
 
+        // While editing, every keydown belongs to the editor — the built-in <input>'s
+        // own OnEditKeyDown (Enter/Escape/Tab), or whatever a custom EditTemplate wires
+        // up itself. This same physical keydown ALSO bubbles from the input/custom
+        // template up to this <td> (its own listener sits on the ancestor), and without
+        // this guard it fell through to the grid's roving-navigation/selection handler
+        // below — so typing " " while editing a cell toggled that row's selection
+        // (DataGrid.HandleCellKeyDownAsync's `case " "` when SelectionMode != None), and
+        // any other keystroke could shift roving focus out from under the open editor.
+        // The editor's own Enter/Escape/Tab handling has already run (or runs via its
+        // own @onkeydown) by the time control reaches here, so this must be a no-op
+        // rather than a second, unwanted dispatch to the grid. Field report #464.
+        if (_isEditing) return;
+
         // Navigation / selection keys → delegate to the grid.
         await Context.OnCellKeyDown(RowIndex, ColumnIndex, e);
     }

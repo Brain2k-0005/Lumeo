@@ -212,4 +212,106 @@ public class DataGridCellEditCommitCancelTests : IAsyncLifetime
         // Row 1's Name cell is now the one open editor (built-in text input).
         Assert.Contains("<input", cut.Markup);
     }
+
+    // --- Reviewer follow-up on PR #472: a keydown inside an open cell editor bubbles from
+    // the <input>/custom template up to the <td>'s own @onkeydown="HandleCellKeyDown", which
+    // used to forward EVERY non-Enter/F2 key to the grid's roving-navigation/selection
+    // handler even while _isEditing was true. With SelectionMode=Multiple, typing a space
+    // into a Name cell (e.g. "John Doe") toggled that row's selection on every space,
+    // because DataGrid.HandleCellKeyDownAsync's `case " ": case "Spacebar":` doesn't know
+    // the keydown originated inside an open editor. Fixed by having HandleCellKeyDown no-op
+    // while _isEditing is true (the editor's own Enter/Escape/Tab handling already ran, or
+    // runs, via its own @onkeydown — this bubbled copy of the same keydown must not ALSO
+    // reach grid navigation/selection).
+
+    [Fact]
+    public async Task Space_Typed_While_Editing_Does_Not_Toggle_Row_Selection_And_Value_Stays_Intact()
+    {
+        var columns = new List<DataGridColumn<Row>>
+        {
+            new() { Field = "Name", Title = "Name" },
+        };
+
+        var cut = _ctx.Render<DataGrid<Row>>(p => p
+            .Add(x => x.Items, Sample())
+            .Add(x => x.Columns, columns)
+            .Add(x => x.EditMode, DataGridEditMode.Cell)
+            .Add(x => x.SelectionMode, DataGridSelectionMode.Multiple)
+            // Isolate the keydown-forwarding bug from the SEPARATE, correct
+            // click-to-select-row feature: with SelectOnRowClick left at its true
+            // default, the click that OPENS the editor would itself toggle the row's
+            // selection, making "no row selected" an invalid assertion for reasons
+            // unrelated to the bug under test.
+            .Add(x => x.SelectOnRowClick, false));
+
+        var cell = cut.FindAll("td[data-slot='datagrid-cell']")[0];
+        await cut.InvokeAsync(() => cell.Click());
+
+        var input = cut.Find("input");
+        await cut.InvokeAsync(() => input.Input("John Doe"));
+
+        // The exact keystroke that used to bubble to the <td> and toggle selection.
+        await cut.InvokeAsync(() => input.KeyDown(new KeyboardEventArgs { Key = " " }));
+
+        Assert.Empty(cut.FindAll("tbody tr[aria-selected='true']"));
+        Assert.Equal("John Doe", cut.Find("input").GetAttribute("value"));
+        // Still editing — the space did not close the cell either.
+        Assert.Contains("<input", cut.Markup);
+    }
+
+    [Fact]
+    public async Task Escape_While_Editing_With_Multiple_Selection_Still_Cancels_Without_Toggling_Selection()
+    {
+        var columns = new List<DataGridColumn<Row>>
+        {
+            new() { Field = "Name", Title = "Name" },
+        };
+
+        var cut = _ctx.Render<DataGrid<Row>>(p => p
+            .Add(x => x.Items, Sample())
+            .Add(x => x.Columns, columns)
+            .Add(x => x.EditMode, DataGridEditMode.Cell)
+            .Add(x => x.SelectionMode, DataGridSelectionMode.Multiple)
+            .Add(x => x.SelectOnRowClick, false));
+
+        var cell = cut.FindAll("td[data-slot='datagrid-cell']")[0];
+        await cut.InvokeAsync(() => cell.Click());
+
+        var input = cut.Find("input");
+        await cut.InvokeAsync(() => input.Input("Changed"));
+        await cut.InvokeAsync(() => input.KeyDown(new KeyboardEventArgs { Key = "Escape" }));
+
+        Assert.DoesNotContain("<input", cut.Markup);
+        Assert.Empty(cut.FindAll("tbody tr[aria-selected='true']"));
+        Assert.Contains("Alice", cut.Markup);
+    }
+
+    [Fact]
+    public async Task Enter_While_Editing_With_Multiple_Selection_Still_Commits_Without_Toggling_Selection()
+    {
+        CellEditEventArgs<Row>? captured = null;
+        var columns = new List<DataGridColumn<Row>>
+        {
+            new() { Field = "Name", Title = "Name" },
+        };
+
+        var cut = _ctx.Render<DataGrid<Row>>(p => p
+            .Add(x => x.Items, Sample())
+            .Add(x => x.Columns, columns)
+            .Add(x => x.EditMode, DataGridEditMode.Cell)
+            .Add(x => x.SelectionMode, DataGridSelectionMode.Multiple)
+            .Add(x => x.SelectOnRowClick, false)
+            .Add(x => x.OnCellEdit, EventCallback.Factory.Create<CellEditEventArgs<Row>>(this, args => captured = args)));
+
+        var cell = cut.FindAll("td[data-slot='datagrid-cell']")[0];
+        await cut.InvokeAsync(() => cell.Click());
+
+        var input = cut.Find("input");
+        await cut.InvokeAsync(() => input.Input("Alicia"));
+        await cut.InvokeAsync(() => input.KeyDown(new KeyboardEventArgs { Key = "Enter" }));
+
+        Assert.NotNull(captured);
+        Assert.Equal("Alicia", captured!.NewValue);
+        Assert.Empty(cut.FindAll("tbody tr[aria-selected='true']"));
+    }
 }
