@@ -138,6 +138,18 @@
     // re-keying the other cells (which would steal focus).
     private int[] _cellNonce = System.Array.Empty<int>();
 
+    // Cell to focus once the render triggered by the current edit has actually
+    // been applied. Every path that moves focus after mutating Value (typing,
+    // backspace, paste, the rejected-char nonce bump) re-keys the cell whose
+    // character changed, so Blazor destroys and recreates that <input>. Calling
+    // Interop.FocusElement directly inside the event handler — BEFORE that
+    // render has happened — races the render: the call is dispatched against
+    // DOM state that is about to be replaced. Recording the target here and
+    // consuming it from OnAfterRenderAsync (which only ever runs after a render
+    // has been applied) guarantees the focus call always targets a real,
+    // freshly-rendered element instead (field report #464, finding 2).
+    private string? _pendingFocusId;
+
     protected override void OnParametersSet()
     {
         if (Length < 0)
@@ -211,6 +223,16 @@
             {
                 await Interop.FocusElement($"{_baseId}-0");
             }
+
+            // Consume the pending focus move now that this render has been
+            // applied — the target cell (or the cell we just re-keyed to
+            // discard a rejected char) is guaranteed to exist in fresh markup.
+            if (_pendingFocusId is not null)
+            {
+                var id = _pendingFocusId;
+                _pendingFocusId = null;
+                await Interop.FocusElement(id);
+            }
         }
         catch (JSDisconnectedException) { }
         catch (ObjectDisposedException) { }
@@ -230,7 +252,7 @@
         }
         else if (Value.Length > 0)
         {
-            await Interop.FocusElement($"{_baseId}-{Value.Length}");
+            _pendingFocusId = $"{_baseId}-{Value.Length}";
         }
     }
 
@@ -275,11 +297,12 @@
             // The browser already painted the rejected character. Bumping this
             // cell's nonce re-keys only this input so Blazor recreates it from the
             // model value, instantly discarding the invalid char (#178). Recreating
-            // the element drops focus, so restore it to the same cell.
+            // the element drops focus, so restore it to the same cell — deferred to
+            // OnAfterRenderAsync so the restore targets the RE-CREATED element, not
+            // the one about to be destroyed by this render (#464 finding 2).
             _cellNonce[index]++;
+            _pendingFocusId = $"{_baseId}-{index}";
             StateHasChanged();
-            try { await Interop.FocusElement($"{_baseId}-{index}"); }
-            catch (JSDisconnectedException) { }
             return;
         }
 
@@ -296,7 +319,7 @@
         var nextEmpty = Value.Length;
         if (nextEmpty < Length)
         {
-            await Interop.FocusElement($"{_baseId}-{nextEmpty}");
+            _pendingFocusId = $"{_baseId}-{nextEmpty}";
         }
 
         if (Value.Length == Length)
@@ -342,7 +365,11 @@
         }
 
         // Backspace: clear the current cell (or, when empty, the previous one)
-        // and move focus backward.
+        // and move focus backward. The cell that loses its character is re-keyed
+        // by the resulting render, so the focus move is deferred to
+        // OnAfterRenderAsync via _pendingFocusId — issuing it here, before that
+        // render happens, races the DOM the target cell depends on (#464
+        // finding 2: repeated Backspace worked once, then focus went nowhere).
         var cells = CellsFromValue();
         if (GetChar(index) != "")
         {
@@ -350,14 +377,14 @@
             Value = BuildValue(cells);
             await ValueChanged.InvokeAsync(Value);
             if (index > 0)
-                await Interop.FocusElement($"{_baseId}-{index - 1}");
+                _pendingFocusId = $"{_baseId}-{index - 1}";
         }
         else if (index > 0)
         {
             cells[index - 1] = Empty;
             Value = BuildValue(cells);
             await ValueChanged.InvokeAsync(Value);
-            await Interop.FocusElement($"{_baseId}-{index - 1}");
+            _pendingFocusId = $"{_baseId}-{index - 1}";
         }
     }
 
