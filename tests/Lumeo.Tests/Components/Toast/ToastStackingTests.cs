@@ -537,7 +537,8 @@ public class ToastStackingTests : IAsyncLifetime
         // cancelled it. The group stays expanded well past the timer's window.
         //
         // Field report #464, finding #447: widened from 100ms — a "prove the timer never fires"
-        // wait this close to a nominally-0ms deferred timer leaves little room for CI/full-suite
+        // wait this close to the 30ms focus-collapse grace timer (ToastViewport.FocusCollapseGraceMs)
+        // leaves little room for CI/full-suite
         // thread-pool contention to delay the (already-cancelled) timer's own scheduling without
         // the test racing ahead of it.
         await Task.Delay(400);
