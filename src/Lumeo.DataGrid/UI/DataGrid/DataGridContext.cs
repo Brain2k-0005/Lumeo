@@ -199,6 +199,33 @@ public record DataGridContext<TItem>(
     /// <summary>Extra column-menu entries, or null; see <c>DataGrid.ColumnMenuContent</c>.</summary>
     public RenderFragment<DataGridColumn<TItem>>? ColumnMenuContent { get; init; }
 
+    /// <summary>True when any column filter or the global search box is currently active
+    /// (client mode only reflects the grid's own state here; see <c>DataGrid.HasActiveFilters</c>).
+    /// Lets a custom empty state (or the built-in one) tell "empty because filtered" from
+    /// "the source has no rows" apart. Field report #464.</summary>
+    public bool HasActiveFilters { get; init; }
+
+    /// <summary>Clears every active column filter and the global search box, matching the
+    /// built-in filtered-empty state's "Clear filters" action; see <c>DataGrid.ClearFiltersAsync</c>.</summary>
+    public Func<Task>? ClearFiltersAsync { get; init; }
+
+    /// <summary>
+    /// Grid-wide "one open cell editor at a time" lock for <see cref="DataGridEditMode.Cell"/>/
+    /// <see cref="DataGridEditMode.Batch"/> mode. A <see cref="DataGridCell{TItem}"/> calls this
+    /// with its own (row, col) and a commit delegate before it starts editing; if a DIFFERENT
+    /// cell is currently registered, that cell's commit delegate runs first (closing it, same as
+    /// its own blur/Enter path) before this call returns. Required for a custom
+    /// <c>DataGridColumn.EditTemplate</c> — which has no built-in blur/Enter handling of its own
+    /// — to actually close when another cell is opened (field report #464 finding 3).
+    /// </summary>
+    public Func<int, int, Func<Task>, Task>? BeginCellEdit { get; init; }
+
+    /// <summary>Releases the lock <see cref="BeginCellEdit"/> took, when it still belongs to
+    /// (row, col) — a no-op if a different cell already took over. Called by
+    /// <see cref="DataGridCell{TItem}"/> whenever its own edit ends (commit or cancel), whether
+    /// that happened locally or was triggered by another cell opening.</summary>
+    public Action<int, int>? EndCellEdit { get; init; }
+
     /// <summary>Padding utilities for a body data cell, tightened under <see cref="Compact"/>.
     /// Kept here (rather than duplicated per cell) so the compact/normal values can't drift
     /// between <see cref="DataGridCell{TItem}"/> and the row's structural cells.</summary>

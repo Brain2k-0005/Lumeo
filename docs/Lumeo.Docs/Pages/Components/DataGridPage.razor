@@ -319,6 +319,30 @@
         }
     </ComponentDemo>
 
+    <ComponentDemo Title="Custom Cell Editor with Commit / Cancel" Description="A custom EditTemplate receives a CellEditContext with Commit()/Cancel() so it can close the cell itself — without them a custom editor has no way to leave edit mode and every clicked cell stays open. Department is Editable=false, so it never opens an editor at all." Code="@_customEditCode">
+        <DataGrid TItem="Employee" Items="@_customEditEmployees" PageSize="5" ShowPagination="true"
+                  EditMode="DataGridEditMode.Cell" OnCellEdit="@HandleCellEdit">
+            <DataGridColumnDef TItem="Employee" Title="Name" Field="Name" />
+            <DataGridColumnDef TItem="Employee" Title="Department" Field="Department" Editable="false" />
+            <DataGridColumnDef TItem="Employee" Title="Status" Field="Status">
+                <EditTemplate>
+                    <select class="h-7 w-full rounded border border-input bg-transparent px-1 text-sm"
+                            value="@context.Value"
+                            @onchange="@(async (ChangeEventArgs e) => { context.Value = e.Value?.ToString(); context.ValueChanged(); await context.Commit(); })"
+                            @onkeydown="@(async (KeyboardEventArgs e) => { if (e.Key == "Escape") await context.Cancel(); })">
+                        <option value="Active">Active</option>
+                        <option value="Inactive">Inactive</option>
+                    </select>
+                </EditTemplate>
+            </DataGridColumnDef>
+        </DataGrid>
+        @if (_lastEditInfo is not null)
+        {
+            <Alert Class="mt-4" Title="Cell Edited" Description="@_lastEditInfo">
+            </Alert>
+        }
+    </ComponentDemo>
+
     <ComponentDemo Title="Batch / Buffered Editing"
                    Description="Edit cells inline as in Cell mode, but commits land in a per-row pending-changes buffer. A pending strip and Save all / Discard buttons appear above the grid. Optional + Add row trigger pushes new rows into the Added buffer. OnBatchSave receives Modified + Added when the user clicks Save all.">
         <DataGrid TItem="Employee" Items="@_batchEmployees" PageSize="5" ShowPagination="true"
@@ -788,6 +812,32 @@
         </DataGrid>
     </ComponentDemo>
 
+    <ComponentDemo Title="Filtered Empty State" Description="EmptyTemplate receives HasActiveFilters so the empty state can tell 'no rows because a filter excluded everything' apart from 'the source really has none' — with a Clear filters action to reset in one click. Open the Name column's filter and type a value that matches nothing." Code="@_emptyTemplateCode">
+        <DataGrid TItem="Employee" Items="@_employees" PageSize="5" ShowToolbar="true" ShowSearch="false" ShowColumnChooser="false" ShowExport="false" ShowLayouts="false">
+            <EmptyTemplate>
+                @if (context.HasActiveFilters)
+                {
+                    <Stack Gap="3" Align="center" Class="py-4">
+                        <DynamicIcon Name="SearchX" Class="h-10 w-10 text-muted-foreground/40" />
+                        <Lumeo.Text Size="sm" Color="muted">No rows match the current filters.</Lumeo.Text>
+                        <Button Size="Button.ButtonSize.Sm" Variant="Button.ButtonVariant.Outline" OnClick="@(async () => await context.ClearFilters())">Clear filters</Button>
+                    </Stack>
+                }
+                else
+                {
+                    <Stack Gap="3" Align="center" Class="py-4">
+                        <DynamicIcon Name="Inbox" Class="h-10 w-10 text-muted-foreground/40" />
+                        <Lumeo.Text Size="sm" Color="muted">No employees yet.</Lumeo.Text>
+                    </Stack>
+                }
+            </EmptyTemplate>
+            <ChildContent>
+                <DataGridColumnDef TItem="Employee" Title="Name" Field="Name" Filterable="true" />
+                <DataGridColumnDef TItem="Employee" Title="Department" Field="Department" />
+            </ChildContent>
+        </DataGrid>
+    </ComponentDemo>
+
     <ComponentDemo Title="Expandable (Fullscreen)" Description="Enable the Expandable feature to add a fullscreen icon in the toolbar. Click it to pop the grid into a fullscreen modal overlay. Selection, filters, sorts, and pagination all survive the transition. Press Esc or click the close button to exit." Code="@_expandableCode">
         <DataGrid TItem="Employee" Items="@_employees" PageSize="5" ShowPagination="true" ShowToolbar="true"
                   Expandable="true" FullscreenTitle="Employees"
@@ -902,7 +952,8 @@
                         <tr><td class="px-4 py-2 font-mono text-xs text-primary">OnSaveNamedLayout</td><td class="px-4 py-2 font-mono text-xs">EventCallback&lt;DataGridNamedLayout&gt;</td><td class="px-4 py-2 text-xs">--</td><td class="px-4 py-2 text-muted-foreground">Fires when the user saves a named layout. Personal layouts are also persisted to localStorage automatically.</td></tr>
                         <tr><td class="px-4 py-2 font-mono text-xs text-primary">OnDeleteNamedLayout</td><td class="px-4 py-2 font-mono text-xs">EventCallback&lt;string&gt;</td><td class="px-4 py-2 text-xs">--</td><td class="px-4 py-2 text-muted-foreground">Fires when the user deletes a named layout. Receives the layout Id.</td></tr>
                         <tr><td class="px-4 py-2 font-mono text-xs text-primary">DetailTemplate</td><td class="px-4 py-2 font-mono text-xs">RenderFragment&lt;TItem&gt;?</td><td class="px-4 py-2 text-xs">--</td><td class="px-4 py-2 text-muted-foreground">Template for expandable row details.</td></tr>
-                        <tr><td class="px-4 py-2 font-mono text-xs text-primary">EmptyContent</td><td class="px-4 py-2 font-mono text-xs">RenderFragment?</td><td class="px-4 py-2 text-xs">--</td><td class="px-4 py-2 text-muted-foreground">Custom content when no data.</td></tr>
+                        <tr><td class="px-4 py-2 font-mono text-xs text-primary">EmptyContent</td><td class="px-4 py-2 font-mono text-xs">RenderFragment?</td><td class="px-4 py-2 text-xs">--</td><td class="px-4 py-2 text-muted-foreground">Custom content when no data. Superseded by <code>EmptyTemplate</code> when that is also set.</td></tr>
+                        <tr><td class="px-4 py-2 font-mono text-xs text-primary">EmptyTemplate</td><td class="px-4 py-2 font-mono text-xs">RenderFragment&lt;DataGridEmptyContext&gt;?</td><td class="px-4 py-2 text-xs">--</td><td class="px-4 py-2 text-muted-foreground">Typed alternative to <code>EmptyContent</code>: receives <code>HasActiveFilters</code> (true when the grid is empty because a filter/search excluded every row, as opposed to the source having none) and a <code>ClearFilters</code> callback. Takes precedence over <code>EmptyContent</code>.</td></tr>
                         <tr><td class="px-4 py-2 font-mono text-xs text-primary">&lt;ToolbarContent&gt;</td><td class="px-4 py-2 font-mono text-xs">component</td><td class="px-4 py-2 text-xs">--</td><td class="px-4 py-2 text-muted-foreground">Nested component placed inside ChildContent. Takes Class for wrapper styling and ChildContent for custom buttons / built-in toolbar tools.</td></tr>
                         <tr><td class="px-4 py-2 font-mono text-xs text-primary">RowContextMenu</td><td class="px-4 py-2 font-mono text-xs">RenderFragment&lt;TItem&gt;?</td><td class="px-4 py-2 text-xs">--</td><td class="px-4 py-2 text-muted-foreground">Right-click context menu template for rows.</td></tr>
                         <tr><td class="px-4 py-2 font-mono text-xs text-primary">OnRowClick</td><td class="px-4 py-2 font-mono text-xs">EventCallback&lt;TItem&gt;</td><td class="px-4 py-2 text-xs">--</td><td class="px-4 py-2 text-muted-foreground">Callback when a row is clicked.</td></tr>
@@ -939,6 +990,8 @@
                         <tr><td class="px-4 py-2 font-mono text-xs text-primary">PendingModifiedItems</td><td class="px-4 py-2 font-mono text-xs">IReadOnlyCollection&lt;TItem&gt; (get)</td><td class="px-4 py-2 text-xs">--</td><td class="px-4 py-2 text-muted-foreground">The items currently buffered as edited in <code>EditMode=Batch</code>, before <code>OnBatchSave</code> commits them. Bind via <code>@@ref</code>.</td></tr>
                         <tr><td class="px-4 py-2 font-mono text-xs text-primary">PendingAddedItems</td><td class="px-4 py-2 font-mono text-xs">IReadOnlyList&lt;TItem&gt; (get)</td><td class="px-4 py-2 text-xs">--</td><td class="px-4 py-2 text-muted-foreground">The rows created via the "+ Add row" trigger that are still buffered in <code>EditMode=Batch</code>, before <code>OnBatchSave</code> commits them. Bind via <code>@@ref</code>.</td></tr>
                         <tr><td class="px-4 py-2 font-mono text-xs text-primary">GroupsExpandedByDefault</td><td class="px-4 py-2 font-mono text-xs">bool</td><td class="px-4 py-2 text-xs">true</td><td class="px-4 py-2 text-muted-foreground">Initial expand state for group headers when grouping is active.</td></tr>
+                        <tr><td class="px-4 py-2 font-mono text-xs text-primary">HasActiveFilters</td><td class="px-4 py-2 font-mono text-xs">bool (get)</td><td class="px-4 py-2 text-xs">--</td><td class="px-4 py-2 text-muted-foreground">True when at least one column filter is applied or the global search box has text. Also available inside <code>EmptyTemplate</code> via its <code>DataGridEmptyContext</code>.</td></tr>
+                        <tr><td class="px-4 py-2 font-mono text-xs text-primary">ClearFiltersAsync()</td><td class="px-4 py-2 font-mono text-xs">Task</td><td class="px-4 py-2 text-xs">method</td><td class="px-4 py-2 text-muted-foreground">Clears every active column filter and the global search box in one call, then reprocesses/refetches. The action behind <code>EmptyTemplate</code>'s <code>ClearFilters</code> callback; also callable directly via <code>@@ref</code>.</td></tr>
                     </tbody>
                 </table>
             </Stack>
@@ -1029,7 +1082,8 @@
                         <tr><td class="px-4 py-2 font-mono text-xs text-primary">HeaderCssClass</td><td class="px-4 py-2 font-mono text-xs">string?</td><td class="px-4 py-2 text-xs">--</td><td class="px-4 py-2 text-muted-foreground">Custom CSS class for the header cell.</td></tr>
                         <tr><td class="px-4 py-2 font-mono text-xs text-primary">CellTemplate</td><td class="px-4 py-2 font-mono text-xs">RenderFragment&lt;TItem&gt;?</td><td class="px-4 py-2 text-xs">--</td><td class="px-4 py-2 text-muted-foreground">Custom render template for cell content.</td></tr>
                         <tr><td class="px-4 py-2 font-mono text-xs text-primary">HeaderTemplate</td><td class="px-4 py-2 font-mono text-xs">RenderFragment?</td><td class="px-4 py-2 text-xs">--</td><td class="px-4 py-2 text-muted-foreground">Custom render template for header.</td></tr>
-                        <tr><td class="px-4 py-2 font-mono text-xs text-primary">EditTemplate</td><td class="px-4 py-2 font-mono text-xs">RenderFragment&lt;CellEditContext&lt;TItem&gt;&gt;?</td><td class="px-4 py-2 text-xs">--</td><td class="px-4 py-2 text-muted-foreground">Custom template for inline editing input.</td></tr>
+                        <tr><td class="px-4 py-2 font-mono text-xs text-primary">EditTemplate</td><td class="px-4 py-2 font-mono text-xs">RenderFragment&lt;CellEditContext&lt;TItem&gt;&gt;?</td><td class="px-4 py-2 text-xs">--</td><td class="px-4 py-2 text-muted-foreground">Custom template for inline editing input. Call the context's <code>Commit()</code>/<code>Cancel()</code> to close the cell — without it, in <code>EditMode.Cell</code>/<code>Batch</code>, the cell has no built-in way to leave edit mode.</td></tr>
+                        <tr><td class="px-4 py-2 font-mono text-xs text-primary">Editable</td><td class="px-4 py-2 font-mono text-xs">bool</td><td class="px-4 py-2 text-xs">true</td><td class="px-4 py-2 text-muted-foreground">Whether this column's cells open an editor in <code>EditMode.Cell</code>/<code>Batch</code>. Set <code>false</code> to lock a single column (e.g. a computed or id column) while the rest of the row stays editable.</td></tr>
                         <tr><td class="px-4 py-2 font-mono text-xs text-primary">Visible</td><td class="px-4 py-2 font-mono text-xs">bool</td><td class="px-4 py-2 text-xs">true</td><td class="px-4 py-2 text-muted-foreground">Whether the column currently renders. Toggled by the Columns panel; bind with <code>@@bind-Visible</code> to control it externally.</td></tr>
                         <tr><td class="px-4 py-2 font-mono text-xs text-primary">VisibleChanged</td><td class="px-4 py-2 font-mono text-xs">EventCallback&lt;bool&gt;</td><td class="px-4 py-2 text-xs">--</td><td class="px-4 py-2 text-muted-foreground">Fires when Visible changes, e.g. via the Columns panel.</td></tr>
                     </tbody>
@@ -1071,6 +1125,7 @@
                     </thead>
                     <tbody class="divide-y divide-border/40">
                         <tr><td class="px-4 py-2 font-mono text-xs text-primary">CellEditEventArgs&lt;TItem&gt;</td><td class="px-4 py-2 font-mono text-xs">Item, Field, OldValue, NewValue</td><td class="px-4 py-2 text-muted-foreground">Fired when a cell edit is committed.</td></tr>
+                        <tr><td class="px-4 py-2 font-mono text-xs text-primary">CellEditContext&lt;TItem&gt;</td><td class="px-4 py-2 font-mono text-xs">Item, Column, Value, ValueChanged, Commit(), Cancel()</td><td class="px-4 py-2 text-muted-foreground">Passed to a column's <code>EditTemplate</code>. <code>Commit()</code> writes <code>Value</code> and closes the cell (same path as the built-in editor's blur/Enter); <code>Cancel()</code> discards and closes (Escape). Both are <code>Func&lt;Task&gt;</code> — call from the template's own Enter/Escape/blur handling or a button.</td></tr>
                         <tr><td class="px-4 py-2 font-mono text-xs text-primary">RowEditEventArgs&lt;TItem&gt;</td><td class="px-4 py-2 font-mono text-xs">Item, ChangedValues</td><td class="px-4 py-2 text-muted-foreground">Fired when a row edit is committed. ChangedValues is a Dictionary&lt;string, object?&gt;.</td></tr>
                         <tr><td class="px-4 py-2 font-mono text-xs text-primary">ColumnReorderEventArgs</td><td class="px-4 py-2 font-mono text-xs">ColumnId, OldIndex, NewIndex</td><td class="px-4 py-2 text-muted-foreground">Fired when a column is drag-reordered.</td></tr>
                         <tr><td class="px-4 py-2 font-mono text-xs text-primary">ColumnResizeEventArgs</td><td class="px-4 py-2 font-mono text-xs">ColumnId, Width, AutoFit</td><td class="px-4 py-2 text-muted-foreground">Fired when a column is resized. Width is the committed pixel width (clamped to Min/Max); AutoFit is true only for the double-click auto-fit path.</td></tr>
@@ -1409,6 +1464,15 @@
         new("Eve Davis", "Engineering", 98000, "Active", new DateTime(2020, 5, 5)),
     };
 
+    private List<Employee> _customEditEmployees = new()
+    {
+        new("Alice Johnson", "Engineering", 95000, "Active", new DateTime(2021, 3, 15)),
+        new("Bob Smith", "Marketing", 72000, "Active", new DateTime(2020, 7, 1)),
+        new("Carol White", "Engineering", 105000, "Active", new DateTime(2019, 11, 20)),
+        new("David Brown", "Sales", 68000, "Inactive", new DateTime(2022, 1, 10)),
+        new("Eve Davis", "Engineering", 98000, "Active", new DateTime(2020, 5, 5)),
+    };
+
     private List<Employee> _rowEditEmployees = new()
     {
         new("Alice Johnson", "Engineering", 95000, "Active", new DateTime(2021, 3, 15)),
@@ -1684,6 +1748,29 @@
     <DataGridColumnDef TItem=""Employee"" Title=""Name"" Field=""Name"" />
     <DataGridColumnDef TItem=""Employee"" Title=""Department"" Field=""Department"" />
     <DataGridColumnDef TItem=""Employee"" Title=""Status"" Field=""Status"" />
+</DataGrid>";
+
+    private string _customEditCode = @"<DataGrid TItem=""Employee"" Items=""@employees"" PageSize=""5""
+          EditMode=""DataGridEditMode.Cell"" OnCellEdit=""@HandleCellEdit"">
+    <DataGridColumnDef TItem=""Employee"" Title=""Name"" Field=""Name"" />
+    <DataGridColumnDef TItem=""Employee"" Title=""Department"" Field=""Department"" Editable=""false"" />
+    <DataGridColumnDef TItem=""Employee"" Title=""Status"" Field=""Status"">
+        <EditTemplate>
+            <select class=""h-7 w-full rounded border border-input bg-transparent px-1 text-sm""
+                    value=""@context.Value""
+                    @onchange=""@(async (ChangeEventArgs e) => {
+                        context.Value = e.Value?.ToString();
+                        context.ValueChanged();
+                        await context.Commit();
+                    })""
+                    @onkeydown=""@(async (KeyboardEventArgs e) => {
+                        if (e.Key == ""Escape"") await context.Cancel();
+                    })"">
+                <option value=""Active"">Active</option>
+                <option value=""Inactive"">Inactive</option>
+            </select>
+        </EditTemplate>
+    </DataGridColumnDef>
 </DataGrid>";
 
     private string _rowEditCode = @"<DataGrid TItem=""Employee"" Items=""@employees"" PageSize=""5""
@@ -2003,6 +2090,33 @@ async ValueTask<DataGridRangeResponse<Employee>> LoadRange(DataGridRangeRequest 
     </EmptyContent>
     <ChildContent>
         <DataGridColumnDef TItem=""Employee"" Title=""Name"" Field=""Name"" />
+        <DataGridColumnDef TItem=""Employee"" Title=""Department"" Field=""Department"" />
+    </ChildContent>
+</DataGrid>";
+
+    private string _emptyTemplateCode = @"<DataGrid TItem=""Employee"" Items=""@employees"" PageSize=""5"" ShowToolbar=""true"">
+    <EmptyTemplate>
+        @if (context.HasActiveFilters)
+        {
+            <Stack Gap=""3"" Align=""center"" Class=""py-4"">
+                <DynamicIcon Name=""SearchX"" Class=""h-10 w-10 text-muted-foreground/40"" />
+                <Lumeo.Text Size=""sm"" Color=""muted"">No rows match the current filters.</Lumeo.Text>
+                <Button Size=""Button.ButtonSize.Sm"" Variant=""Button.ButtonVariant.Outline""
+                        OnClick=""@(async () => await context.ClearFilters())"">
+                    Clear filters
+                </Button>
+            </Stack>
+        }
+        else
+        {
+            <Stack Gap=""3"" Align=""center"" Class=""py-4"">
+                <DynamicIcon Name=""Inbox"" Class=""h-10 w-10 text-muted-foreground/40"" />
+                <Lumeo.Text Size=""sm"" Color=""muted"">No employees yet.</Lumeo.Text>
+            </Stack>
+        }
+    </EmptyTemplate>
+    <ChildContent>
+        <DataGridColumnDef TItem=""Employee"" Title=""Name"" Field=""Name"" Filterable=""true"" />
         <DataGridColumnDef TItem=""Employee"" Title=""Department"" Field=""Department"" />
     </ChildContent>
 </DataGrid>";

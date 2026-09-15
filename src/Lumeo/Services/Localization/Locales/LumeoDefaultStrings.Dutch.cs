@@ -6,6 +6,7 @@ internal static partial class LumeoDefaultStrings
     {
         // DataGrid
         ["DataGrid.NoData"] = "Geen gegevens",
+        ["DataGrid.NoDataFiltered"] = "Geen rijen komen overeen met de huidige filters",
         ["DataGrid.Loading"] = "Laden…",
         ["DataGrid.SearchPlaceholder"] = "Zoeken…",
         ["DataGrid.ClearSearch"] = "Zoekopdracht wissen",

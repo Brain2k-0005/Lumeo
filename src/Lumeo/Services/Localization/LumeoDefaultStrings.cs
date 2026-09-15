@@ -16,6 +16,7 @@ internal static partial class LumeoDefaultStrings
     {
         // ── DataGrid ────────────────────────────────────────────────
         ["DataGrid.NoData"] = "No data available",
+        ["DataGrid.NoDataFiltered"] = "No rows match the current filters",
         ["DataGrid.Loading"] = "Loading…",
         ["DataGrid.SearchPlaceholder"] = "Search…",
         ["DataGrid.ClearSearch"] = "Clear search",
@@ -784,6 +785,7 @@ internal static partial class LumeoDefaultStrings
     {
         // ── DataGrid ────────────────────────────────────────────────
         ["DataGrid.NoData"] = "Keine Daten vorhanden",
+        ["DataGrid.NoDataFiltered"] = "Keine Zeilen entsprechen den aktuellen Filtern",
         ["DataGrid.Loading"] = "Wird geladen…",
         ["DataGrid.SearchPlaceholder"] = "Suchen…",
         ["DataGrid.ClearSearch"] = "Suche löschen",

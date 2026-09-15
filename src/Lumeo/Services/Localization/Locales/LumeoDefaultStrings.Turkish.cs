@@ -6,6 +6,7 @@ internal static partial class LumeoDefaultStrings
     {
         // DataGrid
         ["DataGrid.NoData"] = "Veri yok",
+        ["DataGrid.NoDataFiltered"] = "Geçerli filtrelerle eşleşen satır yok",
         ["DataGrid.Loading"] = "Yükleniyor…",
         ["DataGrid.SearchPlaceholder"] = "Ara…",
         ["DataGrid.ClearSearch"] = "Aramayı temizle",
