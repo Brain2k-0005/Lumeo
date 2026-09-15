@@ -137,6 +137,18 @@ public class TrackingInteropService : IComponentInteropService
         _setHtmlClassCalls.Add((className, active));
         return ValueTask.CompletedTask;
     }
+
+    // Drawer background-scale tracking (#346, Drawer.ScaleBackground) —
+    // records each SetDrawerBackgroundScaled(active) call so a test can
+    // assert the wrapper is scaled true on open and false on close, without
+    // a real DOM to query [data-lumeo-drawer-wrapper] against.
+    private readonly List<bool> _drawerBackgroundScaleCalls = new();
+    public IReadOnlyList<bool> DrawerBackgroundScaleCalls => _drawerBackgroundScaleCalls;
+    public ValueTask SetDrawerBackgroundScaled(bool active)
+    {
+        _drawerBackgroundScaleCalls.Add(active);
+        return ValueTask.CompletedTask;
+    }
     public ValueTask SetupFocusTrap(string elementId, string? initialFocusSelector = null)
     {
         _focusTrapSetups.Add((elementId, initialFocusSelector));

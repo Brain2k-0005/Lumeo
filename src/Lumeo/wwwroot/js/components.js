@@ -209,6 +209,18 @@ export function setHtmlClass(className, active) {
     document.documentElement.classList.toggle(className, !!active);
 }
 
+// vaul-style background scaling (#346, Drawer.ScaleBackground). Toggles
+// data-lumeo-drawer-scaled on the CONSUMER'S own [data-lumeo-drawer-wrapper]
+// element — never rendered by Lumeo itself, so a no-op when the app hasn't
+// marked one. lumeo.css reads the attribute to scale/round/translate it via
+// a CSS transition while a bottom Drawer with ScaleBackground is open.
+export function setDrawerBackgroundScaled(active) {
+    const el = document.querySelector('[data-lumeo-drawer-wrapper]');
+    if (!el) return;
+    if (active) el.setAttribute('data-lumeo-drawer-scaled', 'true');
+    else el.removeAttribute('data-lumeo-drawer-scaled');
+}
+
 const focusTrapHandlers = new Map();
 
 const FOCUS_TRAP_FOCUSABLE =
