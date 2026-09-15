@@ -418,6 +418,9 @@ internal static partial class LumeoDefaultStrings
         ["Stepper.Optional"] = "Необязательно",
         ["Stepper.Skip"] = "Пропустить",
 
+        // Skeleton
+        ["Skeleton.Loading"] = "Загрузка",
+
         // Window
         ["Window.Close"] = "Закрыть",
         ["Window.Minimize"] = "Свернуть",
