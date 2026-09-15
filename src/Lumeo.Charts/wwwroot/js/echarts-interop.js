@@ -65,6 +65,80 @@ function applyReducedMotion(options, reducedMotion) {
     return options;
 }
 
+// Resolves ONE palette entry to a concrete colour `lighten()` can mix. A consumer's
+// Colors/ColorPalette (or a var()-token default chart colour) can itself be a
+// `var(--x)`/`var(--x, fallback)` string — this mirrors resolveCssVarValue's colour
+// branch (a small, self-contained copy rather than a shared call: this runs BEFORE
+// resolveCssVars, against a `cssVar` getter, with no access to the DOM itself).
+function resolvePaletteEntry(value, cssVar) {
+    if (typeof value !== 'string') return '#888888';
+    const match = value.match(/^var\(\s*(--[^,)]+)\s*(?:,\s*(.+))?\s*\)$/);
+    if (!match) return value;
+    return cssVar(match[1]) || match[2] || '#888888';
+}
+
+// The theme's own 5-colour default palette, resolved fresh against the current
+// CSS variables — used only when the option carries no explicit `color` array
+// (no consumer Colors/ColorPalette set).
+function defaultChartPalette(cssVar) {
+    return [1, 2, 3, 4, 5].map((n) => cssVar(`--color-chart-${n}`) || '#888888');
+}
+
+/**
+ * Gives every data item of a pie-type series its OWN centre-lightened RADIAL
+ * gradient `itemStyle.color`, cycling through the active palette by the item's
+ * own position — `options.color` (a consumer's Colors/ColorPalette) when set,
+ * else the theme's five chart-N tokens.
+ *
+ * This used to be a single `pie.itemStyle.color` CALLBACK registered once on the
+ * theme (see the removed comment on `pie.itemStyle` above), reading `params.color`
+ * to know which base colour to lighten. Confirmed via a live probe against the
+ * real `echarts` package (SSR renderer, no DOM/canvas needed to reproduce): once
+ * `itemStyle.color` is a function, `params.dataIndex` correctly varies per slice
+ * call, but `params.color` does NOT — it stays pinned to the series' single
+ * default palette entry (index 0) on every call, so every slice ended up tinted
+ * from the SAME base colour ("the theme paints all pie/donut segments the same
+ * colour", field report #464 finding 4). Computing the gradient explicitly per
+ * data item here — an item-level `itemStyle.color`, not a callback — sidesteps
+ * that broken parameter entirely; ECharts always honours an item's own explicit
+ * itemStyle over any theme/series-level default, callback or not.
+ *
+ * A no-op for any data item that already carries its own `itemStyle.color`
+ * (a consumer override wins) and for anything that isn't a `type:"pie"` series
+ * with a non-empty `data` array (line/bar/etc. are untouched). Mutates `options`
+ * in place, like `resolveCssVars`/`applyReducedMotion`; called BEFORE
+ * `resolveCssVars` so its own var()-token resolution (`resolvePaletteEntry`)
+ * runs against the same live CSS variables.
+ */
+function applyPieItemGradients(options, cssVar) {
+    if (!options || typeof options !== 'object' || !Array.isArray(options.series)) return;
+
+    for (const s of options.series) {
+        if (!s || s.type !== 'pie' || !Array.isArray(s.data) || s.data.length === 0) continue;
+
+        const palette = Array.isArray(options.color) && options.color.length > 0
+            ? options.color
+            : defaultChartPalette(cssVar);
+        if (palette.length === 0) continue;
+
+        s.data = s.data.map((item, i) => {
+            if (item && typeof item === 'object' && item.itemStyle && item.itemStyle.color) {
+                return item; // already explicit — respect it
+            }
+            const base = resolvePaletteEntry(palette[i % palette.length], cssVar);
+            const gradient = {
+                type: 'radial', x: 0.5, y: 0.5, r: 0.7,
+                colorStops: [
+                    { offset: 0, color: lighten(base, 0.28) },
+                    { offset: 1, color: base },
+                ],
+            };
+            const wrapped = (item && typeof item === 'object') ? item : { value: item };
+            return { ...wrapped, itemStyle: { ...(wrapped.itemStyle || {}), color: gradient } };
+        });
+    }
+}
+
 function loadECharts(src) {
     if (echartsLoaded && window.echarts) return Promise.resolve();
     if (echartsLoadPromise) return echartsLoadPromise;
@@ -638,24 +712,12 @@ function buildLumeoTheme(cssVar, reducedMotion) {
         },
         pie: {
             itemStyle: {
-                borderColor: card, borderWidth: 2,
-                // Same callback mechanism as bar (confirmed working for pie
-                // too), but RADIAL rather than linear — a per-slice "glassy"
-                // pop with the lightened tint near the centre fading to the
-                // full resolved colour at the slice's outer edge. Radial
-                // coordinates are relative to each slice's own bounding box
-                // (ECharts default), so every slice gets its own consistent
-                // centre-to-edge gradient regardless of its angle/size.
-                color: function (params) {
-                    const base = (params && params.color) || '#888888';
-                    return {
-                        type: 'radial', x: 0.5, y: 0.5, r: 0.7,
-                        colorStops: [
-                            { offset: 0, color: lighten(base, 0.28) },
-                            { offset: 1, color: base }
-                        ]
-                    };
-                }
+                borderColor: card, borderWidth: 2
+                // No itemStyle.color callback here (a previous pass had one —
+                // see applyPieItemGradients below for why it painted every slice
+                // the SAME colour). The per-slice radial "glassy" gradient is
+                // computed explicitly per data item in applyPieItemGradients,
+                // called BEFORE setOption for every pie-type series.
             },
             label: labelNoStroke,
             emphasis: { scale: true, scaleSize: 6, itemStyle: { shadowBlur: 16, shadowColor: withAlpha(glowColor, 0.45) } },
@@ -937,6 +999,10 @@ export async function initChart(elementId, optionsJson, theme, echartsSource) {
         }
     }
 
+    // Per-slice pie/donut/nightingale gradient — must run BEFORE resolveCssVars so
+    // its own var()-token resolution reads the same live CSS variables (see
+    // applyPieItemGradients).
+    applyPieItemGradients(options, getCssVar);
     // Resolve CSS var() references in options since ECharts renders on Canvas
     resolveCssVars(options);
     // Hard override: reduced motion wins even over a consumer's own
@@ -977,6 +1043,7 @@ export function updateChart(elementId, optionsJson, notMerge, replaceMergeJson) 
     const chart = charts.get(elementId);
     if (!chart) return;
     const options = JSON.parse(optionsJson);
+    applyPieItemGradients(options, getCssVar);
     resolveCssVars(options);
     applyReducedMotion(options, prefersReducedMotion());
     autoFitCategoryAxisLabels(chart, options);
@@ -1052,11 +1119,21 @@ export function refreshAllCharts() {
         let opts;
         if (chart._lumeoRawJson) {
             opts = JSON.parse(chart._lumeoRawJson);
-            resolveCssVars(opts);
-            applyReducedMotion(opts, prefersReducedMotion());
         } else {
+            // Defensive-only fallback (should not happen via the normal Chart.razor
+            // path, which always stashes _lumeoRawJson — see the comment above this
+            // function). getOption() already comes back fully resolved/merged, so
+            // applyPieItemGradients/resolveCssVars are no-ops on it in practice, but
+            // running them unconditionally below keeps this branch honest instead of
+            // silently relying on that "already resolved" assumption forever.
             opts = chart.getOption();
         }
+        // Applied to `opts` from EITHER branch — a pie-type series must get its
+        // per-item gradient (or have the existing one re-validated) before its var()
+        // tokens are resolved, same order initChart/updateChart use.
+        applyPieItemGradients(opts, getCssVar);
+        resolveCssVars(opts);
+        applyReducedMotion(opts, prefersReducedMotion());
         const themeName = chart._lumeoTheme || 'lumeo';
         // Tear down the old ResizeObserver before disposing the chart. The
         // initChart path stores it on chart._lumeoObserver; without this
@@ -1337,4 +1414,7 @@ export async function registerMap(mapName, geoJson) {
 // plain Node test asserting real computed values — see
 // tests/js/echarts-interop-theme.test.mjs. Not part of the public interop
 // surface; Blazor's JS interop only ever calls the named exports above.
-export const __testing = { buildLumeoTheme, prefersReducedMotion, applyReducedMotion, hexToRgb, withAlpha, lighten };
+export const __testing = {
+    buildLumeoTheme, prefersReducedMotion, applyReducedMotion, hexToRgb, withAlpha, lighten,
+    applyPieItemGradients, resolvePaletteEntry, defaultChartPalette,
+};

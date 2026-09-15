@@ -6,6 +6,7 @@ internal static partial class LumeoDefaultStrings
     {
         // DataGrid
         ["DataGrid.NoData"] = "데이터 없음",
+        ["DataGrid.NoDataFiltered"] = "현재 필터와 일치하는 행이 없습니다",
         ["DataGrid.Loading"] = "불러오는 중…",
         ["DataGrid.SearchPlaceholder"] = "검색…",
         ["DataGrid.ClearSearch"] = "검색 지우기",
@@ -133,6 +134,11 @@ internal static partial class LumeoDefaultStrings
         ["ColorPicker.Green"] = "초록",
         ["ColorPicker.Blue"] = "파랑",
         ["ColorPicker.Presets"] = "프리셋",
+
+        // ── IconPicker ────────────────────────────────
+        ["IconPicker.Placeholder"] = "아이콘 선택",
+        ["IconPicker.SearchPlaceholder"] = "아이콘 검색",
+        ["IconPicker.NoIconsFound"] = "아이콘을 찾을 수 없습니다",
 
         // PasswordInput
         ["Password.Placeholder"] = "비밀번호 입력",
@@ -412,6 +418,9 @@ internal static partial class LumeoDefaultStrings
         ["Stepper.Finish"] = "완료",
         ["Stepper.Optional"] = "선택 사항",
         ["Stepper.Skip"] = "건너뛰기",
+
+        // Skeleton
+        ["Skeleton.Loading"] = "불러오는 중",
 
         // Window
         ["Window.Close"] = "닫기",

@@ -1,6 +1,6 @@
 # Lumeo component catalog
 
-All 167 components by category, plus 17 full-page patterns and the 58 theme tokens. Generated from `components-api.json` (`node skills/lumeo/gen-catalog.mjs`).
+All 168 components by category, plus 17 full-page patterns and the 58 theme tokens. Generated from `components-api.json` (`node skills/lumeo/gen-catalog.mjs`).
 
 > This is the **offline fallback**. When the `lumeo-mcp` server is connected, prefer `lumeo_search` / `lumeo_get_component` / `lumeo_get_example` — they give the live, complete per-parameter API.
 
@@ -87,6 +87,7 @@ Satellite packages: a component tagged **[Charts]** needs `Lumeo.Charts`, **[Dat
 - **DateTimePicker** — Combined date + time picker with timezone awareness.
 - **FileUpload** — Drag-and-drop file dropzone with progress and validation.
 - **Form** — EditForm wrapper with styled validation, field groups, and submit state. _(sub-components: FormDescription, FormField, FormItem, FormLabel, FormMessage)_
+- **IconPicker** — Popover with a searchable, virtualized icon grid — pack-agnostic, works with any Lumeo.Icons.* pack.
 - **InplaceEditor** — Click-to-edit text/number field that swaps in an input.
 - **Input** — Styled text input with label, prefix/suffix, icons, error state.
 - **InputMask** — Masked input for phone numbers, dates, and custom patterns.
