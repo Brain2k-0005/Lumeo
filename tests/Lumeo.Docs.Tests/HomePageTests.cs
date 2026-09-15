@@ -104,11 +104,63 @@ public class HomePageTests
     }
 
     [Fact]
-    public async Task Blocks_dashboard_page_still_renders_the_block()
+    public async Task Renders_the_dashboard_teaser_in_a_fixed_height_frame()
+    {
+        await using var ctx = NewContext();
+        var cut = ctx.Render<Home>();
+
+        // Fixed-height, overflow-hidden, fully inert frame — the crop that keeps the
+        // landing page from scrolling forever (owner feedback on the original PR).
+        Assert.Contains("h-[440px]", cut.Markup);
+        Assert.Contains("md:h-[640px]", cut.Markup);
+        Assert.Contains("overflow-hidden", cut.Markup);
+        Assert.Contains("pointer-events-none", cut.Markup);
+    }
+
+    [Fact]
+    public async Task Renders_only_five_preview_rows_with_no_pagination()
+    {
+        await using var ctx = NewContext();
+        var cut = ctx.Render<Home>();
+
+        // Preview="true" caps the table at the first 5 of the block's 68 rows. Counting
+        // actual <tr> elements (rather than matching row-header text) avoids a false
+        // positive/negative against the drawer's own "Type" <Select> — its options
+        // (Cover Page, Design, Capabilities, Narrative, ...) render as static markup
+        // regardless of which table rows are shown. table:not(.sr-only) excludes
+        // AreaChart's own screen-reader-only data table (one <tr> per chart point).
+        var dataRows = cut.FindAll("table:not(.sr-only) tbody tr");
+        Assert.Equal(5, dataRows.Count);
+
+        Assert.Contains("Cover page", cut.Markup);
+        Assert.Contains("Technical approach", cut.Markup);
+        // Row 7 ("Integration with existing systems") is past the 5-row cap and isn't
+        // one of the drawer's static Select options, so its absence is unambiguous.
+        Assert.DoesNotContain("Integration with existing systems", cut.Markup);
+        Assert.DoesNotContain("Rows per page", cut.Markup);
+        Assert.DoesNotContain("row(s) selected", cut.Markup);
+    }
+
+    [Fact]
+    public async Task Renders_an_open_this_dashboard_link()
+    {
+        await using var ctx = NewContext();
+        var cut = ctx.Render<Home>();
+
+        var link = cut.Find("a[href='blocks/dashboard']");
+        Assert.Contains("Open this dashboard", link.TextContent);
+    }
+
+    [Fact]
+    public async Task Blocks_dashboard_page_still_renders_the_full_block()
     {
         await using var ctx = NewContext();
         var cut = ctx.Render<DashboardPattern>();
 
         Assert.Contains("Acme Inc.", cut.Markup);
+        // Preview defaults to false here — the full 68-row, paginated block, unlike
+        // Home's 5-row teaser.
+        Assert.Contains("Capabilities", cut.Markup);
+        Assert.Contains("Rows per page", cut.Markup);
     }
 }

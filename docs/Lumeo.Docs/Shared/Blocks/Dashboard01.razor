@@ -432,30 +432,33 @@
                                     </TableBody>
                                 </Table>
                             </div>
-                            <div class="flex items-center justify-between px-4">
-                                <div class="hidden flex-1 text-sm text-muted-foreground lg:flex">@_selected.Count of @_rows.Count row(s) selected.</div>
-                                <div class="flex w-full items-center gap-8 lg:w-fit">
-                                    <div class="hidden items-center gap-2 lg:flex">
-                                        <Label For="dash-rows-per-page" Class="text-sm font-medium">Rows per page</Label>
-                                        <Select Value="@_pageSize.ToString()" ValueChanged="@(v => SetPageSize(v))">
-                                            <SelectTrigger id="dash-rows-per-page" Class="w-20">@_pageSize</SelectTrigger>
-                                            <SelectContent>
-                                                @foreach (var size in new[] { 10, 20, 30, 40, 50 })
-                                                {
-                                                    <SelectItem Value="@size.ToString()">@size</SelectItem>
-                                                }
-                                            </SelectContent>
-                                        </Select>
-                                    </div>
-                                    <div class="flex w-fit items-center justify-center text-sm font-medium">Page @(_page + 1) of @PageCount</div>
-                                    <div class="ml-auto flex items-center gap-2 lg:ml-0">
-                                        <Button Variant="Button.ButtonVariant.Outline" Class="hidden h-8 w-8 p-0 lg:flex" OnClick="@(() => _page = 0)" Disabled="@(_page == 0)"><span class="sr-only">Go to first page</span><SvgGlyph Svg="@(Lucide.ChevronsLeft)" /></Button>
-                                        <Button Variant="Button.ButtonVariant.Outline" Size="Button.ButtonSize.Icon" Class="size-8" OnClick="@(() => _page--)" Disabled="@(_page == 0)"><span class="sr-only">Go to previous page</span><SvgGlyph Svg="@(Lucide.ChevronLeft)" /></Button>
-                                        <Button Variant="Button.ButtonVariant.Outline" Size="Button.ButtonSize.Icon" Class="size-8" OnClick="@(() => _page++)" Disabled="@(_page >= PageCount - 1)"><span class="sr-only">Go to next page</span><SvgGlyph Svg="@(Lucide.ChevronRight)" /></Button>
-                                        <Button Variant="Button.ButtonVariant.Outline" Size="Button.ButtonSize.Icon" Class="hidden size-8 lg:flex" OnClick="@(() => _page = PageCount - 1)" Disabled="@(_page >= PageCount - 1)"><span class="sr-only">Go to last page</span><SvgGlyph Svg="@(Lucide.ChevronsRight)" /></Button>
+                            @if (!Preview)
+                            {
+                                <div class="flex items-center justify-between px-4">
+                                    <div class="hidden flex-1 text-sm text-muted-foreground lg:flex">@_selected.Count of @_rows.Count row(s) selected.</div>
+                                    <div class="flex w-full items-center gap-8 lg:w-fit">
+                                        <div class="hidden items-center gap-2 lg:flex">
+                                            <Label For="dash-rows-per-page" Class="text-sm font-medium">Rows per page</Label>
+                                            <Select Value="@_pageSize.ToString()" ValueChanged="@(v => SetPageSize(v))">
+                                                <SelectTrigger id="dash-rows-per-page" Class="w-20">@_pageSize</SelectTrigger>
+                                                <SelectContent>
+                                                    @foreach (var size in new[] { 10, 20, 30, 40, 50 })
+                                                    {
+                                                        <SelectItem Value="@size.ToString()">@size</SelectItem>
+                                                    }
+                                                </SelectContent>
+                                            </Select>
+                                        </div>
+                                        <div class="flex w-fit items-center justify-center text-sm font-medium">Page @(_page + 1) of @PageCount</div>
+                                        <div class="ml-auto flex items-center gap-2 lg:ml-0">
+                                            <Button Variant="Button.ButtonVariant.Outline" Class="hidden h-8 w-8 p-0 lg:flex" OnClick="@(() => _page = 0)" Disabled="@(_page == 0)"><span class="sr-only">Go to first page</span><SvgGlyph Svg="@(Lucide.ChevronsLeft)" /></Button>
+                                            <Button Variant="Button.ButtonVariant.Outline" Size="Button.ButtonSize.Icon" Class="size-8" OnClick="@(() => _page--)" Disabled="@(_page == 0)"><span class="sr-only">Go to previous page</span><SvgGlyph Svg="@(Lucide.ChevronLeft)" /></Button>
+                                            <Button Variant="Button.ButtonVariant.Outline" Size="Button.ButtonSize.Icon" Class="size-8" OnClick="@(() => _page++)" Disabled="@(_page >= PageCount - 1)"><span class="sr-only">Go to next page</span><SvgGlyph Svg="@(Lucide.ChevronRight)" /></Button>
+                                            <Button Variant="Button.ButtonVariant.Outline" Size="Button.ButtonSize.Icon" Class="hidden size-8 lg:flex" OnClick="@(() => _page = PageCount - 1)" Disabled="@(_page >= PageCount - 1)"><span class="sr-only">Go to last page</span><SvgGlyph Svg="@(Lucide.ChevronsRight)" /></Button>
+                                        </div>
                                     </div>
                                 </div>
-                            </div>
+                            }
                         </TabsContent>
                         <TabsContent Value="past-performance" Class="flex flex-col px-4 lg:px-6">
                             <div class="aspect-video w-full flex-1 rounded-lg border border-dashed"></div>
@@ -552,6 +555,13 @@
 
 @code {
     [Parameter] public string? Class { get; set; }
+
+    /// <summary>When true, renders a cropped teaser instead of the full block: only the
+    /// first 5 table rows, no pagination/footer row. Used by the home page's fixed-height
+    /// frame, which decides the visible height itself — the caller should NOT also pass
+    /// min-h-[820px] in <see cref="Class"/> when Preview is set. /blocks/dashboard leaves
+    /// this at its default (false) so the full, real block keeps rendering there.</summary>
+    [Parameter] public bool Preview { get; set; }
 
     private bool _navCollapsed;
 
@@ -813,7 +823,7 @@
     ];
 
     private int PageCount => Math.Max(1, (int)Math.Ceiling(_rows.Count / (double)_pageSize));
-    private IEnumerable<Section> PageRows => _rows.Skip(_page * _pageSize).Take(_pageSize);
+    private IEnumerable<Section> PageRows => Preview ? _rows.Take(5) : _rows.Skip(_page * _pageSize).Take(_pageSize);
     private bool AllPageSelected => PageRows.All(r => _selected.Contains(r.Id));
     private bool SomePageSelected => !AllPageSelected && PageRows.Any(r => _selected.Contains(r.Id));
 
