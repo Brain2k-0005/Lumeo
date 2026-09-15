@@ -179,7 +179,7 @@ public class SchedulerEventDialogTests : IAsyncLifetime
         cut.Find("[data-cell-date]").DoubleClick();
 
         Assert.Equal("create", cut.Find("[data-scheduler-dialog]").GetAttribute("data-scheduler-dialog"));
-        Assert.Equal("shown", cut.Find("[data-scheduler-dialog-calendar]").GetAttribute("value"));
+        Assert.Equal("Shown", cut.Find("[data-scheduler-dialog-calendar]").TextContent.Trim());
     }
 
     // ── the gesture must not be armed when it can do nothing ────────────────
@@ -304,7 +304,7 @@ public class SchedulerEventDialogTests : IAsyncLifetime
         var secondPane = cut.FindAll("[data-scheduler-pane]")[1];
         secondPane.QuerySelector("[data-cell-date]")!.DoubleClick();
 
-        Assert.Equal("personal", cut.Find("[data-scheduler-dialog-calendar]").GetAttribute("value"));
+        Assert.Equal("Personal", cut.Find("[data-scheduler-dialog-calendar]").TextContent.Trim());
     }
 
     [Fact]
@@ -809,9 +809,9 @@ public class SchedulerEventDialogTests : IAsyncLifetime
         // The parent drops the calendar this event belongs to.
         cut.Render(p => p.Add(c => c.Calendars, new[] { calendars[1] }));
 
-        var selected = cut.FindAll("[data-scheduler-dialog-calendar] option")
-                          .Single(o => o.HasAttribute("selected"));
-        Assert.Equal("team", selected.GetAttribute("value"));
+        // "team" is now an orphan (the parent dropped it above): the Select still shows it via
+        // its own SelectItem/raw-value fallback rather than silently snapping to "no calendar".
+        Assert.Equal("team", cut.Find("[data-scheduler-dialog-calendar]").TextContent.Trim());
 
         cut.Find("[data-scheduler-dialog-save]").Click();
         Assert.Equal("team", pushed!.Single().CalendarId);
