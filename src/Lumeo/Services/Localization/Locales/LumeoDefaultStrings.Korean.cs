@@ -134,6 +134,11 @@ internal static partial class LumeoDefaultStrings
         ["ColorPicker.Blue"] = "파랑",
         ["ColorPicker.Presets"] = "프리셋",
 
+        // ── IconPicker ────────────────────────────────
+        ["IconPicker.Placeholder"] = "아이콘 선택",
+        ["IconPicker.SearchPlaceholder"] = "아이콘 검색",
+        ["IconPicker.NoIconsFound"] = "아이콘을 찾을 수 없습니다",
+
         // PasswordInput
         ["Password.Placeholder"] = "비밀번호 입력",
         ["Password.Toggle"] = "비밀번호 표시 전환",
