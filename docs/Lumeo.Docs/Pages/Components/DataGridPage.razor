@@ -326,10 +326,20 @@
             <DataGridColumnDef TItem="Employee" Title="Department" Field="Department" Editable="false" />
             <DataGridColumnDef TItem="Employee" Title="Status" Field="Status">
                 <EditTemplate>
+                    @* EditMode.Cell has no fixed row height: the built-in text editor
+                       (DataGridCell.razor's default, no border/padding/fixed height of its
+                       own) sizes to its text-sm line-height (20px) and lets the <td>'s own
+                       py-2/px-3 cell padding (16px vertical) supply the rest, landing on the
+                       SAME ~36px total as a non-editing row. SelectTrigger's smallest density
+                       rung (h-7, 28px) would add 8px on TOP of that unchanged cell padding —
+                       the row visibly grows while editing and snaps back on commit/cancel.
+                       h-5 (20px) + py-0 here matches that line-height exactly instead, so the
+                       cell padding is the only thing supplying height, same as the default
+                       editor. *@
                     <div class="contents" @onkeydown="@(async (KeyboardEventArgs e) => { if (e.Key == "Escape") await context.Cancel(); })">
                         <Select Value="@(context.Value?.ToString())"
                                 ValueChanged="@(async (string? v) => { context.Value = v; context.ValueChanged(); await context.Commit(); })">
-                            <SelectTrigger Class="h-7 px-2 py-1">
+                            <SelectTrigger Class="h-5 px-2 py-0">
                                 <span class="truncate">@context.Value</span>
                             </SelectTrigger>
                             <SelectContent>
@@ -1770,7 +1780,7 @@
                             context.ValueChanged();
                             await context.Commit();
                         })"">
-                    <SelectTrigger Class=""h-7 px-2 py-1"">
+                    <SelectTrigger Class=""h-5 px-2 py-0"">
                         <span class=""truncate"">@context.Value</span>
                     </SelectTrigger>
                     <SelectContent>
