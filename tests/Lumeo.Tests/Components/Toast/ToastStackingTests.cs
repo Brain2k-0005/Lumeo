@@ -535,7 +535,13 @@ public class ToastStackingTests : IAsyncLifetime
         // Give the (0ms, but still asynchronous) deferred-collapse timer every chance to fire if
         // it were somehow still pending — it must NOT be, because focusing button[1] already
         // cancelled it. The group stays expanded well past the timer's window.
-        await Task.Delay(100);
+        //
+        // Field report #464, finding #447: widened from 100ms — a "prove the timer never fires"
+        // wait this close to the 30ms focus-collapse grace timer (ToastViewport.FocusCollapseGraceMs)
+        // leaves little room for CI/full-suite
+        // thread-pool contention to delay the (already-cancelled) timer's own scheduling without
+        // the test racing ahead of it.
+        await Task.Delay(400);
         Assert.Equal("true", Attr(cut.Find("[data-stacked='true']"), "data-expanded"));
 
         // Focus leaving the group entirely (no focusin follows) DOES still collapse it — the fix
@@ -677,7 +683,13 @@ public class ToastStackingTests : IAsyncLifetime
         // pre-fix, B's timer started running unpaused the instant it was admitted (the stale
         // `_expandedGroups` clear from A's eviction already ran by then) and would have
         // auto-dismissed here even though the pointer never left the group.
-        await Task.Delay(400);
+        //
+        // Field report #464, finding #447: this is a real-clock margin over B's 100ms duration —
+        // under CI/full-suite thread-pool contention a too-tight margin here reads as a flake
+        // that has nothing to do with the pause logic actually being tested. 900ms (a 9x margin,
+        // not the original 4x) gives real scheduling jitter far more room without meaningfully
+        // slowing this test down.
+        await Task.Delay(900);
         Assert.Contains(cut.FindAll("[role='alert'],[role='status']"), e => e.TextContent.Contains("B"));
 
         // Leaving now resumes B's timer (it never ran while paused) — it auto-dismisses like any

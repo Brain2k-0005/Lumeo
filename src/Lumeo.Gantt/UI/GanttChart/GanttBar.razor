@@ -745,6 +745,26 @@
     // own await, mirroring Affix.razor's identical RegisterAsync/_disposed
     // pattern for the same class of late-interop leak.
     private bool _disposed;
+    // Field report #464, finding #413 — OnAfterRenderAsync has no serialization guard, so a
+    // render landing while a PRIOR invocation's own RegisterPreventDefaultKeys await is still in
+    // flight starts a SECOND, fully independent invocation against the SAME instance (Blazor
+    // does not wait for one OnAfterRenderAsync task to finish before dispatching the next
+    // render's). Both invocations read LIVE OnTaskClick/OnKeyNavigation state after their own
+    // await and self-correct, which converges to the right FINAL rule set regardless of resume
+    // order — but pre-fix, EVERY invocation performs its own correction independently: an
+    // earlier-started invocation that resumes AFTER a later one has no way to know the job is
+    // already done, so it fires its own redundant "drift correction" register call. Harmless to
+    // the end state (idempotent), but a real extra JS round trip whose timing depends on however
+    // two continuations on the interop call happen to be scheduled — stable under an idle
+    // runner, flaky under CI/full-suite contention (see GanttV3KeyboardNavigationTests'
+    // "Overlapping_Renders_Resolved_Out_Of_Order..." test, which forces the adversarial order
+    // deterministically instead of hoping for it). Fix: a monotonic generation counter. Each
+    // invocation stamps its own generation before the first await; if a NEWER invocation has
+    // already started by the time it resumes, it bails out immediately after the disposed-check
+    // instead of redoing work — the newest-started invocation is always the one whose epoch
+    // still matches by the time IT resumes, since every bump happens synchronously before any
+    // invocation's first await, so resume order can never change which one "wins".
+    private int _registerEpoch;
 
     // Bug fix (Codex round 6, P2 #4): a div[role=button] has no NATIVE
     // Space-activation semantics — the browser still runs its own default
@@ -812,6 +832,7 @@
 
         if (needsRegister)
         {
+            var epoch = ++_registerEpoch;
             try
             {
                 await Interop.RegisterPreventDefaultKeys(_barId, BuildPreventDefaultRules(wantTaskClick, wantKeyNav));
@@ -834,6 +855,17 @@
                     catch (ObjectDisposedException) { }
                     return;
                 }
+
+                // Field report #464, finding #413: a NEWER invocation has already started (its
+                // own epoch bump happened synchronously, before this one's await returned) — it
+                // will perform its own live re-check and correction against CURRENT state, which
+                // is always at least as fresh as what this invocation would compute. Bailing out
+                // here (without touching _preventDefaultKeysRegistered/the Task/KeyNav flags)
+                // avoids a redundant register call; the JS side still converges correctly because
+                // every RegisterPreventDefaultKeys call for this SAME _barId replaces the whole
+                // rule set, so the newer invocation's own call (already made or still to come)
+                // is authoritative regardless of which one lands second.
+                if (epoch != _registerEpoch) return;
 
                 // Bug fix (Codex round 17 review, P2): either delegate can flip
                 // AGAIN while THIS register call is still in flight — re-reading
@@ -885,6 +917,8 @@
         }
         else if (!wantPreventDefault && _preventDefaultKeysRegistered)
         {
+            // Intentionally without the register branch's epoch guard (#413): an unregister is
+            // idempotent on the JS side and no overlapping-render race has been observed here.
             try
             {
                 await Interop.UnregisterPreventDefaultKeys(_barId);

@@ -200,6 +200,71 @@ public class GanttV3KeyboardNavigationTests : IAsyncLifetime
         Assert.Equal(new[] { "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight" }, finalRules);
     }
 
+    // Field report #464, finding #413: the test above shares ONE gate between both overlapping
+    // OnAfterRenderAsync invocations, so which one's post-await "drift correction" resumes FIRST
+    // is left to however the scheduler happens to order two continuations on the same
+    // TaskCompletionSource — stable under an idle runner, but flips under real CI/full-suite
+    // contention ("passes in isolation... every time. Only fails in the full-suite run at
+    // maximum parallelism"). This test forces the adversarial order deterministically with TWO
+    // independent gates instead of hoping for it: resolve the LATER-started invocation first.
+    // Pre-fix, GanttBar.OnAfterRenderAsync has no guard against overlapping invocations — the
+    // EARLIER invocation, once it finally resumes, has no way to know a newer invocation already
+    // finished the job, so it performs its OWN redundant "drift correction" register call (a
+    // real, if harmless, 3rd JS round trip) — which trips this test's exact-count assertion the
+    // same way it trips the shared-gate test above under CI scheduling. The fix is a generation
+    // guard: a superseded invocation bails out after its own await instead of redoing work a
+    // newer invocation already completed.
+    [Fact]
+    public async Task Overlapping_Renders_Resolved_Out_Of_Order_Produce_No_Redundant_Third_Register_Call()
+    {
+        var rows = new List<GanttVisibleRow> { new(GanttRowKind.Task, Fixture()[0], "Design", 0, false, null, false) };
+        var gate1 = new TaskCompletionSource();
+        _interop.RegisterPreventDefaultKeysGate = gate1;
+
+        var cut = _ctx.Render<L.GanttTimeline>(p => p
+            .Add(c => c.Tasks, new List<L.GanttTask> { Fixture()[0] })
+            .Add(c => c.Rows, rows)
+            .Add(c => c.ViewMode, L.GanttViewMode.Day)
+            .Add(c => c.RangeStart, D(2026, 1, 1))
+            .Add(c => c.RangeEnd, D(2026, 1, 31))
+            .Add(c => c.OnTaskClick, EventCallback.Factory.Create<L.GanttTask>(this, _ => { })));
+
+        Assert.Single(_interop.RegisterPreventDefaultKeysElementIds); // invocation #1's initial call, still gated on gate1
+
+        var gate2 = new TaskCompletionSource();
+        _interop.RegisterPreventDefaultKeysGate = gate2;
+
+        // Remove OnTaskClick while invocation #1 is still gated — starts invocation #2 (GanttTimeline
+        // always wires OnKeyNavigation, so this still wants prevent-default, just a narrower rule set).
+        cut.Render(p => p
+            .Add(c => c.Tasks, new List<L.GanttTask> { Fixture()[0] })
+            .Add(c => c.Rows, rows)
+            .Add(c => c.ViewMode, L.GanttViewMode.Day)
+            .Add(c => c.RangeStart, D(2026, 1, 1))
+            .Add(c => c.RangeEnd, D(2026, 1, 31))
+            .Add(c => c.OnTaskClick, default(EventCallback<L.GanttTask>)));
+
+        Assert.Equal(2, _interop.RegisterPreventDefaultKeysElementIds.Count); // invocation #2's own initial call, gated on gate2
+
+        // Resolve the LATER-started invocation FIRST and let it fully finish (its own live
+        // re-check matches what it already wanted, so it needs no correction call of its own).
+        gate2.SetResult();
+        for (var i = 0; i < 600; i++) await Task.Delay(10);
+
+        // NOW resolve the EARLIER invocation — pre-fix, it wakes up, re-reads LIVE state (which
+        // has since diverged from what IT captured at mount), and fires its own extra correction
+        // call because it has no way to know invocation #2 already reconciled everything.
+        gate1.SetResult();
+        for (var i = 0; i < 600; i++) await Task.Delay(10);
+
+        Assert.Empty(_interop.UnregisterPreventDefaultKeysElementIds);
+        Assert.Equal(2, _interop.RegisterPreventDefaultKeysElementIds.Count);
+        var barId = _interop.RegisterPreventDefaultKeysElementIds[0];
+        var finalRules = _interop.RegisterPreventDefaultKeysRules[barId].Select(r => r.Key).ToList();
+        Assert.DoesNotContain(" ", finalRules);
+        Assert.Equal(new[] { "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight" }, finalRules);
+    }
+
     // ── GanttTimeline: roving focus movement ──────────────────────────────
 
     [Fact]
