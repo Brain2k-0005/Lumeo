@@ -109,12 +109,18 @@ public class HomePageTests
         await using var ctx = NewContext();
         var cut = ctx.Render<Home>();
 
-        // Fixed-height, overflow-hidden, fully inert frame — the crop that keeps the
-        // landing page from scrolling forever (owner feedback on the original PR).
+        // Fixed-height, overflow-hidden frame — the crop that keeps the landing page from
+        // scrolling forever (owner feedback on the original PR). The frame stays clickable
+        // (no pointer-events-none): the preview's own scroll containers are what give up
+        // scrolling instead, so a wheel over the teaser moves the page.
         Assert.Contains("h-[440px]", cut.Markup);
         Assert.Contains("md:h-[640px]", cut.Markup);
         Assert.Contains("overflow-hidden", cut.Markup);
-        Assert.Contains("pointer-events-none", cut.Markup);
+        var frame = cut.Find("div.md\\:h-\\[640px\\]");
+        Assert.DoesNotContain("pointer-events-none", frame.GetAttribute("class") ?? "");
+        // Preview mode: the sidebar's nav rail and the outline tab panel do not scroll on
+        // their own, so nothing inside the teaser can trap the wheel.
+        Assert.Contains("overflow-y-hidden", cut.Markup);
     }
 
     [Fact]
