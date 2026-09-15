@@ -8,8 +8,8 @@
      stroke-width="@(Stroke ? StrokeWidthEff : null)"
      stroke-linecap="@(Stroke ? "round" : null)"
      stroke-linejoin="@(Stroke ? "round" : null)"
-     class="@MergedClass"
-     @attributes="AttributesSansClass">@((MarkupString)Svg.Content)</svg>
+     class="@EffectiveClass"
+     @attributes="AttributesForSplat">@((MarkupString)Svg.Content)</svg>
 
 @code {
     /// <summary>
@@ -42,7 +42,7 @@
     /// exactly like the icon component it replaces. A consumer-supplied attribute that collides
     /// with one this component sets (e.g. <c>fill</c>) wins, because the splat is applied last. A
     /// <c>class</c> entry is merged with <see cref="Class"/> rather than splatted directly (see
-    /// <see cref="MergedClass"/>).
+    /// <see cref="EffectiveClass"/>).
     /// </summary>
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
@@ -55,19 +55,44 @@
     /// </summary>
     private string StrokeWidthEff => (StrokeWidth ?? Svg.StrokeWidth).ToString(CultureInfo.InvariantCulture);
 
-    /// <summary>A lowercase <c>class</c> value passed through <see cref="AdditionalAttributes"/>, if any.</summary>
-    private string? SplattedClass =>
-        AdditionalAttributes is not null && AdditionalAttributes.TryGetValue("class", out var value)
-            ? value?.ToString()
-            : null;
+    /// <summary>
+    /// The <c>class</c> value rendered explicitly on the root <c>&lt;svg&gt;</c>. This is a hot
+    /// path (~760 call sites), so it is kept allocation-free in the two common cases and only
+    /// pays for <see cref="Cx.Merge(string?[])"/> plus a stripped-copy of
+    /// <see cref="AdditionalAttributes"/> (see <see cref="AttributesForSplat"/>) when BOTH
+    /// <see cref="Class"/> and a splatted lowercase <c>class</c> are present:
+    /// <list type="bullet">
+    /// <item>No splatted <c>class</c> in <see cref="AdditionalAttributes"/>: render <see cref="Class"/>
+    /// as-is (splat passes <see cref="AdditionalAttributes"/> through unchanged; <c>null</c> omits
+    /// the attribute, matching pre-<see cref="Class"/> behaviour).</item>
+    /// <item><see cref="Class"/> is <c>null</c>: render <c>null</c> here (the attribute is omitted)
+    /// and let the splatted <c>class</c> apply unchanged, exactly as before this parameter existed.</item>
+    /// <item>Both present: merge them via <see cref="Cx.Merge(string?[])"/> so neither clobbers the
+    /// other.</item>
+    /// </list>
+    /// </summary>
+    private string? EffectiveClass
+    {
+        get
+        {
+            if (AdditionalAttributes is null || !AdditionalAttributes.TryGetValue("class", out var splatted))
+                return Class;
 
-    /// <summary><see cref="Class"/> and <see cref="SplattedClass"/> merged, last-wins on conflicts.</summary>
-    private string MergedClass => Cx.Merge(Class, SplattedClass);
+            if (Class is null)
+                return null;
 
-    /// <summary><see cref="AdditionalAttributes"/> with the <c>class</c> entry removed, since it is
-    /// rendered explicitly via <see cref="MergedClass"/> instead of being splatted raw.</summary>
-    private Dictionary<string, object>? AttributesSansClass =>
-        AdditionalAttributes is null || !AdditionalAttributes.ContainsKey("class")
+            return Cx.Merge(Class, splatted?.ToString());
+        }
+    }
+
+    /// <summary>
+    /// Attributes splatted onto the root <c>&lt;svg&gt;</c>. Passed through unchanged (no
+    /// allocation) unless BOTH <see cref="Class"/> and a splatted <c>class</c> are present, in
+    /// which case the <c>class</c> entry is stripped so it doesn't collide with the explicitly
+    /// merged one rendered via <see cref="EffectiveClass"/>.
+    /// </summary>
+    private Dictionary<string, object>? AttributesForSplat =>
+        Class is null || AdditionalAttributes is null || !AdditionalAttributes.ContainsKey("class")
             ? AdditionalAttributes
             : AdditionalAttributes.Where(kv => kv.Key != "class").ToDictionary(kv => kv.Key, kv => kv.Value);
 }

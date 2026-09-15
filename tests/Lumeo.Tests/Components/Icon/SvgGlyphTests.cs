@@ -125,6 +125,27 @@ public class SvgGlyphTests : IAsyncLifetime
     }
 
     [Fact]
+    public void Fast_Path_No_Splatted_Class_Renders_Exactly_One_Class_Attribute_Equal_To_Class()
+    {
+        // Case (1) from the perf follow-up: AdditionalAttributes present but with NO "class" key
+        // (only an unrelated attribute) — must still hit the zero-merge fast path and render a
+        // single class attribute equal to Class verbatim, with the other attribute splatted too.
+        var cut = _ctx.Render<L.SvgGlyph>(p => p
+            .Add(g => g.Svg, L.IconSource.Stroke(StrokeContent))
+            .Add(g => g.Class, "h-4 w-4")
+            .Add(g => g.AdditionalAttributes, new Dictionary<string, object>
+            {
+                ["aria-label"] = "Delete",
+            }));
+        var svg = cut.Find("svg");
+
+        var classAttrs = svg.Attributes.Where(a => a.Name == "class").ToList();
+        Assert.Single(classAttrs);
+        Assert.Equal("h-4 w-4", classAttrs[0].Value);
+        Assert.Equal("Delete", svg.GetAttribute("aria-label"));
+    }
+
+    [Fact]
     public void Lowercase_Class_Splat_Still_Works_Without_Class_Parameter()
     {
         var cut = _ctx.Render<L.SvgGlyph>(p => p
