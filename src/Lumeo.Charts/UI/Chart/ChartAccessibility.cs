@@ -68,25 +68,39 @@ public static class ChartAccessibility
         if (string.IsNullOrWhiteSpace(optionJson))
             return null;
 
-        JsonNode? root;
-        try { root = JsonNode.Parse(optionJson); }
-        catch { return null; }
+        // The ENTIRE projection — not just JsonNode.Parse — must be guarded. A
+        // JsonObject built from Parse is lazy: it only materialises its internal
+        // dictionary (and throws ArgumentException("An item with the same key has
+        // already been added")) the first time a property is actually READ via the
+        // indexer or enumerated — i.e. inside ReadSeries/ReadCategories below, not at
+        // Parse time. A duplicate top-level key can reach here via OptionOverride (see
+        // ChartHelper.ApplyOptionOverride) or a hand-crafted Chart.OptionJson string;
+        // either way this must degrade to "no accessibility table", never throw
+        // (field report #464 finding 2 — confirmed via a failing test before this fix
+        // narrowed the try/catch to only the Parse call).
+        try
+        {
+            var root = JsonNode.Parse(optionJson);
+            if (root is not JsonObject obj)
+                return null;
 
-        if (root is not JsonObject obj)
+            var series = ReadSeries(obj);
+            if (series.Count == 0)
+                return null;
+
+            var categories = ReadCategories(obj);
+            var typeLabel = ChartTypeLabel(series[0].Type);
+
+            var table = categories.Count > 0
+                ? BuildCartesian(typeLabel, categories, series)
+                : BuildCategorical(typeLabel, series);
+
+            return CapRows(table, maxRows);
+        }
+        catch
+        {
             return null;
-
-        var series = ReadSeries(obj);
-        if (series.Count == 0)
-            return null;
-
-        var categories = ReadCategories(obj);
-        var typeLabel = ChartTypeLabel(series[0].Type);
-
-        var table = categories.Count > 0
-            ? BuildCartesian(typeLabel, categories, series)
-            : BuildCategorical(typeLabel, series);
-
-        return CapRows(table, maxRows);
+        }
     }
 
     // Caps the row list so a huge series doesn't emit thousands of hidden <tr>s.

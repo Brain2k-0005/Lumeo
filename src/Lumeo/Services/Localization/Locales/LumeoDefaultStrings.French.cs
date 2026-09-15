@@ -268,6 +268,9 @@ internal static partial class LumeoDefaultStrings
         ["Stepper.Optional"] = "Facultatif",
         ["Stepper.Skip"] = "Passer",
 
+        // Skeleton
+        ["Skeleton.Loading"] = "Chargement",
+
         // Window
         ["Window.Close"] = "Fermer",
         ["Window.Minimize"] = "Réduire",

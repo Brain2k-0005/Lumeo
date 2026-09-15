@@ -111,6 +111,38 @@
         </Container>
     </ComponentDemo>
 
+    <ComponentDemo Title="Searchable with Composed Items" Code="@_composedSearchCode">
+        <Container MaxWidth="sm" Center="false" Padding="">
+            <Alert Variant="Alert.AlertVariant.Info" ShowIcon="true" Class="mb-3">
+                <ChildContent>
+                    No <code class="font-mono text-xs">SearchValue</code> on Germany or
+                    Austria — the item's <code class="font-mono text-xs">Value</code>
+                    ("de") differs from what's shown ("Germany"), and the filter still
+                    matches the rendered label. Switzerland's label is wrapped in
+                    <code class="font-mono text-xs">&lt;Text As="span"&gt;</code>, so it
+                    sets <code class="font-mono text-xs">SearchValue="Switzerland"</code>
+                    explicitly — the filter can only see an item's own literal text, not
+                    text rendered by a child component.
+                </ChildContent>
+            </Alert>
+            <Select Searchable="true" @bind-Value="_selectedComposedCountry">
+                <SelectTrigger>
+                    <Text As="span" Class="@(_selectedComposedCountry == null ? "text-muted-foreground" : "")">
+                        @(_selectedComposedCountry ?? "Search countries...")
+                    </Text>
+                </SelectTrigger>
+                <SelectContent>
+                    <SelectItem Value="ch" SearchValue="Switzerland">
+                        <Text As="span">Switzerland</Text>
+                    </SelectItem>
+                    <SelectItem Value="de">Germany</SelectItem>
+                    <SelectItem Value="at">Austria</SelectItem>
+                    <SelectItem Value="fr">France</SelectItem>
+                </SelectContent>
+            </Select>
+        </Container>
+    </ComponentDemo>
+
     <ComponentDemo Title="Multiple Selection" Code="@_multipleCode">
         <Stack Gap="2" Class="w-full max-w-sm">
             <Select Multiple="true" @bind-Values="_selectedFruits">
@@ -323,6 +355,7 @@
     private string? _selectedFramework;
     private string? _selectedTimezone;
     private string? _selectedCountry;
+    private string? _selectedComposedCountry;
     private List<string>? _selectedFruits;
     private List<string>? _selectedTools;
     private string? _selectedClearable;
@@ -430,6 +463,23 @@
         <SelectItem Value=""us"">United States</SelectItem>
         <SelectItem Value=""uk"">United Kingdom</SelectItem>
         <SelectItem Value=""ca"">Canada</SelectItem>
+    </SelectContent>
+</Select>";
+
+    // Germany/Austria: Value differs from the visible label and no SearchValue is set —
+    // the filter matches the item's rendered ChildContent text directly. Switzerland's
+    // label is wrapped in <Text>, a child component, so its text is invisible to the
+    // filter's extraction and SearchValue is set explicitly instead.
+    private string _composedSearchCode = @"<Select Searchable=""true"" @bind-Value=""_selected"">
+    <SelectTrigger>
+        <span>@(_selected ?? ""Search countries..."")</span>
+    </SelectTrigger>
+    <SelectContent>
+        <SelectItem Value=""ch"" SearchValue=""Switzerland"">
+            <Text As=""span"">Switzerland</Text>
+        </SelectItem>
+        <SelectItem Value=""de"">Germany</SelectItem>
+        <SelectItem Value=""at"">Austria</SelectItem>
     </SelectContent>
 </Select>";
 

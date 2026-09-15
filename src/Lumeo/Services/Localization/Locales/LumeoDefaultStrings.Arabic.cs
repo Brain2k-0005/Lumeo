@@ -425,6 +425,9 @@ internal static partial class LumeoDefaultStrings
         ["Stepper.Optional"] = "اختياري",
         ["Stepper.Skip"] = "تخطٍ",
 
+        // Skeleton
+        ["Skeleton.Loading"] = "جارٍ التحميل",
+
         // Window
         ["Window.Close"] = "إغلاق",
         ["Window.Minimize"] = "تصغير",

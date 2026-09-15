@@ -418,6 +418,9 @@ internal static partial class LumeoDefaultStrings
         ["Stepper.Optional"] = "İsteğe bağlı",
         ["Stepper.Skip"] = "Atla",
 
+        // Skeleton
+        ["Skeleton.Loading"] = "Yükleniyor",
+
         // Window
         ["Window.Close"] = "Kapat",
         ["Window.Minimize"] = "Simge durumuna küçült",

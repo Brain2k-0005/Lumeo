@@ -1197,6 +1197,15 @@ export function unregisterPinchZoom(elementId) {
 // --- Drawer Swipe ---
 
 const drawerHandlers = new Map();
+// Field report #464 (finding 3) — the panel's live drag offset (px, along the
+// dismiss axis, matching the sign the slide-out-to-* keyframes expect) at the
+// moment a swipe actually dismisses. Read back by getSwipeReleaseOffset() so
+// the C# side can seed --lumeo-sheet-exit-from and the exit keyframe starts
+// from wherever the finger let go instead of snapping to fully-open. Only
+// populated for a real dismiss (onTouchEnd's shouldDismiss branch); a
+// non-swipe close never touches this map, so a caller that finds nothing
+// falls back to 0 (fully open) via the Map's own `?? 0`.
+const drawerSwipeReleaseOffsets = new Map();
 const drawerSnapHandlers = new Map();
 
 // #381 Codex P1 — the drawer panel itself became a scroll container
@@ -1458,6 +1467,13 @@ export function registerDrawerSwipe(elementId, direction, dotnetRef, options) {
     let startedOnHandle = false;
     let touchStartTarget = null; // #381 round 7 — see isAtScrollBoundaryForDirection's own remarks
     let samples = [];         // recent {pos, t} on the active axis for velocity
+    // Field report #464 (finding 3) — mirrors the LAST value actually applied to
+    // el.style.transform this gesture (the rubber-banded `effective`, not the raw
+    // delta), so a dismiss can hand the exit animation the exact on-screen offset
+    // the panel is currently sitting at. Reset to 0 whenever the transform itself
+    // is cleared (wrong-direction / not-yet-active) so it never reports a stale
+    // offset for a frame where the panel is actually back at rest.
+    let lastEffectiveOffset = 0;
 
     const onTouchStart = (e) => {
         startX = e.touches[0].clientX;
@@ -1525,6 +1541,7 @@ export function registerDrawerSwipe(elementId, direction, dotnetRef, options) {
                 && !isAtScrollBoundaryForDirection(touchStartTarget, el, directionSign)) {
                 contentOwned = true;
                 el.style.transform = ''; // undo any partial drag from before this reversal
+                lastEffectiveOffset = 0;
                 return;
             }
         }
@@ -1558,6 +1575,7 @@ export function registerDrawerSwipe(elementId, direction, dotnetRef, options) {
             // sheet whose dismiss is "down") — snap back to 0, don't drag the
             // sheet against the dismiss direction.
             el.style.transform = '';
+            lastEffectiveOffset = 0;
             return;
         }
         let effective = axisDelta - sign * ACTIVATION_THRESHOLD;
@@ -1569,6 +1587,11 @@ export function registerDrawerSwipe(elementId, direction, dotnetRef, options) {
             const excess = absEffective - RUBBER_BAND_START;
             effective = sign * (RUBBER_BAND_START + excess * RUBBER_BAND_FACTOR);
         }
+
+        // Field report #464 (finding 3) — mirror whatever we're about to apply to
+        // the live transform, so a dismiss on THIS touch can hand the exit
+        // animation the exact on-screen offset instead of snapping to fully-open.
+        lastEffectiveOffset = effective;
 
         if (isHorizontal) {
             el.style.transform = `translateX(${effective}px)`;
@@ -1621,6 +1644,11 @@ export function registerDrawerSwipe(elementId, direction, dotnetRef, options) {
         const fastEnough = DISMISS_VELOCITY > 0 && Math.sign(velocity) === dismissSign && Math.abs(velocity) >= DISMISS_VELOCITY;
         const shouldDismiss = correctDir && (farEnough || fastEnough);
         if (shouldDismiss) {
+            // Field report #464 (finding 3) — stash the offset the panel is
+            // actually sitting at so the C# side can read it back (via
+            // getSwipeReleaseOffset) and seed --lumeo-sheet-exit-from before the
+            // exit keyframe starts, instead of it always starting from 0.
+            drawerSwipeReleaseOffsets.set(elementId, lastEffectiveOffset);
             dotnetRef.invokeMethodAsync('OnSwipeDismiss', elementId);
         } else {
             el.style.transform = '';
@@ -1646,6 +1674,18 @@ export function unregisterDrawerSwipe(elementId) {
         }
         drawerHandlers.delete(elementId);
     }
+    // A content id can be re-registered (re-open) after this — never let a
+    // stale release offset from a previous gesture leak into the next one.
+    drawerSwipeReleaseOffsets.delete(elementId);
+}
+
+// Field report #464 (finding 3) — read back by the C# side right after a
+// swipe dismiss (OnSwipeDismiss) to seed --lumeo-sheet-exit-from before the
+// exit render commits the slide-out-to-* class. Returns 0 (fully open, the
+// historical default) for any id that never recorded a dismiss offset — a
+// non-swipe close (Escape / backdrop / close button / programmatic).
+export function getSwipeReleaseOffset(elementId) {
+    return drawerSwipeReleaseOffsets.get(elementId) ?? 0;
 }
 
 // --- Drawer Snap Points (vaul-style) ---

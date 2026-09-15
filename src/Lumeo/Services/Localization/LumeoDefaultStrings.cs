@@ -294,6 +294,9 @@ internal static partial class LumeoDefaultStrings
         ["Stepper.Optional"] = "Optional",
         ["Stepper.Skip"] = "Skip",
 
+        // ── Skeleton ────────────────────────────────────────────────
+        ["Skeleton.Loading"] = "Loading",
+
         // ── Window ──────────────────────────────────────────────────
         ["Window.Close"] = "Close",
         ["Window.Minimize"] = "Minimize",
@@ -1073,6 +1076,9 @@ internal static partial class LumeoDefaultStrings
         ["Stepper.Finish"] = "Fertigstellen",
         ["Stepper.Optional"] = "Optional",
         ["Stepper.Skip"] = "Überspringen",
+
+        // ── Skeleton ────────────────────────────────────────────────
+        ["Skeleton.Loading"] = "Wird geladen",
 
         // ── Window ──────────────────────────────────────────────────
         ["Window.Close"] = "Schließen",
