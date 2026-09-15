@@ -267,7 +267,16 @@
         // be consumed by OnAfterRenderAsync. InvokeAsync marshals onto this
         // component's renderer sync context before requesting the render,
         // which is safe regardless of which context the JS callback arrived on.
-        await InvokeAsync(StateHasChanged);
+        // Same JS-mediated path as the paste registration itself, so a paste
+        // landing while the circuit/component is tearing down (user navigated
+        // away) must be swallowed the same way OnAfterRenderAsync/DisposeAsync
+        // already do for their own interop calls, instead of throwing unhandled.
+        try
+        {
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (JSDisconnectedException) { }
+        catch (ObjectDisposedException) { }
     }
 
     private bool IsValidChar(char c) => InputMode switch
