@@ -8,7 +8,8 @@
      stroke-width="@(Stroke ? StrokeWidthEff : null)"
      stroke-linecap="@(Stroke ? "round" : null)"
      stroke-linejoin="@(Stroke ? "round" : null)"
-     @attributes="AdditionalAttributes">@((MarkupString)Svg.Content)</svg>
+     class="@MergedClass"
+     @attributes="AttributesSansClass">@((MarkupString)Svg.Content)</svg>
 
 @code {
     /// <summary>
@@ -26,10 +27,22 @@
     [Parameter] public double? StrokeWidth { get; set; }
 
     /// <summary>
-    /// Arbitrary attributes (<c>class</c>, <c>aria-*</c>, <c>role</c>, <c>title</c>, …) splatted
-    /// onto the root <c>&lt;svg&gt;</c>. Sizing is done here via classes (e.g. <c>h-4 w-4</c>),
+    /// Additional CSS classes for the root <c>&lt;svg&gt;</c> (e.g. <c>h-4 w-4</c>). Merged with a
+    /// lowercase <c>class</c> attribute supplied via <see cref="AdditionalAttributes"/>, if any,
+    /// using <see cref="Cx.Merge(string?[])"/>. Blazor matches component attributes to parameters
+    /// case-sensitively, so a capitalized <c>Class="…"</c> on a component invocation binds here
+    /// rather than being splatted onto the <c>&lt;svg&gt;</c> as a literal (and, on SVG elements,
+    /// inert) <c>Class</c> attribute.
+    /// </summary>
+    [Parameter] public string? Class { get; set; }
+
+    /// <summary>
+    /// Arbitrary attributes (<c>aria-*</c>, <c>role</c>, <c>title</c>, a lowercase <c>class</c>, …)
+    /// splatted onto the root <c>&lt;svg&gt;</c>. Sizing is done here via classes (e.g. <c>h-4 w-4</c>),
     /// exactly like the icon component it replaces. A consumer-supplied attribute that collides
-    /// with one this component sets (e.g. <c>fill</c>) wins, because the splat is applied last.
+    /// with one this component sets (e.g. <c>fill</c>) wins, because the splat is applied last. A
+    /// <c>class</c> entry is merged with <see cref="Class"/> rather than splatted directly (see
+    /// <see cref="MergedClass"/>).
     /// </summary>
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
@@ -41,4 +54,20 @@
     /// own value) so decimal widths never localize to a comma in the emitted attribute.
     /// </summary>
     private string StrokeWidthEff => (StrokeWidth ?? Svg.StrokeWidth).ToString(CultureInfo.InvariantCulture);
+
+    /// <summary>A lowercase <c>class</c> value passed through <see cref="AdditionalAttributes"/>, if any.</summary>
+    private string? SplattedClass =>
+        AdditionalAttributes is not null && AdditionalAttributes.TryGetValue("class", out var value)
+            ? value?.ToString()
+            : null;
+
+    /// <summary><see cref="Class"/> and <see cref="SplattedClass"/> merged, last-wins on conflicts.</summary>
+    private string MergedClass => Cx.Merge(Class, SplattedClass);
+
+    /// <summary><see cref="AdditionalAttributes"/> with the <c>class</c> entry removed, since it is
+    /// rendered explicitly via <see cref="MergedClass"/> instead of being splatted raw.</summary>
+    private Dictionary<string, object>? AttributesSansClass =>
+        AdditionalAttributes is null || !AdditionalAttributes.ContainsKey("class")
+            ? AdditionalAttributes
+            : AdditionalAttributes.Where(kv => kv.Key != "class").ToDictionary(kv => kv.Key, kv => kv.Value);
 }

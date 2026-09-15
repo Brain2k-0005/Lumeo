@@ -108,4 +108,74 @@ public class SvgGlyphTests : IAsyncLifetime
         Assert.Contains("w-4", svg.GetAttribute("class"));
         Assert.Equal("Delete", svg.GetAttribute("aria-label"));
     }
+
+    // --- Class parameter (regression: SvgGlyph gets a real Class parameter) ---
+
+    [Fact]
+    public void Class_Parameter_Renders_Lowercase_Class_Attribute_Not_Class()
+    {
+        var cut = _ctx.Render<L.SvgGlyph>(p => p
+            .Add(g => g.Svg, L.IconSource.Stroke(StrokeContent))
+            .Add(g => g.Class, "h-4 w-4"));
+        var svg = cut.Find("svg");
+
+        Assert.Equal("h-4 w-4", svg.GetAttribute("class"));
+        // Case-sensitive DOM attribute: there must be no literal "Class" attribute on the svg.
+        Assert.False(svg.HasAttribute("Class"));
+    }
+
+    [Fact]
+    public void Lowercase_Class_Splat_Still_Works_Without_Class_Parameter()
+    {
+        var cut = _ctx.Render<L.SvgGlyph>(p => p
+            .Add(g => g.Svg, L.IconSource.Stroke(StrokeContent))
+            .Add(g => g.AdditionalAttributes, new Dictionary<string, object>
+            {
+                ["class"] = "size-5",
+            }));
+        var svg = cut.Find("svg");
+
+        Assert.Equal("size-5", svg.GetAttribute("class"));
+    }
+
+    [Fact]
+    public void Class_Parameter_And_Splatted_Class_Are_Merged_Not_Clobbered()
+    {
+        var cut = _ctx.Render<L.SvgGlyph>(p => p
+            .Add(g => g.Svg, L.IconSource.Stroke(StrokeContent))
+            .Add(g => g.Class, "text-red-500")
+            .Add(g => g.AdditionalAttributes, new Dictionary<string, object>
+            {
+                ["class"] = "h-4 w-4",
+            }));
+        var svg = cut.Find("svg");
+
+        Assert.Contains("text-red-500", svg.GetAttribute("class"));
+        Assert.Contains("h-4", svg.GetAttribute("class"));
+        Assert.Contains("w-4", svg.GetAttribute("class"));
+    }
+
+    [Fact]
+    public void DropdownButton_Chevron_Renders_Class_Not_Class()
+    {
+        var cut = _ctx.Render<L.DropdownButton>(p => p
+            .AddChildContent("Menu"));
+        var svg = cut.Find("svg[data-slot='svg-glyph']");
+
+        Assert.Contains("h-4", svg.GetAttribute("class"));
+        Assert.Contains("w-4", svg.GetAttribute("class"));
+        Assert.False(svg.HasAttribute("Class"));
+    }
+
+    [Fact]
+    public void SplitButton_Chevron_Renders_Class_Not_Class()
+    {
+        var cut = _ctx.Render<L.SplitButton>(p => p
+            .AddChildContent("Action"));
+        var svg = cut.Find("svg[data-slot='svg-glyph']");
+
+        Assert.Contains("h-4", svg.GetAttribute("class"));
+        Assert.Contains("w-4", svg.GetAttribute("class"));
+        Assert.False(svg.HasAttribute("Class"));
+    }
 }
