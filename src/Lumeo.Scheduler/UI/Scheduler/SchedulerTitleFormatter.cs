@@ -53,9 +53,46 @@ internal static class SchedulerTitleFormatter
     internal static string Format(SchedulerView view, DateTime date, DayOfWeek firstDayOfWeek, ILumeoLocalizer localizer, CultureInfo culture) => view switch
     {
         SchedulerView.Month => date.ToString("MMMM yyyy", culture),
-        SchedulerView.Week => localizer["Scheduler.WeekOf", SchedulerDateMath.StartOfWeek(date, firstDayOfWeek).ToString("MMM d, yyyy", culture)],
-        SchedulerView.Day => date.ToString("dddd, MMM d, yyyy", culture),
+        SchedulerView.Week => localizer["Scheduler.WeekOf", FormatMonthDay(SchedulerDateMath.StartOfWeek(date, firstDayOfWeek), culture, includeYear: true)],
+        SchedulerView.Day => FormatWeekdayMonthDay(date, culture),
         SchedulerView.List => date.ToString("MMMM yyyy", culture),
         _ => date.ToString("MMMM yyyy", culture),
     };
+
+    /// <summary>
+    /// Field report #464, finding C: the week/day/range titles used to hand-roll a single
+    /// hard-coded pattern — <c>"MMM d, yyyy"</c> / <c>"dddd, MMM d, yyyy"</c> — everywhere.
+    /// <see cref="CultureInfo"/> translates the MONTH NAME (so German buttons already read
+    /// "August" correctly), but a literal pattern string pins the ORDER of the day/month
+    /// tokens regardless of culture — every locale read US-style "August 12" even when its own
+    /// convention (German included) puts the day first ("12. August"). This derives the order
+    /// from the culture's own <see cref="DateTimeFormatInfo.ShortDatePattern"/> instead of
+    /// assuming one.
+    /// </summary>
+    internal static bool IsDayBeforeMonth(CultureInfo culture)
+    {
+        var pattern = culture.DateTimeFormat.ShortDatePattern;
+        var dayIndex = pattern.IndexOf('d');
+        var monthIndex = pattern.IndexOf('M');
+        return dayIndex >= 0 && monthIndex >= 0 && dayIndex < monthIndex;
+    }
+
+    /// <summary>
+    /// An abbreviated month + day, culture-ordered, optionally with the year. For a month-first
+    /// culture (en-US, invariant, ...) this reproduces the exact pre-existing
+    /// <c>"MMM d, yyyy"</c> output byte-for-byte — no behaviour change there. For a day-first
+    /// culture (de-DE, ...) it reorders to <c>"d. MMM yyyy"</c>, the German convention.
+    /// </summary>
+    internal static string FormatMonthDay(DateTime date, CultureInfo culture, bool includeYear)
+    {
+        if (IsDayBeforeMonth(culture))
+            return date.ToString(includeYear ? "d. MMM yyyy" : "d. MMM", culture);
+        return date.ToString(includeYear ? "MMM d, yyyy" : "MMM d", culture);
+    }
+
+    /// <summary>Weekday + abbreviated month + day + year, culture-ordered. See <see cref="FormatMonthDay"/>.</summary>
+    internal static string FormatWeekdayMonthDay(DateTime date, CultureInfo culture) =>
+        IsDayBeforeMonth(culture)
+            ? date.ToString("dddd, d. MMM yyyy", culture)
+            : date.ToString("dddd, MMM d, yyyy", culture);
 }
