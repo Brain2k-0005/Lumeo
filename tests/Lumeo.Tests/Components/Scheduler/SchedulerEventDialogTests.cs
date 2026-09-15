@@ -781,6 +781,37 @@ public class SchedulerEventDialogTests : IAsyncLifetime
         Assert.Equal(standaloneTriggerClass, cut.Find("[data-scheduler-dialog-end]").GetAttribute("class"));
     }
 
+    // Fix round 1 (review): the test above only covered the timed (DateTimePicker) branch —
+    // the all-day branch (DatePicker) needs its own data-slot + size-match coverage.
+    [Fact]
+    public void All_day_start_and_end_editors_render_the_Lumeo_date_picker_data_slot_sized_like_the_standalone_component()
+    {
+        var start = new DateTime(2026, 3, 9, 0, 0, 0);
+        var ev = new L.SchedulerEvent("e1", "Conference", start, start.AddDays(1), AllDay: true);
+        var cut = _ctx.Render<L.Scheduler>(p => p
+            .Add(c => c.InitialView, L.SchedulerView.Month)
+            .Add(c => c.InitialDate, start.Date)
+            .Add(c => c.Events, new[] { ev })
+            .Add(c => c.BuiltInEventDialog, true));
+
+        cut.Find("[data-event-instance]").Click();
+
+        var startSlot = cut.Find("[data-scheduler-dialog-start]").Closest("[data-slot='date-picker']");
+        var endSlot = cut.Find("[data-scheduler-dialog-end]").Closest("[data-slot='date-picker']");
+        Assert.NotNull(startSlot);
+        Assert.NotNull(endSlot);
+
+        // Unlike DateTimePicker (a single <button> trigger), DatePicker's default Calendar
+        // variant is a typeable input: AdditionalAttributes — where data-scheduler-dialog-start
+        // lands — splats onto the wrapper <div> around the <input>, not onto a <button>. Compare
+        // that same wrapper on both sides.
+        var standalone = _ctx.Render<L.DatePicker>(p => p.Add(c => c.Value, DateOnly.FromDateTime(start)));
+        var standaloneWrapperClass = standalone.Find("input").ParentElement!.GetAttribute("class");
+
+        Assert.Equal(standaloneWrapperClass, cut.Find("[data-scheduler-dialog-start]").GetAttribute("class"));
+        Assert.Equal(standaloneWrapperClass, cut.Find("[data-scheduler-dialog-end]").GetAttribute("class"));
+    }
+
     [Fact]
     public void Selectable_false_keeps_the_create_dialog_shut()
     {
