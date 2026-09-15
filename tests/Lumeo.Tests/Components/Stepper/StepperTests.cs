@@ -153,6 +153,54 @@ public class StepperTests : IAsyncLifetime
         Assert.Contains("display:none", cut.Markup);
     }
 
+    // --- #464 finding 1: horizontal header overflow containment ---
+
+    [Fact]
+    public void Horizontal_Header_Carries_Overflow_Containment_Classes()
+    {
+        // Regression: a horizontal header with several long-labeled steps had no width
+        // constraint of its own, so its content's natural width could force the whole
+        // page wider. The role=tablist rail must be its own horizontal scroll container
+        // instead.
+        var cut = _ctx.Render<Lumeo.Stepper>(p => p
+            .Add(s => s.Orientation, Lumeo.Orientation.Horizontal)
+            .Add(s => s.ActiveStep, 0)
+            .AddChildContent<Lumeo.StepperStep>(s => s.Add(x => x.Title, "A very long step title that could force overflow"))
+            .AddChildContent<Lumeo.StepperStep>(s => s.Add(x => x.Title, "Another very long step title, also long"))
+            .AddChildContent<Lumeo.StepperStep>(s => s.Add(x => x.Title, "Yet another long step title here too"))
+            .AddChildContent<Lumeo.StepperStep>(s => s.Add(x => x.Title, "Fourth long step title in this row"))
+            .AddChildContent<Lumeo.StepperStep>(s => s.Add(x => x.Title, "Fifth long step title, still going"))
+            .AddChildContent<Lumeo.StepperStep>(s => s.Add(x => x.Title, "Sixth and final long step title")));
+
+        var header = cut.Find("[role='tablist']");
+        var cls = header.GetAttribute("class") ?? "";
+        Assert.Contains("overflow-x-auto", cls);
+
+        // Each label wrapper must be able to shrink below its title's intrinsic content
+        // width (min-w-0) so it participates in the scroll container instead of forcing
+        // the rail wider, and the title itself truncates rather than growing unbounded.
+        var labelDiv = header.QuerySelectorAll("span.font-medium")[0].ParentElement!;
+        Assert.Contains("min-w-0", labelDiv.GetAttribute("class") ?? "");
+
+        var titleSpan = header.QuerySelector("span.font-medium")!;
+        Assert.Contains("truncate", titleSpan.GetAttribute("class") ?? "");
+    }
+
+    [Fact]
+    public void Vertical_Header_Does_Not_Get_Overflow_Containment_Classes()
+    {
+        // Vertical orientation already stacks and never grows horizontally — it must
+        // stay untouched by the horizontal-header overflow fix.
+        var cut = _ctx.Render<Lumeo.Stepper>(p => p
+            .Add(s => s.Orientation, Lumeo.Orientation.Vertical)
+            .Add(s => s.ActiveStep, 0)
+            .AddChildContent<Lumeo.StepperStep>(s => s.Add(x => x.Title, "Step 1")));
+
+        var header = cut.Find("[role='tablist']");
+        var cls = header.GetAttribute("class") ?? "";
+        Assert.DoesNotContain("overflow-x-auto", cls);
+    }
+
     [Fact]
     public void Removed_Step_Does_Not_Leave_Ghost_Indicator()
     {
