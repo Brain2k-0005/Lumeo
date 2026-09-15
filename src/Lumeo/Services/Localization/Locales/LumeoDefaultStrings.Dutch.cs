@@ -6,6 +6,7 @@ internal static partial class LumeoDefaultStrings
     {
         // DataGrid
         ["DataGrid.NoData"] = "Geen gegevens",
+        ["DataGrid.NoDataFiltered"] = "Geen rijen komen overeen met de huidige filters",
         ["DataGrid.Loading"] = "Laden…",
         ["DataGrid.SearchPlaceholder"] = "Zoeken…",
         ["DataGrid.ClearSearch"] = "Zoekopdracht wissen",
@@ -133,6 +134,11 @@ internal static partial class LumeoDefaultStrings
         ["ColorPicker.Green"] = "Groen",
         ["ColorPicker.Blue"] = "Blauw",
         ["ColorPicker.Presets"] = "Voorkeuzes",
+
+        // ── IconPicker ────────────────────────────────
+        ["IconPicker.Placeholder"] = "Kies een pictogram",
+        ["IconPicker.SearchPlaceholder"] = "Pictogrammen zoeken",
+        ["IconPicker.NoIconsFound"] = "Geen pictogrammen gevonden",
 
         // PasswordInput
         ["Password.Placeholder"] = "Wachtwoord invoeren",

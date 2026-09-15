@@ -222,6 +222,21 @@ public interface IComponentInteropService : IAsyncDisposable, IDisposable
     ValueTask RegisterDrawerSwipe(string elementId, string direction, Func<Task> handler, int? activationPx, int? firePx, double? velocity) =>
         RegisterDrawerSwipe(elementId, direction, handler, activationPx, firePx);
     ValueTask UnregisterDrawerSwipe(string elementId);
+    /// <summary>
+    /// Field report #464 (finding 3) — the panel's live drag offset (px, along
+    /// the dismiss axis) at the moment the last swipe on <paramref name="elementId"/>
+    /// actually dismissed it. Call right after a swipe-triggered close (the
+    /// <c>Func&lt;Task&gt;</c> handler passed to <see cref="RegisterDrawerSwipe(string,string,Func{Task},int?,int?)"/>
+    /// has no parameters of its own) to seed the exit animation's start point —
+    /// e.g. Sheet writes it to the <c>--lumeo-sheet-exit-from</c> CSS custom
+    /// property the <c>slide-out-to-*</c> keyframes read — instead of the exit
+    /// always starting from the fully-open position. Returns 0 (the keyframes'
+    /// own default) for a non-swipe close, or when nothing was ever recorded for
+    /// this id. Default implementation returns 0 so a custom
+    /// <see cref="IComponentInteropService"/> implementation that doesn't
+    /// override this keeps the historical always-from-0 behaviour.
+    /// </summary>
+    ValueTask<double> GetSwipeReleaseOffset(string elementId) => ValueTask.FromResult(0.0);
 
     // Drawer Snap Points (3.19) — vaul-style fractional resting heights.
     /// <summary>

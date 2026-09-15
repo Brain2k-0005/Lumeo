@@ -29,7 +29,7 @@ else if (Context.IsOpen || _exiting)
            slide-out), its focus trap + scroll lock were already torn down by Cleanup(),
            so it is no longer a modal — advertise aria-modal="false" so the ARIA state
            matches the live behaviour instead of trapping AT on a non-trapping panel. #185 *@
-        <div id="@_contentId" class="@CssClass" style="z-index:@ContentZ" role="dialog" aria-modal="@(Context.IsOpen ? "true" : "false")" aria-labelledby="@Context.TitleId" aria-describedby="@DescribedBy" @onkeydown="HandleKeyDown" @onkeydown:stopPropagation tabindex="-1" inert="@ExitInert" @attributes="AdditionalAttributes">
+        <div id="@_contentId" class="@CssClass" style="@ContentStyle" role="dialog" aria-modal="@(Context.IsOpen ? "true" : "false")" aria-labelledby="@Context.TitleId" aria-describedby="@DescribedBy" @onkeydown="HandleKeyDown" @onkeydown:stopPropagation tabindex="-1" inert="@ExitInert" @attributes="AdditionalAttributes">
             @ChildContent
             @* lumeo-sheet-close: stable consumer hook; z-10 keeps the X above
                full-bleed positioned children (see DialogContent). *@
@@ -87,6 +87,16 @@ else if (Context.IsOpen || _exiting)
     /// true only when the sheet's content fits without scrolling.</summary>
     [Parameter] public bool SwipeToClose { get; set; } = false;
 
+    /// <summary>When <c>true</c> (the default), closing the sheet keeps the panel
+    /// mounted for its slide/fade-out (and backdrop fade-out) before unmounting,
+    /// instead of vanishing instantly — mirrors <c>DialogContent</c> /
+    /// <c>DrawerContent</c> / <c>AlertDialogContent</c>'s parameter of the same
+    /// name. Set to <c>false</c> to opt OUT (immediate unmount on close), e.g.
+    /// for tests or a consumer that wants an instant dismiss. Threaded from
+    /// <see cref="OverlayOptions.PlayExitAnimation"/> for service-opened sheets
+    /// (field report #464, finding 4).</summary>
+    [Parameter] public bool PlayExitAnimation { get; set; } = true;
+
     /// <summary>Additional CSS classes merged onto the panel.</summary>
     [Parameter] public string? Class { get; set; }
     /// <summary>Backdrop z-index. Content sits at <c>ZIndex + 1</c>. Defaults
@@ -138,6 +148,7 @@ else if (Context.IsOpen || _exiting)
 
     private int BackdropZ => ZIndex;
     private int ContentZ => ZIndex + 1;
+    private string ContentStyle => $"z-index:{ContentZ}{SwipeExitStyle}";
 
     // Only reference the description id when a <SheetDescription> was actually
     // rendered; otherwise aria-describedby would dangle to a missing element
@@ -153,13 +164,17 @@ else if (Context.IsOpen || _exiting)
     // animationend (OnExitAnimationEnd). These sit comfortably above the CSS
     // duration (slide 300ms, fade 150ms) so the timer never preempts a slightly
     // late animationend on the happy path; it exists solely for the JS-dead /
-    // lost-event case. None has no exit phase (immediate unmount).
-    private int ExitDurationMs => Animation switch
-    {
-        SheetAnimation.Slide => 450,
-        SheetAnimation.Fade => 260,
-        _ => 0,
-    };
+    // lost-event case. None has no exit phase (immediate unmount). 0 also when
+    // the exit animation is opted OUT (PlayExitAnimation=false) → immediate
+    // unmount, matching Dialog/Drawer/AlertDialogContent.
+    private int ExitDurationMs => PlayExitAnimation
+        ? Animation switch
+        {
+            SheetAnimation.Slide => 450,
+            SheetAnimation.Fade => 260,
+            _ => 0,
+        }
+        : 0;
 
     // Slide-animation transform trap is fixed via JS interop:
     // Interop.AttachOverlaySlideEnd registers a native animationend listener
@@ -180,6 +195,24 @@ else if (Context.IsOpen || _exiting)
     // pointer-events-auto explicitly — hence the toggle rather than a plain override.
     private string PointerClass => _exiting ? "pointer-events-none" : "pointer-events-auto";
     private string? ExitInert => _exiting ? "true" : null;
+
+    // Field report #464 (finding 3) — the drag offset (px) a swipe-to-close
+    // gesture was released at, read back from JS (GetSwipeReleaseOffset) right
+    // before the close is dispatched. Rendered onto the panel as the
+    // --lumeo-sheet-exit-from CSS custom property so the slide-out-to-* keyframe
+    // starts from wherever the finger let go instead of always snapping back to
+    // fully open first. null for a non-swipe close (Escape / backdrop / X /
+    // programmatic) — the keyframes' own `var(..., 0)` default covers that case,
+    // so no inline override is emitted at all. Cleared on every re-open (see
+    // OnParametersSetAsync) so a later non-swipe close can never inherit a
+    // stale value from an earlier swipe.
+    private double? _swipeExitOffsetPx;
+
+    // InvariantCulture: a "," decimal separator (e.g. de-DE) would break the
+    // CSS custom property's value — "42,5px" is not a valid <length>.
+    private string? SwipeExitStyle => _exiting && _swipeExitOffsetPx is { } px
+        ? $";--lumeo-sheet-exit-from:{px.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)}px"
+        : null;
 
     private SheetSize EffectiveSize => SizePreset switch
     {
@@ -346,6 +379,10 @@ else if (Context.IsOpen || _exiting)
                 _exitWired = false;
             }
             _shownOpen = true;
+            // A real open (first mount) or a reopen mid-exit both land here — either
+            // way, any offset latched by a PRIOR swipe-dismiss must not leak into
+            // whatever closes this new open (#464 finding 3).
+            _swipeExitOffsetPx = null;
         }
         else if (_shownOpen)
         {
@@ -505,14 +542,29 @@ else if (Context.IsOpen || _exiting)
 
     private Task HandleCloseButton() => Context.IsOpen ? Dismiss("close") : Task.CompletedTask;
 
-    private Task HandleSwipe() => Dismiss("swipe");
+    // Field report #464 (finding 3) — read the panel's live drag offset back from
+    // JS BEFORE dispatching the close, so it's already latched by the time the
+    // close render commits the exit class and SwipeExitStyle picks it up.
+    private async Task HandleSwipe()
+    {
+        try { _swipeExitOffsetPx = await Interop.GetSwipeReleaseOffset(_contentId); }
+        catch (JSDisconnectedException) { _swipeExitOffsetPx = null; }
+        await Dismiss("swipe");
+    }
 
     private async Task HandleKeyDown(KeyboardEventArgs e)
     {
         if (e.Key == "Escape" && Context.IsOpen && !PreventClose) await Dismiss("escape");
     }
 
-    private Task Dismiss(string reason) => Context.TryDismiss(reason);
+    // Any close that ISN'T the swipe path above must never carry over a swipe
+    // offset from an earlier gesture this same open (e.g. an aborted/undershoot
+    // swipe followed by an Escape) — the exit must start from fully open.
+    private Task Dismiss(string reason)
+    {
+        if (reason != "swipe") _swipeExitOffsetPx = null;
+        return Context.TryDismiss(reason);
+    }
 
     private async Task Cleanup()
     {

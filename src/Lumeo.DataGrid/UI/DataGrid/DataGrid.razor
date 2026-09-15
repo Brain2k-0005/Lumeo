@@ -103,6 +103,10 @@
         ShowPinButton = ShowPinButton,
         SortIconTemplate = SortIconTemplate,
         ColumnMenuContent = ColumnMenuContent,
+        HasActiveFilters = HasActiveFilters,
+        ClearFiltersAsync = ClearFiltersAsync,
+        BeginCellEdit = BeginCellEditAsync,
+        EndCellEdit = EndCellEdit,
     };
 }
 
@@ -347,6 +351,7 @@
                               @ref="_bodyRef"
                               DetailTemplate="DetailTemplate"
                               EmptyContent="EmptyContent"
+                              EmptyTemplate="EmptyTemplate"
                               UseVirtualization="@UseVirtualization"
                               VirtualItemSize="@EffectiveVirtualItemSize"
                               VirtualOverscanCount="@VirtualOverscanCount"
@@ -771,8 +776,19 @@
     [Parameter] public RenderFragment<TItem>? DetailTemplate { get; set; }
 
     /// <summary>Custom content shown instead of the default empty-state message when
-    /// there are no rows to display.</summary>
+    /// there are no rows to display. For a message that reads whether the empty state
+    /// was caused by an active filter/search, use <see cref="EmptyTemplate"/> instead
+    /// (it takes precedence when both are set).</summary>
     [Parameter] public RenderFragment? EmptyContent { get; set; }
+
+    /// <summary>
+    /// Typed alternative to <see cref="EmptyContent"/>: receives a <see cref="DataGridEmptyContext"/>
+    /// carrying <c>HasActiveFilters</c> (true when the grid is empty because a column filter or the
+    /// global search excluded every row, as opposed to the source genuinely having none) and a
+    /// <c>ClearFilters</c> callback that resets every active filter and the search box. Takes
+    /// precedence over <see cref="EmptyContent"/> when both are set. Field report #464.
+    /// </summary>
+    [Parameter] public RenderFragment<DataGridEmptyContext>? EmptyTemplate { get; set; }
 
     /// <summary>Per-row context-menu content, shown on right-click. Setting this enables
     /// the context-menu interaction; leave null to disable it.</summary>
@@ -840,6 +856,16 @@
 
     /// <summary>Read-only view of currently-buffered new rows.</summary>
     public IReadOnlyList<TItem> PendingAddedItems => _batchAdded.AsReadOnly();
+
+    /// <summary>
+    /// True when at least one column filter is applied or the global search box carries
+    /// text. Lets a host (or the built-in empty state — see <see cref="EmptyTemplate"/>)
+    /// tell "no rows because everything got filtered out" apart from "the source really
+    /// has zero rows". Reflects client-side filter/search state; in <see cref="ServerMode"/>
+    /// it still reports the grid's own applied filters/search, not server-side criteria
+    /// the host may apply out of band. Field report #464.
+    /// </summary>
+    public bool HasActiveFilters => _filters.Count > 0 || !string.IsNullOrWhiteSpace(_globalSearch);
 
     // --- Column virtualization (rc.36) ---
     /// <summary>
@@ -3041,6 +3067,36 @@
         }
     }
 
+    /// <summary>
+    /// Clears every active column filter AND the global search box in one call, then
+    /// reprocesses/refetches — the action behind the built-in filtered-empty state's
+    /// "Clear filters" button (see <see cref="EmptyTemplate"/>/<see cref="DataGridEmptyContext"/>)
+    /// and available for a custom empty state via the cascaded
+    /// <see cref="DataGridContext{TItem}.ClearFiltersAsync"/>. No-op when nothing is active.
+    /// </summary>
+    public async Task ClearFiltersAsync()
+    {
+        if (_filters.Count == 0 && string.IsNullOrWhiteSpace(_globalSearch)) return;
+
+        _filters.Clear();
+        _globalSearch = null;
+        _currentPage = 1;
+        ScheduleAutoSave();
+
+        if (_useServerVirtualization)
+        {
+            await RefreshVirtualizedAsync();
+        }
+        else if (ServerMode)
+        {
+            await RequestServerData();
+        }
+        else
+        {
+            ProcessClientData();
+        }
+    }
+
     private async Task HandleGlobalSearch(string search)
     {
         _globalSearch = string.IsNullOrWhiteSpace(search) ? null : search;
@@ -3504,6 +3560,41 @@
         if (!_rowEditValues.ContainsKey(item))
             _rowEditValues[item] = new Dictionary<string, object?>();
         _rowEditValues[item][column.Field] = value;
+    }
+
+    // --- Cell edit lock (Cell/Batch mode): exactly one open editor at a time ---
+    // A cell registers its (row, col) + commit delegate here before it starts
+    // editing; opening a different cell closes whichever one is currently
+    // registered by invoking its stored commit delegate first, mirroring the
+    // built-in text editor's own blur-commits behavior. Without this a custom
+    // EditTemplate — which has no blur/Enter handling of its own unless the
+    // consumer wires DataGridCell's exposed CellEditContext.Commit/Cancel — left
+    // every previously-clicked cell open (field report #464 finding 3).
+    private int _activeEditRow = -1;
+    private int _activeEditCol = -1;
+    private Func<Task>? _activeEditCommit;
+
+    private async Task BeginCellEditAsync(int row, int col, Func<Task> commit)
+    {
+        if (_activeEditCommit is { } previousCommit && (_activeEditRow != row || _activeEditCol != col))
+        {
+            // The previous cell's own commit delegate clears _activeEdit* itself
+            // via EndCellEdit, and re-renders itself — see DataGridCell.CommitEdit.
+            await previousCommit();
+        }
+        _activeEditRow = row;
+        _activeEditCol = col;
+        _activeEditCommit = commit;
+    }
+
+    private void EndCellEdit(int row, int col)
+    {
+        if (_activeEditRow == row && _activeEditCol == col)
+        {
+            _activeEditRow = -1;
+            _activeEditCol = -1;
+            _activeEditCommit = null;
+        }
     }
 
     // --- Batch-edit buffer ---

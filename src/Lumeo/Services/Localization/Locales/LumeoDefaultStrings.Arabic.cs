@@ -6,6 +6,7 @@ internal static partial class LumeoDefaultStrings
     {
         // DataGrid
         ["DataGrid.NoData"] = "لا توجد بيانات",
+        ["DataGrid.NoDataFiltered"] = "لا توجد صفوف تطابق عوامل التصفية الحالية",
         ["DataGrid.Loading"] = "جارٍ التحميل…",
         ["DataGrid.SearchPlaceholder"] = "بحث…",
         ["DataGrid.ClearSearch"] = "مسح البحث",
@@ -138,6 +139,11 @@ internal static partial class LumeoDefaultStrings
         ["ColorPicker.Green"] = "أخضر",
         ["ColorPicker.Blue"] = "أزرق",
         ["ColorPicker.Presets"] = "الإعدادات المسبقة",
+
+        // ── IconPicker ────────────────────────────────
+        ["IconPicker.Placeholder"] = "اختر أيقونة",
+        ["IconPicker.SearchPlaceholder"] = "بحث عن الأيقونات",
+        ["IconPicker.NoIconsFound"] = "لم يتم العثور على أيقونات",
 
         // PasswordInput
         ["Password.Placeholder"] = "أدخل كلمة المرور",

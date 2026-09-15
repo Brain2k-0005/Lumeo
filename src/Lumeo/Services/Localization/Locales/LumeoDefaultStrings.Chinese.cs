@@ -6,6 +6,7 @@ internal static partial class LumeoDefaultStrings
     {
         // DataGrid
         ["DataGrid.NoData"] = "暂无数据",
+        ["DataGrid.NoDataFiltered"] = "没有行匹配当前筛选条件",
         ["DataGrid.Loading"] = "加载中…",
         ["DataGrid.SearchPlaceholder"] = "搜索…",
         ["DataGrid.ClearSearch"] = "清除搜索",
@@ -133,6 +134,11 @@ internal static partial class LumeoDefaultStrings
         ["ColorPicker.Green"] = "绿",
         ["ColorPicker.Blue"] = "蓝",
         ["ColorPicker.Presets"] = "预设",
+
+        // ── IconPicker ────────────────────────────────
+        ["IconPicker.Placeholder"] = "选择图标",
+        ["IconPicker.SearchPlaceholder"] = "搜索图标",
+        ["IconPicker.NoIconsFound"] = "未找到图标",
 
         // PasswordInput
         ["Password.Placeholder"] = "请输入密码",

@@ -319,3 +319,11 @@ public record DataGridColumnLayout(
 /// <summary>What <c>DataGrid.FooterTemplate</c> receives: the displayed rows, their count and the
 /// total the grid knows about (every row in client mode, the server's total in server mode).</summary>
 public record DataGridFooterContext<TItem>(int RowCount, int TotalCount, IReadOnlyList<TItem> Items);
+
+/// <summary>
+/// What <see cref="DataGrid{TItem}.EmptyTemplate"/> receives when the grid has no rows to show.
+/// <see cref="HasActiveFilters"/> distinguishes "empty because a filter/search excluded every
+/// row" from "the source genuinely has no rows" — the built-in empty state uses the same flag
+/// to switch its message and offer <see cref="ClearFilters"/> as a one-click reset.
+/// </summary>
+public record DataGridEmptyContext(bool HasActiveFilters, Func<Task> ClearFilters);
