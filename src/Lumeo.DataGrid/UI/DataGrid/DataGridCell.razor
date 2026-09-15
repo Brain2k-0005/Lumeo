@@ -7,21 +7,34 @@
     aria-colindex="@AriaColIndex"
     aria-readonly="@AriaReadonly"
     tabindex="@TabIndexValue"
-    @onclick="HandleClick"
-    @ondblclick="HandleDoubleClick"
+    @onclick="HandleClickAsync"
+    @ondblclick="HandleDoubleClickAsync"
     @onkeydown="HandleCellKeyDown"
     @attributes="AdditionalAttributes">
-    @if (_isEditing && Column.EditTemplate is not null)
+    @if (_isEditing)
     {
-        @Column.EditTemplate(_editContext!)
-    }
-    else if (_isEditing)
-    {
-        <input class="w-full bg-transparent border-none outline-none text-sm"
-               value="@_editValue"
-               @oninput="OnEditInput"
-               @onblur="CommitEdit"
-               @onkeydown="OnEditKeyDown" />
+        @* Stop propagation for BOTH click and dblclick: a click inside the editor that
+           itself closes the cell (a custom EditTemplate's own "Save"/"Cancel" button
+           calling CellEditContext.Commit()/Cancel(), or simply a click on the built-in
+           input) would otherwise bubble to this <td>'s own onclick/ondblclick and
+           immediately re-open the cell it just closed, within the SAME click — the cell
+           would appear to never close. class="contents" keeps the wrapper display-inert
+           so it doesn't affect the built-in input's w-full sizing. Field report #464
+           finding 3. *@
+        <span class="contents" @onclick:stopPropagation="true" @ondblclick:stopPropagation="true">
+            @if (Column.EditTemplate is not null)
+            {
+                @Column.EditTemplate(_editContext!)
+            }
+            else
+            {
+                <input class="w-full bg-transparent border-none outline-none text-sm"
+                       value="@_editValue"
+                       @oninput="OnEditInput"
+                       @onblur="CommitEdit"
+                       @onkeydown="OnEditKeyDown" />
+            }
+        </span>
     }
     else if (Column.CellTemplate is not null)
     {
@@ -73,10 +86,13 @@
 
     // --- Keyboard navigation / ARIA (rc.32) ---
     // Cell-level inline editing applies in both Cell and Batch modes — the
-    // difference is where the commit lands (immediate vs buffered).
+    // difference is where the commit lands (immediate vs buffered). Column.Editable
+    // (default true) lets a consumer lock individual columns — e.g. a computed or
+    // id column — while the rest of the row stays editable (field report #464).
     private bool CellEditable =>
         (Context?.EditMode == DataGridEditMode.Cell || Context?.EditMode == DataGridEditMode.Batch)
-        && Column.Field is not null;
+        && Column.Field is not null
+        && Column.Editable;
 
     // True when this (row, column) currently carries a buffered batch edit.
     // Drives the dirty marker (left border accent) and the display override.
@@ -112,7 +128,7 @@
         // handling (Escape/Enter/Tab) lives in the <input>'s own OnEditKeyDown.
         if ((e.Key == "Enter" || e.Key == "F2") && CellEditable && !_isEditing)
         {
-            StartEdit();
+            await StartEditAsync();
             return;
         }
 
@@ -231,24 +247,34 @@
         }
     }
 
-    private void HandleClick()
+    private async Task HandleClickAsync()
     {
         if (CellEditable && !_isEditing)
         {
-            StartEdit();
+            await StartEditAsync();
         }
     }
 
-    private void HandleDoubleClick()
+    private async Task HandleDoubleClickAsync()
     {
         if (CellEditable && !_isEditing)
         {
-            StartEdit();
+            await StartEditAsync();
         }
     }
 
-    private void StartEdit()
+    private async Task StartEditAsync()
     {
+        // Cell edit mode allows exactly one open editor at a time: opening this cell
+        // must close whatever cell is currently editing (committing its value, same
+        // as the built-in editor's own blur/Enter behavior) BEFORE this cell opens —
+        // otherwise a custom EditTemplate with no Commit/Cancel wiring left every
+        // previously-clicked cell open (field report #464 finding 3).
+        if (Context?.BeginCellEdit is { } beginCellEdit)
+        {
+            await beginCellEdit(RowIndex, ColumnIndex, CommitEdit);
+        }
+
         // In batch mode, seed from the pending buffer if there's one — otherwise
         // the user would have to retype an edit they just committed.
         _originalValue = Column.GetValue(Item);
@@ -265,6 +291,13 @@
             {
                 _editValue = _editContext?.Value?.ToString();
                 StateHasChanged();
+            },
+            Commit = CommitEdit,
+            Cancel = () =>
+            {
+                CancelEdit();
+                StateHasChanged();
+                return Task.CompletedTask;
             }
         };
         _isEditing = true;
@@ -316,28 +349,43 @@
     {
         if (!_isEditing) return;
         _isEditing = false;
+        // Release the grid-wide "one open editor" lock (see StartEditAsync /
+        // DataGrid.BeginCellEdit). Also fires when a DIFFERENT cell is committing
+        // THIS cell on our behalf (opening a new cell closes the previous one), so
+        // an explicit StateHasChanged is required here — that cross-cell call
+        // doesn't go through this component's own event dispatch.
+        Context?.EndCellEdit?.Invoke(RowIndex, ColumnIndex);
 
-        if (Context is null || Column.Field is null) return;
-
-        // Batch mode → write into the pending-changes buffer; don't mutate the
-        // row and don't fire OnCellEdit (that fires later on Save all via the
-        // consumer's OnBatchSave handler).
-        if (Context.IsBatchEdit)
+        try
         {
-            Context.SetBatchValue(Item, Column, _editValue);
-            return;
+            if (Context is null || Column.Field is null) return;
+
+            // Batch mode → write into the pending-changes buffer; don't mutate the
+            // row and don't fire OnCellEdit (that fires later on Save all via the
+            // consumer's OnBatchSave handler).
+            if (Context.IsBatchEdit)
+            {
+                Context.SetBatchValue(Item, Column, _editValue);
+                return;
+            }
+
+            if (_editValue != _originalValue?.ToString())
+            {
+                var args = new CellEditEventArgs<TItem>(Item, Column.Field, _originalValue, _editValue);
+                await Context.OnCellEdit.InvokeAsync(args);
+            }
         }
-
-        if (_editValue != _originalValue?.ToString())
+        finally
         {
-            var args = new CellEditEventArgs<TItem>(Item, Column.Field, _originalValue, _editValue);
-            await Context.OnCellEdit.InvokeAsync(args);
+            StateHasChanged();
         }
     }
 
     private void CancelEdit()
     {
+        if (!_isEditing) return;
         _isEditing = false;
         _editValue = null;
+        Context?.EndCellEdit?.Invoke(RowIndex, ColumnIndex);
     }
 }

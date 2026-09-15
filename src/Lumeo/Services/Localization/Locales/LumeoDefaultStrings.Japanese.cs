@@ -6,6 +6,7 @@ internal static partial class LumeoDefaultStrings
     {
         // DataGrid
         ["DataGrid.NoData"] = "データがありません",
+        ["DataGrid.NoDataFiltered"] = "現在のフィルターに一致する行がありません",
         ["DataGrid.Loading"] = "読み込み中…",
         ["DataGrid.SearchPlaceholder"] = "検索…",
         ["DataGrid.ClearSearch"] = "検索をクリア",

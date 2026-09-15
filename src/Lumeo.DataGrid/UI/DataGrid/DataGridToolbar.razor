@@ -26,7 +26,7 @@
             @foreach (var filter in Context.Filters)
             {
                 <div class="flex items-center gap-1 rounded-[calc(var(--radius)*2)] bg-muted px-2.5 py-1 text-xs">
-                    <span class="font-medium">@filter.Field</span>
+                    <span class="font-medium">@FilterLabel(filter)</span>
                     <span class="text-muted-foreground">@GetOperatorLabel(filter.Operator)</span>
                     <span>@filter.Value</span>
                     <button type="button"
@@ -218,6 +218,19 @@
     {
         await OnRemoveFilter.InvokeAsync(filter);
     }
+
+    /// <summary>
+    /// Label for a filter chip: the owning column's <see cref="DataGridColumn{TItem}.Title"/>
+    /// when one exists (reactive — re-evaluated every render off the live column instance, so
+    /// a runtime <c>Title</c> change from <c>DataGridColumnDef</c> follows immediately, same as
+    /// the header cell), falling back to the raw field name only when the column has no title
+    /// or isn't found (e.g. it was hidden/removed after the filter was applied). Field report
+    /// #464 finding 2: this used to always show <see cref="FilterDescriptor.Field"/> verbatim.
+    /// </summary>
+    private string FilterLabel(FilterDescriptor filter) =>
+        EffectiveColumns?.FirstOrDefault(c => c.Field == filter.Field)?.Title is { Length: > 0 } title
+            ? title
+            : filter.Field;
 
     private string GetOperatorLabel(FilterOperator op) => op switch
     {
