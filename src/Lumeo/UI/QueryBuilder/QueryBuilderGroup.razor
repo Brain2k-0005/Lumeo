@@ -77,22 +77,23 @@
                         && Ctx.Fields.Count > 0;
                     <div class="flex flex-wrap items-center gap-2 rounded-md border border-border/40 bg-card p-2">
                         @* Field picker *@
-                        <select class="@SelectClass" value="@rule.Field" @onchange="@(e => OnFieldChanged(rule, e.Value?.ToString()))" aria-label="@L["QueryBuilder.Field"]">
-                            @if (string.IsNullOrEmpty(rule.Field))
-                            {
-                                <option value="" disabled selected>Select field…</option>
-                            }
-                            @if (isUnknownField)
-                            {
-                                @* Surface the stored-but-unknown field so the dropdown shows the
-                                   real value instead of silently snapping to the first option. *@
-                                <option value="@rule.Field" disabled selected>@rule.Field</option>
-                            }
-                            @foreach (var f in Ctx.Fields)
-                            {
-                                <option value="@f.Name" selected="@(f.Name == rule.Field)">@f.DisplayLabel</option>
-                            }
-                        </select>
+                        <Select Value="@rule.Field" ValueChanged="@((string? v) => OnFieldChanged(rule, v))" Placeholder="@L["QueryBuilder.SelectField"]">
+                            <SelectTrigger Class="h-8 w-40" aria-label="@L["QueryBuilder.Field"]">
+                                <span class="truncate">@(isUnknownField ? rule.Field : field?.DisplayLabel)</span>
+                            </SelectTrigger>
+                            <SelectContent>
+                                @if (isUnknownField)
+                                {
+                                    @* Surface the stored-but-unknown field so the dropdown shows the
+                                       real value instead of silently snapping to the first option. *@
+                                    <SelectItem Value="@rule.Field" Disabled="true">@rule.Field</SelectItem>
+                                }
+                                @foreach (var f in Ctx.Fields)
+                                {
+                                    <SelectItem Value="@f.Name">@f.DisplayLabel</SelectItem>
+                                }
+                            </SelectContent>
+                        </Select>
 
                         @if (isUnknownField)
                         {
@@ -104,12 +105,17 @@
                         @if (field is not null)
                         {
                             @* Operator picker *@
-                            <select class="@SelectClass" value="@rule.Operator" @onchange="@(e => OnOperatorChanged(rule, e.Value?.ToString()))" aria-label="@L["QueryBuilder.Operator"]">
-                                @foreach (var op in field.EffectiveOperators)
-                                {
-                                    <option value="@op" selected="@(op == rule.Operator)">@QueryBuilderOperators.LabelFor(op)</option>
-                                }
-                            </select>
+                            <Select Value="@rule.Operator" ValueChanged="@((string? v) => OnOperatorChanged(rule, v))">
+                                <SelectTrigger Class="h-8 w-36" aria-label="@L["QueryBuilder.Operator"]">
+                                    <span class="truncate">@QueryBuilderOperators.LabelFor(rule.Operator)</span>
+                                </SelectTrigger>
+                                <SelectContent>
+                                    @foreach (var op in field.EffectiveOperators)
+                                    {
+                                        <SelectItem Value="@op">@QueryBuilderOperators.LabelFor(op)</SelectItem>
+                                    }
+                                </SelectContent>
+                            </Select>
 
                             @* Value editor *@
                             @if (Ctx.ValueEditorTemplate is not null)
@@ -408,32 +414,46 @@
             }
             case QueryFieldType.Select:
             {
-                builder.OpenElement(0, "select");
-                builder.AddAttribute(1, "class", SelectClass);
-                builder.AddAttribute(2, "value", AsString(current));
-                builder.AddAttribute(3, "aria-label", "Value");
-                builder.AddAttribute(4, "onchange",
-                    Microsoft.AspNetCore.Components.EventCallback.Factory.Create<Microsoft.AspNetCore.Components.ChangeEventArgs>(
-                        this, async e => await SetValue(rule, isSecond, e.Value?.ToString())));
-                if (string.IsNullOrEmpty(AsString(current)))
+                var options = field.Options ?? Array.Empty<(string, string)>();
+                var currentStr = AsString(current);
+                var currentLabel = options.FirstOrDefault(o => o.Value == currentStr).Label;
+                builder.OpenComponent<Select>(0);
+                builder.AddComponentParameter(1, nameof(Select.Value), currentStr);
+                builder.AddComponentParameter(2, nameof(Select.ValueChanged),
+                    Microsoft.AspNetCore.Components.EventCallback.Factory.Create<string?>(
+                        this, async v => await SetValue(rule, isSecond, v)));
+                builder.AddComponentParameter(3, nameof(Select.Placeholder), L["QueryBuilder.SelectPlaceholder"]);
+                builder.AddComponentParameter(4, nameof(Select.ChildContent), (RenderFragment)(child =>
                 {
-                    builder.OpenElement(5, "option");
-                    builder.AddAttribute(6, "value", "");
-                    builder.AddAttribute(7, "disabled", true);
-                    builder.AddAttribute(8, "selected", true);
-                    builder.AddContent(9, "Select…");
-                    builder.CloseElement();
-                }
-                var idx = 10;
-                foreach (var (val, label) in field.Options ?? Array.Empty<(string, string)>())
-                {
-                    builder.OpenElement(idx++, "option");
-                    builder.AddAttribute(idx++, "value", val);
-                    builder.AddAttribute(idx++, "selected", val == AsString(current));
-                    builder.AddContent(idx++, label);
-                    builder.CloseElement();
-                }
-                builder.CloseElement();
+                    child.OpenComponent<SelectTrigger>(0);
+                    child.AddComponentParameter(1, nameof(SelectTrigger.Class), SelectClass + " w-40");
+                    child.AddAttribute(2, "aria-label", "Value");
+                    child.AddComponentParameter(3, nameof(SelectTrigger.ChildContent), (RenderFragment)(trigger =>
+                    {
+                        trigger.OpenElement(0, "span");
+                        trigger.AddAttribute(1, "class", "truncate");
+                        trigger.AddContent(2, currentLabel);
+                        trigger.CloseElement();
+                    }));
+                    child.CloseComponent();
+
+                    child.OpenComponent<SelectContent>(10);
+                    child.AddComponentParameter(11, nameof(SelectContent.ChildContent), (RenderFragment)(content =>
+                    {
+                        var itemSeq = 0;
+                        foreach (var (val, label) in options)
+                        {
+                            content.OpenComponent<SelectItem>(itemSeq++);
+                            content.SetKey(val);
+                            content.AddComponentParameter(itemSeq++, nameof(SelectItem.Value), val);
+                            content.AddComponentParameter(itemSeq++, nameof(SelectItem.ChildContent),
+                                (RenderFragment)(item => item.AddContent(0, label)));
+                            content.CloseComponent();
+                        }
+                    }));
+                    child.CloseComponent();
+                }));
+                builder.CloseComponent();
                 break;
             }
             default: // Text

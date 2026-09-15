@@ -609,5 +609,9 @@ internal static partial class LumeoDefaultStrings
         ["Filters.Op.is_on_or_after"] = "в дату или позже",
         ["Filters.Op.empty"] = "пусто",
         ["Filters.Op.not_empty"] = "не пусто",
+
+        // QueryBuilder
+        ["QueryBuilder.SelectField"] = "Выберите поле…",
+        ["QueryBuilder.SelectPlaceholder"] = "Выбрать…",
     };
 }

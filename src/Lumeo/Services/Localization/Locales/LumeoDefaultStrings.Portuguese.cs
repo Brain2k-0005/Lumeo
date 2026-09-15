@@ -538,5 +538,9 @@ internal static partial class LumeoDefaultStrings
         ["Filters.Op.is_on_or_after"] = "é em ou depois de",
         ["Filters.Op.empty"] = "está vazio",
         ["Filters.Op.not_empty"] = "não está vazio",
+
+        // QueryBuilder
+        ["QueryBuilder.SelectField"] = "Selecionar campo…",
+        ["QueryBuilder.SelectPlaceholder"] = "Selecionar…",
     };
 }
