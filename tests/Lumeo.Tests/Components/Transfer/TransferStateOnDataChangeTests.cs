@@ -103,7 +103,7 @@ public class TransferStateOnDataChangeTests : IAsyncLifetime
 
         // Filter the source so only Banana is visible (Apple is filtered out but
         // stays selected).
-        var sourceSearch = cut.FindAll("input[type='text']")[0];
+        var sourceSearch = cut.FindAll("input[type='search']")[0];
         sourceSearch.Input("ban");
 
         // Move-to-target is the first h-8 w-8 transfer button (ChevronRight).

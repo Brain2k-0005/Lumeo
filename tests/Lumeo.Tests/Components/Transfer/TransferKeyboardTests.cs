@@ -7,8 +7,8 @@ namespace Lumeo.Tests.Components.Transfer;
 
 /// <summary>
 /// Wave 4 composition audit — Transfer is a dual-listbox built from already-
-/// tested primitives (Lumeo &lt;Checkbox&gt;, native move buttons, native search
-/// &lt;input&gt;s). TransferMoveButtonAriaTests already covers accessible names.
+/// tested primitives (Lumeo &lt;Checkbox&gt;, native move buttons, Lumeo &lt;Input
+/// Variant="Search"&gt; search boxes). TransferMoveButtonAriaTests already covers accessible names.
 /// This file fills the remaining neededTests gaps: the search -> select-all ->
 /// row-checkbox -> move-button Tab order (native DOM order, no explicit
 /// tabindex anywhere), the move buttons' real disabled state (not just visual —
@@ -40,7 +40,7 @@ public class TransferKeyboardTests : IAsyncLifetime
 
         // First panel's focusable sequence in DOM order: search input, then the
         // select-all checkbox button, then each row's checkbox button.
-        var input = cut.Find("input[type='text']");
+        var input = cut.Find("input[type='search']");
         Assert.NotNull(input);
 
         var checkboxButtons = cut.FindAll("button[role='checkbox']");

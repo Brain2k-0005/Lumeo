@@ -6,14 +6,18 @@
     <div class="@ContentWrapperClass">
         @if (ShowSearch)
         {
-            <div class="relative">
-                <SvgGlyph Svg="@(LumeoIcons.Search)" class="absolute start-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <input type="text"
-                       placeholder="@L["DataGrid.SearchPlaceholder"]"
-                       class="h-8 w-full max-w-56 min-w-0 rounded-md border border-input bg-transparent ps-8 pe-3 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring"
-                       value="@SearchText"
-                       @oninput="OnSearchInput" />
-            </div>
+            @* Detach the FormField cascade for this nested search Input — mirrors
+               IconPicker/Cascader/TreeSelect/Transfer/PickList/TreeView. Input's own
+               Search variant already renders the leading glyph, so the toolbar's
+               separate SvgGlyph + relative wrapper is gone. *@
+            <CascadingValue Value="(FormField.FormFieldContext?)null" IsFixed="true">
+                <Input Size="Lumeo.Size.Md"
+                       Variant="Input.InputVariant.Search"
+                       Value="@SearchText"
+                       ValueChanged="OnSearchValueChanged"
+                       Placeholder="@L["DataGrid.SearchPlaceholder"]"
+                       Class="max-w-56 min-w-0" />
+            </CascadingValue>
         }
 
         @if (RegisteredContent?.ChildContent is not null)
@@ -208,10 +212,11 @@
     private string CssClass => $"flex flex-wrap items-center gap-2 px-4 py-3 border-b border-border/40 {Class}".Trim();
     private string ContentWrapperClass => $"flex flex-wrap items-center gap-2 flex-1 min-w-0 {RegisteredContent?.Class}".Trim();
 
-    private async Task OnSearchInput(ChangeEventArgs e)
+    // Input's Value/ValueChanged pair is string?-based (not the raw ChangeEventArgs the
+    // native <input>'s @oninput used to hand us).
+    private async Task OnSearchValueChanged(string? value)
     {
-        var value = e.Value?.ToString() ?? "";
-        await SearchTextChanged.InvokeAsync(value);
+        await SearchTextChanged.InvokeAsync(value ?? "");
     }
 
     private async Task RemoveFilter(FilterDescriptor filter)

@@ -54,4 +54,28 @@ public class TreeSelectTests : IAsyncLifetime
         cut.Find("button").Click();
         Assert.Contains("Root", cut.Markup);
     }
+
+    // Part of D: the search box is now the Lumeo Input component (Variant=Search), not a raw
+    // <input> — assert its data-slot is present and its size classes match a standalone Input at
+    // the same rung (TreeSelect has no Size parameter of its own; Md is the fixed rung chosen to
+    // match the box's previous unsized/default height).
+    [Fact]
+    public void Search_box_is_a_lumeo_input_sized_like_the_standalone_component()
+    {
+        var items = new List<L.TreeSelect.TreeSelectItem> { new() { Label = "Root", Value = "root" } };
+        var cut = _ctx.Render<L.TreeSelect>(p => p
+            .Add(c => c.Items, items)
+            .Add(c => c.Searchable, true));
+        cut.Find("button").Click();
+
+        var searchInput = cut.Find("input[type='search']");
+        Assert.Equal("input-control", searchInput.GetAttribute("data-slot"));
+
+        var standalone = _ctx.Render<L.Input>(p => p
+            .Add(c => c.Size, L.Size.Md)
+            .Add(c => c.Variant, L.Input.InputVariant.Search));
+        var standaloneInput = standalone.Find("input[type='search']");
+
+        Assert.Equal(standaloneInput.GetAttribute("class"), searchInput.GetAttribute("class"));
+    }
 }

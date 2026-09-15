@@ -62,14 +62,21 @@
             @if (Searchable)
             {
                 <div class="p-2 border-b border-border/40">
-                    <input type="text"
-                           class="w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm outline-none placeholder:text-muted-foreground focus:ring-1 focus:ring-ring"
-                           placeholder="@L["Combobox.SearchPlaceholder"]"
-                           value="@_searchText"
-                           @oninput="OnSearchInput"
-                           @onkeydown="OnSearchKeyDown"
-                           @onkeydown:stopPropagation="true"
-                           @onclick:stopPropagation="true" />
+                    @* Detach the FormField cascade for the nested search Input: it is a
+                       sub-widget of THIS TreeSelect's dropdown, not an independently
+                       field-associated control (mirrors IconPicker/Cascader). Input's
+                       AdditionalAttributes splat carries the plain onkeydown/onclick handlers
+                       but not the :stopPropagation directive, so the wrapping div applies it. *@
+                    <CascadingValue Value="(FormField.FormFieldContext?)null" IsFixed="true">
+                        <div @onkeydown:stopPropagation="true" @onclick:stopPropagation="true">
+                            <Input Size="Lumeo.Size.Md"
+                                   Variant="Input.InputVariant.Search"
+                                   Value="@_searchText"
+                                   ValueChanged="OnSearchValueChanged"
+                                   Placeholder="@L["Combobox.SearchPlaceholder"]"
+                                   @onkeydown="OnSearchKeyDown" />
+                        </div>
+                    </CascadingValue>
                 </div>
             }
             <div class="max-h-60 overflow-y-auto p-1">
@@ -401,9 +408,11 @@
         }
     }
 
-    private void OnSearchInput(ChangeEventArgs e)
+    // Input's Value/ValueChanged pair is string?-based (not the raw ChangeEventArgs the
+    // native <input>'s @oninput used to hand us) — thin adapter onto the same logic.
+    private void OnSearchValueChanged(string? value)
     {
-        _searchText = e.Value?.ToString() ?? "";
+        _searchText = value ?? "";
         if (!string.IsNullOrEmpty(_searchText))
         {
             // Auto-expand all when searching
