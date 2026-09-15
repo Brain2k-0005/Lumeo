@@ -98,7 +98,7 @@ public class QueryBuilderEdgeDataTests : IAsyncLifetime
     public void UnknownField_Rule_Surfaces_The_Stored_Field_And_A_Warning_Instead_Of_Hiding_Everything()
     {
         // The rule targets "removed" — a field NOT in the supplied list. Pre-fix the field
-        // <select> snapped to the first known option and the operator/value editors silently
+        // picker snapped to the first known option and the operator/value editors silently
         // vanished, giving the user no indication their field is gone.
         var query = new QueryGroup
         {
@@ -109,13 +109,16 @@ public class QueryBuilderEdgeDataTests : IAsyncLifetime
             .Add(q => q.Fields, Fields())
             .Add(q => q.Query, query));
 
-        // The field <select> shows the stored-but-unknown value as a selected, disabled option.
-        var fieldSelect = cut.FindAll("select").First(s => s.GetAttribute("aria-label") == "Field");
-        var unknownOption = fieldSelect.QuerySelectorAll("option")
-            .FirstOrDefault(o => o.GetAttribute("value") == "removed");
+        // The field picker's closed trigger shows the stored-but-unknown value directly...
+        var fieldTrigger = cut.FindAll("[data-slot='select-trigger']").First(s => s.GetAttribute("aria-label") == "Field");
+        Assert.Equal("removed", fieldTrigger.TextContent.Trim());
+
+        // ...and opening it surfaces that same value as a disabled option, not silently omitted.
+        fieldTrigger.Click();
+        var unknownOption = cut.FindAll("[role='option']")
+            .FirstOrDefault(o => o.TextContent.Trim() == "removed");
         Assert.NotNull(unknownOption);
-        Assert.True(unknownOption!.HasAttribute("disabled"));
-        Assert.Equal("removed", unknownOption.TextContent.Trim());
+        Assert.Equal("true", unknownOption!.GetAttribute("aria-disabled"));
 
         // An inline warning is surfaced (role=alert), not a silent collapse.
         Assert.Contains(cut.FindAll("[role='alert']"), _ => true);
@@ -123,7 +126,7 @@ public class QueryBuilderEdgeDataTests : IAsyncLifetime
 
         // And the operator picker stays absent (no valid operator set for an unknown field),
         // but the row is not just an empty field box — the warning is the affordance.
-        Assert.DoesNotContain(cut.FindAll("select"), s => s.GetAttribute("aria-label") == "Operator");
+        Assert.DoesNotContain(cut.FindAll("[data-slot='select-trigger']"), s => s.GetAttribute("aria-label") == "Operator");
     }
 
     [Fact]
@@ -158,7 +161,7 @@ public class QueryBuilderEdgeDataTests : IAsyncLifetime
             .Add(q => q.Fields, Fields())
             .Add(q => q.Query, query));
 
-        Assert.Contains(cut.FindAll("select"), s => s.GetAttribute("aria-label") == "Operator");
+        Assert.Contains(cut.FindAll("[data-slot='select-trigger']"), s => s.GetAttribute("aria-label") == "Operator");
         Assert.DoesNotContain("Unknown field", cut.Markup);
     }
 

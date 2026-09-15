@@ -604,5 +604,9 @@ internal static partial class LumeoDefaultStrings
         ["Filters.Op.is_on_or_after"] = "당일 또는 이후",
         ["Filters.Op.empty"] = "비어 있음",
         ["Filters.Op.not_empty"] = "비어 있지 않음",
+
+        // QueryBuilder
+        ["QueryBuilder.SelectField"] = "필드 선택…",
+        ["QueryBuilder.SelectPlaceholder"] = "선택…",
     };
 }

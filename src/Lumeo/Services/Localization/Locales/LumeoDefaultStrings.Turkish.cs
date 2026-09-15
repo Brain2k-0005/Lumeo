@@ -604,5 +604,9 @@ internal static partial class LumeoDefaultStrings
         ["Filters.Op.is_on_or_after"] = "o gün veya sonrasında",
         ["Filters.Op.empty"] = "boş",
         ["Filters.Op.not_empty"] = "boş değil",
+
+        // QueryBuilder
+        ["QueryBuilder.SelectField"] = "Alan seçin…",
+        ["QueryBuilder.SelectPlaceholder"] = "Seçin…",
     };
 }

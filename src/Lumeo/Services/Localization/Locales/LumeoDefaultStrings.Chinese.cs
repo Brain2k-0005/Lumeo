@@ -604,5 +604,9 @@ internal static partial class LumeoDefaultStrings
         ["Filters.Op.is_on_or_after"] = "当天或晚于",
         ["Filters.Op.empty"] = "为空",
         ["Filters.Op.not_empty"] = "不为空",
+
+        // QueryBuilder
+        ["QueryBuilder.SelectField"] = "选择字段…",
+        ["QueryBuilder.SelectPlaceholder"] = "选择…",
     };
 }

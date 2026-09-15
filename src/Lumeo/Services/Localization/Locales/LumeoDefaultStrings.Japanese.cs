@@ -538,5 +538,9 @@ internal static partial class LumeoDefaultStrings
         ["Filters.Op.is_on_or_after"] = "当日または後",
         ["Filters.Op.empty"] = "が空",
         ["Filters.Op.not_empty"] = "が空でない",
+
+        // QueryBuilder
+        ["QueryBuilder.SelectField"] = "フィールドを選択…",
+        ["QueryBuilder.SelectPlaceholder"] = "選択…",
     };
 }

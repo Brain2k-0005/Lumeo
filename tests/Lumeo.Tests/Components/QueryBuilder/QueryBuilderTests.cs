@@ -61,8 +61,8 @@ public class QueryBuilderTests : IAsyncLifetime
         Assert.NotNull(captured);
         Assert.Single(captured!.Rules);
         Assert.IsType<QueryRule>(captured.Rules[0]);
-        // a field <select> is now rendered for the rule
-        Assert.Contains(cut.FindAll("select"), s => s.GetAttribute("aria-label") == "Field");
+        // a field Select trigger is now rendered for the rule (Lumeo Select, not a native <select>)
+        Assert.Contains(cut.FindAll("[data-slot='select-trigger']"), s => s.GetAttribute("aria-label") == "Field");
     }
 
     [Fact]
@@ -71,19 +71,26 @@ public class QueryBuilderTests : IAsyncLifetime
         var cut = _ctx.Render<Lumeo.QueryBuilder>(p => p.Add(q => q.Fields, Fields()));
         cut.FindAll("button").First(b => b.TextContent.Contains("Rule")).Click();
 
-        // default field is the first ("name", Text) — operator select should have the text default ops
-        var operatorSelect = cut.FindAll("select").First(s => s.GetAttribute("aria-label") == "Operator");
-        var optionTexts = operatorSelect.QuerySelectorAll("option").Select(o => o.TextContent).ToList();
+        // default field is the first ("name", Text) — operator picker should have the text default ops.
+        // Click() re-renders and can detach the pre-click element handle, so re-query fresh
+        // before reading state off it (same idiom the checkbox tests below already use).
+        var operatorTrigger = cut.FindAll("[data-slot='select-trigger']").First(s => s.GetAttribute("aria-label") == "Operator");
+        operatorTrigger.Click();
+        var optionTexts = cut.FindAll("[role='option']").Select(o => o.TextContent.Trim()).ToList();
         Assert.Contains("equals", optionTexts);
         Assert.Contains("contains", optionTexts);
         Assert.Contains("starts with", optionTexts);
+        // Close it back before opening the field picker, so its own options don't spill into
+        // the next global [role='option'] query below.
+        operatorTrigger = cut.FindAll("[data-slot='select-trigger']").First(s => s.GetAttribute("aria-label") == "Operator");
+        operatorTrigger.Click();
 
         // change to the Number field — operators become the number set
-        var fieldSelect = cut.FindAll("select").First(s => s.GetAttribute("aria-label") == "Field");
-        fieldSelect.Change("age");
+        cut.FindAll("[data-slot='select-trigger']").First(s => s.GetAttribute("aria-label") == "Field").Click();
+        cut.FindAll("[role='option']").First(o => o.TextContent.Trim() == "Age").Click();
 
-        operatorSelect = cut.FindAll("select").First(s => s.GetAttribute("aria-label") == "Operator");
-        optionTexts = operatorSelect.QuerySelectorAll("option").Select(o => o.TextContent).ToList();
+        cut.FindAll("[data-slot='select-trigger']").First(s => s.GetAttribute("aria-label") == "Operator").Click();
+        optionTexts = cut.FindAll("[role='option']").Select(o => o.TextContent.Trim()).ToList();
         Assert.Contains("less than", optionTexts);
         Assert.Contains("between", optionTexts);
         Assert.DoesNotContain("contains", optionTexts);
@@ -192,6 +199,39 @@ public class QueryBuilderTests : IAsyncLifetime
         Assert.False(fn(new Person { Name = "Bob", Age = 40 }));      // name fails
     }
 
+    // --- single-value Select-type field editor renders a Lumeo Select, not a native <select> ---
+
+    [Fact]
+    public void EqualsOperator_On_Select_Field_Renders_A_Lumeo_Select_Not_A_Native_One()
+    {
+        QueryGroup? captured = null;
+        var query = new QueryGroup
+        {
+            Rules = { new QueryRule { Field = "status", Operator = "=", Value = "" } }
+        };
+
+        var cut = _ctx.Render<Lumeo.QueryBuilder>(p => p
+            .Add(q => q.Fields, Fields())
+            .Add(q => q.Query, query)
+            .Add(q => q.QueryChanged, EventCallback.Factory.Create<QueryGroup>(this, g => captured = g)));
+
+        // No native <select> anywhere in the row — the value editor for a Select-type field is
+        // a Lumeo Select (data-slot="select-trigger"), same component the reported bug (a raw
+        // <select> inside a composite) was about.
+        Assert.Empty(cut.FindAll("select"));
+        var valueTrigger = cut.FindAll("[data-slot='select-trigger']").First(s => s.GetAttribute("aria-label") == "Value");
+        Assert.Equal("Select…", valueTrigger.TextContent.Trim());
+
+        valueTrigger.Click();
+        var options = cut.FindAll("[role='option']").Select(o => o.TextContent.Trim()).ToList();
+        Assert.Equal(new[] { "Open", "Closed" }, options);
+
+        cut.FindAll("[role='option']").First(o => o.TextContent.Trim() == "Closed").Click();
+
+        var rule = (QueryRule)captured!.Rules[0];
+        Assert.Equal("closed", rule.Value);
+    }
+
     // --- "in" / "notIn" multi-value editor (regression: #211) ---
 
     [Fact]
@@ -212,9 +252,10 @@ public class QueryBuilderTests : IAsyncLifetime
         Assert.Equal("Open", checkboxes[0].GetAttribute("aria-label"));
         Assert.Equal("Closed", checkboxes[1].GetAttribute("aria-label"));
 
-        // The only <select> elements are the field + operator pickers — no value <select>.
-        var valueSelects = cut.FindAll("select").Where(s => s.GetAttribute("aria-label") == "Value").ToList();
-        Assert.Empty(valueSelects);
+        // The only Select pickers are Field + Operator — the "in" operator swaps the single
+        // value Select out for one checkbox per option, so no Value-labelled Select renders.
+        var valueSelectTriggers = cut.FindAll("[data-slot='select-trigger']").Where(s => s.GetAttribute("aria-label") == "Value").ToList();
+        Assert.Empty(valueSelectTriggers);
     }
 
     [Fact]
@@ -293,7 +334,7 @@ public class QueryBuilderTests : IAsyncLifetime
 
         // The user builds a rule into the auto-seeded root group.
         cut.FindAll("button").First(b => b.TextContent.Contains("Rule")).Click();
-        Assert.Contains(cut.FindAll("select"), s => s.GetAttribute("aria-label") == "Field");
+        Assert.Contains(cut.FindAll("[data-slot='select-trigger']"), s => s.GetAttribute("aria-label") == "Field");
 
         // An unrelated parent re-render: Query stays null (never supplied), only an
         // unrelated parameter changes. Pre-fix this re-seeds a fresh empty group via
@@ -302,8 +343,8 @@ public class QueryBuilderTests : IAsyncLifetime
             .Add(q => q.Fields, Fields())
             .Add(q => q.ShowJsonPreview, true));
 
-        // The rule must still be there — its field <select> survives the re-render.
-        Assert.Contains(cut.FindAll("select"), s => s.GetAttribute("aria-label") == "Field");
+        // The rule must still be there — its field Select survives the re-render.
+        Assert.Contains(cut.FindAll("[data-slot='select-trigger']"), s => s.GetAttribute("aria-label") == "Field");
         Assert.DoesNotContain("No conditions yet", cut.Markup);
     }
 

@@ -385,33 +385,42 @@
 
                 @if (Calendars is { Count: > 0 })
                 {
-                    <div class="flex flex-col gap-1.5">
-                        <Label For="scheduler-dialog-calendar">@L["Scheduler.Calendars"]</Label>
-                        <select id="scheduler-dialog-calendar" data-scheduler-dialog-calendar
-                                class="flex h-8 w-full rounded-[var(--radius)] border border-input bg-transparent px-2.5 py-1 text-sm shadow-xs outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
-                                value="@(_dialogCalendarId ?? string.Empty)"
-                                @onchange="@(e => _dialogCalendarId = string.IsNullOrEmpty(e.Value?.ToString()) ? null : e.Value!.ToString())">
-                            @* An explicit "no calendar" entry, because null is a real choice here:
-                               an event filed nowhere is the one thing a visibility toggle can
-                               never hide. *@
-                            <option value="">@L["Scheduler.NoCalendar"]</option>
-                            @foreach (var cal in Calendars)
-                            {
-                                <option value="@cal.Id" selected="@(cal.Id == _dialogCalendarId)">@cal.Name</option>
-                            }
-                            @* The parent can drop a calendar while the dialog stands open on an
-                               event filed there. With no option of its own the browser falls back
-                               to "no calendar" while the field still holds the removed id, so
-                               saving without touching the select committed something other than
-                               what the form showed. Keeping the id visible refiles nothing
-                               (Codex review of PR #426). *@
-                            @if (_dialogCalendarId is { Length: > 0 } orphan
-                                 && !Calendars.Any(c => c.Id == orphan))
-                            {
-                                <option value="@orphan" selected="true">@orphan</option>
-                            }
-                        </select>
-                    </div>
+                    @* FormField (not a manual <Label For="scheduler-dialog-calendar">) so the label's
+                       `for` and the trigger's `id` both come from the SAME generated ControlId — Select
+                       adopts it automatically via the cascaded FormFieldContext (EffectiveTriggerId).
+                       Splatting a fixed id onto SelectTrigger directly (as this used to) overrides its
+                       own `id="@Context.TriggerId"` in the render tree, but SelectContent's click-outside
+                       registration still looks the trigger up BY Context.TriggerId — now a dangling id
+                       with nothing in the DOM — so every mousedown on the open trigger read as "outside"
+                       and closing-by-click-again silently reopened it. *@
+                    <FormField Label="@L["Scheduler.Calendars"]">
+                        @* Select's Value/ValueChanged own the calendar id directly — unlike a native
+                           <select>, an empty-string value doesn't need a synthetic option to "hold"
+                           its selection, and an id the parent has since dropped (orphan) still round-
+                           trips through Value even without a matching SelectItem in the popover list
+                           (Codex review of PR #426 concern still covered, just no longer needed). *@
+                        <Select Value="@(_dialogCalendarId ?? string.Empty)"
+                                ValueChanged="@((string? v) => _dialogCalendarId = string.IsNullOrEmpty(v) ? null : v)">
+                            <SelectTrigger data-scheduler-dialog-calendar Class="h-8">
+                                <span class="truncate">@SelectedCalendarLabel</span>
+                            </SelectTrigger>
+                            <SelectContent>
+                                @* An explicit "no calendar" entry, because null is a real choice here:
+                                   an event filed nowhere is the one thing a visibility toggle can
+                                   never hide. *@
+                                <SelectItem Value="">@L["Scheduler.NoCalendar"]</SelectItem>
+                                @foreach (var cal in Calendars)
+                                {
+                                    <SelectItem Value="@cal.Id">@cal.Name</SelectItem>
+                                }
+                                @if (_dialogCalendarId is { Length: > 0 } orphan
+                                     && !Calendars.Any(c => c.Id == orphan))
+                                {
+                                    <SelectItem Value="@orphan">@orphan</SelectItem>
+                                }
+                            </SelectContent>
+                        </Select>
+                    </FormField>
                 }
             </div>
 
@@ -1133,6 +1142,16 @@
     /// </summary>
     private TimeZoneInfo? _dialogZone;
     private string? _dialogCalendarId;
+
+    // The calendar Select's closed-trigger label: the matching calendar's display Name, the raw
+    // id for an orphan (a calendar the parent has since dropped — still selectable via its own
+    // SelectItem, see the dialog markup), or the "no calendar" placeholder for "" / null. Explicit
+    // rather than the trigger's default value-echo because "" is a REAL selection here (not "no
+    // value"), same idiom as the DataGrid docs' group-by Select.
+    private string SelectedCalendarLabel =>
+        string.IsNullOrEmpty(_dialogCalendarId)
+            ? L["Scheduler.NoCalendar"]
+            : Calendars?.FirstOrDefault(c => c.Id == _dialogCalendarId)?.Name ?? _dialogCalendarId;
 
     private bool DialogIsEdit => _dialogSource is not null;
 

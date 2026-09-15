@@ -251,7 +251,37 @@ public class SchedulerEventDialogTests : IAsyncLifetime
         cut.Find("[data-cell-date]").DoubleClick();
 
         Assert.Equal("create", cut.Find("[data-scheduler-dialog]").GetAttribute("data-scheduler-dialog"));
-        Assert.Equal("shown", cut.Find("[data-scheduler-dialog-calendar]").GetAttribute("value"));
+        Assert.Equal("Shown", cut.Find("[data-scheduler-dialog-calendar]").TextContent.Trim());
+    }
+
+    [Fact]
+    public void Calendar_Select_Triggers_Id_Matches_Its_Label_For_So_Click_Outside_Can_Find_It()
+    {
+        // Review round 1 on PR #481, finding B2: splatting a fixed id onto SelectTrigger
+        // directly overrode its own id="@Context.TriggerId" in the render tree, but
+        // SelectContent's click-outside registration still looks the trigger up BY
+        // Context.TriggerId — now a dangling id nothing in the DOM carried, so
+        // components.js's lookup came back null and every mousedown on the open trigger read
+        // as "outside", reopening the popover the click was meant to close. The field now
+        // gets its id from FormField, the same source the label's `for` reads from, so the two
+        // can never drift apart again.
+        var calendars = new[] { new L.SchedulerCalendar("team", "Team") };
+
+        var cut = _ctx.Render<L.Scheduler>(p => p
+            .Add(c => c.InitialView, L.SchedulerView.Month)
+            .Add(c => c.InitialDate, Anchor)
+            .Add(c => c.Events, Array.Empty<L.SchedulerEvent>())
+            .Add(c => c.Calendars, calendars)
+            .Add(c => c.BuiltInEventDialog, true));
+
+        cut.Find("[data-cell-date]").DoubleClick();
+
+        var trigger = cut.Find("[data-scheduler-dialog-calendar]");
+        var label = cut.FindAll("label").First(l => l.TextContent.Contains("Calendars"));
+
+        var triggerId = trigger.GetAttribute("id");
+        Assert.False(string.IsNullOrEmpty(triggerId));
+        Assert.Equal(label.GetAttribute("for"), triggerId);
     }
 
     // ── the gesture must not be armed when it can do nothing ────────────────
@@ -376,7 +406,7 @@ public class SchedulerEventDialogTests : IAsyncLifetime
         var secondPane = cut.FindAll("[data-scheduler-pane]")[1];
         secondPane.QuerySelector("[data-cell-date]")!.DoubleClick();
 
-        Assert.Equal("personal", cut.Find("[data-scheduler-dialog-calendar]").GetAttribute("value"));
+        Assert.Equal("Personal", cut.Find("[data-scheduler-dialog-calendar]").TextContent.Trim());
     }
 
     [Fact]
@@ -977,9 +1007,9 @@ public class SchedulerEventDialogTests : IAsyncLifetime
         // The parent drops the calendar this event belongs to.
         cut.Render(p => p.Add(c => c.Calendars, new[] { calendars[1] }));
 
-        var selected = cut.FindAll("[data-scheduler-dialog-calendar] option")
-                          .Single(o => o.HasAttribute("selected"));
-        Assert.Equal("team", selected.GetAttribute("value"));
+        // "team" is now an orphan (the parent dropped it above): the Select still shows it via
+        // its own SelectItem/raw-value fallback rather than silently snapping to "no calendar".
+        Assert.Equal("team", cut.Find("[data-scheduler-dialog-calendar]").TextContent.Trim());
 
         cut.Find("[data-scheduler-dialog-save]").Click();
         Assert.Equal("team", pushed!.Single().CalendarId);
