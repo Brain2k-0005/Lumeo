@@ -12,6 +12,10 @@
 
 @code {
     [CascadingParameter] public ContextMenuRadioGroup.ContextMenuRadioGroupContext Context { get; set; } = default!;
+    // The enclosing ContextMenu's open/close context. Mirrors the DropdownMenuRadioItem
+    // fix: Radix closes the menu on radio item selection, same as a plain item (field
+    // report #464, finding 2).
+    [CascadingParameter] public ContextMenu.ContextMenuContext? MenuContext { get; set; }
     /// <summary>The item's label content.</summary>
     [Parameter] public RenderFragment? ChildContent { get; set; }
     /// <summary>This item's value. Selected when it matches the enclosing <see cref="ContextMenuRadioGroup"/>'s <c>Value</c>.</summary>
@@ -34,5 +38,9 @@
     {
         if (Disabled) return;
         await Context.OnSelect.InvokeAsync(Value);
+        if (MenuContext is not null)
+        {
+            await MenuContext.SetOpen.InvokeAsync(false);
+        }
     }
 }
