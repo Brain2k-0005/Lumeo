@@ -135,6 +135,11 @@ internal static partial class LumeoDefaultStrings
         ["ColorPicker.Blue"] = "파랑",
         ["ColorPicker.Presets"] = "프리셋",
 
+        // ── IconPicker ────────────────────────────────
+        ["IconPicker.Placeholder"] = "아이콘 선택",
+        ["IconPicker.SearchPlaceholder"] = "아이콘 검색",
+        ["IconPicker.NoIconsFound"] = "아이콘을 찾을 수 없습니다",
+
         // PasswordInput
         ["Password.Placeholder"] = "비밀번호 입력",
         ["Password.Toggle"] = "비밀번호 표시 전환",
@@ -413,6 +418,9 @@ internal static partial class LumeoDefaultStrings
         ["Stepper.Finish"] = "완료",
         ["Stepper.Optional"] = "선택 사항",
         ["Stepper.Skip"] = "건너뛰기",
+
+        // Skeleton
+        ["Skeleton.Loading"] = "불러오는 중",
 
         // Window
         ["Window.Close"] = "닫기",

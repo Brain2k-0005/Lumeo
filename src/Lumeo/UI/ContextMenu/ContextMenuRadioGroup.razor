@@ -1,7 +1,7 @@
 @namespace Lumeo
 
 @{
-    var context = new ContextMenuRadioGroupContext(Value, EventCallback.Factory.Create<string>(this, OnValueSelected));
+    var context = new ContextMenuRadioGroupContext(_value, EventCallback.Factory.Create<string>(this, OnValueSelected));
 }
 
 <CascadingValue Value="context" IsFixed="false">
@@ -13,16 +13,47 @@
 @code {
     /// <summary>The group's <see cref="ContextMenuRadioItem"/>s.</summary>
     [Parameter] public RenderFragment? ChildContent { get; set; }
-    /// <summary>The currently-selected item's value.</summary>
+    /// <summary>The currently-selected item's value. Controlled together with <see cref="ValueChanged"/>; when left unbound the group tracks the selection internally.</summary>
     [Parameter] public string? Value { get; set; }
     /// <summary>Invoked when a different <see cref="ContextMenuRadioItem"/> is selected.</summary>
     [Parameter] public EventCallback<string> ValueChanged { get; set; }
     /// <summary>Additional HTML attributes captured and forwarded to the <c>role="group"</c> wrapper.</summary>
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
+    // Selected value lives in a private backing field, not the [Parameter]. This
+    // keeps an uncontrolled group's optimistic selection from being clobbered when
+    // an unrelated ancestor re-render re-supplies the same (stale) Value — notably
+    // now that selecting an item also closes the enclosing menu (field report #464,
+    // finding 2), which forces exactly that kind of re-render. Mirrors
+    // DropdownMenuRadioGroup / MenubarRadioGroup, which already carried this
+    // protection; this component had been missed.
+    private string? _value;
+    private string? _lastValueParam;
+    private string? _lastPushed;   // the last value WE emitted via ValueChanged
+
+    protected override void OnParametersSet()
+    {
+        if (ValueChanged.HasDelegate)
+        {
+            // Controlled: adopt any incoming Value that isn't the echo of our own selection — a parent
+            // veto (re-render with the OLD value) rolls the visible state back; an echo is a no-op.
+            if (!Equals(Value, _lastPushed))
+            {
+                _value = Value;
+                _lastPushed = Value;
+            }
+        }
+        else if (!Equals(Value, _lastValueParam))   // Uncontrolled: adopt only on a genuine param change
+        {
+            _value = Value;
+            _lastValueParam = Value;
+        }
+    }
+
     private async Task OnValueSelected(string value)
     {
-        Value = value;
+        _value = value;
+        _lastPushed = value;   // record what we're about to push so a synchronous parent veto is detectable
         await ValueChanged.InvokeAsync(value);
     }
 

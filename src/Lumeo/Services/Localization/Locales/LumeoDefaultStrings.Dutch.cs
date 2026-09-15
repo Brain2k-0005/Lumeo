@@ -135,6 +135,11 @@ internal static partial class LumeoDefaultStrings
         ["ColorPicker.Blue"] = "Blauw",
         ["ColorPicker.Presets"] = "Voorkeuzes",
 
+        // ── IconPicker ────────────────────────────────
+        ["IconPicker.Placeholder"] = "Kies een pictogram",
+        ["IconPicker.SearchPlaceholder"] = "Pictogrammen zoeken",
+        ["IconPicker.NoIconsFound"] = "Geen pictogrammen gevonden",
+
         // PasswordInput
         ["Password.Placeholder"] = "Wachtwoord invoeren",
         ["Password.Toggle"] = "Wachtwoord tonen/verbergen",
@@ -263,6 +268,9 @@ internal static partial class LumeoDefaultStrings
         ["Stepper.Finish"] = "Voltooien",
         ["Stepper.Optional"] = "Optioneel",
         ["Stepper.Skip"] = "Overslaan",
+
+        // Skeleton
+        ["Skeleton.Loading"] = "Laden",
 
         // Window
         ["Window.Close"] = "Sluiten",

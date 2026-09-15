@@ -146,6 +146,11 @@ internal static partial class LumeoDefaultStrings
         ["ColorPicker.Blue"] = "Blue",
         ["ColorPicker.Presets"] = "Presets",
 
+        // ── IconPicker ──────────────────────────────────────────────
+        ["IconPicker.Placeholder"] = "Pick an icon",
+        ["IconPicker.SearchPlaceholder"] = "Search icons",
+        ["IconPicker.NoIconsFound"] = "No icons found",
+
         // ── PasswordInput ───────────────────────────────────────────
         ["Password.Placeholder"] = "Enter password",
         ["Password.Toggle"] = "Toggle password visibility",
@@ -289,6 +294,9 @@ internal static partial class LumeoDefaultStrings
         ["Stepper.Finish"] = "Finish",
         ["Stepper.Optional"] = "Optional",
         ["Stepper.Skip"] = "Skip",
+
+        // ── Skeleton ────────────────────────────────────────────────
+        ["Skeleton.Loading"] = "Loading",
 
         // ── Window ──────────────────────────────────────────────────
         ["Window.Close"] = "Close",
@@ -907,6 +915,11 @@ internal static partial class LumeoDefaultStrings
         ["ColorPicker.Blue"] = "Blau",
         ["ColorPicker.Presets"] = "Vorlagen",
 
+        // ── IconPicker ──────────────────────────────────────────────
+        ["IconPicker.Placeholder"] = "Symbol wählen",
+        ["IconPicker.SearchPlaceholder"] = "Symbole durchsuchen",
+        ["IconPicker.NoIconsFound"] = "Keine Symbole gefunden",
+
         // ── PasswordInput ───────────────────────────────────────────
         ["Password.Placeholder"] = "Passwort eingeben",
         ["Password.Toggle"] = "Passwort anzeigen/verbergen",
@@ -1065,6 +1078,9 @@ internal static partial class LumeoDefaultStrings
         ["Stepper.Finish"] = "Fertigstellen",
         ["Stepper.Optional"] = "Optional",
         ["Stepper.Skip"] = "Überspringen",
+
+        // ── Skeleton ────────────────────────────────────────────────
+        ["Skeleton.Loading"] = "Wird geladen",
 
         // ── Window ──────────────────────────────────────────────────
         ["Window.Close"] = "Schließen",

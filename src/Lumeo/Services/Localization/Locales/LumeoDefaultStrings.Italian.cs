@@ -135,6 +135,11 @@ internal static partial class LumeoDefaultStrings
         ["ColorPicker.Blue"] = "Blu",
         ["ColorPicker.Presets"] = "Preimpostati",
 
+        // ── IconPicker ────────────────────────────────
+        ["IconPicker.Placeholder"] = "Scegli un'icona",
+        ["IconPicker.SearchPlaceholder"] = "Cerca icone",
+        ["IconPicker.NoIconsFound"] = "Nessuna icona trovata",
+
         // PasswordInput
         ["Password.Placeholder"] = "Inserisci password",
         ["Password.Toggle"] = "Mostra/nascondi password",
@@ -263,6 +268,9 @@ internal static partial class LumeoDefaultStrings
         ["Stepper.Finish"] = "Fine",
         ["Stepper.Optional"] = "Facoltativo",
         ["Stepper.Skip"] = "Salta",
+
+        // Skeleton
+        ["Skeleton.Loading"] = "Caricamento",
 
         // Window
         ["Window.Close"] = "Chiudi",

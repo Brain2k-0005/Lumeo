@@ -135,6 +135,11 @@ internal static partial class LumeoDefaultStrings
         ["ColorPicker.Blue"] = "Mavi",
         ["ColorPicker.Presets"] = "Ön ayarlar",
 
+        // ── IconPicker ────────────────────────────────
+        ["IconPicker.Placeholder"] = "Simge seç",
+        ["IconPicker.SearchPlaceholder"] = "Simge ara",
+        ["IconPicker.NoIconsFound"] = "Simge bulunamadı",
+
         // PasswordInput
         ["Password.Placeholder"] = "Şifre girin",
         ["Password.Toggle"] = "Şifreyi göster/gizle",
@@ -413,6 +418,9 @@ internal static partial class LumeoDefaultStrings
         ["Stepper.Finish"] = "Bitir",
         ["Stepper.Optional"] = "İsteğe bağlı",
         ["Stepper.Skip"] = "Atla",
+
+        // Skeleton
+        ["Skeleton.Loading"] = "Yükleniyor",
 
         // Window
         ["Window.Close"] = "Kapat",

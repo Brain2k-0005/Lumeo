@@ -135,6 +135,11 @@ internal static partial class LumeoDefaultStrings
         ["ColorPicker.Blue"] = "蓝",
         ["ColorPicker.Presets"] = "预设",
 
+        // ── IconPicker ────────────────────────────────
+        ["IconPicker.Placeholder"] = "选择图标",
+        ["IconPicker.SearchPlaceholder"] = "搜索图标",
+        ["IconPicker.NoIconsFound"] = "未找到图标",
+
         // PasswordInput
         ["Password.Placeholder"] = "请输入密码",
         ["Password.Toggle"] = "切换密码可见性",
@@ -413,6 +418,9 @@ internal static partial class LumeoDefaultStrings
         ["Stepper.Finish"] = "完成",
         ["Stepper.Optional"] = "可选",
         ["Stepper.Skip"] = "跳过",
+
+        // Skeleton
+        ["Skeleton.Loading"] = "加载中",
 
         // Window
         ["Window.Close"] = "关闭",

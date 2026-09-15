@@ -140,6 +140,11 @@ internal static partial class LumeoDefaultStrings
         ["ColorPicker.Blue"] = "أزرق",
         ["ColorPicker.Presets"] = "الإعدادات المسبقة",
 
+        // ── IconPicker ────────────────────────────────
+        ["IconPicker.Placeholder"] = "اختر أيقونة",
+        ["IconPicker.SearchPlaceholder"] = "بحث عن الأيقونات",
+        ["IconPicker.NoIconsFound"] = "لم يتم العثور على أيقونات",
+
         // PasswordInput
         ["Password.Placeholder"] = "أدخل كلمة المرور",
         ["Password.Toggle"] = "إظهار/إخفاء كلمة المرور",
@@ -420,6 +425,9 @@ internal static partial class LumeoDefaultStrings
         ["Stepper.Finish"] = "إنهاء",
         ["Stepper.Optional"] = "اختياري",
         ["Stepper.Skip"] = "تخطٍ",
+
+        // Skeleton
+        ["Skeleton.Loading"] = "جارٍ التحميل",
 
         // Window
         ["Window.Close"] = "إغلاق",

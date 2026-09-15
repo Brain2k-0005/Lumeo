@@ -261,6 +261,21 @@ public record OverlayOptions
     /// </summary>
     public bool SwipeToClose { get; init; }
 
+    /// <summary>
+    /// When <c>true</c> (the default), closing a service-opened overlay keeps
+    /// the panel (and backdrop) mounted for its exit animation before
+    /// unmounting, instead of vanishing instantly. Set <c>false</c> to opt OUT
+    /// for every overlay this <see cref="OverlayOptions"/> is passed to — e.g.
+    /// tests, or a consumer that wants an instant dismiss with no lever
+    /// previously existed for (field report #464, finding 4). Mirrors the
+    /// declarative <c>PlayExitAnimation</c> parameter already on
+    /// <c>DialogContent</c> / <c>SheetContent</c> / <c>DrawerContent</c> /
+    /// <c>AlertDialogContent</c> — <see cref="OverlayProvider"/> threads this
+    /// value straight through to whichever of those the overlay renders.
+    /// <b>Applies to:</b> Dialog, Sheet, Drawer, AlertDialog.
+    /// </summary>
+    public bool PlayExitAnimation { get; init; } = true;
+
     // --- Responsive mobile overrides (2.1.3) -------------------------------
     // When the viewport width is below MobileBreakpoint, the Mobile* fields
     // take precedence over the desktop SheetSide/SheetSize/SwipeToClose. The
@@ -370,6 +385,19 @@ public sealed record AlertDialogOptions
     public string ConfirmText { get; init; } = "Continue";
     public string CancelText { get; init; } = "Cancel";
     public bool IsDestructive { get; init; }
+
+    /// <summary>
+    /// When <c>true</c> (the default), closing a service-opened AlertDialog keeps
+    /// the panel (and backdrop) mounted for its exit animation before unmounting,
+    /// instead of vanishing instantly. Set <c>false</c> to opt OUT for this
+    /// overlay — it unmounts immediately on close instead, with no
+    /// <c>animate-*-out</c> class and no wait for <c>animationend</c>. Mirrors
+    /// <see cref="OverlayOptions.PlayExitAnimation"/> for the AlertDialog path,
+    /// which uses this separate options record instead of
+    /// <see cref="OverlayOptions"/> (field report #464, finding 4 follow-up).
+    /// <b>Applies to:</b> AlertDialog.
+    /// </summary>
+    public bool PlayExitAnimation { get; init; } = true;
 }
 
 public sealed class OverlayInstance
