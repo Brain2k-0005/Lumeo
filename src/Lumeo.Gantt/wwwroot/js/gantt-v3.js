@@ -805,8 +805,40 @@ function resolveHitMode(barEl, clientX, isMilestone) {
     if (isMilestone) return 'move';
     const rect = barEl.getBoundingClientRect();
     const localX = clientX - rect.left;
-    if (localX <= RESIZE_HANDLE_PX) return 'resize-start';
-    if (rect.width - localX <= RESIZE_HANDLE_PX) return 'resize-end';
+    return resolveHitModeFromGeometry(rect.width, localX);
+}
+
+// Bug fix (field report #400, "one bar reproducibly refuses to drag"):
+// EXTRACTED from resolveHitMode above so the classification math can run
+// against a plain {width, localX} pair — no barEl/getBoundingClientRect
+// needed — both here and from a Node-only unit test (tests/js/gantt-v3-hit-
+// test.test.mjs, via the __testing export below), the same "pure function,
+// plain Node test" seam echarts-interop.js's buildLumeoTheme already uses.
+//
+// The bug: RESIZE_HANDLE_PX (6px) was a FIXED-size hit zone on both edges,
+// regardless of the bar's own rendered width. GanttScale.BarGeometry's own
+// `Math.max(8, x2 - x1)` floor guarantees every real bar is at least 8px
+// wide, but nothing stopped a bar from landing anywhere in the [8, 12]px
+// range at a sufficiently zoomed-out view mode (Year/Quarter) or a small
+// custom ColumnWidth override — 6px + 6px covers the ENTIRE bar at 12px and
+// OVERLAPS (covers it twice over) below that, leaving NO 'move' region at
+// all: every pointerdown resolved to 'resize-start' or 'resize-end', so a
+// plain drag silently became a resize instead (or, once the resize clamp at
+// the opposite edge was hit, appeared to do nothing at all) — exactly
+// "refuses to drag" from the user's own perspective.
+//
+// Fix: below the 2*RESIZE_HANDLE_PX (12px) danger line, each edge's hit zone
+// shrinks to a THIRD of the bar's own width instead of the fixed pixel
+// count, which guarantees a non-empty 'move' region (the middle third) for
+// any positive width, all the way down to the 8px floor (handle = 8/3 ≈
+// 2.67px, move zone ≈ 2.67px) — never zero, never negative. At/above the
+// danger line this is byte-identical to the old fixed-6px behavior (the
+// ternary's "else" branch), so every existing hit-test regression stays
+// exactly as before for ordinary-width bars.
+function resolveHitModeFromGeometry(width, localX) {
+    const handle = width <= RESIZE_HANDLE_PX * 2 ? width / 3 : RESIZE_HANDLE_PX;
+    if (localX <= handle) return 'resize-start';
+    if (width - localX <= handle) return 'resize-end';
     return 'move';
 }
 
@@ -2057,5 +2089,13 @@ function unregisterWheelZoom(el) {
     el.removeEventListener('wheel', reg.onWheel);
     wheelZoomRegistrations.delete(el);
 }
+
+// Test-only seam (mirrors echarts-interop.js's own `__testing` export, which
+// in turn documents itself as mirroring scheduler.js's): resolveHitModeFromGeometry
+// touches neither `document` nor any DOM element, so it can be exercised with
+// a plain Node test asserting real computed values — see
+// tests/js/gantt-v3-hit-test.test.mjs. Not part of the public interop surface;
+// Blazor's JS interop only ever calls the named exports on the default export.
+export const __testing = { resolveHitModeFromGeometry };
 
 export default ganttV3;
