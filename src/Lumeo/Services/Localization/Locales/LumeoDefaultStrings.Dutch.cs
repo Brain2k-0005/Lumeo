@@ -538,5 +538,9 @@ internal static partial class LumeoDefaultStrings
         ["Filters.Op.is_on_or_after"] = "is op of na",
         ["Filters.Op.empty"] = "is leeg",
         ["Filters.Op.not_empty"] = "is niet leeg",
+
+        // QueryBuilder
+        ["QueryBuilder.SelectField"] = "Veld selecteren…",
+        ["QueryBuilder.SelectPlaceholder"] = "Selecteren…",
     };
 }

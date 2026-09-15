@@ -395,6 +395,8 @@ internal static partial class LumeoDefaultStrings
         ["QueryBuilder.Field"] = "Field",
         ["QueryBuilder.Operator"] = "Operator",
         ["QueryBuilder.UnknownField"] = "Unknown field",
+        ["QueryBuilder.SelectField"] = "Select field…",
+        ["QueryBuilder.SelectPlaceholder"] = "Select…",
 
         // ── PickList ────────────────────────────────────────────────
         ["PickList.MoveAll"] = "Move all",
@@ -1164,6 +1166,8 @@ internal static partial class LumeoDefaultStrings
         ["QueryBuilder.Field"] = "Feld",
         ["QueryBuilder.Operator"] = "Operator",
         ["QueryBuilder.UnknownField"] = "Unbekanntes Feld",
+        ["QueryBuilder.SelectField"] = "Feld auswählen…",
+        ["QueryBuilder.SelectPlaceholder"] = "Auswählen…",
 
         // ── PickList ────────────────────────────────────────────────
         ["PickList.MoveAll"] = "Alle verschieben",

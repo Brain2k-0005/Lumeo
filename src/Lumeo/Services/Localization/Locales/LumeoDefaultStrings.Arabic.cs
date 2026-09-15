@@ -611,5 +611,9 @@ internal static partial class LumeoDefaultStrings
         ["Filters.Op.is_on_or_after"] = "في أو بعد",
         ["Filters.Op.empty"] = "فارغ",
         ["Filters.Op.not_empty"] = "غير فارغ",
+
+        // QueryBuilder
+        ["QueryBuilder.SelectField"] = "اختر الحقل…",
+        ["QueryBuilder.SelectPlaceholder"] = "اختر…",
     };
 }
