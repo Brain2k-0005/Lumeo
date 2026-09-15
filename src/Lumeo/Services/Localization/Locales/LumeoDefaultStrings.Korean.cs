@@ -413,6 +413,9 @@ internal static partial class LumeoDefaultStrings
         ["Stepper.Optional"] = "선택 사항",
         ["Stepper.Skip"] = "건너뛰기",
 
+        // Skeleton
+        ["Skeleton.Loading"] = "불러오는 중",
+
         // Window
         ["Window.Close"] = "닫기",
         ["Window.Minimize"] = "최소화",

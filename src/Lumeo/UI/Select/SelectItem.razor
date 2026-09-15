@@ -30,7 +30,17 @@
     [Parameter] public bool Disabled { get; set; }
     /// <summary>Additional CSS classes merged onto the option's <c>button</c>.</summary>
     [Parameter] public string? Class { get; set; }
-    /// <summary>Optional text used to match against the search input when Searchable is enabled. Falls back to Value.</summary>
+    /// <summary>
+    /// Optional text used to match against the search input when <c>Searchable</c> is
+    /// enabled. When unset, the filter matches this item's own rendered
+    /// <see cref="ChildContent"/> label text instead (falling back to <see cref="Value"/>
+    /// only if no plain text can be extracted) — so most composed items never need to set
+    /// this explicitly. <b>Set it explicitly when the label is wrapped in a child
+    /// component</b> (e.g. <c>&lt;SelectItem Value="ch"&gt;&lt;Text As="span"&gt;Switzerland&lt;/Text&gt;&lt;/SelectItem&gt;</c>):
+    /// extraction only walks this fragment's own frames, it does not run a nested
+    /// component's render logic, so a label that lives entirely inside a child component
+    /// is invisible to it and the filter falls back to matching <see cref="Value"/>.
+    /// </summary>
     [Parameter] public string? SearchValue { get; set; }
     /// <summary>Unmatched attributes splatted onto the option's <c>button</c>.</summary>
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
@@ -72,9 +82,73 @@
         get
         {
             if (!Context.Searchable || string.IsNullOrEmpty(Context.SearchText)) return true;
-            var haystack = SearchValue ?? Value;
-            return haystack.Contains(Context.SearchText, StringComparison.OrdinalIgnoreCase);
+            return _effectiveSearchText.Contains(Context.SearchText, StringComparison.OrdinalIgnoreCase);
         }
+    }
+
+    // The text this item matches against when Searchable: an explicit SearchValue wins;
+    // otherwise the item's own rendered label (ChildContent) — composed items commonly
+    // have a Value that differs from what's shown (a country code vs. the country name,
+    // a database id vs. a category label), so matching the raw Value silently hid every
+    // option on the first keystroke (field report #464, finding 1). Falls back to Value
+    // only when neither SearchValue nor any extractable label text is available (e.g. a
+    // template-only ChildContent with no plain text, such as an icon-only item).
+    // Recomputed once per OnParametersSet (not on every property read) since walking the
+    // fragment allocates a scratch RenderTreeBuilder.
+    private string _effectiveSearchText = "";
+
+    private string ResolveEffectiveSearchText()
+    {
+        if (SearchValue is not null) return SearchValue;
+        var extracted = ExtractText(ChildContent);
+        return string.IsNullOrEmpty(extracted) ? Value : extracted;
+    }
+
+    // Walks a RenderFragment's frames to pull out its plain text content, without ever
+    // attaching it to a live Renderer — child components appear as opaque Component
+    // frames (their own BuildRenderTree never runs here), so only literal/interpolated
+    // text and markup content is captured. That covers the common case (a label string,
+    // optionally beside an icon or a description span) which is all Select item content
+    // needs to be filterable by.
+    private static string ExtractText(RenderFragment? fragment)
+    {
+        if (fragment is null) return "";
+        using var builder = new Microsoft.AspNetCore.Components.Rendering.RenderTreeBuilder();
+        try
+        {
+            fragment(builder);
+        }
+        catch
+        {
+            // A fragment that requires a live rendering context to build (rare for a
+            // label) can't be walked in isolation — fall back to Value instead of
+            // throwing out of what is effectively a filter predicate.
+            return "";
+        }
+
+        // BL0006: Microsoft.AspNetCore.Components.RenderTree is flagged "not recommended
+        // outside the Blazor framework" because its shape is technically unpinned — but
+        // RenderTreeFrame.FrameType/TextContent/MarkupContent have been stable since
+        // RenderTreeBuilder shipped (.NET Core 3.0) and this is the only public surface
+        // that can read back what a RenderFragment wrote; there is no supported
+        // alternative that stays synchronous (the one true "supported" text-extraction
+        // API, HtmlRenderer, is async and would mean spinning up a nested renderer from
+        // inside this component's own OnParametersSet — unsafe re-entrancy for a filter
+        // predicate). Scoped to this one loop; a Blazor upgrade that breaks it fails
+        // loudly at compile time, not silently at runtime.
+#pragma warning disable BL0006
+        var frames = builder.GetFrames();
+        var text = new System.Text.StringBuilder();
+        for (var i = 0; i < frames.Count; i++)
+        {
+            var frame = frames.Array[i];
+            if (frame.FrameType == Microsoft.AspNetCore.Components.RenderTree.RenderTreeFrameType.Text)
+                text.Append(frame.TextContent);
+            else if (frame.FrameType == Microsoft.AspNetCore.Components.RenderTree.RenderTreeFrameType.Markup)
+                text.Append(frame.MarkupContent);
+        }
+#pragma warning restore BL0006
+        return text.ToString().Trim();
     }
 
     private string CssClass => Cx.Merge(
@@ -85,18 +159,21 @@
 
     protected override void OnParametersSet()
     {
+        // Recompute before Visible/PassesSearchFilter (below) read it.
+        _effectiveSearchText = ResolveEffectiveSearchText();
+
         // The registration-only pass of a closed SelectContent registers every item, also one
         // inside a collapsed group, so the trigger can show any pre-selected value's label.
         if (Visible || RegisterOnly)
         {
-            // SearchValue (falling back to Value) is the text the search filter and
-            // type-to-jump match against — keep both features consistent. Disabled
-            // items register (so they still render) but are excluded from keyboard nav.
-            // RegisterItem upserts, so re-calling it whenever our inputs change keeps
-            // the registry in sync when Disabled/SearchValue flip while the menu is open.
-            // ChildContent is ALSO registered so a Multiple-mode SelectTrigger tag can
+            // _effectiveSearchText (SearchValue, else the rendered label, else Value) is the
+            // text the search filter and type-to-jump match against — keep both features
+            // consistent. Disabled items register (so they still render) but are excluded
+            // from keyboard nav. RegisterItem upserts, so re-calling it whenever our inputs
+            // change keeps the registry in sync when Disabled/SearchValue flip while the menu
+            // is open. ChildContent is ALSO registered so a Multiple-mode SelectTrigger tag can
             // re-render this item's actual label instead of echoing the raw Value (Codex P2).
-            Context.RegisterItem(_itemId, Value, SearchValue ?? Value, Disabled, ChildContent);
+            Context.RegisterItem(_itemId, Value, _effectiveSearchText, Disabled, ChildContent);
             _registered = true;
         }
         else if (!Visible && _registered)
