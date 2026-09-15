@@ -145,6 +145,11 @@ internal static partial class LumeoDefaultStrings
         ["ColorPicker.Blue"] = "Blue",
         ["ColorPicker.Presets"] = "Presets",
 
+        // ── IconPicker ──────────────────────────────────────────────
+        ["IconPicker.Placeholder"] = "Pick an icon",
+        ["IconPicker.SearchPlaceholder"] = "Search icons",
+        ["IconPicker.NoIconsFound"] = "No icons found",
+
         // ── PasswordInput ───────────────────────────────────────────
         ["Password.Placeholder"] = "Enter password",
         ["Password.Toggle"] = "Toggle password visibility",
@@ -904,6 +909,11 @@ internal static partial class LumeoDefaultStrings
         ["ColorPicker.Green"] = "Grün",
         ["ColorPicker.Blue"] = "Blau",
         ["ColorPicker.Presets"] = "Vorlagen",
+
+        // ── IconPicker ──────────────────────────────────────────────
+        ["IconPicker.Placeholder"] = "Symbol wählen",
+        ["IconPicker.SearchPlaceholder"] = "Symbole durchsuchen",
+        ["IconPicker.NoIconsFound"] = "Keine Symbole gefunden",
 
         // ── PasswordInput ───────────────────────────────────────────
         ["Password.Placeholder"] = "Passwort eingeben",

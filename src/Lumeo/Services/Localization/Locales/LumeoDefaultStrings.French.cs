@@ -134,6 +134,11 @@ internal static partial class LumeoDefaultStrings
         ["ColorPicker.Blue"] = "Bleu",
         ["ColorPicker.Presets"] = "Préréglages",
 
+        // ── IconPicker ────────────────────────────────
+        ["IconPicker.Placeholder"] = "Choisir une icône",
+        ["IconPicker.SearchPlaceholder"] = "Rechercher des icônes",
+        ["IconPicker.NoIconsFound"] = "Aucune icône trouvée",
+
         // PasswordInput
         ["Password.Placeholder"] = "Saisir le mot de passe",
         ["Password.Toggle"] = "Afficher/masquer le mot de passe",

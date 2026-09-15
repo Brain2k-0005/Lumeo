@@ -1,0 +1,513 @@
+@namespace Lumeo
+@implements IAsyncDisposable
+@using Microsoft.AspNetCore.Components.Web.Virtualization
+@inject IComponentInteropService Interop
+@inject Lumeo.Services.Localization.ILumeoLocalizer L
+
+@* Render the label, control and helper/error as ONE self-contained vertical block so the
+   field never splays into a row when dropped in a flex / centered container. Same
+   standalone form-field structural fix every other value component in this library uses
+   (ColorPicker, Combobox, DatePicker, …). *@
+<div data-slot="icon-picker" class="flex flex-col items-start">
+@if (Label is not null && !InsideFormField)
+{
+    <label class="text-sm font-medium leading-none">
+        @Label
+        @if (Required)
+        {
+            <span class="text-destructive ms-0.5">*</span>
+        }
+    </label>
+}
+
+<Popover Open="EffectiveOpen" OpenChanged="SetOpen" Class="@Cx.When(FullWidth, "w-full")">
+    <PopoverTrigger Class="@Cx.When(FullWidth, "w-full")" SuppressActivationKeys="true">
+        <ChildContentSlot Context="slot">
+            <button type="button"
+                    id="@EffectiveTriggerId"
+                    name="@Name"
+                    aria-required="@Required.ToString().ToLower()"
+                    aria-invalid="@EffectiveInvalid.ToString().ToLower()"
+                    aria-describedby="@FormFieldDescribedBy"
+                    aria-label="@(SelectedItem?.Name ?? EffectivePlaceholder)"
+                    class="@TriggerClass"
+                    disabled="@Disabled"
+                    @attributes="MergeSlotAttributes(slot)">
+                @if (SelectedItem is not null)
+                {
+                    <SvgGlyph Svg="@SelectedItem.Svg" class="h-4 w-4 shrink-0" />
+                    @if (ShowLabel)
+                    {
+                        <span class="truncate">@SelectedItem.Name</span>
+                    }
+                }
+                else
+                {
+                    <span class="truncate text-muted-foreground">@EffectivePlaceholder</span>
+                }
+                @if (Clearable && SelectedItem is not null)
+                {
+                    <button type="button"
+                            class="ms-auto shrink-0 rounded hover:text-foreground focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-1"
+                            aria-label="@L["Common.Clear"]"
+                            @onclick="HandleClear"
+                            @onclick:stopPropagation="true">
+                        <SvgGlyph Svg="@(LumeoIcons.X)" class="h-3.5 w-3.5 opacity-50 hover:opacity-100" />
+                    </button>
+                }
+                <SvgGlyph Svg="@(LumeoIcons.ChevronDown)" class="@($"h-4 w-4 text-muted-foreground shrink-0 transition-transform duration-200 {(Clearable && SelectedItem is not null ? "" : "ms-auto")} {(EffectiveOpen ? "rotate-180" : "")}")" />
+            </button>
+        </ChildContentSlot>
+    </PopoverTrigger>
+
+    <PopoverContent Align="Lumeo.Align.Start" Class="w-72 p-0 overflow-hidden" FocusTargetId="@(Searchable ? _searchId : _gridId)">
+        <div class="flex flex-col">
+            @if (Searchable)
+            {
+                <div class="border-b border-border/40 p-2">
+                    <div class="relative">
+                        <SvgGlyph Svg="@(LumeoIcons.Search)" class="absolute start-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                        <input id="@_searchId"
+                               type="text"
+                               value="@_search"
+                               placeholder="@L["IconPicker.SearchPlaceholder"]"
+                               aria-label="@L["IconPicker.SearchPlaceholder"]"
+                               aria-controls="@_gridId"
+                               aria-activedescendant="@(_focusedIndex >= 0 && _focusedIndex < FilteredIcons.Count ? ItemId(_focusedIndex) : null)"
+                               class="flex h-8 w-full min-w-0 rounded-md border border-input bg-transparent ps-8 pe-2.5 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring"
+                               @oninput="OnSearchInput"
+                               @onkeydown="HandleGridKeyDown" />
+                    </div>
+                </div>
+            }
+            <ScrollArea Class="max-h-64 p-2" FocusRingGutter="true">
+                <div id="@_gridId" role="listbox" aria-label="@EffectivePlaceholder"
+                     aria-activedescendant="@(_focusedIndex >= 0 && _focusedIndex < FilteredIcons.Count ? ItemId(_focusedIndex) : null)"
+                     class="outline-none" tabindex="@(Searchable ? "-1" : "0")" @onkeydown="HandleGridKeyDown">
+                    @if (FilteredIcons.Count == 0)
+                    {
+                        <div class="py-6 text-center text-sm text-muted-foreground">@L["IconPicker.NoIconsFound"]</div>
+                    }
+                    else if (UseVirtualize)
+                    {
+                        <Virtualize Items="Rows" Context="row" ItemSize="RowItemSize">
+                            @RenderRow(row)
+                        </Virtualize>
+                    }
+                    else
+                    {
+                        @foreach (var row in Rows)
+                        {
+                            @RenderRow(row)
+                        }
+                    }
+                </div>
+            </ScrollArea>
+        </div>
+    </PopoverContent>
+</Popover>
+
+@if (!InsideFormField)
+{
+    @if (EffectiveInvalid && ErrorText is not null)
+    {
+        <p class="text-xs text-destructive">@ErrorText</p>
+    }
+    else if (HelperText is not null)
+    {
+        <p class="text-xs text-muted-foreground">@HelperText</p>
+    }
+}
+</div>
+
+@code {
+    [CascadingParameter] private FormField.FormFieldContext? FormField { get; set; }
+
+    /// <summary>The selected icon's <see cref="IconPickerItem.Name"/>, or <see langword="null"/> when nothing is selected.</summary>
+    [Parameter] public string? Value { get; set; }
+
+    /// <summary>Raised when the selection changes — via a grid click, Enter, or <see cref="Clearable"/>'s clear affordance (with <see langword="null"/>).</summary>
+    [Parameter] public EventCallback<string?> ValueChanged { get; set; }
+
+    /// <summary>
+    /// The candidate icons. Pack-agnostic on purpose: the core package references no individual
+    /// icon pack assembly, so a consumer builds this list from whichever <c>Lumeo.Icons.*</c>
+    /// pack(s) they installed (see the docs page for a reflection helper over a pack's static
+    /// class, the same technique the docs site's own icon gallery uses).
+    /// </summary>
+    [Parameter, EditorRequired] public IReadOnlyList<IconPickerItem> Icons { get; set; } = Array.Empty<IconPickerItem>();
+
+    /// <summary>Placeholder shown on the trigger when nothing is selected.</summary>
+    [Parameter] public string? Placeholder { get; set; }
+
+    /// <summary>When <c>true</c> (default), a search box narrows <see cref="Icons"/> by name and <see cref="IconPickerItem.Keywords"/>, case-insensitively.</summary>
+    [Parameter] public bool Searchable { get; set; } = true;
+
+    /// <summary>Number of icons per grid row. Default 8.</summary>
+    [Parameter] public int Columns { get; set; } = 8;
+
+    /// <summary><see cref="Lumeo.Size"/> for the trigger's height/padding. Default <see cref="Lumeo.Size.Md"/>.</summary>
+    [Parameter] public Lumeo.Size Size { get; set; } = Lumeo.Size.Md;
+
+    /// <summary>Disables the trigger, preventing the popover from opening.</summary>
+    [Parameter] public bool Disabled { get; set; }
+
+    /// <summary>When <c>true</c>, an inline clear (×) affordance appears on the trigger whenever an icon is selected.</summary>
+    [Parameter] public bool Clearable { get; set; }
+
+    /// <summary>When <c>true</c>, the selected icon's <see cref="IconPickerItem.Name"/> renders next to its glyph on the trigger. Default <c>false</c> (glyph only).</summary>
+    [Parameter] public bool ShowLabel { get; set; }
+
+    /// <summary>Stretches the trigger (and popover) to the width of its container.</summary>
+    [Parameter] public bool FullWidth { get; set; }
+
+    /// <summary>Popover open state. Bind via <c>@bind-Open</c> for a controlled picker (recommended inside a heavily re-rendering parent — same guidance as <c>Combobox.Open</c>).</summary>
+    [Parameter] public bool Open { get; set; }
+
+    /// <summary>Raised whenever the popover opens or closes.</summary>
+    [Parameter] public EventCallback<bool> OpenChanged { get; set; }
+
+    /// <summary>Marks the field as required, rendering a destructive-colored asterisk next to <see cref="Label"/> (standalone usage only).</summary>
+    [Parameter] public bool Required { get; set; }
+
+    /// <summary>Forces the invalid/error visual state, independent of an ambient <c>FormField</c>'s validation state.</summary>
+    [Parameter] public bool Invalid { get; set; }
+
+    /// <summary>Error message shown below the trigger (standalone usage only) when <see cref="Invalid"/> is set.</summary>
+    [Parameter] public string? ErrorText { get; set; }
+
+    /// <summary>Helper text shown below the trigger (standalone usage only) when there is no error to display.</summary>
+    [Parameter] public string? HelperText { get; set; }
+
+    /// <summary>Label rendered above the trigger (standalone usage only — inside a <c>FormField</c>, the FormField owns the label).</summary>
+    [Parameter] public string? Label { get; set; }
+
+    /// <summary>HTML <c>name</c> attribute applied to the trigger, for native form association.</summary>
+    [Parameter] public string? Name { get; set; }
+
+    /// <summary>Additional CSS classes merged onto the trigger button.</summary>
+    [Parameter] public string? Class { get; set; }
+
+    /// <summary>Unmatched attributes splatted onto the trigger button.</summary>
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private bool EffectiveInvalid => Invalid || FormField?.HasError == true;
+    private bool InsideFormField => FormField is not null;
+    private string? FormFieldControlId => string.IsNullOrEmpty(FormField?.ControlId) ? null : FormField!.ControlId;
+    private string? FormFieldDescribedBy => FormField?.DescribedBy;
+    private string EffectiveTriggerId => FormFieldControlId ?? _triggerId;
+    private string? EffectivePlaceholder => Placeholder ?? L["IconPicker.Placeholder"];
+
+    private readonly string _triggerId = LumeoIds.New("iconpicker-trigger");
+    private readonly string _searchId = LumeoIds.New("iconpicker-search");
+    private readonly string _gridId = LumeoIds.New("iconpicker-grid");
+
+    // Controlled/uncontrolled duality mirrors Popover's own implementation exactly
+    // (battle-wave2 #183): re-seeding _openState from Open on EVERY OnParametersSet
+    // would clobber it on any unrelated parent re-render (the parent's Open parameter
+    // value is re-applied every render regardless of whether the parent's state
+    // actually changed) — only reseed when Open genuinely changed.
+    private bool _openState;
+    private bool _openInitialized;
+    private bool _lastOpenParam;
+    private bool EffectiveOpen => OpenChanged.HasDelegate ? Open : _openState;
+    private string _search = "";
+    private int _focusedIndex = -1;
+    private bool _pdRegistered;
+    private IReadOnlyList<IconPickerItem>? _lastIcons;
+    private List<IconPickerItem> _filtered = new();
+    private string? _lastSearch;
+
+    // Row-chunked view of the filtered icons — what both the plain foreach and the
+    // Virtualize branch render. Recomputed only when the filtered set or Columns changes,
+    // mirroring ComboboxContent's FilteredItems memoization (avoids re-chunking on every
+    // render, which matters once Icons runs into the thousands).
+    private List<List<IconPickerItem>>? _rows;
+    private int _rowsForColumns = -1;
+
+    private const float RowItemSize = 40f;
+    private const int VirtualizeThreshold = 500;
+
+    private bool UseVirtualize => FilteredIcons.Count > VirtualizeThreshold;
+
+    private List<IconPickerItem> FilteredIcons
+    {
+        get
+        {
+            if (ReferenceEquals(Icons, _lastIcons) && string.Equals(_search, _lastSearch, StringComparison.Ordinal))
+                return _filtered;
+
+            _lastIcons = Icons;
+            _lastSearch = _search;
+            _filtered = string.IsNullOrWhiteSpace(_search)
+                ? Icons.ToList()
+                : Icons.Where(MatchesSearch).ToList();
+            _rows = null; // invalidate row chunks — the filtered set changed under them
+            return _filtered;
+        }
+    }
+
+    private bool MatchesSearch(IconPickerItem item)
+    {
+        if (item.Name.Contains(_search, StringComparison.OrdinalIgnoreCase)) return true;
+        if (item.Keywords is null) return false;
+        foreach (var kw in item.Keywords)
+        {
+            if (kw.Contains(_search, StringComparison.OrdinalIgnoreCase)) return true;
+        }
+        return false;
+    }
+
+    private List<List<IconPickerItem>> Rows
+    {
+        get
+        {
+            var cols = Math.Max(1, Columns);
+            var filtered = FilteredIcons; // triggers invalidation above when stale
+            if (_rows is not null && _rowsForColumns == cols) return _rows;
+
+            var rows = new List<List<IconPickerItem>>();
+            for (var i = 0; i < filtered.Count; i += cols)
+                rows.Add(filtered.GetRange(i, Math.Min(cols, filtered.Count - i)));
+            _rows = rows;
+            _rowsForColumns = cols;
+            return rows;
+        }
+    }
+
+    private IconPickerItem? SelectedItem => string.IsNullOrEmpty(Value)
+        ? null
+        : Icons.FirstOrDefault(i => string.Equals(i.Name, Value, StringComparison.Ordinal));
+
+    private string TriggerClass => Cx.Merge(
+        "flex items-center gap-2 rounded-md border",
+        EffectiveInvalid ? "border-destructive ring-1 ring-destructive/20" : "border-input",
+        "bg-transparent text-sm hover:bg-accent hover:text-accent-foreground transition-colors",
+        "disabled:cursor-not-allowed disabled:opacity-50",
+        "focus-visible:outline-none focus-visible:ring-[1.5px]",
+        EffectiveInvalid ? "focus-visible:ring-destructive" : "focus-visible:ring-ring",
+        SizeClasses,
+        Cx.When(FullWidth, "w-full"),
+        Class);
+
+    private string SizeClasses => Size switch
+    {
+        Lumeo.Size.Xxs => "h-6 px-1.5 text-xs",
+        Lumeo.Size.Xs => "h-7 px-2 text-xs",
+        Lumeo.Size.Sm => "h-[var(--lumeo-control-h-sm,calc(var(--spacing,0.25rem)*7))] px-2.5 text-sm",
+        Lumeo.Size.Lg => "h-10 px-3 text-base",
+        Lumeo.Size.Xl => "h-11 px-3.5 text-base",
+        Lumeo.Size.Xxl => "h-12 px-4 text-base",
+        _ => "h-[var(--lumeo-control-h,calc(var(--spacing,0.25rem)*8))] px-2.5 text-sm",
+    };
+
+    // Inside a FormField, the id owner is the FormField's ControlId (rendered explicitly
+    // above via EffectiveTriggerId) — strip a consumer-splatted id from the slot/extra
+    // attributes so it can't collide with that explicit id=, mirroring DatePicker/Combobox.
+    private Dictionary<string, object> MergeSlotAttributes(Lumeo.TriggerSlot slot)
+    {
+        var d = new Dictionary<string, object>(slot.Attributes);
+        if (AdditionalAttributes is not null)
+        {
+            foreach (var kv in AdditionalAttributes)
+            {
+                if (InsideFormField && kv.Key == "id") continue;
+                d[kv.Key] = kv.Value;
+            }
+        }
+        return d;
+    }
+
+    private string ItemId(int index) => $"{_gridId}-item-{index}";
+
+    private async Task OnSearchInput(ChangeEventArgs e)
+    {
+        _search = e.Value?.ToString() ?? "";
+        _focusedIndex = -1;
+        await Task.CompletedTask;
+    }
+
+    private async Task SetOpen(bool value)
+    {
+        if (OpenChanged.HasDelegate)
+        {
+            await OpenChanged.InvokeAsync(value);
+        }
+        else
+        {
+            _openState = value;
+        }
+    }
+
+    private async Task HandleClear()
+    {
+        Value = null;
+        await ValueChanged.InvokeAsync(null);
+    }
+
+    private async Task SelectIndex(int index)
+    {
+        var items = FilteredIcons;
+        if (index < 0 || index >= items.Count) return;
+        Value = items[index].Name;
+        _focusedIndex = index;
+        await ValueChanged.InvokeAsync(Value);
+        await SetOpen(false);
+    }
+
+    private async Task HandleGridKeyDown(KeyboardEventArgs e)
+    {
+        var items = FilteredIcons;
+        if (items.Count == 0) return;
+        var cols = Math.Max(1, Columns);
+        var next = _focusedIndex;
+
+        switch (e.Key)
+        {
+            case "ArrowRight":
+                next = _focusedIndex < 0 ? 0 : Math.Min(_focusedIndex + 1, items.Count - 1);
+                break;
+            case "ArrowLeft":
+                next = _focusedIndex < 0 ? 0 : Math.Max(_focusedIndex - 1, 0);
+                break;
+            case "ArrowDown":
+                next = _focusedIndex < 0 ? 0 : Math.Min(_focusedIndex + cols, items.Count - 1);
+                break;
+            case "ArrowUp":
+                next = _focusedIndex < 0 ? 0 : Math.Max(_focusedIndex - cols, 0);
+                break;
+            case "Home":
+                next = 0;
+                break;
+            case "End":
+                next = items.Count - 1;
+                break;
+            case "Enter":
+                if (_focusedIndex >= 0) await SelectIndex(_focusedIndex);
+                return;
+            default:
+                return;
+        }
+
+        if (next != _focusedIndex)
+        {
+            _focusedIndex = next;
+            StateHasChanged();
+        }
+    }
+
+    protected override void OnParametersSet()
+    {
+        // Seed the uncontrolled backing field from Open on first set and whenever the
+        // bound Open value actually changes — never on a no-op re-application of the
+        // same value (Popover.OnParametersSet's own battle-wave2 #183 fix, mirrored
+        // here since IconPicker owns its own open/closed state the same way).
+        if (!_openInitialized || Open != _lastOpenParam)
+        {
+            _openState = Open;
+            _lastOpenParam = Open;
+            _openInitialized = true;
+        }
+
+        if (!EffectiveOpen)
+        {
+            _search = "";
+            _focusedIndex = -1;
+        }
+    }
+
+    private RenderFragment RenderRow(List<IconPickerItem> row) => builder =>
+    {
+        // A single monotonically-increasing sequence counter across the whole row (never
+        // reset per item) — a fixed per-item stride like "10 + i*10" looks safe but actually
+        // OVERLAPS as soon as more than 10 attributes/elements are emitted per item (this one
+        // emits 12), which silently corrupts Blazor's diffing. An incrementing local is the
+        // simplest way to guarantee every call is strictly increasing and never collides.
+        var seq = 0;
+        var startIndex = FilteredIcons.IndexOf(row[0]);
+        // No role on this row div — brief specifies role="listbox" + role="option" (not the
+        // ARIA grid pattern's row/gridcell), and a plain generic wrapper div between a
+        // listbox and its options is an allowed "owned element" under the ARIA spec, so
+        // screen readers still see a flat option list despite the visual row chunking.
+        builder.OpenElement(seq++, "div");
+        builder.AddAttribute(seq++, "class", "grid gap-1");
+        builder.AddAttribute(seq++, "style", $"grid-template-columns: repeat({Math.Max(1, Columns)}, minmax(0, 1fr))");
+        for (var i = 0; i < row.Count; i++)
+        {
+            var item = row[i];
+            var index = startIndex + i;
+            var isSelected = string.Equals(item.Name, Value, StringComparison.Ordinal);
+            var isFocused = index == _focusedIndex;
+
+            builder.OpenElement(seq++, "button");
+            builder.AddAttribute(seq++, "type", "button");
+            builder.AddAttribute(seq++, "id", ItemId(index));
+            builder.AddAttribute(seq++, "role", "option");
+            builder.AddAttribute(seq++, "aria-selected", isSelected.ToString().ToLower());
+            builder.AddAttribute(seq++, "aria-label", item.Name);
+            builder.AddAttribute(seq++, "tabindex", "-1");
+            builder.AddAttribute(seq++, "class", Cx.Merge(
+                "flex h-8 w-8 items-center justify-center rounded-md text-foreground/80 outline-none",
+                "hover:bg-accent hover:text-accent-foreground cursor-pointer",
+                Cx.When(isSelected, "bg-primary/10 text-primary"),
+                Cx.When(isFocused, "ring-[1.5px] ring-ring")));
+            builder.AddAttribute(seq++, "onclick", EventCallback.Factory.Create(this, () => SelectIndex(index)));
+            builder.OpenComponent<SvgGlyph>(seq++);
+            builder.AddAttribute(seq++, "Svg", item.Svg);
+            builder.AddAttribute(seq++, "class", "h-4 w-4");
+            builder.CloseComponent();
+            builder.CloseElement(); // button
+        }
+        builder.CloseElement(); // row
+    };
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (EffectiveOpen && !_pdRegistered)
+        {
+            try
+            {
+                var rules = new[]
+                {
+                    new PreventDefaultKeyRule("ArrowDown", SkipComposing: true),
+                    new PreventDefaultKeyRule("ArrowUp", SkipComposing: true),
+                    new PreventDefaultKeyRule("ArrowLeft", SkipComposing: true),
+                    new PreventDefaultKeyRule("ArrowRight", SkipComposing: true),
+                    new PreventDefaultKeyRule("Home", SkipComposing: true),
+                    new PreventDefaultKeyRule("End", SkipComposing: true),
+                    new PreventDefaultKeyRule("Enter", RequireNoModifiers: true, SkipComposing: true),
+                };
+                // Register on the grid unconditionally (it's the focus target — and the
+                // keydown handler's home — when Searchable is off) and ALSO on the search
+                // box when present: focus normally lives there, and its keydown handler
+                // drives the same grid navigation (see HandleGridKeyDown).
+                await Interop.RegisterPreventDefaultKeys(_gridId, rules);
+                if (Searchable)
+                {
+                    await Interop.RegisterPreventDefaultKeys(_searchId, rules);
+                }
+                _pdRegistered = true;
+            }
+            catch (JSDisconnectedException) { }
+        }
+        else if (!EffectiveOpen && _pdRegistered)
+        {
+            await Cleanup();
+        }
+    }
+
+    private async Task Cleanup()
+    {
+        try { await Interop.UnregisterPreventDefaultKeys(_gridId); } catch (JSDisconnectedException) { }
+        if (Searchable)
+        {
+            try { await Interop.UnregisterPreventDefaultKeys(_searchId); } catch (JSDisconnectedException) { }
+        }
+        _pdRegistered = false;
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_pdRegistered) await Cleanup();
+    }
+}

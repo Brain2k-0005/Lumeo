@@ -134,6 +134,11 @@ internal static partial class LumeoDefaultStrings
         ["ColorPicker.Blue"] = "青",
         ["ColorPicker.Presets"] = "プリセット",
 
+        // ── IconPicker ────────────────────────────────
+        ["IconPicker.Placeholder"] = "アイコンを選択",
+        ["IconPicker.SearchPlaceholder"] = "アイコンを検索",
+        ["IconPicker.NoIconsFound"] = "アイコンが見つかりません",
+
         // PasswordInput
         ["Password.Placeholder"] = "パスワードを入力",
         ["Password.Toggle"] = "パスワードの表示切替",

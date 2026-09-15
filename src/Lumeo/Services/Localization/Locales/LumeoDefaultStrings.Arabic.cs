@@ -139,6 +139,11 @@ internal static partial class LumeoDefaultStrings
         ["ColorPicker.Blue"] = "أزرق",
         ["ColorPicker.Presets"] = "الإعدادات المسبقة",
 
+        // ── IconPicker ────────────────────────────────
+        ["IconPicker.Placeholder"] = "اختر أيقونة",
+        ["IconPicker.SearchPlaceholder"] = "بحث عن الأيقونات",
+        ["IconPicker.NoIconsFound"] = "لم يتم العثور على أيقونات",
+
         // PasswordInput
         ["Password.Placeholder"] = "أدخل كلمة المرور",
         ["Password.Toggle"] = "إظهار/إخفاء كلمة المرور",

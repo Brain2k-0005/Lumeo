@@ -137,6 +137,11 @@ internal static partial class LumeoDefaultStrings
         ["ColorPicker.Blue"] = "Niebieski",
         ["ColorPicker.Presets"] = "Szablony",
 
+        // ── IconPicker ────────────────────────────────
+        ["IconPicker.Placeholder"] = "Wybierz ikonę",
+        ["IconPicker.SearchPlaceholder"] = "Szukaj ikon",
+        ["IconPicker.NoIconsFound"] = "Nie znaleziono ikon",
+
         // PasswordInput
         ["Password.Placeholder"] = "Wprowadź hasło",
         ["Password.Toggle"] = "Pokaż/ukryj hasło",
