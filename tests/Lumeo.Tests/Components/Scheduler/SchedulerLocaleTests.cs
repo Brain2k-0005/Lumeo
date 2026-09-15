@@ -62,6 +62,47 @@ public class SchedulerLocaleTests : IAsyncLifetime
     }
 
     [Fact]
+    public void Week_Title_Reads_Day_Before_Month_Under_De_DE()
+    {
+        // Field report #464, finding C: the toolbar title used to hard-code "MMM d, yyyy" for
+        // every culture, so a German UI still read "Aug 10, 2026" (US month-before-day order)
+        // even though CurrentUICulture correctly translated the month NAME elsewhere.
+        CultureInfo.CurrentUICulture = CultureInfo.GetCultureInfo("de-DE");
+
+        var cut = _ctx.Render<L.Scheduler>(p => p
+            .Add(c => c.InitialView, L.SchedulerView.Week)
+            .Add(c => c.InitialDate, new DateTime(2026, 8, 12))); // Wednesday; Monday-start week -> Aug 10
+
+        var title = cut.Find(".text-center").TextContent;
+        var german = CultureInfo.GetCultureInfo("de-DE");
+        var month = german.DateTimeFormat.GetAbbreviatedMonthName(8);
+
+        var dayIndex = title.IndexOf("10", StringComparison.Ordinal);
+        var monthIndex = title.IndexOf(month, StringComparison.Ordinal);
+        Assert.True(dayIndex >= 0, $"expected day '10' in '{title}'");
+        Assert.True(monthIndex >= 0, $"expected month '{month}' in '{title}'");
+        Assert.True(dayIndex < monthIndex, $"expected day before month in '{title}'");
+    }
+
+    [Fact]
+    public void Day_Title_Reads_Month_Before_Day_Under_En_US()
+    {
+        // The other half of the same regression: en-US must keep reading month-before-day —
+        // pinned so a fix for de-DE cannot accidentally flip the default order for everyone.
+        CultureInfo.CurrentUICulture = CultureInfo.GetCultureInfo("en-US");
+
+        var cut = _ctx.Render<L.Scheduler>(p => p
+            .Add(c => c.InitialView, L.SchedulerView.Day)
+            .Add(c => c.InitialDate, new DateTime(2026, 8, 12)));
+
+        var title = cut.Find(".text-center").TextContent;
+        var monthIndex = title.IndexOf("Aug", StringComparison.Ordinal);
+        var dayIndex = title.IndexOf("12", StringComparison.Ordinal);
+        Assert.True(monthIndex >= 0 && dayIndex >= 0, $"expected both 'Aug' and '12' in '{title}'");
+        Assert.True(monthIndex < dayIndex, $"expected month before day in '{title}'");
+    }
+
+    [Fact]
     public void The_Invariant_culture_renders_without_throwing()
     {
         // The old "iv" trap was about a locale pack that did not exist. Nothing fetches a

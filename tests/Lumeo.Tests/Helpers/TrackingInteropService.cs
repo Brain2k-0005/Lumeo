@@ -95,7 +95,11 @@ public class TrackingInteropService : IComponentInteropService
         _clickOutsideUnregistrations.Add(elementId);
         return ValueTask.CompletedTask;
     }
-    public ValueTask FocusElement(string elementId)
+    // virtual so a test subclass can observe the CALLER's rendered DOM state at
+    // the exact moment this fires (OtpInput backspace-focus race regression
+    // coverage — proves a focus call was issued AFTER the render it depends on,
+    // not racing it).
+    public virtual ValueTask FocusElement(string elementId)
     {
         // Recorded in both views: menu tests assert via FocusElementCalls,
         // TreeView roving-tabindex tests via FocusedElementIds.

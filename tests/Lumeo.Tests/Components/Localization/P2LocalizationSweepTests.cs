@@ -257,6 +257,10 @@ public class P2LocalizationSweepTests : IAsyncLifetime
         // English and the Romance locales legitimately do not define, and
         // Every_Translated_Key_Also_Exists_In_English exempts them for that reason.
         "Scheduler.MoreEvents", "Scheduler.MoreEvents.One", "Scheduler.MoreEvents.Other",
+        // Field report #464, finding 3 — Skeleton's per-bar aria-label was a hardcoded
+        // English "Loading" literal; localized here and added to the completeness guard
+        // like every other key above.
+        "Skeleton.Loading",
     };
 
     [Theory]

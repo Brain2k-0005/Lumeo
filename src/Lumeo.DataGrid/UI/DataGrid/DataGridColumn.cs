@@ -32,6 +32,15 @@ public class DataGridColumn<TItem>
     public bool Visible { get; set; } = true;
 
     /// <summary>
+    /// Whether this column's cells open an editor in <see cref="DataGridEditMode.Cell"/> or
+    /// <see cref="DataGridEditMode.Batch"/> mode (click, double-click, Enter, F2). Defaults to
+    /// <c>true</c>, so a column is editable whenever the grid itself is; set <c>false</c> to
+    /// lock individual columns (e.g. a computed or id column) while the rest of the row stays
+    /// editable. Ignored when the grid isn't in an editable mode. Field report #464.
+    /// </summary>
+    public bool Editable { get; set; } = true;
+
+    /// <summary>
     /// Raised by the grid when this column's <see cref="Visible"/> state is changed
     /// through the built-in UI (the column-chooser toggle). Wired up from a
     /// <see cref="DataGridColumnDef{TItem}"/>'s <c>VisibleChanged</c> so a consumer's
@@ -196,4 +205,20 @@ public class CellEditContext<TItem>
     public DataGridColumn<TItem> Column { get; init; } = default!;
     public object? Value { get; set; }
     public Action ValueChanged { get; init; } = default!;
+
+    /// <summary>
+    /// Commits <see cref="Value"/> and closes the cell's editor — the same path the built-in
+    /// text editor takes on blur/Enter. Call this from a custom
+    /// <see cref="DataGridColumn{TItem}.EditTemplate"/> (a "Save" button, its own Enter/blur
+    /// handling) so the cell actually closes; without it, a custom editor has no way to leave
+    /// edit mode and every clicked cell stays open. Field report #464.
+    /// </summary>
+    public Func<Task> Commit { get; init; } = () => Task.CompletedTask;
+
+    /// <summary>
+    /// Discards the in-progress edit and closes the cell's editor without committing — the
+    /// same path the built-in text editor takes on Escape. Call this from a custom
+    /// <see cref="DataGridColumn{TItem}.EditTemplate"/> to let the user back out. Field report #464.
+    /// </summary>
+    public Func<Task> Cancel { get; init; } = () => Task.CompletedTask;
 }

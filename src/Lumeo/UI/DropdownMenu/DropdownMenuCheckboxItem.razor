@@ -12,6 +12,10 @@
 
 @code {
     [CascadingParameter] private Lumeo.Density? Density { get; set; }
+    // The enclosing DropdownMenu's open/close context. Radix closes the menu on both
+    // checkbox and radio item selection, same as a plain item; this checkbox item
+    // previously never closed the menu (field report #464, finding 2).
+    [CascadingParameter] public DropdownMenu.DropdownMenuContext? MenuContext { get; set; }
 
     /// <summary>The item's label content, rendered after the checkmark indicator.</summary>
     [Parameter] public RenderFragment? ChildContent { get; set; }
@@ -71,5 +75,9 @@
         _checked = !_checked;
         _lastPushed = _checked;   // record what we're about to push so a synchronous parent veto is detectable
         await CheckedChanged.InvokeAsync(_checked);
+        if (MenuContext is not null)
+        {
+            await MenuContext.SetOpen.InvokeAsync(false);
+        }
     }
 }

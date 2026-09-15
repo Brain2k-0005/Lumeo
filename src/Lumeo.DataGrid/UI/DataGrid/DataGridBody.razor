@@ -54,14 +54,7 @@ else if (Context is not null && Context.IsTreeGrid)
         {
             <tr>
                 <td colspan="@ColSpan" class="px-3 py-8 text-center text-muted-foreground">
-                    @if (EmptyContent is not null) { @EmptyContent }
-                    else
-                    {
-                        <div class="flex flex-col items-center gap-2">
-                            <SvgGlyph Svg="@(LumeoIcons.Inbox)" class="h-8 w-8 text-muted-foreground/50" />
-                            <span class="text-sm">@L["DataGrid.NoData"]</span>
-                        </div>
-                    }
+                    @RenderEmptyState()
                 </td>
             </tr>
         }
@@ -194,17 +187,7 @@ else if (Context is not null && Context.DisplayedItems.Count == 0 && ServerVirtu
     <tbody data-slot="datagrid-body" class="@CssClass" @attributes="AdditionalAttributes">
         <tr>
             <td colspan="@ColSpan" class="px-3 py-8 text-center text-muted-foreground">
-                @if (EmptyContent is not null)
-                {
-                    @EmptyContent
-                }
-                else
-                {
-                    <div class="flex flex-col items-center gap-2">
-                        <SvgGlyph Svg="@(LumeoIcons.Inbox)" class="h-8 w-8 text-muted-foreground/50" />
-                        <span class="text-sm">@L["DataGrid.NoData"]</span>
-                    </div>
-                }
+                @RenderEmptyState()
             </td>
         </tr>
     </tbody>
@@ -222,17 +205,7 @@ else if (Context is not null && ServerVirtualizationProvider is not null)
                bring the grid back. Virtualize renders only its two spacers at zero items. *@
             <tr>
                 <td colspan="@ColSpan" class="px-3 py-8 text-center text-muted-foreground">
-                    @if (EmptyContent is not null)
-                    {
-                        @EmptyContent
-                    }
-                    else
-                    {
-                        <div class="flex flex-col items-center gap-2">
-                            <SvgGlyph Svg="@(LumeoIcons.Inbox)" class="h-8 w-8 text-muted-foreground/50" />
-                            <span class="text-sm">@L["DataGrid.NoData"]</span>
-                        </div>
-                    }
+                    @RenderEmptyState()
                 </td>
             </tr>
         }
@@ -349,8 +322,62 @@ else if (Context is not null)
     [Parameter] public RenderFragment<TItem>? DetailTemplate { get; set; }
 
     /// <summary>Custom content shown in the single empty-state <c>&lt;tr&gt;</c> when
-    /// there are no rows to display. Falls back to a default "no data" message + icon.</summary>
+    /// there are no rows to display. Falls back to a default "no data" message + icon.
+    /// Superseded by <see cref="EmptyTemplate"/> when that is set.</summary>
     [Parameter] public RenderFragment? EmptyContent { get; set; }
+
+    /// <summary>Typed alternative to <see cref="EmptyContent"/> — receives a
+    /// <see cref="DataGridEmptyContext"/> so a custom empty state can tell "filtered to
+    /// zero rows" apart from "the source has none". Takes precedence over
+    /// <see cref="EmptyContent"/> when both are set.</summary>
+    [Parameter] public RenderFragment<DataGridEmptyContext>? EmptyTemplate { get; set; }
+
+    /// <summary>
+    /// Resolves the empty-state content for the current render: <see cref="EmptyTemplate"/>
+    /// first (typed, filter-aware), then <see cref="EmptyContent"/> (plain, host-supplied),
+    /// then the built-in message — which itself switches between "no rows match the current
+    /// filters" (with a Clear filters action) and "no data" depending on
+    /// <c>Context.HasActiveFilters</c>. Field report #464.
+    /// </summary>
+    private RenderFragment RenderEmptyState() => builder =>
+    {
+        if (EmptyTemplate is not null && Context is not null)
+        {
+            var emptyContext = new DataGridEmptyContext(
+                Context.HasActiveFilters,
+                Context.ClearFiltersAsync ?? (() => Task.CompletedTask));
+            builder.AddContent(0, EmptyTemplate(emptyContext));
+            return;
+        }
+
+        if (EmptyContent is not null)
+        {
+            builder.AddContent(1, EmptyContent);
+            return;
+        }
+
+        var filtered = Context?.HasActiveFilters == true;
+        builder.OpenElement(2, "div");
+        builder.AddAttribute(3, "class", "flex flex-col items-center gap-2");
+        builder.OpenComponent<SvgGlyph>(4);
+        builder.AddAttribute(5, "Svg", filtered ? LumeoIcons.SearchX : LumeoIcons.Inbox);
+        builder.AddAttribute(6, "class", "h-8 w-8 text-muted-foreground/50");
+        builder.CloseComponent();
+        builder.OpenElement(7, "span");
+        builder.AddAttribute(8, "class", "text-sm");
+        builder.AddContent(9, filtered ? L["DataGrid.NoDataFiltered"] : L["DataGrid.NoData"]);
+        builder.CloseElement();
+        if (filtered && Context?.ClearFiltersAsync is { } clearFilters)
+        {
+            builder.OpenElement(10, "button");
+            builder.AddAttribute(11, "type", "button");
+            builder.AddAttribute(12, "class", "text-xs text-primary underline hover:no-underline focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-2 rounded");
+            builder.AddAttribute(13, "onclick", EventCallback.Factory.Create(this, clearFilters));
+            builder.AddContent(14, L["DataGrid.ClearFilters"]);
+            builder.CloseElement();
+        }
+        builder.CloseElement();
+    };
 
     /// <summary>Renders rows through Blazor's <c>&lt;Virtualize&gt;</c> instead of a plain
     /// loop, for large in-memory item sets. Ignored when <see cref="ServerVirtualizationProvider"/>

@@ -117,6 +117,7 @@
                                         Editable="@Editable" Selectable="@Selectable" CanDrop="@CanDrop"
                                         ResolveEventColor="@ResolveFirstPartyColor"
                                         ResolveEventClassNames="@ResolveFirstPartyClassNames"
+                                        ResolveEventResourceName="@ResolveFirstPartyResourceName"
                                         OnEventClick="@EffectiveEventClick" OnDateSelect="@DateSelectFor(pane.CalendarId)"
                                         OnEventChange="@OnFirstPartyEventChangeAsync"
                                         OnRequestPrev="@PrevAsync" OnRequestNext="@NextAsync" />
@@ -132,6 +133,7 @@
                                            Editable="@Editable" Selectable="@Selectable" CanDrop="@CanDrop"
                                            ResolveEventColor="@ResolveFirstPartyColor"
                                            ResolveEventClassNames="@ResolveFirstPartyClassNames"
+                                           ResolveEventResourceName="@ResolveFirstPartyResourceName"
                                            OnEventClick="@EffectiveEventClick" OnDateSelect="@DateSelectFor(pane.CalendarId)"
                                            OnEventChange="@OnFirstPartyEventChangeAsync"
                                            OnRequestPrev="@PrevAsync" OnRequestNext="@NextAsync" />
@@ -147,6 +149,7 @@
                                            Editable="@Editable" Selectable="@Selectable" CanDrop="@CanDrop"
                                            ResolveEventColor="@ResolveFirstPartyColor"
                                            ResolveEventClassNames="@ResolveFirstPartyClassNames"
+                                           ResolveEventResourceName="@ResolveFirstPartyResourceName"
                                            OnEventClick="@EffectiveEventClick" OnDateSelect="@DateSelectFor(pane.CalendarId)"
                                            OnEventChange="@OnFirstPartyEventChangeAsync"
                                            OnRequestPrev="@PrevAsync" OnRequestNext="@NextAsync" />
@@ -165,6 +168,7 @@
                                            Editable="@Editable" Selectable="@Selectable" CanDrop="@CanDrop"
                                            ResolveEventColor="@ResolveFirstPartyColor"
                                            ResolveEventClassNames="@ResolveFirstPartyClassNames"
+                                           ResolveEventResourceName="@ResolveFirstPartyResourceName"
                                            OnEventClick="@EffectiveEventClick" OnDateSelect="@DateSelectFor(pane.CalendarId)"
                                            OnEventChange="@OnFirstPartyEventChangeAsync"
                                            OnRequestPrev="@PrevAsync" OnRequestNext="@NextAsync" />
@@ -207,6 +211,7 @@
                                            Editable="@Editable" Selectable="@Selectable" CanDrop="@CanDrop"
                                            ResolveEventColor="@ResolveFirstPartyColor"
                                            ResolveEventClassNames="@ResolveFirstPartyClassNames"
+                                           ResolveEventResourceName="@ResolveFirstPartyResourceName"
                                            OnEventClick="@EffectiveEventClick" OnDateSelect="@DateSelectFor(pane.CalendarId)"
                                            OnEventChange="@OnFirstPartyEventChangeAsync"
                                            OnRequestPrev="@PrevAsync" OnRequestNext="@NextAsync" />
@@ -640,6 +645,31 @@
 
     protected override void OnParametersSet()
     {
+        // Field report #464, finding A: the FullCalendar-era `OnInitError` (surfaced bundle-load
+        // + Calendar-constructor failures) was removed when the JS bridge was replaced by these
+        // first-party Blazor views, but the parameter itself was never re-declared. A consumer
+        // still passing `OnInitError="..."` on a Scheduler therefore gets no compile error —
+        // AdditionalAttributes' catch-all silently swallows it — and no runtime signal either;
+        // the handler simply never fires.
+        //
+        // It genuinely CANNOT fire any more: nothing in Scheduler.razor's init gates rendering on
+        // a JS call the way `new Calendar()` used to. The two JS calls this component's own child
+        // views still make at mount (SchedulerMonthView/SchedulerTimeGridView's drag-engine
+        // registration) are optional, post-render enhancements — see their own OnAfterRenderAsync
+        // remarks — and are caught broadly so a failure there degrades to "no drag" rather than
+        // failing the render, exactly like GanttV3's own "keep pointer clicks when drag interop is
+        // unavailable" precedent. There is therefore no init path left for OnInitError to ever
+        // observe. Rather than leave a caller's handler silently dead forever, fail LOUDLY once so
+        // the migration is unmissable instead of a callback nobody notices never fires.
+        if (AdditionalAttributes is not null && AdditionalAttributes.ContainsKey("OnInitError"))
+        {
+            throw new InvalidOperationException(
+                "Scheduler no longer raises OnInitError. The FullCalendar-era JS bridge it used to " +
+                "guard (bundle load + Calendar-constructor failures) was replaced by first-party " +
+                "Blazor views, so there is no initialization step left that can fail — remove the " +
+                "OnInitError handler. See the Scheduler docs page's migration notes.");
+        }
+
         _displayZone = SchedulerTimeZoneProjection.Resolve(TimeZone);
 
         // A parent can withdraw the dialog with the form standing open. Only its MARKUP is
@@ -831,8 +861,11 @@
     private string ComputeTitle(DateTime date, SchedulerView view) => view switch
     {
         SchedulerView.Month => date.ToString("MMMM yyyy", Ui),
-        SchedulerView.Week => string.Format(L["Scheduler.WeekOf"], StartOfWeek(date).ToString("MMM d, yyyy", Ui)),
-        SchedulerView.Day => date.ToString("dddd, MMM d, yyyy", Ui),
+        // Field report #464, finding C: this used to hard-code "MMM d, yyyy" — always
+        // month-before-day, US order — regardless of Ui. SchedulerTitleFormatter.FormatMonthDay
+        // derives the day/month order from the culture's own ShortDatePattern instead.
+        SchedulerView.Week => string.Format(L["Scheduler.WeekOf"], SchedulerTitleFormatter.FormatMonthDay(StartOfWeek(date), Ui, includeYear: true)),
+        SchedulerView.Day => SchedulerTitleFormatter.FormatWeekdayMonthDay(date, Ui),
         SchedulerView.List => date.ToString("MMMM yyyy", Ui),
         _ => date.ToString("MMMM yyyy", Ui)
     };
@@ -849,9 +882,13 @@
     {
         var start = _fpAnchor.Date;
         var end = start.AddDays(EffectiveVisibleDays - 1);
+        // Was `$"{start:MMM d} – {end:MMM d, yyyy}"`: hard-coded US order (finding C) AND,
+        // separately, an interpolated format specifier with no explicit provider reads
+        // CultureInfo.CurrentCulture rather than the CurrentUICulture the rest of this toolbar
+        // is keyed on — two cultures could disagree on a host that sets them apart.
         return EffectiveVisibleDays == 1
             ? ComputeTitle(start, SchedulerView.Day)
-            : $"{start:MMM d} – {end:MMM d, yyyy}";
+            : $"{SchedulerTitleFormatter.FormatMonthDay(start, Ui, includeYear: false)} – {SchedulerTitleFormatter.FormatMonthDay(end, Ui, includeYear: true)}";
     }
 
     /// <summary>
@@ -879,7 +916,9 @@
         // axis draws through the 31st is just as wrong (Codex review round 7).
         var exclusiveEnd = SchedulerTimelineScale.Advance(TimelineUnit, cols[^1], 1);
         var last = exclusiveEnd == DateTime.MaxValue ? DateTime.MaxValue.Date : exclusiveEnd.AddDays(-1);
-        return $"{origin.ToString("MMM d", Ui)} – {last.ToString("MMM d, yyyy", Ui)}";
+        // Field report #464, finding C: was hard-coded "MMM d" / "MMM d, yyyy" — see ComputeTitle's
+        // Week branch remarks for why that pins US day/month order regardless of Ui.
+        return $"{SchedulerTitleFormatter.FormatMonthDay(origin, Ui, includeYear: false)} – {SchedulerTitleFormatter.FormatMonthDay(last, Ui, includeYear: true)}";
     }
 
     private DateTime StartOfWeek(DateTime date)
@@ -1412,6 +1451,18 @@
         if (string.IsNullOrEmpty(fromDelegate)) return ev.ClassNames;
         return string.IsNullOrEmpty(ev.ClassNames) ? fromDelegate : $"{fromDelegate} {ev.ClassNames}";
     }
+
+    /// <summary>
+    /// Resource DISPLAY NAME for an event's tooltip, resolved through this component's own
+    /// <see cref="_resourceById"/> lookup (built from <see cref="Resources"/>). Month/TimeGrid
+    /// views have no resource list of their own — only the raw <see cref="SchedulerEvent.ResourceId"/>
+    /// — so without this they showed that raw id in the hover tooltip instead of its
+    /// <see cref="SchedulerResource.Title"/> (field report #464, finding D). Null when
+    /// <see cref="Resources"/> was never supplied or has nothing for this id; the views fall
+    /// back to the raw id themselves in that case, matching the pre-existing behaviour.
+    /// </summary>
+    private string? ResolveFirstPartyResourceName(SchedulerEvent ev) =>
+        ev.ResourceId is { } rid && _resourceById.TryGetValue(rid, out var res) ? res.Title : null;
 
     /// <summary>
     /// Applies a first-party edit through this component's own state before telling

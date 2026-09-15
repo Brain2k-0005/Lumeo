@@ -6,6 +6,7 @@ internal static partial class LumeoDefaultStrings
     {
         // DataGrid
         ["DataGrid.NoData"] = "Sin datos",
+        ["DataGrid.NoDataFiltered"] = "Ninguna fila coincide con los filtros actuales",
         ["DataGrid.Loading"] = "Cargando…",
         ["DataGrid.SearchPlaceholder"] = "Buscar…",
         ["DataGrid.ClearSearch"] = "Borrar búsqueda",
@@ -133,6 +134,11 @@ internal static partial class LumeoDefaultStrings
         ["ColorPicker.Green"] = "Verde",
         ["ColorPicker.Blue"] = "Azul",
         ["ColorPicker.Presets"] = "Preajustes",
+
+        // ── IconPicker ────────────────────────────────
+        ["IconPicker.Placeholder"] = "Elegir un icono",
+        ["IconPicker.SearchPlaceholder"] = "Buscar iconos",
+        ["IconPicker.NoIconsFound"] = "No se encontraron iconos",
 
         // PasswordInput
         ["Password.Placeholder"] = "Introducir contraseña",
@@ -262,6 +268,9 @@ internal static partial class LumeoDefaultStrings
         ["Stepper.Finish"] = "Finalizar",
         ["Stepper.Optional"] = "Opcional",
         ["Stepper.Skip"] = "Omitir",
+
+        // Skeleton
+        ["Skeleton.Loading"] = "Cargando",
 
         // Window
         ["Window.Close"] = "Cerrar",

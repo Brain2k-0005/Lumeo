@@ -11,6 +11,20 @@ internal static class ChartHelper
     /// <summary>
     /// Merges OptionOverride entries into the option's ExtensionData.
     /// </summary>
+    /// <remarks>
+    /// An override key that names a property the typed <see cref="EChartOption"/> ALSO
+    /// serializes (most commonly <c>series</c>, but any of title/tooltip/legend/grid/
+    /// xAxis/yAxis/... apply) used to land in <see cref="EChartOption.ExtensionData"/>
+    /// alongside the already-populated typed property — System.Text.Json's
+    /// <c>[JsonExtensionData]</c> writer does not de-dupe against regular properties, so
+    /// BOTH were emitted under the same JSON key (confirmed: <c>JsonNode.Parse</c> on the
+    /// resulting text throws <c>ArgumentException: An item with the same key has already
+    /// been added</c>, and a plain <c>JSON.parse</c> on the JS side silently keeps
+    /// whichever duplicate came last, discarding the generated series/tooltip/etc.
+    /// entirely). Clearing the colliding typed property first — so the override always
+    /// wins outright for that top-level key, per the OptionOverride escape-hatch
+    /// contract — guarantees the key is emitted exactly once.
+    /// </remarks>
     public static void ApplyOptionOverride(EChartOption option, Dictionary<string, object>? overrides)
     {
         if (overrides is null || overrides.Count == 0) return;
@@ -18,9 +32,53 @@ internal static class ChartHelper
         option.ExtensionData ??= new Dictionary<string, JsonElement>();
         foreach (var kvp in overrides)
         {
+            ClearCollidingTypedProperty(option, kvp.Key);
+
             var json = JsonSerializer.Serialize(kvp.Value);
             var element = JsonSerializer.Deserialize<JsonElement>(json);
             option.ExtensionData[kvp.Key] = element;
+        }
+    }
+
+    /// <summary>
+    /// Nulls out whichever typed <see cref="EChartOption"/> property serializes under
+    /// the given camelCase JSON key, so a same-named <see cref="EChartOption.ExtensionData"/>
+    /// entry set right after doesn't collide with it at serialization time. A no-op for
+    /// any key that isn't one of <see cref="EChartOption"/>'s own top-level properties
+    /// (the common case — most OptionOverride keys name something the typed model has no
+    /// dedicated parameter for at all).
+    /// </summary>
+    private static void ClearCollidingTypedProperty(EChartOption option, string key)
+    {
+        switch (key)
+        {
+            case "title": option.Title = null; break;
+            case "tooltip": option.Tooltip = null; break;
+            case "legend": option.Legend = null; break;
+            case "grid": option.Grid = null; break;
+            case "xAxis": option.XAxis = null; break;
+            case "yAxis": option.YAxis = null; break;
+            case "radar": option.Radar = null; break;
+            case "angleAxis": option.AngleAxis = null; break;
+            case "radiusAxis": option.RadiusAxis = null; break;
+            case "polar": option.Polar = null; break;
+            case "series": option.Series = null; break;
+            case "color": option.Color = null; break;
+            case "visualMap": option.VisualMap = null; break;
+            case "animation": option.Animation = null; break;
+            case "singleAxis": option.SingleAxis = null; break;
+            case "parallel": option.Parallel = null; break;
+            case "parallelAxis": option.ParallelAxis = null; break;
+            case "dataZoom": option.DataZoom = null; break;
+            case "toolbox": option.Toolbox = null; break;
+            case "brush": option.Brush = null; break;
+            case "geo": option.Geo = null; break;
+            case "calendar": option.Calendar = null; break;
+            case "dataset": option.Dataset = null; break;
+            case "animationEnabled": option.AnimationEnabled = null; break;
+            case "animationDuration": option.AnimationDuration = null; break;
+            case "animationEasing": option.AnimationEasing = null; break;
+            case "animationDelay": option.AnimationDelay = null; break;
         }
     }
 

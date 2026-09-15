@@ -1,0 +1,167 @@
+@page "/components/icon-picker"
+@using System.Reflection
+@using Lumeo.Icons
+
+<PageTitle>IconPicker — Lumeo</PageTitle>
+
+<PageHeader Title="IconPicker" Description="A searchable, virtualized icon grid behind a Popover trigger — pack-agnostic, so it works with any installed Lumeo.Icons.* pack." />
+
+<InstallUsage Component="IconPicker" />
+
+<div class="mt-10 space-y-3">
+    <Heading Id="when-to-use" Level="2" Class="scroll-mt-20">When to Use</Heading>
+    <ul class="list-disc list-inside space-y-1 text-muted-foreground text-sm">
+        <li>An admin picking a category, folder, or navigation-item icon</li>
+        <li>Theme/branding settings that let a user choose a glyph</li>
+        <li>Anywhere a value component needs to bind to one icon name out of a large set</li>
+    </ul>
+</div>
+
+<div class="mt-8 rounded-md border border-border/40 bg-muted/30 p-4">
+    <Heading Id="pack-agnostic" Level="3" Class="scroll-mt-20 text-sm">Pack-agnostic by design</Heading>
+    <Lumeo.Text Size="sm" Color="muted" Class="mt-2">
+        The core <code class="font-mono text-[13px]">Lumeo</code> package references no individual icon pack — <code class="font-mono text-[13px]">IconPicker</code>
+        takes a plain <code class="font-mono text-[13px]">IReadOnlyList&lt;IconPickerItem&gt;</code> (<code class="font-mono text-[13px]">Name</code> + <code class="font-mono text-[13px]">IconSource</code> +
+        optional <code class="font-mono text-[13px]">Keywords</code>). Build that list from whichever <code class="font-mono text-[13px]">Lumeo.Icons.*</code> pack(s) you installed with a
+        one-time reflection pass over the pack's static class — the same technique the <a href="/icons" class="text-primary hover:underline">icon gallery</a> on this site uses:
+    </Lumeo.Text>
+    <pre class="code-block mt-3 rounded-lg border border-border/40 bg-muted px-4 py-3 font-mono text-xs text-foreground whitespace-pre overflow-x-auto">@_codeReflectionHelper</pre>
+</div>
+
+<Stack Gap="8" Class="mt-8">
+    <ComponentDemo Title="Basic" Code="@_codeBasic">
+        <IconPicker Icons="_lucideIcons" @bind-Value="_icon1" Clearable="true" />
+    </ComponentDemo>
+
+    <ComponentDemo Title="With Label" Code="@_codeShowLabel">
+        <IconPicker Icons="_lucideIcons" @bind-Value="_icon2" ShowLabel="true" Placeholder="Choose a category icon" />
+    </ComponentDemo>
+
+    <ComponentDemo Title="Keywords" Code="@_codeKeywords">
+        <IconPicker Icons="_curatedIcons" @bind-Value="_icon3" ShowLabel="true" Columns="6" />
+        <Lumeo.Text Size="xs" Color="muted" Class="mt-2">Try searching "money" or "home" — neither is an icon name, both are a <code class="font-mono text-[11px]">Keywords</code> entry.</Lumeo.Text>
+    </ComponentDemo>
+
+    <ComponentDemo Title="Sizes" Code="@_codeSizes">
+        <Flex Gap="3" Align="center" Class="flex-wrap">
+            <IconPicker Icons="_lucideIcons" Value="_icon1" Size="Lumeo.Size.Xs" />
+            <IconPicker Icons="_lucideIcons" Value="_icon1" Size="Lumeo.Size.Sm" />
+            <IconPicker Icons="_lucideIcons" Value="_icon1" Size="Lumeo.Size.Md" />
+            <IconPicker Icons="_lucideIcons" Value="_icon1" Size="Lumeo.Size.Lg" />
+            <IconPicker Icons="_lucideIcons" Value="_icon1" Size="Lumeo.Size.Xl" />
+        </Flex>
+    </ComponentDemo>
+
+    <ComponentDemo Title="Disabled" Code="@_codeDisabled">
+        <IconPicker Icons="_lucideIcons" Value="_icon1" Disabled="true" />
+    </ComponentDemo>
+
+    <ComponentDemo Title="In a Form" Code="@_codeForm">
+        <Form TModel="CategoryModel" Model="_formModel" Class="max-w-sm">
+            <FormField Name="categoryIcon" Label="Category icon" Required="true" HelpText="Shown next to the category name in every list.">
+                <IconPicker Icons="_lucideIcons" @bind-Value="_formModel.CategoryIcon" ShowLabel="true" Clearable="true" Required="true" />
+            </FormField>
+        </Form>
+    </ComponentDemo>
+</Stack>
+
+<!-- API Reference -->
+<Stack Gap="6" Class="mt-12">
+    <Heading Level="2">API Reference</Heading>
+    <Lumeo.Text Size="sm" Color="muted">
+        Nested inside a FormField, the cascaded context wires up Label, Required, Invalid, and HelperText automatically —
+        the same shape as ColorPicker and Combobox.
+    </Lumeo.Text>
+    <PropsTable Slug="icon-picker" />
+</Stack>
+
+<div class="mt-12">
+    <Heading Id="related" Level="2" Class="scroll-mt-20">Related Components</Heading>
+    <ul class="mt-4 space-y-2 text-sm">
+        <li><a href="/components/popover" class="text-primary hover:underline">Popover</a> — The underlying overlay mechanism used by IconPicker</li>
+        <li><a href="/components/combobox" class="text-primary hover:underline">Combobox</a> — Searchable single/multi-select for text options</li>
+        <li><a href="/components/color-picker" class="text-primary hover:underline">ColorPicker</a> — The same trigger + popover shape for color values</li>
+        <li><a href="/icons" class="text-primary hover:underline">Icon Packs</a> — Browse every installed pack and copy usage snippets</li>
+    </ul>
+</div>
+
+@code {
+    private string? _icon1 = "Star";
+    private string? _icon2 = "Folder";
+    private string? _icon3;
+
+    private sealed class CategoryModel
+    {
+        public string? CategoryIcon { get; set; }
+    }
+
+    private readonly CategoryModel _formModel = new();
+
+    // Reflected once over Lucide's static class — see the "Pack-agnostic by design" helper
+    // above. Cheap enough to do eagerly (a few hundred microseconds over ~1,500 properties)
+    // since IconPicker itself only pays the Where/Select cost, never per-render.
+    private IReadOnlyList<Lumeo.IconPickerItem> _lucideIcons = Array.Empty<Lumeo.IconPickerItem>();
+
+    private IReadOnlyList<Lumeo.IconPickerItem> _curatedIcons = new List<Lumeo.IconPickerItem>
+    {
+        new("House", Lucide.House, new[] { "home", "building" }),
+        new("Star", Lucide.Star, new[] { "favorite", "rating" }),
+        new("Heart", Lucide.Heart, new[] { "like", "love" }),
+        new("Folder", Lucide.Folder, new[] { "directory", "files" }),
+        new("Mail", Lucide.Mail, new[] { "email", "message" }),
+        new("Settings", Lucide.Settings, new[] { "preferences", "gear", "config" }),
+        new("User", Lucide.User, new[] { "account", "profile", "person" }),
+        new("Wallet", Lucide.Wallet, new[] { "money", "payment", "billing" }),
+        new("Bell", Lucide.Bell, new[] { "notification", "alert" }),
+        new("Calendar", Lucide.Calendar, new[] { "date", "schedule", "event" }),
+        new("ShoppingCart", Lucide.ShoppingCart, new[] { "money", "purchase", "store" }),
+        new("Tag", Lucide.Tag, new[] { "label", "category" }),
+    };
+
+    protected override void OnInitialized()
+    {
+        _lucideIcons = BuildIcons(typeof(Lucide));
+    }
+
+    private static IReadOnlyList<Lumeo.IconPickerItem> BuildIcons(Type packClass) =>
+        packClass.GetProperties(BindingFlags.Public | BindingFlags.Static)
+            .Where(p => p.PropertyType == typeof(Lumeo.IconSource))
+            .Select(p => new Lumeo.IconPickerItem(p.Name, (Lumeo.IconSource)p.GetValue(null)!))
+            .OrderBy(i => i.Name, StringComparer.Ordinal)
+            .ToList();
+
+    private string _codeReflectionHelper = @"using System.Reflection;
+using Lumeo.Icons;
+
+private static IReadOnlyList<IconPickerItem> BuildIcons(Type packClass) =>
+    packClass.GetProperties(BindingFlags.Public | BindingFlags.Static)
+        .Where(p => p.PropertyType == typeof(IconSource))
+        .Select(p => new IconPickerItem(p.Name, (IconSource)p.GetValue(null)!))
+        .OrderBy(i => i.Name, StringComparer.Ordinal)
+        .ToList();
+
+// e.g. in OnInitialized():
+_lucideIcons = BuildIcons(typeof(Lucide));";
+
+    private string _codeBasic = @"<IconPicker Icons=""_lucideIcons"" @bind-Value=""_icon"" Clearable=""true"" />";
+    private string _codeShowLabel = @"<IconPicker Icons=""_lucideIcons"" @bind-Value=""_icon"" ShowLabel=""true"" Placeholder=""Choose a category icon"" />";
+    private string _codeKeywords = @"private List<IconPickerItem> _curatedIcons = new()
+{
+    new(""House"", Lucide.House, new[] { ""home"", ""building"" }),
+    new(""Wallet"", Lucide.Wallet, new[] { ""money"", ""payment"", ""billing"" }),
+    // …
+};
+
+<IconPicker Icons=""_curatedIcons"" @bind-Value=""_icon"" ShowLabel=""true"" Columns=""6"" />";
+    private string _codeSizes = @"<IconPicker Icons=""_lucideIcons"" Value=""_icon"" Size=""Lumeo.Size.Xs"" />
+<IconPicker Icons=""_lucideIcons"" Value=""_icon"" Size=""Lumeo.Size.Sm"" />
+<IconPicker Icons=""_lucideIcons"" Value=""_icon"" Size=""Lumeo.Size.Md"" />
+<IconPicker Icons=""_lucideIcons"" Value=""_icon"" Size=""Lumeo.Size.Lg"" />
+<IconPicker Icons=""_lucideIcons"" Value=""_icon"" Size=""Lumeo.Size.Xl"" />";
+    private string _codeDisabled = @"<IconPicker Icons=""_lucideIcons"" Value=""_icon"" Disabled=""true"" />";
+    private string _codeForm = @"<Form TModel=""CategoryModel"" Model=""_formModel"">
+    <FormField Name=""categoryIcon"" Label=""Category icon"" Required=""true"">
+        <IconPicker Icons=""_lucideIcons"" @bind-Value=""_formModel.CategoryIcon"" ShowLabel=""true"" Clearable=""true"" Required=""true"" />
+    </FormField>
+</Form>";
+}

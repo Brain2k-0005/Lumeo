@@ -170,4 +170,24 @@ public class OtpInputPasteLifecycleTests : IAsyncLifetime
         Assert.Null(ex);
         Assert.Single(_interop.OtpPasteUnregistrations);
     }
+
+    // Field report #464 fix round 2 note: HandlePaste's own render request
+    // (`await InvokeAsync(StateHasChanged)`, added in round 1 so a
+    // bare-ValueChanged caller still re-renders after a paste) needed the same
+    // JSDisconnectedException/ObjectDisposedException guard OnAfterRenderAsync
+    // and DisposeAsync already carry, since HandlePaste is reached the same
+    // JS-mediated way (registerOtpPaste -> OnOtpPaste) and a paste can land
+    // while the circuit/component is tearing down. That guard is now in place.
+    // A test was attempted (disposing the bUnit context, then invoking
+    // HandlePaste directly via reflection to bypass cut.InvokeAsync, which
+    // itself needs a live renderer) but proved NON-discriminating: it passed
+    // identically with and without the try/catch, because bUnit's TestRenderer
+    // does not throw ObjectDisposedException/JSDisconnectedException from
+    // ComponentBase.InvokeAsync(StateHasChanged) after context disposal the
+    // way a real Blazor Server circuit's Dispatcher does — unlike the
+    // interop-level throws above (ThrowObjectDisposedOnUnregisterOtpPaste),
+    // there is no mockable seam for this specific exception source in the
+    // current test infrastructure. Per the task brief, not adding a vacuous
+    // test for this; the fix itself mirrors the file's own established,
+    // already-tested pattern (OnAfterRenderAsync / DisposeAsync above) exactly.
 }

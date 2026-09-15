@@ -6,6 +6,7 @@ internal static partial class LumeoDefaultStrings
     {
         // DataGrid
         ["DataGrid.NoData"] = "データがありません",
+        ["DataGrid.NoDataFiltered"] = "現在のフィルターに一致する行がありません",
         ["DataGrid.Loading"] = "読み込み中…",
         ["DataGrid.SearchPlaceholder"] = "検索…",
         ["DataGrid.ClearSearch"] = "検索をクリア",
@@ -133,6 +134,11 @@ internal static partial class LumeoDefaultStrings
         ["ColorPicker.Green"] = "緑",
         ["ColorPicker.Blue"] = "青",
         ["ColorPicker.Presets"] = "プリセット",
+
+        // ── IconPicker ────────────────────────────────
+        ["IconPicker.Placeholder"] = "アイコンを選択",
+        ["IconPicker.SearchPlaceholder"] = "アイコンを検索",
+        ["IconPicker.NoIconsFound"] = "アイコンが見つかりません",
 
         // PasswordInput
         ["Password.Placeholder"] = "パスワードを入力",
@@ -262,6 +268,9 @@ internal static partial class LumeoDefaultStrings
         ["Stepper.Finish"] = "完了",
         ["Stepper.Optional"] = "任意",
         ["Stepper.Skip"] = "スキップ",
+
+        // Skeleton
+        ["Skeleton.Loading"] = "読み込み中",
 
         // Window
         ["Window.Close"] = "閉じる",
