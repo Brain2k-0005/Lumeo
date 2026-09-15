@@ -209,6 +209,40 @@ export function setHtmlClass(className, active) {
     document.documentElement.classList.toggle(className, !!active);
 }
 
+// vaul-style background scaling (#346, Drawer.ScaleBackground). Toggles
+// data-lumeo-drawer-scaled on the CONSUMER'S own [data-lumeo-drawer-wrapper]
+// element — never rendered by Lumeo itself, so a no-op when the app hasn't
+// marked one. lumeo.css reads the attribute to scale/round/translate it via
+// a CSS transition while a bottom Drawer with ScaleBackground is open.
+//
+// Fix round 1 (task review) — ref-counted like scrollLockCount just above:
+// two simultaneously-open bottom Drawers with ScaleBackground=true used to
+// fight over the single wrapper element with a plain set/removeAttribute —
+// whichever closed FIRST un-scaled the wrapper while the second was still
+// open. The counter only mutates the DOM on the 0->1 (first drawer opens)
+// and 1->0 (last drawer closes) edges; every call in between is a no-op on
+// the DOM but still balances the count. DrawerContent's own _scaleApplied
+// flag (see DrawerContent.razor) already guarantees each component instance
+// calls this with `false` at most once per `true` it issued (including from
+// Dispose/JSDisconnected paths), so the count itself can never go negative
+// in practice — the Math.max(0, ...) clamp is a defensive floor only.
+let drawerBackgroundScaleCount = 0;
+
+export function setDrawerBackgroundScaled(active) {
+    const el = document.querySelector('[data-lumeo-drawer-wrapper]');
+    if (active) {
+        drawerBackgroundScaleCount++;
+        if (drawerBackgroundScaleCount === 1 && el) {
+            el.setAttribute('data-lumeo-drawer-scaled', 'true');
+        }
+    } else {
+        drawerBackgroundScaleCount = Math.max(0, drawerBackgroundScaleCount - 1);
+        if (drawerBackgroundScaleCount === 0 && el) {
+            el.removeAttribute('data-lumeo-drawer-scaled');
+        }
+    }
+}
+
 const focusTrapHandlers = new Map();
 
 const FOCUS_TRAP_FOCUSABLE =

@@ -50,6 +50,15 @@ public interface IComponentInteropService : IAsyncDisposable, IDisposable
     /// <summary>Toggles a class on <c>document.documentElement</c>. Useful for
     /// global modes (e.g. hiding floating chrome while a DataGrid is fullscreen).</summary>
     ValueTask SetHtmlClass(string className, bool active);
+    /// <summary>vaul-style background scaling (#346, <c>Drawer.ScaleBackground</c>).
+    /// Toggles <c>data-lumeo-drawer-scaled</c> on the CONSUMER'S own
+    /// <c>[data-lumeo-drawer-wrapper]</c> element (not rendered by Lumeo — it
+    /// lives outside any overlay's DOM, typically the app's page root), which
+    /// lumeo.css uses to scale/round/translate it via a CSS transition while a
+    /// bottom Drawer with ScaleBackground is open. A no-op if no such element
+    /// exists. Default implementation is a no-op so existing implementers /
+    /// test doubles keep compiling.</summary>
+    ValueTask SetDrawerBackgroundScaled(bool active) => ValueTask.CompletedTask;
     /// <summary>Engages a Tab-cycling focus trap on the element, saves the
     /// previously focused element (the trigger) and moves focus into the trap.
     /// <paramref name="initialFocusSelector"/> optionally names the element

@@ -174,6 +174,12 @@ public sealed class ComponentInteropService : IComponentInteropService
         await module.InvokeVoidAsync("setHtmlClass", className, active);
     }
 
+    public async ValueTask SetDrawerBackgroundScaled(bool active)
+    {
+        var module = await GetModuleAsync();
+        await module.InvokeVoidAsync("setDrawerBackgroundScaled", active);
+    }
+
     public async ValueTask SetupFocusTrap(string elementId, string? initialFocusSelector = null)
     {
         var module = await GetModuleAsync();

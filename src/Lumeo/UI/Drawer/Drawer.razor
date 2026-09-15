@@ -5,7 +5,14 @@
 }
 
 <CascadingValue Value="context" IsFixed="false">
-    @ChildContent
+    @* Named (not folded into DrawerContext) so adding it doesn't change the
+       context record's constructor/Deconstruct shape — a public-API-breaking
+       edit for a record whose positional signature is already shipped.
+       Mirrors the existing LumeoDirection named-cascade idiom (see
+       DrawerContent/SheetContent's own ScopedDirection). #346. *@
+    <CascadingValue Value="ScaleBackground" Name="LumeoDrawerScaleBackground" IsFixed="false">
+        @ChildContent
+    </CascadingValue>
 </CascadingValue>
 
 @code {
@@ -34,6 +41,17 @@
     /// <summary>Deprecated alias for <see cref="OpenChanged"/>.</summary>
     [Obsolete("Use OpenChanged instead. IsOpenChanged will be removed in a future release.")]
     [Parameter] public EventCallback<bool> IsOpenChanged { get => OpenChanged; set => OpenChanged = value; }
+
+    /// <summary>vaul-style <c>shouldScaleBackground</c> (#346). When <c>true</c>
+    /// (default <c>false</c>) and the open <c>DrawerContent</c> is a Bottom
+    /// drawer, the app's own page-root element — marked with
+    /// <c>data-lumeo-drawer-wrapper</c> by the CONSUMER; Lumeo never renders
+    /// this element itself — gets scaled down, rounded, and nudged via CSS
+    /// transitions in <c>lumeo.css</c> while the drawer is open, mimicking the
+    /// native "page recedes behind the sheet" iOS effect. No-op if no element
+    /// with that attribute exists, and ignored for Top/Left/Right sides (vaul
+    /// only scales for a bottom sheet).</summary>
+    [Parameter] public bool ScaleBackground { get; set; }
 
     private readonly string _titleId = LumeoIds.New("drawer-title");
     private readonly string _descriptionId = LumeoIds.New("drawer-desc");
