@@ -1,3 +1,4 @@
+using AngleSharp.Dom;
 using Bunit;
 using Lumeo.Tests.Helpers;
 using Xunit;
@@ -22,6 +23,77 @@ public class SchedulerEventDialogTests : IAsyncLifetime
 
     private static L.SchedulerEvent Existing() =>
         new("e1", "Standup", Anchor.AddHours(9), Anchor.AddHours(10));
+
+    // The start/end editors are DateTimePicker (timed) / DatePicker (all-day) popovers, not a
+    // native <input> a bUnit .Change(string) can drive directly anymore. Every query below is
+    // scoped to THIS field's own div[data-slot="popover"] root (Popover renders its content
+    // inline, not portaled — see Popover.razor), never cut.Find/-FindAll against the whole
+    // Scheduler tree: the calendar/month view sits rendered behind the open dialog, and an
+    // unscoped search can collide with an unrelated button there (or with the OTHER field's
+    // own picker when both start and end are open).
+    private static IElement PopoverRoot(IRenderedComponent<L.Scheduler> cut, string dataAttr) =>
+        cut.Find($"[{dataAttr}]").ParentElement!.ParentElement!; // button -> popover-trigger -> popover
+
+    // Opens the popover and picks a day/hour/minute, returning the DateTime that ought to have
+    // committed. The Popover destroys/recreates its content (including the nested Calendar) on
+    // every open/close, so a Calendar opened for the first time after the field was cleared never
+    // inherits any previously-seeded anchor — it defaults its displayed month to DateTime.Today
+    // (Calendar.razor: "DisplayDate = ... DateOnly.FromDateTime(DateTime.Today)"). Picking THAT
+    // day, via Calendar's own aria-label (mirrors DayAriaLabel's "D" format exactly), keeps the
+    // lookup independent of any hardcoded month/year. Hour/minute are picked explicitly so the
+    // committed value is exact rather than defaulting to midnight (DateTimePicker.UpdateValue
+    // commits with a null _timeValue as TimeSpan.Zero).
+    private static DateTime PickDateTime(IRenderedComponent<L.Scheduler> cut, string dataAttr, int hour, int minute)
+    {
+        // Re-fetch the popover root before EACH interaction rather than caching one reference —
+        // several of these clicks trigger a re-render, and re-querying matches how the rest of
+        // this file drives the DOM (cut.Find/-FindAll fresh each step).
+        PopoverRoot(cut, dataAttr).QuerySelector("button")!.Click(); // the trigger — opens the popover
+
+        var today = DateTime.Today;
+        var dayLabel = today.ToString("D", System.Globalization.CultureInfo.CurrentCulture);
+        PopoverRoot(cut, dataAttr).QuerySelector($"button[aria-label='{dayLabel}']")!.Click();
+
+        // The hours and minutes columns are both role="listbox" — hours first, minutes second in
+        // DOM order — and hour 0 / minute 0 BOTH render as "00", so a plain text+class match
+        // across the whole popover picks whichever column comes first regardless of which one was
+        // meant, clicking the hour column's "00" (SelectHour(0)) when a "00" MINUTE was wanted.
+        // Scope each pick to its own listbox.
+        var hourText = hour.ToString("D2");
+        var minuteText = minute.ToString("D2");
+        PopoverRoot(cut, dataAttr).QuerySelectorAll("[role='listbox']")[0]
+            .QuerySelectorAll("button").First(b => b.TextContent.Trim() == hourText).Click();
+        PopoverRoot(cut, dataAttr).QuerySelectorAll("[role='listbox']")[1]
+            .QuerySelectorAll("button").First(b => b.TextContent.Trim() == minuteText).Click();
+
+        return new DateTime(today.Year, today.Month, today.Day, hour, minute, 0);
+    }
+
+    // The Clear (x) affordance renders as a SECOND <button> inside DateTimePicker/DatePicker's
+    // trigger markup — but a <button> start tag implicitly closes an already-open <button> per
+    // the HTML5 tree construction rules, so the browser (and AngleSharp/bUnit, which follows the
+    // same algorithm) actually parses it as a SIBLING of the trigger, not a descendant.
+    private static void ClickClear(IRenderedComponent<L.Scheduler> cut, string dataAttr) =>
+        PopoverRoot(cut, dataAttr).QuerySelector("button[aria-label]")!.Click();
+
+    // Same mechanics as PickDateTime, but for a field that ALREADY carries a value (an editing
+    // flow, not a cleared one) — the Calendar seeds its shown month straight from that value, so
+    // the target day genuinely needs to be visible without any month navigation, unlike the
+    // cleared-field path above where the shown month is unpredictable.
+    private static void PickDateTimeAt(IRenderedComponent<L.Scheduler> cut, string dataAttr, DateTime target)
+    {
+        PopoverRoot(cut, dataAttr).QuerySelector("button")!.Click(); // the trigger — opens the popover
+
+        var dayLabel = target.Date.ToString("D", System.Globalization.CultureInfo.CurrentCulture);
+        PopoverRoot(cut, dataAttr).QuerySelector($"button[aria-label='{dayLabel}']")!.Click();
+
+        var hourText = target.Hour.ToString("D2");
+        var minuteText = target.Minute.ToString("D2");
+        PopoverRoot(cut, dataAttr).QuerySelectorAll("[role='listbox']")[0]
+            .QuerySelectorAll("button").First(b => b.TextContent.Trim() == hourText).Click();
+        PopoverRoot(cut, dataAttr).QuerySelectorAll("[role='listbox']")[1]
+            .QuerySelectorAll("button").First(b => b.TextContent.Trim() == minuteText).Click();
+    }
 
     private IRenderedComponent<L.Scheduler> Render(
         bool dialog,
@@ -629,7 +701,9 @@ public class SchedulerEventDialogTests : IAsyncLifetime
             .Add(c => c.EventsChanged, (IEnumerable<L.SchedulerEvent> e) => pushed = e));
 
         cut.Find("[data-event-instance]").Click();
-        cut.Find("[data-scheduler-dialog-start]").Change(string.Empty);
+        // The DateTimePicker's own Clear affordance, rendered whenever Clearable and a value
+        // is present.
+        ClickClear(cut, "data-scheduler-dialog-start");
 
         var save = cut.Find("[data-scheduler-dialog-save]");
         Assert.True(save.HasAttribute("disabled"));
@@ -637,11 +711,74 @@ public class SchedulerEventDialogTests : IAsyncLifetime
         save.Click();
         Assert.Null(pushed);
 
-        // Typing a date back in releases it again.
-        cut.Find("[data-scheduler-dialog-start]").Change("2026-03-10T09:00");
+        // Picking a date back in releases it again.
+        var picked = PickDateTime(cut, "data-scheduler-dialog-start", 9, 0);
         cut.Find("[data-scheduler-dialog-save]").Click();
 
-        Assert.Equal(new DateTime(2026, 3, 10, 9, 0, 0), pushed!.Single().Start);
+        Assert.Equal(picked, pushed!.Single().Start);
+    }
+
+    // -- D: composite search inputs / Scheduler date editors use Lumeo controls -----------------
+
+    [Fact]
+    public void Editing_an_appointments_start_through_the_picker_updates_the_bound_value_and_the_visible_title()
+    {
+        // The point of swapping the native <input type="datetime-local"> for a Lumeo
+        // DateTimePicker: the editor is now built from the library's own control, and driving it
+        // through its real UI (open -> pick day -> pick hour -> pick minute -> Save) must still
+        // reach the same place a native input's onchange used to — EventsChanged carrying the
+        // updated Start, with the event's title untouched.
+        var start = new DateTime(2026, 3, 9, 9, 0, 0);
+        var ev = new L.SchedulerEvent("e1", "Standup", start, start.AddHours(1));
+
+        IEnumerable<L.SchedulerEvent>? pushed = null;
+        var cut = _ctx.Render<L.Scheduler>(p => p
+            .Add(c => c.InitialView, L.SchedulerView.Month)
+            .Add(c => c.InitialDate, start.Date)
+            .Add(c => c.Events, new[] { ev })
+            .Add(c => c.BuiltInEventDialog, true)
+            .Add(c => c.EventsChanged, (IEnumerable<L.SchedulerEvent> e) => pushed = e));
+
+        cut.Find("[data-event-instance]").Click();
+
+        var newStart = new DateTime(2026, 3, 12, 14, 30, 0); // same visible month, a new day/time
+        PickDateTimeAt(cut, "data-scheduler-dialog-start", newStart);
+        cut.Find("[data-scheduler-dialog-save]").Click();
+
+        var saved = pushed!.Single();
+        Assert.Equal(newStart, saved.Start);
+        Assert.Equal("Standup", saved.Title);
+        // The re-rendered chip still carries the (unchanged) title — the edit reached the grid,
+        // not just the pushed collection.
+        Assert.Contains("Standup", cut.Find("[data-event-instance]").TextContent);
+    }
+
+    [Fact]
+    public void Start_and_end_editors_render_the_Lumeo_datetime_picker_data_slot_sized_like_the_standalone_component()
+    {
+        // Requirement 4 of the brief: assert the Lumeo data-slot is present and the size classes
+        // match the standalone component at the same rung (Scheduler passes no explicit Size, so
+        // both render at the default Md).
+        var start = new DateTime(2026, 3, 9, 9, 0, 0);
+        var ev = new L.SchedulerEvent("e1", "Standup", start, start.AddHours(1));
+        var cut = _ctx.Render<L.Scheduler>(p => p
+            .Add(c => c.InitialView, L.SchedulerView.Month)
+            .Add(c => c.InitialDate, start.Date)
+            .Add(c => c.Events, new[] { ev })
+            .Add(c => c.BuiltInEventDialog, true));
+
+        cut.Find("[data-event-instance]").Click();
+
+        var startSlot = cut.Find("[data-scheduler-dialog-start]").Closest("[data-slot='date-time-picker']");
+        var endSlot = cut.Find("[data-scheduler-dialog-end]").Closest("[data-slot='date-time-picker']");
+        Assert.NotNull(startSlot);
+        Assert.NotNull(endSlot);
+
+        var standalone = _ctx.Render<L.DateTimePicker>(p => p.Add(c => c.Value, start));
+        var standaloneTriggerClass = standalone.Find("button").GetAttribute("class");
+
+        Assert.Equal(standaloneTriggerClass, cut.Find("[data-scheduler-dialog-start]").GetAttribute("class"));
+        Assert.Equal(standaloneTriggerClass, cut.Find("[data-scheduler-dialog-end]").GetAttribute("class"));
     }
 
     [Fact]
@@ -774,7 +911,7 @@ public class SchedulerEventDialogTests : IAsyncLifetime
             .Add(c => c.BuiltInEventDialog, true));
 
         cut.Find("[data-event-instance]").Click();
-        cut.Find("[data-scheduler-dialog-start]").Change(string.Empty);
+        ClickClear(cut, "data-scheduler-dialog-start");
         Assert.True(cut.Find("[data-scheduler-dialog-save]").HasAttribute("disabled"));
 
         cut.Find("[data-scheduler-dialog-allday]").Click();
