@@ -342,23 +342,45 @@
                     <Label For="scheduler-dialog-allday">@L["Scheduler.AllDay"]</Label>
                 </div>
 
+                @* The start/end editors were a raw <input type="date"/"datetime-local">, sized to
+                   match but not built from any Lumeo control. Swapped for the same DatePicker/
+                   DateTimePicker pair every other typed-date field in the library uses — which one
+                   depends on the All-day switch above, exactly like the retained _dialogAllDay
+                   branch always has. FormField owns the label-to-control id wiring (Base UI Field
+                   parity), the same association the standalone <Label For> used to hand-roll. *@
                 <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                    <div class="flex flex-col gap-1.5">
-                        <Label For="scheduler-dialog-start">@L["Scheduler.Starts"]</Label>
-                        <input id="scheduler-dialog-start" data-scheduler-dialog-start
-                               type="@(_dialogAllDay ? "date" : "datetime-local")"
-                               class="flex h-8 w-full rounded-[var(--radius)] border border-input bg-transparent px-2.5 py-1 text-sm shadow-xs outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
-                               value="@FormatForInput(_dialogStart)"
-                               @onchange="@(e => _dialogStartValid = TryReadInput(e.Value?.ToString(), ref _dialogStart))" />
-                    </div>
-                    <div class="flex flex-col gap-1.5">
-                        <Label For="scheduler-dialog-end">@L["Scheduler.Ends"]</Label>
-                        <input id="scheduler-dialog-end" data-scheduler-dialog-end
-                               type="@(_dialogAllDay ? "date" : "datetime-local")"
-                               class="flex h-8 w-full rounded-[var(--radius)] border border-input bg-transparent px-2.5 py-1 text-sm shadow-xs outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
-                               value="@FormatForInput(_dialogEnd)"
-                               @onchange="@(e => _dialogEndValid = TryReadInput(e.Value?.ToString(), ref _dialogEnd))" />
-                    </div>
+                    <FormField Label="@L["Scheduler.Starts"]">
+                        @if (_dialogAllDay)
+                        {
+                            <DatePicker data-scheduler-dialog-start
+                                        Value="@(_dialogStartDisplay.HasValue ? DateOnly.FromDateTime(_dialogStartDisplay.Value) : (DateOnly?)null)"
+                                        ValueChanged="OnDialogStartDateChanged"
+                                        Clearable="true" />
+                        }
+                        else
+                        {
+                            <DateTimePicker data-scheduler-dialog-start
+                                            Value="@_dialogStartDisplay"
+                                            ValueChanged="OnDialogStartDateTimeChanged"
+                                            Clearable="true" />
+                        }
+                    </FormField>
+                    <FormField Label="@L["Scheduler.Ends"]">
+                        @if (_dialogAllDay)
+                        {
+                            <DatePicker data-scheduler-dialog-end
+                                        Value="@(_dialogEndDisplay.HasValue ? DateOnly.FromDateTime(_dialogEndDisplay.Value) : (DateOnly?)null)"
+                                        ValueChanged="OnDialogEndDateChanged"
+                                        Clearable="true" />
+                        }
+                        else
+                        {
+                            <DateTimePicker data-scheduler-dialog-end
+                                            Value="@_dialogEndDisplay"
+                                            ValueChanged="OnDialogEndDateTimeChanged"
+                                            Clearable="true" />
+                        }
+                    </FormField>
                 </div>
 
                 @if (Calendars is { Count: > 0 })
@@ -1101,6 +1123,17 @@
     private bool _dialogStartValid = true;
     private bool _dialogEndValid = true;
 
+    // DatePicker/DateTimePicker are CONTROLLED: a cleared field pushes ValueChanged(null), but if
+    // the parent's next Value keeps echoing the old DateTime back (a non-nullable _dialogStart
+    // can't represent "empty"), the picker treats that as a veto and silently restores the old
+    // display — a user could never actually see the field as cleared. These nullable "display"
+    // fields decouple what's SHOWN from what SaveDialogAsync commits: _dialogStart/_dialogEnd keep
+    // the last good value (Save still restores it on toggling All-day, same as the retyped-value
+    // recovery the old native input supported), while the *Display pair genuinely goes null on
+    // clear so the picker's own Value reflects that state honestly.
+    private DateTime? _dialogStartDisplay;
+    private DateTime? _dialogEndDisplay;
+
     /// <summary>
     /// The zone the form's wall-clock values were READ in. Converting them back through whatever
     /// <see cref="TimeZone"/> happens to say at save time reinterprets numbers the user never
@@ -1191,6 +1224,8 @@
             _dialogTitle = string.Empty;
             _dialogStart = range.Start;
             _dialogEnd = range.End;
+            _dialogStartDisplay = _dialogStart;
+            _dialogEndDisplay = _dialogEnd;
             _dialogAllDay = range.AllDay;
             // The pane it was drawn in, when there is one. Failing that the first VISIBLE
             // calendar rather than the first declared one, or it would be created straight into
@@ -1219,6 +1254,8 @@
             _dialogTitle = ev.Title;
             _dialogStart = ev.Start;
             _dialogEnd = ev.End;
+            _dialogStartDisplay = _dialogStart;
+            _dialogEndDisplay = _dialogEnd;
             _dialogAllDay = ev.AllDay;
             _dialogCalendarId = ev.CalendarId;
             _dialogStartValid = _dialogEndValid = true;
@@ -1235,13 +1272,19 @@
 
         // Both controls are re-rendered from the retained bounds, so whatever was cleared is
         // showing a real date again — leaving its flag false kept Save disabled over a form
-        // with nothing wrong with it (Codex review of PR #426).
+        // with nothing wrong with it (Codex review of PR #426). The *Display pair goes back
+        // in lockstep with _dialogStart/_dialogEnd (below) — a picker cleared before the toggle
+        // must show that same retained value again, not linger as blank.
         _dialogStartValid = _dialogEndValid = true;
 
-        if (!allDay) return;
+        if (allDay)
+        {
+            _dialogStart = _dialogStart.Date;
+            _dialogEnd = _dialogEnd.Date > _dialogStart ? _dialogEnd.Date : NextMidnight(_dialogStart);
+        }
 
-        _dialogStart = _dialogStart.Date;
-        _dialogEnd = _dialogEnd.Date > _dialogStart ? _dialogEnd.Date : NextMidnight(_dialogStart);
+        _dialogStartDisplay = _dialogStart;
+        _dialogEndDisplay = _dialogEnd;
     }
 
     /// <summary>
@@ -1363,32 +1406,46 @@
     }
 
     /// <summary>
-    /// The value shape an &lt;input type="date"/"datetime-local"&gt; expects. Invariant on
-    /// purpose: this is a wire format the browser parses, not something a user reads, so a
-    /// culture with a different separator would simply make the control ignore the value.
+    /// DatePicker's Value is DateOnly? — cleared (null) blocks Save exactly like an unparseable
+    /// native &lt;input&gt; used to, via the same <see cref="_dialogStartValid"/>/<see cref="_dialogEndValid"/>
+    /// gate <see cref="CanSaveDialog"/> already reads. Only <see cref="_dialogStartDisplay"/>/
+    /// <see cref="_dialogEndDisplay"/> go null on clear — <see cref="_dialogStart"/>/<see cref="_dialogEnd"/>
+    /// keep the last good value, the same "keep the previous value" recovery the old native input
+    /// supported (retyping releases Save again without having lost the rest of the form). A picked
+    /// date keeps the time-of-day the form already held (the all-day editor never shows or edits one).
     /// </summary>
-    private string FormatForInput(DateTime value) =>
-        _dialogAllDay
-            ? value.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture)
-            : value.ToString("yyyy-MM-ddTHH:mm", System.Globalization.CultureInfo.InvariantCulture);
-
-    /// <summary>
-    /// Keeps the previous value when the control hands back something unparseable — which an
-    /// empty date field does on every keystroke while it is being retyped — and reports whether
-    /// it did. The KEEPING is why the report matters: a user who clears the field and presses
-    /// Save was otherwise committing a date the form no longer showed them, silently restored
-    /// from behind the empty control (Codex review of PR #426).
-    /// </summary>
-    private static bool TryReadInput(string? raw, ref DateTime value)
+    private void OnDialogStartDateChanged(DateOnly? date)
     {
-        if (!DateTime.TryParse(raw, System.Globalization.CultureInfo.InvariantCulture,
-                               System.Globalization.DateTimeStyles.None, out var parsed))
-        {
-            return false;
-        }
+        if (date is null) { _dialogStartDisplay = null; _dialogStartValid = false; return; }
+        _dialogStart = date.Value.ToDateTime(TimeOnly.FromTimeSpan(_dialogStart.TimeOfDay));
+        _dialogStartDisplay = _dialogStart;
+        _dialogStartValid = true;
+    }
 
-        value = parsed;
-        return true;
+    private void OnDialogEndDateChanged(DateOnly? date)
+    {
+        if (date is null) { _dialogEndDisplay = null; _dialogEndValid = false; return; }
+        _dialogEnd = date.Value.ToDateTime(TimeOnly.FromTimeSpan(_dialogEnd.TimeOfDay));
+        _dialogEndDisplay = _dialogEnd;
+        _dialogEndValid = true;
+    }
+
+    /// <summary>DateTimePicker's Value is DateTime? — same clear-blocks-Save contract as the
+    /// DateOnly? pair above, for the timed (non all-day) editor.</summary>
+    private void OnDialogStartDateTimeChanged(DateTime? value)
+    {
+        if (value is null) { _dialogStartDisplay = null; _dialogStartValid = false; return; }
+        _dialogStart = value.Value;
+        _dialogStartDisplay = value.Value;
+        _dialogStartValid = true;
+    }
+
+    private void OnDialogEndDateTimeChanged(DateTime? value)
+    {
+        if (value is null) { _dialogEndDisplay = null; _dialogEndValid = false; return; }
+        _dialogEnd = value.Value;
+        _dialogEndDisplay = value.Value;
+        _dialogEndValid = true;
     }
 
     /// <summary>A title is not the only thing the form can be missing.</summary>

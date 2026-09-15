@@ -17,10 +17,15 @@
         @if (ShowSearch)
         {
             <div class="px-2 py-1.5 border-b border-border/40">
-                <input type="text" placeholder="@L["Common.Search"]"
-                       class="flex h-7 w-full rounded-md border border-input bg-transparent px-2 py-1 text-xs placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring"
-                       value="@_sourceSearch"
-                       @oninput="OnSourceSearch" />
+                @* Detach the FormField cascade for this nested search Input — mirrors
+                   IconPicker/Cascader/TreeSelect/Transfer. *@
+                <CascadingValue Value="(FormField.FormFieldContext?)null" IsFixed="true">
+                    <Input Size="Lumeo.Size.Xs"
+                           Variant="Input.InputVariant.Search"
+                           Value="@_sourceSearch"
+                           ValueChanged="OnSourceSearch"
+                           Placeholder="@L["Common.Search"]" />
+                </CascadingValue>
             </div>
         }
         <div id="@_sourceListId" role="listbox" aria-label="@(SourceTitle ?? L["PickList.SourceHeader"])" aria-multiselectable="true" class="overflow-y-auto p-1" style="height:@Height;">
@@ -134,10 +139,15 @@
         @if (ShowSearch)
         {
             <div class="px-2 py-1.5 border-b border-border/40">
-                <input type="text" placeholder="@L["Common.Search"]"
-                       class="flex h-7 w-full rounded-md border border-input bg-transparent px-2 py-1 text-xs placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring"
-                       value="@_targetSearch"
-                       @oninput="OnTargetSearch" />
+                @* Detach the FormField cascade for this nested search Input — same
+                   reasoning as the source pane above. *@
+                <CascadingValue Value="(FormField.FormFieldContext?)null" IsFixed="true">
+                    <Input Size="Lumeo.Size.Xs"
+                           Variant="Input.InputVariant.Search"
+                           Value="@_targetSearch"
+                           ValueChanged="OnTargetSearch"
+                           Placeholder="@L["Common.Search"]" />
+                </CascadingValue>
             </div>
         }
         <div id="@_targetListId" role="listbox" aria-label="@(TargetTitle ?? L["PickList.TargetHeader"])" aria-multiselectable="true" class="overflow-y-auto p-1" style="height:@Height;">
@@ -379,8 +389,10 @@
         }
     }
 
-    private void OnSourceSearch(ChangeEventArgs e) => _sourceSearch = e.Value?.ToString() ?? "";
-    private void OnTargetSearch(ChangeEventArgs e) => _targetSearch = e.Value?.ToString() ?? "";
+    // Input's Value/ValueChanged pair is string?-based (not the raw ChangeEventArgs the
+    // native <input>'s @oninput used to hand us).
+    private void OnSourceSearch(string? value) => _sourceSearch = value ?? "";
+    private void OnTargetSearch(string? value) => _targetSearch = value ?? "";
 
     private void ToggleSource(TItem item)
     {

@@ -94,7 +94,7 @@ public class PickListTests : IAsyncLifetime
     {
         var cut = RenderList(showSearch: false);
 
-        Assert.Empty(cut.FindAll("input[type='text']"));
+        Assert.Empty(cut.FindAll("input[type='search']"));
     }
 
     [Fact]
@@ -102,7 +102,7 @@ public class PickListTests : IAsyncLifetime
     {
         var cut = RenderList(showSearch: true);
 
-        Assert.Equal(2, cut.FindAll("input[type='text']").Count);
+        Assert.Equal(2, cut.FindAll("input[type='search']").Count);
     }
 
     [Fact]
@@ -175,5 +175,26 @@ public class PickListTests : IAsyncLifetime
 
         var scrollers = cut.FindAll("[style*='height:500px']");
         Assert.NotEmpty(scrollers);
+    }
+
+    // Part of D: both pane search boxes are now the Lumeo Input component (Variant=Search), not
+    // a raw <input> — assert the data-slot is present and the size classes match a standalone
+    // Input at the same rung (PickList has no Size parameter of its own; Xs is the fixed rung
+    // chosen to match the boxes' previous h-7 visual size). ShowSearch defaults to true.
+    [Fact]
+    public void Search_boxes_are_lumeo_inputs_sized_like_the_standalone_component()
+    {
+        var cut = _ctx.Render<Lumeo.PickList<string>>(p => p.Add(l => l.Items, new[] { "x", "y" }));
+
+        var searchInputs = cut.FindAll("input[type='search']");
+        Assert.Equal(2, searchInputs.Count);
+        Assert.All(searchInputs, i => Assert.Equal("input-control", i.GetAttribute("data-slot")));
+
+        var standalone = _ctx.Render<Lumeo.Input>(p => p
+            .Add(c => c.Size, Lumeo.Size.Xs)
+            .Add(c => c.Variant, Lumeo.Input.InputVariant.Search));
+        var standaloneInput = standalone.Find("input[type='search']");
+
+        Assert.All(searchInputs, i => Assert.Equal(standaloneInput.GetAttribute("class"), i.GetAttribute("class")));
     }
 }

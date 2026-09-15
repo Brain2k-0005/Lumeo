@@ -32,10 +32,10 @@ public class PickListMoveAllFilteredTests : IAsyncLifetime
     // The source ("Available") search input is the first text box; the target
     // ("Selected") search input is the second.
     private static IElement SourceSearchInput(IRenderedComponent<L.PickList<string>> cut)
-        => cut.FindAll("input[type='text']")[0];
+        => cut.FindAll("input[type='search']")[0];
 
     private static IElement TargetSearchInput(IRenderedComponent<L.PickList<string>> cut)
-        => cut.FindAll("input[type='text']")[1];
+        => cut.FindAll("input[type='search']")[1];
 
     private static IElement MoveAllToTargetButton(IRenderedComponent<L.PickList<string>> cut)
         => cut.FindAll("button").First(b => b.GetAttribute("aria-label") == "Move all");

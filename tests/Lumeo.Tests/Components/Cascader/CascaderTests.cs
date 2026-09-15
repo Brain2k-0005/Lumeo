@@ -55,4 +55,25 @@ public class CascaderTests : IAsyncLifetime
             .Add(c => c.Value, new List<string> { "fruit" }));
         Assert.Contains("Fruit", cut.Markup);
     }
+
+    // Part of D: the search box is now the Lumeo Input component (Variant=Search), not a raw
+    // <input> — assert its data-slot is present and its size classes match a standalone Input at
+    // the same rung (Cascader has no Size parameter of its own; Xs is the fixed rung chosen to
+    // match the box's previous h-7 visual size).
+    [Fact]
+    public void Search_box_is_a_lumeo_input_sized_like_the_standalone_component()
+    {
+        var cut = _ctx.Render<L.Cascader>(p => p.Add(c => c.ShowSearch, true));
+        cut.Find("button").Click();
+
+        var searchInput = cut.Find("input[type='search']");
+        Assert.Equal("input-control", searchInput.GetAttribute("data-slot"));
+
+        var standalone = _ctx.Render<L.Input>(p => p
+            .Add(c => c.Size, L.Size.Xs)
+            .Add(c => c.Variant, L.Input.InputVariant.Search));
+        var standaloneInput = standalone.Find("input[type='search']");
+
+        Assert.Equal(standaloneInput.GetAttribute("class"), searchInput.GetAttribute("class"));
+    }
 }

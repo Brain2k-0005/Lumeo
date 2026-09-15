@@ -54,17 +54,23 @@
                 <div class="px-2 py-1.5 border-b border-border/40">
                     @* Mirror TreeSelect: forward menu-owned keys (Up/Down/Enter/Escape)
                        to HandleKeyDown while keeping caret keys (Left/Right/Home/End/Space)
-                       in the text box, and stopPropagation so they never reach an outer
-                       overlay. A blunt stop alone would also swallow Escape-to-close.
-                       NOTE: keep this Razor comment OUTSIDE the input tag — a comment
-                       placed between attributes is emitted as a literal attribute name
-                       at runtime (setAttribute InvalidCharacterError crash). *@
-                    <input type="text" placeholder="@L["Combobox.SearchPlaceholder"]"
-                           class="flex h-7 w-full rounded-md border border-input bg-transparent px-2 py-1 text-xs placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring"
-                           value="@_searchText"
-                           @oninput="OnSearchInput"
-                           @onkeydown="OnSearchKeyDown"
-                           @onkeydown:stopPropagation="true" />
+                       in the text box. Input's AdditionalAttributes splat carries the plain
+                       onkeydown handler but not the :stopPropagation directive, so the
+                       wrapping div below applies it — the same wrapper trick used everywhere
+                       else this family converts to Input.
+                       Detach the FormField cascade for the nested search Input: it is a
+                       sub-widget of THIS Cascader's dropdown, not an independently
+                       field-associated control (mirrors IconPicker's search box). *@
+                    <CascadingValue Value="(FormField.FormFieldContext?)null" IsFixed="true">
+                        <div @onkeydown:stopPropagation="true">
+                            <Input Size="Lumeo.Size.Xs"
+                                   Variant="Input.InputVariant.Search"
+                                   Value="@_searchText"
+                                   ValueChanged="OnSearchValueChanged"
+                                   Placeholder="@L["Combobox.SearchPlaceholder"]"
+                                   @onkeydown="OnSearchKeyDown" />
+                        </div>
+                    </CascadingValue>
                 </div>
             }
 
@@ -581,9 +587,12 @@
         }
     }
 
-    private void OnSearchInput(ChangeEventArgs e)
+    // Input's Value/ValueChanged pair is string?-based (not the raw ChangeEventArgs the
+    // native <input>'s @oninput used to hand us) — thin adapter onto the same logic.
+    private void OnSearchValueChanged(string? value) => OnSearchInput(value ?? "");
+
+    private void OnSearchInput(string next)
     {
-        var next = e.Value?.ToString() ?? "";
         if (string.Equals(next, _searchText, StringComparison.Ordinal)) return;
         _searchText = next;
 

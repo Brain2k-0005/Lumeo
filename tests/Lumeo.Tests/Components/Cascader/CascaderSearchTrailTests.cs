@@ -70,7 +70,7 @@ public class CascaderSearchTrailTests : IAsyncLifetime
         // Type a search that EXCLUDES "Fruit" from the filtered root column.
         // Level 0 now matches only "Veg"; the orphaned "Apple"/"Banana" child
         // column must not linger.
-        cut.Find("input[type=\"text\"]").Input("Veg");
+        cut.Find("input[type=\"search\"]").Input("Veg");
 
         var labels = VisibleOptionLabels(cut);
         Assert.Contains("Veg", labels);
@@ -89,7 +89,7 @@ public class CascaderSearchTrailTests : IAsyncLifetime
         cut.Find("button").Click();
         OptionButton(cut, "Fruit")!.Click(); // drill — moves the roving stop into column 1
 
-        cut.Find("input[type=\"text\"]").Input("Veg");
+        cut.Find("input[type=\"search\"]").Input("Veg");
 
         // After the search, exactly one option carries tabindex=0 and it is the
         // first option of the filtered root column ("Veg"), not a stale deeper

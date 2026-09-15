@@ -55,7 +55,7 @@ public class TreeViewCheckAndExpandTests : IAsyncLifetime
             .Add(c => c.ShowCheckboxes, true)
             .Add(c => c.CheckedValuesChanged, v => lastChecked = v));
 
-        cut.Find("input[type='text']").Input("Alpha");
+        cut.Find("input[type='search']").Input("Alpha");
         Assert.Contains("Alpha", cut.Markup);
         Assert.DoesNotContain("Beta", cut.Markup);
 
@@ -80,11 +80,11 @@ public class TreeViewCheckAndExpandTests : IAsyncLifetime
             .Add(c => c.ShowCheckboxes, true)
             .Add(c => c.CheckedValuesChanged, v => lastChecked = v));
 
-        cut.Find("input[type='text']").Input("Alpha");
+        cut.Find("input[type='search']").Input("Alpha");
         await cut.InvokeAsync(() => CheckboxOf(cut, "Alpha").Click());
 
         // Clear the search — the check must survive.
-        cut.Find("input[type='text']").Input("");
+        cut.Find("input[type='search']").Input("");
 
         Assert.True(items[0].Children![0].IsChecked);
         Assert.Equal("mixed", CheckboxOf(cut, "Root").GetAttribute("aria-checked"));
@@ -108,7 +108,7 @@ public class TreeViewCheckAndExpandTests : IAsyncLifetime
             .Add(c => c.CheckedValuesChanged, v => lastChecked = v));
 
         // Filter so only Alpha is visible under Root, then check Root.
-        cut.Find("input[type='text']").Input("Alpha");
+        cut.Find("input[type='search']").Input("Alpha");
         await cut.InvokeAsync(() => CheckboxOf(cut, "Root").Click());
 
         // Cascade hit the REAL children — including filtered-out Beta.

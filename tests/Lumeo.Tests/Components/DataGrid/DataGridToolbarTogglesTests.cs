@@ -201,4 +201,25 @@ public class DataGridToolbarTogglesTests : IAsyncLifetime
         Assert.Contains("excel", formats);
         Assert.Contains("pdf", formats);
     }
+
+    // Part of D: the toolbar's global search box is now the Lumeo Input component
+    // (Variant=Search), not a raw <input> with a hand-rolled leading icon — assert its data-slot
+    // is present and its size classes match a standalone Input at the same rung (the toolbar
+    // passes no explicit Size; Md is the default both sides resolve to).
+    [Fact]
+    public void Search_box_is_a_lumeo_input_sized_like_the_standalone_component()
+    {
+        var cut = RenderToolbar(showSearch: true);
+
+        var searchInput = cut.Find("input[type='search']");
+        Assert.Equal("input-control", searchInput.GetAttribute("data-slot"));
+
+        var standalone = _ctx.Render<Lumeo.Input>(p => p.Add(c => c.Variant, Lumeo.Input.InputVariant.Search));
+        var standaloneInput = standalone.Find("input[type='search']");
+
+        // The toolbar's own max-w-56/min-w-0 constraint is merged onto the wrapper via Class, so
+        // compare the actual focusable <input>'s classes (shared with the standalone instance),
+        // not the wrapper div's.
+        Assert.Equal(standaloneInput.GetAttribute("class"), searchInput.GetAttribute("class"));
+    }
 }
