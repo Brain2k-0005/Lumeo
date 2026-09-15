@@ -263,6 +263,9 @@ internal static partial class LumeoDefaultStrings
         ["Stepper.Optional"] = "Optioneel",
         ["Stepper.Skip"] = "Overslaan",
 
+        // Skeleton
+        ["Skeleton.Loading"] = "Laden",
+
         // Window
         ["Window.Close"] = "Sluiten",
         ["Window.Minimize"] = "Minimaliseren",

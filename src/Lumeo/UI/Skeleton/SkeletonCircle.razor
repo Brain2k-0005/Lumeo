@@ -8,33 +8,56 @@
             100% { background-position: 200% 0; }
         }
     </style>
-    <div data-slot="skeleton-circle" role="status" aria-busy="true" aria-label="@AriaLabelOrDefault"
+    <div data-slot="skeleton-circle" role="@RoleAttr" aria-busy="@AriaBusyAttr" aria-hidden="@AriaHiddenAttr" aria-label="@AriaLabelAttr"
          class="@(Cx.Merge("rounded-full bg-gradient-to-r from-primary/10 via-primary/5 to-primary/10 bg-[length:200%_100%] h-10 w-10", Class))"
          style="animation: skeleton-wave 1.5s ease-in-out infinite"
          @attributes="AdditionalAttributes"></div>
 }
 else
 {
-    <div data-slot="skeleton-circle" role="status" aria-busy="true" aria-label="@AriaLabelOrDefault"
+    <div data-slot="skeleton-circle" role="@RoleAttr" aria-busy="@AriaBusyAttr" aria-hidden="@AriaHiddenAttr" aria-label="@AriaLabelAttr"
          class="@CssClass" @attributes="AdditionalAttributes"></div>
 }
+
+@inject Lumeo.Services.Localization.ILumeoLocalizer L
 
 @code {
     /// <summary>Loading animation style. Defaults to <see cref="Skeleton.SkeletonAnimation.Pulse"/>.</summary>
     [Parameter] public Skeleton.SkeletonAnimation Animation { get; set; } = Skeleton.SkeletonAnimation.Pulse;
     /// <summary>
-    /// Screen-reader name for the loading placeholder. Defaults to "Loading";
-    /// set a localized string (or pass <c>aria-label</c> directly) so it
-    /// announces in the app's language.
+    /// Screen-reader name used ONLY when the placeholder actually announces itself (see
+    /// <see cref="Announce"/>). Defaults to the localized <c>L["Skeleton.Loading"]</c>;
+    /// set this (or pass <c>aria-label</c> directly) to override with a custom string.
+    /// Setting this parameter — even without <see cref="Announce"/> — opts the circle into
+    /// announcing, on the theory that a caller who bothered to customize the label wants
+    /// it read aloud.
     /// </summary>
     [Parameter] public string? AriaLabel { get; set; }
+    /// <summary>
+    /// When <c>true</c>, the circle announces itself to assistive tech as a single
+    /// <c>role="status"</c> live region (using <see cref="AriaLabel"/>, or the localized
+    /// default when unset). Default <c>false</c>: the circle is a plain, <c>aria-hidden</c>
+    /// placeholder — matching shadcn's Skeleton — so a row of several avatar/icon
+    /// placeholders doesn't become many competing live regions (field report #464,
+    /// finding 3).
+    /// </summary>
+    [Parameter] public bool Announce { get; set; }
     /// <summary>Additional CSS classes merged onto the root <c>div</c>. Overrides the
     /// default <c>h-10 w-10</c> sizing when a size utility is supplied.</summary>
     [Parameter] public string? Class { get; set; }
     /// <summary>Unmatched attributes splatted onto the root <c>div</c>.</summary>
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
-    private string AriaLabelOrDefault => string.IsNullOrEmpty(AriaLabel) ? "Loading" : AriaLabel!;
+    // Explicitly customizing AriaLabel is itself an opt-in — a caller who set a specific
+    // label clearly wants it announced, without also having to flip Announce.
+    private bool ShouldAnnounce => Announce || !string.IsNullOrEmpty(AriaLabel);
+
+    private string EffectiveAriaLabel => string.IsNullOrEmpty(AriaLabel) ? L["Skeleton.Loading"] : AriaLabel!;
+
+    private string? RoleAttr => ShouldAnnounce ? "status" : null;
+    private string? AriaBusyAttr => ShouldAnnounce ? "true" : null;
+    private string? AriaHiddenAttr => ShouldAnnounce ? null : "true";
+    private string? AriaLabelAttr => ShouldAnnounce ? EffectiveAriaLabel : null;
 
     private string AnimationClass => Animation switch
     {
