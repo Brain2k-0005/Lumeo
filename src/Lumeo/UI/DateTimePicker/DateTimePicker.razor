@@ -309,6 +309,20 @@
     [Parameter] public DayOfWeek? FirstDayOfWeek { get; set; }
     /// <summary>Additional CSS classes merged onto the trigger button.</summary>
     [Parameter] public string? Class { get; set; }
+    /// <summary>
+    /// Controls the trigger's height, text size and horizontal padding. Supports all 7
+    /// <see cref="Lumeo.Size"/> values (Xxs-Xxl) using the same height/padding ladder as
+    /// <see cref="Input"/> and <see cref="DatePicker"/> — at the default
+    /// <see cref="Lumeo.Size.Md"/> rung this renders byte-identical height/padding to
+    /// <see cref="SelectTrigger"/> at the same <see cref="Lumeo.Density"/>. Default
+    /// <see cref="Lumeo.Size.Md"/>.
+    /// </summary>
+    [Parameter] public Lumeo.Size Size { get; set; } = Lumeo.Size.Md;
+    /// <summary>Overrides the ambient <c>DensityScope</c> for the trigger's height and
+    /// horizontal padding. Falls back to the cascaded density, then
+    /// <see cref="Lumeo.Density.Comfortable"/> — mirrors <see cref="Input.Density"/>.</summary>
+    [Parameter] public Density? Density { get; set; }
+    [CascadingParameter] private Density? InheritedDensity { get; set; }
     /// <summary>Unmatched attributes splatted onto the trigger button.</summary>
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
@@ -331,7 +345,52 @@
     private DateTimeOffset? _lastOffsetValuePushed;
     private TimeZoneInfo? _prevTimeZone;
 
-    private string CssClass => Cx.Merge("group flex h-8 w-full items-center rounded-md border", (EffectiveInvalid ? "border-destructive ring-1 ring-destructive/20" : "border-input"), "bg-transparent px-2.5 py-1.5 text-sm shadow-sm hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50", Class);
+    private Lumeo.Density EffectiveDensity => Density ?? InheritedDensity ?? Lumeo.Density.Comfortable;
+
+    // Height + horizontal padding per (Size, Density) — the same ladder Input.razor's
+    // SizeClasses uses for its plain <input> path (identical h-*/px-* tokens per rung).
+    // At Size.Md this reproduces SelectTrigger.SizeClasses exactly (h-7/px-2 Compact,
+    // h-9/px-3 Spacious, h-[var(--lumeo-control-h,...)]/px-2.5 Comfortable) — previously
+    // this trigger was a hardcoded h-8 with no density support at all.
+    private string SizeClasses => (Size, EffectiveDensity) switch
+    {
+        (Lumeo.Size.Xxs, Lumeo.Density.Compact)  => "h-5 px-1",
+        (Lumeo.Size.Xxs, Lumeo.Density.Spacious) => "h-7 px-2",
+        (Lumeo.Size.Xxs, _)                      => "h-6 px-1.5",
+        (Lumeo.Size.Xs, Lumeo.Density.Compact)   => "h-6 px-1.5",
+        (Lumeo.Size.Xs, Lumeo.Density.Spacious)  => "h-8 px-2",
+        (Lumeo.Size.Xs, _)                       => "h-7 px-2",
+        (Lumeo.Size.Sm, Lumeo.Density.Compact)   => "h-7 px-2",
+        (Lumeo.Size.Sm, Lumeo.Density.Spacious)  => "h-9 px-3",
+        (Lumeo.Size.Sm, _)                       => "h-[var(--lumeo-control-h,calc(var(--spacing,0.25rem)*8))] px-2.5",
+        (Lumeo.Size.Lg, Lumeo.Density.Compact)   => "h-10 px-3",
+        (Lumeo.Size.Lg, Lumeo.Density.Spacious)  => "h-12 px-5",
+        (Lumeo.Size.Lg, _)                       => "h-11 px-4",
+        (Lumeo.Size.Xl, Lumeo.Density.Compact)   => "h-12 px-3.5",
+        (Lumeo.Size.Xl, Lumeo.Density.Spacious)  => "h-14 px-6",
+        (Lumeo.Size.Xl, _)                       => "h-[52px] px-5",
+        (Lumeo.Size.Xxl, Lumeo.Density.Compact)  => "h-14 px-4",
+        (Lumeo.Size.Xxl, Lumeo.Density.Spacious) => "h-16 px-7",
+        (Lumeo.Size.Xxl, _)                      => "h-[60px] px-6",
+        (_, Lumeo.Density.Compact)               => "h-7 px-2",
+        (_, Lumeo.Density.Spacious)              => "h-9 px-3",
+        _                                        => "h-[var(--lumeo-control-h,calc(var(--spacing,0.25rem)*8))] px-2.5"
+    };
+
+    // Text size per Size rung only (density never shifts it — matches SelectTrigger's
+    // own fixed text-sm across all 3 densities). Md keeps the pre-5.10 text-sm.
+    private string TextSizeClasses => Size switch
+    {
+        Lumeo.Size.Xxs => "text-[8px]",
+        Lumeo.Size.Xs => "text-[10px]",
+        Lumeo.Size.Sm => "text-xs",
+        Lumeo.Size.Lg => "text-base",
+        Lumeo.Size.Xl => "text-lg",
+        Lumeo.Size.Xxl => "text-xl",
+        _ => "text-sm"
+    };
+
+    private string CssClass => Cx.Merge("group flex", SizeClasses, "w-full items-center rounded-md border", (EffectiveInvalid ? "border-destructive ring-1 ring-destructive/20" : "border-input"), "bg-transparent", TextSizeClasses, "shadow-sm hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50", Class);
 
     protected override void OnParametersSet()
     {

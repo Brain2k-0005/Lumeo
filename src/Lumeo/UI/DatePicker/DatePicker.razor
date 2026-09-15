@@ -259,7 +259,7 @@ else
                            aria-describedby="@FormFieldDescribedBy"
                            disabled="@Disabled"
                            readonly="@(!AllowKeyboardInput)"
-                           class="flex-1 min-w-0 bg-transparent outline-none border-0 p-0 text-sm placeholder:text-muted-foreground disabled:cursor-not-allowed"
+                           class="@($"flex-1 min-w-0 bg-transparent outline-none border-0 p-0 {TextSizeClasses} placeholder:text-muted-foreground disabled:cursor-not-allowed")"
                            @oninput="HandleInputChanged"
                            @onblur="HandleInputBlur"
                            @onkeydown="HandleInputKeyDown"
@@ -649,6 +649,25 @@ else
     /// reaches the rendered trigger element through the shrink-wrap chain.
     /// </summary>
     [Parameter] public bool FullWidth { get; set; }
+
+    /// <summary>
+    /// Controls the trigger's height, text size and horizontal padding. Supports all 7
+    /// <see cref="Lumeo.Size"/> values (Xxs-Xxl) using the same height/padding ladder as
+    /// <see cref="Input"/> — at the default <see cref="Lumeo.Size.Md"/> rung this renders
+    /// byte-identical height/padding to <see cref="SelectTrigger"/> at the same
+    /// <see cref="Lumeo.Density"/>, which is the only rung Select itself currently
+    /// exposes (Select has no <c>Size</c> parameter). The popover calendar itself never
+    /// scales with <see cref="Size"/> — it has its own tokens
+    /// (<c>--lumeo-calendar-cell-size</c>, <c>--lumeo-calendar-p</c>). Default
+    /// <see cref="Lumeo.Size.Md"/>.
+    /// </summary>
+    [Parameter] public Lumeo.Size Size { get; set; } = Lumeo.Size.Md;
+
+    /// <summary>Overrides the ambient <c>DensityScope</c> for the trigger's height and
+    /// horizontal padding. Falls back to the cascaded density, then
+    /// <see cref="Lumeo.Density.Comfortable"/> — mirrors <see cref="Input.Density"/>.</summary>
+    [Parameter] public Density? Density { get; set; }
+    [CascadingParameter] private Density? InheritedDensity { get; set; }
     /// <summary>Focuses the date-picker trigger on first render. Whichever
     /// trigger element is rendered (button / range-button / masked input)
     /// receives the focus via its shared id. See <c>Input.AutoFocus</c> for
@@ -937,7 +956,54 @@ else
         // toggle several days in one session (like range's first click).
     }
 
-    private string CssClass => Cx.Merge("group flex h-[var(--lumeo-control-h,calc(var(--spacing,0.25rem)*8))] w-full items-center rounded-md border", (EffectiveInvalid ? "border-destructive ring-1 ring-destructive/20" : "border-input"), "bg-transparent px-2.5 py-1.5 text-sm shadow-sm hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50", Class);
+    private Lumeo.Density EffectiveDensity => Density ?? InheritedDensity ?? Lumeo.Density.Comfortable;
+
+    // Height + horizontal padding per (Size, Density) — the same ladder Input.razor's
+    // SizeClasses uses for its plain <input> path (identical h-*/px-* tokens per rung).
+    // At Size.Md this reproduces SelectTrigger.SizeClasses exactly (h-7/px-2 Compact,
+    // h-9/px-3 Spacious, h-[var(--lumeo-control-h,...)]/px-2.5 Comfortable) — the trigger
+    // parity the field report asked for. Select has no Size lever of its own yet, so the
+    // other 6 rungs extend the one shared height/padding table already established for
+    // every other field-shaped control rather than inventing a new one.
+    private string SizeClasses => (Size, EffectiveDensity) switch
+    {
+        (Lumeo.Size.Xxs, Lumeo.Density.Compact)  => "h-5 px-1",
+        (Lumeo.Size.Xxs, Lumeo.Density.Spacious) => "h-7 px-2",
+        (Lumeo.Size.Xxs, _)                      => "h-6 px-1.5",
+        (Lumeo.Size.Xs, Lumeo.Density.Compact)   => "h-6 px-1.5",
+        (Lumeo.Size.Xs, Lumeo.Density.Spacious)  => "h-8 px-2",
+        (Lumeo.Size.Xs, _)                       => "h-7 px-2",
+        (Lumeo.Size.Sm, Lumeo.Density.Compact)   => "h-7 px-2",
+        (Lumeo.Size.Sm, Lumeo.Density.Spacious)  => "h-9 px-3",
+        (Lumeo.Size.Sm, _)                       => "h-[var(--lumeo-control-h,calc(var(--spacing,0.25rem)*8))] px-2.5",
+        (Lumeo.Size.Lg, Lumeo.Density.Compact)   => "h-10 px-3",
+        (Lumeo.Size.Lg, Lumeo.Density.Spacious)  => "h-12 px-5",
+        (Lumeo.Size.Lg, _)                       => "h-11 px-4",
+        (Lumeo.Size.Xl, Lumeo.Density.Compact)   => "h-12 px-3.5",
+        (Lumeo.Size.Xl, Lumeo.Density.Spacious)  => "h-14 px-6",
+        (Lumeo.Size.Xl, _)                       => "h-[52px] px-5",
+        (Lumeo.Size.Xxl, Lumeo.Density.Compact)  => "h-14 px-4",
+        (Lumeo.Size.Xxl, Lumeo.Density.Spacious) => "h-16 px-7",
+        (Lumeo.Size.Xxl, _)                      => "h-[60px] px-6",
+        (_, Lumeo.Density.Compact)               => "h-7 px-2",
+        (_, Lumeo.Density.Spacious)              => "h-9 px-3",
+        _                                        => "h-[var(--lumeo-control-h,calc(var(--spacing,0.25rem)*8))] px-2.5"
+    };
+
+    // Text size per Size rung only (density never shifts it — SelectTrigger's own text
+    // stays a fixed text-sm across all 3 densities too). Md keeps the pre-5.10 text-sm.
+    private string TextSizeClasses => Size switch
+    {
+        Lumeo.Size.Xxs => "text-[8px]",
+        Lumeo.Size.Xs => "text-[10px]",
+        Lumeo.Size.Sm => "text-xs",
+        Lumeo.Size.Lg => "text-base",
+        Lumeo.Size.Xl => "text-lg",
+        Lumeo.Size.Xxl => "text-xl",
+        _ => "text-sm"
+    };
+
+    private string CssClass => Cx.Merge("group flex", SizeClasses, "w-full items-center rounded-md border", (EffectiveInvalid ? "border-destructive ring-1 ring-destructive/20" : "border-input"), "bg-transparent", TextSizeClasses, "shadow-sm hover:bg-accent hover:text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50", Class);
 
     // Inside a FormField the EffectiveTriggerId must own the trigger element's id so
     // the <label for> and the rendered element always agree. A consumer-splatted id in
