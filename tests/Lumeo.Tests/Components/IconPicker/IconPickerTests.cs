@@ -96,7 +96,7 @@ public class IconPickerTests : IAsyncLifetime
             .Add(c => c.Icons, TestIcons)
             .Add(c => c.Open, true));
 
-        cut.Find("input[type='text']").Input("star");
+        cut.Find("input[type='search']").Input("star");
 
         var options = cut.FindAll("[role='option']");
         Assert.Single(options);
@@ -112,7 +112,7 @@ public class IconPickerTests : IAsyncLifetime
             .Add(c => c.Open, true));
 
         // "house" is a Keyword on the "Home" item, not part of its Name.
-        cut.Find("input[type='text']").Input("house");
+        cut.Find("input[type='search']").Input("house");
 
         var options = cut.FindAll("[role='option']");
         Assert.Single(options);
@@ -126,7 +126,7 @@ public class IconPickerTests : IAsyncLifetime
             .Add(c => c.Icons, TestIcons)
             .Add(c => c.Open, true));
 
-        cut.Find("input[type='text']").Input("zzz-no-match");
+        cut.Find("input[type='search']").Input("zzz-no-match");
 
         Assert.Empty(cut.FindAll("[role='option']"));
         Assert.Contains("No icons found", cut.Markup);
@@ -140,7 +140,7 @@ public class IconPickerTests : IAsyncLifetime
             .Add(c => c.Open, true)
             .Add(c => c.Searchable, false));
 
-        Assert.Empty(cut.FindAll("input[type='text']"));
+        Assert.Empty(cut.FindAll("input[type='search']"));
         Assert.Equal(TestIcons.Count, cut.FindAll("[role='option']").Count);
     }
 
@@ -214,7 +214,7 @@ public class IconPickerTests : IAsyncLifetime
             .Add(c => c.Open, true)
             .Add(c => c.ValueChanged, cb));
 
-        var search = cut.Find("input[type='text']");
+        var search = cut.Find("input[type='search']");
         search.KeyDown(new KeyboardEventArgs { Key = "ArrowRight" });
         search.KeyDown(new KeyboardEventArgs { Key = "Enter" });
 
@@ -389,7 +389,7 @@ public class IconPickerTests : IAsyncLifetime
 
         Assert.Empty(cut.FindAll("[tabindex='0']"));
 
-        var searchInput = cut.Find("input[type='text']");
+        var searchInput = cut.Find("input[type='search']");
         Assert.False(searchInput.HasAttribute("tabindex"));
 
         var grid = cut.Find("[role='listbox']");
@@ -419,5 +419,114 @@ public class IconPickerTests : IAsyncLifetime
             .Add(c => c.Open, true));
 
         Assert.Empty(cut.FindAll("[data-slot='scroll-area']"));
+    }
+
+    // --- Popover content scales with Size (owner report: search box, grid cell/glyph size
+    // and row height were identical at every trigger Size — only the trigger itself scaled) ---
+
+    [Fact]
+    public void Search_Field_Uses_Lumeo_Input()
+    {
+        // "In every component where other components are used, they use sizing and are not
+        // native" (owner's rule) — the search box must be the real Input component, not a
+        // raw <input>: data-slot="input-control" is Input's own marker on its actual <input>.
+        var cut = _ctx.Render<L.IconPicker>(p => p
+            .Add(c => c.Icons, TestIcons)
+            .Add(c => c.Open, true));
+
+        var search = cut.Find("[data-slot='input-control']");
+        Assert.Equal("search", search.GetAttribute("type"));
+        // The Lumeo focus ring (focus-within on the wrapper, since the actual focus target
+        // is the inner <input>), not the browser's default outline.
+        Assert.Contains("focus-within:ring", search.ParentElement!.GetAttribute("class"));
+    }
+
+    public static IEnumerable<object[]> AllSizes => new List<object[]>
+    {
+        new object[] { L.Size.Xxs }, new object[] { L.Size.Xs }, new object[] { L.Size.Sm },
+        new object[] { L.Size.Md }, new object[] { L.Size.Lg }, new object[] { L.Size.Xl }, new object[] { L.Size.Xxl },
+    };
+
+    public static IEnumerable<object[]> SizeLadder => new List<object[]>
+    {
+        new object[] { L.Size.Xxs, 24, 12, 2 },
+        new object[] { L.Size.Xs,  28, 14, 3 },
+        new object[] { L.Size.Sm,  32, 16, 4 },
+        new object[] { L.Size.Md,  36, 18, 4 },
+        new object[] { L.Size.Lg,  40, 20, 6 },
+        new object[] { L.Size.Xl,  44, 22, 6 },
+        new object[] { L.Size.Xxl, 48, 24, 8 },
+    };
+
+    [Theory]
+    [MemberData(nameof(AllSizes))]
+    public void Search_Input_Matches_Input_Ladder_At_Every_Size(L.Size size)
+    {
+        // Cross-check against a standalone Input at the same Size/Variant rather than
+        // re-deriving Input's ladder a second time here, so this still catches drift if
+        // Input's own ladder changes later (same technique as Trigger_Height_Matches_Input_
+        // Ladder_At_Every_Size above).
+        var inputCut = _ctx.Render<L.Input>(p => p
+            .Add(c => c.Size, size)
+            .Add(c => c.Variant, L.Input.InputVariant.Search));
+        var expectedWrapperClasses = inputCut.Find("[data-slot='input-control']").ParentElement!.GetAttribute("class") ?? "";
+
+        var cut = _ctx.Render<L.IconPicker>(p => p
+            .Add(c => c.Icons, TestIcons)
+            .Add(c => c.Size, size)
+            .Add(c => c.Open, true));
+        var actualWrapperClasses = cut.Find("[data-slot='input-control']").ParentElement!.GetAttribute("class") ?? "";
+
+        Assert.Equal(ExtractToken(expectedWrapperClasses, "h-"), ExtractToken(actualWrapperClasses, "h-"));
+        Assert.Equal(ExtractBaseTextToken(expectedWrapperClasses), ExtractBaseTextToken(actualWrapperClasses));
+    }
+
+    [Theory]
+    [MemberData(nameof(SizeLadder))]
+    public void Grid_Scales_With_Size(L.Size size, int expectedCellPx, int expectedGlyphPx, int expectedGapPx)
+    {
+        var cut = _ctx.Render<L.IconPicker>(p => p
+            .Add(c => c.Icons, TestIcons)
+            .Add(c => c.Size, size)
+            .Add(c => c.Open, true));
+
+        var metrics = cut.Instance.Metrics;
+        Assert.Equal(expectedCellPx, metrics.Cell);
+        Assert.Equal(expectedGlyphPx, metrics.Glyph);
+        Assert.Equal(expectedGapPx, metrics.Gap);
+
+        // Virtualize's ItemSize (see RowItemSize's use at the <Virtualize> call site) must
+        // match the actual rendered row height at every rung, or the virtualized list jumps.
+        Assert.Equal((float)(expectedCellPx + expectedGapPx), cut.Instance.RowItemSize);
+
+        var option = cut.FindAll("[role='option']").First();
+        var optionClasses = (option.GetAttribute("class") ?? "").Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        foreach (var token in metrics.CellClass.Split(' ', StringSplitOptions.RemoveEmptyEntries))
+        {
+            Assert.Contains(token, optionClasses);
+        }
+
+        var glyph = option.QuerySelector("[data-slot='svg-glyph']");
+        Assert.NotNull(glyph);
+        Assert.Equal(metrics.GlyphClass, glyph!.GetAttribute("class"));
+    }
+
+    [Fact]
+    public void Popover_Width_Follows_Columns_And_Cell_Size()
+    {
+        var cut = _ctx.Render<L.IconPicker>(p => p
+            .Add(c => c.Icons, TestIcons)
+            .Add(c => c.Size, L.Size.Xl)
+            .Add(c => c.Columns, 5)
+            .Add(c => c.Open, true));
+
+        // Xl metrics: cell=44px, gap=6px. width = cols*cell + (cols-1)*gap + 16 (p-2 padding).
+        var expectedWidth = 5 * 44 + 4 * 6 + 16;
+        var content = cut.Find("[data-slot='popover-content']");
+        var style = content.GetAttribute("style") ?? "";
+
+        Assert.Contains($"width:{expectedWidth}px", style);
+        // Clamped to the viewport so a large Columns/Size combo never overflows the screen.
+        Assert.Contains("max-width:calc(100vw - 2rem)", style);
     }
 }
