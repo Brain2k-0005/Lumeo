@@ -101,4 +101,39 @@ public class OverlayPlayExitAnimationTests : IAsyncLifetime
         Assert.NotEmpty(cut.FindAll($"[role='{role}']"));
         Assert.Contains("BODY", cut.Markup);
     }
+
+    // AlertDialog follow-up (coordinator-requested scope close on finding 4):
+    // ShowAlertDialogAsync takes the separate AlertDialogOptions record (not
+    // OverlayOptions), so it needs its own opener/role — mirrors the two tests
+    // above 1:1 otherwise.
+    private string OpenAlertDialog(bool playExitAnimation)
+    {
+        OverlayInstance? shown = null;
+        _overlay.OnShow += i => shown = i;
+        _ = _overlay.ShowAlertDialogAsync(new AlertDialogOptions { Title = "ALERTBODY", PlayExitAnimation = playExitAnimation });
+        return shown!.Id;
+    }
+
+    [Theory]
+    [InlineData(false, false)] // PlayExitAnimation=false -> immediate unmount, no exit wiring
+    [InlineData(true, true)]   // PlayExitAnimation=true (default) -> exit animation still plays
+    public async Task AlertDialogOptions_PlayExitAnimation_Mirrors_OverlayOptions(bool playExitAnimation, bool expectMounted)
+    {
+        var cut = _ctx.Render<Lumeo.OverlayProvider>();
+        var id = OpenAlertDialog(playExitAnimation);
+        cut.WaitForState(() => cut.Markup.Contains("ALERTBODY"));
+
+        await cut.InvokeAsync(() => _overlay.Cancel(id));
+
+        if (expectMounted)
+        {
+            Assert.NotEmpty(cut.FindAll("[role='alertdialog']"));
+            Assert.Contains("ALERTBODY", cut.Markup);
+        }
+        else
+        {
+            Assert.Empty(cut.FindAll("[role='alertdialog']"));
+            Assert.Empty(_interop.OverlayExitEndWirings);
+        }
+    }
 }

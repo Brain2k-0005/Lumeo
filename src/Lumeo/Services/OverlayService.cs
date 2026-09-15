@@ -385,6 +385,19 @@ public sealed record AlertDialogOptions
     public string ConfirmText { get; init; } = "Continue";
     public string CancelText { get; init; } = "Cancel";
     public bool IsDestructive { get; init; }
+
+    /// <summary>
+    /// When <c>true</c> (the default), closing a service-opened AlertDialog keeps
+    /// the panel (and backdrop) mounted for its exit animation before unmounting,
+    /// instead of vanishing instantly. Set <c>false</c> to opt OUT for this
+    /// overlay — it unmounts immediately on close instead, with no
+    /// <c>animate-*-out</c> class and no wait for <c>animationend</c>. Mirrors
+    /// <see cref="OverlayOptions.PlayExitAnimation"/> for the AlertDialog path,
+    /// which uses this separate options record instead of
+    /// <see cref="OverlayOptions"/> (field report #464, finding 4 follow-up).
+    /// <b>Applies to:</b> AlertDialog.
+    /// </summary>
+    public bool PlayExitAnimation { get; init; } = true;
 }
 
 public sealed class OverlayInstance
