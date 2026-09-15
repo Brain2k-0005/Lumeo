@@ -174,6 +174,12 @@ public sealed class ComponentInteropService : IComponentInteropService
         await module.InvokeVoidAsync("setHtmlClass", className, active);
     }
 
+    public async ValueTask SetDrawerBackgroundScaled(bool active)
+    {
+        var module = await GetModuleAsync();
+        await module.InvokeVoidAsync("setDrawerBackgroundScaled", active);
+    }
+
     public async ValueTask SetupFocusTrap(string elementId, string? initialFocusSelector = null)
     {
         var module = await GetModuleAsync();
@@ -478,6 +484,24 @@ public sealed class ComponentInteropService : IComponentInteropService
     {
         var module = await GetModuleAsync();
         await _swipe.UnregisterDrawerSwipe(module, elementId);
+    }
+
+    // Field report #464 (finding 3) — read back right after OnSwipeDismiss so a
+    // consumer (Sheet) can seed its exit animation's start point at the panel's
+    // actual on-screen offset. Stateless w.r.t. the _swipe coordinator: the JS
+    // module owns the last-dismiss-offset map directly (see
+    // getSwipeReleaseOffset in components.js).
+    public async ValueTask<double> GetSwipeReleaseOffset(string elementId)
+    {
+        try
+        {
+            var module = await GetModuleAsync();
+            return await module.InvokeAsync<double>("getSwipeReleaseOffset", elementId);
+        }
+        catch (JSDisconnectedException)
+        {
+            return 0;
+        }
     }
 
     [JSInvokable]

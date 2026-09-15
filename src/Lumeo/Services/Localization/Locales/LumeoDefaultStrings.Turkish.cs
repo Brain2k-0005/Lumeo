@@ -6,6 +6,7 @@ internal static partial class LumeoDefaultStrings
     {
         // DataGrid
         ["DataGrid.NoData"] = "Veri yok",
+        ["DataGrid.NoDataFiltered"] = "Geçerli filtrelerle eşleşen satır yok",
         ["DataGrid.Loading"] = "Yükleniyor…",
         ["DataGrid.SearchPlaceholder"] = "Ara…",
         ["DataGrid.ClearSearch"] = "Aramayı temizle",
@@ -133,6 +134,11 @@ internal static partial class LumeoDefaultStrings
         ["ColorPicker.Green"] = "Yeşil",
         ["ColorPicker.Blue"] = "Mavi",
         ["ColorPicker.Presets"] = "Ön ayarlar",
+
+        // ── IconPicker ────────────────────────────────
+        ["IconPicker.Placeholder"] = "Simge seç",
+        ["IconPicker.SearchPlaceholder"] = "Simge ara",
+        ["IconPicker.NoIconsFound"] = "Simge bulunamadı",
 
         // PasswordInput
         ["Password.Placeholder"] = "Şifre girin",
@@ -412,6 +418,9 @@ internal static partial class LumeoDefaultStrings
         ["Stepper.Finish"] = "Bitir",
         ["Stepper.Optional"] = "İsteğe bağlı",
         ["Stepper.Skip"] = "Atla",
+
+        // Skeleton
+        ["Skeleton.Loading"] = "Yükleniyor",
 
         // Window
         ["Window.Close"] = "Kapat",

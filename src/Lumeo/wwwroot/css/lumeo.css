@@ -651,14 +651,49 @@ input[type="range"]:focus-visible::-moz-range-thumb {
    by default — the SheetFooter then sticks below the last field instead
    of pinning to the bottom. Make direct <form> children of a Lumeo
    sheet/dialog inherit the flex-column layout so the footer pins
-   correctly without consumer-side CSS workarounds. */
+   correctly without consumer-side CSS workarounds.
+
+   Deliberately NOT extended to [id^="drawer-"] (field report #464, finding 1):
+   Sheet's Left/Right panel and Dialog's panel both have a DEFINITE height
+   (h-full / a centered max-height box), so flex:1 1 0 on the form has real
+   free space to grow into. A Drawer's default Top/Bottom panel is h-auto,
+   content-hugging up to its max-height cap — no definite height. Per the flex
+   algorithm, a flex-column container with an indefinite (auto) main size
+   computes its OWN size from its children's hypothetical main sizes, which
+   for a flex-basis:0 item is exactly 0 — so the panel (and everything in it)
+   collapsed to zero height the moment its ONLY child was a <form> instead of
+   a plain <div> (a div gets no such override and was never affected). A
+   Left/Right or Size=Full Drawer DOES have a definite height, but for
+   consistency — a form must behave the SAME as a div in every Drawer
+   configuration, exactly as docs/long-forms-in-sheets already tells
+   consumers to opt a <div>/<EditForm> body into flex-col scrolling
+   THEMSELVES via explicit classes — Drawer gets no automatic override at
+   all; see DrawerPage's "Drawer with a form" example. */
 [role="dialog"][id^="sheet-"] > form,
-[role="dialog"][id^="dialog-"] > form,
-[role="dialog"][id^="drawer-"] > form {
+[role="dialog"][id^="dialog-"] > form {
     flex: 1 1 0;
     display: flex;
     flex-direction: column;
     min-height: 0;
+}
+
+/* vaul-style background scaling (#346, Drawer.ScaleBackground). The CONSUMER
+   marks their own page-root element with data-lumeo-drawer-wrapper — Lumeo
+   never renders this element itself, it lives outside any Drawer's DOM.
+   DrawerContent toggles data-lumeo-drawer-scaled on it via
+   Interop.SetDrawerBackgroundScaled (components.js) whenever a bottom
+   Drawer with ScaleBackground is open; this is the CSS half. Mirrors vaul's
+   own [data-vaul-drawer-wrapper][data-vaul-drawer-visible] transform/radius,
+   using theme tokens instead of a raw rgba background darken. */
+[data-lumeo-drawer-wrapper] {
+    transition: transform 0.5s cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+[data-lumeo-drawer-wrapper][data-lumeo-drawer-scaled="true"] {
+    overflow: hidden;
+    border-radius: 8px;
+    background-color: var(--color-muted);
+    transform: scale(0.97) translateY(14px);
 }
 
 /* Accordion / Collapsible open/close transitions are now driven by a CSS
@@ -889,23 +924,34 @@ input[type="range"]:focus-visible::-moz-range-thumb {
   to   { opacity: 0; }
 }
 
+/* --lumeo-sheet-exit-from (field report #464, finding 3) — a slow swipe-to-close
+   release used to snap the panel back to fully open before this keyframe took
+   over, because `from` always started at 0 regardless of the drag offset the
+   panel was actually sitting at. SheetContent now stamps this custom property
+   (a signed px length along the SAME axis the keyframe animates) on the panel
+   right before the exit class is applied, so a swipe release continues smoothly
+   from wherever the finger let go. The default (0) preserves the original
+   behaviour for every non-swipe close (Escape / backdrop / X / programmatic) —
+   those never set the property, so `var(..., 0)` is what runs. Also picked up
+   by Drawer (which shares these keyframes) for the same reason, defaulting to 0
+   there since DrawerContent doesn't set it. */
 @keyframes slide-out-to-bottom {
-  from { transform: translateY(0); }
+  from { transform: translateY(var(--lumeo-sheet-exit-from, 0)); }
   to   { transform: translateY(100%); }
 }
 
 @keyframes slide-out-to-top {
-  from { transform: translateY(0); }
+  from { transform: translateY(var(--lumeo-sheet-exit-from, 0)); }
   to   { transform: translateY(-100%); }
 }
 
 @keyframes slide-out-to-left {
-  from { transform: translateX(0); }
+  from { transform: translateX(var(--lumeo-sheet-exit-from, 0)); }
   to   { transform: translateX(-100%); }
 }
 
 @keyframes slide-out-to-right {
-  from { transform: translateX(0); }
+  from { transform: translateX(var(--lumeo-sheet-exit-from, 0)); }
   to   { transform: translateX(100%); }
 }
 

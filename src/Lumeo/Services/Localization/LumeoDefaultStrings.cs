@@ -16,6 +16,7 @@ internal static partial class LumeoDefaultStrings
     {
         // ── DataGrid ────────────────────────────────────────────────
         ["DataGrid.NoData"] = "No data available",
+        ["DataGrid.NoDataFiltered"] = "No rows match the current filters",
         ["DataGrid.Loading"] = "Loading…",
         ["DataGrid.SearchPlaceholder"] = "Search…",
         ["DataGrid.ClearSearch"] = "Clear search",
@@ -144,6 +145,11 @@ internal static partial class LumeoDefaultStrings
         ["ColorPicker.Green"] = "Green",
         ["ColorPicker.Blue"] = "Blue",
         ["ColorPicker.Presets"] = "Presets",
+
+        // ── IconPicker ──────────────────────────────────────────────
+        ["IconPicker.Placeholder"] = "Pick an icon",
+        ["IconPicker.SearchPlaceholder"] = "Search icons",
+        ["IconPicker.NoIconsFound"] = "No icons found",
 
         // ── PasswordInput ───────────────────────────────────────────
         ["Password.Placeholder"] = "Enter password",
@@ -288,6 +294,9 @@ internal static partial class LumeoDefaultStrings
         ["Stepper.Finish"] = "Finish",
         ["Stepper.Optional"] = "Optional",
         ["Stepper.Skip"] = "Skip",
+
+        // ── Skeleton ────────────────────────────────────────────────
+        ["Skeleton.Loading"] = "Loading",
 
         // ── Window ──────────────────────────────────────────────────
         ["Window.Close"] = "Close",
@@ -776,6 +785,7 @@ internal static partial class LumeoDefaultStrings
     {
         // ── DataGrid ────────────────────────────────────────────────
         ["DataGrid.NoData"] = "Keine Daten vorhanden",
+        ["DataGrid.NoDataFiltered"] = "Keine Zeilen entsprechen den aktuellen Filtern",
         ["DataGrid.Loading"] = "Wird geladen…",
         ["DataGrid.SearchPlaceholder"] = "Suchen…",
         ["DataGrid.ClearSearch"] = "Suche löschen",
@@ -904,6 +914,11 @@ internal static partial class LumeoDefaultStrings
         ["ColorPicker.Green"] = "Grün",
         ["ColorPicker.Blue"] = "Blau",
         ["ColorPicker.Presets"] = "Vorlagen",
+
+        // ── IconPicker ──────────────────────────────────────────────
+        ["IconPicker.Placeholder"] = "Symbol wählen",
+        ["IconPicker.SearchPlaceholder"] = "Symbole durchsuchen",
+        ["IconPicker.NoIconsFound"] = "Keine Symbole gefunden",
 
         // ── PasswordInput ───────────────────────────────────────────
         ["Password.Placeholder"] = "Passwort eingeben",
@@ -1063,6 +1078,9 @@ internal static partial class LumeoDefaultStrings
         ["Stepper.Finish"] = "Fertigstellen",
         ["Stepper.Optional"] = "Optional",
         ["Stepper.Skip"] = "Überspringen",
+
+        // ── Skeleton ────────────────────────────────────────────────
+        ["Skeleton.Loading"] = "Wird geladen",
 
         // ── Window ──────────────────────────────────────────────────
         ["Window.Close"] = "Schließen",

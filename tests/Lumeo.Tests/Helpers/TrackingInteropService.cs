@@ -95,7 +95,11 @@ public class TrackingInteropService : IComponentInteropService
         _clickOutsideUnregistrations.Add(elementId);
         return ValueTask.CompletedTask;
     }
-    public ValueTask FocusElement(string elementId)
+    // virtual so a test subclass can observe the CALLER's rendered DOM state at
+    // the exact moment this fires (OtpInput backspace-focus race regression
+    // coverage — proves a focus call was issued AFTER the render it depends on,
+    // not racing it).
+    public virtual ValueTask FocusElement(string elementId)
     {
         // Recorded in both views: menu tests assert via FocusElementCalls,
         // TreeView roving-tabindex tests via FocusedElementIds.
@@ -124,8 +128,18 @@ public class TrackingInteropService : IComponentInteropService
     // interop is still in flight" race deterministically — see
     // OverlayExitAnimationRaceTests (B11: exit animation must not depend on the open
     // interop having completed).
-    public virtual ValueTask LockScroll() => ValueTask.CompletedTask;
-    public virtual ValueTask UnlockScroll() => ValueTask.CompletedTask;
+    // Fix round 1 (task review) — call-count tracking so a test can assert an
+    // exact number of Lock/Unlock calls (e.g. a Modal flip mid-open must not
+    // leak an extra UnlockScroll, or skip one it owes). Overridden LockScroll
+    // in DrawerGestureRegistrationRaceTests/OverlayExitAnimationRaceTests
+    // doesn't call base, so this counter simply doesn't increment there —
+    // those tests don't need it.
+    private int _lockScrollCallCount;
+    private int _unlockScrollCallCount;
+    public int LockScrollCallCount => _lockScrollCallCount;
+    public int UnlockScrollCallCount => _unlockScrollCallCount;
+    public virtual ValueTask LockScroll() { _lockScrollCallCount++; return ValueTask.CompletedTask; }
+    public virtual ValueTask UnlockScroll() { _unlockScrollCallCount++; return ValueTask.CompletedTask; }
 
     // Records (className, active) for each SetHtmlClass call so tests can assert
     // html-class lifecycle (e.g. fullscreen-active added on enter / removed on
@@ -135,6 +149,18 @@ public class TrackingInteropService : IComponentInteropService
     public ValueTask SetHtmlClass(string className, bool active)
     {
         _setHtmlClassCalls.Add((className, active));
+        return ValueTask.CompletedTask;
+    }
+
+    // Drawer background-scale tracking (#346, Drawer.ScaleBackground) —
+    // records each SetDrawerBackgroundScaled(active) call so a test can
+    // assert the wrapper is scaled true on open and false on close, without
+    // a real DOM to query [data-lumeo-drawer-wrapper] against.
+    private readonly List<bool> _drawerBackgroundScaleCalls = new();
+    public IReadOnlyList<bool> DrawerBackgroundScaleCalls => _drawerBackgroundScaleCalls;
+    public ValueTask SetDrawerBackgroundScaled(bool active)
+    {
+        _drawerBackgroundScaleCalls.Add(active);
         return ValueTask.CompletedTask;
     }
     public ValueTask SetupFocusTrap(string elementId, string? initialFocusSelector = null)
@@ -301,6 +327,12 @@ public class TrackingInteropService : IComponentInteropService
     private readonly List<string> _drawerSwipeUnregistrations = new();
     public IReadOnlyList<(string ElementId, string? Direction)> DrawerSwipeRegistrations => _drawerSwipeRegistrations;
     public IReadOnlyList<string> DrawerSwipeUnregistrations => _drawerSwipeUnregistrations;
+    // The handler each registration was given, so a test can invoke it directly to
+    // SIMULATE the JS onTouchEnd dismiss call (bUnit has no real touch events) —
+    // e.g. staging SwipeReleaseOffsetPx first and then calling this to reproduce
+    // field report #464 finding 3's "seed the exit animation from the drag offset"
+    // path end-to-end.
+    public Func<Task>? LastDrawerSwipeHandler { get; private set; }
     // virtual: registerDrawerSnap's default interface impl (IComponentInteropService)
     // routes through THIS overload too (via its own 5-arg RegisterDrawerSwipe
     // default), so a derived class can block/record the snap path's own
@@ -310,6 +342,7 @@ public class TrackingInteropService : IComponentInteropService
     public virtual ValueTask RegisterDrawerSwipe(string elementId, string direction, Func<Task> handler)
     {
         _drawerSwipeRegistrations.Add((elementId, direction));
+        LastDrawerSwipeHandler = handler;
         return ValueTask.CompletedTask;
     }
     public ValueTask RegisterDrawerSwipe(string elementId, Func<Task> handler)
@@ -317,6 +350,13 @@ public class TrackingInteropService : IComponentInteropService
         _drawerSwipeRegistrations.Add((elementId, null));
         return ValueTask.CompletedTask;
     }
+    // Field report #464 (finding 3) — SheetContent reads this back right after a
+    // swipe dismiss to seed --lumeo-sheet-exit-from. A test stages the value a
+    // "release" should report by setting SwipeReleaseOffsetPx before triggering
+    // the swipe-dismiss path; defaults to 0 (the historical always-from-0
+    // behaviour) so every other swipe test is unaffected.
+    public double SwipeReleaseOffsetPx { get; set; }
+    public ValueTask<double> GetSwipeReleaseOffset(string elementId) => ValueTask.FromResult(SwipeReleaseOffsetPx);
     public ValueTask UnregisterDrawerSwipe(string elementId)
     {
         _drawerSwipeUnregistrations.Add(elementId);

@@ -19,6 +19,19 @@
     </ChildContent>
 </Alert>
 
+<Alert Variant="Alert.AlertVariant.Info" ShowIcon="true" Class="mb-6">
+    <ChildContent>
+        <strong>Form as a direct child.</strong> Field report #464: a
+        <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">&lt;form&gt;</code>
+        placed directly inside <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">DrawerContent</code>
+        (instead of wrapped in a <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">&lt;div&gt;</code>)
+        used to collapse the whole panel to 0 height on the default Bottom/Top sides. Fixed — a
+        <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">form</code> child now renders with exactly the
+        same layout a <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">div</code> child would. See
+        "Drawer with a form" below.
+    </ChildContent>
+</Alert>
+
 <div class="mt-10 space-y-3">
     <Heading Id="when-to-use" Level="2" Class="scroll-mt-20">When to Use</Heading>
     <ul class="list-disc list-inside space-y-1 text-muted-foreground text-sm">
@@ -138,6 +151,39 @@
                 </Stack>
             </DrawerContent>
         </Drawer>
+    </ComponentDemo>
+
+    <ComponentDemo Title="Drawer with a form" Code="@_formCode">
+        <Drawer @bind-Open="_formOpen">
+            <DrawerTrigger>
+                <Button Variant="Button.ButtonVariant.Outline">New contact</Button>
+            </DrawerTrigger>
+            <DrawerContent>
+                <form @onsubmit="HandleFormSubmit">
+                    <DrawerHeader>
+                        <DrawerTitle>New contact</DrawerTitle>
+                        <DrawerDescription>A direct &lt;form&gt; child renders exactly like a &lt;div&gt; would — no collapsed panel.</DrawerDescription>
+                    </DrawerHeader>
+                    <Stack Gap="3" Class="px-4 pb-4">
+                        <Stack Gap="1.5">
+                            <Label>Name</Label>
+                            <Input @bind-Value="_formName" Placeholder="Jane Doe" />
+                        </Stack>
+                        <Stack Gap="1.5">
+                            <Label>Email</Label>
+                            <Input @bind-Value="_formEmail" Placeholder="jane@example.com" />
+                        </Stack>
+                    </Stack>
+                    <DrawerFooter>
+                        <Button Type="Button.ButtonType.Submit" Class="w-full">Save</Button>
+                    </DrawerFooter>
+                </form>
+            </DrawerContent>
+        </Drawer>
+        @if (!string.IsNullOrEmpty(_formResult))
+        {
+            <Lumeo.Text Class="text-sm text-muted-foreground mt-3">@_formResult</Lumeo.Text>
+        }
     </ComponentDemo>
 
     <ComponentDemo Title="Snap points (touch)" Code="@_snapCode">
@@ -338,6 +384,110 @@
     </Lumeo.Text>
 </div>
 
+<div class="mt-12 space-y-4">
+    <Heading Id="modal-vs-preventclose" Level="2" Class="scroll-mt-20">Modal vs PreventClose</Heading>
+    <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
+        vaul separates two independent questions: <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">modal</code> —
+        does the drawer block the page (backdrop, focus trap, scroll lock)? — and
+        <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">dismissible</code> — can the user close
+        it at all (swipe, backdrop click, Escape)? Lumeo maps these onto two <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">DrawerContent</code>
+        parameters that compose freely:
+    </Lumeo.Text>
+    <div class="overflow-x-auto mt-4">
+        <Table>
+            <TableHeader>
+                <TableRow>
+                    <TableHead>vaul</TableHead>
+                    <TableHead>Lumeo</TableHead>
+                    <TableHead>Default</TableHead>
+                    <TableHead>Effect when set to the non-default value</TableHead>
+                </TableRow>
+            </TableHeader>
+            <TableBody>
+                <TableRow>
+                    <TableCell><code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">modal</code></TableCell>
+                    <TableCell><code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">Modal</code></TableCell>
+                    <TableCell><code>true</code></TableCell>
+                    <TableCell><code>Modal="false"</code>: no backdrop, no focus trap, no scroll lock — the page stays fully interactive while the drawer is open.</TableCell>
+                </TableRow>
+                <TableRow>
+                    <TableCell><code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">dismissible</code></TableCell>
+                    <TableCell><code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">PreventClose</code> (inverted)</TableCell>
+                    <TableCell><code>false</code></TableCell>
+                    <TableCell><code>PreventClose="true"</code>: Escape, backdrop-click and swipe are all disabled; the drawer only closes programmatically (or, in snap mode, settles at the lowest snap).</TableCell>
+                </TableRow>
+            </TableBody>
+        </Table>
+    </div>
+    <Lumeo.Text Size="sm" Color="muted" Leading="relaxed">
+        The two compose freely — e.g. <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">Modal="false"</code>
+        with <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">PreventClose="true"</code> is a
+        drawer that never blocks the page AND can only be dismissed programmatically.
+    </Lumeo.Text>
+
+    <ComponentDemo Title="Non-modal drawer" Code="@_nonModalCode">
+        <Drawer @bind-Open="_nonModalOpen" Modal="false">
+            <DrawerTrigger>
+                <Button Variant="Button.ButtonVariant.Outline">Open non-modal drawer</Button>
+            </DrawerTrigger>
+            <DrawerContent>
+                <DrawerHeader>
+                    <DrawerTitle>Non-modal</DrawerTitle>
+                    <DrawerDescription>No backdrop, no scroll lock, no focus trap — try scrolling or clicking the page behind it.</DrawerDescription>
+                </DrawerHeader>
+                <DrawerFooter>
+                    <DrawerClose><Button Class="w-full">Close</Button></DrawerClose>
+                </DrawerFooter>
+            </DrawerContent>
+        </Drawer>
+    </ComponentDemo>
+</div>
+
+<div class="mt-12 space-y-4">
+    <Heading Id="close-button" Level="2" Class="scroll-mt-20">Built-in close button</Heading>
+    <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
+        <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">ShowCloseButton</code> renders a
+        top-end X, mirroring <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">SheetContent.ShowCloseButton</code>
+        exactly — same parameter name, same default coupling to <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">PreventClose</code>
+        (<code>null</code>), and the same override semantics: <code>true</code> forces the X on even when
+        <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">PreventClose</code> is set (it still routes
+        through the dismiss guard), <code>false</code> hides it for custom chrome. No more manual
+        <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">DrawerClose</code> required just to get an X.
+    </Lumeo.Text>
+
+    <ComponentDemo Title="Close button on a protected drawer" Code="@_closeButtonCode">
+        <Drawer @bind-Open="_closeButtonOpen">
+            <DrawerTrigger>
+                <Button Variant="Button.ButtonVariant.Outline">Open with close button</Button>
+            </DrawerTrigger>
+            <DrawerContent PreventClose="true" ShowCloseButton="true">
+                <DrawerHeader>
+                    <DrawerTitle>Protected, but closable via the X</DrawerTitle>
+                    <DrawerDescription>Backdrop, Escape and swipe are disabled; the X still routes through the dismiss guard.</DrawerDescription>
+                </DrawerHeader>
+            </DrawerContent>
+        </Drawer>
+    </ComponentDemo>
+</div>
+
+<div class="mt-12 space-y-3">
+    <Heading Id="background-scaling" Level="2" Class="scroll-mt-20">Background scaling</Heading>
+    <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
+        <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">Drawer.ScaleBackground</code> (default
+        <code>false</code>) mirrors vaul's <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono text-foreground">shouldScaleBackground</code> —
+        while a <strong>Bottom</strong> drawer is open, the page behind it scales down, gains rounded corners, and nudges
+        down slightly, mimicking the native iOS "page recedes behind the sheet" effect. Top/Left/Right drawers never
+        trigger it, matching vaul's own bottom-sheet-only scope.
+    </Lumeo.Text>
+    <Alert Variant="Alert.AlertVariant.Warning" ShowIcon="true" Title="Requires marking your own wrapper element" Class="mt-2">
+        Lumeo never renders the scaled element itself — mark your app's own page-root element (typically right inside
+        <code class="text-xs font-mono">&lt;body&gt;</code>, wrapping your router/layout) with
+        <code class="text-xs font-mono">data-lumeo-drawer-wrapper</code>. With no element carrying that attribute,
+        <code class="text-xs font-mono">ScaleBackground</code> is a no-op — nothing breaks, nothing scales.
+    </Alert>
+    <pre class="code-block rounded-lg border border-border/40 bg-muted px-4 py-3 font-mono text-xs text-foreground whitespace-pre overflow-x-auto">@_scaleBackgroundCode</pre>
+</div>
+
 <!-- API Reference -->
 <Stack Gap="6" Class="mt-12">
     <Heading Level="2">API Reference</Heading>
@@ -379,6 +529,108 @@
     private bool _guardOpen;
     private bool _guardDirty;
     private string? _guardNote;
+
+    // #464 finding 1 — "Drawer with a form" demo
+    private bool _formOpen;
+    private string? _formName;
+    private string? _formEmail;
+    private string? _formResult;
+    private void HandleFormSubmit()
+    {
+        _formResult = $"Saved {_formName} ({_formEmail}).";
+        _formOpen = false;
+    }
+    private string _formCode = @"<Drawer @bind-Open=""_open"">
+    <DrawerTrigger>
+        <Button Variant=""Button.ButtonVariant.Outline"">New contact</Button>
+    </DrawerTrigger>
+    <DrawerContent>
+        <form @onsubmit=""HandleSubmit"">
+            <DrawerHeader>
+                <DrawerTitle>New contact</DrawerTitle>
+            </DrawerHeader>
+            <Stack Gap=""3"" Class=""px-4 pb-4"">
+                <Stack Gap=""1.5"">
+                    <Label>Name</Label>
+                    <Input @bind-Value=""_name"" />
+                </Stack>
+                <Stack Gap=""1.5"">
+                    <Label>Email</Label>
+                    <Input @bind-Value=""_email"" />
+                </Stack>
+            </Stack>
+            <DrawerFooter>
+                <Button Type=""Button.ButtonType.Submit"" Class=""w-full"">Save</Button>
+            </DrawerFooter>
+        </form>
+    </DrawerContent>
+</Drawer>
+
+@code {
+    private bool _open;
+    private string? _name;
+    private string? _email;
+
+    private void HandleSubmit()
+    {
+        // ...save...
+        _open = false;
+    }
+}";
+
+    // #346 — Modal vs PreventClose
+    private bool _nonModalOpen;
+    private string _nonModalCode = @"<Drawer @bind-Open=""_open"" Modal=""false"">
+    <DrawerTrigger>
+        <Button Variant=""Button.ButtonVariant.Outline"">Open non-modal drawer</Button>
+    </DrawerTrigger>
+    <DrawerContent>
+        <DrawerHeader>
+            <DrawerTitle>Non-modal</DrawerTitle>
+            <DrawerDescription>No backdrop, no scroll lock, no focus trap.</DrawerDescription>
+        </DrawerHeader>
+        <DrawerFooter>
+            <DrawerClose><Button Class=""w-full"">Close</Button></DrawerClose>
+        </DrawerFooter>
+    </DrawerContent>
+</Drawer>
+
+@code {
+    private bool _open;
+}";
+
+    // #346 — ShowCloseButton
+    private bool _closeButtonOpen;
+    private string _closeButtonCode = @"<Drawer @bind-Open=""_open"">
+    <DrawerTrigger>
+        <Button Variant=""Button.ButtonVariant.Outline"">Open with close button</Button>
+    </DrawerTrigger>
+    <DrawerContent PreventClose=""true"" ShowCloseButton=""true"">
+        <DrawerHeader>
+            <DrawerTitle>Protected, but closable via the X</DrawerTitle>
+            <DrawerDescription>Backdrop, Escape and swipe are disabled; the X still routes through the dismiss guard.</DrawerDescription>
+        </DrawerHeader>
+    </DrawerContent>
+</Drawer>
+
+@code {
+    private bool _open;
+}";
+
+    // #346 — ScaleBackground
+    private string _scaleBackgroundCode = @"<!-- MainLayout.razor (or index.html's app root) -->
+<div data-lumeo-drawer-wrapper>
+    <Router ...>
+        ...
+    </Router>
+</div>
+
+<!-- Anywhere a bottom Drawer is opened: -->
+<Drawer @bind-Open=""_open"" ScaleBackground=""true"">
+    <DrawerContent>
+        ...
+    </DrawerContent>
+</Drawer>";
 
     private Dictionary<DrawerContent.DrawerSize, bool> _sizeOpen = new();
     private void OnSizeOpenChanged(DrawerContent.DrawerSize size, bool open)

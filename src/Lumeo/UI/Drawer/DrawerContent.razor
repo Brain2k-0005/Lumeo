@@ -28,13 +28,20 @@ else if (Context.IsOpen || _exiting)
     <div data-slot="drawer-content" class="fixed inset-0 pointer-events-none" style="z-index:@BackdropZ">
         @* Backdrop — theme-aware --color-overlay-backdrop token (was a hardcoded
            bg-black/80 that ignored the token, unlike Sheet/Dialog). #218. Fades
-           out alongside the panel while exiting (service-opened only). *@
-        <div class="@BackdropClass" style="@BackdropStyle" @onclick="HandleBackdropClick" @onmousedown:preventDefault="true"></div>
+           out alongside the panel while exiting (service-opened only). Only
+           rendered when Modal (#346) — a non-modal drawer has nothing shielding
+           the page, so outside clicks pass straight through the (still
+           pointer-events-none) wrapper above to whatever is underneath. *@
+        @if (Modal)
+        {
+            <div class="@BackdropClass" style="@BackdropStyle" @onclick="HandleBackdropClick" @onmousedown:preventDefault="true"></div>
+        }
         @* @onkeydown:stopPropagation — keys handled inside this modal must not
            bubble into ancestor overlays (an Escape would cascade-close them).
            See DialogContent for the full rationale. aria-modal drops to false
-           while exiting (affordances already torn down — mirrors SheetContent #185). *@
-        <div id="@_contentId" class="@CssClass" style="z-index:@ContentZ" role="dialog" aria-modal="@(Context.IsOpen ? "true" : "false")" aria-labelledby="@Context.TitleId" aria-describedby="@DescribedBy" @onkeydown="HandleKeyDown" @onkeydown:stopPropagation tabindex="-1" inert="@ExitInert" @attributes="AdditionalAttributes">
+           while exiting (affordances already torn down — mirrors SheetContent #185)
+           and whenever Modal is false — a non-modal drawer never traps AT (#346). *@
+        <div id="@_contentId" class="@CssClass" style="z-index:@ContentZ" role="dialog" aria-modal="@((Context.IsOpen && Modal) ? "true" : "false")" aria-labelledby="@Context.TitleId" aria-describedby="@DescribedBy" @onkeydown="HandleKeyDown" @onkeydown:stopPropagation tabindex="-1" inert="@ExitInert" @attributes="AdditionalAttributes">
             @if (ShowDragHandle)
             {
                 @* #381 Codex P2 (round 2) — data-drawer-handle is the stable hook
@@ -76,17 +83,38 @@ else if (Context.IsOpen || _exiting)
                 </div>
             }
             @ChildContent
+            @* lumeo-drawer-close: stable consumer hook, mirrors SheetContent's
+               lumeo-sheet-close. z-10 keeps the X above full-bleed content and
+               (Top/Bottom) above the drag handle strip, which is centered so
+               the two never visually collide. #346. *@
+            @if (ShowCloseButton ?? !PreventClose)
+            {
+                <button type="button" aria-label="@L["Dialog.Close"]" class="lumeo-drawer-close absolute end-4 top-4 z-10 rounded-sm opacity-70 transition-opacity hover:opacity-100 focus:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-2" @onclick="HandleCloseButton">
+                    <SvgGlyph Svg="@(LumeoIcons.X)" class="h-4 w-4" />
+                    <span class="sr-only">@L["Dialog.Close"]</span>
+                </button>
+            }
         </div>
     </div>
 }
 
 @inject IComponentInteropService Interop
+@inject Lumeo.Services.Localization.ILumeoLocalizer L
 @inject Microsoft.Extensions.Options.IOptions<Lumeo.Services.LumeoGestureOptions> GestureOpts
 @inject Lumeo.Services.ThemeService Theme
 
 @code {
     [CascadingParameter] public Drawer.DrawerContext Context { get; set; } = default!;
     [CascadingParameter] public OverlayShellMarker? Shell { get; set; }
+
+    // #346 — Drawer.ScaleBackground, cascaded by NAME rather than folded into
+    // DrawerContext (see Drawer.razor's own remarks: avoids a public-API
+    // breaking change to the context record's shipped constructor shape).
+    [CascadingParameter(Name = "LumeoDrawerScaleBackground")] private bool ScaleBackgroundFromDrawer { get; set; }
+
+    // vaul only scales the background for a BOTTOM drawer — Top/Left/Right
+    // never trigger it, matching shouldScaleBackground's own upstream scope.
+    private bool EffectiveScaleBackground => ScaleBackgroundFromDrawer && Side == Lumeo.Side.Bottom;
     /// <summary>The panel's content, typically <see cref="DrawerHeader"/>, body content, and <see cref="DrawerFooter"/>.</summary>
     [Parameter] public RenderFragment? ChildContent { get; set; }
 
@@ -98,6 +126,27 @@ else if (Context.IsOpen || _exiting)
 
     /// <summary>Disables Escape, backdrop-click and swipe dismissal; the drawer can then only be closed programmatically (or, in snap mode, settles at the lowest snap instead of closing). Default <c>false</c>.</summary>
     [Parameter] public bool PreventClose { get; set; }
+
+    /// <summary>When <c>true</c> (default), the drawer is modal: it renders a
+    /// backdrop, traps focus, and locks page scroll while open — mirrors
+    /// vaul's <c>modal</c> prop. Set to <c>false</c> for a non-modal drawer
+    /// that lets the page stay interactive: no backdrop, no focus trap, no
+    /// scroll lock, and outside clicks pass straight through to the page
+    /// beneath. Independent of <see cref="PreventClose"/> (vaul's
+    /// <c>dismissible</c>): <c>Modal</c> controls whether the drawer BLOCKS
+    /// the page while open; <c>PreventClose</c> controls whether the user can
+    /// dismiss it at all — the two compose freely (e.g. a non-modal drawer
+    /// can still be PreventClose to disable its swipe gesture). (#346)</summary>
+    [Parameter] public bool Modal { get; set; } = true;
+
+    /// <summary>Whether the top-end close (X) button renders. <c>null</c>
+    /// (default) keeps the legacy coupling — X shows whenever
+    /// <see cref="PreventClose"/> is <c>false</c>. <c>true</c> forces the X on
+    /// regardless of PreventClose (it still routes through the same dismiss
+    /// guard as every other close path); <c>false</c> hides it. Mirrors
+    /// <c>SheetContent.ShowCloseButton</c>'s name, default and semantics.
+    /// (#346)</summary>
+    [Parameter] public bool? ShowCloseButton { get; set; }
 
     /// <summary>
     /// When <c>true</c> (default), the panel is a vertically-scrollable container
@@ -176,6 +225,21 @@ else if (Context.IsOpen || _exiting)
     // gesture) has run and needs tearing down on close. On Server the panel is
     // visible and dismissable before this flips true.
     private bool _interopReady;
+    // #346 — whether THIS open session actually scaled the wrapper, so
+    // Cleanup only calls SetDrawerBackgroundScaled(false) when there's
+    // something to undo (mirrors the tracked-registration idiom
+    // _swipeRegistered/_gestureRegistered already use elsewhere in this file).
+    private bool _scaleApplied;
+    // Fix round 1 (task review) — mirrors _scaleApplied: whether THIS open
+    // session actually locked scroll / trapped focus, so Cleanup tears down
+    // based on what was APPLIED, not the live Modal value. Modal is a plain
+    // [Parameter], so a consumer can flip it while the drawer stays open
+    // (e.g. via SetParametersAndRender) — reading Modal live at Cleanup time
+    // would either leak the global ref-counted scrollLockCount (locked at
+    // open, Modal flipped false before close, Cleanup's old `if (Modal)`
+    // skipped UnlockScroll) or wrongly unlock/untrap for an instance that
+    // never applied either (Modal flipped true after a non-modal open).
+    private bool _modalApplied;
     // Exit-animation state — see DialogContent / SheetContent. Only set when
     // PlayExitAnimation is true (service-opened drawers) and not in snap mode.
     private bool _exiting;
@@ -365,13 +429,20 @@ else if (Context.IsOpen || _exiting)
             _ => "max-h-[96vh]"
         };
 
-    // The permanent mt-24 top offset (the "peek" gap that lets the backdrop show above a
-    // Bottom drawer / below a Top drawer) fights a true Top/Bottom Full takeover, so it's
-    // the one case that drops it. Every other Side/Size combination keeps mt-24 exactly as
-    // before — including Left/Right at any Size, where mt-24 is unrelated to width.
-    private string? MarginClass => (Side is Lumeo.Side.Top or Lumeo.Side.Bottom) && Size == DrawerSize.Full
-        ? null
-        : "mt-24";
+    // #346 field report — "mt-24 is baked into the base class": vaul's mt-24
+    // equivalent is the "peek" gap that keeps a BOTTOM drawer's max-height
+    // calc from reaching all the way to the viewport top (so the backdrop
+    // shows a sliver above it). It has no equivalent for Top (the panel
+    // already rests at the viewport top — a top margin there would just push
+    // it down) or Left/Right (the offset is on the wrong axis entirely — those
+    // sides size by width, not height). The class used to apply
+    // unconditionally to every Side, so a Right/Left/Top drawer carried a
+    // spurious 6rem top margin it never needed. Full-size Bottom still drops
+    // it (a true viewport takeover has no peek gap to keep), matching the
+    // pre-existing Full-size behaviour.
+    private string? MarginClass => Side == Lumeo.Side.Bottom && Size != DrawerSize.Full
+        ? "mt-24"
+        : null;
 
     private string PositionClasses => Side switch
     {
@@ -527,8 +598,25 @@ else if (Context.IsOpen || _exiting)
             _interopReady = true;
             try
             {
-                await Interop.LockScroll();
-                await Interop.SetupFocusTrap(_contentId);
+                // #346 — a non-modal drawer never locks scroll or traps focus;
+                // the page stays fully interactive while it's open. Latch
+                // _modalApplied BEFORE the awaits (mirrors _scaleApplied) so
+                // Cleanup tears down based on what THIS session actually did,
+                // not a possibly-since-changed live Modal value.
+                if (Modal)
+                {
+                    _modalApplied = true;
+                    await Interop.LockScroll();
+                    await Interop.SetupFocusTrap(_contentId);
+                }
+                // #346 — scale the app's marked page-root wrapper (if any) in
+                // lockstep with the panel opening; UnlockScroll/RemoveFocusTrap's
+                // sibling for the wrapper is the Cleanup() call below.
+                if (EffectiveScaleBackground)
+                {
+                    _scaleApplied = true;
+                    await Interop.SetDrawerBackgroundScaled(true);
+                }
                 // Same animationend cleanup as SheetContent — bypasses Blazor
                 // event roundtrip + filters strictly on slide-in-from-* names.
                 // Skipped in snap mode: the JS snap gesture owns the transform.
@@ -625,6 +713,10 @@ else if (Context.IsOpen || _exiting)
     private Task HandleBackdropClick() => !Context.IsOpen || PreventClose ? Task.CompletedTask : Dismiss("outside");
 
     private Task HandleSwipe() => Dismiss("swipe");
+
+    // Mirrors SheetContent.HandleCloseButton exactly — routes through the same
+    // TryDismiss/OnBeforeClose guard as every other close path (#346).
+    private Task HandleCloseButton() => Context.IsOpen ? Dismiss("close") : Task.CompletedTask;
 
     // Invoked from JS when a drag settles on a new snap. Mirror it into the
     // two-way ActiveSnapPoint without re-pushing to JS (it's already there).
@@ -856,8 +948,23 @@ else if (Context.IsOpen || _exiting)
         try
         {
             await UnregisterGestureAsync();
-            await Interop.RemoveFocusTrap(_contentId);
-            await Interop.UnlockScroll();
+            // Fix round 1 — tear down based on _modalApplied (what THIS
+            // session actually locked/trapped at open), not the live Modal
+            // value: a Modal flip while the drawer stayed open must not leak
+            // the global ref-counted scrollLockCount (Modal true->false) nor
+            // call Remove/Unlock for a session that never applied either
+            // (Modal false->true). Mirrors _scaleApplied immediately below.
+            if (_modalApplied)
+            {
+                _modalApplied = false;
+                await Interop.RemoveFocusTrap(_contentId);
+                await Interop.UnlockScroll();
+            }
+            if (_scaleApplied)
+            {
+                _scaleApplied = false;
+                await Interop.SetDrawerBackgroundScaled(false);
+            }
         }
         catch (JSDisconnectedException) { }
     }

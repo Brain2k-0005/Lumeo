@@ -56,13 +56,14 @@ public class DrawerSizeTests : IAsyncLifetime
     }
 
     // --- A consumer who sets nothing gets exactly today's rendering, every Side ---
+    // (mt-24 assertions below were corrected by #346's "mt-24 base-class audit":
+    // it is vaul's BOTTOM-drawer-only max-height "peek" gap — see MarginClass's
+    // own remarks — so only Side.Bottom carries it; Top/Left/Right never did.)
 
-    [Theory]
-    [InlineData(L.Side.Bottom)]
-    [InlineData(L.Side.Top)]
-    public void No_Size_Set_TopBottom_Renders_Exactly_The_Pre_Existing_MaxH_96vh_And_Mt24(L.Side side)
+    [Fact]
+    public void No_Size_Set_Bottom_Renders_Exactly_The_Pre_Existing_MaxH_96vh_And_Mt24()
     {
-        var cut = RenderDrawer(side, size: null);
+        var cut = RenderDrawer(L.Side.Bottom, size: null);
         var tokens = Tokens(cut.Find("[role='dialog']").GetAttribute("class"));
 
         Assert.Contains("max-h-[96vh]", tokens);
@@ -71,17 +72,33 @@ public class DrawerSizeTests : IAsyncLifetime
             Assert.DoesNotContain(other, tokens);
     }
 
+    [Fact]
+    public void No_Size_Set_Top_Renders_The_Pre_Existing_MaxH_96vh_With_No_Mt24()
+    {
+        // #346 — a Top drawer already rests at the viewport top; the bottom-
+        // drawer "peek" margin has nothing to push it away from and must not
+        // apply here (previously it did, spuriously).
+        var cut = RenderDrawer(L.Side.Top, size: null);
+        var tokens = Tokens(cut.Find("[role='dialog']").GetAttribute("class"));
+
+        Assert.Contains("max-h-[96vh]", tokens);
+        Assert.DoesNotContain("mt-24", tokens);
+    }
+
     [Theory]
     [InlineData(L.Side.Right)]
     [InlineData(L.Side.Left)]
-    public void No_Size_Set_LeftRight_Renders_Exactly_The_Pre_Existing_MaxW_Sm_And_Mt24(L.Side side)
+    public void No_Size_Set_LeftRight_Renders_Exactly_The_Pre_Existing_MaxW_Sm_With_No_Mt24(L.Side side)
     {
+        // #346 — mt-24 is a height-axis offset; Left/Right size by width and
+        // never needed it (previously it applied unconditionally regardless
+        // of side, a spurious 6rem top margin on every edge panel).
         var cut = RenderDrawer(side, size: null);
         var tokens = Tokens(cut.Find("[role='dialog']").GetAttribute("class"));
 
         Assert.Contains("max-w-sm", tokens);
         Assert.Contains("w-3/4", tokens);
-        Assert.Contains("mt-24", tokens);
+        Assert.DoesNotContain("mt-24", tokens);
         foreach (var other in new[] { "max-w-xs", "max-w-lg", "max-w-xl", "max-w-full" })
             Assert.DoesNotContain(other, tokens);
     }
@@ -102,7 +119,8 @@ public class DrawerSizeTests : IAsyncLifetime
         // Left/Right w-3/4 base is unaffected by Size, at every tier including Full
         // (mirrors SheetContent.SheetSize.Full's own documented Left/Right precedent).
         Assert.Contains("w-3/4", tokens);
-        Assert.Contains("mt-24", tokens);
+        // #346 — Left/Right never carries the bottom-only mt-24 peek gap, at any Size.
+        Assert.DoesNotContain("mt-24", tokens);
     }
 
     // --- Top/Bottom: Size controls the max-h cap ---
@@ -142,13 +160,30 @@ public class DrawerSizeTests : IAsyncLifetime
     [Theory]
     [InlineData(L.Side.Right)]
     [InlineData(L.Side.Left)]
-    public void Full_Size_LeftRight_Keeps_Mt24_Unaffected(L.Side side)
+    public void Full_Size_LeftRight_Has_No_Mt24(L.Side side)
     {
-        // Full's mt-24 removal is scoped to Top/Bottom only — Left/Right's mt-24 has
-        // nothing to do with the height axis Full changes there (width only).
+        // #346 — Left/Right never carries mt-24 (a height-axis, bottom-only
+        // offset), at any Size including Full.
         var cut = RenderDrawer(side, L.DrawerContent.DrawerSize.Full);
         var tokens = Tokens(cut.Find("[role='dialog']").GetAttribute("class"));
-        Assert.Contains("mt-24", tokens);
+        Assert.DoesNotContain("mt-24", tokens);
         Assert.Contains("max-w-full", tokens);
+    }
+
+    // --- #346 "mt-24 base-class audit for non-bottom sides" — the direct,
+    // per-side regression the finding asked for: mt-24 is present for
+    // Side.Bottom (the only side vaul's own peek-gap semantics apply to) and
+    // absent for every other side, at the default Size. ---
+
+    [Theory]
+    [InlineData(L.Side.Bottom, true)]
+    [InlineData(L.Side.Top, false)]
+    [InlineData(L.Side.Left, false)]
+    [InlineData(L.Side.Right, false)]
+    public void Mt24_Applies_To_Bottom_Side_Only(L.Side side, bool expectMt24)
+    {
+        var cut = RenderDrawer(side, size: null);
+        var tokens = Tokens(cut.Find("[role='dialog']").GetAttribute("class"));
+        Assert.Equal(expectMt24, tokens.Contains("mt-24"));
     }
 }

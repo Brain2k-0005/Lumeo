@@ -127,6 +127,62 @@ public class SchedulerTitleFormatterTests
         Assert.Contains("2026", title);
     }
 
+    // ── Field report #464, finding C: day/month order must follow the culture, not a
+    // hard-coded "MMM d" ────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void Week_Title_Reads_Month_Before_Day_In_En_US()
+    {
+        var title = SchedulerTitleFormatter.Format(SchedulerView.Week, Anchor, DayOfWeek.Monday, CorrectLocalizer, EnUs);
+
+        AssertOrder(title, month: "Aug", day: "10", monthBeforeDay: true);
+    }
+
+    [Fact]
+    public void Week_Title_Reads_Day_Before_Month_In_De_DE()
+    {
+        var german = CultureInfo.GetCultureInfo("de-DE");
+        // Same localizer table (Week of {0}) — only the DATE substring's own internal order is
+        // under test here, not the "Week of" wrapper text.
+        var title = SchedulerTitleFormatter.Format(SchedulerView.Week, Anchor, DayOfWeek.Monday, CorrectLocalizer, german);
+
+        var monthName = german.DateTimeFormat.GetAbbreviatedMonthName(Anchor.Month);
+        AssertOrder(title, month: monthName, day: "10", monthBeforeDay: false);
+    }
+
+    [Fact]
+    public void Day_Title_Reads_Month_Before_Day_In_En_US()
+    {
+        var title = SchedulerTitleFormatter.Format(SchedulerView.Day, Anchor, DayOfWeek.Monday, CorrectLocalizer, EnUs);
+
+        AssertOrder(title, month: "Aug", day: "12", monthBeforeDay: true);
+    }
+
+    [Fact]
+    public void Day_Title_Reads_Day_Before_Month_In_De_DE()
+    {
+        var german = CultureInfo.GetCultureInfo("de-DE");
+        var title = SchedulerTitleFormatter.Format(SchedulerView.Day, Anchor, DayOfWeek.Monday, CorrectLocalizer, german);
+
+        var monthName = german.DateTimeFormat.GetAbbreviatedMonthName(Anchor.Month);
+        AssertOrder(title, month: monthName, day: "12", monthBeforeDay: false);
+    }
+
+    /// <summary>
+    /// Asserts the DIGIT-day substring's position relative to the month-name substring, rather
+    /// than pinning an exact literal string — this is the structural property the field report
+    /// actually cares about (order), and it holds regardless of separator/punctuation choices
+    /// (comma vs. period) which are not what finding C is about.
+    /// </summary>
+    private static void AssertOrder(string title, string month, string day, bool monthBeforeDay)
+    {
+        var monthIndex = title.IndexOf(month, StringComparison.Ordinal);
+        var dayIndex = title.IndexOf(day, StringComparison.Ordinal);
+        Assert.True(monthIndex >= 0, $"expected to find month '{month}' in '{title}'");
+        Assert.True(dayIndex >= 0, $"expected to find day '{day}' in '{title}'");
+        Assert.Equal(monthBeforeDay, monthIndex < dayIndex);
+    }
+
     [Fact]
     public void Week_Title_Never_Calls_The_NoArgs_Indexer_For_A_Key_That_Needs_An_Argument()
     {

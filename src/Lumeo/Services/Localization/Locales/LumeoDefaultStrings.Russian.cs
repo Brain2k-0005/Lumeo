@@ -6,6 +6,7 @@ internal static partial class LumeoDefaultStrings
     {
         // DataGrid
         ["DataGrid.NoData"] = "Нет данных",
+        ["DataGrid.NoDataFiltered"] = "Нет строк, соответствующих текущим фильтрам",
         ["DataGrid.Loading"] = "Загрузка…",
         ["DataGrid.SearchPlaceholder"] = "Поиск…",
         ["DataGrid.ClearSearch"] = "Очистить поиск",
@@ -136,6 +137,11 @@ internal static partial class LumeoDefaultStrings
         ["ColorPicker.Green"] = "Зелёный",
         ["ColorPicker.Blue"] = "Синий",
         ["ColorPicker.Presets"] = "Пресеты",
+
+        // ── IconPicker ────────────────────────────────
+        ["IconPicker.Placeholder"] = "Выбрать значок",
+        ["IconPicker.SearchPlaceholder"] = "Поиск значков",
+        ["IconPicker.NoIconsFound"] = "Значки не найдены",
 
         // PasswordInput
         ["Password.Placeholder"] = "Введите пароль",
@@ -417,6 +423,9 @@ internal static partial class LumeoDefaultStrings
         ["Stepper.Finish"] = "Готово",
         ["Stepper.Optional"] = "Необязательно",
         ["Stepper.Skip"] = "Пропустить",
+
+        // Skeleton
+        ["Skeleton.Loading"] = "Загрузка",
 
         // Window
         ["Window.Close"] = "Закрыть",
