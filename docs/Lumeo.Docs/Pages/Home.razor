@@ -60,25 +60,37 @@
 
 <!-- ======================= LIVE EXAMPLE ======================= -->
 @* dashboard-01, shared with /blocks/dashboard via Shared/Blocks/Dashboard01.razor so
-   both routes render the exact same live markup. IdleMount defers the mount off the
-   first-paint critical path; the Skeleton placeholder matches its final box (same
-   min-h and frame classes) so nothing shifts when it swaps in. *@
+   both routes render the same block — cropped to a fixed-height teaser here instead of
+   the full scroll-forever page: a 440px (mobile) / 640px (md+) frame with overflow-hidden
+   and a bottom fade so the cut reads as an intentional screenshot crop, like shadcn's own
+   landing example. Preview="true" caps the table at 5 rows and drops the pagination row so
+   nothing inside needs its own scrollbar. The frame is pointer-events-none end to end —
+   simplest way to guarantee NOTHING inside (chart hover, the table's row drag/drop, nested
+   overflow-auto panels, dropdown triggers) can trap wheel/touch scroll meant for the page;
+   "Open this dashboard" below links to the real, interactive block. IdleMount defers the
+   mount off the first-paint critical path; the Skeleton placeholder fills the exact same
+   frame height so nothing shifts when it swaps in. *@
 <section class="py-10 sm:py-14">
     <Container MaxWidth="[1400px]" Class="px-4">
-        <IdleMount>
-            <Placeholder>
-                <Skeleton Class="min-h-[820px] w-full rounded-[var(--radius-lg)] border border-border/40" AriaLabel="Loading dashboard example" />
-            </Placeholder>
-            <ChildContent>
-                <Dashboard01 Class="min-h-[820px] overflow-hidden rounded-[var(--radius-lg)] border border-border/40" />
-            </ChildContent>
-        </IdleMount>
+        <div class="relative h-[440px] md:h-[640px] w-full overflow-hidden rounded-[var(--radius-lg)] border border-border/40 pointer-events-none">
+            <IdleMount>
+                <Placeholder>
+                    <Skeleton Class="h-full w-full" AriaLabel="Loading dashboard example" />
+                </Placeholder>
+                <ChildContent>
+                    <Dashboard01 Preview="true" />
+                </ChildContent>
+            </IdleMount>
+            <div class="absolute inset-x-0 bottom-0 h-32 bg-gradient-to-t from-background to-transparent pointer-events-none"></div>
+        </div>
 
         <Lumeo.Text Color="muted" Size="sm" Class="mt-4 text-center">
             Full applications built with Lumeo:
             <Lumeo.Link Href="demos/saas" Class="text-foreground hover:underline no-underline">Northlight</Lumeo.Link> (demos/saas)
             &middot;
             <Lumeo.Link Href="demos/enterprise" Class="text-foreground hover:underline no-underline">Meridian Ops</Lumeo.Link> (demos/enterprise)
+            &middot;
+            <Lumeo.Link Href="blocks/dashboard" Class="text-foreground hover:underline no-underline">Open this dashboard</Lumeo.Link>
         </Lumeo.Text>
     </Container>
 </section>
