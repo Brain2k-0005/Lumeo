@@ -480,6 +480,24 @@ public sealed class ComponentInteropService : IComponentInteropService
         await _swipe.UnregisterDrawerSwipe(module, elementId);
     }
 
+    // Field report #464 (finding 3) — read back right after OnSwipeDismiss so a
+    // consumer (Sheet) can seed its exit animation's start point at the panel's
+    // actual on-screen offset. Stateless w.r.t. the _swipe coordinator: the JS
+    // module owns the last-dismiss-offset map directly (see
+    // getSwipeReleaseOffset in components.js).
+    public async ValueTask<double> GetSwipeReleaseOffset(string elementId)
+    {
+        try
+        {
+            var module = await GetModuleAsync();
+            return await module.InvokeAsync<double>("getSwipeReleaseOffset", elementId);
+        }
+        catch (JSDisconnectedException)
+        {
+            return 0;
+        }
+    }
+
     [JSInvokable]
     public async Task OnSwipeDismiss(string elementId) => await _swipe.OnSwipeDismiss(elementId);
 
