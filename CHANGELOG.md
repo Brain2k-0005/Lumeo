@@ -5,9 +5,98 @@ All notable changes to Lumeo will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [5.10.0] - Unreleased
+## [5.10.0] - 2026-09-15
+
+Field report #464 (a Blazor WASM product on 5.0.0) is worked through in this release: the four
+new findings and the carried list, each either fixed, added, or verified and pinned with a test.
+
+### Added
+- **`IconPicker`**, a searchable, virtualized icon grid behind a `Popover` trigger (field report
+  #464). It is pack-agnostic: it takes an `IReadOnlyList<IconPickerItem>` (name, `IconSource`,
+  optional keywords) built from any installed `Lumeo.Icons.*` pack, the docs show the one-line
+  reflection helper. Rows virtualize past 500 icons, search matches name and keywords, the arrow
+  keys move a roving focus across the grid, and it carries `Clearable`, `ShowLabel`, the full
+  `Size` scale and `FormField` integration.
+- **`Size` on `DatePicker`, `DateRangePicker`, `TimePicker` and `DateTimePicker`** (field report
+  #464). All seven rungs set the trigger's height, text and padding on the ladder `Input` uses,
+  so a picker sits flush next to an input at the same rung; the calendar and time columns keep
+  their own tokens. `DateTimePicker` also picks up ambient `Density` like its siblings.
+- **`OverlayOptions.PlayExitAnimation` and `AlertDialogOptions.PlayExitAnimation`** (default
+  `true`, field report #464 finding 4). A service-opened Dialog, Sheet, Drawer or AlertDialog
+  can opt out of its exit animation and unmount at once, the lever the declarative components
+  already had; `SheetContent` gained the parameter directly.
+- **DataGrid: `HasActiveFilters`, `ClearFiltersAsync()` and a typed `EmptyTemplate`** (field
+  report #464). A client-mode grid whose rows are all filtered away shows a localized "No rows
+  match the current filters" state with a clear action instead of the plain empty state, and a
+  custom empty template receives the same signal.
+- **`DataGridColumnDef.Editable`** locks one column out of Cell and Batch editing while the rest
+  of the row stays editable; **`CellEditContext.Commit()` / `Cancel()`** let a custom
+  `EditTemplate` close its cell, and opening another cell commits the one that was open, as the
+  built-in editors do (field report #464).
+- **Drawer: `Modal`, `ShowCloseButton` and `ScaleBackground`** (#346). `Modal="false"` drops the
+  backdrop, focus trap and scroll lock while `PreventClose` keeps meaning "not dismissible",
+  vaul's split; `ShowCloseButton` mirrors `SheetContent`'s; `ScaleBackground` scales and rounds
+  the element marked `data-lumeo-drawer-wrapper` behind an open bottom drawer.
+
+### Changed
+- **Skeleton bars are silent by default.** Every `Skeleton` and `SkeletonCircle` rendered
+  `role="status" aria-label="Loading"`, so a card of six bars was six English live regions
+  whatever the culture (field report #464). A bar is now `aria-hidden`; opt one bar into a
+  single announcement with the new `Announce` parameter or an explicit `AriaLabel`, and the
+  default label comes from the localizer (`Skeleton.Loading`). A consumer who relied on the
+  per-bar status role needs the opt-in.
+- **Radio and checkbox menu items close the menu on selection.** `DropdownMenuRadioItem`,
+  `DropdownMenuCheckboxItem`, `ContextMenuRadioItem` and `MenubarRadioItem` close like
+  `DropdownMenuItem` and Radix (field report #464); `MenubarCheckboxItem` stays open on
+  purpose, for flipping several toggles in one visit. The same pass fixed
+  `ContextMenuRadioGroup` losing an uncontrolled selection on an unrelated re-render.
+- **A `Scheduler` still bound to the removed `OnInitError` throws** an
+  `InvalidOperationException` at render that points at the migration note, instead of the
+  parameter vanishing into `AdditionalAttributes` (field report #464). Every remaining JS
+  registration degrades gracefully when `scheduler-views.js` is missing.
+- **The build references `Microsoft.SourceLink.GitHub` 10.0.401**; the 8.0.0 build task fails
+  NuGet's audit (CVE-2026-62900) and, with warnings as errors, every clean restore.
 
 ### Fixed
+- **`Select` with `Searchable` filters composed `<SelectItem>` children** (field report #464,
+  finding 1). The filter only ran over `Items`, so a select composed from children went empty on
+  the first keystroke. Composed items now filter on their rendered label, then an explicit
+  `SearchValue`, then `Value`. A label wrapped in another component (`<Text>`, `<Badge>`) still
+  needs `SearchValue`; that limit is documented on the parameter and pinned by a test.
+- **`OtpInput` keeps focus while deleting** (field report #464, finding 2). The focus moves after
+  typing, backspace, paste and a rejected character are issued from `OnAfterRenderAsync`, so
+  they target the re-rendered box instead of racing the render that recreates it.
+- **A slow swipe-to-close on a `Sheet` no longer snaps back to fully open** before the exit
+  animation (field report #464, finding 3). The slide-out starts from the drag offset at
+  release, through a custom property the keyframes read.
+- **The DataGrid filter chip shows the column `Title`**, not the raw field name (field report
+  #464), and **a cell editor's keystrokes no longer reach row selection**: a space typed while
+  editing toggled the row in multi-select mode.
+- **A `<form>` placed directly inside `DrawerContent` no longer collapses to 0 height**, and
+  the bottom drawer's `mt-24` peek margin applies to the bottom side only (field report #464,
+  #346).
+- **A horizontal `Stepper` with long labels no longer forces the page wider** (field report
+  #464); the header rail scrolls within itself and labels truncate.
+- **Charts: pie, donut and nightingale slices no longer paint the same colour** (field report
+  #464). The theme's per-slice gradient callback read a palette value ECharts never populates
+  once a colour callback is registered; slices now get an explicit per-item gradient cycling
+  through `Colors`, `ColorPalette` or the theme palette.
+- **Charts: an `OptionOverride` key that collides with a generated key (`series`) replaces it**
+  instead of being emitted twice, and `ChartAccessibility` degrades to no table instead of
+  throwing on the duplicate (field report #464). `AreaChart` without `Colors` and `var(--token)`
+  colours were verified working and pinned with tests.
+- **Scheduler:** the sr-only announcer no longer escapes the card into an ancestor's scroll
+  area; week, day and range titles follow the culture's day/month order; the appointment
+  tooltip shows the resource's title instead of its id (field report #464).
+- **Gantt v3 keeps a move region on bars narrower than 12px**; the resize handles shrink with
+  the bar instead of covering it. The docs bar that "refused to drag" (#400) is the demo's own
+  commit gate rejecting a start before today, and the double scroll-to-today (#390) was already
+  fixed; both are pinned with tests.
+- **A `GanttBar` whose keyboard/drag registration changes while an earlier registration is
+  still in flight no longer issues a redundant interop call** (#413). Each registration stamps
+  a generation before its first await and a superseded one bails out, so exactly one performs
+  the correction whatever the completion order; the CI-only flake this produced is pinned by a
+  deterministic two-gate test. Two toast stacking tests get wider real-clock margins (#447).
 - **A select editor of `Filters` is as wide as its widest option** (field report §16.6). The
   panel was a fixed 12rem, which cut long labels such as a document type with its code in
   half. It is now `w-max` between 12rem and 36rem (and never wider than the viewport); past the
@@ -22,6 +111,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and an opening quote, so a class used only there was missing from the manifest a consumer's
   own Tailwind build reads (card spacing, the filter cells, gradients). A second pass takes
   every literal that follows a `(` or `,`.
+
+### Upgrade notes
+- **Re-version `lumeo.css` when you upgrade.** The stylesheet changes in most releases and
+  browsers cache it; append a version query or hash (`lumeo.css?v=5.10.0`, or
+  `asp-append-version="true"`), otherwise the old stylesheet stays in place and components
+  render with stale rules (field report #464).
+- **Not reproduced:** "component-internal localized defaults do not follow a runtime language
+  switch". Dialog, DatePicker, Select, Pagination and DataGrid re-resolve their default strings
+  on the next render after `CultureInfo.CurrentUICulture` changes, now pinned by tests; a
+  repro on the issue is welcome.
 
 ## [5.9.1] - 2026-09-04
 
