@@ -71,7 +71,12 @@
             @if (Orientation == Lumeo.Orientation.Horizontal)
             {
                 <div class="@GetStepLabelClass(idx, isActive, isCompleted)">
-                    <span class="text-sm font-medium">@step.Title</span>
+                    @* max-w-32 caps a single label so a run of long titles can't blow out the
+                       header on its own; truncate (needs a block context + a width to bite
+                       against) turns the overflow into an ellipsis instead of a wider row.
+                       Anything still too wide for the viewport scrolls via HeaderCssClass's
+                       overflow-x-auto rather than pushing the page (#464 finding 1). *@
+                    <span class="text-sm font-medium block max-w-32 truncate">@step.Title</span>
                     @if (!string.IsNullOrEmpty(step.Description))
                     {
                         <span class="text-xs text-muted-foreground">@step.Description</span>
@@ -570,8 +575,16 @@
         ? Cx.Merge("flex flex-row gap-4", Class)
         : Cx.Merge("flex flex-col gap-0", Class);
 
+    // #464 finding 1: a horizontal header with several long-labeled steps could force the
+    // whole page wider — the role=tablist row had no width constraint of its own, so its
+    // content's natural width won. overflow-x-auto turns the rail into its own scroll
+    // container (a block-level box with overflow set never lets its content enlarge it),
+    // so a narrow viewport scrolls the header horizontally instead of the page. Paired
+    // with min-w-0 on each label (GetStepLabelClass) and a truncated title, in the
+    // shadcn/Origin-UI stepper spirit. Vertical orientation is untouched — it already
+    // stacks and never grows horizontally.
     private string HeaderCssClass => Orientation == Lumeo.Orientation.Horizontal
-        ? "flex flex-row items-center"
+        ? "flex flex-row items-center overflow-x-auto"
         : "flex flex-col items-center gap-0";
 
     private string FooterCssClass => "flex flex-row items-center gap-2 mt-6 pt-4 border-t border-border/40";
@@ -592,8 +605,11 @@
         return $"{baseClasses} {stateClasses} {cursorClasses}";
     }
 
+    // min-w-0 overrides the flex item's automatic min-width:auto (which otherwise pins it
+    // to its title's min-content width), letting the label shrink below that and the title
+    // span's truncate class (below) take over instead of forcing the header rail wider.
     private string GetStepLabelClass(int idx, bool isActive, bool isCompleted) =>
-        "flex flex-col items-start mx-2";
+        "flex flex-col items-start mx-2 min-w-0";
 
     private string GetVerticalTitleClass(int idx, bool isActive, bool isCompleted) =>
         isActive
