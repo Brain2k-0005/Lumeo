@@ -92,6 +92,18 @@ public class HomePageTests
     }
 
     [Fact]
+    public async Task Does_not_render_its_own_footer()
+    {
+        await using var ctx = NewContext();
+        var cut = ctx.Render<Home>();
+
+        // Home no longer carries a bespoke <footer> — the global <Footer /> rendered
+        // from MainLayout.razor on every route is the only footer, as on shadcn.com.
+        Assert.DoesNotContain("<footer", cut.Markup);
+        Assert.DoesNotContain("166 MIT-licensed Blazor components", cut.Markup);
+    }
+
+    [Fact]
     public async Task Blocks_dashboard_page_still_renders_the_block()
     {
         await using var ctx = NewContext();
