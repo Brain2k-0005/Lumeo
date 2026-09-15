@@ -254,4 +254,170 @@ public class IconPickerTests : IAsyncLifetime
         // attempt — either way, the grid must never appear.
         Assert.Empty(cut.FindAll("[role='option']"));
     }
+
+    // --- Row-index math (fix round 1) ---
+
+    [Fact]
+    public void Second_Row_Icon_Selects_The_Correct_Item()
+    {
+        // Columns=2 over 4 icons -> two rows: [Home, Star] / [Heart, Settings].
+        // Regression guard for the RenderRow rewrite: startIndex is now RowIndex * Columns,
+        // not FilteredIcons.IndexOf(row[0]) — assert row 2 still resolves to the right icons.
+        string? selected = null;
+        var cb = EventCallback.Factory.Create<string?>(_ctx, (string? v) => selected = v);
+        var cut = _ctx.Render<L.IconPicker>(p => p
+            .Add(c => c.Icons, TestIcons)
+            .Add(c => c.Open, true)
+            .Add(c => c.Columns, 2)
+            .Add(c => c.ValueChanged, cb));
+
+        var heartOption = cut.FindAll("[role='option']").Single(o => o.GetAttribute("aria-label") == "Heart");
+        heartOption.Click();
+
+        Assert.Equal("Heart", selected);
+    }
+
+    [Fact]
+    public void Third_Row_Icon_Selects_The_Correct_Item()
+    {
+        // Columns=2 over 6 icons -> three rows. Row 3's startIndex (RowIndex(2) * Columns(2)
+        // = 4) must resolve to the 5th/6th icons, not whatever IndexOf used to find by
+        // structural equality. Same RenderRow the Virtualize branch calls (bUnit's Virtualize
+        // renders zero rows in its zero-height test container — see
+        // DataBound_Virtualize_Renders_Without_Crash in ComboboxDataBoundTests — so row math
+        // is verified here, through the non-virtualized branch, which shares the exact same
+        // RenderRow/Rows code).
+        var sixIcons = new List<L.IconPickerItem>(TestIcons)
+        {
+            new("Bell", L.IconSource.Stroke("<path d=\"M3 3\" />")),
+            new("Folder", L.IconSource.Stroke("<path d=\"M3 3\" />")),
+        };
+        string? selected = null;
+        var cb = EventCallback.Factory.Create<string?>(_ctx, (string? v) => selected = v);
+        var cut = _ctx.Render<L.IconPicker>(p => p
+            .Add(c => c.Icons, sixIcons)
+            .Add(c => c.Open, true)
+            .Add(c => c.Columns, 2)
+            .Add(c => c.ValueChanged, cb));
+
+        var folderOption = cut.FindAll("[role='option']").Single(o => o.GetAttribute("aria-label") == "Folder");
+        folderOption.Click();
+
+        Assert.Equal("Folder", selected);
+    }
+
+    [Fact]
+    public void Icons_Past_The_Virtualize_Threshold_Render_Without_Crashing()
+    {
+        // bUnit gives Virtualize a zero-height container, so it renders zero visible rows
+        // (same limitation ComboboxDataBoundTests.DataBound_Virtualize_Renders_Without_Crash
+        // documents) — this only proves the Virtualize branch doesn't throw for a large list;
+        // row-index correctness is covered by the non-virtualized tests above, which share
+        // the same RenderRow/Rows code.
+        var manyIcons = Enumerable.Range(0, 600)
+            .Select(i => new L.IconPickerItem($"Icon{i:D4}", L.IconSource.Stroke("<path d=\"M3 3\" />")))
+            .ToList();
+
+        var cut = _ctx.Render<L.IconPicker>(p => p
+            .Add(c => c.Icons, manyIcons)
+            .Add(c => c.Open, true)
+            .Add(c => c.Columns, 8));
+
+        Assert.NotNull(cut.Markup);
+    }
+
+    // --- Trigger size parity with Input (fix round 1) ---
+
+    [Theory]
+    [InlineData(L.Size.Xxs)]
+    [InlineData(L.Size.Xs)]
+    [InlineData(L.Size.Sm)]
+    [InlineData(L.Size.Md)]
+    [InlineData(L.Size.Lg)]
+    [InlineData(L.Size.Xl)]
+    [InlineData(L.Size.Xxl)]
+    public void Trigger_Height_Matches_Input_Ladder_At_Every_Size(L.Size size)
+    {
+        // "Sits flush next to any other sized control" means the trigger's height (and
+        // padding/text-size, which visually rides along) must be byte-for-byte identical to
+        // Input's at the same Size rung — not just close. Render both live and compare the
+        // actual token sets rather than duplicating Input's literal strings a second time
+        // here, so this test still catches drift if Input's ladder itself changes later.
+        var inputCut = _ctx.Render<L.Input>(p => p.Add(c => c.Size, size));
+        var inputClasses = inputCut.Find("input").GetAttribute("class") ?? "";
+
+        var pickerCut = _ctx.Render<L.IconPicker>(p => p
+            .Add(c => c.Icons, TestIcons)
+            .Add(c => c.Size, size));
+        var triggerClasses = pickerCut.Find("button[type='button']").GetAttribute("class") ?? "";
+
+        Assert.Equal(ExtractToken(inputClasses, "h-"), ExtractToken(triggerClasses, "h-"));
+        Assert.Equal(ExtractPxToken(inputClasses), ExtractPxToken(triggerClasses));
+        Assert.Equal(ExtractBaseTextToken(inputClasses), ExtractBaseTextToken(triggerClasses));
+    }
+
+    private static string? ExtractToken(string classes, string prefix) =>
+        classes.Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault(c => c.StartsWith(prefix, StringComparison.Ordinal));
+
+    // "px-N" only — excludes "ps-"/"pe-" (start/end padding), which some Input branches use
+    // for icon insets that don't apply to IconPicker's trigger.
+    private static string? ExtractPxToken(string classes) =>
+        classes.Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault(c => c.StartsWith("px-", StringComparison.Ordinal));
+
+    // The unprefixed "text-*" token (e.g. "text-base"), not the "md:text-*" responsive
+    // variant — both components emit the same pair, comparing one is enough to prove parity.
+    private static string? ExtractBaseTextToken(string classes) =>
+        classes.Split(' ', StringSplitOptions.RemoveEmptyEntries)
+            .FirstOrDefault(c => (c.StartsWith("text-", StringComparison.Ordinal) || c.StartsWith("leading-", StringComparison.Ordinal))
+                                  && !c.Contains(':'));
+
+    // --- Roving focus / Tab order (fix round 1) ---
+
+    [Fact]
+    public void No_Inert_Tab_Stop_Between_Search_And_Options()
+    {
+        // ScrollArea's viewport div used to sit between the search input and the grid with
+        // an unconditional tabindex="0" — an inert Tab stop a keyboard user would land on
+        // with nothing to do. Dropped in favor of Command's pattern (overflow directly on the
+        // role=listbox div). With Searchable on, NOTHING in the popover should carry
+        // tabindex="0": the search input is natively focusable (no tabindex needed), the grid
+        // itself is tabindex="-1" (roving via aria-activedescendant, not a real Tab stop),
+        // and every option button is tabindex="-1" too.
+        var cut = _ctx.Render<L.IconPicker>(p => p
+            .Add(c => c.Icons, TestIcons)
+            .Add(c => c.Open, true));
+
+        Assert.Empty(cut.FindAll("[tabindex='0']"));
+
+        var searchInput = cut.Find("input[type='text']");
+        Assert.False(searchInput.HasAttribute("tabindex"));
+
+        var grid = cut.Find("[role='listbox']");
+        Assert.Equal("-1", grid.GetAttribute("tabindex"));
+    }
+
+    [Fact]
+    public void Grid_Is_The_Tab_Stop_When_Not_Searchable()
+    {
+        // Without a search box, the grid itself must be reachable by Tab — it's the only
+        // entry point into the popover's content.
+        var cut = _ctx.Render<L.IconPicker>(p => p
+            .Add(c => c.Icons, TestIcons)
+            .Add(c => c.Open, true)
+            .Add(c => c.Searchable, false));
+
+        var grid = cut.Find("[role='listbox']");
+        Assert.Equal("0", grid.GetAttribute("tabindex"));
+    }
+
+    [Fact]
+    public void Popover_Content_Has_No_ScrollArea_Wrapper()
+    {
+        // Regression guard: ScrollArea renders data-slot="scroll-area" — assert it's gone.
+        var cut = _ctx.Render<L.IconPicker>(p => p
+            .Add(c => c.Icons, TestIcons)
+            .Add(c => c.Open, true));
+
+        Assert.Empty(cut.FindAll("[data-slot='scroll-area']"));
+    }
 }

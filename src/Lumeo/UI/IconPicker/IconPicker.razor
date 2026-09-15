@@ -80,29 +80,35 @@
                     </div>
                 </div>
             }
-            <ScrollArea Class="max-h-64 p-2" FocusRingGutter="true">
-                <div id="@_gridId" role="listbox" aria-label="@EffectivePlaceholder"
-                     aria-activedescendant="@(_focusedIndex >= 0 && _focusedIndex < FilteredIcons.Count ? ItemId(_focusedIndex) : null)"
-                     class="outline-none" tabindex="@(Searchable ? "-1" : "0")" @onkeydown="HandleGridKeyDown">
-                    @if (FilteredIcons.Count == 0)
+            @* Fix round 1: dropped the ScrollArea wrapper — its viewport div carries an
+               unconditional tabindex="0" (a WAI-ARIA scrollable-region convention ScrollArea
+               applies regardless of context), which sat as an inert Tab stop between the
+               search box and the grid. Command's CommandList (the library's other role=listbox
+               overlay list) doesn't use ScrollArea either — it puts overflow-y-auto directly on
+               the listbox div itself. Mirrored exactly here: one element is both the listbox
+               and the scroll viewport, so there is nothing between the search input and the
+               options for Tab to land on. *@
+            <div id="@_gridId" role="listbox" aria-label="@EffectivePlaceholder"
+                 aria-activedescendant="@(_focusedIndex >= 0 && _focusedIndex < FilteredIcons.Count ? ItemId(_focusedIndex) : null)"
+                 class="max-h-64 overflow-y-auto overflow-x-hidden p-2 outline-none" tabindex="@(Searchable ? "-1" : "0")" @onkeydown="HandleGridKeyDown">
+                @if (FilteredIcons.Count == 0)
+                {
+                    <div class="py-6 text-center text-sm text-muted-foreground">@L["IconPicker.NoIconsFound"]</div>
+                }
+                else if (UseVirtualize)
+                {
+                    <Virtualize Items="Rows" Context="row" ItemSize="RowItemSize">
+                        @RenderRow(row)
+                    </Virtualize>
+                }
+                else
+                {
+                    @foreach (var row in Rows)
                     {
-                        <div class="py-6 text-center text-sm text-muted-foreground">@L["IconPicker.NoIconsFound"]</div>
+                        @RenderRow(row)
                     }
-                    else if (UseVirtualize)
-                    {
-                        <Virtualize Items="Rows" Context="row" ItemSize="RowItemSize">
-                            @RenderRow(row)
-                        </Virtualize>
-                    }
-                    else
-                    {
-                        @foreach (var row in Rows)
-                        {
-                            @RenderRow(row)
-                        }
-                    }
-                </div>
-            </ScrollArea>
+                }
+            </div>
         </div>
     </PopoverContent>
 </Popover>
@@ -222,8 +228,17 @@
     // Virtualize branch render. Recomputed only when the filtered set or Columns changes,
     // mirroring ComboboxContent's FilteredItems memoization (avoids re-chunking on every
     // render, which matters once Icons runs into the thousands).
-    private List<List<IconPickerItem>>? _rows;
+    //
+    // Each row carries its own RowIndex so RenderRow can compute startIndex as
+    // RowIndex * Columns — an O(1) multiply. The previous version derived it via
+    // FilteredIcons.IndexOf(row[0]), an O(n) structural-equality scan over IconPickerItem
+    // (record equality walks the full SVG Content string) PER RENDERED ROW; Virtualize
+    // re-invokes RenderRow for every newly-visible row while scrolling, so that scan ran
+    // repeatedly against the whole filtered list on every scroll tick (fix round 1).
+    private List<IconRow>? _rows;
     private int _rowsForColumns = -1;
+
+    private readonly record struct IconRow(int RowIndex, List<IconPickerItem> Items);
 
     private const float RowItemSize = 40f;
     private const int VirtualizeThreshold = 500;
@@ -258,7 +273,7 @@
         return false;
     }
 
-    private List<List<IconPickerItem>> Rows
+    private List<IconRow> Rows
     {
         get
         {
@@ -266,18 +281,39 @@
             var filtered = FilteredIcons; // triggers invalidation above when stale
             if (_rows is not null && _rowsForColumns == cols) return _rows;
 
-            var rows = new List<List<IconPickerItem>>();
+            var rows = new List<IconRow>();
+            var rowIndex = 0;
             for (var i = 0; i < filtered.Count; i += cols)
-                rows.Add(filtered.GetRange(i, Math.Min(cols, filtered.Count - i)));
+                rows.Add(new IconRow(rowIndex++, filtered.GetRange(i, Math.Min(cols, filtered.Count - i))));
             _rows = rows;
             _rowsForColumns = cols;
             return rows;
         }
     }
 
-    private IconPickerItem? SelectedItem => string.IsNullOrEmpty(Value)
-        ? null
-        : Icons.FirstOrDefault(i => string.Equals(i.Name, Value, StringComparison.Ordinal));
+    // Memoized (fix round 1): the trigger markup reads SelectedItem up to six times per
+    // render (icon, label, clear-button guard x2, aria-label, chevron-position guard) — an
+    // unmemoized property re-ran the Icons.FirstOrDefault linear scan every single time.
+    // Recomputed only when Value or the Icons reference actually changes.
+    private IconPickerItem? _cachedSelectedItem;
+    private string? _lastSelectedValue;
+    private IReadOnlyList<IconPickerItem>? _lastSelectedIcons;
+
+    private IconPickerItem? SelectedItem
+    {
+        get
+        {
+            if (string.Equals(Value, _lastSelectedValue, StringComparison.Ordinal) && ReferenceEquals(Icons, _lastSelectedIcons))
+                return _cachedSelectedItem;
+
+            _lastSelectedValue = Value;
+            _lastSelectedIcons = Icons;
+            _cachedSelectedItem = string.IsNullOrEmpty(Value)
+                ? null
+                : Icons.FirstOrDefault(i => string.Equals(i.Name, Value, StringComparison.Ordinal));
+            return _cachedSelectedItem;
+        }
+    }
 
     private string TriggerClass => Cx.Merge(
         "flex items-center gap-2 rounded-md border",
@@ -290,15 +326,22 @@
         Cx.When(FullWidth, "w-full"),
         Class);
 
+    // Copied verbatim from Input.razor's SizeClasses at its Comfortable-density ("_") branch
+    // — IconPicker has no Density parameter of its own, so Comfortable is the only rung that
+    // applies. Fix round 1: the previous ladder invented its own Lg/Xl/Xxl heights (h-10/
+    // h-11/h-12) that didn't match Input/DatePicker at the same Size, so a same-row
+    // <Input Size="Xl"> and <IconPicker Size="Xl"> sat at different heights. Every value here
+    // must stay byte-for-byte identical to Input.razor's per-rung output — see
+    // IconPickerTriggerSizeParityTests, which renders both components and fails on drift.
     private string SizeClasses => Size switch
     {
-        Lumeo.Size.Xxs => "h-6 px-1.5 text-xs",
-        Lumeo.Size.Xs => "h-7 px-2 text-xs",
-        Lumeo.Size.Sm => "h-[var(--lumeo-control-h-sm,calc(var(--spacing,0.25rem)*7))] px-2.5 text-sm",
-        Lumeo.Size.Lg => "h-10 px-3 text-base",
-        Lumeo.Size.Xl => "h-11 px-3.5 text-base",
-        Lumeo.Size.Xxl => "h-12 px-4 text-base",
-        _ => "h-[var(--lumeo-control-h,calc(var(--spacing,0.25rem)*8))] px-2.5 text-sm",
+        Lumeo.Size.Xxs => "h-6 text-[8px] leading-none px-1.5",
+        Lumeo.Size.Xs => "h-7 text-[10px] leading-none px-2",
+        Lumeo.Size.Sm => "h-[var(--lumeo-control-h,calc(var(--spacing,0.25rem)*8))] text-base md:text-xs max-md:leading-none px-2.5",
+        Lumeo.Size.Lg => "h-11 text-base px-4",
+        Lumeo.Size.Xl => "h-[52px] text-base md:text-lg max-md:leading-none px-5",
+        Lumeo.Size.Xxl => "h-[60px] text-base md:text-xl max-md:leading-none px-6",
+        _ => "h-[var(--lumeo-control-h,calc(var(--spacing,0.25rem)*8))] text-base md:text-sm max-md:leading-none px-2.5",
     };
 
     // Inside a FormField, the id owner is the FormField's ControlId (rendered explicitly
@@ -339,6 +382,11 @@
         }
     }
 
+    // Fix round 1 (minor): verified against ColorPicker.ApplyColor and Combobox.OnValueSelected
+    // — both mutate the local Value field BEFORE invoking ValueChanged, so a synchronous
+    // re-render between the two (or a re-entrant read of Value from inside the render that
+    // InvokeAsync triggers) sees the new value immediately rather than a stale one. Already
+    // matched that pattern here; left unchanged.
     private async Task HandleClear()
     {
         Value = null;
@@ -416,7 +464,7 @@
         }
     }
 
-    private RenderFragment RenderRow(List<IconPickerItem> row) => builder =>
+    private RenderFragment RenderRow(IconRow row) => builder =>
     {
         // A single monotonically-increasing sequence counter across the whole row (never
         // reset per item) — a fixed per-item stride like "10 + i*10" looks safe but actually
@@ -424,7 +472,10 @@
         // emits 12), which silently corrupts Blazor's diffing. An incrementing local is the
         // simplest way to guarantee every call is strictly increasing and never collides.
         var seq = 0;
-        var startIndex = FilteredIcons.IndexOf(row[0]);
+        // O(1) from the row's own position — NOT FilteredIcons.IndexOf(row.Items[0]), which
+        // was an O(n) structural-equality scan (full SVG Content string comparison included)
+        // re-run for every row Virtualize brings into view while scrolling (fix round 1).
+        var startIndex = row.RowIndex * Math.Max(1, Columns);
         // No role on this row div — brief specifies role="listbox" + role="option" (not the
         // ARIA grid pattern's row/gridcell), and a plain generic wrapper div between a
         // listbox and its options is an allowed "owned element" under the ARIA spec, so
@@ -432,9 +483,9 @@
         builder.OpenElement(seq++, "div");
         builder.AddAttribute(seq++, "class", "grid gap-1");
         builder.AddAttribute(seq++, "style", $"grid-template-columns: repeat({Math.Max(1, Columns)}, minmax(0, 1fr))");
-        for (var i = 0; i < row.Count; i++)
+        for (var i = 0; i < row.Items.Count; i++)
         {
-            var item = row[i];
+            var item = row.Items[i];
             var index = startIndex + i;
             var isSelected = string.Equals(item.Name, Value, StringComparison.Ordinal);
             var isFocused = index == _focusedIndex;
