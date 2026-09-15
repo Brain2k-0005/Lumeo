@@ -1119,12 +1119,21 @@ export function refreshAllCharts() {
         let opts;
         if (chart._lumeoRawJson) {
             opts = JSON.parse(chart._lumeoRawJson);
-            applyPieItemGradients(opts, getCssVar);
-            resolveCssVars(opts);
-            applyReducedMotion(opts, prefersReducedMotion());
         } else {
+            // Defensive-only fallback (should not happen via the normal Chart.razor
+            // path, which always stashes _lumeoRawJson — see the comment above this
+            // function). getOption() already comes back fully resolved/merged, so
+            // applyPieItemGradients/resolveCssVars are no-ops on it in practice, but
+            // running them unconditionally below keeps this branch honest instead of
+            // silently relying on that "already resolved" assumption forever.
             opts = chart.getOption();
         }
+        // Applied to `opts` from EITHER branch — a pie-type series must get its
+        // per-item gradient (or have the existing one re-validated) before its var()
+        // tokens are resolved, same order initChart/updateChart use.
+        applyPieItemGradients(opts, getCssVar);
+        resolveCssVars(opts);
+        applyReducedMotion(opts, prefersReducedMotion());
         const themeName = chart._lumeoTheme || 'lumeo';
         // Tear down the old ResizeObserver before disposing the chart. The
         // initChart path stores it on chart._lumeoObserver; without this
