@@ -131,7 +131,7 @@ All 35 `hasDocsPage: true` Forms-category components got a showcase.
 | InplaceEditor | Starts in edit mode (input + Save/Cancel) — see exceptions below |
 | Input | Email field with label, plus a search input with a leading icon |
 | InputMask | Phone mask pre-filled, ZIP mask empty |
-| Mention | Textarea with 3 people in the mention list |
+| Mention | Empty textarea with a "Type @ to mention..." placeholder and 3 people wired up as the mention list (its dropdown is absolutely positioned, so it stays closed by default rather than opening into a clip) |
 | NumberInput | Quantity stepper + a `$` prefixed price field |
 | OtpInput | 4-box code, pre-filled |
 | OverlayForm | Name/Email body + Cancel/Save footer, fixed-height wrapper |
