@@ -2059,7 +2059,48 @@ function unregisterBarContextMenu(el) {
 // returns to the browser" possible at all: an async decision could not do
 // this — by the time any Promise resolved, the browser would already have
 // run (or skipped) its own default action for the wheel event.
-const wheelZoomRegistrations = new Map(); // el -> { dotNetRef, options, onWheel }
+const wheelZoomRegistrations = new Map(); // el -> { dotNetRef, options, onWheel, anchorObserver }
+
+// Issue #385 — applies GanttTimeline's `data-gantt-v3-zoom-anchor` stamp (see
+// that property's own remarks for the full reasoning). The stamp is rendered on
+// the timeline root INSIDE this scroll host, in the SAME Blazor render batch
+// that repaints every bar at the new scale; this runs from the microtask
+// checkpoint right after that batch is applied, so the anchored date never gets
+// a frame at the new scale under the OLD scrollLeft.
+//
+// Idempotent by stamp id: the interop call GanttTimeline still issues from
+// OnAfterRenderAsync resolves to the IDENTICAL pixel and lands a round trip
+// later, so whichever writes first, the second is a no-op write of the same
+// value — never a second, visible move.
+function applyZoomAnchorStamp(el) {
+    // The stamp sits on GanttTimeline's own row-canvas host: a DESCENDANT of
+    // this element when GanttChart owns the shared scroll pane, and this very
+    // element for a standalone timeline (EffectiveScrollHost falls back to that
+    // same canvas) — hence both the self-check and the descendant lookup.
+    const node = el.matches('[data-gantt-v3-zoom-anchor]') ? el : el.querySelector('[data-gantt-v3-zoom-anchor]');
+    const raw = node && node.getAttribute('data-gantt-v3-zoom-anchor');
+    if (!raw) return; // stamp cleared (intent consumed) — nothing owed
+    const parts = raw.split('|');
+    if (parts.length !== 3) return;
+    const targetX = Number(parts[1]);
+    const offsetPx = Number(parts[2]);
+    if (!Number.isFinite(targetX) || !Number.isFinite(offsetPx)) return;
+    if (el.__lumeoGanttZoomAnchorId === parts[0]) return; // already applied this exact intent
+    // Same not-yet-laid-out guard centerOn/scrollToOffset use. No rAF retry
+    // here on purpose: if the pane isn't measurable yet there is nothing
+    // anchored on screen to protect, and the interop call behind this one
+    // still carries its own 30-attempt retry.
+    const w = el.clientWidth;
+    if (!(w > 50)) return;
+    el.__lumeoGanttZoomAnchorId = parts[0];
+    const scrollLeftBefore = el.scrollLeft;
+    el.scrollLeft = toNativeScrollLeft(el, Math.max(0, targetX - offsetPx));
+    el.setAttribute('data-gantt-v3-initial-scroll', 'done');
+    diagLog({
+        ev: 'zoomAnchor-apply', id: parts[0], targetX, offsetPx,
+        clientWidth: w, scrollLeftBefore, scrollLeftAfter: el.scrollLeft,
+    });
+}
 
 function registerWheelZoom(el, dotNetRef, options) {
     if (!el) return;
@@ -2073,7 +2114,18 @@ function registerWheelZoom(el, dotNetRef, options) {
         return;
     }
 
-    const reg = { dotNetRef, options, onWheel: null };
+    const reg = { dotNetRef, options, onWheel: null, anchorObserver: null };
+
+    // See applyZoomAnchorStamp. attributeFilter keeps this off every other
+    // attribute mutation in a subtree that re-renders constantly (bar
+    // geometry, virtualization), and the observer's lifetime is exactly the
+    // wheel-zoom registration's — the stamp is only ever produced by a
+    // wheel-zoom intent, so there is nothing to observe when the gesture is
+    // disabled.
+    reg.anchorObserver = new MutationObserver(() => applyZoomAnchorStamp(el));
+    reg.anchorObserver.observe(el, {
+        subtree: true, attributes: true, attributeFilter: ['data-gantt-v3-zoom-anchor'],
+    });
 
     reg.onWheel = (e) => {
         if (!(e.ctrlKey || e.metaKey)) return; // bare wheel — never touched, see this block's own remarks
@@ -2124,6 +2176,7 @@ function unregisterWheelZoom(el) {
     const reg = wheelZoomRegistrations.get(el);
     if (!reg) return;
     el.removeEventListener('wheel', reg.onWheel);
+    if (reg.anchorObserver) reg.anchorObserver.disconnect();
     wheelZoomRegistrations.delete(el);
 }
 

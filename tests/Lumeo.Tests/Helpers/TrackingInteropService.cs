@@ -1154,9 +1154,17 @@ public class TrackingInteropService : IComponentInteropService
     // a wheel-zoom recenter resolves to, without a real scrollable DOM.
     private readonly List<(double TargetX, double OffsetPx)> _ganttV3ScrollToOffsetCalls = new();
     public IReadOnlyList<(double TargetX, double OffsetPx)> GanttV3ScrollToOffsetCalls => _ganttV3ScrollToOffsetCalls;
+    /// <summary>Counterpart of <see cref="GanttV3ScrollToXGate"/> for the
+    /// pointer-anchored (wheel-zoom) recenter: when set, this call records its
+    /// arguments and then SUSPENDS, so a test can observe the state of the
+    /// world in the window between "the render that moved the bars has been
+    /// applied" and "the anchoring scroll write has landed" — the exact
+    /// interleaving issue #385 flaked in.</summary>
+    public TaskCompletionSource? GanttV3ScrollToOffsetGate { get; set; }
     public Task GanttV3ScrollToOffsetAsync(ElementReference el, double targetX, double offsetPx)
     {
         _ganttV3ScrollToOffsetCalls.Add((targetX, offsetPx));
+        if (GanttV3ScrollToOffsetGate is not null) return GanttV3ScrollToOffsetGate.Task;
         return Task.CompletedTask;
     }
 
