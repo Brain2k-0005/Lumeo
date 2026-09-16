@@ -154,3 +154,240 @@ it's clicked, without faking the real component's full-viewport takeover
   component floats away from the card exactly like a modal would. Shows a
   static replica of the window chrome (title bar, body, resize handle) in
   normal flow instead.
+## Wave "rest" — Motion, Typography, Dashboard, AI, Marketing, Drag & Drop
+
+All 32 `hasDocsPage: true` components across these six categories got a showcase.
+No exceptions were needed — every component miniaturises cleanly.
+
+| Component | Showcase state |
+| --- | --- |
+| AnimatedBeam | 2 nodes (CPU/Cloud icons), beam animates between them |
+| BlurFade | 3 tiles, staggered `ForceHidden` reveal on mount |
+| BorderBeam | A small pricing card with the beam looping around it |
+| Confetti | "Celebrate!" button — click fires a burst |
+| Dock | 4 icons, cursor-proximity magnify on hover |
+| Marquee | 4 brand chips scrolling left, pauses on hover |
+| NumberTicker | Two KPI-style counters, count up on mount |
+| ShimmerButton | 2 buttons with the looping shimmer sweep |
+| Sparkles | Looping sparkle field around two short labels |
+| TextReveal | One heading line, word-by-word reveal on scroll-into-view |
+| Code | Inline + block code snippet |
+| Heading | A compact section header (eyebrow + subheading) |
+| Highlighter | One sentence with 3 highlighted terms |
+| Link | Default / underline / external variants |
+| Text | Three size/color/weight combinations |
+| Bento | One tile (KPI-style), the natural minimum unit of the grid |
+| Delta | 3 trend chips (up/down/inverted-good) |
+| KpiCard | One KPI tile with icon, value, and delta |
+| PickList | 4 source items / 1 target, move buttons swap panels |
+| SparkCard | One KPI tile with an inline area sparkline |
+| Kanban | 2 columns × 2 cards, draggable |
+| Sortable | 2 items, drag-to-reorder with a handle |
+| Transfer | 2 source / 1 target item, arrow buttons move between panels |
+| AgentMessageList | A 2-message user/assistant exchange |
+| PromptInput | Empty textarea with placeholder + send button |
+| ReasoningDisplay | One reasoning trace, expanded by default |
+| StreamingText | One line with the blinking streaming caret |
+| ToolCallCard | One tool call, expanded, with input/output |
+| CTASection | Compact heading (via `TitleSlot`) + one button |
+| FeatureGrid | 2 `FeatureItem`s, no grid title/subtitle |
+| FeatureItem | One icon + title + description |
+| Hero | Compact centered headline (via `TitleSlot`) + one button |
+
+CTASection/FeatureGrid/Hero bake fixed vertical padding (and, for Hero, fixed
+`h1` sizing) into an *inner* wrapper div that isn't exposed via `Class` — only
+the root element's classes are overridable. Each uses `TitleSlot`/`Actions`
+to swap in compact markup instead of the oversized default heading; the
+padding itself still clips at the bottom of the 236px preview box on some
+viewports, the same accepted tradeoff as any oversized showcase (see rule 2
+above and `CatalogCard`'s own overflow-hidden note) — verified via screenshot
+to hold up in practice at 1440px in both themes.
+## Wave 1 — Data Display category
+
+25 of the 32 `hasDocsPage: true` Data Display-category components got a live showcase.
+
+| Component | Showcase state |
+| --- | --- |
+| Avatar | 3 overlapping fallback avatars in a stack, plus a "+3 more" count |
+| Badge | 6 badges across the variant set, one pill with a count |
+| Barcode | One Code 128B barcode (inline SVG, no JS) |
+| Calendar | A single month, denser cell size via `--lumeo-calendar-*` vars, one date pre-selected — click any day to change it |
+| Card | Header + content + footer, compact text |
+| Chart | `BarChart`, 4 categories, `Height="160px"` (ECharts via CDN — paints in the real browser, is a no-op under bUnit's loose JS mode, never throws) |
+| Chip | 3 closable tags — click × to remove one |
+| DataGrid | 3 rows, 2 columns, no pagination footer |
+| DataTable | 3 rows with a status `Badge` cell |
+| Descriptions | 2-column key/value grid, 4 items |
+| Filter | `FilterBar` with 2 dismissible pills — click × to remove one |
+| Filters | The query-builder chip row, `Size="Sm"`, one preset rule already applied |
+| Gauge | 2 small radial gauges (CPU/RAM) |
+| Image | A local inline-SVG data-URI "photo" (no external image host — deterministic, no network) |
+| ImageCompare | Local inline-SVG before/after data URIs, drag the divider |
+| List | 3 items with leading icons, one trailing badge |
+| PivotGrid | 2 regions × 2 years, one measure, `Compact="true"` |
+| QRCode | One small QR code (inline SVG, no JS) |
+| Sparkline | An inline trend line next to a value + delta |
+| Statistic | 2 stats with trend arrows |
+| Steps | 3 steps, step 2 active, `Clickable="true"` — click a step to jump to it |
+| Table | 3-row invoice table |
+| Timeline | 3 vertical events |
+| TreeView | 2 folders, `ExpandAll="true"`, `Size="Sm"` |
+| Watermark | "Confidential" tiled over two lines of body text |
+
+### Exceptions — viewport/external-engine components
+
+These 7 components fundamentally need a real network resource, a JS charting/mapping
+engine, or a viewport taller than a catalog card to show anything meaningful. Each
+showcase instead renders a faithful **static rendition** of the component's own visible
+chrome (matching its real classes/markup where practical), with no live wiring:
+
+- **FileManager** — the exact breadcrumb bar and list-row markup (icon, name, size) for a
+  small fixed set of entries, without the folder tree pane or interactivity (a real
+  explorer needs the tree pane to mean anything, which doesn't fit at card width).
+- **FileViewer** — the header bar (file icon, name, kind label, download button — same
+  classes as the real component) over a centered file-icon body, matching the unresolved/
+  unsupported-preview state; its PDF/Code kinds delegate to PdfViewer/CodeEditor, both
+  external-engine viewers.
+- **Gantt** (legacy SVG engine) — a day-scale header and 3 proportional task bars; the
+  real component needs real height/width to lay out day columns (420px in its own docs
+  demos) and has no tree pane to shrink further.
+- **GanttChart** (v3 engine) — same treatment; the real component virtualizes rows
+  against the actual scroll viewport (`GanttViewportReconciler`), which a static card
+  can't reproduce.
+- **Map** — a theme-tinted dot-grid backdrop with a `MapInfoChip` overlay (the docs'
+  own reusable info-chip component) and a pin marker, in place of MapLibre GL tiles
+  fetched from a real network.
+- **PdfViewer** — the toolbar chrome (page nav + zoom, same classes as the real
+  component) over a page-shaped placeholder, in place of pdf.js rendering a real PDF to
+  canvas.
+- **Scheduler** — the exact agenda-row markup `SchedulerAgendaView` itself produces
+  (color dot, title, time) for 3 fixed events; every real view needs 320px-640px of
+  height in its own docs demos to show more than an empty grid.
+## Wave 1 — Forms category
+
+All 35 `hasDocsPage: true` Forms-category components got a showcase.
+
+| Component | Showcase state |
+| --- | --- |
+| Button | Default / Secondary / Outline / Destructive, small size |
+| Cascader | Closed trigger, path pre-selected ("United States / California") |
+| Checkbox | 3 items — one checked, one unchecked, one disabled |
+| ColorPicker | Closed trigger, swatch + hex pre-filled |
+| Combobox | Single-select, "React" pre-selected as a removable chip |
+| ConfirmButton | Delete + Archive triggers, real OverlayService dialog on click |
+| DatePicker | Closed trigger, date pre-filled |
+| DateTimePicker | Closed trigger, date + time pre-filled |
+| FileUpload | Compact Button-variant trigger (the dropzone variant doesn't fit the box) |
+| Form | Name/Email fields, one already showing a validation error |
+| IconPicker | Closed trigger, "House" icon pre-selected, clearable |
+| InplaceEditor | Starts in edit mode (input + Save/Cancel) — see exceptions below |
+| Input | Email field with label, plus a search input with a leading icon |
+| InputMask | Phone mask pre-filled, ZIP mask empty |
+| Mention | Empty textarea with a "Type @ to mention..." placeholder and 3 people wired up as the mention list (its dropdown is absolutely positioned, so it stays closed by default rather than opening into a clip) |
+| NumberInput | Quantity stepper + a `$` prefixed price field |
+| OtpInput | 4-box code, pre-filled |
+| OverlayForm | Name/Email body + Cancel/Save footer, fixed-height wrapper |
+| PasswordInput | Pre-filled password with the strength meter shown |
+| QueryBuilder | One rule ("Active equals true") over 2 fields |
+| RadioGroup | 3 options, "Comfortable" selected |
+| Rating | Half-star value pre-set |
+| Segmented | 3 options, "Weekly" active — click another to switch |
+| Select | Closed trigger, "Banana" pre-selected — click opens the real dropdown |
+| Slider | Single thumb at 60%, with a live percentage readout |
+| Switch | 2 settings rows, one on one off |
+| TagInput | 2 tags pre-filled, removable |
+| Textarea | Labeled bio field, pre-filled |
+| TimePicker | Closed trigger, time pre-filled |
+| Toggle | 3 icon toggles, one pressed |
+| ToggleGroup | Single-select alignment group, "center" active |
+| TreeSelect | Closed trigger, nested value pre-selected ("Phones") |
+| UploadTrigger | Two Button-styled pick triggers (default + image filter) |
+
+### Exceptions — heavy JS engine
+
+These two mount a large third-party JS editor engine (CodeMirror 6 /
+TipTap-ProseMirror) via dynamic JS interop — not something a catalog card
+should bootstrap just to render a preview. Each showcase instead renders a
+faithful **static rendition** of the editor's chrome, in theme tokens, with no
+engine mounted:
+
+- **CodeEditor** — a language pill, line-number gutter, and a few lines of
+  syntax-colored JSON, exactly as the real editor's chrome looks.
+- **RichTextEditor** — the real `Toolbar`/`Button` components (genuinely
+  interactive chrome) above a static rendition of typical WYSIWYG output
+  standing in for the ProseMirror document body.
+
+### Note — InplaceEditor's idle state
+
+`InplaceEditor`'s non-editing display state has no visual "editable" affordance
+until `:hover` (an opacity-0 pencil icon), which reads as inert plain text in a
+static preview. Like `MegaMenu`/`SpeedDial` in wave 0, a real click on its own
+display element is simulated once after mount (`window.lumeo.clickElement`) so
+the showcase lands on the actual editing UI (input + Save/Cancel) — the
+recognisable, useful state rule 3 calls for.
+## Wave 1 — Utility and Layout categories
+
+All 10 Layout-category and 18 Utility-category `hasDocsPage: true` components
+got a showcase (28 total).
+
+### Layout (10)
+
+| Component | Showcase state |
+| --- | --- |
+| AspectRatio | Two ratios side by side (16:9, 1:1), each labelled |
+| Center | A dashed box with an icon + "Centered content" centered on both axes |
+| Container | Three stacked bordered boxes at `xs`/`sm`/`md` max-widths |
+| Flex | A nav-bar row: brand + `Spacer` + two buttons |
+| Grid | 3-column grid, 6 numbered placeholder boxes |
+| Resizable | Two panels with a draggable handle — drag to resize |
+| ScrollArea | A short tag list in a custom-scrollbar box, scrolled by mouse wheel |
+| Separator | A horizontal divider under a heading + a vertical-divider link row |
+| Spacer | An avatar/name row pushed apart from an Edit button by two spacers |
+| Stack | 3 items; Vertical/Horizontal buttons toggle the stack's direction live |
+
+### Utility (18)
+
+| Component | Showcase state |
+| --- | --- |
+| AudioPlayer | Compact player (cover, title/artist, play, scrub bar) — skip/rate/volume hidden to fit |
+| ButtonGroup | 3 icon buttons (Bold/Italic/Underline) joined into one segmented bar |
+| DensityScope | Two scoped rows (Compact, Spacious) with the same Save/Cancel buttons |
+| DirectionProvider | Ltr vs Rtl rows — same markup, icon/button mirror sides |
+| DropdownButton | "Actions" trigger; click opens a menu (position\:fixed, escapes the box like Menubar) |
+| Field | An email `Field` + a horizontal checkbox `Field` |
+| Icon | 5 icons across sizes/colors in one row |
+| Kbd | `Ctrl`+`K`, `Esc`, `Enter` shortcut glyphs |
+| Label | A `Label`+`Input` pair + a checkbox with its `Label` |
+| SignaturePad | Disabled/read-only with a deterministic captured-signature fixture |
+| SplitButton | "Save" primary half + chevron half; click opens the secondary-actions menu |
+| SwipeActions | Two rows with trailing actions behind them, "Swipe left" hint shown |
+| TouchRipple | Two buttons wrapped in `TouchRipple` — click either to see the ripple |
+
+### Exceptions — real browser feature (5)
+
+These need a real device/browser capability (touch drag, viewport insets, a
+persisted per-browser decision) or would mutate global site-wide state if
+wired live from inside a catalog card. Each renders a faithful **static
+rendition** of its own real markup instead, with local `@code` state only:
+
+- **ConsentBanner** — only mounts once per browser and is `position: fixed`
+  to the viewport; wiring the live `ConsentService` would pop the real
+  site-wide banner. Static rendition of its card content (icon/title/
+  description + Customize/Reject/Accept), in normal flow.
+- **PullToRefresh** — reacts to a real touch/pointer drag a static card can't
+  simulate. Static rendition of the component's own "engaged" mid-pull state
+  (the spinner tile pulled below the top edge) with no drag wiring.
+- **SafeArea** — `env(safe-area-inset-*)` is `0px` on desktop and most
+  Android (per the component's own docs page); only notched iPhones see a
+  real inset. Static rendition of its canonical use, a bottom tab bar.
+- **ThemeSwitcher** — calls the live `ThemeService` on every click, which
+  would flip the whole docs site's color scheme/mode for anyone previewing
+  the catalog, not a contained effect like every other showcase. Static
+  rendition of the same swatch/mode markup with local `@code` state instead of
+  `ThemeService`, using `ThemeService.AvailableSchemes`' own preview colors.
+- **ThemeToggle** — same hazard as ThemeSwitcher: it calls
+  `ThemeService.ToggleModeAsync()` on click, which would flip the whole docs
+  site's light/dark mode from inside a catalog card. Not listed in the wave
+  brief's exception set but carries the identical global-side-effect problem,
+  so treated the same way: a static rendition of its exact button/icon markup
+  with a local `bool` instead of `ThemeService`.

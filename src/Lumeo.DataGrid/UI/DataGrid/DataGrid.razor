@@ -109,6 +109,7 @@
         TotalRowCount = TotalRowCount,
         BeginCellEdit = BeginCellEditAsync,
         EndCellEdit = EndCellEdit,
+        DetailStickyToViewport = DetailStickyToViewport,
     };
 }
 
@@ -330,7 +331,16 @@
             </div>
         }
 
-        <div class="overflow-auto flex-1" @onclick="CloseContextMenu">
+        @* id lets Interop.RegisterViewportWidth (OnAfterRenderAsync below) find this exact
+           element in JS and observe its client width via ResizeObserver, writing it back
+           as the --lumeo-grid-viewport-w CSS custom property that DataGridDetailRow's
+           sticky detail panel reads. Deliberately NOT `container-type: inline-size` +
+           `cqw` units: that CSS containment makes this wrapper the containing block for
+           `position: fixed` descendants, which broke DataGridHeaderCell's filter popover /
+           pin menu / column menu (positioned in VIEWPORT coordinates by
+           Interop.PositionFixed) — they mispositioned against this wrapper and got
+           clipped by its own overflow-auto. See components.js's registerViewportWidth. *@
+        <div id="@_viewportId" class="overflow-auto flex-1" @onclick="CloseContextMenu">
             <table class="w-full caption-bottom text-sm"
                    style="@TableStyle"
                    id="@_gridId"
@@ -777,6 +787,20 @@
     /// expand-chevron column automatically.</summary>
     [Parameter] public RenderFragment<TItem>? DetailTemplate { get; set; }
 
+    /// <summary>
+    /// When true (default), the expanded row-detail cell's content is pinned to span
+    /// exactly the grid's visible horizontal scroll viewport (<c>position: sticky; left:
+    /// 0</c>, width driven by the <c>--lumeo-grid-viewport-w</c> CSS custom property a
+    /// ResizeObserver keeps current on the scroll wrapper — see
+    /// <c>Interop.RegisterViewportWidth</c>) instead of the table's full, possibly
+    /// horizontally-scrolled, content width. Without this a grid with more columns than
+    /// fit on screen scrolls horizontally and an expanded detail panel lays itself out
+    /// across the FULL scrolled table width, pushing its right portion off-screen until the
+    /// user scrolls right. Set false to restore the pre-5.10.3 full-table-width behavior
+    /// (also skips the ResizeObserver entirely — see <see cref="WantsViewportWidthObserver"/>).
+    /// </summary>
+    [Parameter] public bool DetailStickyToViewport { get; set; } = true;
+
     /// <summary>Custom content shown instead of the default empty-state message when
     /// there are no rows to display. For a message that reads whether the empty state
     /// was caused by an active filter/search, use <see cref="EmptyTemplate"/> instead
@@ -1025,6 +1049,10 @@
 
     // --- Keyboard navigation / roving tabindex (rc.32) ---
     private readonly string _gridId = $"dg-{Guid.NewGuid():N}";
+    // Distinct id for the horizontal scroll wrapper (not the table itself, which keeps
+    // _gridId) — Interop.RegisterViewportWidth observes THIS element's client width. See
+    // its render site above and the register/unregister calls in OnAfterRenderAsync/DisposeAsync.
+    private string _viewportId => $"{_gridId}-viewport";
     // Roving-focus cell coordinates. _focusedRow == -1 → header row.
     private int _focusedRow = -1;
     private int _focusedCol = 0;
@@ -1481,6 +1509,12 @@
     private bool _pendingRowReorderAnimation;
     private bool _pointerRowReorderRegistered;
     private const int RowReorderAnimationMs = 220;
+
+    // Viewport-width observer (row-detail sticky-to-viewport) — see the register/
+    // unregister block in OnAfterRenderAsync and DisposeAsync, and _viewportId above.
+    private bool _viewportWidthRegistered;
+    private bool WantsViewportWidthObserver => DetailTemplate is not null && DetailStickyToViewport;
+
     private List<DataGridGroupSection<TItem>> _groupedSections = new();
     private HashSet<string> _expandedGroups = new();
     private HashSet<string> _knownGroupKeys = new();
@@ -2147,6 +2181,27 @@
             try { await Interop.UnregisterRowReorder(_gridId); }
             catch (JSDisconnectedException) { }
             _pointerRowReorderRegistered = false;
+        }
+
+        // Viewport-width observer: only needed when a detail panel can actually be pinned
+        // to it (a DetailTemplate is configured and DetailStickyToViewport hasn't been
+        // opted out), so a plain grid with no row-detail feature never pays for a
+        // ResizeObserver it has no use for. Reactive to both flags changing at runtime,
+        // not just first render — same shape as the reorder blocks above.
+        if (WantsViewportWidthObserver && !_viewportWidthRegistered)
+        {
+            try
+            {
+                await Interop.RegisterViewportWidth(_viewportId);
+                _viewportWidthRegistered = true;
+            }
+            catch (JSDisconnectedException) { }
+        }
+        else if (!WantsViewportWidthObserver && _viewportWidthRegistered)
+        {
+            try { await Interop.UnregisterViewportWidth(_viewportId); }
+            catch (JSDisconnectedException) { }
+            _viewportWidthRegistered = false;
         }
 
         if (_isExpanded && _fullscreenNeedsFocus)
@@ -5104,6 +5159,15 @@
             catch (Microsoft.JSInterop.JSDisconnectedException) { /* circuit gone */ }
             catch { /* best-effort */ }
             _pointerRowReorderRegistered = false;
+        }
+
+        // Tear down the viewport-width ResizeObserver registered on the scroll wrapper.
+        if (_viewportWidthRegistered)
+        {
+            try { await Interop.UnregisterViewportWidth(_viewportId); }
+            catch (Microsoft.JSInterop.JSDisconnectedException) { /* circuit gone */ }
+            catch { /* best-effort */ }
+            _viewportWidthRegistered = false;
         }
 
         // Defensive: if disposed while still in fullscreen, unlock scroll AND drop
