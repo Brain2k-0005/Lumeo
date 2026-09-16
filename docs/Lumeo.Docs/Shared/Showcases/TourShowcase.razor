@@ -1,0 +1,48 @@
+@namespace Lumeo.Docs.Shared.Showcases
+
+@* Fix round 1: Tour DOES support an in-container target — Steps take a CSS selector,
+   so this wires a REAL Tour to a REAL target button inside this card (a stable
+   per-instance id) rather than faking the whole thing statically. Clicking "Start
+   Tour" opens the real full-viewport spotlight + tooltip (same as Dialog/Sheet/Drawer
+   — Tour's own overlay is position:fixed inset-0, so it necessarily covers the page,
+   not just this card). The block below is an explicitly-marked PREVIEW ONLY static
+   mock of the tooltip step card, no ARIA roles. *@
+<div class="w-full max-w-[22rem]">
+    <Stack Gap="2">
+        <Flex Align="center" Gap="2">
+            <Button id="@_targetId" Variant="Button.ButtonVariant.Outline" Size="Button.ButtonSize.Sm">
+                <DynamicIcon Name="LayoutDashboard" Class="h-4 w-4 mr-1" />
+                Dashboard
+            </Button>
+            <Button Size="Button.ButtonSize.Sm" OnClick="@(() => _open = true)">Start Tour</Button>
+        </Flex>
+
+        @* PREVIEW ONLY — not the live tooltip. *@
+        <div class="w-64 rounded-lg border border-border/60 bg-popover p-2.5 text-popover-foreground shadow-lg">
+            <Stack Gap="1">
+                <Lumeo.Text As="span" Size="xs" Weight="semibold">Dashboard overview</Lumeo.Text>
+                <Lumeo.Text Size="xs" Color="muted">This is where you'll see your key metrics at a glance.</Lumeo.Text>
+            </Stack>
+            <Flex Align="center" Justify="between" Class="pt-1">
+                <Lumeo.Text As="span" Size="xs" Color="muted">1 / 1</Lumeo.Text>
+                <span class="inline-flex h-6 items-center rounded-md bg-primary px-2 text-xs text-primary-foreground">Next</span>
+            </Flex>
+        </div>
+    </Stack>
+
+    <Tour @bind-Open="_open" Steps="_steps" OnComplete="@(() => _open = false)" OnSkip="@(() => _open = false)" />
+</div>
+
+@code {
+    private readonly string _targetId = $"tour-showcase-target-{Guid.NewGuid():N}";
+    private bool _open;
+    private List<Tour.TourStepConfig> _steps = [];
+
+    protected override void OnInitialized()
+    {
+        _steps =
+        [
+            new Tour.TourStepConfig($"#{_targetId}", "Dashboard overview", "This is where you'll see your key metrics at a glance.")
+        ];
+    }
+}
