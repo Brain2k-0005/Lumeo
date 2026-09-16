@@ -12,6 +12,23 @@
 // element can report clientWidth === 0 for the first few frames, so centering
 // immediately would silently no-op.
 
+// Diagnostics journal for issue #385 (CtrlWheel_Anchors_The_Zoom_On_The_Pointer_
+// Not_The_Viewport_Center flaking bit-identically on CI, never locally): a
+// zero-cost-by-default log of every scrollLeft-affecting event so the NEXT CI
+// failure carries the sequence of writes that produced the wrong final
+// position, instead of just that final position. Strictly opt-in — a test
+// sets `window.__lumeoGanttDiag = true` via an init script BEFORE this module
+// loads; every call site below is gated on a single boolean read when off, so
+// normal (flag-unset) behaviour is byte-for-byte unchanged. Capped at 200
+// entries (oldest dropped) so a long-running page can't leak memory.
+function diagLog(entry) {
+    if (window.__lumeoGanttDiag !== true) return;
+    const log = window.__lumeoGanttScrollLog || (window.__lumeoGanttScrollLog = []);
+    entry.t = performance.now();
+    log.push(entry);
+    if (log.length > 200) log.shift();
+}
+
 export const ganttV3 = {
     // Centers targetX (a pixel offset within the timeline's own scrollable
     // content) in el's viewport — mirrors gantt-v2.js's tryScroll exactly:
@@ -33,12 +50,18 @@ export const ganttV3 = {
     // guessing with a timeout.
     centerOn(el, targetX) {
         if (!el) return;
+        diagLog({ ev: 'centerOn-invoke', targetX });
         const tryScroll = (attempt) => {
             const w = el.clientWidth;
             if (w > 50) {
+                const scrollLeftBefore = el.scrollLeft;
                 const logicalTarget = Math.max(0, targetX - w / 2);
                 el.scrollLeft = toNativeScrollLeft(el, logicalTarget);
                 el.setAttribute('data-gantt-v3-initial-scroll', 'done');
+                diagLog({
+                    ev: 'tryScroll-write', fn: 'centerOn', targetX, offsetPx: w / 2,
+                    clientWidth: w, attempt, scrollLeftBefore, scrollLeftAfter: el.scrollLeft,
+                });
             } else if (attempt < 30) {
                 requestAnimationFrame(() => tryScroll(attempt + 1));
             }
@@ -55,12 +78,18 @@ export const ganttV3 = {
     // no shared code path for a new caller to accidentally perturb.
     scrollToOffset(el, targetX, offsetPx) {
         if (!el) return;
+        diagLog({ ev: 'scrollToOffset-invoke', targetX, offsetPx });
         const tryScroll = (attempt) => {
             const w = el.clientWidth;
             if (w > 50) {
+                const scrollLeftBefore = el.scrollLeft;
                 const logicalTarget = Math.max(0, targetX - offsetPx);
                 el.scrollLeft = toNativeScrollLeft(el, logicalTarget);
                 el.setAttribute('data-gantt-v3-initial-scroll', 'done');
+                diagLog({
+                    ev: 'tryScroll-write', fn: 'scrollToOffset', targetX, offsetPx,
+                    clientWidth: w, attempt, scrollLeftBefore, scrollLeftAfter: el.scrollLeft,
+                });
             } else if (attempt < 30) {
                 requestAnimationFrame(() => tryScroll(attempt + 1));
             }
@@ -304,6 +333,7 @@ function registerVerticalScrollTracking(el, dotNetRef) {
         // to assert "no report fired" against, matching the existing
         // data-gantt-v3-initial-scroll latch's own reasoning (centerOn's remarks).
         el.dataset.ganttV3VerticalReportCount = String((Number(el.dataset.ganttV3VerticalReportCount) || 0) + 1);
+        diagLog({ ev: 'OnGanttV3VerticalScroll-dispatch', scrollLeft, clientWidth });
         dotNetRef.invokeMethodAsync('OnGanttV3VerticalScroll', el.scrollTop, el.clientHeight, scrollLeft, clientWidth);
     };
     const onScroll = () => {
@@ -2070,11 +2100,18 @@ function registerWheelZoom(el, dotNetRef, options) {
         // "live native scrollLeft -> logical offset" conversion).
         const rect = el.getBoundingClientRect();
         const offsetPx = e.clientX - rect.left;
-        const logical = fromNativeScrollLeft(el, el.scrollLeft);
+        const nativeScrollLeft = el.scrollLeft;
+        const logical = fromNativeScrollLeft(el, nativeScrollLeft);
         const contentX = logical + offsetPx;
+        const nextMode = levels[nextIndex];
+
+        diagLog({
+            ev: 'wheel-dispatch', clientX: e.clientX, rectLeft: rect.left,
+            nativeScrollLeft, logical, contentX, offsetPx, nextMode,
+        });
 
         if (reg.dotNetRef) {
-            reg.dotNetRef.invokeMethodAsync('CommitWheelZoom', levels[nextIndex], contentX, offsetPx).catch(() => {});
+            reg.dotNetRef.invokeMethodAsync('CommitWheelZoom', nextMode, contentX, offsetPx).catch(() => {});
         }
     };
 
