@@ -4,15 +4,26 @@
 @* Isolated Gantt host. This component is only ever *instantiated* after its parent
    (EnterpriseScheduleView) has lazy-loaded Lumeo.Gantt.dll, so it may reference
    Lumeo.Gantt value-types (GanttTask / GanttViewMode) freely — they resolve fine
-   because the assembly is present by the time the CLR constructs this component. *@
+   because the assembly is present by the time the CLR constructs this component.
 
-<Gantt Tasks="_tasks"
-       ZoomLevels="_zoomLevels"
-       DefaultZoom="GanttViewMode.Week"
-       Height="calc(100dvh - 16rem)"
-       Readonly="true"
-       TodayHighlight="true"
-       OnTaskClick="HandleTaskClick" />
+   Runs on GanttChart (v3), not the legacy SVG Gantt (v2) — GanttTask/GanttViewMode
+   are shared value types between the two engines, so the task-mapping code below is
+   unchanged from the v2 panel; only the rendered component and its parameters differ.
+   Grouped by Lane (one swim-lane per berth/corridor) with ColorByGroup so each lane
+   reads as its own colour in the timeline, and ShowTaskMeta so the tree pane the
+   grouping turns on also shows each row's date range + progress next to its name. *@
+
+<GanttChart Tasks="_tasks"
+            ZoomLevels="_zoomLevels"
+            ViewMode="GanttViewMode.Week"
+            ShowZoomControl="true"
+            Height="calc(100dvh - 16rem)"
+            Readonly="true"
+            TodayHighlight="true"
+            GroupBy="@(t => t.GroupLabel ?? "")"
+            ColorByGroup="true"
+            ShowTaskMeta="true"
+            OnTaskClick="HandleTaskClick" />
 
 @code {
     private static readonly List<GanttViewMode> _zoomLevels = new() { GanttViewMode.Day, GanttViewMode.Week, GanttViewMode.Month };
