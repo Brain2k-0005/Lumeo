@@ -5,6 +5,20 @@ All notable changes to Lumeo will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+- **`GanttChart`: Ctrl/Cmd+wheel zoom no longer jumps before it anchors.** The date under the
+  cursor is meant to stay under the cursor across a zoom, but the anchoring scroll position was
+  applied by a second round trip issued after the render that had already repainted every bar at
+  the new scale — so the chart showed one frame (locally ~30ms, on a real circuit a full
+  round-trip) of the new zoom under the old scroll position, the anchored date visibly jumping by
+  the whole scroll delta and snapping back afterwards. The timeline now carries the anchor
+  position in that same render, so the scroll lands in the same browser frame as the geometry it
+  anchors; the interop call still follows and writes the identical pixel as an idempotent
+  backstop. Fixes the intermittent `CtrlWheel_Anchors_The_Zoom_On_The_Pointer_Not_The_Viewport_Center`
+  failure (issue #385).
+
 ## [5.10.3] - 2026-09-16
 
 ### Fixed

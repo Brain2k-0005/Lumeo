@@ -141,7 +141,7 @@
        this subtree entirely now), so GridLinesContainerStyle/TodayLineStyle/
        CanvasHeight and GanttArrowRouting's SourceEdge/TargetEdge all dropped
        their previous "+GanttScale.HeaderHeight" terms accordingly. *@
-    <div class="@CanvasScrollClass" @ref="_scrollHostRef" data-gantt-v3-drag-origin="@_lastConfirmedDragOriginIso">
+    <div class="@CanvasScrollClass" @ref="_scrollHostRef" data-gantt-v3-drag-origin="@_lastConfirmedDragOriginIso" data-gantt-v3-zoom-anchor="@ZoomAnchorStamp">
         <div class="relative" style="@CanvasStyle">
             @* Off-day column tint (design spec Phase 3, T2 — "Mark off days").
                Rendered BEHIND the grid lines/bars (background fill, painted
@@ -1676,6 +1676,59 @@
     // ScrollTargetXOverride's own "only while intentPending" gate exactly.
     private double? ResolveScrollTargetOffset(bool intentPending) =>
         intentPending ? ScrollTargetOffsetOverride : null;
+
+    // Issue #385 — the pointer-anchored zoom's own "land the scroll in the SAME
+    // browser frame as the geometry it anchors" stamp.
+    //
+    // Every recenter in this component is applied by an interop call issued from
+    // OnAfterRenderAsync — i.e. a SECOND server->client message, sent only after
+    // the render batch that moved every bar to the new scale has already been
+    // applied in the browser. For an ambient recenter (mount, Today, a host
+    // swap) that ordering is harmless: the viewport is being deliberately moved,
+    // so an intermediate frame is just the start of that move. For a
+    // POINTER-ANCHORED zoom it is the whole bug: the guarantee is "the date under
+    // the cursor stays under the cursor", and between those two messages the
+    // browser shows the new scale under the OLD scrollLeft — the anchored date
+    // jumps by (newScrollLeft - oldScrollLeft) px and only snaps back one round
+    // trip later (locally ~30ms; on a real circuit, one full RTT). That window is
+    // exactly what GanttV3WheelZoomTests.CtrlWheel_Anchors_The_Zoom_On_The_Pointer_
+    // Not_The_Viewport_Center intermittently measured in (drifted 752px instead of
+    // 40px, with a bit-identical scroll journal in passing and failing runs — the
+    // write itself was always correct, it just hadn't landed yet).
+    //
+    // The fix is to also carry the intent in the RENDER itself: this stamp is a
+    // plain attribute on the row-canvas host (_scrollHostRef — EffectiveScrollHost
+    // itself for a standalone timeline, a descendant of GanttChart's shared pane
+    // otherwise, so gantt-v3.js finds it from either), so Blazor applies it in the
+    // very same DOM patch that repaints the bars, and the wheel-zoom registration
+    // (registerWheelZoom's own MutationObserver — the same element, the same
+    // enable flag, the same lifetime) applies the scroll from the microtask that
+    // follows that patch, before the browser ever paints the un-anchored frame.
+    // The interop call from OnAfterRenderAsync still follows and still writes the
+    // IDENTICAL pixel (ScrollToCenterAsync's own targetX/offset, resolved here by
+    // the very same two helpers) — it is now an idempotent backstop for the cases
+    // the DOM path can't serve (pane not measurable yet, no wheel-zoom
+    // registration), not the primary mechanism, and it never moves the viewport a
+    // second time.
+    //
+    // Deliberately scoped to intents that carry an OFFSET override — i.e.
+    // wheel-zoom, the only producer of one (see ScrollTargetOffsetOverride's own
+    // remarks) and the only trigger whose contract is "this exact pixel must not
+    // move". Every other recenter keeps its existing, unchanged single-write path.
+    private string? ZoomAnchorStamp
+    {
+        get
+        {
+            if (ScrollToTodayRequestId == _lastConsumedScrollRequestId) return null; // no live intent
+            if (ResolveScrollTargetOffset(true) is not { } offset) return null;      // not a pointer-anchored one
+            var targetX = ScrollHostLeadingOffset + ResolveScrollTargetX(true);
+            // id|targetX|offsetPx — the id makes each intent's stamp a genuine
+            // attribute CHANGE (so the observer fires even when two consecutive
+            // zooms resolve to the same pixel) and lets the JS side ignore a
+            // stamp it has already applied.
+            return string.Create(CultureInfo.InvariantCulture, $"{ScrollToTodayRequestId}|{targetX:0.###}|{offset:0.###}");
+        }
+    }
 
     // v2 parity (Codex round 2, P2 #8): v2's scroll-to-today gate is
     // `todayPx > 0` (gantt-v2.js:684) — deliberately LOOSER than the
