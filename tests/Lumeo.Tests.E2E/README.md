@@ -72,9 +72,16 @@ Because the base URL differs, these specs do NOT use `PlaywrightTestBase.Goto`/
 remarks for why that property can't be overridden. They resolve their own base
 URL from `LUMEO_GANTT_E2E_BASE_URL` (default `http://localhost:5299`).
 
-Running locally:
+Running locally: `ASPNETCORE_ENVIRONMENT=Development` is required when starting
+`Lumeo.Tests.ServerHost` — without it (e.g. an ambient shell default of
+`Production`, or a `dotnet run --no-build -c Release` in a non-published
+checkout) `MapStaticAssets()` silently serves every `_framework/*`/`_content/*`
+asset, including `blazor.web.js` itself, as an HTTP 200 with 0 bytes instead of
+a 404, so the Blazor circuit never connects and every spec in this harness
+times out with a misleading "locator never visible" that looks like a product
+bug (`.github/workflows/e2e.yml` already sets this for CI).
 ```sh
-dotnet run --project tests/Lumeo.Tests.ServerHost/Lumeo.Tests.ServerHost.csproj --urls http://localhost:5299
+ASPNETCORE_ENVIRONMENT=Development dotnet run --project tests/Lumeo.Tests.ServerHost/Lumeo.Tests.ServerHost.csproj --urls http://localhost:5299
 # in another terminal:
 dotnet test tests/Lumeo.Tests.E2E/Lumeo.Tests.E2E.csproj --filter "FullyQualifiedName~Gantt"
 ```

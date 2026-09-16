@@ -1,3 +1,4 @@
+using System.Text;
 using Microsoft.Playwright;
 using Xunit;
 
@@ -16,6 +17,24 @@ namespace Lumeo.Tests.E2E.Gantt;
 /// </summary>
 public class GanttV3WheelZoomTests : GanttParityTestBase
 {
+    // Issue #385: CtrlWheel_Anchors_The_Zoom_On_The_Pointer_Not_The_Viewport_Center
+    // fails ~1-in-10 on CI with a BIT-IDENTICAL wrong drift value every time
+    // (849.0px) — a deterministic alternate write path firing on CI, not
+    // jitter, that has never once reproduced locally (0/100 across CPU
+    // pressure + SignalR-RTT throttling, see the prior investigation report).
+    // The assertion message only ever carried the FINAL scrollLeft, so no CI
+    // failure has ever told us WHICH write produced it. This flag turns on
+    // gantt-v3.js's own opt-in scroll-write journal (window.__lumeoGanttDiag,
+    // see its own remarks) for every test in this class — set via an init
+    // script so it's in place before the page's first script (and so
+    // module-scope code) ever runs, zero cost for every OTHER test class
+    // that doesn't opt in.
+    public override async Task InitializeAsync()
+    {
+        await base.InitializeAsync();
+        await Page.AddInitScriptAsync("window.__lumeoGanttDiag = true;");
+    }
+
     private static async Task WaitForReady(IPage page)
     {
         var scrollPane = page.Locator("[data-testid='gantt-v3-root'] div[style*='overflow']").First;
@@ -29,6 +48,58 @@ public class GanttV3WheelZoomTests : GanttParityTestBase
         await Page.Keyboard.DownAsync("Control");
         await Page.Mouse.WheelAsync(0, deltaY);
         await Page.Keyboard.UpAsync("Control");
+    }
+
+    // Builds the failure-only diagnostic dump: the JS scroll-write journal
+    // (empty array when __lumeoGanttDiag somehow isn't set — never should be,
+    // in this class) plus enough live DOM state to correlate it against —
+    // the viewMode sink text, the pane's own bounding box, and its
+    // scrollLeft/clientWidth/scrollWidth. Deliberately NOT called on every
+    // assertion (would cost several extra round-trips on every green run for
+    // no benefit) — callers only await this once a failure is already known.
+    private static async Task<string> BuildFailureDumpAsync(
+        IPage page, ILocator pane, ILocator viewModeSink,
+        LocatorBoundingBoxResult? barBefore = null, LocatorBoundingBoxResult? barAfter = null)
+    {
+        var journal = await page.EvaluateAsync<string>("() => JSON.stringify(window.__lumeoGanttScrollLog || [])");
+        var viewMode = await viewModeSink.TextContentAsync();
+        var paneBox = await pane.BoundingBoxAsync();
+        var scrollMetrics = await pane.EvaluateAsync<string>(
+            "el => JSON.stringify({ scrollLeft: el.scrollLeft, clientWidth: el.clientWidth, scrollWidth: el.scrollWidth })");
+
+        var sb = new StringBuilder();
+        sb.AppendLine();
+        sb.AppendLine("--- gantt-v3 scroll diagnostics (issue #385) ---");
+        sb.AppendLine($"viewMode sink: {viewMode}");
+        sb.AppendLine($"pane box: {FormatBox(paneBox)}");
+        if (barBefore is { } bb) sb.AppendLine($"fe1 box before: {FormatBox(bb)}");
+        if (barAfter is { } ba) sb.AppendLine($"fe1 box after: {FormatBox(ba)}");
+        sb.AppendLine($"scroll host metrics: {scrollMetrics}");
+        sb.AppendLine($"scroll journal: {journal}");
+        return sb.ToString();
+    }
+
+    private static string FormatBox(LocatorBoundingBoxResult? box) =>
+        box is { } b ? $"X={b.X:F1} Y={b.Y:F1} W={b.Width:F1} H={b.Height:F1}" : "null";
+
+    // Wraps a Playwright fluent assertion so a failure carries the SAME
+    // diagnostic dump as the drift check below, for the sibling test that
+    // shares this class's "Ctrl+wheel gesture, then assert the mechanism's
+    // effect" pattern — cheap (only runs the extra round-trips when the
+    // assertion is already about to fail) and changes neither the gesture
+    // nor the assertion's own threshold/timeout.
+    private static async Task ExpectViewModeWithDiagAsync(
+        IPage page, ILocator viewModeSink, string expectedText, ILocator pane, int timeoutMs = 5000)
+    {
+        try
+        {
+            await Assertions.Expect(viewModeSink).ToHaveTextAsync(expectedText, new() { Timeout = timeoutMs });
+        }
+        catch (Exception ex)
+        {
+            var dump = await BuildFailureDumpAsync(page, pane, viewModeSink);
+            throw new Xunit.Sdk.XunitException($"{ex.Message}\n{dump}");
+        }
     }
 
     [Fact]
@@ -70,6 +141,7 @@ public class GanttV3WheelZoomTests : GanttParityTestBase
         // is the fix: it scrolls the pane so fe1's bar is actually on-screen
         // BEFORE its box is measured, so the synthetic Ctrl+wheel gesture
         // below lands on the real registered element instead of empty space.
+        var pane = Page.Locator("[data-testid='gantt-v3-root'] div[style*='overflow']").First;
         var bar = Page.Locator("[data-testid='gantt-v3-root'] [data-task-id='fe1']");
         await bar.ScrollIntoViewIfNeededAsync();
         var box = (await bar.BoundingBoxAsync())!;
@@ -78,7 +150,7 @@ public class GanttV3WheelZoomTests : GanttParityTestBase
         // deltaY < 0 ("scroll up") zooms IN — Week -> Day (DefaultLevels'
         // coarsest-last order: Day, Week, Month, Year).
         await CtrlWheelAt(box.X + box.Width / 2, box.Y + box.Height / 2, -200);
-        await Assertions.Expect(viewModeSink).ToHaveTextAsync("Day", new() { Timeout = 5000 });
+        await ExpectViewModeWithDiagAsync(Page, viewModeSink, "Day", pane);
 
         // deltaY > 0 ("scroll down") zooms back OUT — Day -> Week. Day zoom's
         // even wider pixels-per-day makes the same off-screen risk worse, so
@@ -86,7 +158,7 @@ public class GanttV3WheelZoomTests : GanttParityTestBase
         await bar.ScrollIntoViewIfNeededAsync();
         var box2 = (await bar.BoundingBoxAsync())!;
         await CtrlWheelAt(box2.X + box2.Width / 2, box2.Y + box2.Height / 2, 200);
-        await Assertions.Expect(viewModeSink).ToHaveTextAsync("Week", new() { Timeout = 5000 });
+        await ExpectViewModeWithDiagAsync(Page, viewModeSink, "Week", pane);
     }
 
     [Fact]
@@ -191,7 +263,11 @@ public class GanttV3WheelZoomTests : GanttParityTestBase
         // columns' worth of rounding/snap slack (measured ~40px against the
         // real build).
         var drift = Math.Abs(boxAfter.X - cursorX);
-        Assert.True(drift < 120,
-            $"expected fe1's left edge to stay within 120px of the original cursor X ({cursorX:F1}) after a pointer-anchored zoom, drifted to {boxAfter.X:F1} (Δ={drift:F1}px)");
+        if (drift >= 120)
+        {
+            var dump = await BuildFailureDumpAsync(Page, pane, Page.Locator("[data-testid='gantt-v3-viewmode']"), boxBefore, boxAfter);
+            Assert.Fail(
+                $"expected fe1's left edge to stay within 120px of the original cursor X ({cursorX:F1}) after a pointer-anchored zoom, drifted to {boxAfter.X:F1} (Δ={drift:F1}px){dump}");
+        }
     }
 }
