@@ -142,6 +142,53 @@ public class SaasDemoTests
         Assert.Contains("Plan", headers);
     }
 
+    // ---- "n of m accounts" follows the grid's own search, not just the chip filter ----
+    // (5.10.3: DataGrid gained FilteredRowCount/TotalRowCount + OnRowCountChanged so this line
+    // no longer has to be worded to avoid contradicting the grid's own "No rows match the
+    // current filters" empty state — see DataGridPage.razor's "Showing n of m" example.)
+
+    [Fact]
+    public async Task Customers_header_shows_the_chip_filtered_baseline_as_n_of_m()
+    {
+        await using var ctx = NewContext();
+        var cut = ctx.Render<SaasDemo>(p => p.Add(c => c.ViewParam, "customers"));
+
+        var total = NorthlightData.Customers.Count;
+
+        // No grid-level search/filter active yet: n == m == the full (chip="All") baseline,
+        // matching what the old "@FilteredCustomers.Count accounts" text showed for "All".
+        Assert.Contains($"{total} of {total} accounts", cut.Markup);
+    }
+
+    [Fact]
+    public async Task Customers_header_narrows_with_the_grids_own_search_while_m_stays_the_chip_baseline()
+    {
+        await using var ctx = NewContext();
+        var cut = ctx.Render<SaasDemo>(p => p.Add(c => c.ViewParam, "customers"));
+
+        var total = NorthlightData.Customers.Count;
+        Assert.Contains($"{total} of {total} accounts", cut.Markup);
+
+        // A single company's name: DataGrid's built-in global search matches any column's
+        // formatted value, so this narrows the grid's OWN filtered count (n) without touching
+        // the chip filter, which is exactly the gap FilteredRowCount/TotalRowCount closes — the
+        // old text only ever reflected the chip filter and could not follow this at all.
+        var needle = NorthlightData.Customers[0].Company;
+        var searchInput = cut.FindAll("input").First(i => i.GetAttribute("placeholder") == "Search…");
+        searchInput.Input(needle);
+
+        // OnRowCountChanged dispatches through SafeAsyncDispatcher (fire-and-forget from the
+        // grid's synchronous client-mode filter path), so the demo's own fields can land a
+        // render after the input event completes — WaitForAssertion covers that gap, mirroring
+        // the ViewportChanged case above.
+        cut.WaitForAssertion(
+            () => Assert.DoesNotContain($"{total} of {total} accounts", cut.Markup),
+            TimeSpan.FromSeconds(10));
+
+        // m (the chip-filtered baseline, "All") is unchanged by the grid's own search.
+        Assert.Contains($"of {total} accounts", cut.Markup);
+    }
+
     private static IReadOnlyList<string> ColumnHeaderTitles(IRenderedComponent<SaasDemo> cut) =>
         cut.FindAll("[role='columnheader']").Select(h => h.TextContent.Trim()).ToList();
 
