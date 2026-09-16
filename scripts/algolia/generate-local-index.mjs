@@ -45,7 +45,7 @@ const componentItems = Object.entries(registry.components)
         url: `/components/${slug}`,
     }));
 
-// --- Patterns (routed under /blocks/* — patterns and blocks share the same prefix) ---
+// --- App-page blocks (the full-page blocks routed under /blocks/*) ---
 const patterns = [
     { label: 'Analytics',     slug: 'analytics' },
     { label: 'Authentication', slug: 'authentication' },
@@ -70,7 +70,7 @@ const patternItems = patterns.map(p => ({
     type: 'pattern',
     title: p.label,
     summary: `${p.label} UI pattern`,
-    category: 'Patterns',
+    category: 'Blocks',
     url: `/blocks/${p.slug}`,
 }));
 
