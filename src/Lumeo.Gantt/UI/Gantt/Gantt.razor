@@ -41,8 +41,25 @@ else
            Height: use max-height (cap) instead of fixed height so the chart
            shrinks to fit its content (header + N tasks * row height) and
            only scrolls vertically when the task list exceeds @Height. *@
+        @* Bug fix (label legibility — Meridian Ops demo polish, owner report,
+           finding 2): "pb-2" reserves 8px of blank space BELOW the row
+           content, INSIDE this element's own overflow:auto scroll box — a
+           well-known CSS behavior: explicit padding on a scroll container is
+           inserted between its (auto-reserved) native scrollbar and its
+           content at EVERY scroll position, not merely at the scrolled-to-
+           bottom extreme. Without it, the host's own max-height clips the
+           SVG's row content flush against its bottom edge (verified live:
+           hostClientHeight 644px < hostScrollHeight 776px on the Meridian Ops
+           demo at 1440x900 — the exact defect screenshot's own viewport),
+           landing the browser's horizontal scrollbar (styled via lumeo.css's
+           global thin-scrollbar rule) directly against whatever row happens
+           to be clipped there — a rounded, --color-border-toned pill sitting
+           on/inside that row's own track, reading as an unlabeled task bar.
+           8px comfortably covers both the thin Firefox scrollbar and this
+           library's own 6px *::-webkit-scrollbar sizing (lumeo.css) with a
+           visible gap either side. *@
         <div style="display: grid; grid-template-columns: minmax(0, 1fr); width: 100%;">
-            <div @ref="_hostRef" class="lumeo-gantt-host" style="overflow-x: auto; overflow-y: auto; max-height: @Height; min-width: 0;"></div>
+            <div @ref="_hostRef" class="lumeo-gantt-host pb-2" style="overflow-x: auto; overflow-y: auto; max-height: @Height; min-width: 0;"></div>
         </div>
     </div>
 }
