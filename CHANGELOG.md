@@ -5,6 +5,30 @@ All notable changes to Lumeo will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.10.3] - Unreleased
+
+### Fixed
+- **Gantt bar labels stay readable across the progress fill.** The completed part of a bar was
+  an opaque dark fill with the label drawn inline across it, so a label vanished wherever it
+  crossed the fill; the fill is now a translucent overlay of the bar colour in both the
+  `GanttChart` (v3) and the legacy `Gantt` (v2) renderer, every in-bar label carries a thin
+  halo in the background colour (so it reads on any fill, also where the theme's primary
+  equals its foreground, as in zinc dark), and the horizontal scrollbar no longer overlays the
+  last row.
+
+### Added
+- **DataGrid: `FilteredRowCount`, `TotalRowCount` and `OnRowCountChanged`.** The count of rows
+  that survive the grid's own filters and search (before paging; the server total in
+  `ServerMode` and row virtualization) and the source count, plus an event so a host can
+  render "n of m" that follows the built-in search. The pagination summary and the
+  filtered-empty state read the same numbers.
+- **DataGrid: the row-detail panel spans the visible viewport** (`DetailStickyToViewport`,
+  default `true`). On a grid wider than its container the detail `<td>` was as wide as the
+  table's scroll width, so a detail panel laid itself out mostly off-screen and its text looked
+  cut off until the user scrolled right. The grid now measures its scroll container with a
+  ResizeObserver and the detail wrapper sticks to the left edge at that width, so a detail
+  template always reads within what is on screen.
+
 ## [5.10.2] - 2026-09-16
 
 ### Fixed
