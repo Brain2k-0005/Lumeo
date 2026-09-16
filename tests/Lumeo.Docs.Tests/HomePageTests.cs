@@ -169,4 +169,26 @@ public class HomePageTests
         Assert.Contains("Capabilities", cut.Markup);
         Assert.Contains("Rows per page", cut.Markup);
     }
+
+    // #490: Dashboard01's SidebarProvider always isolates from the customizer's
+    // page-wide Menu Color setting — both here (the home teaser) and on
+    // /blocks/dashboard (the full block) it must look like an ordinary consumer app,
+    // never a dark/light sidebar clash forced by whatever the customizer has selected.
+    [Fact]
+    public async Task Home_Teaser_Sidebar_Isolates_From_The_Page_Wide_Menu_Color()
+    {
+        await using var ctx = NewContext();
+        var cut = ctx.Render<Home>();
+
+        Assert.NotEmpty(cut.FindAll("[data-menu-color-isolate]"));
+    }
+
+    [Fact]
+    public async Task Blocks_Dashboard_Sidebar_Isolates_From_The_Page_Wide_Menu_Color()
+    {
+        await using var ctx = NewContext();
+        var cut = ctx.Render<DashboardPattern>();
+
+        Assert.NotEmpty(cut.FindAll("[data-menu-color-isolate]"));
+    }
 }

@@ -149,38 +149,30 @@ window.themeManager = {
         } else {
             document.documentElement.removeAttribute('data-menu-accent');
         }
-        // Menu color
+        // Menu color (#490): the WHOLE sidebar token set, not just the surface and its
+        // text — a dark sidebar with the light theme's sidebar-primary (near-black) hid
+        // the team switcher's logo box, and the light accent made every hover a light
+        // slab on dark. Previously this wrote 8 --color-sidebar-* custom properties as
+        // INLINE styles on <html> with hard-coded zinc values, which (a) reached every
+        // SidebarComponent on the page — docs demos, pattern cards, the dashboard block
+        // — not just the app chrome the setting is meant for, and (b) ignored the active
+        // theme's own sidebar colors ("dark" meant zinc, not "this theme's dark
+        // sidebar"), clashing with every non-default theme. Now: a data-menu-color
+        // attribute, exactly like data-menu-accent — lumeo.css resolves it against the
+        // active theme's own private --_sidebar-light-*/--_sidebar-dark-* sets, and
+        // SidebarProvider's IsolateMenuColor opts an embedded preview out entirely.
         const menuColor = localStorage.getItem('theme-menu-color') || lumeoDefault(defaults, 'menuColor');
-        // The menu colour is the WHOLE sidebar token set, not just the surface and its text:
-        // a dark sidebar with the light theme's sidebar-primary (near-black) hid the team
-        // switcher's logo box, and the light accent made every hover a light slab on dark.
-        // The two sets are lumeo.css's own dark and light sidebar defaults.
-        const sidebarTokens = {
-            dark: {
-                '--color-sidebar': 'hsl(220 13% 10%)',
-                '--color-sidebar-foreground': 'hsl(0 0% 95%)',
-                '--color-sidebar-primary': 'oklch(0.9848 0 0)',
-                '--color-sidebar-primary-foreground': 'oklch(0.2103 0.0059 285.88)',
-                '--color-sidebar-accent': 'oklch(0.2741 0.0055 286.03)',
-                '--color-sidebar-accent-foreground': 'oklch(0.9848 0 0)',
-                '--color-sidebar-border': 'oklch(0.2741 0.0055 286.03)',
-                '--color-sidebar-ring': 'oklch(0.9848 0 0)',
-            },
-            light: {
-                '--color-sidebar': 'hsl(0 0% 100%)',
-                '--color-sidebar-foreground': 'hsl(220 13% 10%)',
-                '--color-sidebar-primary': 'oklch(0.2103 0.0059 285.88)',
-                '--color-sidebar-primary-foreground': 'oklch(0.9848 0 0)',
-                '--color-sidebar-accent': 'oklch(0.9676 0.0013 286.38)',
-                '--color-sidebar-accent-foreground': 'oklch(0.2103 0.0059 285.88)',
-                '--color-sidebar-border': 'oklch(0.9197 0.004 286.32)',
-                '--color-sidebar-ring': 'oklch(0.2103 0.0059 285.88)',
-            },
-        };
-        const chosen = sidebarTokens[menuColor];
-        for (const name of Object.keys(sidebarTokens.dark)) {
-            if (chosen) document.documentElement.style.setProperty(name, chosen[name]);
-            else document.documentElement.style.removeProperty(name);
+        if (menuColor === 'dark' || menuColor === 'light') {
+            document.documentElement.setAttribute('data-menu-color', menuColor);
+        } else {
+            document.documentElement.removeAttribute('data-menu-color');
+        }
+        // Migration: remove any inline --color-sidebar-* properties a pre-#490 build of
+        // this file left on <html> for a returning visitor. An inline style always wins
+        // over a stylesheet rule regardless of specificity, so a leftover one would
+        // permanently shadow the data-menu-color CSS above.
+        for (const name of ['--color-sidebar', '--color-sidebar-foreground', '--color-sidebar-primary', '--color-sidebar-primary-foreground', '--color-sidebar-accent', '--color-sidebar-accent-foreground', '--color-sidebar-border', '--color-sidebar-ring']) {
+            document.documentElement.style.removeProperty(name);
         }
         // Direction (RTL / LTR). Applied early so first paint is correct and
         // browser-native logical properties flip with no visible reflow.
@@ -300,20 +292,12 @@ window.themeManager = {
         return localStorage.getItem('theme-base-color') || 'slate';
     },
     setMenuColor: function (menuColor) {
-        if (!menuColor || menuColor === 'default') {
-            localStorage.removeItem('theme-menu-color');
-            for (const name of ['--color-sidebar', '--color-sidebar-foreground', '--color-sidebar-primary', '--color-sidebar-primary-foreground', '--color-sidebar-accent', '--color-sidebar-accent-foreground', '--color-sidebar-border', '--color-sidebar-ring']) {
-                document.documentElement.style.removeProperty(name);
-            }
-        } else {
+        if (menuColor === 'dark' || menuColor === 'light') {
             localStorage.setItem('theme-menu-color', menuColor);
-            if (menuColor === 'dark') {
-                document.documentElement.style.setProperty('--color-sidebar', 'hsl(220 13% 10%)');
-                document.documentElement.style.setProperty('--color-sidebar-foreground', 'hsl(0 0% 95%)');
-            } else if (menuColor === 'light') {
-                document.documentElement.style.setProperty('--color-sidebar', 'hsl(0 0% 100%)');
-                document.documentElement.style.setProperty('--color-sidebar-foreground', 'hsl(220 13% 10%)');
-            }
+            document.documentElement.setAttribute('data-menu-color', menuColor);
+        } else {
+            localStorage.removeItem('theme-menu-color');
+            document.documentElement.removeAttribute('data-menu-color');
         }
         this._notifyThemeChanged();
     },
@@ -460,8 +444,7 @@ window.themeManager = {
         document.documentElement.style.removeProperty('--radius');
         document.documentElement.classList.remove('style-new-york');
         document.documentElement.removeAttribute('data-base-color');
-        document.documentElement.style.removeProperty('--color-sidebar');
-        document.documentElement.style.removeProperty('--color-sidebar-foreground');
+        document.documentElement.removeAttribute('data-menu-color');
         document.documentElement.removeAttribute('data-menu-accent');
         var el = document.getElementById('lumeo-font-override');
         if (el) el.textContent = '';
