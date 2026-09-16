@@ -334,6 +334,23 @@ public interface IComponentInteropService : IAsyncDisposable, IDisposable
     ValueTask SetupAutoResize(string elementId, int maxRows);
     ValueTask UnregisterAutoResize(string elementId);
 
+    /// <summary>
+    /// Observes <paramref name="elementId"/>'s own client width (a ResizeObserver) and
+    /// writes it onto that same element as the CSS custom property
+    /// <c>--lumeo-grid-viewport-w</c> (e.g. <c>"860px"</c>), entirely in JS — no .NET
+    /// round-trip per resize. Used by <c>Lumeo.DataGrid</c>'s <c>DataGrid</c> on its
+    /// horizontal scroll wrapper so the expanded row-detail panel (its
+    /// <c>DetailStickyToViewport</c> parameter) can size itself to the wrapper's VISIBLE
+    /// width via a plain <c>calc(var(--lumeo-grid-viewport-w, 100%) - ...)</c> CSS rule,
+    /// instead of the table's full (possibly horizontally-scrolled) content width.
+    /// </summary>
+    // Default no-op bodies (rather than abstract) so the many small test-double
+    // implementers of this interface throughout the test suite don't all need updating
+    // for a method most of them never exercise — same rationale as TabsScrollBy above.
+    ValueTask RegisterViewportWidth(string elementId) => ValueTask.CompletedTask;
+    /// <summary>Stops the observer started by <see cref="RegisterViewportWidth"/>.</summary>
+    ValueTask UnregisterViewportWidth(string elementId) => ValueTask.CompletedTask;
+
     // OTP Paste
     ValueTask RegisterOtpPaste(string baseId, int length, Func<string, Task> handler);
     ValueTask UnregisterOtpPaste(string baseId, int length);

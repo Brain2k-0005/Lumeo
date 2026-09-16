@@ -5,12 +5,42 @@
     <td colspan="@ColSpan" class="p-4">
         @if (DetailTemplate is not null)
         {
-            @DetailTemplate(Item)
+            @if (EffectiveStickyToViewport)
+            {
+                @* Pins the detail content to the grid's visible scroll viewport instead of
+                   letting it span the <td>'s full colspan width (which, once the table has
+                   scrolled horizontally past the viewport, is the table's full scrolled
+                   width — the panel's right portion would sit off-screen until the user
+                   scrolls right; see DataGrid.DetailStickyToViewport).
+                   data-slot="datagrid-detail-viewport" is a plain CSS hook (lumeo.css) —
+                   NOT a Tailwind arbitrary class, since a var()-based arbitrary class never
+                   reaches the precompiled bundle (repo rule). Its width rule reads the
+                   --lumeo-grid-viewport-w custom property that DataGrid.razor's scroll
+                   wrapper keeps current via a plain ResizeObserver (Interop.
+                   RegisterViewportWidth in components.js) — inherited straight through as
+                   an ordinary CSS custom property, no container-type/cqw involved (that
+                   approach broke DataGridHeaderCell's position:fixed popovers — see
+                   DataGrid.razor's comment on the scroll wrapper). *@
+                <div class="sticky left-0" data-slot="datagrid-detail-viewport">
+                    @DetailTemplate(Item)
+                </div>
+            }
+            else
+            {
+                @DetailTemplate(Item)
+            }
         }
     </td>
 </tr>
 
 @code {
+    [CascadingParameter] private DataGridContext<TItem>? Context { get; set; }
+
+    // Defaults true (matching DataGrid.DetailStickyToViewport's own default) when
+    // rendered outside the grid's cascade, e.g. an isolated component test with no
+    // DataGridContext supplied.
+    private bool EffectiveStickyToViewport => Context?.DetailStickyToViewport ?? true;
+
     /// <summary>The row data whose detail content is being expanded, passed to
     /// <see cref="DetailTemplate"/>.</summary>
     [Parameter] public TItem Item { get; set; } = default!;
