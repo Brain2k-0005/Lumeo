@@ -5,6 +5,19 @@ All notable changes to Lumeo will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.10.2] - Unreleased
+
+### Fixed
+- **"Menu Color" follows the active theme and stays out of embedded previews.** The setting
+  wrote eight zinc-grey `--color-sidebar*` values as inline properties on `<html>`, so every
+  sidebar on the page (docs demos, the dashboard block, the home teaser) turned zinc-dark, and a
+  coloured theme's own dark sidebar was ignored; a live switch also wrote only two of the eight
+  tokens. It is now a `data-menu-color` attribute, every theme file carries its light and dark
+  sidebar sets as private `--_sidebar-{light,dark}-*` variables, and "Dark" means that theme's
+  dark sidebar. `SidebarProvider.IsolateMenuColor` (used by the docs demos) keeps an embedded UI
+  on the mode's own set; a consumer's `--sidebar*` override keeps winning. The customizer's reset
+  clears the setting completely, and an old inline value is cleaned up on the next load.
+
 ## [5.10.1] - 2026-09-15
 
 ### Fixed
