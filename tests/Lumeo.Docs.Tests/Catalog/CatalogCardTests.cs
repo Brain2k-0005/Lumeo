@@ -16,22 +16,25 @@ public class CatalogCardTests : IDisposable
     [Fact]
     public void Renders_name_description_and_thumbnail()
     {
+        // Fictional name — no "PlainFieldShowcase.razor" exists or ever will, so this
+        // exercises the plain thumbnail-card path regardless of which real components
+        // later waves give a live showcase to.
         var component = new RegistryComponent
         {
-            Name = "Input",
+            Name = "PlainField",
             Category = "Forms",
             Description = "Captures single-line user text input.",
-            Thumbnail = "/preview-cards/input.png",
+            Thumbnail = "/preview-cards/plain-field.png",
             NugetPackage = "Lumeo",
             HasDocsPage = true,
-            Slug = "input",
+            Slug = "plain-field",
         };
         var cut = _ctx.Render<CatalogCard>(p => p.Add(c => c.Component, component));
 
-        Assert.Contains("Input", cut.Markup);
+        Assert.Contains("PlainField", cut.Markup);
         Assert.Contains("Captures single-line user text input.", cut.Markup);
-        Assert.Contains("/preview-cards/input.png", cut.Markup);
-        Assert.Contains("href=\"components/input\"", cut.Markup);
+        Assert.Contains("/preview-cards/plain-field.png", cut.Markup);
+        Assert.Contains("href=\"components/plain-field\"", cut.Markup);
     }
 
     [Fact]
@@ -57,18 +60,21 @@ public class CatalogCardTests : IDisposable
     [Fact]
     public void Slugifies_compound_name_for_href()
     {
+        // Fictional compound name — no "MysteryWidgetShowcase.razor" exists or ever
+        // will, so this stays focused on href slugification regardless of which real
+        // compound-named components later waves give a live showcase to.
         var component = new RegistryComponent
         {
-            Name = "DatePicker",
+            Name = "MysteryWidget",
             Category = "Forms",
             Description = "Picks a date.",
-            Thumbnail = "/preview-cards/date-picker.png",
+            Thumbnail = "/preview-cards/mystery-widget.png",
             NugetPackage = "Lumeo",
             HasDocsPage = true,
-            Slug = "date-picker",
+            Slug = "mystery-widget",
         };
         var cut = _ctx.Render<CatalogCard>(p => p.Add(c => c.Component, component));
-        Assert.Contains("href=\"components/date-picker\"", cut.Markup);
+        Assert.Contains("href=\"components/mystery-widget\"", cut.Markup);
     }
 
     [Fact]
@@ -166,20 +172,21 @@ public class CatalogCardTests : IDisposable
     [Fact]
     public void Falls_back_to_thumbnail_when_no_showcase_registered_for_the_name()
     {
-        // "Input" has no InputShowcase.razor (wave 0 only covers Navigation).
+        // Fictional name — no "PlainFieldShowcase.razor" exists or ever will, so this
+        // stays true regardless of which real components later waves cover.
         var component = new RegistryComponent
         {
-            Name = "Input",
+            Name = "PlainField",
             Category = "Forms",
             Description = "Captures single-line user text input.",
-            Thumbnail = "/preview-cards/input.png",
+            Thumbnail = "/preview-cards/plain-field.png",
             NugetPackage = "Lumeo",
             HasDocsPage = true,
-            Slug = "input",
+            Slug = "plain-field",
         };
         var cut = _ctx.Render<CatalogCard>(p => p.Add(c => c.Component, component));
 
-        Assert.Contains("/preview-cards/input.png", cut.Markup);
+        Assert.Contains("/preview-cards/plain-field.png", cut.Markup);
     }
 
     [Fact]

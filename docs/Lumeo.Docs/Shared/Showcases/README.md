@@ -111,6 +111,68 @@ wiring:
 - **Scrollspy** — the nav link list with the middle link shown in its
   `data-active="true"` state, exactly as it looks mid-scroll.
 
+## Wave 1 — Forms category
+
+All 35 `hasDocsPage: true` Forms-category components got a showcase.
+
+| Component | Showcase state |
+| --- | --- |
+| Button | Default / Secondary / Outline / Destructive, small size |
+| Cascader | Closed trigger, path pre-selected ("United States / California") |
+| Checkbox | 3 items — one checked, one unchecked, one disabled |
+| ColorPicker | Closed trigger, swatch + hex pre-filled |
+| Combobox | Single-select, "React" pre-selected as a removable chip |
+| ConfirmButton | Delete + Archive triggers, real OverlayService dialog on click |
+| DatePicker | Closed trigger, date pre-filled |
+| DateTimePicker | Closed trigger, date + time pre-filled |
+| FileUpload | Compact Button-variant trigger (the dropzone variant doesn't fit the box) |
+| Form | Name/Email fields, one already showing a validation error |
+| IconPicker | Closed trigger, "House" icon pre-selected, clearable |
+| InplaceEditor | Starts in edit mode (input + Save/Cancel) — see exceptions below |
+| Input | Email field with label, plus a search input with a leading icon |
+| InputMask | Phone mask pre-filled, ZIP mask empty |
+| Mention | Empty textarea with a "Type @ to mention..." placeholder and 3 people wired up as the mention list (its dropdown is absolutely positioned, so it stays closed by default rather than opening into a clip) |
+| NumberInput | Quantity stepper + a `$` prefixed price field |
+| OtpInput | 4-box code, pre-filled |
+| OverlayForm | Name/Email body + Cancel/Save footer, fixed-height wrapper |
+| PasswordInput | Pre-filled password with the strength meter shown |
+| QueryBuilder | One rule ("Active equals true") over 2 fields |
+| RadioGroup | 3 options, "Comfortable" selected |
+| Rating | Half-star value pre-set |
+| Segmented | 3 options, "Weekly" active — click another to switch |
+| Select | Closed trigger, "Banana" pre-selected — click opens the real dropdown |
+| Slider | Single thumb at 60%, with a live percentage readout |
+| Switch | 2 settings rows, one on one off |
+| TagInput | 2 tags pre-filled, removable |
+| Textarea | Labeled bio field, pre-filled |
+| TimePicker | Closed trigger, time pre-filled |
+| Toggle | 3 icon toggles, one pressed |
+| ToggleGroup | Single-select alignment group, "center" active |
+| TreeSelect | Closed trigger, nested value pre-selected ("Phones") |
+| UploadTrigger | Two Button-styled pick triggers (default + image filter) |
+
+### Exceptions — heavy JS engine
+
+These two mount a large third-party JS editor engine (CodeMirror 6 /
+TipTap-ProseMirror) via dynamic JS interop — not something a catalog card
+should bootstrap just to render a preview. Each showcase instead renders a
+faithful **static rendition** of the editor's chrome, in theme tokens, with no
+engine mounted:
+
+- **CodeEditor** — a language pill, line-number gutter, and a few lines of
+  syntax-colored JSON, exactly as the real editor's chrome looks.
+- **RichTextEditor** — the real `Toolbar`/`Button` components (genuinely
+  interactive chrome) above a static rendition of typical WYSIWYG output
+  standing in for the ProseMirror document body.
+
+### Note — InplaceEditor's idle state
+
+`InplaceEditor`'s non-editing display state has no visual "editable" affordance
+until `:hover` (an opacity-0 pencil icon), which reads as inert plain text in a
+static preview. Like `MegaMenu`/`SpeedDial` in wave 0, a real click on its own
+display element is simulated once after mount (`window.lumeo.clickElement`) so
+the showcase lands on the actual editing UI (input + Save/Cancel) — the
+recognisable, useful state rule 3 calls for.
 ## Wave 1 — Utility and Layout categories
 
 All 10 Layout-category and 18 Utility-category `hasDocsPage: true` components
