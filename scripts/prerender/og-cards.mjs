@@ -149,7 +149,6 @@ function categoryFor(route) {
     if (route.startsWith('/components/'))         return { label: 'Component', tagline: 'Blazor component documentation',   keywordNoun: 'Blazor Component',   titleSuffix: 'Blazor Component | Lumeo' };
     if (route.startsWith('/blocks/'))             return { label: 'Block',     tagline: 'Copy-paste UI block',              keywordNoun: 'Blazor UI Block',    titleSuffix: 'Blazor UI Block | Lumeo' };
     if (route.startsWith('/docs/'))               return { label: 'Docs',      tagline: 'Lumeo documentation',              keywordNoun: 'Documentation',      titleSuffix: 'Lumeo Documentation' };
-    if (route.startsWith('/patterns'))            return { label: 'Pattern',   tagline: 'Composition pattern',              keywordNoun: 'Pattern',            titleSuffix: 'Blazor Pattern | Lumeo' };
     return { label: 'UI Library', tagline: 'Modern Blazor component library', keywordNoun: 'Blazor UI Library', titleSuffix: 'Blazor UI Library | Lumeo' };
 }
 
@@ -326,7 +325,7 @@ function structuredDataFor(route, title, description) {
             author: { '@type': 'Organization', name: 'Lumeo', url: SITE },
             keywords: keywords.join(', '),
         };
-    } else if (route.startsWith('/components/') || route.startsWith('/blocks/') || route.startsWith('/patterns')) {
+    } else if (route.startsWith('/components/') || route.startsWith('/blocks/')) {
         primary = {
             '@type': 'TechArticle',
             headline: title,
@@ -592,14 +591,13 @@ const llmsFullLines = [
     '---',
     '',
 ];
-// Order the chunks meaningfully: root first, then docs, components, blocks, patterns, others.
+// Order the chunks meaningfully: root first, then docs, components, blocks, others.
 function order(r) {
     if (r === '/') return 0;
     if (r.startsWith('/docs/')) return 1;
     if (r.startsWith('/components/')) return 2;
     if (r.startsWith('/blocks/')) return 3;
-    if (r.startsWith('/patterns')) return 4;
-    return 5;
+    return 4;
 }
 mdChunks.sort((a, b) => {
     const da = order(a.route), db = order(b.route);

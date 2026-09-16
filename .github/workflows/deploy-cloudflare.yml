@@ -130,8 +130,9 @@ jobs:
         # can't discover them from the SPA shell at /. This step greps every @page from
         # docs/Lumeo.Docs/Pages/**/*.razor, assigns a priority + changefreq bucket based
         # on the route prefix, and emits a sitemap.xml that tells Google about all ~190
-        # pages. /e2e/* (Playwright-only test harnesses) and /not-found are excluded —
-        # they're not real content and carry <meta name="robots" content="noindex">.
+        # pages. /e2e/* (Playwright-only test harnesses), /not-found, and /patterns[/*]
+        # (client-side-only redirect stub to /components, real 301 handled by
+        # _redirects) are excluded — none of them are real content.
         # lastmod is each file's actual last commit date (falls back to today for files
         # with no git history yet, e.g. this same commit).
         run: |
@@ -154,12 +155,11 @@ jobs:
                 route=$(sed -E 's/^\xEF\xBB\xBF//' "$file" | grep -E '^@page\s+"[^"]+"' | head -1 | sed -E 's|^@page\s+"([^"]+)"|\1|')
                 [ -z "$route" ] && continue
                 case "$route" in
-                  /|/e2e/*|/not-found) continue ;;
+                  /|/e2e/*|/not-found|/patterns|/patterns/*) continue ;;
                 esac
                 case "$route" in
                   /components/*)  PRIORITY=0.8; FREQ=monthly ;;
                   /blocks/*)      PRIORITY=0.7; FREQ=monthly ;;
-                  /patterns/*)    PRIORITY=0.6; FREQ=monthly ;;
                   /docs/*)        PRIORITY=0.7; FREQ=weekly  ;;
                   *)              PRIORITY=0.5; FREQ=monthly ;;
                 esac

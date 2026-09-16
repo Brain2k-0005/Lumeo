@@ -59,7 +59,6 @@ public class AllComponentPagesRenderTests
                 ctx.Services.AddLumeo();
                 ctx.Services.AddSingleton<IconService>();
                 ctx.Services.AddSingleton<DynamicIconResolver>();
-                ctx.Services.AddSingleton<PatternFilterService>();
                 ctx.Services.AddSingleton<NavConfigService>();
                 ctx.Services.AddSingleton(new HttpClient(new EmptyRegistryHandler()) { BaseAddress = new Uri("https://test/") });
                 ctx.Services.AddSingleton<RegistryService>();
