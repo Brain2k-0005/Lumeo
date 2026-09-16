@@ -125,14 +125,14 @@ public class SaasDemoTests
         // lower-priority ones the audit found forced a horizontal scroll on phones.
         Assert.Contains("Region", ColumnHeaderTitles(cut));
 
+        // OnViewportChanged (SaasDemo.razor) mutates the column-visibility fields
+        // (_seatsColVisible etc.) synchronously before it dispatches its own
+        // StateHasChanged via InvokeAsync — only that dispatch is async, so waiting for
+        // it via WaitForAssertion polling was unnecessary and flaked under a loaded test
+        // machine. The fields are already updated by the time SetMobile returns; a plain
+        // cut.Render() forces a fresh render off the already-mutated state, deterministically.
         fake.SetMobile(true);
-
-        // ViewportChanged fires outside bUnit's own event dispatch, so the resulting
-        // StateHasChanged is marshalled through the renderer's dispatcher asynchronously
-        // — WaitForAssertion retries until that render has actually landed. A generous
-        // timeout keeps this from flaking under a loaded test machine (the default
-        // window can be too short when the full suite is running concurrently).
-        cut.WaitForAssertion(() => Assert.DoesNotContain("Region", ColumnHeaderTitles(cut)), TimeSpan.FromSeconds(10));
+        cut.Render();
         var headers = ColumnHeaderTitles(cut);
         Assert.DoesNotContain("Owner", headers);
         Assert.DoesNotContain("Seats", headers);

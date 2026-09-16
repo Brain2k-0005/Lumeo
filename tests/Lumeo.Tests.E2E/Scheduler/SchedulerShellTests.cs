@@ -51,8 +51,12 @@ public class SchedulerShellTests : PlaywrightTestBase
         var title = Page.Locator("[data-scheduler-dialog-title]");
         await Assertions.Expect(title).ToBeVisibleAsync(new() { Timeout = 5000 });
         // Populated from the event, and the calendar select shows the one it belongs to.
+        // PR #481 swapped the native <select> for the Lumeo Select component, so the element
+        // at [data-scheduler-dialog-calendar] is now a trigger BUTTON (role="combobox"), not
+        // an <input>/<select> — ToHaveValueAsync doesn't apply to it. Assert its displayed
+        // label text instead.
         await Assertions.Expect(title).ToHaveValueAsync("Standup");
-        await Assertions.Expect(Page.Locator("[data-scheduler-dialog-calendar]")).ToHaveValueAsync("team");
+        await Assertions.Expect(Page.Locator("[data-scheduler-dialog-calendar]")).ToContainTextAsync("Team");
 
         await title.FillAsync("Renamed standup");
         await Page.Locator("[data-scheduler-dialog-save]").ClickAsync();

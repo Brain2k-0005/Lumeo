@@ -80,6 +80,18 @@ internal sealed class UtilityInterop
         await module.InvokeVoidAsync("unregisterAutoResize", elementId);
     }
 
+    // --- Viewport Width (DataGrid detail-panel sticky-to-viewport) ---
+
+    public async ValueTask RegisterViewportWidth(IJSObjectReference module, string elementId)
+    {
+        await module.InvokeVoidAsync("registerViewportWidth", elementId);
+    }
+
+    public async ValueTask UnregisterViewportWidth(IJSObjectReference module, string elementId)
+    {
+        await module.InvokeVoidAsync("unregisterViewportWidth", elementId);
+    }
+
     // --- File Download ---
 
     public async ValueTask DownloadFile(
