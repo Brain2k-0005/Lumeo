@@ -536,12 +536,32 @@ function render(inst) {
         // --color-primary is one; so is the Meridian Ops demo's own brand
         // colour) the label text vanished the instant it crossed onto this
         // fully-opaque segment, and a high-progress bar lost its entire
-        // label. 0.55 keeps the completed portion visibly MORE filled than
-        // bgRect's 0.30/0.45(hover) — still reads as "progress" — while
-        // staying translucent enough that the label's one foreground holds
-        // across both segments (the same "translucent overlay, not an opaque
-        // colour" mechanism GanttBar.razor's v3 ProgressStyle uses, ported
-        // to this renderer's SVG fill-opacity idiom).
+        // label. Still a translucent tint of the BAR/primary colour (barFill
+        // — never the foreground), the same mechanism GanttBar.razor's v3
+        // ProgressStyle uses, ported to this renderer's SVG fill-opacity
+        // idiom.
+        //
+        // Regression fix (round 2, owner report on the live site after this
+        // PR first merged): 0.55 was still too dark — for Lumeo's own default
+        // "zinc" scheme, --color-primary and --color-foreground are the
+        // SAME token value in EACH mode (near-black in light, near-white in
+        // dark — a monochrome "ink" primary, confirmed live: both read
+        // exactly oklch(0.9848 0 0) in dark mode), so barFill and the
+        // label's own foreground text converge toward the identical colour
+        // whenever no per-task BarColor is set — the default, most common
+        // case. At 0.55 opacity in dark mode this measured (live pixel
+        // sample, Meridian Ops "Berth A" bar) as progress-fill rgb(174,174,
+        // 174) under white(250,250,250) label text — a ~2.1:1 contrast
+        // ratio, below even WCAG's lowest large-text floor: the label read
+        // fine over bgRect's own darker 0.30 remainder but all but
+        // disappeared over this segment, the inverse of finding 1's original
+        // defect. 0.35 (matching GanttBar.razor v3's own ProgressFillClass
+        // percentage) composites far closer to the canvas background in
+        // both directions, restoring a ~6:1+ contrast against the label's
+        // foreground colour in both modes (verified live — see this PR's
+        // report for the full before/after RGB samples) while still reading
+        // as visibly "more filled" than bgRect's 0.30. Nothing else in this
+        // renderer's opacity/fill-opacity values changed.
         const progressW = barW * (task.progress / 100);
         const progressRect = el('rect', {
             class: 'lumeo-gantt-bar-progress',
@@ -549,7 +569,7 @@ function render(inst) {
             width: progressW, height: BAR_HEIGHT,
             rx: 4, ry: 4,
             fill: barFill,
-            'fill-opacity': '0.55',
+            'fill-opacity': '0.35',
         }, group);
 
         // Label (clipped to bar)
