@@ -1,0 +1,38 @@
+@namespace Lumeo.Docs.Shared.Showcases
+@inject IJSRuntime JS
+
+@* InplaceEditor has no "start in edit mode" parameter and its idle-state pencil hint is
+   opacity-0 until :hover, which reads as inert plain text in a static preview. A real
+   click on its own display element is simulated once after mount (window.lumeo.clickElement,
+   same retry pattern as SpeedDial/MegaMenu) so the showcase lands on the actual editing
+   UI — input plus Save/Cancel — which is the recognisable, useful state (README rule 3). *@
+<div class="w-full max-w-[22rem]" id="@_id">
+    <InplaceEditor @bind-Value="_name" ShowButtons="true" />
+</div>
+
+@code {
+    private readonly string _id = $"inplace-editor-showcase-{Guid.NewGuid():N}";
+    private string _name = "Q3 Launch Plan";
+    private bool _clicked;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender || _clicked) return;
+        _clicked = true;
+
+        var selector = $"#{_id} [role='button']";
+        for (var attempt = 0; attempt < 5; attempt++)
+        {
+            try
+            {
+                var clicked = await JS.InvokeAsync<bool>("lumeo.clickElement", selector);
+                if (clicked) return;
+            }
+            catch (Microsoft.JSInterop.JSDisconnectedException) { return; }
+            catch (InvalidOperationException) { return; } // JS unavailable (bUnit render-smoke test, prerender)
+            catch (Microsoft.JSInterop.JSException) { /* window.lumeo not defined yet — retry */ }
+
+            await Task.Delay(150);
+        }
+    }
+}
