@@ -4084,6 +4084,46 @@ export function unregisterColumnResize(handleId) {
     }
 }
 
+// --- DataGrid Viewport Width ---
+//
+// Writes the grid's horizontal scroll wrapper's own CLIENT width (the visible viewport,
+// not the table's full scrolled width) onto that same element as a CSS custom property,
+// `--lumeo-grid-viewport-w`. DataGridDetailRow.razor's sticky detail-panel wrapper reads
+// it back (plain inherited CSS custom property, no JS round-trip on the read side) via
+// `width: calc(var(--lumeo-grid-viewport-w, 100%) - 2rem)` in lumeo.css, so the expanded
+// detail panel always spans exactly the visible viewport instead of the table's full
+// scroll width — see DataGrid.DetailStickyToViewport.
+//
+// Deliberately NOT `container-type: inline-size` + `cqw` units: that CSS containment
+// makes the wrapper the containing block for `position: fixed` descendants, which broke
+// DataGridHeaderCell's filter popover / pin menu / column menu (positioned in VIEWPORT
+// coordinates via positionFixed() below) — they mispositioned and got clipped by this
+// wrapper's own `overflow-auto`. A plain custom property has no such side effect.
+//
+// No .NET round-trip per resize: the ResizeObserver callback writes the CSS variable
+// directly. Only DataGrid ever calls this, and only when it actually has a DetailTemplate
+// with DetailStickyToViewport (see DataGrid.razor's OnAfterRenderAsync/DisposeAsync).
+const viewportWidthObservers = new Map();
+
+export function registerViewportWidth(elementId) {
+    unregisterViewportWidth(elementId); // idempotent re-register (e.g. Blazor re-render)
+    const el = document.getElementById(elementId);
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const apply = () => el.style.setProperty('--lumeo-grid-viewport-w', el.clientWidth + 'px');
+    const ro = new ResizeObserver(apply);
+    ro.observe(el);
+    viewportWidthObservers.set(elementId, ro);
+    apply(); // first paint — don't wait for the initial ResizeObserver callback
+}
+
+export function unregisterViewportWidth(elementId) {
+    const ro = viewportWidthObservers.get(elementId);
+    if (ro) {
+        ro.disconnect();
+        viewportWidthObservers.delete(elementId);
+    }
+}
+
 // --- DataGrid Column Reorder FLIP Animation ---
 //
 // FLIP (First-Last-Invert-Play): the technique for animating layout changes

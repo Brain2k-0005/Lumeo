@@ -237,9 +237,10 @@ public record DataGridContext<TItem>(
     public Action<int, int>? EndCellEdit { get; init; }
 
     /// <summary>Whether the row-detail cell's content is pinned to the grid's visible
-    /// scroll viewport (<c>position: sticky; left: 0; width: 100cqw</c> minus the cell's
-    /// own padding) instead of spanning the table's full, possibly horizontally-scrolled,
-    /// width; see <c>DataGrid.DetailStickyToViewport</c>. Default true.</summary>
+    /// scroll viewport (<c>position: sticky; left: 0</c>, width driven by the
+    /// <c>--lumeo-grid-viewport-w</c> CSS custom property) instead of spanning the
+    /// table's full, possibly horizontally-scrolled, width; see
+    /// <c>DataGrid.DetailStickyToViewport</c>. Default true.</summary>
     public bool DetailStickyToViewport { get; init; } = true;
 
     /// <summary>Padding utilities for a body data cell, tightened under <see cref="Compact"/>.
