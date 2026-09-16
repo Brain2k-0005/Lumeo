@@ -258,7 +258,7 @@
                                     </Flex>
                                     <div class="h-64 px-2 pb-2">
                                         <BarChart Categories="_planQuarters" Series="_planSeries" Stacked="true" Height="100%"
-                                                  ShowDataLabels="true" LabelPosition="inside"
+                                                  OptionOverride="_planChartAxisOverride"
                                                   IsLoading="@(_chartsLoading || _refreshing)" ShowLoadingLabel="false"
                                                   SkeletonStyle="ChartSkeletonStyle.Silhouette" AriaLabel="New signups by plan, by quarter" />
                                     </div>
@@ -347,12 +347,14 @@
                 {
                     <div @key="'c'">
                         <BlurFade DelayMs="0">
-                            @* The count below only reflects the lifecycle chip filter (@_statusFilter)
-                               — the grid's own search/column filters below can narrow it further, so
-                               the copy is worded to never contradict the grid's "No rows match" empty
-                               state (a true live-synced count needs the grid to expose its own
-                               post-filter row count; see report "Needs a library change"). *@
-                            <Lumeo.Text Size="sm" Color="muted" Class="mb-3 block">@FilteredCustomers.Count of @_customers.Count accounts · lifecycle filter: @CurrentStatusLabel · search and filter further below · drag a column header onto the group panel, reorder headers, pin, filter and expand a row for the full profile. Ungrouped rows virtualize for scroll performance.</Lumeo.Text>
+                            @* Scoped to the lifecycle chip filter only (@_statusFilter) — the grid's
+                               own search/column filters can narrow it further, so this is worded to
+                               never contradict the grid's "No rows match" empty state (a true
+                               live-synced count needs the grid to expose its own post-filter row
+                               count; see report "Needs a library change"). Kept to one short status
+                               line — the grouping/reorder/pin affordances are already covered on the
+                               DataGrid component doc page, not repeated here as demo prose. *@
+                            <Lumeo.Text Size="sm" Color="muted" Class="mb-3 block">@FilteredCustomers.Count accounts · @CurrentStatusLabel</Lumeo.Text>
                         </BlurFade>
 
                         <!-- CRM controls: lifecycle quick-filter chips + density toggle.
@@ -424,10 +426,10 @@
                                             <Badge Variant="@StatusVariant(c.Status)">@c.Status</Badge>
                                         </CellTemplate>
                                     </DataGridColumnDef>
-                                    <DataGridColumnDef TItem="NorthlightCustomer" Title="Health" Field="Health" Sortable="true">
+                                    <DataGridColumnDef TItem="NorthlightCustomer" Title="Health" Field="Health" Sortable="true" MinWidth="150">
                                         <CellTemplate Context="c">
                                             <span class="@HealthClass(c.Health)">
-                                                <span class="h-1.5 w-1.5 rounded-full @HealthDot(c.Health)"></span>
+                                                <span class="h-1.5 w-1.5 shrink-0 rounded-full @HealthDot(c.Health)"></span>
                                                 @HealthWithScore(c.Health)
                                             </span>
                                         </CellTemplate>
@@ -873,8 +875,16 @@
         </SidebarMenuItem>;
 
     // Detail row: a mini account profile revealed when a row is expanded.
+    // saas-detail-panel + sticky/w-[calc(100cqw-2rem)]: this box's natural width is
+    // the WHOLE grid table's scroll width (every column, ~1350px+), not the scroll
+    // wrapper's much narrower visible width — see SaasDemo.razor.css, which turns
+    // that wrapper into a CSS container so this can size itself to its real visible
+    // width via cqw instead. Without this, the grid-cols-3 layout still shrinks
+    // correctly (min-w-0 works), it's just correctly laid out inside a box that is
+    // itself 2-3x too wide, so a third of it renders off the right edge of the
+    // visible grid.
     private RenderFragment<NorthlightCustomer> CustomerDetail => c =>
-        @<div class="grid gap-4 sm:grid-cols-3">
+        @<div class="saas-detail-panel sticky left-0 grid w-[calc(100cqw-2rem)] gap-4 sm:grid-cols-3">
             <Stack Gap="1.5">
                 <Lumeo.Text Size="xs" Weight="semibold" Color="muted" Class="uppercase tracking-wide">Primary contact</Lumeo.Text>
                 <Flex Align="center" Gap="2" Class="min-w-0">
@@ -971,6 +981,25 @@
         new() { Name = "Starter",    Values = new() { 42, 55, 61, 74 } },
         new() { Name = "Pro",        Values = new() { 28, 33, 41, 52 } },
         new() { Name = "Enterprise", Values = new() { 6, 9, 11, 15 } },
+    };
+
+    // BarChart hides its value axis' number labels by design (see the "Needs a
+    // library change" note in the fix report) — OptionOverride is the documented
+    // escape hatch, so this turns the axis labels back on for this one chart without
+    // touching BarChart.razor. Explicit `max` (tallest stack, Q4, is 141) leaves
+    // headroom above the tallest bar instead of relying on ECharts' auto-scale, which
+    // is what let the previous per-segment data labels clip against the plot edge.
+    private readonly Dictionary<string, object> _planChartAxisOverride = new()
+    {
+        ["yAxis"] = new object[]
+        {
+            new Dictionary<string, object>
+            {
+                ["type"] = "value",
+                ["max"] = 170,
+                ["axisLabel"] = new Dictionary<string, object> { ["show"] = true },
+            },
+        },
     };
 
     protected override void OnInitialized()
@@ -1320,7 +1349,7 @@
             >= 40 => "text-warning-text",
             _ => "text-destructive-text",
         };
-        return $"inline-flex items-center gap-1.5 text-xs font-medium {tone}";
+        return $"inline-flex items-center gap-1.5 whitespace-nowrap text-xs font-medium {tone}";
     }
 
     private static string DeltaClass(int delta)
