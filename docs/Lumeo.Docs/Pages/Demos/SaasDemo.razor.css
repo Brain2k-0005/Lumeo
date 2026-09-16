@@ -1,0 +1,20 @@
+/* Customers grid (audit row 1 follow-up): the row-detail panel is rendered as a
+   colspan <td> inside DataGrid's own table, so its natural width is the table's
+   full SCROLL width (sum of every column's width, ~1350px+ for this 10-column
+   grid) — not the scroll wrapper's much narrower VISIBLE width. Grid utilities
+   (grid-cols-3, minmax(0,1fr)) correctly distribute THAT wide box into three
+   correctly-shrinkable columns, so text wraps fine — it wraps fine in a box that
+   is itself 3x too wide, which just means the wrap happens off-screen, to the
+   right of the scroll wrapper's visible edge.
+   DataGrid does not expose an id/hook for its internal scroll wrapper
+   (`docs/Lumeo.Docs/Pages/Demos/SaasDemo.razor`'s report lists this as a
+   "Needs a library change" gap), so this reaches into the rendered wrapper via
+   ::deep + :has() to turn it into a CSS container. The detail panel
+   (.saas-detail-panel, set on CustomerDetail's root in SaasDemo.razor) then
+   sizes itself to that container's actual visible width via `cqw` units
+   instead of the table's scroll width — see the `w-[calc(100cqw-2rem)]` Tailwind
+   arbitrary-value utility on that element (2rem subtracts the detail <td>'s own
+   p-4 padding). No src/ library code changes. */
+::deep div:has(> table[role='grid']) {
+    container-type: inline-size;
+}
