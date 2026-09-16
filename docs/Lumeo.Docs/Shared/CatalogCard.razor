@@ -3,63 +3,96 @@
 
 @if (Component.HasDocsPage)
 {
-    <a href="components/@Component.Slug"
-       class="group relative flex flex-col rounded-xl border border-border/40 bg-card overflow-hidden hover:border-primary/40 hover:shadow-sm transition-all">
-        @if (!string.IsNullOrEmpty(Component.Thumbnail))
-        {
-            <div class="aspect-[16/9] w-full bg-muted/30 overflow-hidden">
-                <img src="@Component.Thumbnail" alt="@Component.Name preview"
-                     loading="@(Eager ? "eager" : "lazy")" fetchpriority="@(Eager ? "high" : null)"
-                     decoding="async" width="480" height="270"
-                     class="h-full w-full object-cover group-hover:scale-105 transition-transform duration-300" />
-            </div>
-        }
-        else
-        {
-            <div class="catalog-card-icon-fallback aspect-[16/9] w-full bg-muted/30 flex items-center justify-center text-muted-foreground/40">
-                <DynamicIcon Name="Box" Class="h-12 w-12" />
-            </div>
-        }
-        @if (ShowNugetBadge)
-        {
-            <span class="absolute top-2 right-2 inline-flex items-center rounded-full bg-background/90 backdrop-blur-sm border border-border/60 px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
-                @Component.NugetPackage
-            </span>
-        }
-        <div class="p-4 space-y-1">
+    @* The preview area is a STRICT 16:9 box: aspect-[16/9] + overflow-hidden, always.
+       A showcase taller than that (an accordion with an item open, a carousel slide,
+       ...) clips — at the BOTTOM, never the top. The content wrapper stays
+       items-start (the fallback/base alignment), but the showcase's own wrapper gets
+       w-full my-auto: w-full is needed because a flex item shrinks to CONTENT width by
+       default — without it, a showcase built on its own `w-full max-w-[22rem]` root
+       (Splitter, Menubar, AppBar, Carousel, ...) resolved that w-full against the
+       shrunk wrapper instead of the box, rendering narrow/squashed (Splitter's "Left"/
+       "Right" panes overlapping, Menubar a tiny pill). With w-full restoring the
+       wrapper to the box's full width, my-auto (margin-block:auto) still centres the
+       wrapper itself vertically when it's SMALLER than the container's cross-axis
+       space (short showcases like Breadcrumb/Pagination/Menubar/Affix/NavigationMenu
+       no longer hug the top with a big empty gap below), and the auto margin resolves
+       to 0 — falling back to items-start's top alignment — the moment content is as
+       tall as or taller than the box, so nothing ever pushes up into a top clip.
+       (Plain items-center doesn't have this fallback: a too-tall showcase overflows
+       equally above AND below the box, clipping its TOP half against the card's
+       rounded corner — that's what happened to Accordion before this.) A showcase
+       that's intrinsically small and centres ITSELF (Breadcrumb, Pagination — no
+       w-full max-w-[22rem] root) still centres fine inside the now-full-width wrapper
+       via its own `mx-auto`/the box's `justify-center`. One rule in CatalogCard,
+       inherited by every showcase without any of them touching their own layout for
+       it. A showcase that opens a real dropdown/panel (MegaMenu, Menubar,
+       NavigationMenu) still gets clipped here if it's absolutely positioned
+       (MegaMenu) — position:fixed content (Menubar/NavigationMenu) escapes this
+       regardless of overflow-hidden, since neither this box nor its ancestors use a
+       transform. Known, accepted tradeoff (see Showcases/README.md).
+       The padding + centering below is scoped to ShowcaseType is not null — the
+       thumbnail/icon fallback (~150 cards with no showcase yet) renders full-bleed via
+       its own absolute inset-0 wrapper (see ThumbnailOrIcon) so it isn't inset by this
+       padding. *@
+    <div class="group relative flex flex-col rounded-xl border border-border/40 bg-card hover:border-primary/40 hover:shadow-sm transition-all">
+        <div class="aspect-[16/9] w-full relative overflow-hidden rounded-t-xl bg-muted/30">
+            @if (ShowcaseType is not null)
+            {
+                <div class="absolute inset-0 flex items-start justify-center p-4">
+                    @if (Eager)
+                    {
+                        <div class="w-full my-auto"><DynamicComponent Type="@ShowcaseType" /></div>
+                    }
+                    else
+                    {
+                        <LazyRender Height="100%">
+                            <Placeholder>@ThumbnailOrIcon</Placeholder>
+                            <ChildContent><div class="w-full my-auto"><DynamicComponent Type="@ShowcaseType" /></div></ChildContent>
+                        </LazyRender>
+                    }
+                </div>
+            }
+            else
+            {
+                @ThumbnailOrIcon
+            }
+            @if (ShowNugetBadge)
+            {
+                <span class="absolute top-2 right-2 inline-flex items-center rounded-full bg-background/90 backdrop-blur-sm border border-border/60 px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
+                    @Component.NugetPackage
+                </span>
+            }
+            <a href="components/@Component.Slug"
+               class="absolute bottom-2 right-2 inline-flex items-center justify-center h-7 w-7 rounded-full bg-background/90 backdrop-blur-sm border border-border/60 text-muted-foreground hover:text-primary hover:border-primary/40 transition-colors"
+               aria-label="Open @Component.Name">
+                <DynamicIcon Name="ArrowUpRight" Class="h-3.5 w-3.5" />
+            </a>
+        </div>
+        <a href="components/@Component.Slug" class="p-4 space-y-1">
             <h3 class="text-sm font-semibold text-foreground group-hover:text-primary transition-colors">
                 @Component.Name
             </h3>
             <p class="text-xs text-muted-foreground line-clamp-2">
                 @Component.Description
             </p>
-        </div>
-    </a>
+        </a>
+    </div>
 }
 else
 {
     @* Undocumented variant — rendered as a non-clickable div with a "Coming soon" badge.
        Component is real (registry entry exists) but no docs page yet.
-       "Coming soon" takes precedence over the NuGet badge to avoid overlap. *@
+       "Coming soon" takes precedence over the NuGet badge to avoid overlap.
+       No showcase lookup here — there's no docs page to open, so a live preview would be
+       a dead end. *@
     <div class="relative flex flex-col rounded-xl border border-border/40 bg-card overflow-hidden opacity-70"
          title="Documentation page coming soon">
-        @if (!string.IsNullOrEmpty(Component.Thumbnail))
-        {
-            <div class="aspect-[16/9] w-full bg-muted/30 overflow-hidden">
-                <img src="@Component.Thumbnail" alt="@Component.Name preview"
-                     loading="lazy" decoding="async" width="480" height="270"
-                     class="h-full w-full object-cover" />
-            </div>
-        }
-        else
-        {
-            <div class="catalog-card-icon-fallback aspect-[16/9] w-full bg-muted/30 flex items-center justify-center text-muted-foreground/40">
-                <DynamicIcon Name="Box" Class="h-12 w-12" />
-            </div>
-        }
-        <span class="absolute top-2 right-2 inline-flex items-center rounded-full bg-background/90 backdrop-blur-sm border border-border/60 px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
-            Docs coming soon
-        </span>
+        <div class="aspect-[16/9] w-full relative overflow-hidden bg-muted/30">
+            @ThumbnailOrIcon
+            <span class="absolute top-2 right-2 inline-flex items-center rounded-full bg-background/90 backdrop-blur-sm border border-border/60 px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
+                Docs coming soon
+            </span>
+        </div>
         <div class="p-4 space-y-1">
             <h3 class="text-sm font-semibold text-foreground">
                 @Component.Name
@@ -78,7 +111,9 @@ else
     /// Set on the first row of cards (above the fold). Loads the thumbnail
     /// eagerly with high fetch priority so it isn't deprioritised as the LCP
     /// element — lazy-loading the LCP image is a known anti-pattern. All other
-    /// cards stay lazy.
+    /// cards stay lazy. When a live showcase exists, Eager also skips the
+    /// LazyRender wrapper so the showcase mounts immediately instead of waiting
+    /// on an IntersectionObserver tick.
     /// </summary>
     [Parameter] public bool Eager { get; set; }
 
@@ -91,4 +126,36 @@ else
         Component.HasDocsPage &&
         !string.IsNullOrEmpty(Component.NugetPackage) &&
         Component.NugetPackage != "Lumeo";
+
+    /// <summary>Resolved once per render — the live showcase component for this
+    /// registry name, or null when none has been written yet.</summary>
+    private Type? ShowcaseType => ShowcaseResolver.Resolve(Component.Name);
+
+    // Shared between the fallback preview (no showcase yet), the LazyRender placeholder,
+    // and the undocumented-variant card — Razor's templated-delegate syntax (same trick
+    // as SidebarMenuButton.Anchor) so the @if/@else reads like ordinary markup instead of
+    // a hand-rolled RenderTreeBuilder.
+    //
+    // Both branches use `absolute inset-0` rather than their own aspect-ratio/h-full
+    // sizing: their containing block is always ALREADY the strict 16:9, overflow-hidden
+    // preview box (either directly, for the "no showcase" case, or via the showcase
+    // wrapper div one level up, for the LazyRender placeholder case) — inset-0 fills it
+    // edge to edge and, being absolutely positioned, ignores that wrapper's own p-4
+    // padding entirely, so a thumbnail image never renders inset with a muted margin.
+    private RenderFragment ThumbnailOrIcon =>
+        @<text>
+            @if (!string.IsNullOrEmpty(Component.Thumbnail))
+            {
+                <img src="@Component.Thumbnail" alt="@($"{Component.Name} preview")"
+                     loading="@(Eager ? "eager" : "lazy")" fetchpriority="@(Eager ? "high" : null)"
+                     decoding="async" width="480" height="270"
+                     class="absolute inset-0 h-full w-full object-cover" />
+            }
+            else
+            {
+                <div class="catalog-card-icon-fallback absolute inset-0 flex items-center justify-center text-muted-foreground/40">
+                    <DynamicIcon Name="Box" Class="h-12 w-12" />
+                </div>
+            }
+        </text>;
 }
