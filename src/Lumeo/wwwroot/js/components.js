@@ -518,6 +518,42 @@ export async function attachOverlayExitEnd(elementId, dotnetRef) {
 
 const positionCleanups = new Map();
 
+// Clip a reference element's rect to the portion actually visible through any
+// scrolling/clipping ancestor. getBoundingClientRect() always reports the
+// reference's FULL layout box, even when most of it has scrolled out of an
+// `overflow:auto/scroll/hidden/clip` pane — e.g. a Gantt bar whose right half
+// has scrolled past the timeline pane's right edge. Anchoring an overlay to
+// that raw (partly invisible) rect centers it on geometry the user can't see,
+// which can push the whole overlay outside the pane (reported: a bar tooltip
+// rendering over the page's TOC, off the end of a horizontally-scrolled
+// canvas). Walk from the reference up to the document, intersecting with
+// every ancestor whose computed overflow-x/overflow-y actually clips (not
+// 'visible'), and anchor to that intersection instead. If the intersection
+// collapses to nothing (width or height <= 0) — e.g. the reference is fully
+// scrolled out — fall back to the raw rect rather than hiding anything; the
+// caller's own hover/visibility logic already owns whether to show at all.
+// Cheap: one short ancestor walk, run once per update() pass.
+function getVisibleRefRect(el) {
+    const raw = el.getBoundingClientRect();
+    let left = raw.left, top = raw.top, right = raw.right, bottom = raw.bottom;
+    let node = el.parentElement;
+    while (node) {
+        const cs = getComputedStyle(node);
+        const clipX = cs.overflowX !== 'visible';
+        const clipY = cs.overflowY !== 'visible';
+        if (clipX || clipY) {
+            const r = node.getBoundingClientRect();
+            if (clipX) { left = Math.max(left, r.left); right = Math.min(right, r.right); }
+            if (clipY) { top = Math.max(top, r.top); bottom = Math.min(bottom, r.bottom); }
+        }
+        node = node.parentElement;
+    }
+    const width = right - left;
+    const height = bottom - top;
+    if (width <= 0 || height <= 0) return raw;
+    return { left, top, right, bottom, width, height };
+}
+
 export function positionFixed(contentId, referenceId, align, matchWidth, side, offset, dotnetRef, alignOffset) {
     const content = document.getElementById(contentId);
     const reference = document.getElementById(referenceId);
@@ -561,7 +597,11 @@ export function positionFixed(contentId, referenceId, align, matchWidth, side, o
             return;
         }
 
-        const refRect = reference.getBoundingClientRect();
+        // Anchor to the VISIBLE slice of the reference, not its raw full rect
+        // (see getVisibleRefRect) — a reference partly scrolled out of a
+        // clipping ancestor must not pull the overlay off after its
+        // invisible portion.
+        const refRect = getVisibleRefRect(reference);
 
         content.style.position = 'fixed';
         content.style.zIndex = '50';
@@ -586,6 +626,24 @@ export function positionFixed(contentId, referenceId, align, matchWidth, side, o
         // (otherwise a previous tight maxHeight would skew the measurement).
         content.style.maxHeight = '';
         content.style.overflow = '';
+
+        // Neutralise the static position before measuring. With top/left still
+        // at 'auto' (first placement) or at whatever we wrote last pass, a
+        // position:fixed box with left:auto lays out at its STATIC position,
+        // and shrink-to-fit width resolves against the viewport width
+        // remaining from THAT position — not the full viewport. For a trigger
+        // anchored far to the right inside a wide scrolled container (e.g. a
+        // Gantt bar deep in an overflowing canvas) the static left is huge, so
+        // the box gets almost no width, wraps hard, and every top/left
+        // computed below from the wrapped `ch` is wrong (observed: a Gantt bar
+        // tooltip floating ~100px above its bar because it measured itself at
+        // its wrapped, taller height). Pinning to 0,0 — transform-free, per
+        // #172 above — makes shrink-to-fit resolve against the full viewport
+        // width regardless of where the box happens to sit before this pass
+        // places it for real.
+        content.style.left = '0px';
+        content.style.top = '0px';
+        content.style.right = '';
 
         // Measure the natural box. matchWidth was already applied above, so width
         // (and therefore wrap-dependent height) is final. offsetWidth/Height force
@@ -732,7 +790,7 @@ export function positionFixed(contentId, referenceId, align, matchWidth, side, o
         // (Transform-free: recompute `top` directly instead of stripping a
         // translateY from a transform string.)
         if (resolvedSide === 'bottom' && cr.bottom > window.innerHeight) {
-            const newRefRect = reference.getBoundingClientRect();
+            const newRefRect = getVisibleRefRect(reference);
             const spaceAbove = newRefRect.top - 8;        // 8px breathing room
             const spaceBelow = window.innerHeight - newRefRect.bottom - 8;
             if (spaceAbove >= cr.height + gap) {
@@ -752,7 +810,7 @@ export function positionFixed(contentId, referenceId, align, matchWidth, side, o
         }
         // Flip vertical if overflows top — same guard logic
         if (resolvedSide === 'top' && cr.top < 0) {
-            const newRefRect = reference.getBoundingClientRect();
+            const newRefRect = getVisibleRefRect(reference);
             const spaceAbove = newRefRect.top - 8;
             const spaceBelow = window.innerHeight - newRefRect.bottom - 8;
             if (spaceBelow >= cr.height + gap) {
@@ -815,7 +873,7 @@ export function positionFixed(contentId, referenceId, align, matchWidth, side, o
         // Report the side the box ACTUALLY landed on. A collision flip above may have moved a preferred
         // Top box below its trigger (or vice-versa); compare final box-center vs reference-center so a
         // directional-arrow consumer can re-point its arrow to the edge facing the trigger.
-        const rRect = reference.getBoundingClientRect();
+        const rRect = getVisibleRefRect(reference);
         const cRect = content.getBoundingClientRect();
         if (resolvedSide === 'top' || resolvedSide === 'bottom') {
             computedSide = (cRect.top + cRect.height / 2) <= (rRect.top + rRect.height / 2) ? 'top' : 'bottom';
@@ -943,9 +1001,17 @@ export function positionAtPoint(contentId, x, y) {
     const margin = 8;
     el.style.position = 'fixed';
     el.style.transform = '';
-    // Place at the raw point first, then measure the natural size.
-    el.style.left = `${x}px`;
-    el.style.top = `${y}px`;
+    // Measure the natural size at 0,0 FIRST, not at the raw point — the same
+    // static-position wrap positionFixed's update() guards against (see the
+    // comment there). Placing at `x`/`y` before measuring makes shrink-to-fit
+    // resolve against the viewport width remaining from THAT point, not the
+    // full viewport, so a menu opened near the right edge of a wide scrolled
+    // canvas (e.g. ContextMenu on a far-right Gantt bar) would measure itself
+    // wrapped/too-narrow and every flip/clamp below would work off the wrong
+    // size.
+    el.style.left = '0px';
+    el.style.top = '0px';
+    el.style.right = '';
     void el.offsetHeight; // force layout flush before measuring
     const rect = el.getBoundingClientRect();
     const vw = window.innerWidth;
