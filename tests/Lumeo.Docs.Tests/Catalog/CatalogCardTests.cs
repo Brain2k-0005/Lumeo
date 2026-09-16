@@ -16,22 +16,25 @@ public class CatalogCardTests : IDisposable
     [Fact]
     public void Renders_name_description_and_thumbnail()
     {
+        // Fictional name — no "PlainFieldShowcase.razor" exists or ever will, so this
+        // exercises the plain thumbnail-card path regardless of which real components
+        // later waves give a live showcase to.
         var component = new RegistryComponent
         {
-            Name = "Input",
+            Name = "PlainField",
             Category = "Forms",
             Description = "Captures single-line user text input.",
-            Thumbnail = "/preview-cards/input.png",
+            Thumbnail = "/preview-cards/plain-field.png",
             NugetPackage = "Lumeo",
             HasDocsPage = true,
-            Slug = "input",
+            Slug = "plain-field",
         };
         var cut = _ctx.Render<CatalogCard>(p => p.Add(c => c.Component, component));
 
-        Assert.Contains("Input", cut.Markup);
+        Assert.Contains("PlainField", cut.Markup);
         Assert.Contains("Captures single-line user text input.", cut.Markup);
-        Assert.Contains("/preview-cards/input.png", cut.Markup);
-        Assert.Contains("href=\"components/input\"", cut.Markup);
+        Assert.Contains("/preview-cards/plain-field.png", cut.Markup);
+        Assert.Contains("href=\"components/plain-field\"", cut.Markup);
     }
 
     [Fact]
@@ -57,18 +60,21 @@ public class CatalogCardTests : IDisposable
     [Fact]
     public void Slugifies_compound_name_for_href()
     {
+        // Fictional compound name — no "MysteryWidgetShowcase.razor" exists or ever
+        // will, so this stays focused on href slugification regardless of which real
+        // compound-named components later waves give a live showcase to.
         var component = new RegistryComponent
         {
-            Name = "DatePicker",
+            Name = "MysteryWidget",
             Category = "Forms",
             Description = "Picks a date.",
-            Thumbnail = "/preview-cards/date-picker.png",
+            Thumbnail = "/preview-cards/mystery-widget.png",
             NugetPackage = "Lumeo",
             HasDocsPage = true,
-            Slug = "date-picker",
+            Slug = "mystery-widget",
         };
         var cut = _ctx.Render<CatalogCard>(p => p.Add(c => c.Component, component));
-        Assert.Contains("href=\"components/date-picker\"", cut.Markup);
+        Assert.Contains("href=\"components/mystery-widget\"", cut.Markup);
     }
 
     [Fact]
@@ -132,6 +138,55 @@ public class CatalogCardTests : IDisposable
         Assert.Contains("href=\"components/magic-card\"", cut.Markup);
         // "Docs coming soon" must NOT appear — that badge is only for undocumented cards
         Assert.DoesNotContain("Docs coming soon", cut.Markup);
+    }
+
+    [Fact]
+    public void Renders_showcase_when_one_is_registered_for_the_component_name()
+    {
+        // "Accordion" has a real AccordionShowcase.razor under Shared/Showcases.
+        var component = new RegistryComponent
+        {
+            Name = "Accordion",
+            Category = "Navigation",
+            Description = "A vertically stacked set of interactive headings.",
+            Thumbnail = "/preview-cards/accordion.png",
+            NugetPackage = "Lumeo",
+            HasDocsPage = true,
+            Slug = "accordion",
+        };
+        var cut = _ctx.Render<CatalogCard>(p => p
+            .Add(c => c.Component, component)
+            .Add(c => c.Eager, true)); // Eager skips LazyRender so the showcase mounts synchronously.
+
+        // The live showcase renders in place of the static thumbnail image.
+        Assert.DoesNotContain("/preview-cards/accordion.png", cut.Markup);
+        Assert.Contains("Is it accessible?", cut.Markup); // AccordionShowcase's first trigger text
+
+        // Exactly two links point at the component's own docs page: the title/description
+        // block, and the small "open" glyph overlaid on the preview — never the preview
+        // area itself (an interactive showcase inside a link would navigate on every click).
+        var linksToPage = cut.FindAll("a[href=\"components/accordion\"]");
+        Assert.Equal(2, linksToPage.Count);
+    }
+
+    [Fact]
+    public void Falls_back_to_thumbnail_when_no_showcase_registered_for_the_name()
+    {
+        // Fictional name — no "PlainFieldShowcase.razor" exists or ever will, so this
+        // stays true regardless of which real components later waves cover.
+        var component = new RegistryComponent
+        {
+            Name = "PlainField",
+            Category = "Forms",
+            Description = "Captures single-line user text input.",
+            Thumbnail = "/preview-cards/plain-field.png",
+            NugetPackage = "Lumeo",
+            HasDocsPage = true,
+            Slug = "plain-field",
+        };
+        var cut = _ctx.Render<CatalogCard>(p => p.Add(c => c.Component, component));
+
+        Assert.Contains("/preview-cards/plain-field.png", cut.Markup);
     }
 
     [Fact]

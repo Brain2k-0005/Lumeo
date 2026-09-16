@@ -12,6 +12,12 @@ public static class DocsTestContextExtensions
 {
     public static void AddDocsServices(this BunitContext ctx)
     {
+        // Full Lumeo DI graph (ILumeoLocalizer, ToastService, ThemeService, ...) first —
+        // any real component a catalog card mounts (a live showcase, not just the
+        // thumbnail fallback) injects services from here. The explicit overrides below
+        // win over AddLumeo()'s own registrations (last registration wins for singular
+        // resolution), so behavior for the doc-page-specific fakes is unchanged.
+        ctx.Services.AddLumeo();
         ctx.Services.AddSingleton<IComponentInteropService, NoopInteropService>();
         ctx.Services.AddSingleton<NavConfigService>();
         ctx.Services.AddSingleton<RegistryService>();

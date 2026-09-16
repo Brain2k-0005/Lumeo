@@ -226,3 +226,16 @@ window.lumeo.bindMobileNavTabs = function (host) {
 
     setActive(0);
 };
+
+// Simulates a real user click on the first element matching `selector`. Used by
+// catalog showcases (Shared/Showcases/*.razor) that need to start in an "open"/
+// interacted state to be a useful preview — e.g. SpeedDial has no "default open"
+// parameter, so its showcase clicks its own trigger once after mount. Returns
+// whether an element was actually found and clicked (false, never throws, when
+// nothing matches yet) so a caller can retry instead of silently giving up.
+window.lumeo.clickElement = function (selector) {
+    var el = document.querySelector(selector);
+    if (!el) return false;
+    el.click();
+    return true;
+};
