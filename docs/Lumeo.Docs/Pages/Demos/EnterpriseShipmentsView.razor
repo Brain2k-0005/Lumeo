@@ -89,7 +89,7 @@
                 <CellTemplate>
                     <div class="flex items-center gap-2">
                         <span class="@($"h-6 w-1 shrink-0 rounded-full {RefAccent(context)}")"></span>
-                        <span class="font-medium tabular-nums">@context.Reference</span>
+                        <span class="font-medium tabular-nums text-foreground">@context.Reference</span>
                     </div>
                 </CellTemplate>
             </DataGridColumnDef>
@@ -123,19 +123,28 @@
                 </CellTemplate>
             </DataGridColumnDef>
 
+            @* Region and Weight are hidden by default (toggle back on via the column chooser)
+               so Value/ETA/Progress — the decision-critical fields on a freight console —
+               fit at 1440px without a horizontal scroll. Region duplicates the Lane's origin;
+               Weight is the lowest-priority numeric column for a control-tower read. *@
             <DataGridColumnDef TItem="Shipment" Title="Region" Field="Region" Sortable="true" Groupable="true"
-                               Filterable="true" FilterType="DataGridFilterType.Select" FilterOptions="_regionOpts" />
+                               Filterable="true" FilterType="DataGridFilterType.Select" FilterOptions="_regionOpts"
+                               Visible="false" />
 
             <DataGridColumnDef TItem="Shipment" Title="Weight (kg)" Field="Weight" Sortable="true"
                                Filterable="true" FilterType="DataGridFilterType.Number" Format="N0"
-                               Aggregate="AggregateType.Sum" FooterFormat="N0" />
+                               Aggregate="AggregateType.Sum" FooterFormat="N0"
+                               HeaderCssClass="text-right" CellClass="@(_ => "text-right tabular-nums")"
+                               Visible="false" />
 
             <DataGridColumnDef TItem="Shipment" Title="Value (€)" Field="Value" Sortable="true"
-                               Filterable="true" FilterType="DataGridFilterType.Number" Format="N0"
-                               Aggregate="AggregateType.Sum" FooterFormat="N0" />
+                               Filterable="true" FilterType="DataGridFilterType.Number" Format="€#,##0"
+                               Aggregate="AggregateType.Sum" FooterFormat="€#,##0"
+                               HeaderCssClass="text-right" CellClass="@(_ => "text-right tabular-nums")" />
 
             <DataGridColumnDef TItem="Shipment" Title="ETA" Field="Eta" Sortable="true"
-                               Filterable="true" FilterType="DataGridFilterType.Date" Format="MMM d" />
+                               Filterable="true" FilterType="DataGridFilterType.Date" Format="MMM d"
+                               CellClass="@(_ => "tabular-nums")" />
 
             <DataGridColumnDef TItem="Shipment" Title="Progress" Field="ProgressPct" Sortable="true">
                 <CellTemplate>
@@ -311,7 +320,9 @@
     {
         var s = MeridianData.Shipments;
         var inTransit = s.Count(x => x.Status == "In Transit");
-        var attention = s.Count(x => x.Status is "Delayed" or "Exception" or "Customs");
+        // Delayed + Exception only — genuinely at-risk shipments. Customs is a routine
+        // hold, not a risk signal, so it no longer inflates this control-tower tile.
+        var attention = s.Count(x => x.Status is "Delayed" or "Exception");
         var value = s.Sum(x => x.Value);
         _kpis = new[]
         {

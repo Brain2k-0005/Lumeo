@@ -98,14 +98,17 @@
     private readonly HashSet<string> _cats = new();
     private readonly HashSet<string> _sevs = new();
 
-    private readonly Dictionary<string, int> _catCounts =
-        MeridianData.AuditCategories.ToDictionary(c => c, c => MeridianData.Audit.Count(e => e.Category == c));
-    private readonly Dictionary<string, int> _sevCounts =
-        MeridianData.AuditSeverities.ToDictionary(s => s, s => MeridianData.Audit.Count(e => e.Severity == s));
+    // Faceted counts recompute on every filter change (see Recompute), each against the
+    // COMPLEMENTARY facet's filter + the search query — never against its own filter, so
+    // ticking "Auth" still shows how many events every OTHER category would contribute.
+    private Dictionary<string, int> _catCounts = new();
+    private Dictionary<string, int> _sevCounts = new();
 
     private bool HasFilters => _search.Length > 0 || _cats.Count > 0 || _sevs.Count > 0;
 
     private List<AuditEntry> _filtered = MeridianData.Audit.ToList();
+
+    protected override void OnInitialized() => Recompute();
 
     private void OnSearch(string? v)
     {
@@ -130,15 +133,26 @@
     private void Recompute()
     {
         var q = _search.Trim();
+        bool MatchesSearch(AuditEntry e) =>
+            q.Length == 0
+            || e.Action.Contains(q, StringComparison.OrdinalIgnoreCase)
+            || e.Actor.Contains(q, StringComparison.OrdinalIgnoreCase)
+            || e.Target.Contains(q, StringComparison.OrdinalIgnoreCase)
+            || e.Detail.Contains(q, StringComparison.OrdinalIgnoreCase);
+
         _filtered = MeridianData.Audit.Where(e =>
                 (_cats.Count == 0 || _cats.Contains(e.Category)) &&
                 (_sevs.Count == 0 || _sevs.Contains(e.Severity)) &&
-                (q.Length == 0
-                 || e.Action.Contains(q, StringComparison.OrdinalIgnoreCase)
-                 || e.Actor.Contains(q, StringComparison.OrdinalIgnoreCase)
-                 || e.Target.Contains(q, StringComparison.OrdinalIgnoreCase)
-                 || e.Detail.Contains(q, StringComparison.OrdinalIgnoreCase)))
+                MatchesSearch(e))
             .ToList();
+
+        // Each facet's counts are computed against the OTHER facet's filter (plus search),
+        // never its own — so ticking a category doesn't zero out the sibling categories'
+        // counts, and the severity counts (and vice versa) reflect what's actually reachable.
+        _catCounts = MeridianData.AuditCategories.ToDictionary(c => c, c =>
+            MeridianData.Audit.Count(e => e.Category == c && (_sevs.Count == 0 || _sevs.Contains(e.Severity)) && MatchesSearch(e)));
+        _sevCounts = MeridianData.AuditSeverities.ToDictionary(s => s, s =>
+            MeridianData.Audit.Count(e => e.Severity == s && (_cats.Count == 0 || _cats.Contains(e.Category)) && MatchesSearch(e)));
     }
 
     private static string CategoryIcon(string c) => c switch

@@ -13,16 +13,29 @@
 
     <div class="grid min-h-0 flex-1 gap-3 lg:grid-cols-[320px_1fr]">
 
-        <!-- Master list -->
-        <div class="flex min-h-0 flex-col gap-2 overflow-y-auto lg:pr-1">
+        <!-- Master list. Below lg this collapses to a master-detail drill-in: once the
+             visitor taps a request the list hides and the detail takes the full column
+             (with a Back-to-list affordance), instead of stacking list + detail and
+             showing the same title/amount twice in a row. -->
+        <div class="@(_drilledIn ? "hidden lg:flex" : "flex") min-h-0 flex-col gap-2 overflow-y-auto lg:pr-1">
             @foreach (var a in MeridianData.Approvals)
             {
                 var active = a.Id == _selected.Id;
+                var resolved = _resolved.Contains(a.Id);
                 <button type="button" @onclick="() => Select(a)"
-                        class="@CardClass(active)">
+                        class="@CardClass(active, resolved)">
                     <div class="flex items-center justify-between gap-2">
                         <span class="font-mono text-[11px] text-muted-foreground">@a.Id</span>
-                        <Badge Variant="@CategoryVariant(a.Category)">@a.Category</Badge>
+                        @if (resolved)
+                        {
+                            <Badge Variant="Badge.BadgeVariant.Success" Class="gap-1">
+                                <DynamicIcon Name="Check" Class="h-3 w-3" />Resolved
+                            </Badge>
+                        }
+                        else
+                        {
+                            <Badge Variant="@CategoryVariant(a.Category)">@a.Category</Badge>
+                        }
                     </div>
                     <div class="mt-1 line-clamp-2 text-sm font-medium">@a.Title</div>
                     <div class="mt-1.5 flex items-center justify-between text-xs text-muted-foreground">
@@ -34,12 +47,22 @@
         </div>
 
         <!-- Detail -->
-        <div class="flex min-h-0 flex-col overflow-y-auto rounded-lg border border-border/60 bg-card">
+        <div class="@(_drilledIn ? "flex" : "hidden lg:flex") min-h-0 flex-col overflow-y-auto rounded-lg border border-border/60 bg-card">
+            <button type="button" @onclick="@(() => _drilledIn = false)"
+                    class="flex items-center gap-1.5 border-b border-border/60 px-4 py-2.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground lg:hidden">
+                <DynamicIcon Name="ChevronLeft" Class="h-3.5 w-3.5" /> Back to list
+            </button>
             <div class="flex flex-wrap items-start justify-between gap-3 border-b border-border/60 p-4">
                 <div class="min-w-0">
                     <div class="flex items-center gap-2">
                         <Badge Variant="@CategoryVariant(_selected.Category)">@_selected.Category</Badge>
                         <span class="font-mono text-xs text-muted-foreground">@_selected.Id</span>
+                        @if (_resolved.Contains(_selected.Id))
+                        {
+                            <Badge Variant="Badge.BadgeVariant.Success" Class="gap-1">
+                                <DynamicIcon Name="Check" Class="h-3 w-3" />Resolved
+                            </Badge>
+                        }
                     </div>
                     <h2 class="mt-1.5 text-base font-semibold">@_selected.Title</h2>
                     <p class="text-sm text-muted-foreground">@_selected.Requester · @_selected.RequesterRole · submitted @_selected.Submitted</p>
@@ -76,19 +99,28 @@
 
             <!-- Actions -->
             <div class="mt-auto flex flex-wrap items-center gap-2 border-t border-border/60 p-4">
-                <ConfirmButton Title="Approve this request?"
-                               Description="@($"Advances {_selected.Id} to the next stage of its workflow.")"
-                               ConfirmText="Approve" CancelText="Not yet"
-                               OnConfirm="Approve">
-                    <DynamicIcon Name="Check" Class="mr-1.5 h-4 w-4" /> Approve
-                </ConfirmButton>
-                <ConfirmButton Variant="Button.ButtonVariant.Destructive"
-                               Title="Reject this request?"
-                               Description="@($"{_selected.Id} will be returned to {_selected.Requester} with your note.")"
-                               ConfirmText="Reject" CancelText="Cancel" IsDestructive="true"
-                               OnConfirm="Reject">
-                    <DynamicIcon Name="X" Class="mr-1.5 h-4 w-4" /> Reject
-                </ConfirmButton>
+                @if (_resolved.Contains(_selected.Id))
+                {
+                    <Button Variant="Button.ButtonVariant.Secondary" Disabled="true">
+                        <DynamicIcon Name="Check" Class="mr-1.5 h-4 w-4" /> Resolved
+                    </Button>
+                }
+                else
+                {
+                    <ConfirmButton Title="Approve this request?"
+                                   Description="@($"Advances {_selected.Id} to the next stage of its workflow.")"
+                                   ConfirmText="Approve" CancelText="Not yet"
+                                   OnConfirm="Approve">
+                        <DynamicIcon Name="Check" Class="mr-1.5 h-4 w-4" /> Approve
+                    </ConfirmButton>
+                    <ConfirmButton Variant="Button.ButtonVariant.Destructive"
+                                   Title="Reject this request?"
+                                   Description="@($"{_selected.Id} will be returned to {_selected.Requester} with your note.")"
+                                   ConfirmText="Reject" CancelText="Cancel" IsDestructive="true"
+                                   OnConfirm="Reject">
+                        <DynamicIcon Name="X" Class="mr-1.5 h-4 w-4" /> Reject
+                    </ConfirmButton>
+                }
                 <div class="flex-1"></div>
                 <Button Variant="Button.ButtonVariant.Outline" OnClick="@(() => _dialogOpen = true)">
                     <DynamicIcon Name="FileText" Class="mr-1.5 h-4 w-4" /> View request
@@ -140,13 +172,20 @@
     private int _pending = MeridianData.Approvals.Count;
 
     // Requests already counted as resolved, so approving then rejecting (or repeatedly
-    // approving) the same request decrements the pending badge exactly once.
+    // approving) the same request decrements the pending badge exactly once. Also drives
+    // the "Resolved" card/detail treatment and disables Approve/Reject once actioned.
     private readonly HashSet<string> _resolved = new();
+
+    // Below lg, true once the visitor has explicitly tapped a card: the master list
+    // hides and the detail panel takes the full column (see the Back-to-list button),
+    // instead of stacking list + detail and repeating the same title/amount.
+    private bool _drilledIn;
 
     private void Select(ApprovalRequest a)
     {
         _selected = a;
         _currentStep = a.CurrentStep;
+        _drilledIn = true;
     }
 
     private async Task Approve()
@@ -172,11 +211,13 @@
         }
     }
 
-    private static string CardClass(bool active) =>
-        "w-full rounded-lg border p-3 text-left transition-colors " +
-        (active
-            ? "border-primary/50 bg-primary/5 ring-1 ring-primary/20"
-            : "border-border/60 bg-card hover:border-border hover:bg-accent/40");
+    private static string CardClass(bool active, bool resolved) =>
+        "w-full rounded-lg border p-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring " +
+        (resolved
+            ? (active ? "border-success/40 bg-success/5 opacity-80" : "border-border/60 bg-card opacity-60 hover:opacity-100 hover:border-border hover:bg-accent/40")
+            : active
+                ? "border-primary/50 bg-primary/5 ring-1 ring-primary/20"
+                : "border-border/60 bg-card hover:border-border hover:bg-accent/40");
 
     private static Badge.BadgeVariant CategoryVariant(string c) => c switch
     {
