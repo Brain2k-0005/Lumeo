@@ -34,4 +34,12 @@ public sealed class DataGridToolbarContext<TItem>
 
     public IComponentInteropService Interop { get; set; } = default!;
     public Services.Localization.ILumeoLocalizer Localizer { get; set; } = default!;
+
+    /// <summary>Mirrors <c>DataGrid.FilteredRowCount</c> — kept live (not just at
+    /// <c>OnParametersSetAsync</c> time) since filter/search changes fired from inside the
+    /// toolbar itself must not leave this a render behind; see <c>DataGrid.MaybeNotifyRowCountChanged</c>.</summary>
+    public int FilteredRowCount { get; set; }
+
+    /// <summary>Mirrors <c>DataGrid.TotalRowCount</c>; see <see cref="FilteredRowCount"/>.</summary>
+    public int TotalRowCount { get; set; }
 }

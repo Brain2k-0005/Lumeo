@@ -347,14 +347,15 @@
                 {
                     <div @key="'c'">
                         <BlurFade DelayMs="0">
-                            @* Scoped to the lifecycle chip filter only (@_statusFilter) — the grid's
-                               own search/column filters can narrow it further, so this is worded to
-                               never contradict the grid's "No rows match" empty state (a true
-                               live-synced count needs the grid to expose its own post-filter row
-                               count; see report "Needs a library change"). Kept to one short status
-                               line — the grouping/reorder/pin affordances are already covered on the
-                               DataGrid component doc page, not repeated here as demo prose. *@
-                            <Lumeo.Text Size="sm" Color="muted" Class="mb-3 block">@FilteredCustomers.Count accounts · @CurrentStatusLabel</Lumeo.Text>
+                            @* n = DataGrid.FilteredRowCount, m = DataGrid.TotalRowCount (kept in sync via
+                               OnRowCountChanged below) — n additionally reflects the grid's own
+                               search/column filters on top of the lifecycle chip filter
+                               (@_statusFilter), so this line can never contradict the grid's own
+                               "No rows match the current filters" empty state the way a chip-only
+                               count used to. Kept to one short status line — the grouping/reorder/pin
+                               affordances are already covered on the DataGrid component doc page,
+                               not repeated here as demo prose. *@
+                            <Lumeo.Text Size="sm" Color="muted" Class="mb-3 block">@_customersFiltered of @_customersTotal accounts · @CurrentStatusLabel</Lumeo.Text>
                         </BlurFade>
 
                         <!-- CRM controls: lifecycle quick-filter chips + density toggle.
@@ -398,6 +399,7 @@
                                           ShowToolbar="true" ShowSearch="true" ShowColumnChooser="true" ShowExport="false"
                                           Striped="true" Hoverable="true" Compact="_gridCompact" Reorderable="true"
                                           VirtualizeThreshold="200"
+                                          OnRowCountChanged="HandleCustomersRowCountChanged"
                                           DetailTemplate="CustomerDetail">
                                     <DataGridColumnDef TItem="NorthlightCustomer" Title="Company" Field="Company" Sortable="true" Filterable="true"
                                                        Pin="PinDirection.Left" Pinnable="true" MinWidth="240">
@@ -768,6 +770,22 @@
         _statusFilter == "all"
             ? _customers
             : _customers.Where(c => c.Status == _statusFilter).ToList();
+
+    // "n of m accounts" header — m is the chip-filtered baseline (DataGrid.TotalRowCount, since
+    // FilteredCustomers is what's bound to the grid's Items), n additionally follows the grid's
+    // OWN search/column filters (DataGrid.FilteredRowCount) via OnRowCountChanged, so the line
+    // can't contradict the grid's "No rows match the current filters" empty state the way the
+    // chip-only count used to. Seeded from FilteredCustomers.Count so first paint already shows
+    // the chip-filtered baseline instead of a "0 of 0" flash before the grid's first
+    // OnRowCountChanged lands.
+    private int _customersFiltered = NorthlightData.Customers.Count;
+    private int _customersTotal = NorthlightData.Customers.Count;
+
+    private void HandleCustomersRowCountChanged(DataGridRowCountChanged e)
+    {
+        _customersFiltered = e.Filtered;
+        _customersTotal = e.Total;
+    }
 
     // Sidebar surface: an explicit sidebar-border divider (the default rule is nearly
     // invisible against the dark rail) + a widened 4rem icon rail when collapsed so the
