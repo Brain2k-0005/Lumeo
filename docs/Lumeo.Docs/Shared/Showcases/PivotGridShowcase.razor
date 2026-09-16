@@ -1,0 +1,34 @@
+@namespace Lumeo.Docs.Shared.Showcases
+
+<div class="w-full max-w-[22rem] text-xs">
+    <PivotGrid TItem="Sale" Items="_sales" RowFields="_regionField" ColumnFields="_yearField" Measures="_amountMeasure" Compact="true" />
+</div>
+
+@code {
+    private record Sale(string Region, int Year, decimal Amount);
+
+    private readonly List<Sale> _sales = new()
+    {
+        new("Americas", 2023, 120_000m),
+        new("Americas", 2024, 145_000m),
+        new("EMEA", 2023, 88_000m),
+        new("EMEA", 2024, 96_000m),
+    };
+
+    private static string Money(decimal d) => "$" + d.ToString("N0");
+
+    private readonly IReadOnlyList<PivotField<Sale>> _regionField = new List<PivotField<Sale>>
+    {
+        new("Region", s => s.Region),
+    };
+
+    private readonly IReadOnlyList<PivotField<Sale>> _yearField = new List<PivotField<Sale>>
+    {
+        new("Year", s => s.Year, v => "FY " + v),
+    };
+
+    private readonly IReadOnlyList<PivotMeasure<Sale>> _amountMeasure = new List<PivotMeasure<Sale>>
+    {
+        new("Revenue", s => s.Amount, PivotAggregate.Sum, Money),
+    };
+}
