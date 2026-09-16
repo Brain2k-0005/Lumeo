@@ -1,18 +1,39 @@
 @namespace Lumeo.Docs.Shared.Showcases
 
-@* Overlay (OverlayService/OverlayProvider) is a low-level DI service with no visual identity
-   of its own — it has no `<Overlay>` primitive to render; calling it opens a real Dialog/Sheet
-   at the app's root-mounted OverlayProvider, which would take over the whole page from inside a
-   catalog card. Per the README's exception pattern this renders a faithful static rendition of
-   what OverlayService.ShowConfirmAsync produces: a Dialog-shaped panel (it renders through
-   Dialog/DialogContent under the hood), triggered by the same "Open a Dialog" button as the
-   component's own docs page. *@
+@* Fix round 1: a real button calling the real IOverlayService.ShowAlertDialogAsync
+   (Overlay's own confirm-dialog pattern — there is no separate "ShowConfirmAsync";
+   ShowAlertDialogAsync with title/description/confirm/cancel text IS the confirm
+   call, exactly what OverlayPage's own "Delete Item" demo uses) — OverlayProvider is
+   mounted once in MainLayout, so this opens a REAL AlertDialog over the page (taking
+   over the page on click is expected — that's what the component does). Injected
+   through the IOverlayService interface (mockable, per its own doc comment) as
+   nullable and null-guarded so this still renders standalone if a host doesn't
+   register it. *@
 <div class="w-full max-w-[22rem]">
     <Stack Gap="2">
-        <Button Size="Button.ButtonSize.Sm" Class="w-fit">Open Dialog</Button>
-        <Stack Gap="2" Class="rounded-lg border border-border/40 bg-background p-3 shadow-lg">
-            <Lumeo.Text Size="sm" Weight="semibold">Confirm</Lumeo.Text>
-            <Lumeo.Text Size="xs" Color="muted">Opened programmatically via OverlayService — no local open/closed state to manage.</Lumeo.Text>
-        </Stack>
+        <Button Size="Button.ButtonSize.Sm" Class="w-fit" OnClick="OpenConfirm">Open Dialog</Button>
+        @if (_result is not null)
+        {
+            <Lumeo.Text Size="xs" Color="muted">Result: @_result</Lumeo.Text>
+        }
     </Stack>
 </div>
+
+@code {
+    [Inject] private Lumeo.Services.IOverlayService? OverlayService { get; set; }
+
+    private string? _result;
+
+    private async Task OpenConfirm()
+    {
+        if (OverlayService is null) return;
+        var result = await OverlayService.ShowAlertDialogAsync(new Lumeo.Services.AlertDialogOptions
+        {
+            Title = "Confirm",
+            Description = "Opened programmatically via OverlayService — no local open/closed state to manage.",
+            ConfirmText = "Confirm",
+            CancelText = "Cancel"
+        });
+        _result = result.Cancelled ? "Cancelled" : "Confirmed";
+    }
+}

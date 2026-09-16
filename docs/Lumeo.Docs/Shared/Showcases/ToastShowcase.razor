@@ -1,25 +1,37 @@
 @namespace Lumeo.Docs.Shared.Showcases
 @using Lumeo.Services
 
-@* Two stacked toasts, composed from the real Toast/ToastTitle/ToastDescription/ToastClose
-   primitives directly (no ToastService/ToastProvider) — Toast has no JS interop of its own
-   (its entrance animation is cleared by a local C# timer, not a JS callback), so it renders
-   deterministically standalone. *@
+@* Fix round 1: a real button that raises a real toast through ToastService (the
+   ToastProvider mounted once in MainLayout picks it up and renders it at its
+   configured viewport position) — injected as nullable and null-guarded. Kept
+   alongside the two inline toasts composed from the real Toast/ToastTitle/
+   ToastDescription/ToastClose primitives directly (no interop of their own), so the
+   card shows both a working trigger and the stacked-toast look immediately. *@
 <div class="w-full max-w-[22rem]">
     <Stack Gap="2">
-        <Toast Variant="ToastVariant.Success">
-            <Stack Gap="0.5" Class="flex-1">
-                <ToastTitle>Changes saved</ToastTitle>
-                <ToastDescription>Your profile has been updated.</ToastDescription>
-            </Stack>
-            <ToastClose />
-        </Toast>
-        <Toast>
-            <Stack Gap="0.5" Class="flex-1">
-                <ToastTitle>New message</ToastTitle>
-                <ToastDescription>You have 3 unread messages.</ToastDescription>
-            </Stack>
-            <ToastClose />
-        </Toast>
+        <Button Size="Button.ButtonSize.Sm" Class="w-fit" OnClick="ShowToast">Show Toast</Button>
+        <Stack Gap="2">
+            <Toast Variant="ToastVariant.Success">
+                <Stack Gap="0.5" Class="flex-1">
+                    <ToastTitle>Changes saved</ToastTitle>
+                    <ToastDescription>Your profile has been updated.</ToastDescription>
+                </Stack>
+                <ToastClose />
+            </Toast>
+            <Toast>
+                <Stack Gap="0.5" Class="flex-1">
+                    <ToastTitle>New message</ToastTitle>
+                    <ToastDescription>You have 3 unread messages.</ToastDescription>
+                </Stack>
+                <ToastClose />
+            </Toast>
+        </Stack>
     </Stack>
 </div>
+
+@code {
+    [Inject] private ToastService? ToastService { get; set; }
+
+    private void ShowToast()
+        => ToastService?.Show("Saved", "Your changes have been saved.", ToastVariant.Success);
+}

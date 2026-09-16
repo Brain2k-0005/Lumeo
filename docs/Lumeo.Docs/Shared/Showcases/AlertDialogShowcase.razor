@@ -1,24 +1,44 @@
 @namespace Lumeo.Docs.Shared.Showcases
 
-@* AlertDialogContent renders `position: fixed; inset-0` as a full-viewport modal backdrop —
-   correct for a live confirmation dialog but meaningless (and disruptive to the surrounding
-   catalog grid) inside a 16:9 preview card. Per the catalog-showcase wave brief for
-   Overlay/Feedback, this shows the trigger plus a faithful STATIC replica of the open panel —
-   the same background/border/shadow/text tokens as AlertDialogContent (bg-background,
-   shadow-lg, rounded-xl, text-sm/xs), laid out in normal flow instead of fixed — so the card
-   reads as "are you sure?" immediately instead of a lonely button. *@
+@* Fix round 1: real AlertDialog + real trigger — clicking "Delete Account" opens the
+   REAL AlertDialogContent as a full-viewport modal over the page (expected, same as
+   anywhere else in the app). The block below is an explicitly-marked PREVIEW ONLY
+   static mock of that panel, no ARIA roles, inert <span> "buttons". *@
 <div class="w-full max-w-[22rem]">
     <Stack Gap="2">
-        <Button Variant="Button.ButtonVariant.Outline" Size="Button.ButtonSize.Sm" Class="w-fit">Delete Account</Button>
-        <Stack Gap="3" Class="rounded-lg border border-border/40 bg-background p-3 shadow-lg">
+        <AlertDialog @bind-Open="_open">
+            <AlertDialogTrigger>
+                <Button Variant="Button.ButtonVariant.Outline" Size="Button.ButtonSize.Sm" Class="w-fit">Delete Account</Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+                <AlertDialogHeader>
+                    <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                        This action cannot be undone. This will permanently delete your account
+                        and remove your data from our servers.
+                    </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                    <AlertDialogAction>Continue</AlertDialogAction>
+                </AlertDialogFooter>
+            </AlertDialogContent>
+        </AlertDialog>
+
+        @* PREVIEW ONLY — not the live panel. *@
+        <div class="rounded-lg border border-border/40 bg-background p-3 shadow-lg">
             <Stack Gap="1">
                 <Lumeo.Text Size="sm" Weight="semibold">Are you absolutely sure?</Lumeo.Text>
                 <Lumeo.Text Size="xs" Color="muted">This action cannot be undone. This will permanently delete your account.</Lumeo.Text>
             </Stack>
-            <Flex Justify="end" Gap="2">
-                <Button Variant="Button.ButtonVariant.Outline" Size="Button.ButtonSize.Xs">Cancel</Button>
-                <Button Variant="Button.ButtonVariant.Destructive" Size="Button.ButtonSize.Xs">Continue</Button>
+            <Flex Justify="end" Gap="2" Class="mt-2">
+                <span class="inline-flex h-7 items-center rounded-md border border-input bg-background px-2.5 text-xs">Cancel</span>
+                <span class="inline-flex h-7 items-center rounded-md bg-destructive px-2.5 text-xs text-destructive-foreground">Continue</span>
             </Flex>
-        </Stack>
+        </div>
     </Stack>
 </div>
+
+@code {
+    private bool _open;
+}

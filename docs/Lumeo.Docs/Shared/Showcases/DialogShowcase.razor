@@ -1,21 +1,46 @@
 @namespace Lumeo.Docs.Shared.Showcases
 
-@* DialogContent renders `position: fixed; inset-0` as a full-viewport modal backdrop — see
-   AlertDialogShowcase for why this shows a static replica of the open panel (bg-background,
-   shadow-lg, rounded-xl, text-lg/sm tokens lifted from DialogContent/DialogHeader/DialogTitle)
-   instead of the real fixed-positioned component. *@
+@* Fix round 1: real Dialog + real trigger — clicking "Share" opens the REAL
+   DialogContent as a full-viewport modal over the page (expected, same as anywhere
+   else in the app; it has its own Escape/backdrop close). The block below the button
+   is an explicitly-marked PREVIEW ONLY static mock of that panel so the card isn't a
+   lonely button before it's clicked — it carries no ARIA roles (it is a picture, not a
+   dialog), and its "buttons" are inert <span>s, not real Button components. *@
 <div class="w-full max-w-[22rem]">
     <Stack Gap="2">
-        <Button Size="Button.ButtonSize.Sm" Class="w-fit">Share</Button>
-        <Stack Gap="3" Class="rounded-lg border border-border/40 bg-background p-3 shadow-lg">
+        <Dialog @bind-Open="_open">
+            <DialogTrigger>
+                <Button Size="Button.ButtonSize.Sm" Class="w-fit">Share</Button>
+            </DialogTrigger>
+            <DialogContent>
+                <DialogHeader>
+                    <DialogTitle>Share this document</DialogTitle>
+                    <DialogDescription>Anyone with the link can view this document.</DialogDescription>
+                </DialogHeader>
+                <Stack Gap="4" Class="py-4">
+                    <Input Value="https://example.com/share/abc123" />
+                </Stack>
+                <DialogFooter>
+                    <DialogClose>
+                        <Button>Copy Link</Button>
+                    </DialogClose>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+
+        @* PREVIEW ONLY — not the live panel. *@
+        <div class="rounded-lg border border-border/40 bg-background p-3 shadow-lg">
             <Stack Gap="1">
                 <Lumeo.Text Size="sm" Weight="semibold">Share this document</Lumeo.Text>
                 <Lumeo.Text Size="xs" Color="muted">Anyone with the link can view this document.</Lumeo.Text>
             </Stack>
-            <Input Value="https://example.com/share/abc123" Class="h-8 text-xs" />
-            <Flex Justify="end" Class="pt-2 border-t border-border/40">
-                <Button Size="Button.ButtonSize.Xs">Copy Link</Button>
-            </Flex>
-        </Stack>
+            <div class="mt-2 flex h-7 items-center truncate rounded-md border border-border/40 bg-muted/30 px-2 text-xs text-muted-foreground">
+                https://example.com/share/abc123
+            </div>
+        </div>
     </Stack>
 </div>
+
+@code {
+    private bool _open;
+}
