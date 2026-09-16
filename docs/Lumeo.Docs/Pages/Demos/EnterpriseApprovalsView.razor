@@ -13,16 +13,29 @@
 
     <div class="grid min-h-0 flex-1 gap-3 lg:grid-cols-[320px_1fr]">
 
-        <!-- Master list -->
-        <div class="flex min-h-0 flex-col gap-2 overflow-y-auto lg:pr-1">
+        <!-- Master list. Below lg this collapses to a master-detail drill-in: once the
+             visitor taps a request the list hides and the detail takes the full column
+             (with a Back-to-list affordance), instead of stacking list + detail and
+             showing the same title/amount twice in a row. -->
+        <div class="@(_drilledIn ? "hidden lg:flex" : "flex") min-h-0 flex-col gap-2 overflow-y-auto lg:pr-1">
             @foreach (var a in MeridianData.Approvals)
             {
                 var active = a.Id == _selected.Id;
+                var resolved = _resolved.Contains(a.Id);
                 <button type="button" @onclick="() => Select(a)"
-                        class="@CardClass(active)">
+                        class="@CardClass(active, resolved)">
                     <div class="flex items-center justify-between gap-2">
                         <span class="font-mono text-[11px] text-muted-foreground">@a.Id</span>
-                        <Badge Variant="@CategoryVariant(a.Category)">@a.Category</Badge>
+                        @if (resolved)
+                        {
+                            <Badge Variant="Badge.BadgeVariant.Success" Class="gap-1">
+                                <DynamicIcon Name="Check" Class="h-3 w-3" />Resolved
+                            </Badge>
+                        }
+                        else
+                        {
+                            <Badge Variant="@CategoryVariant(a.Category)">@a.Category</Badge>
+                        }
                     </div>
                     <div class="mt-1 line-clamp-2 text-sm font-medium">@a.Title</div>
                     <div class="mt-1.5 flex items-center justify-between text-xs text-muted-foreground">
@@ -34,12 +47,22 @@
         </div>
 
         <!-- Detail -->
-        <div class="flex min-h-0 flex-col overflow-y-auto rounded-lg border border-border/60 bg-card">
+        <div class="@(_drilledIn ? "flex" : "hidden lg:flex") min-h-0 flex-col overflow-y-auto rounded-lg border border-border/60 bg-card">
+            <button type="button" @onclick="@(() => _drilledIn = false)"
+                    class="flex items-center gap-1.5 border-b border-border/60 px-4 py-2.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground lg:hidden">
+                <DynamicIcon Name="ChevronLeft" Class="h-3.5 w-3.5" /> Back to list
+            </button>
             <div class="flex flex-wrap items-start justify-between gap-3 border-b border-border/60 p-4">
                 <div class="min-w-0">
                     <div class="flex items-center gap-2">
                         <Badge Variant="@CategoryVariant(_selected.Category)">@_selected.Category</Badge>
                         <span class="font-mono text-xs text-muted-foreground">@_selected.Id</span>
+                        @if (_resolved.Contains(_selected.Id))
+                        {
+                            <Badge Variant="Badge.BadgeVariant.Success" Class="gap-1">
+                                <DynamicIcon Name="Check" Class="h-3 w-3" />Resolved
+                            </Badge>
+                        }
                     </div>
                     <h2 class="mt-1.5 text-base font-semibold">@_selected.Title</h2>
                     <p class="text-sm text-muted-foreground">@_selected.Requester · @_selected.RequesterRole · submitted @_selected.Submitted</p>
@@ -55,9 +78,17 @@
                 <section>
                     <h3 class="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Workflow</h3>
                     <Steps CurrentStep="@_currentStep">
-                        @foreach (var s in _selected.Steps)
+                        @for (var i = 0; i < _selected.Steps.Count; i++)
                         {
-                            <StepsItem Title="@s.Title" Description="@s.Description" />
+                            var s = _selected.Steps[i];
+                            @* A rejected request stops right where it was rejected — that
+                               step (the one Steps would otherwise render as "current") gets
+                               the destructive error treatment instead of the normal
+                               in-progress ring, so a rejection reads as "stopped here",
+                               not "still pending". *@
+                            var rejectedHere = i == _currentStep && _rejected.Contains(_selected.Id);
+                            <StepsItem Title="@s.Title" Description="@s.Description"
+                                       Status="@(rejectedHere ? StepsItem.StepsItemStatus.Error : StepsItem.StepsItemStatus.Default)" />
                         }
                     </Steps>
                 </section>
@@ -76,19 +107,28 @@
 
             <!-- Actions -->
             <div class="mt-auto flex flex-wrap items-center gap-2 border-t border-border/60 p-4">
-                <ConfirmButton Title="Approve this request?"
-                               Description="@($"Advances {_selected.Id} to the next stage of its workflow.")"
-                               ConfirmText="Approve" CancelText="Not yet"
-                               OnConfirm="Approve">
-                    <DynamicIcon Name="Check" Class="mr-1.5 h-4 w-4" /> Approve
-                </ConfirmButton>
-                <ConfirmButton Variant="Button.ButtonVariant.Destructive"
-                               Title="Reject this request?"
-                               Description="@($"{_selected.Id} will be returned to {_selected.Requester} with your note.")"
-                               ConfirmText="Reject" CancelText="Cancel" IsDestructive="true"
-                               OnConfirm="Reject">
-                    <DynamicIcon Name="X" Class="mr-1.5 h-4 w-4" /> Reject
-                </ConfirmButton>
+                @if (_resolved.Contains(_selected.Id))
+                {
+                    <Button Variant="Button.ButtonVariant.Secondary" Disabled="true">
+                        <DynamicIcon Name="Check" Class="mr-1.5 h-4 w-4" /> Resolved
+                    </Button>
+                }
+                else
+                {
+                    <ConfirmButton Title="Approve this request?"
+                                   Description="@($"Advances {_selected.Id} to the next stage of its workflow.")"
+                                   ConfirmText="Approve" CancelText="Not yet"
+                                   OnConfirm="Approve">
+                        <DynamicIcon Name="Check" Class="mr-1.5 h-4 w-4" /> Approve
+                    </ConfirmButton>
+                    <ConfirmButton Variant="Button.ButtonVariant.Destructive"
+                                   Title="Reject this request?"
+                                   Description="@($"{_selected.Id} will be returned to {_selected.Requester} with your note.")"
+                                   ConfirmText="Reject" CancelText="Cancel" IsDestructive="true"
+                                   OnConfirm="Reject">
+                        <DynamicIcon Name="X" Class="mr-1.5 h-4 w-4" /> Reject
+                    </ConfirmButton>
+                }
                 <div class="flex-1"></div>
                 <Button Variant="Button.ButtonVariant.Outline" OnClick="@(() => _dialogOpen = true)">
                     <DynamicIcon Name="FileText" Class="mr-1.5 h-4 w-4" /> View request
@@ -116,7 +156,7 @@
                 <div class="rounded-md border border-border/60 p-3">
                     <div class="text-[11px] uppercase tracking-wide text-muted-foreground">Amount</div>
                     <div class="font-medium tabular-nums">@(_selected.Amount > 0 ? $"€{_selected.Amount:N0}" : "No cost")</div>
-                    <div class="text-xs text-muted-foreground">Stage @(_currentStep + 1) of @_selected.Steps.Count</div>
+                    <div class="text-xs text-muted-foreground">@StageLabel()</div>
                 </div>
             </div>
         </div>
@@ -140,31 +180,67 @@
     private int _pending = MeridianData.Approvals.Count;
 
     // Requests already counted as resolved, so approving then rejecting (or repeatedly
-    // approving) the same request decrements the pending badge exactly once.
+    // approving) the same request decrements the pending badge exactly once. Also drives
+    // the "Resolved" card/detail treatment and disables Approve/Reject once actioned.
     private readonly HashSet<string> _resolved = new();
+
+    // Ids resolved via Reject specifically — the workflow stops at the step it was
+    // rejected on (marked destructive/error there) instead of advancing, unlike Approve.
+    private readonly HashSet<string> _rejected = new();
+
+    // Per-request step reached at resolution time, so re-selecting an already-resolved
+    // card (e.g. after browsing to another request and back) still shows its resolved
+    // outcome instead of reverting to the request's original seeded CurrentStep.
+    private readonly Dictionary<string, int> _resolvedStep = new();
+
+    // Below lg, true once the visitor has explicitly tapped a card: the master list
+    // hides and the detail panel takes the full column (see the Back-to-list button),
+    // instead of stacking list + detail and repeating the same title/amount.
+    private bool _drilledIn;
 
     private void Select(ApprovalRequest a)
     {
         _selected = a;
-        _currentStep = a.CurrentStep;
+        _currentStep = _resolvedStep.TryGetValue(a.Id, out var resolvedStep) ? resolvedStep : a.CurrentStep;
+        _drilledIn = true;
     }
 
     private async Task Approve()
     {
-        if (_currentStep < _selected.Steps.Count - 1) _currentStep++;
-        Toast.Success("Request approved", $"{_selected.Id} advanced to “{_selected.Steps[_currentStep].Title}”.");
+        // Approve is the terminal decision on this request, not one internal step of
+        // several — it must leave every step (including the last, "Approved") showing
+        // complete, not stop one short of it with the last step still "current"/unchecked.
+        _currentStep = _selected.Steps.Count;
+        // A later Approve overrides an earlier Reject on the same request (e.g. the
+        // operator reconsiders) — the workflow no longer reads as rejected.
+        _rejected.Remove(_selected.Id);
+        Toast.Success("Request approved", $"{_selected.Id} approved — all workflow steps complete.");
         await ResolveOne();
     }
 
     private async Task Reject()
     {
+        // Unlike Approve, Reject does NOT advance _currentStep — the workflow stops
+        // exactly where it was rejected, and that step renders with the destructive
+        // error treatment (see the Steps loop above) instead of looking still-pending.
+        _rejected.Add(_selected.Id);
         Toast.Error("Request rejected", $"{_selected.Id} returned to {_selected.Requester}.");
         await ResolveOne();
     }
 
-    // Decrement the pending header + notify the shell, once per distinct request.
+    // "Stage N of M", or a completion label once every step is done (Approve sets
+    // _currentStep to Steps.Count, one past the last valid index).
+    private string StageLabel() =>
+        _currentStep >= _selected.Steps.Count
+            ? "All stages complete"
+            : $"Stage {_currentStep + 1} of {_selected.Steps.Count}";
+
+    // Decrement the pending header + notify the shell, once per distinct request; also
+    // captures the step reached so re-selecting this card later (see Select) shows the
+    // same resolved outcome instead of the request's original seeded CurrentStep.
     private async Task ResolveOne()
     {
+        _resolvedStep[_selected.Id] = _currentStep;
         if (_resolved.Add(_selected.Id) && _pending > 0)
         {
             _pending--;
@@ -172,11 +248,13 @@
         }
     }
 
-    private static string CardClass(bool active) =>
-        "w-full rounded-lg border p-3 text-left transition-colors " +
-        (active
-            ? "border-primary/50 bg-primary/5 ring-1 ring-primary/20"
-            : "border-border/60 bg-card hover:border-border hover:bg-accent/40");
+    private static string CardClass(bool active, bool resolved) =>
+        "w-full rounded-lg border p-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring " +
+        (resolved
+            ? (active ? "border-success/40 bg-success/5 opacity-80" : "border-border/60 bg-card opacity-60 hover:opacity-100 hover:border-border hover:bg-accent/40")
+            : active
+                ? "border-primary/50 bg-primary/5 ring-1 ring-primary/20"
+                : "border-border/60 bg-card hover:border-border hover:bg-accent/40");
 
     private static Badge.BadgeVariant CategoryVariant(string c) => c switch
     {
