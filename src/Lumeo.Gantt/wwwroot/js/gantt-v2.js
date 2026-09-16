@@ -528,6 +528,20 @@ function render(inst) {
         }, group);
 
         // Progress overlay
+        // Bug fix (label legibility — Meridian Ops demo polish, owner report,
+        // finding 1): this used to render fully OPAQUE (fill-opacity
+        // defaults to 1 when unset) while `label` below picks ONE fixed
+        // foreground (tokens.fg) for the WHOLE bar — legible over bgRect's
+        // own 0.30 opacity, but for any dark/saturated barFill (the default
+        // --color-primary is one; so is the Meridian Ops demo's own brand
+        // colour) the label text vanished the instant it crossed onto this
+        // fully-opaque segment, and a high-progress bar lost its entire
+        // label. 0.55 keeps the completed portion visibly MORE filled than
+        // bgRect's 0.30/0.45(hover) — still reads as "progress" — while
+        // staying translucent enough that the label's one foreground holds
+        // across both segments (the same "translucent overlay, not an opaque
+        // colour" mechanism GanttBar.razor's v3 ProgressStyle uses, ported
+        // to this renderer's SVG fill-opacity idiom).
         const progressW = barW * (task.progress / 100);
         const progressRect = el('rect', {
             class: 'lumeo-gantt-bar-progress',
@@ -535,6 +549,7 @@ function render(inst) {
             width: progressW, height: BAR_HEIGHT,
             rx: 4, ry: 4,
             fill: barFill,
+            'fill-opacity': '0.55',
         }, group);
 
         // Label (clipped to bar)
