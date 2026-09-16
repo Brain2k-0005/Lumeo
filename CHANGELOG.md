@@ -5,7 +5,7 @@ All notable changes to Lumeo will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [5.10.3] - Unreleased
+## [5.10.3] - 2026-09-16
 
 ### Fixed
 - **Gantt bar labels stay readable across the progress fill.** The completed part of a bar was
