@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<linker>
+  <!--
+    ShowcaseResolver (Services/ShowcaseResolver.cs) discovers catalog showcases
+    (Shared/Showcases/*Showcase.razor) purely by reflection: Type.GetType on a name
+    built at runtime from the registry component name ("Accordion" ->
+    "Lumeo.Docs.Shared.Showcases.AccordionShowcase"). There is no static reference to
+    any of these types anywhere in the compiled call graph, so with
+    PublishTrimmed=true (see Lumeo.Docs.csproj) the linker has no way to know they're
+    reachable and would otherwise strip every one of them on `dotnet publish` — the
+    build CI actually deploys. CatalogCard would then silently fall back to the static
+    thumbnail for every Navigation card in production while looking completely correct
+    in a local, untrimmed `dotnet run`. This wildcard roots the WHOLE
+    Lumeo.Docs.Shared.Showcases namespace, so a later wave adding its own
+    <Name>Showcase.razor there needs to touch NOTHING in this file — it's covered by
+    the wildcard automatically. Wired in via <TrimmerRootDescriptor> in
+    Lumeo.Docs.csproj. Verified against a real trimmed publish by
+    scripts/prerender/check-showcases-trimmed.mjs, which serves the actual published
+    wwwroot and loads /components in a real headless Chromium, asserting every
+    Navigation showcase renders live rather than falling back to the thumbnail — run as
+    a CI step in .github/workflows/deploy-cloudflare.yml right after "Publish Blazor
+    WASM". (An in-process C# test can't do this verification: PublishTrimmed only
+    matters against the actual trimmed publish output, and Blazor WASM wraps published
+    assemblies as WebCil .wasm modules rather than plain PE/COFF files, which no public
+    NuGet package can read portably — see the check-showcases-trimmed.mjs and
+    deploy-cloudflare.yml comments for the full story.)
+  -->
+  <assembly fullname="Lumeo.Docs">
+    <type fullname="Lumeo.Docs.Shared.Showcases.*" preserve="all" />
+  </assembly>
+</linker>

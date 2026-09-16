@@ -135,6 +135,54 @@ public class CatalogCardTests : IDisposable
     }
 
     [Fact]
+    public void Renders_showcase_when_one_is_registered_for_the_component_name()
+    {
+        // "Accordion" has a real AccordionShowcase.razor under Shared/Showcases.
+        var component = new RegistryComponent
+        {
+            Name = "Accordion",
+            Category = "Navigation",
+            Description = "A vertically stacked set of interactive headings.",
+            Thumbnail = "/preview-cards/accordion.png",
+            NugetPackage = "Lumeo",
+            HasDocsPage = true,
+            Slug = "accordion",
+        };
+        var cut = _ctx.Render<CatalogCard>(p => p
+            .Add(c => c.Component, component)
+            .Add(c => c.Eager, true)); // Eager skips LazyRender so the showcase mounts synchronously.
+
+        // The live showcase renders in place of the static thumbnail image.
+        Assert.DoesNotContain("/preview-cards/accordion.png", cut.Markup);
+        Assert.Contains("Is it accessible?", cut.Markup); // AccordionShowcase's first trigger text
+
+        // Exactly two links point at the component's own docs page: the title/description
+        // block, and the small "open" glyph overlaid on the preview — never the preview
+        // area itself (an interactive showcase inside a link would navigate on every click).
+        var linksToPage = cut.FindAll("a[href=\"components/accordion\"]");
+        Assert.Equal(2, linksToPage.Count);
+    }
+
+    [Fact]
+    public void Falls_back_to_thumbnail_when_no_showcase_registered_for_the_name()
+    {
+        // "Input" has no InputShowcase.razor (wave 0 only covers Navigation).
+        var component = new RegistryComponent
+        {
+            Name = "Input",
+            Category = "Forms",
+            Description = "Captures single-line user text input.",
+            Thumbnail = "/preview-cards/input.png",
+            NugetPackage = "Lumeo",
+            HasDocsPage = true,
+            Slug = "input",
+        };
+        var cut = _ctx.Render<CatalogCard>(p => p.Add(c => c.Component, component));
+
+        Assert.Contains("/preview-cards/input.png", cut.Markup);
+    }
+
+    [Fact]
     public void Does_not_render_badge_for_core_lumeo_package()
     {
         var component = new RegistryComponent
