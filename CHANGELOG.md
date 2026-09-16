@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- **Tooltip/Popover placement**: overlays anchored inside wide scrolled containers no longer measure their
+  wrapped static-position size (a `position: fixed` box measured before `left`/`top` are set wraps at its static
+  position deep inside the canvas and inflates its height), so Gantt bar tooltips sit on their bars; the anchor is
+  also clipped to the visible part of a trigger that is partially scrolled out of its pane.
 - **`GanttChart`: Ctrl/Cmd+wheel zoom no longer jumps before it anchors.** The date under the
   cursor is meant to stay under the cursor across a zoom, but the anchoring scroll position was
   applied by a second round trip issued after the render that had already repainted every bar at
