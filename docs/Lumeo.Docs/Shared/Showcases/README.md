@@ -110,3 +110,64 @@ wiring:
   visible past the scroll threshold.
 - **Scrollspy** — the nav link list with the middle link shown in its
   `data-active="true"` state, exactly as it looks mid-scroll.
+
+## Wave 1 — Overlay and Feedback categories
+
+All 22 `hasDocsPage: true` Overlay (14) and Feedback (8) components got a showcase.
+
+Corrected rule 4 for this wave: only overlay content positioned through
+`Interop.PositionFixed` for a full-viewport modal backdrop (AlertDialog, Dialog,
+Sheet, Drawer) or an anchored floating panel (Popover, Tooltip, HoverCard,
+ContextMenu, DropdownMenu, PopConfirm) is allowed to actually use `position:
+fixed` live in the catalog grid — for these 10 components the real fixed-
+positioned content would either take over the whole page (the modal group) or
+depend on floating-ui JS running correctly against a catalog card mid-scroll
+(the anchored group), so each shows its trigger plus a **static replica of the
+open panel** — the same background/border/shadow/text tokens as the real
+`*Content` component, laid out in normal document flow instead of fixed —
+rendered inline immediately rather than behind a click/hover. `Window` turned
+out to need the same treatment: its root panel is unconditionally
+`position: fixed` (drag coordinates are viewport-relative), so it also gets a
+static chrome replica instead of the live component.
+
+| Component | Showcase state |
+| --- | --- |
+| AlertDialog | Trigger + static replica of the "are you sure?" panel (title, description, Cancel/Continue) |
+| Command | Real component, compact height, 3 suggestions — search input filters live |
+| ContextMenu | "Right click here" trigger area + static replica menu (Back/Forward/Reload/Print) below it |
+| Dialog | Trigger + static replica of the "Share this document" panel with a link input |
+| Drawer | Trigger + static replica bottom sheet (drag handle, Move Goal, Cancel/Submit) |
+| DropdownMenu | Trigger + static replica menu (My Account label, Profile/Settings/Log out) |
+| HoverCard | Trigger + static replica card (@@blazor bio) |
+| PopConfirm | Trigger + static replica confirm panel (Delete this item?, Cancel/Confirm) |
+| Popover | Trigger + static replica "Dimensions" panel with two field rows |
+| Sheet | Trigger + static replica right-edge panel (Edit Profile, Name field, Save Changes) |
+| Tooltip | Trigger + static replica bubble ("Add to library") beside it |
+| Alert | Default info alert, title + description |
+| EmptyState | Icon + title + description + "Create Project" action |
+| Progress | Two labeled bars, 60% and 85% (success variant) |
+| Result | Success status, compact size, "View Order" action |
+| RingProgress | Two rings, 72% and 45% (default/success colors) |
+| Skeleton | Avatar + two text-line placeholders |
+| Spinner | Sm/Default/Lg side by side |
+| Toast | Two stacked toasts (success "Changes saved", default "New message") composed from the real `Toast`/`ToastTitle`/`ToastDescription`/`ToastClose` primitives (no service/provider) |
+
+### Exceptions
+
+- **Overlay** — `OverlayService`/`OverlayProvider` is a DI-registered service with
+  no visual primitive of its own; calling it opens a real Dialog/Sheet at the
+  app's root-mounted provider, which would take over the whole page from inside
+  a catalog card. Shows the same "Open a Dialog" trigger as the component's own
+  docs page plus a static replica of the confirm panel `ShowConfirmAsync`
+  renders (Dialog-shaped, per the component's own architecture).
+- **Tour** — steps target real DOM elements elsewhere on the page and the
+  spotlight ring is measured against their live bounding rects; there is
+  nothing to miniaturise inside a self-contained card. Shows a faithful static
+  rendition of the component's own visible control — the step tooltip card
+  (title, description, step counter, Back/Next) exactly as `Tour.razor` renders
+  it — with no spotlight/targeting wiring.
+- **Window** — its root panel renders unconditionally `position: fixed` with
+  viewport-relative drag coordinates (not relative to any wrapper), so the live
+  component floats away from the card exactly like a modal would. Shows a
+  static replica of the window chrome (title bar, body, resize handle) in
+  normal flow instead.
