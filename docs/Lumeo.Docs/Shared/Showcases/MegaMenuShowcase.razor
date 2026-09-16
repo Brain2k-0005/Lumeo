@@ -1,0 +1,60 @@
+@namespace Lumeo.Docs.Shared.Showcases
+@inject IJSRuntime JS
+
+@* MegaMenuPanel renders position:absolute (top-full, floating over whatever is below
+   the trigger row) with no JS repositioning — unlike Menubar/NavigationMenu content,
+   which are position:fixed (via Interop.PositionFixed under the hood) and therefore
+   escape ANY ancestor's overflow-hidden regardless. CatalogCard's preview box clips
+   position:absolute content that doesn't fit, so a floating MegaMenu panel would get
+   cut off the moment it opened. Overriding to static! (Tailwind v4's important-
+   modifier syntax — see SpeedDialShowcase) puts the panel in NORMAL DOCUMENT FLOW
+   instead of floating: it becomes part of the box's own layout, laid out and clipped
+   like any other showcase content rather than an overlay. Paired with opening it by
+   default (the same click-simulation-after-mount trick as SpeedDial — MegaMenu has no
+   "default open" parameter either) this is the "shown open, inside the box" showcase
+   the design calls for, not a toggled floating panel. A tight 2-column, 1-link-per-
+   group layout (no Description text, p-4 not the default p-6) is what actually fits
+   the 16:9 box's remaining height under the trigger row. *@
+<div class="w-full max-w-[22rem]" id="@_id">
+    <MegaMenu>
+        <MegaMenuItem Label="Products">
+            <MegaMenuPanel Columns="2" Class="static! mt-2 p-4">
+                <MegaMenuGroup Title="Design">
+                    <MegaMenuLink Href="#" Title="Components" />
+                </MegaMenuGroup>
+                <MegaMenuGroup Title="Development">
+                    <MegaMenuLink Href="#" Title="CLI" />
+                </MegaMenuGroup>
+            </MegaMenuPanel>
+        </MegaMenuItem>
+        <MegaMenuItem Label="Pricing" Href="#" />
+    </MegaMenu>
+</div>
+
+@code {
+    private readonly string _id = $"mega-menu-showcase-{Guid.NewGuid():N}";
+    private bool _clicked;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender || _clicked) return;
+        _clicked = true;
+
+        var selector = $"#{_id} button[aria-haspopup='true']";
+        // Same 5-attempt/150ms retry as SpeedDialShowcase, against the same boot-order
+        // race (window.lumeo.clickElement may not be defined yet on first render).
+        for (var attempt = 0; attempt < 5; attempt++)
+        {
+            try
+            {
+                var clicked = await JS.InvokeAsync<bool>("lumeo.clickElement", selector);
+                if (clicked) return;
+            }
+            catch (Microsoft.JSInterop.JSDisconnectedException) { return; }
+            catch (InvalidOperationException) { return; } // JS unavailable (bUnit render-smoke test, prerender)
+            catch (Microsoft.JSInterop.JSException) { /* window.lumeo not defined yet — retry */ }
+
+            await Task.Delay(150);
+        }
+    }
+}
