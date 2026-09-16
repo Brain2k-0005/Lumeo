@@ -326,4 +326,20 @@ public record DataGridFooterContext<TItem>(int RowCount, int TotalCount, IReadOn
 /// row" from "the source genuinely has no rows" — the built-in empty state uses the same flag
 /// to switch its message and offer <see cref="ClearFilters"/> as a one-click reset.
 /// </summary>
-public record DataGridEmptyContext(bool HasActiveFilters, Func<Task> ClearFilters);
+public record DataGridEmptyContext(bool HasActiveFilters, Func<Task> ClearFilters)
+{
+    /// <summary>Mirrors <see cref="DataGrid{TItem}.FilteredRowCount"/> at the moment the empty
+    /// state rendered — always 0 here since the state only renders when there are no rows to
+    /// show, but kept alongside <see cref="TotalRowCount"/> so a custom empty state can render
+    /// "0 of n" without a second cascading lookup.</summary>
+    public int FilteredRowCount { get; init; }
+
+    /// <summary>Mirrors <see cref="DataGrid{TItem}.TotalRowCount"/> at the moment the empty
+    /// state rendered.</summary>
+    public int TotalRowCount { get; init; }
+}
+
+/// <summary>Raised by <see cref="DataGrid{TItem}.OnRowCountChanged"/> whenever
+/// <see cref="DataGrid{TItem}.FilteredRowCount"/> or <see cref="DataGrid{TItem}.TotalRowCount"/>
+/// changes, so a host can render its own "Showing n of m" summary.</summary>
+public record DataGridRowCountChanged(int Filtered, int Total);

@@ -24,7 +24,7 @@
         GlobalSearch: _globalSearch,
         CurrentPage: _currentPage,
         PageSize: PageSize,
-        TotalCount: EffectiveTotalCount,
+        TotalCount: FilteredRowCount,
         SelectionMode: SelectionMode,
         EditMode: EditMode,
         IsLoading: IsLoading || (_serverService?.IsLoading ?? false),
@@ -105,6 +105,8 @@
         ColumnMenuContent = ColumnMenuContent,
         HasActiveFilters = HasActiveFilters,
         ClearFiltersAsync = ClearFiltersAsync,
+        FilteredRowCount = FilteredRowCount,
+        TotalRowCount = TotalRowCount,
         BeginCellEdit = BeginCellEditAsync,
         EndCellEdit = EndCellEdit,
     };
@@ -385,7 +387,7 @@
         @if (FooterTemplate is not null)
         {
             <div data-slot="datagrid-footer" class="flex items-center border-t border-border/40 px-3 py-2 text-xs text-muted-foreground">
-                @FooterTemplate(new DataGridFooterContext<TItem>(_displayedItems.Count, EffectiveTotalCount, _displayedItems.AsReadOnly()))
+                @FooterTemplate(new DataGridFooterContext<TItem>(_displayedItems.Count, FilteredRowCount, _displayedItems.AsReadOnly()))
             </div>
         }
 
@@ -867,6 +869,26 @@
     /// </summary>
     public bool HasActiveFilters => _filters.Count > 0 || !string.IsNullOrWhiteSpace(_globalSearch);
 
+    /// <summary>
+    /// The number of rows that survive the grid's own column filters, global search, and (in
+    /// client mode) grouping/row visibility, before paging — the same value that drives the
+    /// built-in pagination summary ("1-5 of 12") and the filtered-empty state, so there is one
+    /// source of truth rather than a second count computed independently. In
+    /// <see cref="ServerMode"/> this is the <see cref="TotalCount"/> from the last server
+    /// response. Readable at any time; see <see cref="OnRowCountChanged"/> to be notified when
+    /// it changes.
+    /// </summary>
+    public int FilteredRowCount => ServerMode ? TotalCount : _processedItems.Count;
+
+    /// <summary>
+    /// The unfiltered source row count: the number of items in <see cref="Items"/> in client
+    /// mode, or the server's <see cref="TotalCount"/> in <see cref="ServerMode"/> (the server
+    /// has already applied its own filtering before reporting a total, so no separate
+    /// "unfiltered" count is knowable client-side there). Readable at any time; see
+    /// <see cref="OnRowCountChanged"/> to be notified when it changes.
+    /// </summary>
+    public int TotalRowCount => ServerMode ? TotalCount : _sourceRowCount;
+
     // --- Column virtualization (rc.36) ---
     /// <summary>
     /// Simplified column virtualization: caps the number of horizontally-
@@ -911,6 +933,14 @@
     /// <summary>Fires when an internal grid operation (export, server request, layout
     /// persistence) throws, carrying the exception, instead of letting it propagate unhandled.</summary>
     [Parameter] public EventCallback<Exception> OnError { get; set; }
+
+    /// <summary>
+    /// Fires whenever <see cref="FilteredRowCount"/> or <see cref="TotalRowCount"/> changes —
+    /// a filter/search/grouping change in client mode, or a fresh <see cref="TotalCount"/>
+    /// from the server in <see cref="ServerMode"/> — so a host can render its own "Showing n
+    /// of m" summary without polling. Fires once per actual change, not on every render.
+    /// </summary>
+    [Parameter] public EventCallback<DataGridRowCountChanged> OnRowCountChanged { get; set; }
 
     /// <summary>Currently-selected items. Set for one-way binding, or use with
     /// <see cref="SelectedItemsChanged"/> / <c>@bind-SelectedItems</c> for two-way.</summary>
@@ -1276,6 +1306,17 @@
     private List<TItem> _processedItems = new();
     private List<TItem> _displayedItems = new();
 
+    // Cached unfiltered source count — see TotalRowCount. Refreshed in ProcessClientDataCore
+    // (the one place Items is enumerated for client-mode processing) rather than recomputed
+    // on every TotalRowCount read, since Items may be a lazily-evaluated sequence.
+    private int _sourceRowCount;
+
+    // Last values delivered to OnRowCountChanged, so MaybeNotifyRowCountChanged fires only on
+    // an actual change rather than on every render (many call sites re-run row processing on
+    // renders that don't change either count).
+    private int _lastNotifiedFilteredRowCount = -1;
+    private int _lastNotifiedTotalRowCount = -1;
+
     // --- Value-type row-reorder DOM key tokens (round-7 #4, round-8 #1) ---
     //
     // Parallel array to _displayedItems (same index space) minting a stable
@@ -1520,8 +1561,6 @@
 
     private List<DataGridColumn<TItem>> EffectiveColumns =>
         _orderedColumns.Count > 0 ? _orderedColumns : SourceColumns;
-
-    private int EffectiveTotalCount => ServerMode ? TotalCount : _processedItems.Count;
 
     // Row virtualization is incompatible with the recursive group-tree / tree-grid
     // renderers (they need every group/parent row present to compute indentation
@@ -2208,7 +2247,17 @@
     // multi-level, expand-state preservation, and aggregates symmetrical across
     // modes. Caveat: grouping is per-page; cross-page grouping requires the API
     // to deliver all rows (no pagination) or pre-aggregated groups.
+    // Public entry point: runs the core regroup, then checks whether FilteredRowCount/
+    // TotalRowCount actually changed (server mode reads them straight off the TotalCount
+    // parameter, but every caller here funnels through this one method, so it's the single
+    // choke point for the server-mode half of OnRowCountChanged).
     private void RegroupServerItems()
+    {
+        RegroupServerItemsCore();
+        MaybeNotifyRowCountChanged();
+    }
+
+    private void RegroupServerItemsCore()
     {
         _processedItems = _serverPageItems;
         var fields = EffectiveGroupFields;
@@ -2236,14 +2285,27 @@
         }
     }
 
+    // Public entry point: runs the core process, then checks whether FilteredRowCount/
+    // TotalRowCount actually changed. ProcessClientDataCore has several early returns (no
+    // Items, tree-grid mode, grouping) so the check lives here rather than duplicated at each
+    // one.
     private void ProcessClientData()
+    {
+        ProcessClientDataCore();
+        MaybeNotifyRowCountChanged();
+    }
+
+    private void ProcessClientDataCore()
     {
         if (Items is null)
         {
             _processedItems = new List<TItem>();
             _displayedItems = new List<TItem>();
+            _sourceRowCount = 0;
             return;
         }
+
+        _sourceRowCount = Items is ICollection<TItem> itemsCollection ? itemsCollection.Count : Items.Count();
 
         // Clean stale selections that reference items no longer in the data source.
         // When SelectionKeySelector is set, compare by key so server-mode fetches
@@ -2450,6 +2512,32 @@
                 _displayedItems = new List<TItem>(_processedItems);
             }
             _displayedItems.AddRange(_batchAdded);
+        }
+    }
+
+    /// <summary>
+    /// Compares the current <see cref="FilteredRowCount"/>/<see cref="TotalRowCount"/> against
+    /// the values last delivered to <see cref="OnRowCountChanged"/>, refreshes the toolbar
+    /// context's copy (read by <see cref="DataGridToolbar{TItem}"/> and custom toolbar tools),
+    /// and — only on an actual change — raises the event. Called from the two places that
+    /// recompute row visibility: <see cref="ProcessClientData"/> (client mode) and
+    /// <see cref="RegroupServerItems"/> (server mode, where the count tracks the
+    /// <see cref="TotalCount"/> parameter).
+    /// </summary>
+    private void MaybeNotifyRowCountChanged()
+    {
+        var filtered = FilteredRowCount;
+        var total = TotalRowCount;
+        _toolbarContext.FilteredRowCount = filtered;
+        _toolbarContext.TotalRowCount = total;
+
+        if (filtered == _lastNotifiedFilteredRowCount && total == _lastNotifiedTotalRowCount) return;
+        _lastNotifiedFilteredRowCount = filtered;
+        _lastNotifiedTotalRowCount = total;
+
+        if (OnRowCountChanged.HasDelegate)
+        {
+            _ = OnRowCountChanged.InvokeAsync(new DataGridRowCountChanged(filtered, total));
         }
     }
 
@@ -4897,6 +4985,14 @@
             // server-side to cooperate with it.
             _globalSearch, _runtimeGroupFields.Count > 0 ? _runtimeGroupFields[0] : GroupBy,
             OnServerRequest, OnError, StateHasChanged);
+
+        // Belt-and-suspenders: the consumer's OnServerRequest handler normally updates its
+        // bound TotalCount field and the resulting parameter cascade already runs
+        // RegroupServerItems (via OnParametersSetAsync), which raises OnRowCountChanged. Check
+        // again here too so a consumer that doesn't trigger a fresh parameter pass (e.g. sets
+        // TotalCount without the automatic EventCallback re-render reaching this grid before
+        // this method returns) still gets notified once the request settles.
+        MaybeNotifyRowCountChanged();
 
         // When no OnError handler is wired and a new error occurred, show a default toast
         if (!OnError.HasDelegate && _serverService.Error is not null && _serverService.Error != previousError)

@@ -209,6 +209,16 @@ public record DataGridContext<TItem>(
     /// built-in filtered-empty state's "Clear filters" action; see <c>DataGrid.ClearFiltersAsync</c>.</summary>
     public Func<Task>? ClearFiltersAsync { get; init; }
 
+    /// <summary>Mirrors <c>DataGrid.FilteredRowCount</c> for the current render — the number of
+    /// rows that survive filters/search/grouping, before paging; the same value <see cref="TotalCount"/>
+    /// above already carries, surfaced under its public name for descendants (toolbar, empty
+    /// state) that key off the count rather than the record's positional field.</summary>
+    public int FilteredRowCount { get; init; }
+
+    /// <summary>Mirrors <c>DataGrid.TotalRowCount</c> for the current render — the unfiltered
+    /// source count in client mode, or the server total in <c>ServerMode</c>.</summary>
+    public int TotalRowCount { get; init; }
+
     /// <summary>
     /// Grid-wide "one open cell editor at a time" lock for <see cref="DataGridEditMode.Cell"/>/
     /// <see cref="DataGridEditMode.Batch"/> mode. A <see cref="DataGridCell{TItem}"/> calls this
