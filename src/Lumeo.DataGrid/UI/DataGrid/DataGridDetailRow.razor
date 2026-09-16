@@ -5,12 +5,37 @@
     <td colspan="@ColSpan" class="p-4">
         @if (DetailTemplate is not null)
         {
-            @DetailTemplate(Item)
+            @if (EffectiveStickyToViewport)
+            {
+                @* Pins the detail content to the grid's visible scroll viewport instead of
+                   letting it span the <td>'s full colspan width (which, once the table has
+                   scrolled horizontally past the viewport, is the table's full scrolled
+                   width — the panel's right portion would sit off-screen until the user
+                   scrolls right; see DataGrid.DetailStickyToViewport). 100cqw resolves
+                   against DataGrid.razor's scroll wrapper, the nearest inline-size query
+                   container ("@container" on that div); 2rem subtracts this cell's own
+                   p-4 (1rem each side) horizontal padding so the panel's edges land flush
+                   with the cell's content box, not the viewport's raw edge. *@
+                <div class="sticky left-0 w-[calc(100cqw-2rem)]">
+                    @DetailTemplate(Item)
+                </div>
+            }
+            else
+            {
+                @DetailTemplate(Item)
+            }
         }
     </td>
 </tr>
 
 @code {
+    [CascadingParameter] private DataGridContext<TItem>? Context { get; set; }
+
+    // Defaults true (matching DataGrid.DetailStickyToViewport's own default) when
+    // rendered outside the grid's cascade, e.g. an isolated component test with no
+    // DataGridContext supplied.
+    private bool EffectiveStickyToViewport => Context?.DetailStickyToViewport ?? true;
+
     /// <summary>The row data whose detail content is being expanded, passed to
     /// <see cref="DetailTemplate"/>.</summary>
     [Parameter] public TItem Item { get; set; } = default!;

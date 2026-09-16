@@ -279,6 +279,37 @@
         </DataGrid>
     </ComponentDemo>
 
+    <ComponentDemo Title="Detail Panel on a Wide, Horizontally-Scrolled Grid" Description="With more columns than fit the viewport, the grid scrolls horizontally. DetailStickyToViewport (default true) keeps the expanded detail panel pinned to the visible viewport instead of stretching across the table's full scrolled width, so its content stays readable without scrolling right. Set DetailStickyToViewport=false to restore the pre-5.10.3 full-table-width behavior." Code="@_stickyDetailCode">
+        <DataGrid TItem="WideEmployee" Items="@_wideEmployees" PageSize="5" ShowPagination="true">
+            <DetailTemplate>
+                <Stack Gap="2" Class="p-4">
+                    <Lumeo.Text Size="sm" Weight="medium">@context.Name — @context.Department</Lumeo.Text>
+                    <Lumeo.Text Size="sm" Color="muted">
+                        @context.Name joined the @context.Department team on @context.StartDate.ToString("MMMM dd, yyyy")
+                        and currently holds @context.Status status at an annual salary of @context.Salary.ToString("$#,##0").
+                        This paragraph is intentionally long so it visibly wraps within the detail panel's own width
+                        instead of spilling past the visible edge of the grid — the panel stays pinned to the
+                        viewport you're looking at even after scrolling the grid horizontally past its first few
+                        columns, rather than stretching out across the table's full scrolled width, where the tail
+                        end of this text would otherwise sit off-screen until you scrolled further right to read it.
+                    </Lumeo.Text>
+                </Stack>
+            </DetailTemplate>
+            <ChildContent>
+                <DataGridColumnDef TItem="WideEmployee" Title="Name" Field="Name" Width="160" />
+                <DataGridColumnDef TItem="WideEmployee" Title="Department" Field="Department" Width="160" />
+                <DataGridColumnDef TItem="WideEmployee" Title="Status" Field="Status" Width="140" />
+                <DataGridColumnDef TItem="WideEmployee" Title="Salary" Field="Salary" Format="$#,##0" Width="140" />
+                <DataGridColumnDef TItem="WideEmployee" Title="Start Date" Field="StartDate" Format="yyyy-MM-dd" Width="150" />
+                <DataGridColumnDef TItem="WideEmployee" Title="Manager" Field="Manager" Width="160" />
+                <DataGridColumnDef TItem="WideEmployee" Title="Region" Field="Region" Width="150" />
+                <DataGridColumnDef TItem="WideEmployee" Title="Grade" Field="Grade" Width="130" />
+                <DataGridColumnDef TItem="WideEmployee" Title="Bonus" Field="Bonus" Format="$#,##0" Width="140" />
+                <DataGridColumnDef TItem="WideEmployee" Title="Review Date" Field="ReviewDate" Format="yyyy-MM-dd" Width="150" />
+            </ChildContent>
+        </DataGrid>
+    </ComponentDemo>
+
     <ComponentDemo Title="Column Pinning" Description="Pin columns to the left or right edge so they stay visible while scrolling horizontally." Code="@_pinCode">
         <DataGrid TItem="Employee" Items="@_employees" PageSize="5" ShowPagination="true">
             <DataGridColumnDef TItem="Employee" Title="Name" Field="Name" Sortable="true" Pin="PinDirection.Left" Width="180" />
@@ -967,6 +998,7 @@
                         <tr><td class="px-4 py-2 font-mono text-xs text-primary">OnSaveNamedLayout</td><td class="px-4 py-2 font-mono text-xs">EventCallback&lt;DataGridNamedLayout&gt;</td><td class="px-4 py-2 text-xs">--</td><td class="px-4 py-2 text-muted-foreground">Fires when the user saves a named layout. Personal layouts are also persisted to localStorage automatically.</td></tr>
                         <tr><td class="px-4 py-2 font-mono text-xs text-primary">OnDeleteNamedLayout</td><td class="px-4 py-2 font-mono text-xs">EventCallback&lt;string&gt;</td><td class="px-4 py-2 text-xs">--</td><td class="px-4 py-2 text-muted-foreground">Fires when the user deletes a named layout. Receives the layout Id.</td></tr>
                         <tr><td class="px-4 py-2 font-mono text-xs text-primary">DetailTemplate</td><td class="px-4 py-2 font-mono text-xs">RenderFragment&lt;TItem&gt;?</td><td class="px-4 py-2 text-xs">--</td><td class="px-4 py-2 text-muted-foreground">Template for expandable row details.</td></tr>
+                        <tr><td class="px-4 py-2 font-mono text-xs text-primary">DetailStickyToViewport</td><td class="px-4 py-2 font-mono text-xs">bool</td><td class="px-4 py-2 text-xs">true</td><td class="px-4 py-2 text-muted-foreground">Pins the expanded detail panel to the grid's visible scroll viewport instead of the table's full, possibly horizontally-scrolled, width. Set false to restore the pre-5.10.3 full-table-width behavior.</td></tr>
                         <tr><td class="px-4 py-2 font-mono text-xs text-primary">EmptyContent</td><td class="px-4 py-2 font-mono text-xs">RenderFragment?</td><td class="px-4 py-2 text-xs">--</td><td class="px-4 py-2 text-muted-foreground">Custom content when no data. Superseded by <code>EmptyTemplate</code> when that is also set.</td></tr>
                         <tr><td class="px-4 py-2 font-mono text-xs text-primary">EmptyTemplate</td><td class="px-4 py-2 font-mono text-xs">RenderFragment&lt;DataGridEmptyContext&gt;?</td><td class="px-4 py-2 text-xs">--</td><td class="px-4 py-2 text-muted-foreground">Typed alternative to <code>EmptyContent</code>: receives <code>HasActiveFilters</code> (true when the grid is empty because a filter/search excluded every row, as opposed to the source having none) and a <code>ClearFilters</code> callback. Takes precedence over <code>EmptyContent</code>.</td></tr>
                         <tr><td class="px-4 py-2 font-mono text-xs text-primary">&lt;ToolbarContent&gt;</td><td class="px-4 py-2 font-mono text-xs">component</td><td class="px-4 py-2 text-xs">--</td><td class="px-4 py-2 text-muted-foreground">Nested component placed inside ChildContent. Takes Class for wrapper styling and ChildContent for custom buttons / built-in toolbar tools.</td></tr>
@@ -1470,6 +1502,24 @@
         new("Leo Jackson", "Sales", 79000, "Active", new DateTime(2019, 10, 8)),
     };
 
+    private List<WideEmployee> _wideEmployees = new()
+    {
+        new("Alice Johnson", "Engineering", "Active", 95000, new DateTime(2021, 3, 15),
+            "Priya Nair", "EMEA", "L5", 9500, new DateTime(2025, 3, 15)),
+        new("Bob Smith", "Marketing", "Active", 72000, new DateTime(2020, 7, 1),
+            "Diego Alvarez", "AMER", "L3", 4300, new DateTime(2025, 7, 1)),
+        new("Carol White", "Engineering", "Active", 105000, new DateTime(2019, 11, 20),
+            "Priya Nair", "EMEA", "L6", 12000, new DateTime(2025, 11, 20)),
+        new("David Brown", "Sales", "Inactive", 68000, new DateTime(2022, 1, 10),
+            "Mei Chen", "APAC", "L2", 0, new DateTime(2025, 1, 10)),
+        new("Eve Davis", "Engineering", "Active", 98000, new DateTime(2020, 5, 5),
+            "Priya Nair", "EMEA", "L5", 8700, new DateTime(2025, 5, 5)),
+        new("Frank Wilson", "Marketing", "Active", 75000, new DateTime(2021, 8, 22),
+            "Diego Alvarez", "AMER", "L4", 5200, new DateTime(2025, 8, 22)),
+        new("Grace Lee", "Sales", "Active", 82000, new DateTime(2019, 6, 30),
+            "Mei Chen", "APAC", "L4", 6100, new DateTime(2025, 6, 30)),
+    };
+
     private List<Employee> _editableEmployees = new()
     {
         new("Alice Johnson", "Engineering", 95000, "Active", new DateTime(2021, 3, 15)),
@@ -1600,6 +1650,15 @@
     }
 
     private record Employee(string Name, string Department, double Salary, string Status, DateTime StartDate);
+
+    // 10 genuinely distinct properties (not the same 5 Employee fields relabeled) —
+    // DataGridColumnDef dedups sibling columns that share a Field, so reusing Employee
+    // here with duplicate-Field columns would silently collapse to 5 columns and never
+    // actually overflow the viewport. Backs the "Detail Panel on a Wide,
+    // Horizontally-Scrolled Grid" demo below, which needs a table wider than 1440px.
+    private record WideEmployee(
+        string Name, string Department, string Status, double Salary, DateTime StartDate,
+        string Manager, string Region, string Grade, double Bonus, DateTime ReviewDate);
 
     private string _basicCode = @"<DataGrid TItem=""Employee"" Items=""@employees"" PageSize=""5"" ShowPagination=""true"">
     <DataGridColumnDef TItem=""Employee"" Title=""Name"" Field=""Name"" Sortable=""true"" />
@@ -1737,6 +1796,28 @@
         <DataGridColumnDef TItem=""Employee"" Title=""Department"" Field=""Department"" />
     </ChildContent>
 </DataGrid>";
+
+    private string _stickyDetailCode = @"<DataGrid TItem=""WideEmployee"" Items=""@wideEmployees"" PageSize=""5"">
+    <DetailTemplate>
+        <Stack Gap=""2"" Class=""p-4"">
+            <Lumeo.Text Size=""sm"" Weight=""medium"">@context.Name — @context.Department</Lumeo.Text>
+            <Lumeo.Text Size=""sm"" Color=""muted"">A long paragraph goes here…</Lumeo.Text>
+        </Stack>
+    </DetailTemplate>
+    <ChildContent>
+        @* 10 distinct-field columns, wider than the viewport — the grid scrolls
+           horizontally. *@
+        <DataGridColumnDef TItem=""WideEmployee"" Title=""Name"" Field=""Name"" Width=""160"" />
+        <DataGridColumnDef TItem=""WideEmployee"" Title=""Department"" Field=""Department"" Width=""160"" />
+        <DataGridColumnDef TItem=""WideEmployee"" Title=""Status"" Field=""Status"" Width=""140"" />
+        <DataGridColumnDef TItem=""WideEmployee"" Title=""Salary"" Field=""Salary"" Format=""C0"" Width=""140"" />
+        <DataGridColumnDef TItem=""WideEmployee"" Title=""Start Date"" Field=""StartDate"" Width=""150"" />
+        @* ... five more columns ... *@
+    </ChildContent>
+</DataGrid>
+@* DetailStickyToViewport defaults to true — the expanded panel above stays
+   pinned to the visible viewport. Pass DetailStickyToViewport=""false"" on
+   <DataGrid> to restore the pre-5.10.3 full-table-width behavior. *@";
 
     private string _pinCode = @"<DataGrid TItem=""Employee"" Items=""@employees"" PageSize=""5"">
     <DataGridColumnDef TItem=""Employee"" Title=""Name"" Field=""Name""

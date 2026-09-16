@@ -107,6 +107,7 @@
         ClearFiltersAsync = ClearFiltersAsync,
         BeginCellEdit = BeginCellEditAsync,
         EndCellEdit = EndCellEdit,
+        DetailStickyToViewport = DetailStickyToViewport,
     };
 }
 
@@ -328,7 +329,14 @@
             </div>
         }
 
-        <div class="overflow-auto flex-1" @onclick="CloseContextMenu">
+        @* @container declares this wrapper a CSS inline-size query container (container-type:
+           inline-size) so a descendant can size itself in `cqw` units against the grid's
+           VISIBLE scroll viewport rather than the table's full (possibly wider, horizontally
+           scrolled) content width. The wrapper's own width still comes from the flex layout
+           above (flex flex-col > this flex-1 child, stretched to the parent's width) rather
+           than from its content, so containment doesn't change its own sizing — see
+           DataGridDetailRow, the only current consumer of cqw here. *@
+        <div class="overflow-auto flex-1 @@container" @onclick="CloseContextMenu">
             <table class="w-full caption-bottom text-sm"
                    style="@TableStyle"
                    id="@_gridId"
@@ -774,6 +782,17 @@
     /// <summary>Row-detail template shown in an expandable sub-row when set. Adds an
     /// expand-chevron column automatically.</summary>
     [Parameter] public RenderFragment<TItem>? DetailTemplate { get; set; }
+
+    /// <summary>
+    /// When true (default), the expanded row-detail cell's content is pinned to span
+    /// exactly the grid's visible horizontal scroll viewport (<c>position: sticky; left: 0;
+    /// width: 100cqw</c> minus the cell's own padding) instead of the table's full,
+    /// possibly horizontally-scrolled, content width. Without this a grid with more columns
+    /// than fit on screen scrolls horizontally and an expanded detail panel lays itself out
+    /// across the FULL scrolled table width, pushing its right portion off-screen until the
+    /// user scrolls right. Set false to restore the pre-5.10.3 full-table-width behavior.
+    /// </summary>
+    [Parameter] public bool DetailStickyToViewport { get; set; } = true;
 
     /// <summary>Custom content shown instead of the default empty-state message when
     /// there are no rows to display. For a message that reads whether the empty state
