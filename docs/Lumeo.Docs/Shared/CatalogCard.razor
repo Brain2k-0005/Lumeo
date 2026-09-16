@@ -3,60 +3,66 @@
 
 @if (Component.HasDocsPage)
 {
-    <a href="components/@Component.Slug"
-       class="group relative flex flex-col rounded-xl border border-border/40 bg-card overflow-hidden hover:border-primary/40 hover:shadow-sm transition-all">
-        @if (!string.IsNullOrEmpty(Component.Thumbnail))
-        {
-            <div class="aspect-[16/9] w-full bg-muted/30 overflow-hidden">
-                <img src="@Component.Thumbnail" alt="@Component.Name preview"
-                     loading="@(Eager ? "eager" : "lazy")" fetchpriority="@(Eager ? "high" : null)"
-                     decoding="async" width="480" height="270"
-                     class="h-full w-full object-cover group-hover:scale-105 transition-transform duration-300" />
-            </div>
-        }
-        else
-        {
-            <div class="catalog-card-icon-fallback aspect-[16/9] w-full bg-muted/30 flex items-center justify-center text-muted-foreground/40">
-                <DynamicIcon Name="Box" Class="h-12 w-12" />
-            </div>
-        }
-        @if (ShowNugetBadge)
-        {
-            <span class="absolute top-2 right-2 inline-flex items-center rounded-full bg-background/90 backdrop-blur-sm border border-border/60 px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
-                @Component.NugetPackage
-            </span>
-        }
-        <div class="p-4 space-y-1">
+    @* No overflow-hidden on the card or preview area: a showcase's own dropdown/panel
+       (MegaMenu, Menubar, NavigationMenu) opens as a real absolute/fixed-positioned
+       overlay and is allowed to extend past the 16:9 box like it would anywhere else
+       in the app — clipping it here would cut the open state off. The preview area
+       instead rounds its OWN top corners (rounded-t-xl) so the static/closed state
+       still reads as a clean rounded card without relying on ancestor clipping; the
+       thumbnail/icon fallback keeps its own overflow-hidden (see ThumbnailOrIcon) so
+       an image can never bleed past its aspect box either way. *@
+    <div class="group relative flex flex-col rounded-xl border border-border/40 bg-card hover:border-primary/40 hover:shadow-sm transition-all">
+        <div class="aspect-[16/9] w-full relative rounded-t-xl bg-muted/30 flex items-center justify-center p-4">
+            @if (ShowcaseType is not null)
+            {
+                @if (Eager)
+                {
+                    <DynamicComponent Type="@ShowcaseType" />
+                }
+                else
+                {
+                    <LazyRender Height="100%" Class="flex h-full w-full items-center justify-center">
+                        <Placeholder>@ThumbnailOrIcon</Placeholder>
+                        <ChildContent><DynamicComponent Type="@ShowcaseType" /></ChildContent>
+                    </LazyRender>
+                }
+            }
+            else
+            {
+                @ThumbnailOrIcon
+            }
+            @if (ShowNugetBadge)
+            {
+                <span class="absolute top-2 right-2 inline-flex items-center rounded-full bg-background/90 backdrop-blur-sm border border-border/60 px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
+                    @Component.NugetPackage
+                </span>
+            }
+            <a href="components/@Component.Slug"
+               class="absolute bottom-2 right-2 inline-flex items-center justify-center h-7 w-7 rounded-full bg-background/90 backdrop-blur-sm border border-border/60 text-muted-foreground hover:text-primary hover:border-primary/40 transition-colors"
+               aria-label="Open @Component.Name">
+                <DynamicIcon Name="ArrowUpRight" Class="h-3.5 w-3.5" />
+            </a>
+        </div>
+        <a href="components/@Component.Slug" class="p-4 space-y-1">
             <h3 class="text-sm font-semibold text-foreground group-hover:text-primary transition-colors">
                 @Component.Name
             </h3>
             <p class="text-xs text-muted-foreground line-clamp-2">
                 @Component.Description
             </p>
-        </div>
-    </a>
+        </a>
+    </div>
 }
 else
 {
     @* Undocumented variant — rendered as a non-clickable div with a "Coming soon" badge.
        Component is real (registry entry exists) but no docs page yet.
-       "Coming soon" takes precedence over the NuGet badge to avoid overlap. *@
+       "Coming soon" takes precedence over the NuGet badge to avoid overlap.
+       No showcase lookup here — there's no docs page to open, so a live preview would be
+       a dead end. *@
     <div class="relative flex flex-col rounded-xl border border-border/40 bg-card overflow-hidden opacity-70"
          title="Documentation page coming soon">
-        @if (!string.IsNullOrEmpty(Component.Thumbnail))
-        {
-            <div class="aspect-[16/9] w-full bg-muted/30 overflow-hidden">
-                <img src="@Component.Thumbnail" alt="@Component.Name preview"
-                     loading="lazy" decoding="async" width="480" height="270"
-                     class="h-full w-full object-cover" />
-            </div>
-        }
-        else
-        {
-            <div class="catalog-card-icon-fallback aspect-[16/9] w-full bg-muted/30 flex items-center justify-center text-muted-foreground/40">
-                <DynamicIcon Name="Box" Class="h-12 w-12" />
-            </div>
-        }
+        @ThumbnailOrIcon
         <span class="absolute top-2 right-2 inline-flex items-center rounded-full bg-background/90 backdrop-blur-sm border border-border/60 px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
             Docs coming soon
         </span>
@@ -78,7 +84,9 @@ else
     /// Set on the first row of cards (above the fold). Loads the thumbnail
     /// eagerly with high fetch priority so it isn't deprioritised as the LCP
     /// element — lazy-loading the LCP image is a known anti-pattern. All other
-    /// cards stay lazy.
+    /// cards stay lazy. When a live showcase exists, Eager also skips the
+    /// LazyRender wrapper so the showcase mounts immediately instead of waiting
+    /// on an IntersectionObserver tick.
     /// </summary>
     [Parameter] public bool Eager { get; set; }
 
@@ -91,4 +99,31 @@ else
         Component.HasDocsPage &&
         !string.IsNullOrEmpty(Component.NugetPackage) &&
         Component.NugetPackage != "Lumeo";
+
+    /// <summary>Resolved once per render — the live showcase component for this
+    /// registry name, or null when none has been written yet.</summary>
+    private Type? ShowcaseType => ShowcaseResolver.Resolve(Component.Name);
+
+    // Shared between the fallback preview (no showcase yet), the LazyRender placeholder,
+    // and the undocumented-variant card — Razor's templated-delegate syntax (same trick
+    // as SidebarMenuButton.Anchor) so the @if/@else reads like ordinary markup instead of
+    // a hand-rolled RenderTreeBuilder.
+    private RenderFragment ThumbnailOrIcon =>
+        @<text>
+            @if (!string.IsNullOrEmpty(Component.Thumbnail))
+            {
+                <div class="aspect-[16/9] w-full h-full bg-muted/30 overflow-hidden">
+                    <img src="@Component.Thumbnail" alt="@($"{Component.Name} preview")"
+                         loading="@(Eager ? "eager" : "lazy")" fetchpriority="@(Eager ? "high" : null)"
+                         decoding="async" width="480" height="270"
+                         class="h-full w-full object-cover" />
+                </div>
+            }
+            else
+            {
+                <div class="catalog-card-icon-fallback aspect-[16/9] w-full h-full bg-muted/30 flex items-center justify-center text-muted-foreground/40">
+                    <DynamicIcon Name="Box" Class="h-12 w-12" />
+                </div>
+            }
+        </text>;
 }
