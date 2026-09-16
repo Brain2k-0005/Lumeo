@@ -5,16 +5,23 @@
 {
     @* The preview area is a STRICT 16:9 box: aspect-[16/9] + overflow-hidden, always.
        A showcase taller than that (an accordion with an item open, a carousel slide,
-       ...) clips — at the BOTTOM, never the top, because the inner content wrapper
-       uses items-start (top-aligned) instead of items-center. Centering vertically
-       let a too-tall showcase overflow equally above AND below the box, which visually
-       clipped its TOP half against the card's own rounded corner — items-start makes
-       any overflow predictable (bottom only) and is the wrapper rule every later wave
-       inherits for free. A showcase that opens a real dropdown/panel (MegaMenu,
-       Menubar, NavigationMenu) still gets clipped here if it's absolutely positioned
-       (MegaMenu) — position:fixed content (Menubar/NavigationMenu) escapes this
-       regardless of overflow-hidden, since neither this box nor its ancestors use a
-       transform. Known, accepted tradeoff (see Showcases/README.md).
+       ...) clips — at the BOTTOM, never the top. The content wrapper stays
+       items-start (the fallback/base alignment), but the showcase itself gets
+       my-auto: a flex item with margin-block:auto centres itself via auto margins
+       when it's SMALLER than the container's cross-axis space (short showcases like
+       Breadcrumb/Pagination/Menubar/Affix/NavigationMenu no longer hug the top with a
+       big empty gap below), and the auto margin resolves to 0 — falling back to
+       items-start's top alignment — the moment content is as tall as or taller than
+       the box, so nothing ever pushes up into a top clip. (Plain items-center doesn't
+       have this fallback: a too-tall showcase overflows equally above AND below the
+       box, clipping its TOP half against the card's rounded corner — that's what
+       happened to Accordion before this.) One rule in CatalogCard, inherited by every
+       showcase without any of them touching their own layout for it. A showcase that
+       opens a real dropdown/panel (MegaMenu, Menubar, NavigationMenu) still gets
+       clipped here if it's absolutely positioned (MegaMenu) — position:fixed content
+       (Menubar/NavigationMenu) escapes this regardless of overflow-hidden, since
+       neither this box nor its ancestors use a transform. Known, accepted tradeoff
+       (see Showcases/README.md).
        The padding + centering below is scoped to ShowcaseType is not null — the
        thumbnail/icon fallback (~150 cards with no showcase yet) renders full-bleed via
        its own absolute inset-0 wrapper (see ThumbnailOrIcon) so it isn't inset by this
@@ -26,13 +33,13 @@
                 <div class="absolute inset-0 flex items-start justify-center p-4">
                     @if (Eager)
                     {
-                        <DynamicComponent Type="@ShowcaseType" />
+                        <div class="my-auto"><DynamicComponent Type="@ShowcaseType" /></div>
                     }
                     else
                     {
                         <LazyRender Height="100%">
                             <Placeholder>@ThumbnailOrIcon</Placeholder>
-                            <ChildContent><DynamicComponent Type="@ShowcaseType" /></ChildContent>
+                            <ChildContent><div class="my-auto"><DynamicComponent Type="@ShowcaseType" /></div></ChildContent>
                         </LazyRender>
                     }
                 </div>
