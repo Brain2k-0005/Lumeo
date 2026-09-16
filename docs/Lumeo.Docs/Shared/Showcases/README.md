@@ -111,6 +111,54 @@ wiring:
 - **Scrollspy** — the nav link list with the middle link shown in its
   `data-active="true"` state, exactly as it looks mid-scroll.
 
+## Wave "rest" — Motion, Typography, Dashboard, AI, Marketing, Drag & Drop
+
+All 32 `hasDocsPage: true` components across these six categories got a showcase.
+No exceptions were needed — every component miniaturises cleanly.
+
+| Component | Showcase state |
+| --- | --- |
+| AnimatedBeam | 2 nodes (CPU/Cloud icons), beam animates between them |
+| BlurFade | 3 tiles, staggered `ForceHidden` reveal on mount |
+| BorderBeam | A small pricing card with the beam looping around it |
+| Confetti | "Celebrate!" button — click fires a burst |
+| Dock | 4 icons, cursor-proximity magnify on hover |
+| Marquee | 4 brand chips scrolling left, pauses on hover |
+| NumberTicker | Two KPI-style counters, count up on mount |
+| ShimmerButton | 2 buttons with the looping shimmer sweep |
+| Sparkles | Looping sparkle field around two short labels |
+| TextReveal | One heading line, word-by-word reveal on scroll-into-view |
+| Code | Inline + block code snippet |
+| Heading | A compact section header (eyebrow + subheading) |
+| Highlighter | One sentence with 3 highlighted terms |
+| Link | Default / underline / external variants |
+| Text | Three size/color/weight combinations |
+| Bento | One tile (KPI-style), the natural minimum unit of the grid |
+| Delta | 3 trend chips (up/down/inverted-good) |
+| KpiCard | One KPI tile with icon, value, and delta |
+| PickList | 4 source items / 1 target, move buttons swap panels |
+| SparkCard | One KPI tile with an inline area sparkline |
+| Kanban | 2 columns × 2 cards, draggable |
+| Sortable | 2 items, drag-to-reorder with a handle |
+| Transfer | 2 source / 1 target item, arrow buttons move between panels |
+| AgentMessageList | A 2-message user/assistant exchange |
+| PromptInput | Empty textarea with placeholder + send button |
+| ReasoningDisplay | One reasoning trace, expanded by default |
+| StreamingText | One line with the blinking streaming caret |
+| ToolCallCard | One tool call, expanded, with input/output |
+| CTASection | Compact heading (via `TitleSlot`) + one button |
+| FeatureGrid | 2 `FeatureItem`s, no grid title/subtitle |
+| FeatureItem | One icon + title + description |
+| Hero | Compact centered headline (via `TitleSlot`) + one button |
+
+CTASection/FeatureGrid/Hero bake fixed vertical padding (and, for Hero, fixed
+`h1` sizing) into an *inner* wrapper div that isn't exposed via `Class` — only
+the root element's classes are overridable. Each uses `TitleSlot`/`Actions`
+to swap in compact markup instead of the oversized default heading; the
+padding itself still clips at the bottom of the 236px preview box on some
+viewports, the same accepted tradeoff as any oversized showcase (see rule 2
+above and `CatalogCard`'s own overflow-hidden note) — verified via screenshot
+to hold up in practice at 1440px in both themes.
 ## Wave 1 — Data Display category
 
 25 of the 32 `hasDocsPage: true` Data Display-category components got a live showcase.
