@@ -221,4 +221,73 @@ public class DataGridRowCountTests : IAsyncLifetime
         Assert.Equal(3, e.Filtered);
         Assert.Equal(3, e.Total);
     }
+
+    // Reflection: drives DataGrid's private ServerVirtualizationProviderImpl directly, the same
+    // Virtualized="true" + OnRangeRequest (no ServerMode) setup DataGridVirtualizedServerModeTests
+    // uses. <Virtualize ItemsProvider="..."> does call the provider once on its own during the
+    // initial render (it needs a first page regardless of IntersectionObserver), but a later
+    // re-fetch — the scroll-driven kind, or the RefreshDataAsync a filter/search/sort change
+    // triggers via RefreshVirtualizedAsync — isn't reliably observable through bUnit's headless
+    // DOM, so invoking the provider method directly is the deterministic way to simulate one.
+    private static async Task InvokeVirtualizationProviderAsync(DataGrid<Row> grid, int startIndex, int count)
+    {
+        var method = typeof(DataGrid<Row>).GetMethod("ServerVirtualizationProviderImpl", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        var request = new Microsoft.AspNetCore.Components.Web.Virtualization.ItemsProviderRequest(startIndex, count, default);
+        var task = (ValueTask<Microsoft.AspNetCore.Components.Web.Virtualization.ItemsProviderResult<DataGridBody<Row>.IndexedItem>>)
+            method.Invoke(grid, new object[] { request })!;
+        await task;
+    }
+
+    [Fact]
+    public async Task Virtualized_WithoutServerMode_ProviderFetch_UpdatesCounts_And_RaisesEvent()
+    {
+        // Regression: FilteredRowCount/TotalRowCount used to branch only on ServerMode, so this
+        // mode (Virtualized+OnRangeRequest, ServerMode left off) read the unrelated client Items
+        // count (0, since Items is empty by design here) instead of the provider's TotalCount,
+        // and ServerVirtualizationProviderImpl never raised OnRowCountChanged at all.
+        //
+        // Unlike DataGridVirtualizedServerModeTests' other cases, <Virtualize ItemsProvider="...">
+        // DOES call the provider once on its own during the initial render even in bUnit's
+        // headless DOM (it needs an initial page regardless of IntersectionObserver) — so the
+        // first fetch below is the real one, driven by mounting the grid, not a manual call.
+        var events = new List<DataGridRowCountChanged>();
+        var serverTotal = 100;
+
+        ValueTask<DataGridRangeResponse<Row>> Provider(DataGridRangeRequest req) =>
+            ValueTask.FromResult(new DataGridRangeResponse<Row>(
+                Enumerable.Range(1, Math.Min(req.Count, serverTotal)).Select(i => new Row(i, $"R{i}")).ToList(),
+                serverTotal));
+
+        var cut = _ctx.Render<DataGrid<Row>>(p => p
+            .Add(x => x.Items, Array.Empty<Row>())
+            .Add(x => x.Columns, Columns())
+            .Add(x => x.Virtualized, true)
+            .Add(x => x.OnRangeRequest, (Func<DataGridRangeRequest, ValueTask<DataGridRangeResponse<Row>>>)Provider)
+            .Add(x => x.OnRowCountChanged, EventCallback.Factory.Create<DataGridRowCountChanged>(
+                this, e => events.Add(e))));
+
+        Assert.Equal(100, cut.Instance.FilteredRowCount);
+        Assert.Equal(100, cut.Instance.TotalRowCount);
+        // Mount itself raises an intermediate (0, 0) — client-mode's own OnParametersSetAsync
+        // pass runs before Virtualize's initial ItemsProvider fetch lands — so assert on the
+        // last event delivered rather than assuming exactly one fired during mount.
+        var mountEvent = Assert.Single(events, e => e.Filtered == 100 && e.Total == 100);
+        Assert.Equal(events[^1], mountEvent);
+
+        // Simulate the provider's next fetch after a filter change narrowed the server-side
+        // result set (the request itself already carries _filters/_globalSearch; here we just
+        // change what the fake backend reports and drive the provider directly via reflection —
+        // the same reflection pattern HandleFilter/HandleGlobalSearch use elsewhere in this
+        // file — since a real filter action's own RefreshVirtualizedAsync -> Virtualize.RefreshDataAsync
+        // round-trip isn't reliably observable through bUnit's headless DOM).
+        serverTotal = 7;
+        events.Clear();
+        await cut.InvokeAsync(() => InvokeVirtualizationProviderAsync(cut.Instance, 0, 20));
+
+        Assert.Equal(7, cut.Instance.FilteredRowCount);
+        Assert.Equal(7, cut.Instance.TotalRowCount);
+        var second = Assert.Single(events);
+        Assert.Equal(7, second.Filtered);
+        Assert.Equal(7, second.Total);
+    }
 }

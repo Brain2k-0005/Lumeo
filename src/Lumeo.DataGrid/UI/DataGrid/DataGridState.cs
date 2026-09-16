@@ -329,9 +329,13 @@ public record DataGridFooterContext<TItem>(int RowCount, int TotalCount, IReadOn
 public record DataGridEmptyContext(bool HasActiveFilters, Func<Task> ClearFilters)
 {
     /// <summary>Mirrors <see cref="DataGrid{TItem}.FilteredRowCount"/> at the moment the empty
-    /// state rendered — always 0 here since the state only renders when there are no rows to
-    /// show, but kept alongside <see cref="TotalRowCount"/> so a custom empty state can render
-    /// "0 of n" without a second cascading lookup.</summary>
+    /// state rendered. In client mode this is always 0 here — the built-in empty state only
+    /// renders when no rows survived filtering. In <c>ServerMode</c> (or virtualized server
+    /// mode) it can be nonzero: the empty state there is driven by the currently-fetched page/
+    /// window being empty (e.g. a stale or out-of-range page after the server's result set
+    /// shrank), not directly by this count, so a matching server total can still exist. Kept
+    /// alongside <see cref="TotalRowCount"/> so a custom empty state can render "n of m" without
+    /// a second cascading lookup.</summary>
     public int FilteredRowCount { get; init; }
 
     /// <summary>Mirrors <see cref="DataGrid{TItem}.TotalRowCount"/> at the moment the empty
