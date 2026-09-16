@@ -287,6 +287,60 @@ public class GanttV3Phase3T7Tests : IAsyncLifetime
         Assert.Contains("text-foreground", label.GetAttribute("class"));
     }
 
+    // ── In-bar label: progress fill stays translucent (Meridian Ops demo polish) ──
+    // Owner report: a solid/opaque progress fill under the label made the label
+    // unreadable on the "completed" segment (dark fill, dark text.js — see
+    // GanttBar.ProgressStyle's own remarks) — verified NOT already fixed against
+    // this branch point before this pair of tests was added. Both bars use the
+    // default chart-1 colour (no BarColor override), the same "unreadable" case
+    // from the owner's own screenshot.
+
+    private const string ProgressFillSelector = ".lumeo-gantt-v3-bar-progress";
+
+    private static string? ProgressFillBackground(IRenderedComponent<L.GanttChart> cut, string taskId)
+    {
+        var style = cut.Find($"[data-task-id='{taskId}'] {ProgressFillSelector}").GetAttribute("style") ?? "";
+        var m = Regex.Match(style, @"background-color:([^;]+)");
+        return m.Success ? m.Groups[1].Value : null;
+    }
+
+    [Fact]
+    public void Ninety_Percent_Progress_Fill_Is_A_Translucent_Overlay_Not_An_Opaque_Colour()
+    {
+        var cut = _ctx.Render<L.GanttChart>(p => p
+            .Add(c => c.Tasks, new List<L.GanttTask> { new("t1", "Task", D(2026, 3, 1), D(2026, 3, 4), Progress: 90) }));
+
+        // "transparent" as a color-mix component proves the fill is translucent
+        // (composites with whatever sits behind it — the label's foreground,
+        // chosen once for the WHOLE bar, therefore never has to contrast
+        // against a fully opaque colour on this segment).
+        Assert.Equal("color-mix(in oklab, var(--color-chart-1) 35%, transparent)", ProgressFillBackground(cut, "t1"));
+    }
+
+    [Fact]
+    public void Ten_Percent_Progress_Fill_Uses_The_Same_Translucent_Mechanism()
+    {
+        var cut = _ctx.Render<L.GanttChart>(p => p
+            .Add(c => c.Tasks, new List<L.GanttTask> { new("t1", "Task", D(2026, 3, 1), D(2026, 3, 4), Progress: 10) }));
+
+        // Same colour-mix EXPRESSION regardless of the progress percentage
+        // itself (only the fill's WIDTH tracks Progress — see ProgressStyle's
+        // own remarks) — the mechanism must hold at every progress level, not
+        // just near-complete bars.
+        Assert.Equal("color-mix(in oklab, var(--color-chart-1) 35%, transparent)", ProgressFillBackground(cut, "t1"));
+        Assert.Contains("width:10%", cut.Find($"[data-task-id='t1'] {ProgressFillSelector}").GetAttribute("style"));
+    }
+
+    [Fact]
+    public void Custom_Bar_Color_Progress_Fill_Also_Stays_Translucent()
+    {
+        var cut = _ctx.Render<L.GanttChart>(p => p
+            .Add(c => c.Tasks, new List<L.GanttTask> { new("t1", "Task", D(2026, 3, 1), D(2026, 3, 4), Progress: 90) })
+            .Add(c => c.BarColor, (L.GanttTask _) => "#000000"));
+
+        Assert.Equal("color-mix(in oklab, #000000 35%, transparent)", ProgressFillBackground(cut, "t1"));
+    }
+
     // ── Hover states (bUnit can't drive :hover — assert the utility classes exist) ──
 
     [Fact]
