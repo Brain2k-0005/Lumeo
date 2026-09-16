@@ -12,6 +12,22 @@
 //
 // The filter is deliberately liberal, mirroring Tailwind's own heuristic scanner: a token the
 // generator does not recognise is simply dropped by the consumer's build.
+//
+// CAVEAT — `@`-prefixed Tailwind utilities (e.g. the bare container-query `@container`
+// utility, or a named `@container/name`) CANNOT be written directly as a literal class-
+// attribute token in a .razor file's markup: Razor treats a bare `@` in an attribute value
+// as a code transition, so the source has to read `@@container`, and this extractor's
+// token regex (below) rejects anything starting with `@` — the doubled `@@container` is
+// silently dropped and never reaches lumeo-classes.txt (nor, in practice, any Tailwind
+// scan of the raw .razor source, whose own candidate matcher has the same blind spot for
+// a leading `@` — verified: `container-type: inline-size` never actually applied when this
+// was tried on DataGrid's scroll wrapper). Route an `@`-prefixed utility through a plain
+// C# string instead (e.g. inside `Cx.Merge("@container/name ...", ...)`, as CardHeader.razor
+// and FieldGroup.razor do) where Razor never sees the leading `@`, or avoid `@container`/
+// `cqw` in library components entirely — CSS containment also makes that element the
+// containing block for `position: fixed` descendants, which breaks any popover positioned
+// in viewport coordinates underneath it (see DataGridHeaderCell / DataGrid's scroll wrapper
+// history for the concrete regression this caused).
 import { readFileSync, writeFileSync, readdirSync, statSync } from "node:fs";
 import { join, extname } from "node:path";
 

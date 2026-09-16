@@ -18,8 +18,9 @@ public class ShowcaseResolverTests
     [Fact]
     public void Returns_null_for_a_component_with_no_showcase_yet()
     {
-        // No "InputShowcase.razor" exists — wave 0 only covers the Navigation category.
-        Assert.Null(ShowcaseResolver.Resolve("Input"));
+        // Fictional name — no "PlainFieldShowcase.razor" exists or ever will, so this
+        // stays true regardless of which real components later waves cover.
+        Assert.Null(ShowcaseResolver.Resolve("PlainField"));
     }
 
     [Fact]
