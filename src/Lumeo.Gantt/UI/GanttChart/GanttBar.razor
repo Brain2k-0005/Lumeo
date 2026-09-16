@@ -473,8 +473,29 @@
     // because it never constructs the day after the endpoint.
     private bool IsPast => EffectiveNow.Date > RenderedEndInclusive;
 
-    private string ProgressStyle =>
-        FormattableString.Invariant($"width:{ClampedProgress}%;background-color:{ResolvedColor};");
+    // Bug fix (label legibility — Meridian Ops demo polish, owner report): this
+    // used to paint the progress fill as a fully OPAQUE ResolvedColor. For any
+    // bar colour with meaningfully low lightness (the default --color-chart-1
+    // is one — oklch L=0.56/0.6 — and so is any custom dark BarColor), that
+    // opaque fill sits directly UNDER the in-bar label, which only ever picks
+    // ONE foreground for the WHOLE label (InBarLabelForegroundVar/text-
+    // foreground — see their own remarks): a foreground chosen for legibility
+    // against the light BarBgStyle track (color-mixed to 16% — see its own
+    // remarks) went unreadable the moment it crossed onto this fully-opaque
+    // segment, and a high-progress bar could lose its entire label. Mirrors
+    // BarBgStyle's own color-mix(in oklab, ..., transparent) approach instead
+    // of a Tailwind opacity-* utility, for the identical reason BarBgStyle
+    // documents (an element-wide opacity would also fade the fill's own
+    // border underneath, if it had one) — kept as a translucent OVERLAY of
+    // ResolvedColor rather than a second opaque colour, per the requirement
+    // that ONE label foreground must hold across both segments. 35% (roughly
+    // double BarBgStyle's own 16%) keeps "in progress" visually distinct from
+    // "remaining" while never composing dark enough for text-foreground/the
+    // custom-colour foreground pick to lose contrast — verified against the
+    // owner's own reported worst case (a dark navy chart-1 fill with black
+    // text vanishing into it).
+    private string ProgressStyle => FormattableString.Invariant(
+        $"width:{ClampedProgress}%;background-color:color-mix(in oklab, {ResolvedColor} 35%, transparent);");
 
     // G4b — the demo's `.g-prog` squares its trailing (end) edge, rounding
     // only at 100% (its own defining detail: a progress fill mid-bar reads as

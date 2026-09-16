@@ -167,22 +167,27 @@ public static class MeridianData
     /// render legible bars with their labels INSIDE the bar (not colliding with the
     /// today-line), yet compact enough that the chart width stays modest — the Gantt
     /// preserves raw scrollLeft across zoom switches, so a very wide chart would open
-    /// Month/Year scrolled past the data. Anchor (today) sits ~30% in.</summary>
+    /// Month/Year scrolled past the data. Anchor (today) sits at day 0 — the very start
+    /// of the programme — so the chart's initial scroll (which centers on today) never
+    /// leaves a bar's start (and label) off-screen to the left. Every offset here used to
+    /// run as far back as -10 days, which put ~5 of the 8 initially-visible bars' starts
+    /// left of that scroll position and clipped their labels; all offsets were shifted
+    /// forward by 10 days to fix it (durations/dependencies unchanged).</summary>
     public static IReadOnlyList<ScheduleBar> Schedule { get; } = new List<ScheduleBar>
     {
-        new("berth-a",   "Berth A · MSC Aurelia",       "Quay 1 — Deep Sea",  -10, 6, 80),
-        new("berth-b",   "Berth B · Nordic Trader",     "Quay 1 — Deep Sea",   -2, 6, 40, new[] { "berth-a" }),
-        new("berth-c",   "Berth C · Adriatic Star",     "Quay 2 — Short Sea",  -7, 5, 62),
-        new("berth-d",   "Berth D · Baltic Runner",     "Quay 2 — Short Sea",   2, 7, 15, new[] { "berth-c" }),
-        new("crane-1",   "Crane gang — discharge cycle","Yard Operations",     -9, 7, 66),
-        new("crane-2",   "Crane gang — load-out cycle", "Yard Operations",      1, 8, 20, new[] { "crane-1" }),
-        new("rail-1",    "Rail corridor 7841 → Munich", "Rail Dispatch",       -5, 8, 55),
-        new("rail-2",    "Rail corridor 7902 → Prague", "Rail Dispatch",        6, 8,  0, new[] { "rail-1" }),
-        new("road-1",    "Road network — Antwerp hub",  "Road Dispatch",       -8, 10, 44),
-        new("road-2",    "Road network — Lyon relay",   "Road Dispatch",        9, 9,  0, new[] { "road-1" }),
-        new("cust-1",    "Customs window — Bloc EU",    "Customs & Docs",      -6, 12, 72),
-        new("ms-launch", "Cut-off · manifest lock",     "Customs & Docs",      24, 0,  0, new[] { "cust-1" }, IsMilestone: true),
-        new("maint-1",   "Reefer bay maintenance",      "Maintenance",          0, 8, 34),
+        new("berth-a",   "Berth A · MSC Aurelia",       "Quay 1 — Deep Sea",    0, 6, 80),
+        new("berth-b",   "Berth B · Nordic Trader",     "Quay 1 — Deep Sea",    8, 6, 40, new[] { "berth-a" }),
+        new("berth-c",   "Berth C · Adriatic Star",     "Quay 2 — Short Sea",   3, 5, 62),
+        new("berth-d",   "Berth D · Baltic Runner",     "Quay 2 — Short Sea",  12, 7, 15, new[] { "berth-c" }),
+        new("crane-1",   "Crane gang — discharge cycle","Yard Operations",      1, 7, 66),
+        new("crane-2",   "Crane gang — load-out cycle", "Yard Operations",     11, 8, 20, new[] { "crane-1" }),
+        new("rail-1",    "Rail corridor 7841 → Munich", "Rail Dispatch",        5, 8, 55),
+        new("rail-2",    "Rail corridor 7902 → Prague", "Rail Dispatch",       16, 8,  0, new[] { "rail-1" }),
+        new("road-1",    "Road network — Antwerp hub",  "Road Dispatch",        2, 10, 44),
+        new("road-2",    "Road network — Lyon relay",   "Road Dispatch",       19, 9,  0, new[] { "road-1" }),
+        new("cust-1",    "Customs window — Bloc EU",    "Customs & Docs",       4, 12, 72),
+        new("ms-launch", "Cut-off · manifest lock",     "Customs & Docs",      34, 0,  0, new[] { "cust-1" }, IsMilestone: true),
+        new("maint-1",   "Reefer bay maintenance",      "Maintenance",         10, 8, 34),
     };
 
     public static IReadOnlyList<ApprovalRequest> Approvals { get; } = BuildApprovals();
@@ -223,7 +228,7 @@ public static class MeridianData
             "Authorise a weekend overtime block to clear the deep-sea discharge backlog on Quay 1."),
         new ApprovalRequest(
             "REQ-4459", "Customs broker onboarding — CentroLog", "Priya Nadkarni", "Compliance Officer",
-            "Vendor", 0m, "5 days ago", 3,
+            "Vendor", 0m, "5 days ago", 2,
             new List<ApprovalStep>
             {
                 new("Submitted", "Compliance opens vendor case"),
@@ -235,7 +240,7 @@ public static class MeridianData
             {
                 new("Case opened", "New broker for the Eastern corridor.", "Mon 10:00"),
                 new("Screening clear", "No sanctions or adverse media hits.", "Wed 12:30"),
-                new("Legal cleared MSA", "Standard terms accepted.", "Thu 16:45"),
+                new("Routed to Legal", "Master service agreement under review.", "Thu 16:45"),
             },
             "Activate CentroLog as a customs broker for the Eastern EU corridor after diligence and legal review."),
         new ApprovalRequest(

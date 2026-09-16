@@ -1,4 +1,5 @@
 @page "/demos/saas"
+@page "/demos/saas/{ViewParam}"
 @layout SaasDemoLayout
 @namespace Lumeo.Docs.Pages.Demos
 @using Lumeo
@@ -8,8 +9,9 @@
 @inject Lumeo.Services.ToastService Toast
 @inject Lumeo.Services.KeyboardShortcutService Shortcuts
 @inject Lumeo.Services.IResponsiveService Responsive
+@inject NavigationManager NavigationManager
 
-<PageTitle>Northlight — Lumeo SaaS demo</PageTitle>
+<PageTitle>@($"{CurrentTitle} — Northlight")</PageTitle>
 
 
 <SidebarProvider @bind-IsCollapsed="_navCollapsed"
@@ -75,7 +77,7 @@
                     <Lumeo.Text As="span" Size="xs" Weight="medium" Class="truncate leading-tight">Ava Chen</Lumeo.Text>
                     <Lumeo.Text As="span" Size="xs" Color="muted" Class="truncate leading-tight">Admin</Lumeo.Text>
                 </Stack>
-                <span class="inline-flex h-2 w-2 shrink-0 rounded-full bg-emerald-500" title="Online"></span>
+                <span class="inline-flex h-2 w-2 shrink-0 rounded-full bg-success" title="Online"></span>
             </Flex>
         </SidebarFooter>
     </SidebarComponent>
@@ -243,7 +245,7 @@
                                     <div class="h-64 px-2 pb-2">
                                         <AreaChart Categories="_trendMonths" Series="_trendSeries" Smooth="true" GradientFill="true"
                                                    Colors="_mrrColors" ShowDots="false" ShowLegend="false" Height="100%"
-                                                   IsLoading="_chartsLoading" ShowLoadingLabel="false"
+                                                   IsLoading="@(_chartsLoading || _refreshing)" ShowLoadingLabel="false"
                                                    SkeletonStyle="ChartSkeletonStyle.Silhouette" AriaLabel="Monthly recurring revenue, trailing 12 months" />
                                     </div>
                                 </div>
@@ -256,7 +258,8 @@
                                     </Flex>
                                     <div class="h-64 px-2 pb-2">
                                         <BarChart Categories="_planQuarters" Series="_planSeries" Stacked="true" Height="100%"
-                                                  IsLoading="_chartsLoading" ShowLoadingLabel="false"
+                                                  OptionOverride="_planChartAxisOverride"
+                                                  IsLoading="@(_chartsLoading || _refreshing)" ShowLoadingLabel="false"
                                                   SkeletonStyle="ChartSkeletonStyle.Silhouette" AriaLabel="New signups by plan, by quarter" />
                                     </div>
                                 </div>
@@ -296,13 +299,22 @@
                         <BlurFade DelayMs="0">
                             <Flex Align="center" Justify="between" Wrap="true" Gap="2" Class="mb-4">
                                 <Lumeo.Text Size="sm" Color="muted">Drag cards between columns · Q3 delivery sprint</Lumeo.Text>
-                                <Button Variant="Button.ButtonVariant.Outline" Size="Button.ButtonSize.Sm" OnClick="@(() => Toast.Info("New card", "This is a demo — cards are seeded in-memory."))">
+                                <Button Variant="Button.ButtonVariant.Outline" Size="Button.ButtonSize.Sm" OnClick="AddNewCard">
                                     <DynamicIcon Name="Plus" Class="mr-2 h-3.5 w-3.5" /> New card
                                 </Button>
                             </Flex>
                         </BlurFade>
                         <BlurFade DelayMs="80">
-                            <div class="overflow-x-auto pb-2">
+                            <div class="relative">
+                                @* Fade + arrow: on narrow viewports the board needs a horizontal scroll,
+                                   and the only prior affordance was a ~10px sliver of the next column
+                                   peeking in. This fade hints "more to scroll" without trial and error;
+                                   lg:hidden because at that width every column already fits. *@
+                                <div class="pointer-events-none absolute inset-y-0 right-0 z-10 w-10 bg-gradient-to-l from-background to-transparent lg:hidden" aria-hidden="true"></div>
+                                <div class="pointer-events-none absolute right-1 top-1/2 z-10 -translate-y-1/2 text-muted-foreground lg:hidden" aria-hidden="true">
+                                    <DynamicIcon Name="ChevronRight" Class="h-4 w-4" />
+                                </div>
+                                <div class="overflow-x-auto pb-2">
                                 <Kanban Class="!p-0 !gap-3 min-w-[900px]">
                                     @BoardColumn("To do", _todo)
                                     @BoardColumn("In progress", _doing)
@@ -326,6 +338,7 @@
                                         }
                                     </KanbanColumn>
                                 </Kanban>
+                                </div>
                             </div>
                         </BlurFade>
                     </div>
@@ -334,7 +347,15 @@
                 {
                     <div @key="'c'">
                         <BlurFade DelayMs="0">
-                            <Lumeo.Text Size="sm" Color="muted" Class="mb-3 block">@FilteredCustomers.Count of @_customers.Count accounts · drag a column header onto the group panel, reorder headers, pin, filter and expand a row for the full profile. Ungrouped rows virtualize for scroll performance.</Lumeo.Text>
+                            @* n = DataGrid.FilteredRowCount, m = DataGrid.TotalRowCount (kept in sync via
+                               OnRowCountChanged below) — n additionally reflects the grid's own
+                               search/column filters on top of the lifecycle chip filter
+                               (@_statusFilter), so this line can never contradict the grid's own
+                               "No rows match the current filters" empty state the way a chip-only
+                               count used to. Kept to one short status line — the grouping/reorder/pin
+                               affordances are already covered on the DataGrid component doc page,
+                               not repeated here as demo prose. *@
+                            <Lumeo.Text Size="sm" Color="muted" Class="mb-3 block">@_customersFiltered of @_customersTotal accounts · @CurrentStatusLabel</Lumeo.Text>
                         </BlurFade>
 
                         <!-- CRM controls: lifecycle quick-filter chips + density toggle.
@@ -378,6 +399,7 @@
                                           ShowToolbar="true" ShowSearch="true" ShowColumnChooser="true" ShowExport="false"
                                           Striped="true" Hoverable="true" Compact="_gridCompact" Reorderable="true"
                                           VirtualizeThreshold="200"
+                                          OnRowCountChanged="HandleCustomersRowCountChanged"
                                           DetailTemplate="CustomerDetail">
                                     <DataGridColumnDef TItem="NorthlightCustomer" Title="Company" Field="Company" Sortable="true" Filterable="true"
                                                        Pin="PinDirection.Left" Pinnable="true" MinWidth="240">
@@ -406,12 +428,11 @@
                                             <Badge Variant="@StatusVariant(c.Status)">@c.Status</Badge>
                                         </CellTemplate>
                                     </DataGridColumnDef>
-                                    <DataGridColumnDef TItem="NorthlightCustomer" Title="Health" Field="Health" Sortable="true">
+                                    <DataGridColumnDef TItem="NorthlightCustomer" Title="Health" Field="Health" Sortable="true" MinWidth="150">
                                         <CellTemplate Context="c">
                                             <span class="@HealthClass(c.Health)">
-                                                <span class="h-1.5 w-1.5 rounded-full @HealthDot(c.Health)"></span>
-                                                @HealthLabel(c.Health)
-                                                <span class="tabular-nums opacity-70">@c.Health</span>
+                                                <span class="h-1.5 w-1.5 shrink-0 rounded-full @HealthDot(c.Health)"></span>
+                                                @HealthWithScore(c.Health)
                                             </span>
                                         </CellTemplate>
                                     </DataGridColumnDef>
@@ -431,11 +452,18 @@
                                             </Flex>
                                         </CellTemplate>
                                     </DataGridColumnDef>
-                                    <DataGridColumnDef TItem="NorthlightCustomer" Title="Seats" Field="Seats" Sortable="true" Format="N0" Aggregate="AggregateType.Sum" />
+                                    <DataGridColumnDef TItem="NorthlightCustomer" Title="Seats" Field="Seats" Sortable="true" Format="N0" Aggregate="AggregateType.Sum"
+                                                       @bind-Visible="_seatsColVisible">
+                                        <CellTemplate Context="c">
+                                            <div class="text-right tabular-nums">@c.Seats.ToString("N0")</div>
+                                        </CellTemplate>
+                                    </DataGridColumnDef>
                                     <DataGridColumnDef TItem="NorthlightCustomer" Title="Region" Field="Region" Sortable="true" Filterable="true"
-                                                       FilterType="DataGridFilterType.Select" FilterOptions="_regionOptions" Groupable="true" />
+                                                       FilterType="DataGridFilterType.Select" FilterOptions="_regionOptions" Groupable="true"
+                                                       @bind-Visible="_regionColVisible" />
                                     <DataGridColumnDef TItem="NorthlightCustomer" Title="Owner" Field="Owner" Sortable="true" Filterable="true"
-                                                       FilterType="DataGridFilterType.Select" FilterOptions="_ownerOptions" Groupable="true">
+                                                       FilterType="DataGridFilterType.Select" FilterOptions="_ownerOptions" Groupable="true"
+                                                       @bind-Visible="_ownerColVisible">
                                         <CellTemplate Context="c">
                                             <Flex Align="center" Gap="2" Class="min-w-0">
                                                 <span class="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-accent/60 text-[10px] font-semibold text-foreground">@Initials(c.Owner)</span>
@@ -445,10 +473,17 @@
                                     </DataGridColumnDef>
                                     <DataGridColumnDef TItem="NorthlightCustomer" Title="Last seen" Field="LastSeenDays" Sortable="true">
                                         <CellTemplate Context="c">
-                                            <span class="@LastSeenClass(c.LastSeenDays)">@LastSeenLabel(c.LastSeenDays)</span>
+                                            <span class="@LastSeenClass(c.LastSeenDays)">
+                                                @LastSeenLabel(c.LastSeenDays)
+                                                @if (LastSeenIsStale(c.LastSeenDays))
+                                                {
+                                                    <DynamicIcon Name="TriangleAlert" Class="ml-1 inline h-3 w-3 align-text-bottom" />
+                                                }
+                                            </span>
                                         </CellTemplate>
                                     </DataGridColumnDef>
-                                    <DataGridColumnDef TItem="NorthlightCustomer" Title="Signed up" Field="Signup" Sortable="true" Pinnable="true" Format="MMM d, yyyy" />
+                                    <DataGridColumnDef TItem="NorthlightCustomer" Title="Signed up" Field="Signup" Sortable="true" Pinnable="true" Format="MMM d, yyyy"
+                                                       @bind-Visible="_signupColVisible" />
                                 </DataGrid>
                             </div>
                         </BlurFade>
@@ -514,7 +549,7 @@
                                         <CardFooter>
                                             <Flex Gap="2">
                                                 <Button OnClick="SaveProfile">Save changes</Button>
-                                                <Button Variant="Button.ButtonVariant.Ghost" OnClick="@(() => Toast.Info("Discarded", "No changes were saved."))">Cancel</Button>
+                                                <Button Variant="Button.ButtonVariant.Ghost" OnClick="CancelProfileEdits">Cancel</Button>
                                             </Flex>
                                         </CardFooter>
                                     </Card>
@@ -672,7 +707,8 @@
                             <DynamicIcon Name="RefreshCw" Class="mr-2 h-4 w-4" /> <span>Refresh dashboard data</span>
                         </CommandItem>
                         <CommandItem OnSelect="@(() => { ClosePalette(); Toast.Success("Invite sent", "We emailed an invite to the new teammate."); })" FilterValue="Invite teammate">
-                            <DynamicIcon Name="UserPlus" Class="mr-2 h-4 w-4" /> <span>Invite teammate</span>
+                            <DynamicIcon Name="UserPlus" Class="mr-2 h-4 w-4" /> <span class="flex-1">Invite teammate</span>
+                            <span class="text-[10px] text-muted-foreground">Demo</span>
                         </CommandItem>
                     </CommandGroup>
                 </CommandList>
@@ -685,11 +721,18 @@
     private sealed record Kpi(string Label, string Icon, string Prefix, int Value, string Suffix, string Trend);
     private sealed class NotifPref { public required string Title { get; init; } public required string Description { get; init; } public bool Enabled { get; set; } }
 
+    // Reflected in the URL (/demos/saas/{view}) so Board/Customers/Settings are
+    // deep-linkable and the browser back/forward buttons move between them.
+    [Parameter] public string? ViewParam { get; set; }
+
     private string _view = "dashboard";
     private bool _navCollapsed;
     private bool _paletteOpen;
     private bool _refreshing;
     private string _settingsTab = "profile";
+
+    private static readonly HashSet<string> _knownViews = new() { "dashboard", "board", "customers", "settings" };
+    private static string NormalizeView(string? key) => key is not null && _knownViews.Contains(key) ? key : "dashboard";
 
     // Charts show a skeleton silhouette until ECharts has cold-loaded + painted (~1s),
     // replacing the blank-white flash on first load.
@@ -713,18 +756,36 @@
     private static readonly StatusChip[] _statusChips =
     {
         new("all",     "All",     ""),
-        new("Active",  "Active",  "bg-emerald-500"),
-        new("Trial",   "Trial",   "bg-sky-500"),
-        new("Paused",  "Paused",  "bg-amber-500"),
-        new("Churned", "Churned", "bg-rose-500"),
+        new("Active",  "Active",  "bg-success"),
+        new("Trial",   "Trial",   "bg-info"),
+        new("Paused",  "Paused",  "bg-warning"),
+        new("Churned", "Churned", "bg-destructive"),
     };
     private string _statusFilter = "all";
     private bool _gridCompact = true;
+
+    private string CurrentStatusLabel => _statusChips.First(c => c.Key == _statusFilter).Label;
 
     private IReadOnlyList<NorthlightCustomer> FilteredCustomers =>
         _statusFilter == "all"
             ? _customers
             : _customers.Where(c => c.Status == _statusFilter).ToList();
+
+    // "n of m accounts" header — m is the chip-filtered baseline (DataGrid.TotalRowCount, since
+    // FilteredCustomers is what's bound to the grid's Items), n additionally follows the grid's
+    // OWN search/column filters (DataGrid.FilteredRowCount) via OnRowCountChanged, so the line
+    // can't contradict the grid's "No rows match the current filters" empty state the way the
+    // chip-only count used to. Seeded from FilteredCustomers.Count so first paint already shows
+    // the chip-filtered baseline instead of a "0 of 0" flash before the grid's first
+    // OnRowCountChanged lands.
+    private int _customersFiltered = NorthlightData.Customers.Count;
+    private int _customersTotal = NorthlightData.Customers.Count;
+
+    private void HandleCustomersRowCountChanged(DataGridRowCountChanged e)
+    {
+        _customersFiltered = e.Filtered;
+        _customersTotal = e.Total;
+    }
 
     // Sidebar surface: an explicit sidebar-border divider (the default rule is nearly
     // invisible against the dark rail) + a widened 4rem icon rail when collapsed so the
@@ -751,6 +812,29 @@
         new("Ava Chen", "Ava Chen"), new("Marcus Okoye", "Marcus Okoye"), new("Priya Rao", "Priya Rao"),
         new("Jonas Weber", "Jonas Weber"), new("Sofia Bianchi", "Sofia Bianchi"), new("Leo Ramirez", "Leo Ramirez"),
     };
+
+    // Lower-priority columns for narrow viewports — otherwise a phone only ever shows
+    // Company/Plan before needing a horizontal scroll to reach any of the other 7.
+    // Two-way bound so the grid's own column chooser can still toggle them manually;
+    // ApplyResponsiveColumnVisibility only flips them at a breakpoint crossing, not on
+    // every render, so it won't fight a manual choice made while on the same side of
+    // that breakpoint.
+    private bool _seatsColVisible = true;
+    private bool _regionColVisible = true;
+    private bool _ownerColVisible = true;
+    private bool _signupColVisible = true;
+    private bool? _wasMobileForColumns;
+
+    private void ApplyResponsiveColumnVisibility()
+    {
+        var isMobile = Responsive.IsMobile;
+        if (_wasMobileForColumns == isMobile) return;
+        _wasMobileForColumns = isMobile;
+        _seatsColVisible = !isMobile;
+        _regionColVisible = !isMobile;
+        _ownerColVisible = !isMobile;
+        _signupColVisible = !isMobile;
+    }
 
     private void SetStatusFilter(string key)
     {
@@ -809,8 +893,16 @@
         </SidebarMenuItem>;
 
     // Detail row: a mini account profile revealed when a row is expanded.
+    // saas-detail-panel + sticky/w-[calc(100cqw-2rem)]: this box's natural width is
+    // the WHOLE grid table's scroll width (every column, ~1350px+), not the scroll
+    // wrapper's much narrower visible width — see SaasDemo.razor.css, which turns
+    // that wrapper into a CSS container so this can size itself to its real visible
+    // width via cqw instead. Without this, the grid-cols-3 layout still shrinks
+    // correctly (min-w-0 works), it's just correctly laid out inside a box that is
+    // itself 2-3x too wide, so a third of it renders off the right edge of the
+    // visible grid.
     private RenderFragment<NorthlightCustomer> CustomerDetail => c =>
-        @<div class="grid gap-4 sm:grid-cols-3">
+        @<div class="saas-detail-panel sticky left-0 grid w-[calc(100cqw-2rem)] gap-4 sm:grid-cols-3">
             <Stack Gap="1.5">
                 <Lumeo.Text Size="xs" Weight="semibold" Color="muted" Class="uppercase tracking-wide">Primary contact</Lumeo.Text>
                 <Flex Align="center" Gap="2" Class="min-w-0">
@@ -828,6 +920,7 @@
                         <DynamicIcon Name="ArrowUpRight" Class="mr-2 h-3.5 w-3.5" /> View
                     </Button>
                 </Flex>
+                <Lumeo.Text Size="xs" Color="muted" Class="mt-0.5">Demo actions — nothing is sent or opened.</Lumeo.Text>
             </Stack>
 
             <Stack Gap="1.5">
@@ -838,18 +931,18 @@
                 <Flex Align="center" Justify="between"><Lumeo.Text Size="sm" Color="muted">Customer since</Lumeo.Text><Lumeo.Text Size="sm" Weight="medium">@c.Signup.ToString("MMM yyyy")</Lumeo.Text></Flex>
                 <Flex Align="center" Justify="between" Class="pt-0.5">
                     <Lumeo.Text Size="sm" Color="muted">Health</Lumeo.Text>
-                    <Badge Variant="@HealthVariant(c.Health)">@HealthLabel(c.Health) · @c.Health</Badge>
+                    <Badge Variant="@HealthVariant(c.Health)">@HealthWithScore(c.Health)</Badge>
                 </Flex>
             </Stack>
 
-            <Stack Gap="1.5">
+            <Stack Gap="1.5" Class="min-w-0">
                 <Lumeo.Text Size="xs" Weight="semibold" Color="muted" Class="uppercase tracking-wide">Latest note</Lumeo.Text>
-                <div class="rounded-lg border border-border/50 bg-muted/30 p-3">
+                <div class="min-w-0 rounded-lg border border-border/50 bg-muted/30 p-3">
                     <Flex Align="center" Gap="2" Class="mb-1.5">
                         <Badge Variant="@StatusVariant(c.Status)" Class="text-[10px] h-5">@c.Status</Badge>
                         <Lumeo.Text Size="xs" Color="muted">Last seen @LastSeenLabel(c.LastSeenDays)</Lumeo.Text>
                     </Flex>
-                    <Lumeo.Text Size="sm" Class="leading-snug">@c.Notes</Lumeo.Text>
+                    <Lumeo.Text Size="sm" Class="min-w-0 block break-words leading-snug">@c.Notes</Lumeo.Text>
                 </div>
             </Stack>
         </div>;
@@ -866,6 +959,13 @@
     private string? _timezone = "pst";
     private string? _nameError;
     private string? _emailError;
+
+    // Last-saved snapshot, restored by Cancel — otherwise Cancel's "No changes were
+    // saved" toast lied whenever the fields had been edited (or invalidated) first.
+    private string? _savedName = "Ava Chen";
+    private string? _savedEmail = "ava@northlight.app";
+    private string? _savedRole = "admin";
+    private string? _savedTimezone = "pst";
     private string _billingPlan = "pro";
     private readonly List<NotifPref> _prefs = new()
     {
@@ -901,9 +1001,43 @@
         new() { Name = "Enterprise", Values = new() { 6, 9, 11, 15 } },
     };
 
+    // BarChart hides its value axis' number labels by design (see the "Needs a
+    // library change" note in the fix report) — OptionOverride is the documented
+    // escape hatch, so this turns the axis labels back on for this one chart without
+    // touching BarChart.razor. Explicit `max` (tallest stack, Q4, is 141) leaves
+    // headroom above the tallest bar instead of relying on ECharts' auto-scale, which
+    // is what let the previous per-segment data labels clip against the plot edge.
+    private readonly Dictionary<string, object> _planChartAxisOverride = new()
+    {
+        ["yAxis"] = new object[]
+        {
+            new Dictionary<string, object>
+            {
+                ["type"] = "value",
+                ["max"] = 170,
+                ["axisLabel"] = new Dictionary<string, object> { ["show"] = true },
+            },
+        },
+    };
+
     protected override void OnInitialized()
     {
         (_todo, _doing, _review, _done) = NorthlightData.Board();
+        _view = NormalizeView(ViewParam);
+    }
+
+    // Fires again whenever the router hands the page a new ViewParam — a nav click
+    // that pushed a new URL, or the browser back/forward buttons — so the view stays
+    // in sync with the address bar either way.
+    protected override void OnParametersSet()
+    {
+        var key = NormalizeView(ViewParam);
+        if (key != _view)
+        {
+            _view = key;
+            _nameError = null;
+            _emailError = null;
+        }
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -919,6 +1053,8 @@
                 _navCollapsed = true;
                 StateHasChanged();
             }
+            ApplyResponsiveColumnVisibility();
+            Responsive.ViewportChanged += OnViewportChanged;
 
             // Command palette must open even while the user is typing in a field, so it
             // opts into allowInEditable. The sidebar toggle (ctrl/meta+b) deliberately does
@@ -940,6 +1076,12 @@
         }
         catch (Microsoft.JSInterop.JSDisconnectedException) { }
         catch (InvalidOperationException) { /* JS unavailable during prerender */ }
+    }
+
+    private void OnViewportChanged(Lumeo.Services.ViewportInfo info)
+    {
+        ApplyResponsiveColumnVisibility();
+        InvokeAsync(StateHasChanged);
     }
 
     private string CurrentTitle => _view switch
@@ -971,6 +1113,7 @@
 
     private void SetView(string key)
     {
+        key = NormalizeView(key);
         _view = key;
         _nameError = null;
         _emailError = null;
@@ -978,6 +1121,19 @@
         // rail should stay put).
         if (Responsive.IsMobile) _navCollapsed = true;
         ClosePalette();
+
+        // Push the view into the URL — dashboard keeps the clean base route, the other
+        // three get a /demos/saas/{view} segment. NavigateTo (not a full reload) so this
+        // is a normal SPA navigation: it adds a history entry, and OnParametersSet above
+        // is what actually re-syncs _view (this assignment just avoids a render flicker
+        // between the click and the router round-trip).
+        var target = key == "dashboard" ? "/demos/saas" : $"/demos/saas/{key}";
+        var current = "/" + NavigationManager.ToBaseRelativePath(NavigationManager.Uri).TrimEnd('/');
+        if (!string.Equals(current, target, StringComparison.Ordinal))
+        {
+            NavigationManager.NavigateTo(target);
+        }
+
         StateHasChanged();
     }
 
@@ -1025,6 +1181,24 @@
     }
 
     // ---- Board drag & drop ----
+    private int _nextCardId = 160; // seeded cards top out at N-151, so start clear of those
+    private static readonly string[] _newCardAssignees = { "AC", "MO", "PR", "JW", "SB", "LR" };
+
+    private void AddNewCard()
+    {
+        var card = new BoardCard
+        {
+            Id = $"N-{_nextCardId++}",
+            Title = "New task",
+            Description = "Drag me into a column, or edit me — this is a demo card.",
+            Tag = "Backlog",
+            Assignee = _newCardAssignees[_todo.Count % _newCardAssignees.Length],
+        };
+        _todo.Insert(0, card);
+        Toast.Success("Card added", $"{card.Id} added to To do.");
+        StateHasChanged();
+    }
+
     private void OnDragStart(BoardCard c) => _dragCard = c;
 
     private void MoveCard(List<BoardCard> target, string columnName)
@@ -1079,7 +1253,22 @@
             Toast.Error("Couldn't save", "Please fix the highlighted fields.");
             return;
         }
+        _savedName = _name;
+        _savedEmail = _email;
+        _savedRole = _role;
+        _savedTimezone = _timezone;
         Toast.Success("Profile saved", "Your changes are live across the workspace.");
+    }
+
+    private void CancelProfileEdits()
+    {
+        _name = _savedName;
+        _email = _savedEmail;
+        _role = _savedRole;
+        _timezone = _savedTimezone;
+        _nameError = null;
+        _emailError = null;
+        Toast.Info("Discarded", "No changes were saved.");
     }
 
     private static bool IsValidEmail(string? email) =>
@@ -1152,6 +1341,10 @@
         _ => "Critical",
     };
 
+    // Shared by the grid cell and the row-expand detail panel so "Healthy · 73" always
+    // reads identically in both places (previously the grid cell dropped the separator).
+    private static string HealthWithScore(int score) => $"{HealthLabel(score)} · {score}";
+
     private static Badge.BadgeVariant HealthVariant(int score) => score switch
     {
         >= 70 => Badge.BadgeVariant.Success,
@@ -1161,27 +1354,25 @@
 
     private static string HealthDot(int score) => score switch
     {
-        >= 70 => "bg-emerald-500",
-        >= 40 => "bg-amber-500",
-        _ => "bg-rose-500",
+        >= 70 => "bg-success",
+        >= 40 => "bg-warning",
+        _ => "bg-destructive",
     };
 
     private static string HealthClass(int score)
     {
         var tone = score switch
         {
-            >= 70 => "text-emerald-600 dark:text-emerald-400",
-            >= 40 => "text-amber-600 dark:text-amber-400",
-            _ => "text-rose-600 dark:text-rose-400",
+            >= 70 => "text-success-text",
+            >= 40 => "text-warning-text",
+            _ => "text-destructive-text",
         };
-        return $"inline-flex items-center gap-1.5 text-xs font-medium {tone}";
+        return $"inline-flex items-center gap-1.5 whitespace-nowrap text-xs font-medium {tone}";
     }
 
     private static string DeltaClass(int delta)
     {
-        var tone = delta >= 0
-            ? "text-emerald-600 dark:text-emerald-400"
-            : "text-rose-600 dark:text-rose-400";
+        var tone = delta >= 0 ? "text-success-text" : "text-destructive-text";
         return $"inline-flex items-center gap-0.5 text-[11px] font-medium {tone}";
     }
 
@@ -1195,19 +1386,24 @@
         _ => "over a year",
     };
 
+    // >=30d is the same staleness threshold LastSeenIsStale uses to add the warning icon
+    // next to this text — color alone no longer carries the "needs attention" signal.
     private static string LastSeenClass(int days)
     {
         var tone = days switch
         {
             < 7 => "text-foreground",
             < 30 => "text-muted-foreground",
-            _ => "text-amber-600 dark:text-amber-400",
+            _ => "text-warning-text",
         };
         return $"text-xs {tone}";
     }
 
+    private static bool LastSeenIsStale(int days) => days >= 30;
+
     public async ValueTask DisposeAsync()
     {
+        Responsive.ViewportChanged -= OnViewportChanged;
         if (_refreshTimer is not null) await _refreshTimer.DisposeAsync();
         if (_chartsTimer is not null) await _chartsTimer.DisposeAsync();
         foreach (var s in _shortcuts)
