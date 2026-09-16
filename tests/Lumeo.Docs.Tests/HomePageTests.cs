@@ -46,7 +46,6 @@ public class HomePageTests
         ctx.Services.AddLumeo();
         ctx.Services.AddSingleton<Lumeo.Docs.Services.IconService>();
         ctx.Services.AddSingleton<Lumeo.Docs.Services.DynamicIconResolver>();
-        ctx.Services.AddSingleton<Lumeo.Docs.Services.PatternFilterService>();
         ctx.Services.AddSingleton<Lumeo.Docs.Services.NavConfigService>();
         ctx.Services.AddSingleton(new HttpClient(new EmptyRegistryHandler()) { BaseAddress = new Uri("https://test/") });
         ctx.Services.AddSingleton<Lumeo.Docs.Services.RegistryService>();

@@ -40,7 +40,6 @@ public class DataGridPlaygroundPageAccessibilityTests : IDisposable
         _ctx.Services.AddLumeo();
         _ctx.Services.AddSingleton<IconService>();
         _ctx.Services.AddSingleton<DynamicIconResolver>();
-        _ctx.Services.AddSingleton<PatternFilterService>();
         _ctx.Services.AddSingleton<NavConfigService>();
         _ctx.Services.AddSingleton(new HttpClient(new EmptyRegistryHandler()) { BaseAddress = new Uri("https://test/") });
         _ctx.Services.AddSingleton<RegistryService>();

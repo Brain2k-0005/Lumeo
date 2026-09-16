@@ -105,10 +105,11 @@ jobs:
         # prerender.mjs reads release/wwwroot/sitemap.xml to learn which routes to
         # visit, so this must run before the prerender step. Mirrors the prod
         # deploy; the production origin in <loc> is irrelevant to the preview
-        # crawl, which is path-based. /e2e/* (Playwright-only test harnesses) and
-        # /not-found are excluded — not real content, carry <meta name="robots"
-        # content="noindex">. lastmod is each file's actual last commit date (falls
-        # back to today for files with no git history yet).
+        # crawl, which is path-based. /e2e/* (Playwright-only test harnesses),
+        # /not-found, and /patterns[/*] (client-side-only redirect stub to
+        # /components) are excluded — none of them are real content. lastmod is
+        # each file's actual last commit date (falls back to today for files
+        # with no git history yet).
         run: |
           SITE="https://lumeo.nativ.sh"
           TODAY=$(date -u +%Y-%m-%d)
@@ -123,12 +124,11 @@ jobs:
                 route=$(sed -E 's/^\xEF\xBB\xBF//' "$file" | grep -E '^@page\s+"[^"]+"' | head -1 | sed -E 's|^@page\s+"([^"]+)"|\1|')
                 [ -z "$route" ] && continue
                 case "$route" in
-                  /|/e2e/*|/not-found) continue ;;
+                  /|/e2e/*|/not-found|/patterns|/patterns/*) continue ;;
                 esac
                 case "$route" in
                   /components/*)  PRIORITY=0.8; FREQ=monthly ;;
                   /blocks/*)      PRIORITY=0.7; FREQ=monthly ;;
-                  /patterns/*)    PRIORITY=0.6; FREQ=monthly ;;
                   /docs/*)        PRIORITY=0.7; FREQ=weekly  ;;
                   *)              PRIORITY=0.5; FREQ=monthly ;;
                 esac

@@ -1,0 +1,20 @@
+@page "/patterns"
+@page "/patterns/{*rest}"
+@inject NavigationManager Nav
+
+@* The old "Patterns" catalog page was removed (owner decision — the header is now
+   Docs / Components / Blocks; everything the page showed now lives on the component
+   pages and the live catalog showcases). Cloudflare's _redirects handles the plain
+   HTTP case (a 301 to /components before the SPA even loads), but a stale bookmark
+   or in-app link can still land here via client-side navigation, which _redirects
+   never sees. This stub catches that case and forwards to the catalog.
+   Excluded from the sitemap / prerender route lists — it's not real content. *@
+
+@code {
+    // Matches the catch-all "{*rest}" route segment above — Blazor requires a
+    // component parameter for every route parameter, catch-alls included, even
+    // though its value is never read (both @page routes redirect the same way).
+    [Parameter] public string? Rest { get; set; }
+
+    protected override void OnInitialized() => Nav.NavigateTo("components", replace: true);
+}
