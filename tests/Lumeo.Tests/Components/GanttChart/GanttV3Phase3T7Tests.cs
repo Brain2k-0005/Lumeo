@@ -246,7 +246,30 @@ public class GanttV3Phase3T7Tests : IAsyncLifetime
 
         var label = cut.Find(InBarLabelSelector);
         Assert.Contains("text-foreground", label.GetAttribute("class"));
-        Assert.Null(label.GetAttribute("style"));
+        // Round 3 (owner report): style is no longer null on the default/no-custom-
+        // colour branch — every in-bar label now carries the background-tinted
+        // text-shadow halo unconditionally (see InBarLabelStyle's own remarks), so
+        // "no style at all" stopped being the default-branch signal; "no `color:`
+        // override, halo present" is the new one.
+        var style = label.GetAttribute("style") ?? "";
+        Assert.DoesNotContain("color:var(", style);
+        Assert.Contains("text-shadow:0 0 2px var(--color-background),0 0 2px var(--color-background);", style);
+    }
+
+    [Fact]
+    public void Every_InBar_Label_Carries_The_Background_Halo_Regardless_Of_Custom_Colour()
+    {
+        // Round 3 (owner report): the halo is the fix for the case opacity alone
+        // could not solve (--color-primary === --color-foreground in dark mode) —
+        // it must be present on EVERY in-bar label, not just the default-colour
+        // branch, since a custom BarColor could theoretically drift just as close
+        // to the foreground token.
+        var cut = _ctx.Render<L.GanttChart>(p => p
+            .Add(c => c.Tasks, new List<L.GanttTask> { new("t1", "Task", D(2026, 3, 1), D(2026, 3, 4)) })
+            .Add(c => c.BarColor, (L.GanttTask _) => "#000000"));
+
+        var label = cut.Find(InBarLabelSelector);
+        Assert.Contains("text-shadow:0 0 2px var(--color-background),0 0 2px var(--color-background);", label.GetAttribute("style"));
     }
 
     [Fact]

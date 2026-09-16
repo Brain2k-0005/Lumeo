@@ -546,9 +546,32 @@
         "lumeo-gantt-v3-bar-label relative truncate px-2 text-xs font-medium",
         InBarLabelForegroundVar is null ? "text-foreground" : null);
 
-    private string? InBarLabelStyle => InBarLabelForegroundVar is { } fg
-        ? FormattableString.Invariant($"color:{fg};")
-        : null;
+    // Bug fix (round 3, owner report — v2/v3 parity): opacity tuning alone
+    // (ProgressStyle's own 35% color-mix, round 2) reduces but cannot ELIMINATE
+    // a dark-mode contrast collision for Lumeo's default "zinc" scheme, where
+    // --color-primary and --color-foreground are the LITERAL SAME token value in
+    // dark mode — see ProgressStyle's own remarks for the live-confirmed proof.
+    // A halo sidesteps the problem entirely, the same fix gantt-v2.js's label
+    // `stroke`/paint-order now uses (see its own remarks for the full mechanism):
+    // contrast is measured between the glyph's OWN foreground colour and the
+    // halo's background colour — the one pairing every theme defines as MAXIMALLY
+    // contrasting by definition — independent of whatever ResolvedColor/progress
+    // fill sits underneath. HTML/CSS text has no stroke-paint-order equivalent to
+    // SVG's (only the experimental, inconsistently-supported -webkit-text-stroke),
+    // so this uses the standard multi-shadow halo trick instead: two IDENTICAL
+    // zero-spread, 2px-blur shadows stacked (not one) — a single shadow leaves the
+    // glyph's antialiased edge visibly softer on one side than a true ring would;
+    // doubling it evens the halo out on every side of the glyph without reading as
+    // a blur at this label's 12px/text-xs size (verified live, this PR's own
+    // before/after screenshots). Applied to EVERY in-bar label, not just the
+    // custom-BarColor branch — the default ResolvedColor (--color-chart-1) case
+    // gets the same safety net, since nothing here can rule out a future theme
+    // where chart-1 drifts as close to foreground as primary already does today.
+    private const string TextHaloStyle = "text-shadow:0 0 2px var(--color-background),0 0 2px var(--color-background);";
+
+    private string InBarLabelStyle => InBarLabelForegroundVar is { } fg
+        ? FormattableString.Invariant($"color:{fg};{TextHaloStyle}")
+        : TextHaloStyle;
 
     // "Small circle at the right edge of progress overlay" (gantt-v2.js:564-574) —
     // v2 positions its circle's CENTER at the progress boundary (cx = x1 + progressW);

@@ -101,6 +101,11 @@ function readTokens(el) {
         primaryFg: get('--color-primary-foreground', '#ffffff'),
         muted:     get('--color-muted-foreground', '#888'),
         fg:        get('--color-foreground', '#fff'),
+        // Label-halo fix (round 3, owner report): --color-background, resolved the
+        // same way every other token here already is (getComputedStyle, never a raw
+        // var() reference handed to an SVG attribute — matches this file's own
+        // established pattern). See the label `stroke` remarks below for why.
+        bg:        get('--color-background', '#fff'),
         border:    get('--color-border', '#444'),
         accent:    get('--color-accent', '#333'),
         card:      get('--color-card', '#0a0a0a'),
@@ -573,6 +578,32 @@ function render(inst) {
         }, group);
 
         // Label (clipped to bar)
+        // Bug fix (round 3, owner report): opacity tuning (round 2, 0.55->0.35)
+        // reduced but could not ELIMINATE the dark-mode contrast problem — Lumeo's
+        // default "zinc" scheme sets --color-primary and --color-foreground to the
+        // LITERAL SAME token value in dark mode (both oklch(0.9848 0 0), confirmed
+        // live), so no opacity of a primary-derived fill can ever fully separate
+        // from foreground-coloured text; the label IS the point of the bar and a
+        // ~3:1 residual was judged not good enough. The standard fix for "text over
+        // an arbitrary/unknown background" is a halo, not more contrast tuning: a
+        // stroke painted UNDER the glyph fill (paint-order: stroke fill) in
+        // --color-background creates a ring around every glyph whose contrast
+        // against the glyph's OWN fill colour is the foreground/background pair —
+        // by definition the most contrasting pair any theme defines — independent
+        // of whatever colour/opacity the bar underneath happens to be. This is why
+        // it works on EITHER the progress or the remainder segment, and would keep
+        // working even if a future custom BarColor were even closer to the
+        // foreground than the default primary token is. round-linejoin (not miter)
+        // keeps the halo from spiking at sharp glyph corners (numerals, "A", "V");
+        // 3px is this label's own visually-verified upper bound before the ring
+        // reads as a blur rather than a crisp outline at this 12px font size (see
+        // this PR's own before/after screenshots).
+        //
+        // NOT applied to the milestone label (mlabel, above) — that one already
+        // renders OUTSIDE the diamond, over the ambient row/canvas background
+        // (never over Color), so it never had this collision to begin with; see
+        // its own "no contrast handling" precedent, same reasoning GanttBar.razor's
+        // v3 OutsideLabelClass documents for its identical outside-the-bar case.
         const label = el('text', {
             class: 'lumeo-gantt-bar-label',
             x: x1 + PADDING_X, y: barY + BAR_HEIGHT / 2 + 4,
@@ -580,6 +611,10 @@ function render(inst) {
             'font-family': 'system-ui,sans-serif',
             'font-weight': '500',
             fill: tokens.fg,
+            stroke: tokens.bg,
+            'stroke-width': '3px',
+            'stroke-linejoin': 'round',
+            'paint-order': 'stroke fill',
             'pointer-events': 'none',
         }, group);
         label.textContent = task.name;
