@@ -153,6 +153,23 @@ jobs:
                 [ -z "$LASTMOD" ] && LASTMOD="${TODAY}"
                 echo "  <url><loc>${SITE}${route}</loc><lastmod>${LASTMOD}</lastmod><changefreq>${FREQ}</changefreq><priority>${PRIORITY}</priority></url>"
               done
+
+            # Known concrete instances of parameterized (secondary) @page routes.
+            # The loop above only takes each file's FIRST @page (deliberately — a
+            # `@page "/foo/{Param}"` line describes a route TEMPLATE, not a real URL,
+            # and would emit an invalid literal "{Param}" segment into the sitemap if
+            # picked up). Their real, deep-linkable instances are listed explicitly
+            # here instead, one line per URL, so they get the same sitemap + prerender
+            # coverage as every static route. Extend this list when a demo grows more
+            # deep-linkable sub-views (dashboard/board/customers/settings — dashboard
+            # itself is the bare /demos/saas route already covered by the loop above).
+            SAAS_FILE="docs/Lumeo.Docs/Pages/Demos/SaasDemo.razor"
+            SAAS_LASTMOD=$(git log -1 --format=%cs -- "$SAAS_FILE" 2>/dev/null)
+            [ -z "$SAAS_LASTMOD" ] && SAAS_LASTMOD="${TODAY}"
+            for route in /demos/saas/board /demos/saas/customers /demos/saas/settings; do
+              echo "  <url><loc>${SITE}${route}</loc><lastmod>${SAAS_LASTMOD}</lastmod><changefreq>monthly</changefreq><priority>0.5</priority></url>"
+            done
+
             echo '</urlset>'
           } > "${SITEMAP}"
 
