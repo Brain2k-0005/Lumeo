@@ -94,11 +94,38 @@
                 </CellTemplate>
             </DataGridColumnDef>
 
-            <DataGridColumnDef TItem="Shipment" Title="Lane" Field="Lane" Sortable="true" Filterable="true" />
-            <DataGridColumnDef TItem="Shipment" Title="Carrier" Field="Carrier" Sortable="true" Groupable="true"
-                               Filterable="true" FilterType="DataGridFilterType.Select" FilterOptions="_carrierOpts" />
+            @* Compact "CODE → CODE" single-line lane instead of the full "City CODE →
+               City" text — the full names wrapped onto two lines at a realistic column
+               width, which is what pushed Value/ETA/Progress past the 1440px edge. Full
+               names stay reachable via the native title tooltip. *@
+            @* Not Filterable/Reorderable: those header affordances (funnel icon, drag
+               grip) set a MINIMUM header width regardless of how narrow the body
+               content is — table auto-layout sizes a column to the wider of its
+               header furniture or its body content, so trimming only the body (the
+               CellTemplate below) could not shrink this column on its own. Lane
+               doesn't need its own filter (Region/Carrier/Mode/Status already cover
+               routing) or reordering (it belongs directly after Reference). *@
+            <DataGridColumnDef TItem="Shipment" Title="Lane" Field="Lane" Sortable="true" Reorderable="false" Width="80">
+                <CellTemplate>
+                    @* A fixed-width truncation box (not just white-space:nowrap) so the
+                       table's auto layout can't grow this column to fit the widest
+                       unbroken lane code — it just clips behind the tooltip instead. *@
+                    <span class="block w-[62px] overflow-hidden text-ellipsis whitespace-nowrap font-mono text-xs" title="@context.Lane">@LaneCode(context)</span>
+                </CellTemplate>
+            </DataGridColumnDef>
+            @* Carrier names are the single widest column ("Vanguard Cargo", "Meridian
+               Direct") — truncated the same way, full name in the tooltip. *@
+            <DataGridColumnDef TItem="Shipment" Title="Carrier" Field="Carrier" Sortable="true" Groupable="true" Reorderable="false"
+                               Filterable="true" FilterType="DataGridFilterType.Select" FilterOptions="_carrierOpts" Width="100">
+                <CellTemplate>
+                    <span class="block w-[84px] overflow-hidden text-ellipsis whitespace-nowrap" title="@context.Carrier">@context.Carrier</span>
+                </CellTemplate>
+            </DataGridColumnDef>
 
-            <DataGridColumnDef TItem="Shipment" Title="Mode" Field="Mode" Sortable="true" Groupable="true"
+            @* Reorderable="false" trims the drag-grip's header width — a few px of
+               safety margin so the grid's scrollWidth doesn't land exactly on
+               clientWidth at 1440px (fragile against sub-pixel/DPI rounding). *@
+            <DataGridColumnDef TItem="Shipment" Title="Mode" Field="Mode" Sortable="true" Groupable="true" Reorderable="false"
                                Filterable="true" FilterType="DataGridFilterType.Select" FilterOptions="_modeOpts">
                 <CellTemplate>
                     <Badge Variant="Badge.BadgeVariant.Outline" Class="gap-1">
@@ -146,13 +173,16 @@
                                Filterable="true" FilterType="DataGridFilterType.Date" Format="MMM d"
                                CellClass="@(_ => "tabular-nums")" />
 
-            <DataGridColumnDef TItem="Shipment" Title="Progress" Field="ProgressPct" Sortable="true">
+            @* Fixed width sized to fit the bar + the widest possible label ("100%")
+               together, so the percentage is never the thing that gets clipped by the
+               viewport edge at 1440px. *@
+            <DataGridColumnDef TItem="Shipment" Title="Progress" Field="ProgressPct" Sortable="true" Width="118" MinWidth="118">
                 <CellTemplate>
                     <div class="flex items-center gap-2">
                         <div class="h-1.5 w-16 overflow-hidden rounded-full bg-muted">
                             <div class="h-full rounded-full @ProgressColor(context.Status)" style="width:@(context.ProgressPct)%"></div>
                         </div>
-                        <span class="w-8 text-right text-xs tabular-nums text-muted-foreground">@context.ProgressPct%</span>
+                        <span class="w-9 text-right text-xs tabular-nums text-muted-foreground">@context.ProgressPct%</span>
                     </div>
                 </CellTemplate>
             </DataGridColumnDef>
@@ -403,6 +433,20 @@
     {
         "Air" => "Plane", "Rail" => "TrainFront", "Sea" => "Ship", _ => "Truck",
     };
+
+    // Destination cities have no embedded code (unlike Origin, e.g. "Felixstowe FXT") —
+    // this is a display-only lookup for the compact Lane column; the full "City CODE →
+    // City" text is still the sort/filter value and lives in the cell's title tooltip.
+    private static readonly Dictionary<string, string> _destCodes = new()
+    {
+        ["Munich"] = "MUC", ["Prague"] = "PRG", ["Vienna"] = "VIE", ["Milan"] = "MIL",
+        ["Lyon"] = "LYS", ["Warsaw"] = "WAW", ["Berlin"] = "BER", ["Zurich"] = "ZRH",
+        ["Frankfurt"] = "FRA", ["Madrid"] = "MAD", ["Krakow"] = "KRK", ["Stuttgart"] = "STR",
+        ["Budapest"] = "BUD", ["Copenhagen"] = "CPH",
+    };
+
+    private static string LaneCode(Shipment s) =>
+        $"{s.Origin.Split(' ')[^1]} → {(_destCodes.TryGetValue(s.Destination, out var code) ? code : s.Destination)}";
 
     private static Badge.BadgeVariant PriorityVariant(string p) => p switch
     {

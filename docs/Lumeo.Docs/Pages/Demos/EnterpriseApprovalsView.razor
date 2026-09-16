@@ -78,9 +78,17 @@
                 <section>
                     <h3 class="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Workflow</h3>
                     <Steps CurrentStep="@_currentStep">
-                        @foreach (var s in _selected.Steps)
+                        @for (var i = 0; i < _selected.Steps.Count; i++)
                         {
-                            <StepsItem Title="@s.Title" Description="@s.Description" />
+                            var s = _selected.Steps[i];
+                            @* A rejected request stops right where it was rejected — that
+                               step (the one Steps would otherwise render as "current") gets
+                               the destructive error treatment instead of the normal
+                               in-progress ring, so a rejection reads as "stopped here",
+                               not "still pending". *@
+                            var rejectedHere = i == _currentStep && _rejected.Contains(_selected.Id);
+                            <StepsItem Title="@s.Title" Description="@s.Description"
+                                       Status="@(rejectedHere ? StepsItem.StepsItemStatus.Error : StepsItem.StepsItemStatus.Default)" />
                         }
                     </Steps>
                 </section>
@@ -148,7 +156,7 @@
                 <div class="rounded-md border border-border/60 p-3">
                     <div class="text-[11px] uppercase tracking-wide text-muted-foreground">Amount</div>
                     <div class="font-medium tabular-nums">@(_selected.Amount > 0 ? $"€{_selected.Amount:N0}" : "No cost")</div>
-                    <div class="text-xs text-muted-foreground">Stage @(_currentStep + 1) of @_selected.Steps.Count</div>
+                    <div class="text-xs text-muted-foreground">@StageLabel()</div>
                 </div>
             </div>
         </div>
@@ -176,6 +184,15 @@
     // the "Resolved" card/detail treatment and disables Approve/Reject once actioned.
     private readonly HashSet<string> _resolved = new();
 
+    // Ids resolved via Reject specifically — the workflow stops at the step it was
+    // rejected on (marked destructive/error there) instead of advancing, unlike Approve.
+    private readonly HashSet<string> _rejected = new();
+
+    // Per-request step reached at resolution time, so re-selecting an already-resolved
+    // card (e.g. after browsing to another request and back) still shows its resolved
+    // outcome instead of reverting to the request's original seeded CurrentStep.
+    private readonly Dictionary<string, int> _resolvedStep = new();
+
     // Below lg, true once the visitor has explicitly tapped a card: the master list
     // hides and the detail panel takes the full column (see the Back-to-list button),
     // instead of stacking list + detail and repeating the same title/amount.
@@ -184,26 +201,46 @@
     private void Select(ApprovalRequest a)
     {
         _selected = a;
-        _currentStep = a.CurrentStep;
+        _currentStep = _resolvedStep.TryGetValue(a.Id, out var resolvedStep) ? resolvedStep : a.CurrentStep;
         _drilledIn = true;
     }
 
     private async Task Approve()
     {
-        if (_currentStep < _selected.Steps.Count - 1) _currentStep++;
-        Toast.Success("Request approved", $"{_selected.Id} advanced to “{_selected.Steps[_currentStep].Title}”.");
+        // Approve is the terminal decision on this request, not one internal step of
+        // several — it must leave every step (including the last, "Approved") showing
+        // complete, not stop one short of it with the last step still "current"/unchecked.
+        _currentStep = _selected.Steps.Count;
+        // A later Approve overrides an earlier Reject on the same request (e.g. the
+        // operator reconsiders) — the workflow no longer reads as rejected.
+        _rejected.Remove(_selected.Id);
+        Toast.Success("Request approved", $"{_selected.Id} approved — all workflow steps complete.");
         await ResolveOne();
     }
 
     private async Task Reject()
     {
+        // Unlike Approve, Reject does NOT advance _currentStep — the workflow stops
+        // exactly where it was rejected, and that step renders with the destructive
+        // error treatment (see the Steps loop above) instead of looking still-pending.
+        _rejected.Add(_selected.Id);
         Toast.Error("Request rejected", $"{_selected.Id} returned to {_selected.Requester}.");
         await ResolveOne();
     }
 
-    // Decrement the pending header + notify the shell, once per distinct request.
+    // "Stage N of M", or a completion label once every step is done (Approve sets
+    // _currentStep to Steps.Count, one past the last valid index).
+    private string StageLabel() =>
+        _currentStep >= _selected.Steps.Count
+            ? "All stages complete"
+            : $"Stage {_currentStep + 1} of {_selected.Steps.Count}";
+
+    // Decrement the pending header + notify the shell, once per distinct request; also
+    // captures the step reached so re-selecting this card later (see Select) shows the
+    // same resolved outcome instead of the request's original seeded CurrentStep.
     private async Task ResolveOne()
     {
+        _resolvedStep[_selected.Id] = _currentStep;
         if (_resolved.Add(_selected.Id) && _pending > 0)
         {
             _pending--;

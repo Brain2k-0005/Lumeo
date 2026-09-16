@@ -71,6 +71,46 @@ public class EnterpriseDemoTests : IAsyncLifetime
         var resolvedButton = cut.FindAll("button").Single(b => b.TextContent.Trim() == "Resolved");
         Assert.True(resolvedButton.HasAttribute("disabled"));
         Assert.Contains("Resolved", cut.Markup);
+
+        // The workflow itself must show every step complete — including the LAST step
+        // ("Approved") — not stop one short of it with "Approved" still an unchecked
+        // "current" step. REQ-4471 has 4 steps: Submitted, Ops Review, Finance, Approved.
+        var stepLabels = cut.FindAll("[data-step-indicator]").Select(e => e.GetAttribute("aria-label")).ToList();
+        Assert.Equal(4, stepLabels.Count);
+        Assert.All(stepLabels, label => Assert.EndsWith("(completed)", label));
+        Assert.Contains("Approved (completed)", stepLabels);
+    }
+
+    [Fact]
+    public void Rejecting_a_request_marks_its_current_step_as_error_not_completed()
+    {
+        var cut = _ctx.Render(ApprovalsWithOverlayHost);
+
+        // REQ-4471 is selected by default, seeded at CurrentStep 2 ("Finance") of its
+        // 4-step workflow (Submitted, Ops Review, Finance, Approved) — steps 0-1 already
+        // completed, step 2 in progress, step 3 not yet reached.
+        var rejectTrigger = cut.FindAll("button").First(b => b.TextContent.Trim() == "Reject");
+        rejectTrigger.Click();
+
+        cut.WaitForState(() => cut.FindAll("[role='alertdialog']").Count > 0, TimeSpan.FromSeconds(5));
+        var dialog = cut.Find("[role='alertdialog']");
+        var confirm = dialog.QuerySelectorAll("button").First(b => b.TextContent.Trim() == "Reject");
+        confirm.Click();
+
+        cut.WaitForState(() => cut.FindAll("button").Count(b => b.TextContent.Trim() == "Resolved") > 0, TimeSpan.FromSeconds(5));
+
+        // Reject does NOT advance the workflow like Approve does — it stops exactly
+        // where it was rejected, and that step (not the next one) reads as destructive.
+        var stepIndicators = cut.FindAll("[data-step-indicator]");
+        Assert.Equal(4, stepIndicators.Count);
+        var labels = stepIndicators.Select(e => e.GetAttribute("aria-label")).ToList();
+        Assert.Equal("Submitted (completed)", labels[0]);
+        Assert.Equal("Ops Review (completed)", labels[1]);
+        Assert.Equal("Finance (error)", labels[2]);
+        Assert.Equal("Approved", labels[3]); // not yet reached: no completed/current/error suffix
+
+        var rejectedStep = stepIndicators[2];
+        Assert.Contains("border-destructive", rejectedStep.GetAttribute("class"));
     }
 
     [Fact]
