@@ -1,0 +1,67 @@
+@namespace Lumeo.Docs.Shared.Showcases
+
+@* ThemeSwitcher itself calls the live ThemeService, so clicking it anywhere would flip
+   the WHOLE docs site's color scheme/mode for whoever is browsing the catalog — not a
+   contained side effect like every other showcase. This is a faithful static rendition
+   with its own local @code state instead: same swatch/mode markup and interaction, but
+   scoped to this card only. Swatch colors are ThemeService.AvailableSchemes' own values. *@
+<div class="w-full max-w-[22rem]">
+    <Stack Gap="4">
+        <Stack>
+            <Lumeo.Text Size="xs" Color="muted" Class="mb-2">Color</Lumeo.Text>
+            <Flex Gap="2">
+                @foreach (var scheme in _schemes)
+                {
+                    <button type="button"
+                            class="@GetSwatchClass(scheme.Id)"
+                            style="background-color: @scheme.Color;"
+                            aria-label="@scheme.Name"
+                            @onclick="() => _scheme = scheme.Id">
+                        @if (scheme.Id == _scheme)
+                        {
+                            <SvgGlyph Svg="@(Lucide.Check)" class="h-3 w-3 text-white" />
+                        }
+                    </button>
+                }
+            </Flex>
+        </Stack>
+        <Stack>
+            <Lumeo.Text Size="xs" Color="muted" Class="mb-2">Mode</Lumeo.Text>
+            <div class="inline-flex items-center gap-1 rounded-lg border border-border/50 bg-muted p-1">
+                @ModeButton("light", "Light", Lucide.Sun)
+                @ModeButton("dark", "Dark", Lucide.Moon)
+                @ModeButton("system", "System", Lucide.Monitor)
+            </div>
+        </Stack>
+    </Stack>
+</div>
+
+@code {
+    private string _scheme = "zinc";
+    private string _mode = "system";
+
+    private readonly (string Id, string Name, string Color)[] _schemes =
+    [
+        ("zinc", "Zinc", "hsl(240 5.9% 10%)"),
+        ("blue", "Blue", "hsl(221 83% 53%)"),
+        ("green", "Green", "hsl(142 71% 45%)"),
+        ("rose", "Rose", "hsl(347 77% 50%)"),
+    ];
+
+    private string GetSwatchClass(string schemeId)
+    {
+        const string baseClass = "flex h-7 w-7 items-center justify-center rounded-full border border-primary transition-all";
+        return schemeId == _scheme ? $"{baseClass} border-foreground scale-110" : $"{baseClass} border-transparent";
+    }
+
+    private RenderFragment ModeButton(string mode, string label, Lumeo.IconSource icon) =>
+        @<button type="button" class="@GetModeButtonClass(mode)" aria-label="@label" @onclick="() => _mode = mode">
+            <SvgGlyph Svg="@(icon)" class="h-3.5 w-3.5" />
+        </button>;
+
+    private string GetModeButtonClass(string mode)
+    {
+        const string baseClass = "inline-flex items-center justify-center rounded-md px-2.5 py-1.5 text-sm transition-colors";
+        return mode == _mode ? $"{baseClass} bg-background text-foreground shadow-sm" : $"{baseClass} text-muted-foreground";
+    }
+}

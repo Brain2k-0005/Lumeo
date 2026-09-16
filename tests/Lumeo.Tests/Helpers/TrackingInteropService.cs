@@ -477,6 +477,24 @@ public class TrackingInteropService : IComponentInteropService
     }
     public ValueTask SetupAutoResize(string elementId, int maxRows) => ValueTask.CompletedTask;
     public ValueTask UnregisterAutoResize(string elementId) => ValueTask.CompletedTask;
+
+    // Viewport-width observer registration tracking — lets DataGrid tests assert the
+    // ResizeObserver is (un)registered against the scroll wrapper's element id exactly
+    // when a DetailTemplate + DetailStickyToViewport are in play.
+    private readonly List<string> _registerViewportWidthCalls = new();
+    private readonly List<string> _unregisterViewportWidthCalls = new();
+    public IReadOnlyList<string> RegisterViewportWidthCalls => _registerViewportWidthCalls;
+    public IReadOnlyList<string> UnregisterViewportWidthCalls => _unregisterViewportWidthCalls;
+    public ValueTask RegisterViewportWidth(string elementId)
+    {
+        _registerViewportWidthCalls.Add(elementId);
+        return ValueTask.CompletedTask;
+    }
+    public ValueTask UnregisterViewportWidth(string elementId)
+    {
+        _unregisterViewportWidthCalls.Add(elementId);
+        return ValueTask.CompletedTask;
+    }
     // OTP paste registration tracking (#42 lifecycle) — records each
     // (baseId, length) register/unregister so tests can assert the paste listener
     // is (re-)wired against the CURRENT Length: a runtime Length change must

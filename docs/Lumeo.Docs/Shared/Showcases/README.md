@@ -173,3 +173,69 @@ static preview. Like `MegaMenu`/`SpeedDial` in wave 0, a real click on its own
 display element is simulated once after mount (`window.lumeo.clickElement`) so
 the showcase lands on the actual editing UI (input + Save/Cancel) — the
 recognisable, useful state rule 3 calls for.
+## Wave 1 — Utility and Layout categories
+
+All 10 Layout-category and 18 Utility-category `hasDocsPage: true` components
+got a showcase (28 total).
+
+### Layout (10)
+
+| Component | Showcase state |
+| --- | --- |
+| AspectRatio | Two ratios side by side (16:9, 1:1), each labelled |
+| Center | A dashed box with an icon + "Centered content" centered on both axes |
+| Container | Three stacked bordered boxes at `xs`/`sm`/`md` max-widths |
+| Flex | A nav-bar row: brand + `Spacer` + two buttons |
+| Grid | 3-column grid, 6 numbered placeholder boxes |
+| Resizable | Two panels with a draggable handle — drag to resize |
+| ScrollArea | A short tag list in a custom-scrollbar box, scrolled by mouse wheel |
+| Separator | A horizontal divider under a heading + a vertical-divider link row |
+| Spacer | An avatar/name row pushed apart from an Edit button by two spacers |
+| Stack | 3 items; Vertical/Horizontal buttons toggle the stack's direction live |
+
+### Utility (18)
+
+| Component | Showcase state |
+| --- | --- |
+| AudioPlayer | Compact player (cover, title/artist, play, scrub bar) — skip/rate/volume hidden to fit |
+| ButtonGroup | 3 icon buttons (Bold/Italic/Underline) joined into one segmented bar |
+| DensityScope | Two scoped rows (Compact, Spacious) with the same Save/Cancel buttons |
+| DirectionProvider | Ltr vs Rtl rows — same markup, icon/button mirror sides |
+| DropdownButton | "Actions" trigger; click opens a menu (position\:fixed, escapes the box like Menubar) |
+| Field | An email `Field` + a horizontal checkbox `Field` |
+| Icon | 5 icons across sizes/colors in one row |
+| Kbd | `Ctrl`+`K`, `Esc`, `Enter` shortcut glyphs |
+| Label | A `Label`+`Input` pair + a checkbox with its `Label` |
+| SignaturePad | Disabled/read-only with a deterministic captured-signature fixture |
+| SplitButton | "Save" primary half + chevron half; click opens the secondary-actions menu |
+| SwipeActions | Two rows with trailing actions behind them, "Swipe left" hint shown |
+| TouchRipple | Two buttons wrapped in `TouchRipple` — click either to see the ripple |
+
+### Exceptions — real browser feature (5)
+
+These need a real device/browser capability (touch drag, viewport insets, a
+persisted per-browser decision) or would mutate global site-wide state if
+wired live from inside a catalog card. Each renders a faithful **static
+rendition** of its own real markup instead, with local `@code` state only:
+
+- **ConsentBanner** — only mounts once per browser and is `position: fixed`
+  to the viewport; wiring the live `ConsentService` would pop the real
+  site-wide banner. Static rendition of its card content (icon/title/
+  description + Customize/Reject/Accept), in normal flow.
+- **PullToRefresh** — reacts to a real touch/pointer drag a static card can't
+  simulate. Static rendition of the component's own "engaged" mid-pull state
+  (the spinner tile pulled below the top edge) with no drag wiring.
+- **SafeArea** — `env(safe-area-inset-*)` is `0px` on desktop and most
+  Android (per the component's own docs page); only notched iPhones see a
+  real inset. Static rendition of its canonical use, a bottom tab bar.
+- **ThemeSwitcher** — calls the live `ThemeService` on every click, which
+  would flip the whole docs site's color scheme/mode for anyone previewing
+  the catalog, not a contained effect like every other showcase. Static
+  rendition of the same swatch/mode markup with local `@code` state instead of
+  `ThemeService`, using `ThemeService.AvailableSchemes`' own preview colors.
+- **ThemeToggle** — same hazard as ThemeSwitcher: it calls
+  `ThemeService.ToggleModeAsync()` on click, which would flip the whole docs
+  site's light/dark mode from inside a catalog card. Not listed in the wave
+  brief's exception set but carries the identical global-side-effect problem,
+  so treated the same way: a static rendition of its exact button/icon markup
+  with a local `bool` instead of `ThemeService`.

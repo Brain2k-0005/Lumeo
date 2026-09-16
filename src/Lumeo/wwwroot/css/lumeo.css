@@ -2040,6 +2040,25 @@ input[type="range"]:focus-visible::-moz-range-thumb {
   }
 }
 
+/* === datagrid row-detail sticky-to-viewport === */
+/* DataGridDetailRow's expanded row-detail content, when DetailStickyToViewport (default
+   true) is on. --lumeo-grid-viewport-w is kept current on the grid's scroll wrapper by a
+   plain JS ResizeObserver (components.js's registerViewportWidth, wired from
+   DataGrid.razor) and inherits down as an ordinary CSS custom property — deliberately NOT
+   a CSS `container-type: inline-size` + `cqw` approach, which makes that wrapper the
+   containing block for `position: fixed` descendants and broke DataGridHeaderCell's
+   filter popover / pin menu / column menu (positioned in viewport coordinates).
+   2rem subtracts the detail <td>'s own p-4 (1rem each side) horizontal padding so this
+   element's edges land flush with the cell's content box, not the viewport's raw edge —
+   see DataGridDetailRow.razor, whose <td> padding is NOT density-dependent (always p-4),
+   so the constant doesn't need to vary with Compact. The 100% fallback covers the brief
+   window before the ResizeObserver's first callback fires. This is a plain rule (not a
+   Tailwind arbitrary class) because a var()-based arbitrary class never reaches the
+   precompiled bundle. */
+[data-slot="datagrid-detail-viewport"] {
+  width: calc(var(--lumeo-grid-viewport-w, 100%) - 2rem);
+}
+
 /* === datagrid fullscreen === */
 /* Ensures the grid inside the fullscreen modal fills the available width and
    height regardless of any Height / max-width the host set on the grid. */
