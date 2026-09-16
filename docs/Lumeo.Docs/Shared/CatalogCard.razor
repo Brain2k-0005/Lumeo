@@ -6,22 +6,30 @@
     @* The preview area is a STRICT 16:9 box: aspect-[16/9] + overflow-hidden, always.
        A showcase taller than that (an accordion with an item open, a carousel slide,
        ...) clips — at the BOTTOM, never the top. The content wrapper stays
-       items-start (the fallback/base alignment), but the showcase itself gets
-       my-auto: a flex item with margin-block:auto centres itself via auto margins
-       when it's SMALLER than the container's cross-axis space (short showcases like
-       Breadcrumb/Pagination/Menubar/Affix/NavigationMenu no longer hug the top with a
-       big empty gap below), and the auto margin resolves to 0 — falling back to
-       items-start's top alignment — the moment content is as tall as or taller than
-       the box, so nothing ever pushes up into a top clip. (Plain items-center doesn't
-       have this fallback: a too-tall showcase overflows equally above AND below the
-       box, clipping its TOP half against the card's rounded corner — that's what
-       happened to Accordion before this.) One rule in CatalogCard, inherited by every
-       showcase without any of them touching their own layout for it. A showcase that
-       opens a real dropdown/panel (MegaMenu, Menubar, NavigationMenu) still gets
-       clipped here if it's absolutely positioned (MegaMenu) — position:fixed content
-       (Menubar/NavigationMenu) escapes this regardless of overflow-hidden, since
-       neither this box nor its ancestors use a transform. Known, accepted tradeoff
-       (see Showcases/README.md).
+       items-start (the fallback/base alignment), but the showcase's own wrapper gets
+       w-full my-auto: w-full is needed because a flex item shrinks to CONTENT width by
+       default — without it, a showcase built on its own `w-full max-w-[22rem]` root
+       (Splitter, Menubar, AppBar, Carousel, ...) resolved that w-full against the
+       shrunk wrapper instead of the box, rendering narrow/squashed (Splitter's "Left"/
+       "Right" panes overlapping, Menubar a tiny pill). With w-full restoring the
+       wrapper to the box's full width, my-auto (margin-block:auto) still centres the
+       wrapper itself vertically when it's SMALLER than the container's cross-axis
+       space (short showcases like Breadcrumb/Pagination/Menubar/Affix/NavigationMenu
+       no longer hug the top with a big empty gap below), and the auto margin resolves
+       to 0 — falling back to items-start's top alignment — the moment content is as
+       tall as or taller than the box, so nothing ever pushes up into a top clip.
+       (Plain items-center doesn't have this fallback: a too-tall showcase overflows
+       equally above AND below the box, clipping its TOP half against the card's
+       rounded corner — that's what happened to Accordion before this.) A showcase
+       that's intrinsically small and centres ITSELF (Breadcrumb, Pagination — no
+       w-full max-w-[22rem] root) still centres fine inside the now-full-width wrapper
+       via its own `mx-auto`/the box's `justify-center`. One rule in CatalogCard,
+       inherited by every showcase without any of them touching their own layout for
+       it. A showcase that opens a real dropdown/panel (MegaMenu, Menubar,
+       NavigationMenu) still gets clipped here if it's absolutely positioned
+       (MegaMenu) — position:fixed content (Menubar/NavigationMenu) escapes this
+       regardless of overflow-hidden, since neither this box nor its ancestors use a
+       transform. Known, accepted tradeoff (see Showcases/README.md).
        The padding + centering below is scoped to ShowcaseType is not null — the
        thumbnail/icon fallback (~150 cards with no showcase yet) renders full-bleed via
        its own absolute inset-0 wrapper (see ThumbnailOrIcon) so it isn't inset by this
@@ -33,13 +41,13 @@
                 <div class="absolute inset-0 flex items-start justify-center p-4">
                     @if (Eager)
                     {
-                        <div class="my-auto"><DynamicComponent Type="@ShowcaseType" /></div>
+                        <div class="w-full my-auto"><DynamicComponent Type="@ShowcaseType" /></div>
                     }
                     else
                     {
                         <LazyRender Height="100%">
                             <Placeholder>@ThumbnailOrIcon</Placeholder>
-                            <ChildContent><div class="my-auto"><DynamicComponent Type="@ShowcaseType" /></div></ChildContent>
+                            <ChildContent><div class="w-full my-auto"><DynamicComponent Type="@ShowcaseType" /></div></ChildContent>
                         </LazyRender>
                     }
                 </div>
