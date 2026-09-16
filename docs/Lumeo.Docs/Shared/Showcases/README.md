@@ -111,6 +111,67 @@ wiring:
 - **Scrollspy** — the nav link list with the middle link shown in its
   `data-active="true"` state, exactly as it looks mid-scroll.
 
+## Wave 1 — Data Display category
+
+25 of the 32 `hasDocsPage: true` Data Display-category components got a live showcase.
+
+| Component | Showcase state |
+| --- | --- |
+| Avatar | 3 overlapping fallback avatars in a stack, plus a "+3 more" count |
+| Badge | 6 badges across the variant set, one pill with a count |
+| Barcode | One Code 128B barcode (inline SVG, no JS) |
+| Calendar | A single month, denser cell size via `--lumeo-calendar-*` vars, one date pre-selected — click any day to change it |
+| Card | Header + content + footer, compact text |
+| Chart | `BarChart`, 4 categories, `Height="160px"` (ECharts via CDN — paints in the real browser, is a no-op under bUnit's loose JS mode, never throws) |
+| Chip | 3 closable tags — click × to remove one |
+| DataGrid | 3 rows, 2 columns, no pagination footer |
+| DataTable | 3 rows with a status `Badge` cell |
+| Descriptions | 2-column key/value grid, 4 items |
+| Filter | `FilterBar` with 2 dismissible pills — click × to remove one |
+| Filters | The query-builder chip row, `Size="Sm"`, one preset rule already applied |
+| Gauge | 2 small radial gauges (CPU/RAM) |
+| Image | A local inline-SVG data-URI "photo" (no external image host — deterministic, no network) |
+| ImageCompare | Local inline-SVG before/after data URIs, drag the divider |
+| List | 3 items with leading icons, one trailing badge |
+| PivotGrid | 2 regions × 2 years, one measure, `Compact="true"` |
+| QRCode | One small QR code (inline SVG, no JS) |
+| Sparkline | An inline trend line next to a value + delta |
+| Statistic | 2 stats with trend arrows |
+| Steps | 3 steps, step 2 active, `Clickable="true"` — click a step to jump to it |
+| Table | 3-row invoice table |
+| Timeline | 3 vertical events |
+| TreeView | 2 folders, `ExpandAll="true"`, `Size="Sm"` |
+| Watermark | "Confidential" tiled over two lines of body text |
+
+### Exceptions — viewport/external-engine components
+
+These 7 components fundamentally need a real network resource, a JS charting/mapping
+engine, or a viewport taller than a catalog card to show anything meaningful. Each
+showcase instead renders a faithful **static rendition** of the component's own visible
+chrome (matching its real classes/markup where practical), with no live wiring:
+
+- **FileManager** — the exact breadcrumb bar and list-row markup (icon, name, size) for a
+  small fixed set of entries, without the folder tree pane or interactivity (a real
+  explorer needs the tree pane to mean anything, which doesn't fit at card width).
+- **FileViewer** — the header bar (file icon, name, kind label, download button — same
+  classes as the real component) over a centered file-icon body, matching the unresolved/
+  unsupported-preview state; its PDF/Code kinds delegate to PdfViewer/CodeEditor, both
+  external-engine viewers.
+- **Gantt** (legacy SVG engine) — a day-scale header and 3 proportional task bars; the
+  real component needs real height/width to lay out day columns (420px in its own docs
+  demos) and has no tree pane to shrink further.
+- **GanttChart** (v3 engine) — same treatment; the real component virtualizes rows
+  against the actual scroll viewport (`GanttViewportReconciler`), which a static card
+  can't reproduce.
+- **Map** — a theme-tinted dot-grid backdrop with a `MapInfoChip` overlay (the docs'
+  own reusable info-chip component) and a pin marker, in place of MapLibre GL tiles
+  fetched from a real network.
+- **PdfViewer** — the toolbar chrome (page nav + zoom, same classes as the real
+  component) over a page-shaped placeholder, in place of pdf.js rendering a real PDF to
+  canvas.
+- **Scheduler** — the exact agenda-row markup `SchedulerAgendaView` itself produces
+  (color dot, title, time) for 3 fixed events; every real view needs 320px-640px of
+  height in its own docs demos to show more than an empty grid.
 ## Wave 1 — Forms category
 
 All 35 `hasDocsPage: true` Forms-category components got a showcase.
