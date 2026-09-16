@@ -24,7 +24,7 @@
         GlobalSearch: _globalSearch,
         CurrentPage: _currentPage,
         PageSize: PageSize,
-        TotalCount: EffectiveTotalCount,
+        TotalCount: FilteredRowCount,
         SelectionMode: SelectionMode,
         EditMode: EditMode,
         IsLoading: IsLoading || (_serverService?.IsLoading ?? false),
@@ -105,6 +105,8 @@
         ColumnMenuContent = ColumnMenuContent,
         HasActiveFilters = HasActiveFilters,
         ClearFiltersAsync = ClearFiltersAsync,
+        FilteredRowCount = FilteredRowCount,
+        TotalRowCount = TotalRowCount,
         BeginCellEdit = BeginCellEditAsync,
         EndCellEdit = EndCellEdit,
         DetailStickyToViewport = DetailStickyToViewport,
@@ -393,7 +395,7 @@
         @if (FooterTemplate is not null)
         {
             <div data-slot="datagrid-footer" class="flex items-center border-t border-border/40 px-3 py-2 text-xs text-muted-foreground">
-                @FooterTemplate(new DataGridFooterContext<TItem>(_displayedItems.Count, EffectiveTotalCount, _displayedItems.AsReadOnly()))
+                @FooterTemplate(new DataGridFooterContext<TItem>(_displayedItems.Count, FilteredRowCount, _displayedItems.AsReadOnly()))
             </div>
         }
 
@@ -886,6 +888,37 @@
     /// </summary>
     public bool HasActiveFilters => _filters.Count > 0 || !string.IsNullOrWhiteSpace(_globalSearch);
 
+    /// <summary>
+    /// True when row counts are fed by a server total rather than the in-memory <see cref="Items"/>
+    /// list: either <see cref="ServerMode"/>, or the ItemsProvider-backed
+    /// <see cref="Virtualized"/>+<see cref="OnRangeRequest"/> combination
+    /// (<c>_useServerVirtualization</c>) which can be active WITHOUT <see cref="ServerMode"/> —
+    /// in that mode <c>Items</c> is empty by design (rows are fetched in scroll-driven windows;
+    /// see <see cref="ServerVirtualizationProviderImpl"/>), so <see cref="FilteredRowCount"/>/
+    /// <see cref="TotalRowCount"/> must not fall through to counting it.
+    /// </summary>
+    private bool IsServerFedRowCount => ServerMode || _useServerVirtualization;
+
+    /// <summary>
+    /// The number of rows that survive the grid's own column filters, global search, and (in
+    /// client mode) grouping/row visibility, before paging — the same value that drives the
+    /// built-in pagination summary ("1-5 of 12") and the filtered-empty state, so there is one
+    /// source of truth rather than a second count computed independently. When
+    /// <see cref="IsServerFedRowCount"/> (<see cref="ServerMode"/> or virtualized server mode)
+    /// this is the <see cref="TotalCount"/> from the last server response. Readable at any
+    /// time; see <see cref="OnRowCountChanged"/> to be notified when it changes.
+    /// </summary>
+    public int FilteredRowCount => IsServerFedRowCount ? TotalCount : _processedItems.Count;
+
+    /// <summary>
+    /// The unfiltered source row count: the number of items in <see cref="Items"/> in client
+    /// mode, or the server's <see cref="TotalCount"/> when <see cref="IsServerFedRowCount"/>
+    /// (the server has already applied its own filtering before reporting a total, so no
+    /// separate "unfiltered" count is knowable client-side there). Readable at any time; see
+    /// <see cref="OnRowCountChanged"/> to be notified when it changes.
+    /// </summary>
+    public int TotalRowCount => IsServerFedRowCount ? TotalCount : _sourceRowCount;
+
     // --- Column virtualization (rc.36) ---
     /// <summary>
     /// Simplified column virtualization: caps the number of horizontally-
@@ -930,6 +963,14 @@
     /// <summary>Fires when an internal grid operation (export, server request, layout
     /// persistence) throws, carrying the exception, instead of letting it propagate unhandled.</summary>
     [Parameter] public EventCallback<Exception> OnError { get; set; }
+
+    /// <summary>
+    /// Fires whenever <see cref="FilteredRowCount"/> or <see cref="TotalRowCount"/> changes —
+    /// a filter/search/grouping change in client mode, or a fresh <see cref="TotalCount"/>
+    /// from the server in <see cref="ServerMode"/> — so a host can render its own "Showing n
+    /// of m" summary without polling. Fires once per actual change, not on every render.
+    /// </summary>
+    [Parameter] public EventCallback<DataGridRowCountChanged> OnRowCountChanged { get; set; }
 
     /// <summary>Currently-selected items. Set for one-way binding, or use with
     /// <see cref="SelectedItemsChanged"/> / <c>@bind-SelectedItems</c> for two-way.</summary>
@@ -1191,6 +1232,13 @@
             .Select((it, i) => new DataGridBody<TItem>.IndexedItem(it, req.StartIndex + i))
             .ToList();
         TotalCount = resp.TotalCount;
+        // This provider is the only place FilteredRowCount/TotalRowCount actually change in
+        // virtualized-without-ServerMode mode (_useServerVirtualization): there is no
+        // OnParametersSetAsync/RegroupServerItems pass here to catch it, since Items stays
+        // empty by design and TotalCount is a plain field this method writes directly, not a
+        // parameter the host re-passes in. Already async, so await directly rather than the
+        // sync fire-and-forget dispatch the many non-async call sites need.
+        await MaybeNotifyRowCountChangedAsync();
         return new Microsoft.AspNetCore.Components.Web.Virtualization.ItemsProviderResult<DataGridBody<TItem>.IndexedItem>(
             indexed, resp.TotalCount);
     }
@@ -1294,6 +1342,17 @@
     }
     private List<TItem> _processedItems = new();
     private List<TItem> _displayedItems = new();
+
+    // Cached unfiltered source count — see TotalRowCount. Refreshed in ProcessClientDataCore
+    // (the one place Items is enumerated for client-mode processing) rather than recomputed
+    // on every TotalRowCount read, since Items may be a lazily-evaluated sequence.
+    private int _sourceRowCount;
+
+    // Last values delivered to OnRowCountChanged, so MaybeNotifyRowCountChanged fires only on
+    // an actual change rather than on every render (many call sites re-run row processing on
+    // renders that don't change either count).
+    private int _lastNotifiedFilteredRowCount = -1;
+    private int _lastNotifiedTotalRowCount = -1;
 
     // --- Value-type row-reorder DOM key tokens (round-7 #4, round-8 #1) ---
     //
@@ -1539,8 +1598,6 @@
 
     private List<DataGridColumn<TItem>> EffectiveColumns =>
         _orderedColumns.Count > 0 ? _orderedColumns : SourceColumns;
-
-    private int EffectiveTotalCount => ServerMode ? TotalCount : _processedItems.Count;
 
     // Row virtualization is incompatible with the recursive group-tree / tree-grid
     // renderers (they need every group/parent row present to compute indentation
@@ -2227,7 +2284,17 @@
     // multi-level, expand-state preservation, and aggregates symmetrical across
     // modes. Caveat: grouping is per-page; cross-page grouping requires the API
     // to deliver all rows (no pagination) or pre-aggregated groups.
+    // Public entry point: runs the core regroup, then checks whether FilteredRowCount/
+    // TotalRowCount actually changed (server mode reads them straight off the TotalCount
+    // parameter, but every caller here funnels through this one method, so it's the single
+    // choke point for the server-mode half of OnRowCountChanged).
     private void RegroupServerItems()
+    {
+        RegroupServerItemsCore();
+        MaybeNotifyRowCountChanged();
+    }
+
+    private void RegroupServerItemsCore()
     {
         _processedItems = _serverPageItems;
         var fields = EffectiveGroupFields;
@@ -2255,14 +2322,27 @@
         }
     }
 
+    // Public entry point: runs the core process, then checks whether FilteredRowCount/
+    // TotalRowCount actually changed. ProcessClientDataCore has several early returns (no
+    // Items, tree-grid mode, grouping) so the check lives here rather than duplicated at each
+    // one.
     private void ProcessClientData()
+    {
+        ProcessClientDataCore();
+        MaybeNotifyRowCountChanged();
+    }
+
+    private void ProcessClientDataCore()
     {
         if (Items is null)
         {
             _processedItems = new List<TItem>();
             _displayedItems = new List<TItem>();
+            _sourceRowCount = 0;
             return;
         }
+
+        _sourceRowCount = Items is ICollection<TItem> itemsCollection ? itemsCollection.Count : Items.Count();
 
         // Clean stale selections that reference items no longer in the data source.
         // When SelectionKeySelector is set, compare by key so server-mode fetches
@@ -2470,6 +2550,59 @@
             }
             _displayedItems.AddRange(_batchAdded);
         }
+    }
+
+    /// <summary>
+    /// Compares the current <see cref="FilteredRowCount"/>/<see cref="TotalRowCount"/> against
+    /// the values last delivered to <see cref="OnRowCountChanged"/>, refreshes the toolbar
+    /// context's copy (read by <see cref="DataGridToolbar{TItem}"/> and custom toolbar tools),
+    /// and returns the pair to raise IF it actually changed (null otherwise). Shared by both
+    /// dispatch paths below so the "did it change" bookkeeping lives in exactly one place.
+    /// </summary>
+    private DataGridRowCountChanged? ComputeRowCountChange()
+    {
+        var filtered = FilteredRowCount;
+        var total = TotalRowCount;
+        _toolbarContext.FilteredRowCount = filtered;
+        _toolbarContext.TotalRowCount = total;
+
+        if (filtered == _lastNotifiedFilteredRowCount && total == _lastNotifiedTotalRowCount) return null;
+        _lastNotifiedFilteredRowCount = filtered;
+        _lastNotifiedTotalRowCount = total;
+        return new DataGridRowCountChanged(filtered, total);
+    }
+
+    /// <summary>
+    /// Synchronous dispatch path for <see cref="OnRowCountChanged"/>, called from
+    /// <see cref="ProcessClientData"/> (client mode) and <see cref="RegroupServerItems"/>
+    /// (server mode) — both reached from many synchronous, non-<c>async</c> call sites (grouping/
+    /// column/batch actions wired through the <c>Action</c>-typed delegates on
+    /// <see cref="DataGridContext{TItem}"/>, which can't become <c>async</c> without changing
+    /// that public delegate shape). Dispatches through <see cref="Lumeo.Services.SafeAsyncDispatcher"/>
+    /// — the same "fire-and-forget from a sync entry point, but observe/log the consumer
+    /// handler's exceptions instead of losing them" pattern <see cref="UpdateColumnWidth"/> uses
+    /// for <see cref="OnColumnResize"/> — rather than a bare discarded <c>InvokeAsync</c>.
+    /// </summary>
+    private void MaybeNotifyRowCountChanged()
+    {
+        var change = ComputeRowCountChange();
+        if (change is null || !OnRowCountChanged.HasDelegate) return;
+        Lumeo.Services.SafeAsyncDispatcher.FireAndForget(
+            InvokeAsync, () => OnRowCountChanged.InvokeAsync(change), "DataGrid.RowCountChanged");
+    }
+
+    /// <summary>
+    /// Async dispatch path for <see cref="OnRowCountChanged"/>, awaited directly from the
+    /// <c>async</c> call sites that recompute a server-fed count —
+    /// <see cref="ServerVirtualizationProviderImpl"/> — matching how <see cref="OnRowEdit"/>/
+    /// <see cref="OnError"/> are raised from their own <c>async</c> methods elsewhere in this
+    /// file, so a throwing async host handler surfaces here instead of being silently lost.
+    /// </summary>
+    private async Task MaybeNotifyRowCountChangedAsync()
+    {
+        var change = ComputeRowCountChange();
+        if (change is null || !OnRowCountChanged.HasDelegate) return;
+        await OnRowCountChanged.InvokeAsync(change);
     }
 
     // =====================================================================
@@ -4916,6 +5049,13 @@
             // server-side to cooperate with it.
             _globalSearch, _runtimeGroupFields.Count > 0 ? _runtimeGroupFields[0] : GroupBy,
             OnServerRequest, OnError, StateHasChanged);
+
+        // No OnRowCountChanged check here: TotalCount at this point can still be the value
+        // from BEFORE the consumer's OnServerRequest handler ran — it's a plain [Parameter]
+        // the host owns, and the fresh value only lands on this grid through the normal
+        // parameter cascade (host sets its bound field -> re-renders -> OnParametersSetAsync
+        // -> RegroupServerItems -> MaybeNotifyRowCountChanged), not synchronously inside this
+        // await. Notifying here risked firing with a stale pair.
 
         // When no OnError handler is wired and a new error occurred, show a default toast
         if (!OnError.HasDelegate && _serverService.Error is not null && _serverService.Error != previousError)

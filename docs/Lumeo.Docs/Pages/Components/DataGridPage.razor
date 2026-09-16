@@ -884,6 +884,17 @@
         </DataGrid>
     </ComponentDemo>
 
+    <ComponentDemo Title="Showing n of m" Description="FilteredRowCount/TotalRowCount and OnRowCountChanged give a host the same count the grid's own pagination summary uses, so a custom 'Showing n of m' header follows filters and search without a second, independently-computed count. Type in the search box or filter the Name column to see it update." Code="@_rowCountCode">
+        <Stack Gap="2">
+            <Lumeo.Text Size="sm" Color="muted">Showing @_rowCountFiltered of @_rowCountTotal employees</Lumeo.Text>
+            <DataGrid TItem="Employee" Items="@_employees" PageSize="5" ShowToolbar="true" ShowColumnChooser="false" ShowExport="false" ShowLayouts="false"
+                      OnRowCountChanged="@((DataGridRowCountChanged e) => { _rowCountFiltered = e.Filtered; _rowCountTotal = e.Total; })">
+                <DataGridColumnDef TItem="Employee" Title="Name" Field="Name" Filterable="true" />
+                <DataGridColumnDef TItem="Employee" Title="Department" Field="Department" />
+            </DataGrid>
+        </Stack>
+    </ComponentDemo>
+
     <ComponentDemo Title="Expandable (Fullscreen)" Description="Enable the Expandable feature to add a fullscreen icon in the toolbar. Click it to pop the grid into a fullscreen modal overlay. Selection, filters, sorts, and pagination all survive the transition. Press Esc or click the close button to exit." Code="@_expandableCode">
         <DataGrid TItem="Employee" Items="@_employees" PageSize="5" ShowPagination="true" ShowToolbar="true"
                   Expandable="true" FullscreenTitle="Employees"
@@ -1039,6 +1050,9 @@
                         <tr><td class="px-4 py-2 font-mono text-xs text-primary">GroupsExpandedByDefault</td><td class="px-4 py-2 font-mono text-xs">bool</td><td class="px-4 py-2 text-xs">true</td><td class="px-4 py-2 text-muted-foreground">Initial expand state for group headers when grouping is active.</td></tr>
                         <tr><td class="px-4 py-2 font-mono text-xs text-primary">HasActiveFilters</td><td class="px-4 py-2 font-mono text-xs">bool (get)</td><td class="px-4 py-2 text-xs">--</td><td class="px-4 py-2 text-muted-foreground">True when at least one column filter is applied or the global search box has text. Also available inside <code>EmptyTemplate</code> via its <code>DataGridEmptyContext</code>.</td></tr>
                         <tr><td class="px-4 py-2 font-mono text-xs text-primary">ClearFiltersAsync()</td><td class="px-4 py-2 font-mono text-xs">Task</td><td class="px-4 py-2 text-xs">method</td><td class="px-4 py-2 text-muted-foreground">Clears every active column filter and the global search box in one call, then reprocesses/refetches. The action behind <code>EmptyTemplate</code>'s <code>ClearFilters</code> callback; also callable directly via <code>@@ref</code>.</td></tr>
+                        <tr><td class="px-4 py-2 font-mono text-xs text-primary">FilteredRowCount</td><td class="px-4 py-2 font-mono text-xs">int (get)</td><td class="px-4 py-2 text-xs">--</td><td class="px-4 py-2 text-muted-foreground">Rows that survive filters/search (and, client-side, grouping/row visibility), before paging — the same count the built-in pagination summary and filtered-empty state use. In <code>ServerMode</code> this is the last <code>TotalCount</code> from the server. Also available on <code>DataGridEmptyContext</code> and the toolbar context.</td></tr>
+                        <tr><td class="px-4 py-2 font-mono text-xs text-primary">TotalRowCount</td><td class="px-4 py-2 font-mono text-xs">int (get)</td><td class="px-4 py-2 text-xs">--</td><td class="px-4 py-2 text-muted-foreground">Unfiltered source row count: <code>Items</code>'s count in client mode, or the server total in <code>ServerMode</code> (where no separate unfiltered count is knowable). Also available on <code>DataGridEmptyContext</code> and the toolbar context.</td></tr>
+                        <tr><td class="px-4 py-2 font-mono text-xs text-primary">OnRowCountChanged</td><td class="px-4 py-2 font-mono text-xs">EventCallback&lt;DataGridRowCountChanged&gt;</td><td class="px-4 py-2 text-xs">--</td><td class="px-4 py-2 text-muted-foreground">Fires once whenever <code>FilteredRowCount</code> or <code>TotalRowCount</code> actually changes, carrying both as a <code>(Filtered, Total)</code> record — render a "Showing n of m" summary without polling.</td></tr>
                     </tbody>
                 </table>
             </Stack>
@@ -1519,6 +1533,9 @@
         new("Grace Lee", "Sales", "Active", 82000, new DateTime(2019, 6, 30),
             "Mei Chen", "APAC", "L4", 6100, new DateTime(2025, 6, 30)),
     };
+
+    private int _rowCountFiltered = 12;
+    private int _rowCountTotal = 12;
 
     private List<Employee> _editableEmployees = new()
     {
@@ -2221,6 +2238,20 @@ async ValueTask<DataGridRangeResponse<Employee>> LoadRange(DataGridRangeRequest 
         <DataGridColumnDef TItem=""Employee"" Title=""Department"" Field=""Department"" />
     </ChildContent>
 </DataGrid>";
+
+    private string _rowCountCode = @"<Stack Gap=""2"">
+    <Lumeo.Text Size=""sm"" Color=""muted"">Showing @filtered of @total employees</Lumeo.Text>
+    <DataGrid TItem=""Employee"" Items=""@employees"" PageSize=""5"" ShowToolbar=""true""
+              OnRowCountChanged=""@((DataGridRowCountChanged e) => { filtered = e.Filtered; total = e.Total; })"">
+        <DataGridColumnDef TItem=""Employee"" Title=""Name"" Field=""Name"" Filterable=""true"" />
+        <DataGridColumnDef TItem=""Employee"" Title=""Department"" Field=""Department"" />
+    </DataGrid>
+</Stack>
+
+@code {
+    private int filtered;
+    private int total;
+}";
 
     private string _expandableCode = @"<DataGrid TItem=""Employee"" Items=""@employees"" PageSize=""5""
           ShowPagination=""true"" ShowToolbar=""true""
