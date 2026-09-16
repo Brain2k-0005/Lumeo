@@ -3,29 +3,39 @@
 
 @if (Component.HasDocsPage)
 {
-    @* No overflow-hidden on the card or preview area: a showcase's own dropdown/panel
-       (MegaMenu, Menubar, NavigationMenu) opens as a real absolute/fixed-positioned
-       overlay and is allowed to extend past the 16:9 box like it would anywhere else
-       in the app — clipping it here would cut the open state off. The preview area
-       instead rounds its OWN top corners (rounded-t-xl) so the static/closed state
-       still reads as a clean rounded card without relying on ancestor clipping; the
-       thumbnail/icon fallback keeps its own overflow-hidden (see ThumbnailOrIcon) so
-       an image can never bleed past its aspect box either way. *@
+    @* The preview area is a STRICT 16:9 box: aspect-[16/9] + overflow-hidden, always.
+       A showcase taller than that (an accordion with an item open, a carousel slide,
+       ...) clips — at the BOTTOM, never the top, because the inner content wrapper
+       uses items-start (top-aligned) instead of items-center. Centering vertically
+       let a too-tall showcase overflow equally above AND below the box, which visually
+       clipped its TOP half against the card's own rounded corner — items-start makes
+       any overflow predictable (bottom only) and is the wrapper rule every later wave
+       inherits for free. A showcase that opens a real dropdown/panel (MegaMenu,
+       Menubar, NavigationMenu) still gets clipped here if it's absolutely positioned
+       (MegaMenu) — position:fixed content (Menubar/NavigationMenu) escapes this
+       regardless of overflow-hidden, since neither this box nor its ancestors use a
+       transform. Known, accepted tradeoff (see Showcases/README.md).
+       The padding + centering below is scoped to ShowcaseType is not null — the
+       thumbnail/icon fallback (~150 cards with no showcase yet) renders full-bleed via
+       its own absolute inset-0 wrapper (see ThumbnailOrIcon) so it isn't inset by this
+       padding. *@
     <div class="group relative flex flex-col rounded-xl border border-border/40 bg-card hover:border-primary/40 hover:shadow-sm transition-all">
-        <div class="aspect-[16/9] w-full relative rounded-t-xl bg-muted/30 flex items-center justify-center p-4">
+        <div class="aspect-[16/9] w-full relative overflow-hidden rounded-t-xl bg-muted/30">
             @if (ShowcaseType is not null)
             {
-                @if (Eager)
-                {
-                    <DynamicComponent Type="@ShowcaseType" />
-                }
-                else
-                {
-                    <LazyRender Height="100%" Class="flex h-full w-full items-center justify-center">
-                        <Placeholder>@ThumbnailOrIcon</Placeholder>
-                        <ChildContent><DynamicComponent Type="@ShowcaseType" /></ChildContent>
-                    </LazyRender>
-                }
+                <div class="absolute inset-0 flex items-start justify-center p-4">
+                    @if (Eager)
+                    {
+                        <DynamicComponent Type="@ShowcaseType" />
+                    }
+                    else
+                    {
+                        <LazyRender Height="100%">
+                            <Placeholder>@ThumbnailOrIcon</Placeholder>
+                            <ChildContent><DynamicComponent Type="@ShowcaseType" /></ChildContent>
+                        </LazyRender>
+                    }
+                </div>
             }
             else
             {
@@ -62,10 +72,12 @@ else
        a dead end. *@
     <div class="relative flex flex-col rounded-xl border border-border/40 bg-card overflow-hidden opacity-70"
          title="Documentation page coming soon">
-        @ThumbnailOrIcon
-        <span class="absolute top-2 right-2 inline-flex items-center rounded-full bg-background/90 backdrop-blur-sm border border-border/60 px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
-            Docs coming soon
-        </span>
+        <div class="aspect-[16/9] w-full relative overflow-hidden bg-muted/30">
+            @ThumbnailOrIcon
+            <span class="absolute top-2 right-2 inline-flex items-center rounded-full bg-background/90 backdrop-blur-sm border border-border/60 px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
+                Docs coming soon
+            </span>
+        </div>
         <div class="p-4 space-y-1">
             <h3 class="text-sm font-semibold text-foreground">
                 @Component.Name
@@ -108,20 +120,25 @@ else
     // and the undocumented-variant card — Razor's templated-delegate syntax (same trick
     // as SidebarMenuButton.Anchor) so the @if/@else reads like ordinary markup instead of
     // a hand-rolled RenderTreeBuilder.
+    //
+    // Both branches use `absolute inset-0` rather than their own aspect-ratio/h-full
+    // sizing: their containing block is always ALREADY the strict 16:9, overflow-hidden
+    // preview box (either directly, for the "no showcase" case, or via the showcase
+    // wrapper div one level up, for the LazyRender placeholder case) — inset-0 fills it
+    // edge to edge and, being absolutely positioned, ignores that wrapper's own p-4
+    // padding entirely, so a thumbnail image never renders inset with a muted margin.
     private RenderFragment ThumbnailOrIcon =>
         @<text>
             @if (!string.IsNullOrEmpty(Component.Thumbnail))
             {
-                <div class="aspect-[16/9] w-full h-full bg-muted/30 overflow-hidden">
-                    <img src="@Component.Thumbnail" alt="@($"{Component.Name} preview")"
-                         loading="@(Eager ? "eager" : "lazy")" fetchpriority="@(Eager ? "high" : null)"
-                         decoding="async" width="480" height="270"
-                         class="h-full w-full object-cover" />
-                </div>
+                <img src="@Component.Thumbnail" alt="@($"{Component.Name} preview")"
+                     loading="@(Eager ? "eager" : "lazy")" fetchpriority="@(Eager ? "high" : null)"
+                     decoding="async" width="480" height="270"
+                     class="absolute inset-0 h-full w-full object-cover" />
             }
             else
             {
-                <div class="catalog-card-icon-fallback aspect-[16/9] w-full h-full bg-muted/30 flex items-center justify-center text-muted-foreground/40">
+                <div class="catalog-card-icon-fallback absolute inset-0 flex items-center justify-center text-muted-foreground/40">
                     <DynamicIcon Name="Box" Class="h-12 w-12" />
                 </div>
             }

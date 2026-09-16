@@ -30,9 +30,12 @@ public static class ShowcaseResolver
         if (string.IsNullOrWhiteSpace(componentName)) return null;
         return Cache.GetOrAdd(componentName, static name =>
         {
+            // Type.GetType with an unqualified name searches the CALLING assembly (this
+            // one, Lumeo.Docs — where every showcase lives) plus corelib, so it already
+            // finds showcase types without an extra Assembly.GetExecutingAssembly()
+            // fallback.
             var typeName = $"{ShowcaseNamespace}.{name}Showcase";
-            var type = Type.GetType(typeName)
-                ?? Assembly.GetExecutingAssembly().GetType(typeName);
+            var type = Type.GetType(typeName);
             return type is not null && typeof(IComponent).IsAssignableFrom(type) && !type.IsAbstract
                 ? type
                 : null;

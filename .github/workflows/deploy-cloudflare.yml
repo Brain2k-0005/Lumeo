@@ -76,6 +76,20 @@ jobs:
         # output across multiple files via the per-assembly AOT options.
         run: dotnet publish docs/Lumeo.Docs/Lumeo.Docs.csproj -c Release -o release
 
+      - name: Verify catalog showcases survive trimming
+        # docs/Lumeo.Docs/Services/ShowcaseResolver.cs discovers the catalog
+        # showcases (Shared/Showcases/*Showcase.razor) purely by reflection, with
+        # no static reference anywhere in the call graph — PublishTrimmed=true
+        # could in principle strip them from the trimmed output above even though
+        # a normal (untrimmed) `dotnet test`/`dotnet run` renders them fine.
+        # ILLink.Descriptors.xml roots them defensively; this is the real gate
+        # that proves it against the ACTUAL publish output — it serves the just-
+        # published wwwroot and checks every Navigation showcase renders live
+        # (not the thumbnail fallback) in a real headless Chromium. Runs before
+        # the CSS rebuild below since it only needs the DOM, not final styling.
+        working-directory: scripts/prerender
+        run: node check-showcases-trimmed.mjs ../../release
+
       - name: Rebuild Tailwind bundles into release
         # Overwrites the stale CSS that dotnet publish's static-web-asset pipeline
         # had copied from the (committed) working tree.

@@ -1,14 +1,75 @@
 @namespace Lumeo.Docs.Shared.Showcases
+@inject IJSRuntime JS
 
-<div class="relative w-full max-w-[22rem] h-44">
-    <SpeedDial Items="@_items" Class="absolute bottom-0 end-0" />
+@* SpeedDial always renders position:fixed (relative to the viewport, not this card)
+   with plain string concatenation for its class list — not Cx.Merge — so a Class
+   override can't reliably beat "fixed" via Tailwind's cascade order alone; the
+   trailing `!` (Tailwind v4's important-modifier syntax — v3 used a LEADING `!`,
+   which v4 silently doesn't recognise as a modifier at all, so `!absolute` here
+   generated no CSS and "fixed" kept winning) forces it. Without it the FAB rendered
+   fixed to the browser VIEWPORT (not the card), only ever coincidentally overlapping
+   the card depending on scroll position — a seemingly empty (or randomly-positioned)
+   preview. Anchored
+   inside a `relative h-full w-full` container sized to the actual preview box instead
+   of a guessed fixed height, bottom-right per the component's own default corner.
+   SpeedDial has no "default open" parameter, so a real click on its own trigger is
+   simulated once after mount (window.lumeo.clickElement, see docs.js) — that's what
+   shows a recognisable, useful state immediately (README rule 3) instead of a closed
+   dot. Direction=Left fans the 3 actions out horizontally (plenty of width in a
+   22rem-wide card) rather than vertically, which stayed comfortably inside the box's
+   height instead of risking a top clip.
+   On /components (any route but the landing page), index.html's boot IIFE calls
+   Blazor.start() the instant the parser reaches it — a plain, non-deferred inline
+   script — which is BEFORE docs.js (loaded with `defer`, which only runs once the
+   whole document has parsed) has necessarily finished executing and defined
+   window.lumeo.clickElement. In practice Blazor's own WASM boot is far slower than a
+   tiny deferred script, so this component's first render normally comes well after
+   docs.js has run — but "normally" isn't "always" (a very fast local dev server, a
+   warm disk cache, ...), and OnAfterRenderAsync only ever gets ONE firstRender call,
+   so a single failed attempt would leave the dial permanently closed with no retry.
+   Retries with short backoff below make this immune to that boot-order race instead
+   of depending on it never happening. *@
+<div class="relative w-full h-full" id="@_id">
+    <SpeedDial Items="@_items" Direction="SpeedDial.SpeedDialDirection.Left" Class="absolute! bottom-2! end-2!" />
 </div>
 
 @code {
-    private List<SpeedDial.SpeedDialItem> _items = new()
+    private readonly string _id = $"speed-dial-showcase-{Guid.NewGuid():N}";
+    private bool _clicked;
+
+    private readonly List<SpeedDial.SpeedDialItem> _items = new()
     {
         new() { Label = "Copy", Icon = "📋" },
         new() { Label = "Share", Icon = "🔗" },
         new() { Label = "Edit", Icon = "✏️" },
     };
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender || _clicked) return;
+        _clicked = true;
+
+        var selector = $"#{_id} button[aria-haspopup='menu']";
+        // Up to 5 attempts, 150ms apart (~750ms total) — comfortably covers the
+        // window.lumeo-not-defined-yet boot-order race (see the comment above)
+        // without a user-perceptible delay in the (overwhelmingly common) case where
+        // the very first attempt just works.
+        for (var attempt = 0; attempt < 5; attempt++)
+        {
+            try
+            {
+                // clickElement itself no-ops (returns false) when the selector doesn't
+                // match yet, e.g. Blazor hasn't finished rendering the button on this
+                // exact attempt — that's a reason to retry too, not just a JS-not-ready
+                // exception.
+                var clicked = await JS.InvokeAsync<bool>("lumeo.clickElement", selector);
+                if (clicked) return;
+            }
+            catch (Microsoft.JSInterop.JSDisconnectedException) { return; }
+            catch (InvalidOperationException) { return; } // JS unavailable (bUnit render-smoke test, prerender)
+            catch (Microsoft.JSInterop.JSException) { /* window.lumeo not defined yet — retry */ }
+
+            await Task.Delay(150);
+        }
+    }
 }
