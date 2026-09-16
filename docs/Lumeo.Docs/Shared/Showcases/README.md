@@ -31,10 +31,32 @@ by convention via `ShowcaseResolver` — there is no central list to edit).
    An Accordion with one item already open, a Breadcrumb with three crumbs, a
    Tabs with its first tab active, a Stepper on step 1 of 3.
 4. **Stays interactive.** No `pointer-events-none`, no disabled wrapper. A
-   showcase for an overlay component (Dropdown/Popover/Dialog/Sheet-style —
-   MegaMenu, Menubar, NavigationMenu here) shows its trigger and opens on
-   click exactly like it would anywhere else in the app; the open panel may
-   visually extend outside the 16:9 box the way a real dropdown does.
+   showcase for an overlay component (Dropdown/Popover/Dialog/Sheet-style)
+   shows its trigger and opens on click exactly like it would anywhere else
+   in the app — but whether the open content may visually extend past the
+   16:9 box depends on how the REAL component positions it, and the preview
+   box has `overflow-hidden`:
+   - **`position: fixed` content escapes** any ancestor's `overflow-hidden`
+     regardless of nesting, so it's fine for it to overlay past the box the
+     way a real dropdown does — no special handling needed. Tell it apart by
+     checking the component's own source for `Interop.PositionFixed` (Lumeo's
+     floating-position interop, which sets `position: fixed` under the hood)
+     or a literal `position: fixed` / `fixed` Tailwind class on its content
+     element. Menubar and NavigationMenu are both like this.
+   - **`position: absolute` content (no JS repositioning) gets clipped** by
+     the box exactly like any other content that doesn't fit — it is NOT
+     exempt just because it's an overlay. For that case, either (a) override
+     it to lay out in NORMAL DOCUMENT FLOW instead of floating (`static!`
+     — Tailwind v4's trailing-`!` important-modifier syntax, needed because
+     the component's own position class otherwise wins; see
+     `MegaMenuShowcase.razor`, which also opens by default via a post-mount
+     click simulation so the showcase is useful without a hover/click
+     mid-interaction step), sized to actually fit the box, or (b) keep the
+     showcase closed by default so nothing needs to fit. MegaMenu is like
+     this (its panel is `position: absolute; top-full` with no JS
+     repositioning).
+   Check before assuming: `grep -n "position:\|Interop.PositionFixed"` in the
+   component's own `.razor` source.
 5. **No headings, no prose, no "demo"/"preview" labels.** The component IS
    the content — no surrounding explainer text.
 6. **Never scrolls the page or traps the wheel.** No inner `overflow-auto`
@@ -62,7 +84,7 @@ All 19 `hasDocsPage: true` Navigation-category components got a showcase.
 | Breadcrumb | 3 crumbs (Home / Components / current page) |
 | Carousel | 3 slides, Previous/Next controls, click-through |
 | Collapsible | One collapsible panel, trigger toggles it |
-| MegaMenu | 2 top items; click "Products" opens a 1-column panel |
+| MegaMenu | 2 top items; "Products" opens by default — a 2-column panel laid out in normal flow inside the box (its real panel is `position: absolute`, not `fixed`, so it's clipped otherwise; see rule 4) |
 | Menubar | 1 menu ("File") with a few items; click opens it |
 | NavigationMenu | 1 trigger; click opens a small link grid |
 | Pagination | 5 pages, current page highlighted, click to change |

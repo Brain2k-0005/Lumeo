@@ -15,9 +15,15 @@
     <Name>Showcase.razor there needs to touch NOTHING in this file — it's covered by
     the wildcard automatically. Wired in via <TrimmerRootDescriptor> in
     Lumeo.Docs.csproj. Verified against a real trimmed publish by
-    PublishedShowcasesTrimSafetyTests (tests/Lumeo.Docs.Tests/Catalog/), which loads
-    the published Lumeo.Docs.dll with MetadataLoadContext and asserts every *Showcase
-    type file on disk still has a matching type in the published assembly.
+    scripts/prerender/check-showcases-trimmed.mjs, which serves the actual published
+    wwwroot and loads /components in a real headless Chromium, asserting every
+    Navigation showcase renders live rather than falling back to the thumbnail — run as
+    a CI step in .github/workflows/deploy-cloudflare.yml right after "Publish Blazor
+    WASM". (An in-process C# test can't do this verification: PublishTrimmed only
+    matters against the actual trimmed publish output, and Blazor WASM wraps published
+    assemblies as WebCil .wasm modules rather than plain PE/COFF files, which no public
+    NuGet package can read portably — see the check-showcases-trimmed.mjs and
+    deploy-cloudflare.yml comments for the full story.)
   -->
   <assembly fullname="Lumeo.Docs">
     <type fullname="Lumeo.Docs.Shared.Showcases.*" preserve="all" />
