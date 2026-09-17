@@ -1,5 +1,6 @@
 @inherits LayoutComponentBase
 @inject Lumeo.Services.ThemeService ThemeService
+@inject IJSRuntime JS
 
 @* ------------------------------------------------------------------------------------
    Full-bleed layout for the Meridian Ops demo.
@@ -26,5 +27,13 @@
         if (!firstRender) return;
         try { await ThemeService.InitializeAsync(); }
         catch (Exception ex) { Console.WriteLine($"[MeridianOps] theme init: {ex.Message}"); }
+
+        // Drop the boot splash. index.html paints a full-screen splash over every
+        // prerendered route until js/docs.js signalBlazorReady runs; MainLayout sends
+        // it on its first render, but this layout bypasses MainLayout, so without this
+        // call a direct load or hard reload of /demos/enterprise sat behind the splash
+        // until index.html's 15-second safety-net timeout.
+        try { await JS.InvokeVoidAsync("lumeo.signalBlazorReady"); }
+        catch (Exception ex) { Console.WriteLine($"[MeridianOps] ready signal: {ex.Message}"); }
     }
 }

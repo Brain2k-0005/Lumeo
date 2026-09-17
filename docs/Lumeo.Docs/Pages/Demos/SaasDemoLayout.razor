@@ -3,6 +3,7 @@
 @using Lumeo
 @using Lumeo.Docs.Shared
 @inject Lumeo.Services.ThemeService ThemeService
+@inject IJSRuntime JS
 
 @* -----------------------------------------------------------------------------
    Full-bleed layout for the Northlight SaaS demo. It deliberately bypasses the
@@ -71,6 +72,13 @@
             StateHasChanged();
         }
         catch (Microsoft.JSInterop.JSException) { /* prerender — themeManager not ready */ }
+        catch (Microsoft.JSInterop.JSDisconnectedException) { }
+
+        // Drop the boot splash — see EnterpriseDemoLayout: this layout bypasses
+        // MainLayout, which is the only other caller, so a direct load or hard reload
+        // of /demos/saas/* otherwise waits for index.html's 15-second safety net.
+        try { await JS.InvokeVoidAsync("lumeo.signalBlazorReady"); }
+        catch (Microsoft.JSInterop.JSException) { }
         catch (Microsoft.JSInterop.JSDisconnectedException) { }
     }
 
