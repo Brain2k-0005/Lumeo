@@ -5,7 +5,7 @@ All notable changes to Lumeo will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [5.10.5] - Unreleased
+## [5.10.5] - 2026-09-23
 
 ### Fixed
 - **The Dutch locale is complete.** 166 of the 632 keys had no `nl` entry, so a Dutch UI fell back
