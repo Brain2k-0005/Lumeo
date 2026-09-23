@@ -1,11 +1,11 @@
 {
   "$schema": "https://lumeo.nativ.sh/components-api-schema.json",
   "version": "5.10.5",
-  "generated": "2026-09-23T20:42:10.8531271Z",
+  "generated": "2026-09-23T21:38:04.9980711Z",
   "stats": {
     "componentCount": 169,
-    "totalParameters": 4948,
-    "totalEnums": 108,
+    "totalParameters": 4978,
+    "totalEnums": 111,
     "totalRecords": 66,
     "serviceCount": 33,
     "thinFallbacks": []
@@ -36379,7 +36379,10 @@
         "UI/FlowCanvas/FlowEdgeLayer.razor",
         "UI/FlowCanvas/FlowGeometry.cs",
         "UI/FlowCanvas/FlowHandle.razor",
+        "UI/FlowCanvas/FlowMiniMap.razor",
         "UI/FlowCanvas/FlowNodeHost.razor",
+        "UI/FlowCanvas/FlowNodeToolbar.razor",
+        "UI/FlowCanvas/FlowPanel.razor",
         "UI/FlowCanvas/FlowState.cs",
         "UI/FlowCanvas/FlowTypes.cs"
       ],
@@ -36411,7 +36414,16 @@
           "name": "Edges",
           "type": "IReadOnlyList<FlowEdge>?",
           "default": null,
-          "description": "The edges to draw between nodes. Edges whose source or target node is missing are skipped.",
+          "description": "The edges to draw between nodes. Edges whose source or target node is missing are skipped. Two-way bindable (@@bind-Edges): a committed connect or delete emits a new list through EdgesChanged. Without a binding the canvas keeps its own copy until you pass a different list — the same echo/replace rule Nodes follows.",
+          "isCascading": false,
+          "captureUnmatched": false,
+          "isEditorRequired": false
+        },
+        {
+          "name": "EdgesChanged",
+          "type": "EventCallback<IReadOnlyList<FlowEdge>>",
+          "default": null,
+          "description": "Raised with the new edge list after a committed connect (when OnConnect has no handler) or a delete that removed edges.",
           "isCascading": false,
           "captureUnmatched": false,
           "isEditorRequired": false
@@ -36444,10 +36456,28 @@
           "isEditorRequired": false
         },
         {
+          "name": "EdgeLabelTemplate",
+          "type": "RenderFragment<FlowEdgeContext>?",
+          "default": null,
+          "description": "Renders an edge's label. Without a template, Label (when set) renders as a small themed pill. Positioned at the path midpoint and moved live by the engine while a connected node is dragged.",
+          "isCascading": false,
+          "captureUnmatched": false,
+          "isEditorRequired": false
+        },
+        {
+          "name": "NodeAriaLabel",
+          "type": "Func<FlowNode, string>?",
+          "default": null,
+          "description": "Names a node for assistive technology (its host's aria-label and the \"Connect from/to\" handle labels). Without it every node is named by its Id.",
+          "isCascading": false,
+          "captureUnmatched": false,
+          "isEditorRequired": false
+        },
+        {
           "name": "ChildContent",
           "type": "RenderFragment?",
           "default": null,
-          "description": "Overlays rendered inside the pane: FlowBackground, FlowControls, your own panels.",
+          "description": "Overlays rendered inside the pane: FlowBackground, FlowControls, FlowMiniMap, FlowPanel, your own panels.",
           "isCascading": false,
           "captureUnmatched": false,
           "isEditorRequired": false
@@ -36543,10 +36573,46 @@
           "isEditorRequired": false
         },
         {
+          "name": "NodesConnectable",
+          "type": "bool",
+          "default": "true",
+          "description": "Dragging from a source FlowHandle to a target handle proposes a connection (pointer or keyboard — Enter on a source handle, then Enter on a target). ANDed with Connectable on both ends, Readonly and the controls' lock toggle.",
+          "isCascading": false,
+          "captureUnmatched": false,
+          "isEditorRequired": false
+        },
+        {
+          "name": "ElementsSelectable",
+          "type": "bool",
+          "default": "true",
+          "description": "Nodes and edges can be selected: click, shift/ctrl-click to toggle, shift-drag for a marquee (SelectionOnShiftDrag). ANDed with Selectable per node.",
+          "isCascading": false,
+          "captureUnmatched": false,
+          "isEditorRequired": false
+        },
+        {
+          "name": "SelectionOnShiftDrag",
+          "type": "bool",
+          "default": "true",
+          "description": "Shift-dragging the empty background draws a marquee that selects every intersected, selectable node. Requires ElementsSelectable.",
+          "isCascading": false,
+          "captureUnmatched": false,
+          "isEditorRequired": false
+        },
+        {
+          "name": "DeleteKey",
+          "type": "IReadOnlyList<string>",
+          "default": "new[] { \"Delete\", \"Backspace\" }",
+          "description": "Key names (KeyboardEventArgs.Key) that delete the current selection while focus is anywhere inside the canvas.",
+          "isCascading": false,
+          "captureUnmatched": false,
+          "isEditorRequired": false
+        },
+        {
           "name": "Readonly",
           "type": "bool",
           "default": "false",
-          "description": "Turns every editing gesture off (node drag and keyboard move now; connect and delete in later phases). Pan, zoom, selection and click events keep working.",
+          "description": "Turns every editing gesture off (node drag, keyboard move, connect and delete). Pan, zoom, selection and click events keep working.",
           "isCascading": false,
           "captureUnmatched": false,
           "isEditorRequired": false
@@ -36597,6 +36663,51 @@
           "isEditorRequired": false
         },
         {
+          "name": "OnEdgeClick",
+          "type": "EventCallback<FlowEdge>",
+          "default": null,
+          "description": "An edge was clicked (not raised for the click that ends a drag or that opens a connection).",
+          "isCascading": false,
+          "captureUnmatched": false,
+          "isEditorRequired": false
+        },
+        {
+          "name": "OnConnect",
+          "type": "EventCallback<FlowConnection>",
+          "default": null,
+          "description": "A connection was dropped on a compatible target handle and passed IsValidConnection. Without a handler the canvas appends a new FlowEdge itself and raises EdgesChanged.",
+          "isCascading": false,
+          "captureUnmatched": false,
+          "isEditorRequired": false
+        },
+        {
+          "name": "IsValidConnection",
+          "type": "Func<FlowConnection, bool>?",
+          "default": null,
+          "description": "Called for every proposed connection (pointer drop or keyboard commit) before it is accepted. Returning false rejects it — no edge is added and OnConnect is not raised.",
+          "isCascading": false,
+          "captureUnmatched": false,
+          "isEditorRequired": false
+        },
+        {
+          "name": "OnSelectionChanged",
+          "type": "EventCallback<FlowSelection>",
+          "default": null,
+          "description": "Raised after the selection changes — a click, shift/ctrl-click, marquee, edge click, SelectAsync, ClearSelectionAsync or a pane click/Escape that clears it.",
+          "isCascading": false,
+          "captureUnmatched": false,
+          "isEditorRequired": false
+        },
+        {
+          "name": "OnDelete",
+          "type": "EventCallback<FlowSelection>",
+          "default": null,
+          "description": "DeleteKey was pressed with a non-empty, deletable selection. Without a handler the canvas removes the selected nodes (and every edge touching one of them) and the directly selected edges itself, raising NodesChanged/EdgesChanged.",
+          "isCascading": false,
+          "captureUnmatched": false,
+          "isEditorRequired": false
+        },
+        {
           "name": "Class",
           "type": "string?",
           "default": null,
@@ -36613,6 +36724,15 @@
           "isCascading": false,
           "captureUnmatched": true,
           "isEditorRequired": false
+        },
+        {
+          "name": "Direction",
+          "type": "LayoutDirection?",
+          "default": null,
+          "description": null,
+          "isCascading": true,
+          "captureUnmatched": false,
+          "isEditorRequired": false
         }
       ],
       "events": [
@@ -36620,6 +36740,11 @@
           "name": "NodesChanged",
           "type": "EventCallback<IReadOnlyList<FlowNode>>",
           "description": "Raised with the new node list after a committed drag or keyboard move."
+        },
+        {
+          "name": "EdgesChanged",
+          "type": "EventCallback<IReadOnlyList<FlowEdge>>",
+          "description": "Raised with the new edge list after a committed connect (when OnConnect has no handler) or a delete that removed edges."
         },
         {
           "name": "ViewportChanged",
@@ -36650,6 +36775,26 @@
           "name": "OnNodeDragStop",
           "type": "EventCallback<IReadOnlyList<FlowNodeChange>>",
           "description": "A drag (or arrow-key move) was committed; one entry per moved node. Raised after NodesChanged."
+        },
+        {
+          "name": "OnEdgeClick",
+          "type": "EventCallback<FlowEdge>",
+          "description": "An edge was clicked (not raised for the click that ends a drag or that opens a connection)."
+        },
+        {
+          "name": "OnConnect",
+          "type": "EventCallback<FlowConnection>",
+          "description": "A connection was dropped on a compatible target handle and passed IsValidConnection. Without a handler the canvas appends a new FlowEdge itself and raises EdgesChanged."
+        },
+        {
+          "name": "OnSelectionChanged",
+          "type": "EventCallback<FlowSelection>",
+          "description": "Raised after the selection changes — a click, shift/ctrl-click, marquee, edge click, SelectAsync, ClearSelectionAsync or a pane click/Escape that clears it."
+        },
+        {
+          "name": "OnDelete",
+          "type": "EventCallback<FlowSelection>",
+          "description": "DeleteKey was pressed with a non-empty, deletable selection. Without a handler the canvas removes the selected nodes (and every edge touching one of them) and the directly selected edges itself, raising NodesChanged/EdgesChanged."
         }
       ],
       "enums": [
@@ -36988,6 +37133,95 @@
           "parseFailed": false,
           "parseError": null
         },
+        "FlowMiniMap": {
+          "componentName": "FlowMiniMap",
+          "fileName": "FlowMiniMap.razor",
+          "namespace": "Lumeo",
+          "inheritsFrom": null,
+          "implements": [],
+          "parameters": [
+            {
+              "name": "Context",
+              "type": "FlowCanvas.FlowCanvasContext?",
+              "default": null,
+              "description": null,
+              "isCascading": true,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "Position",
+              "type": "MiniMapPosition",
+              "default": "MiniMapPosition.BottomRight",
+              "description": "Which corner of the canvas the overview sits in.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "Width",
+              "type": "double",
+              "default": "160",
+              "description": "Pixel width of the overview.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "Height",
+              "type": "double",
+              "default": "110",
+              "description": "Pixel height of the overview.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "NodeColor",
+              "type": "Func<FlowNode, string?>?",
+              "default": null,
+              "description": "Colours a node's rect. Defaults to --color-muted-foreground for every node.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "Class",
+              "type": "string?",
+              "default": null,
+              "description": "Additional CSS classes merged onto the overview.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "AdditionalAttributes",
+              "type": "Dictionary<string, object>?",
+              "default": null,
+              "description": "Captures unmatched attributes and applies them to the overview.",
+              "isCascading": false,
+              "captureUnmatched": true,
+              "isEditorRequired": false
+            }
+          ],
+          "events": [],
+          "enums": [
+            {
+              "name": "MiniMapPosition",
+              "values": [
+                "TopLeft",
+                "TopRight",
+                "BottomLeft",
+                "BottomRight"
+              ],
+              "description": "The corner a FlowMiniMap sits in."
+            }
+          ],
+          "records": [],
+          "gotchas": [],
+          "parseFailed": false,
+          "parseError": null
+        },
         "FlowNodeHost": {
           "componentName": "FlowNodeHost",
           "fileName": "FlowNodeHost.razor",
@@ -37038,12 +37272,153 @@
           "gotchas": [],
           "parseFailed": false,
           "parseError": null
+        },
+        "FlowNodeToolbar": {
+          "componentName": "FlowNodeToolbar",
+          "fileName": "FlowNodeToolbar.razor",
+          "namespace": "Lumeo",
+          "inheritsFrom": null,
+          "implements": [],
+          "parameters": [
+            {
+              "name": "Context",
+              "type": "FlowCanvas.FlowCanvasContext?",
+              "default": null,
+              "description": null,
+              "isCascading": true,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "Position",
+              "type": "ToolbarPosition",
+              "default": "ToolbarPosition.Top",
+              "description": "Floats above (default) or below the node.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "Offset",
+              "type": "double",
+              "default": "8",
+              "description": "Gap between the node and the toolbar, in pane pixels.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "ChildContent",
+              "type": "RenderFragment?",
+              "default": null,
+              "description": "The toolbar's content — usually a row of Buttons.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "Class",
+              "type": "string?",
+              "default": null,
+              "description": "Additional CSS classes merged onto the toolbar.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "AdditionalAttributes",
+              "type": "Dictionary<string, object>?",
+              "default": null,
+              "description": "Captures unmatched attributes and applies them to the toolbar.",
+              "isCascading": false,
+              "captureUnmatched": true,
+              "isEditorRequired": false
+            }
+          ],
+          "events": [],
+          "enums": [
+            {
+              "name": "ToolbarPosition",
+              "values": [
+                "Top",
+                "Bottom"
+              ],
+              "description": "Which edge of the node the toolbar floats off."
+            }
+          ],
+          "records": [],
+          "gotchas": [],
+          "parseFailed": false,
+          "parseError": null
+        },
+        "FlowPanel": {
+          "componentName": "FlowPanel",
+          "fileName": "FlowPanel.razor",
+          "namespace": "Lumeo",
+          "inheritsFrom": null,
+          "implements": [],
+          "parameters": [
+            {
+              "name": "Position",
+              "type": "PanelPosition",
+              "default": "PanelPosition.TopRight",
+              "description": "Which corner of the canvas the panel sits in.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "ChildContent",
+              "type": "RenderFragment?",
+              "default": null,
+              "description": "The panel's content.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "Class",
+              "type": "string?",
+              "default": null,
+              "description": "Additional CSS classes merged onto the panel.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "AdditionalAttributes",
+              "type": "Dictionary<string, object>?",
+              "default": null,
+              "description": "Captures unmatched attributes and applies them to the panel.",
+              "isCascading": false,
+              "captureUnmatched": true,
+              "isEditorRequired": false
+            }
+          ],
+          "events": [],
+          "enums": [
+            {
+              "name": "PanelPosition",
+              "values": [
+                "TopLeft",
+                "TopRight",
+                "BottomLeft",
+                "BottomRight"
+              ],
+              "description": "The corner a FlowPanel sits in."
+            }
+          ],
+          "records": [],
+          "gotchas": [],
+          "parseFailed": false,
+          "parseError": null
         }
       },
       "a11y": {
         "roles": [
           "application",
           "group",
+          "img",
           "toolbar"
         ],
         "ariaAttributes": [
