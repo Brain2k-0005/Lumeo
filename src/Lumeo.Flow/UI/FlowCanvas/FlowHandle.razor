@@ -6,15 +6,19 @@
    engine measures every [data-flow-handle] inside a node and edges bound to this handle (by Id,
    or the node's first handle of this Type) start/end at its centre.
 
-   Phase 1 renders the port and its data attributes; dragging from it to create an edge is phase 2.
-   Until then it is not a tab stop (tabindex="-1") — nothing to activate yet. *@
+   Dragging from a Source handle to a compatible Target handle proposes a connection (flow.js
+   owns the gesture end to end — see CommitConnect on FlowCanvas). A tab stop (tabindex="0") so
+   keyboard connect works: Enter on a Source handle enters "connecting" mode (flow.js marks every
+   compatible target with data-flow-handle-valid and announces it), Enter on a Target handle
+   commits, Escape cancels — all handled by flow.js's pane-level keydown listener, not a Blazor
+   event, so it works without a render round trip per keystroke. *@
 
 <button type="button"
         data-flow-handle
         data-handle-type="@(Type == FlowHandleType.Source ? "source" : "target")"
         data-handle-id="@Id"
         data-position="@FlowGeometry.FormatPosition(Position)"
-        tabindex="-1"
+        tabindex="0"
         aria-label="@AriaLabel"
         class="@Cx.Merge("lumeo-flow-handle", Class)"
         style="@PositionStyle"

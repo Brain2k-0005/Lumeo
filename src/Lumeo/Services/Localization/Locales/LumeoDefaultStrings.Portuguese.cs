@@ -400,6 +400,8 @@ internal static partial class LumeoDefaultStrings
         ["Flow.Lock"] = "Bloquear tela",
         ["Flow.ConnectFrom"] = "Conectar de {0}",
         ["Flow.ConnectTo"] = "Conectar a {0}",
+        ["Flow.MiniMap"] = "Visão geral",
+        ["Flow.NodeToolbar"] = "Ações do nó",
         ["Gantt.ScrollToEarlierTask"] = "Rolar até {0} (antes)",
         ["Gantt.ScrollToLaterTask"] = "Rolar até {0} (depois)",
         ["Gantt.Settings"] = "Configurações",

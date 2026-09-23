@@ -337,6 +337,8 @@ internal static partial class LumeoDefaultStrings
         ["Flow.Lock"] = "캔버스 잠금",
         ["Flow.ConnectFrom"] = "{0}에서 연결",
         ["Flow.ConnectTo"] = "{0}(으)로 연결",
+        ["Flow.MiniMap"] = "개요",
+        ["Flow.NodeToolbar"] = "노드 작업",
         ["Gantt.ScrollToEarlierTask"] = "{0}(으)로 스크롤 (이전)",
         ["Gantt.ScrollToLaterTask"] = "{0}(으)로 스크롤 (이후)",
         ["Gantt.Settings"] = "설정",

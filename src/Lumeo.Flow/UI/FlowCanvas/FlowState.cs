@@ -35,7 +35,17 @@ internal sealed class FlowState
     public double PaneHeight { get; private set; }
 
     public HashSet<string> SelectedNodeIds { get; } = new(StringComparer.Ordinal);
+    public HashSet<string> SelectedEdgeIds { get; } = new(StringComparer.Ordinal);
     public HashSet<string> DraggingNodeIds { get; } = new(StringComparer.Ordinal);
+
+    /// <summary>Clears both selection sets; returns whether anything was actually selected.</summary>
+    public bool ClearSelection()
+    {
+        if (SelectedNodeIds.Count == 0 && SelectedEdgeIds.Count == 0) return false;
+        SelectedNodeIds.Clear();
+        SelectedEdgeIds.Clear();
+        return true;
+    }
 
     public void Initialize(FlowViewport viewport)
     {

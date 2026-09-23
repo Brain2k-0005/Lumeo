@@ -204,7 +204,8 @@ above and `CatalogCard`'s own overflow-hidden note) — verified via screenshot
 to hold up in practice at 1440px in both themes.
 ## Wave 1 — Data Display category
 
-25 of the 32 `hasDocsPage: true` Data Display-category components got a live showcase.
+25 of the 33 `hasDocsPage: true` Data Display-category components got a live showcase
+(FlowCanvas joined the category in a later wave — see the exceptions below).
 
 | Component | Showcase state |
 | --- | --- |
@@ -236,10 +237,11 @@ to hold up in practice at 1440px in both themes.
 
 ### Exceptions — viewport/external-engine components
 
-These 7 components fundamentally need a real network resource, a JS charting/mapping
-engine, or a viewport taller than a catalog card to show anything meaningful. Each
-showcase instead renders a faithful **static rendition** of the component's own visible
-chrome (matching its real classes/markup where practical), with no live wiring:
+These 8 components fundamentally need a real network resource, a JS charting/mapping
+engine, a satellite-package assembly the catalog page never lazy-loads, or a viewport
+taller than a catalog card to show anything meaningful. Each showcase instead renders a
+faithful **static rendition** of the component's own visible chrome (matching its real
+classes/markup where practical), with no live wiring:
 
 - **FileManager** — the exact breadcrumb bar and list-row markup (icon, name, size) for a
   small fixed set of entries, without the folder tree pane or interactivity (a real
@@ -248,6 +250,14 @@ chrome (matching its real classes/markup where practical), with no live wiring:
   classes as the real component) over a centered file-icon body, matching the unresolved/
   unsupported-preview state; its PDF/Code kinds delegate to PdfViewer/CodeEditor, both
   external-engine viewers.
+- **FlowCanvas** — lives in the satellite package `Lumeo.Flow`, lazy-loaded only on its
+  own docs route; the catalog page never loads that assembly, so a live `<FlowCanvas>`
+  throws a `TypeLoadException` the instant `CatalogCard` mounts it (found via the
+  headless screenshot proof for #phase2, not by inspection — worth checking any future
+  satellite-package showcase against a real `/components` render before assuming "live"
+  works). Static dot-grid background + 3 node cards with handle dots + the same
+  bezier/step edge shapes `FlowGeometry` produces, same treatment as Gantt/GanttChart/
+  Scheduler below (also satellite-adjacent, lazy-loaded engines).
 - **Gantt** (legacy SVG engine) — a day-scale header and 3 proportional task bars; the
   real component needs real height/width to lay out day columns (420px in its own docs
   demos) and has no tree pane to shrink further.

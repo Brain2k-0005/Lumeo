@@ -558,6 +558,8 @@ internal static partial class LumeoDefaultStrings
         ["Flow.Lock"] = "Lock canvas",
         ["Flow.ConnectFrom"] = "Connect from {0}",
         ["Flow.ConnectTo"] = "Connect to {0}",
+        ["Flow.MiniMap"] = "Overview",
+        ["Flow.NodeToolbar"] = "Node actions",
         ["Gantt.ScrollToEarlierTask"] = "Scroll to {0} (earlier)",
         ["Gantt.ScrollToLaterTask"] = "Scroll to {0} (later)",
         // Arrow-key navigation's own aria-live announcements (design spec —
@@ -1327,6 +1329,8 @@ internal static partial class LumeoDefaultStrings
         ["Flow.Lock"] = "Zeichenfläche sperren",
         ["Flow.ConnectFrom"] = "Verbinden von {0}",
         ["Flow.ConnectTo"] = "Verbinden mit {0}",
+        ["Flow.MiniMap"] = "Übersicht",
+        ["Flow.NodeToolbar"] = "Knotenaktionen",
         ["Gantt.ScrollToEarlierTask"] = "Zu {0} scrollen (früher)",
         ["Gantt.ScrollToLaterTask"] = "Zu {0} scrollen (später)",
         ["Gantt.Settings"] = "Einstellungen",

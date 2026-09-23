@@ -1,0 +1,40 @@
+@namespace Lumeo
+
+@* FlowPanel — a corner-positioned overlay for your own toolbars/legends/inspectors. Place it
+   inside FlowCanvas' ChildContent, same as FlowControls. data-flow-overlay keeps the canvas
+   engine from treating a press here as a pan/marquee/pane click. *@
+
+<div data-slot="flow-panel"
+     data-flow-overlay
+     class="@RootClass"
+     style="position:absolute;z-index:5;"
+     @attributes="AdditionalAttributes">
+    @ChildContent
+</div>
+
+@code {
+    /// <summary>The corner a <see cref="FlowPanel"/> sits in.</summary>
+    public enum PanelPosition { TopLeft, TopRight, BottomLeft, BottomRight }
+
+    /// <summary>Which corner of the canvas the panel sits in.</summary>
+    [Parameter] public PanelPosition Position { get; set; } = PanelPosition.TopRight;
+
+    /// <summary>The panel's content.</summary>
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    /// <summary>Additional CSS classes merged onto the panel.</summary>
+    [Parameter] public string? Class { get; set; }
+
+    /// <summary>Captures unmatched attributes and applies them to the panel.</summary>
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private string RootClass => Cx.Merge(
+        Position switch
+        {
+            PanelPosition.TopLeft => "left-3 top-3",
+            PanelPosition.TopRight => "right-3 top-3",
+            PanelPosition.BottomRight => "right-3 bottom-3",
+            _ => "left-3 bottom-3",
+        },
+        Class);
+}

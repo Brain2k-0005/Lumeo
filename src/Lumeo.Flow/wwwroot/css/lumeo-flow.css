@@ -47,15 +47,20 @@
     border-radius: var(--radius-md);
 }
 
-/* Edges */
+/* Edges — colour comes from FlowEdgeLayer's inline style (so the very first paint is already
+   correct, before this file arrives); this rule only fixes what inline styles can't: the marker
+   arrowhead is painted from the path's own computed stroke via `fill: context-stroke` where
+   supported, dashed/animated get their pattern here. */
 [data-flow-edge] {
     fill: none;
-    stroke: var(--color-border);
-    stroke-width: 1.5;
 }
 
-[data-flow-edge][data-selected] {
-    stroke: var(--color-primary);
+[data-flow-edge][data-animated] {
+    animation: lumeo-flow-dash 0.6s linear infinite;
+}
+
+@keyframes lumeo-flow-dash {
+    to { stroke-dashoffset: -18; }
 }
 
 /* Handles */
@@ -72,6 +77,43 @@
 [data-flow-handle]:focus-visible {
     outline: 2px solid var(--color-ring);
     outline-offset: 1px;
+}
+
+[data-flow-handle][data-flow-handle-valid] {
+    border-color: var(--color-primary);
+    background: var(--color-primary);
+}
+
+[data-flow-handle][data-flow-connecting] {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 1px;
+}
+
+/* Connection line drawn live while dragging from a source handle (or keyboard-connecting). */
+[data-flow-connection-line] {
+    stroke: var(--color-primary);
+    fill: none;
+}
+
+/* Marquee selection rectangle (JS-owned, pane-local pixels). */
+[data-flow-marquee] {
+    background: color-mix(in srgb, var(--color-primary) 10%, transparent);
+    border: 1px solid var(--color-primary);
+}
+
+/* Overlays (minimap, panel, toolbar) */
+[data-slot="flow-minimap"] svg {
+    display: block;
+}
+
+[data-slot="flow-toolbar"] {
+    display: flex;
+    gap: 0.25rem;
+    padding: 0.25rem;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--color-border);
+    background: var(--color-card);
+    box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
 }
 
 /* Background grid */

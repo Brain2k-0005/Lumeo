@@ -1,0 +1,70 @@
+@namespace Lumeo
+@inject Lumeo.Services.Localization.ILumeoLocalizer L
+
+@* FlowNodeToolbar — a small toolbar that floats above (or below) the single selected node. Place
+   it inside FlowCanvas' ChildContent, same as FlowControls/FlowMiniMap/FlowPanel.
+
+   Position: computed from the canvas' latest known viewport and the node's rect (flow coords *
+   zoom + viewport translation — the same transform the viewport layer applies), so it moves with
+   every Blazor render (selection change, pane resize, a settled pan/zoom/drag). While a POINTER
+   DRAG of its target node is in flight, flow.js additionally repositions the element live via
+   data-flow-toolbar-for (mirroring how it redraws edges) so it does not lag a full render behind
+   — it does not re-anchor on every frame of an in-progress pan/zoom the way edges do; the next
+   viewport report settles that within one frame. Only one node's toolbar renders at a time: with
+   zero or more than one node selected, it renders nothing. *@
+
+@if (TargetNode is { } node)
+{
+    <div data-slot="flow-toolbar"
+         data-flow-toolbar-for="@node.Id"
+         data-flow-toolbar-position="@(Position == ToolbarPosition.Bottom ? "bottom" : "top")"
+         data-flow-overlay
+         role="toolbar"
+         aria-label="@L["Flow.NodeToolbar"]"
+         class="@RootClass"
+         style="@Style(node)"
+         @attributes="AdditionalAttributes">
+        @ChildContent
+    </div>
+}
+
+@code {
+    [CascadingParameter] private FlowCanvas.FlowCanvasContext? Context { get; set; }
+
+    /// <summary>Which edge of the node the toolbar floats off.</summary>
+    public enum ToolbarPosition { Top, Bottom }
+
+    /// <summary>Floats above (default) or below the node.</summary>
+    [Parameter] public ToolbarPosition Position { get; set; } = ToolbarPosition.Top;
+
+    /// <summary>Gap between the node and the toolbar, in pane pixels.</summary>
+    [Parameter] public double Offset { get; set; } = 8;
+
+    /// <summary>The toolbar's content — usually a row of <c>Button</c>s.</summary>
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    /// <summary>Additional CSS classes merged onto the toolbar.</summary>
+    [Parameter] public string? Class { get; set; }
+
+    /// <summary>Captures unmatched attributes and applies them to the toolbar.</summary>
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private FlowNode? TargetNode => Context?.Canvas.SingleSelectedNode();
+
+    private string? RootClass => Class;
+
+    private string Style(FlowNode node)
+    {
+        var canvas = Context!.Canvas;
+        var v = Context.Viewport;
+        var rect = canvas.GetNodeRect(node);
+        var zoom = v.Zoom > 0 ? v.Zoom : 1;
+        var cx = (rect.X + rect.Width / 2) * zoom + v.X;
+        var edgeY = Position == ToolbarPosition.Bottom ? rect.Bottom : rect.Y;
+        var cy = edgeY * zoom + v.Y;
+        var translateY = Position == ToolbarPosition.Bottom ? "0" : "-100%";
+        var offsetPx = Position == ToolbarPosition.Bottom ? Offset : -Offset;
+        return "position:absolute;z-index:6;left:" + FlowGeometry.Fmt(cx) + "px;top:" + FlowGeometry.Fmt(cy + offsetPx)
+               + "px;transform:translate(-50%, " + translateY + ");";
+    }
+}

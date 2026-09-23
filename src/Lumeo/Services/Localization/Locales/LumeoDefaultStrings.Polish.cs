@@ -405,6 +405,8 @@ internal static partial class LumeoDefaultStrings
         ["Flow.Lock"] = "Zablokuj kanwę",
         ["Flow.ConnectFrom"] = "Połącz z węzła {0}",
         ["Flow.ConnectTo"] = "Połącz z {0}",
+        ["Flow.MiniMap"] = "Podgląd",
+        ["Flow.NodeToolbar"] = "Działania węzła",
         ["Gantt.ScrollToEarlierTask"] = "Przewiń do {0} (wcześniej)",
         ["Gantt.ScrollToLaterTask"] = "Przewiń do {0} (później)",
         ["Gantt.Settings"] = "Ustawienia",

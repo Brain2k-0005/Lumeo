@@ -1,0 +1,151 @@
+@namespace Lumeo
+@using System.Globalization
+@inject Lumeo.Services.Localization.ILumeoLocalizer L
+
+@* FlowMiniMap — a small scaled overview of every node plus the current viewport rectangle. Place
+   it inside FlowCanvas' ChildContent, same as FlowControls.
+
+   Panning: click/drag inside the map re-centres the canvas on that flow point (SetCenterAsync).
+   Driven by ordinary Blazor pointer events rather than the JS engine — a minimap pan is a rare,
+   low-frequency gesture, not a per-frame hot path like the main canvas' own pan/zoom/drag, so the
+   extra round trip per pointermove is an acceptable, much simpler tradeoff (documented deviation:
+   it will show more latency than the main canvas on a Blazor Server circuit, and a drag that
+   leaves the SVG's bounds stops updating until the pointer re-enters it). *@
+
+<div data-slot="flow-minimap"
+     data-flow-overlay
+     class="@RootClass"
+     style="@RootStyle"
+     @attributes="AdditionalAttributes">
+    @if (Context is not null)
+    {
+        var bounds = ComputeBounds();
+        <svg width="@Width" height="@Height"
+             viewBox="@("0 0 " + F(Width) + " " + F(Height))"
+             role="img"
+             aria-label="@L["Flow.MiniMap"]"
+             class="rounded-md border border-border bg-card"
+             style="display:block;cursor:pointer;"
+             @onpointerdown="e => PanToAsync(bounds, e)"
+             @onpointermove="e => HandleMoveAsync(bounds, e)"
+             @onpointerup="StopDragging"
+             @onpointerleave="StopDragging">
+            @foreach (var node in Context.Canvas.CurrentNodes)
+            {
+                var r = MapRect(bounds, Context.Canvas.GetNodeRect(node));
+                <rect @key="node.Id" x="@F(r.X)" y="@F(r.Y)" width="@F(r.Width)" height="@F(r.Height)" rx="1.5" fill="@ColorFor(node)" />
+            }
+            @{
+                var vr = MapRect(bounds, ViewportRectInFlow());
+            }
+            <rect x="@F(vr.X)" y="@F(vr.Y)" width="@F(vr.Width)" height="@F(vr.Height)" fill="none" stroke="var(--color-primary)" stroke-width="1.5" />
+        </svg>
+    }
+</div>
+
+@code {
+    [CascadingParameter] private FlowCanvas.FlowCanvasContext? Context { get; set; }
+
+    /// <summary>The corner a <see cref="FlowMiniMap"/> sits in.</summary>
+    public enum MiniMapPosition { TopLeft, TopRight, BottomLeft, BottomRight }
+
+    /// <summary>Which corner of the canvas the overview sits in.</summary>
+    [Parameter] public MiniMapPosition Position { get; set; } = MiniMapPosition.BottomRight;
+
+    /// <summary>Pixel width of the overview.</summary>
+    [Parameter] public double Width { get; set; } = 160;
+
+    /// <summary>Pixel height of the overview.</summary>
+    [Parameter] public double Height { get; set; } = 110;
+
+    /// <summary>Colours a node's rect. Defaults to <c>--color-muted-foreground</c> for every node.</summary>
+    [Parameter] public Func<FlowNode, string?>? NodeColor { get; set; }
+
+    /// <summary>Additional CSS classes merged onto the overview.</summary>
+    [Parameter] public string? Class { get; set; }
+
+    /// <summary>Captures unmatched attributes and applies them to the overview.</summary>
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private bool _dragging;
+
+    private string RootClass => Class ?? "";
+
+    private string RootStyle
+    {
+        get
+        {
+            var corner = Position switch
+            {
+                MiniMapPosition.TopLeft => "left:0.75rem;top:0.75rem;",
+                MiniMapPosition.TopRight => "right:0.75rem;top:0.75rem;",
+                MiniMapPosition.BottomLeft => "left:0.75rem;bottom:0.75rem;",
+                _ => "right:0.75rem;bottom:0.75rem;",
+            };
+            return "position:absolute;z-index:5;" + corner;
+        }
+    }
+
+    private static string F(double v) => v.ToString("0.##", CultureInfo.InvariantCulture);
+
+    private string ColorFor(FlowNode node) => NodeColor?.Invoke(node) ?? "var(--color-muted-foreground)";
+
+    private sealed record MapTransform(double Scale, double OffsetX, double OffsetY);
+
+    private FlowRect ComputeBounds()
+    {
+        var canvas = Context!.Canvas;
+        var rects = canvas.CurrentNodes.Select(canvas.GetNodeRect).ToList();
+        if (FlowGeometry.GetBounds(rects) is { } b) return b;
+        return new FlowRect(0, 0, 400, 300);
+    }
+
+    private MapTransform Transform(FlowRect bounds)
+    {
+        var bw = Math.Max(bounds.Width, 1) * 1.2;
+        var bh = Math.Max(bounds.Height, 1) * 1.2;
+        var scale = Math.Min(Width / bw, Height / bh);
+        if (!double.IsFinite(scale) || scale <= 0) scale = 1;
+        var offsetX = (Width - bounds.Width * scale) / 2 - bounds.X * scale;
+        var offsetY = (Height - bounds.Height * scale) / 2 - bounds.Y * scale;
+        return new MapTransform(scale, offsetX, offsetY);
+    }
+
+    private FlowRect MapRect(FlowRect bounds, FlowRect r)
+    {
+        var t = Transform(bounds);
+        return new FlowRect(r.X * t.Scale + t.OffsetX, r.Y * t.Scale + t.OffsetY, r.Width * t.Scale, r.Height * t.Scale);
+    }
+
+    private FlowRect ViewportRectInFlow()
+    {
+        var canvas = Context!.Canvas;
+        var v = Context.Viewport;
+        var (w, h) = canvas.PaneSize;
+        if (!(w > 0) || !(h > 0)) return new FlowRect(0, 0, 0, 0);
+        var topLeft = FlowGeometry.ScreenToFlow(0, 0, v);
+        var bottomRight = FlowGeometry.ScreenToFlow(w, h, v);
+        return new FlowRect(topLeft.X, topLeft.Y, bottomRight.X - topLeft.X, bottomRight.Y - topLeft.Y);
+    }
+
+    private async Task PanToAsync(FlowRect bounds, PointerEventArgs e)
+    {
+        _dragging = true;
+        await PanCoreAsync(bounds, e.OffsetX, e.OffsetY);
+    }
+
+    private Task HandleMoveAsync(FlowRect bounds, PointerEventArgs e)
+        => _dragging ? PanCoreAsync(bounds, e.OffsetX, e.OffsetY) : Task.CompletedTask;
+
+    private void StopDragging() => _dragging = false;
+
+    private async Task PanCoreAsync(FlowRect bounds, double svgX, double svgY)
+    {
+        if (Context is null) return;
+        var t = Transform(bounds);
+        if (t.Scale <= 0) return;
+        var flowX = (svgX - t.OffsetX) / t.Scale;
+        var flowY = (svgY - t.OffsetY) / t.Scale;
+        await Context.Canvas.SetCenterAsync(flowX, flowY);
+    }
+}

@@ -400,6 +400,8 @@ internal static partial class LumeoDefaultStrings
         ["Flow.Lock"] = "キャンバスをロック",
         ["Flow.ConnectFrom"] = "{0} から接続",
         ["Flow.ConnectTo"] = "{0} に接続",
+        ["Flow.MiniMap"] = "概観",
+        ["Flow.NodeToolbar"] = "ノード操作",
         ["Gantt.ScrollToEarlierTask"] = "{0}へスクロール(前)",
         ["Gantt.ScrollToLaterTask"] = "{0}へスクロール(後)",
         ["Gantt.Settings"] = "設定",

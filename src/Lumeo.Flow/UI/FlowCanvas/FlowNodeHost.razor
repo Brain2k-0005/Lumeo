@@ -21,10 +21,12 @@
          data-selected="@(Selected ? "" : null)"
          data-dragging="@(Dragging ? "" : null)"
          data-draggable="@(Draggable ? "true" : "false")"
+         data-connectable="@(Connectable ? "true" : "false")"
+         data-selectable="@(Node.Selectable ? "true" : "false")"
          tabindex="0"
          role="group"
          aria-roledescription="@L["Flow.NodeRole"]"
-         aria-label="@Node.Id"
+         aria-label="@AriaLabel"
          aria-selected="@(Selected ? "true" : "false")"
          class="@HostClass"
          style="@HostStyle"
@@ -57,6 +59,8 @@
     private bool Selected => Canvas?.IsSelected(Node.Id) == true;
     private bool Dragging => Canvas?.IsDragging(Node.Id) == true;
     private bool Draggable => Canvas?.CanDrag(Node) == true;
+    private bool Connectable => Canvas?.CanConnect(Node) == true;
+    private string AriaLabel => Canvas?.AriaLabelFor(Node) ?? Node.Id;
 
     private string HostClass => Cx.Merge("lumeo-flow-node", Class);
 
@@ -72,7 +76,7 @@
         }
     }
 
-    private Task HandleClickAsync() => Canvas?.HandleNodeClickAsync(Node) ?? Task.CompletedTask;
+    private Task HandleClickAsync(MouseEventArgs e) => Canvas?.HandleNodeClickAsync(Node, e.ShiftKey, e.CtrlKey || e.MetaKey) ?? Task.CompletedTask;
     private Task HandleDoubleClickAsync() => Canvas?.HandleNodeDoubleClickAsync(Node) ?? Task.CompletedTask;
     private Task HandleContextMenuAsync(MouseEventArgs e) => Canvas?.HandleNodeContextMenuAsync(Node, e) ?? Task.CompletedTask;
     private Task HandleKeyDownAsync(KeyboardEventArgs e) => Canvas?.HandleNodeKeyDownAsync(Node, e) ?? Task.CompletedTask;

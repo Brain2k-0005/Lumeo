@@ -55,4 +55,31 @@ public abstract class FlowCanvasTestBase : IAsyncLifetime
     }
 
     protected static L.FlowNode Node(IEnumerable<L.FlowNode> nodes, string id) => nodes.Single(n => n.Id == id);
+
+    /// <summary>Renders a canvas whose parent holds both the node and edge lists like <c>@bind-Nodes</c>/<c>@bind-Edges</c> would.</summary>
+    protected (IRenderedComponent<L.FlowCanvas> Cut, Func<IReadOnlyList<L.FlowNode>> CurrentNodes, Func<IReadOnlyList<L.FlowEdge>> CurrentEdges) RenderBoundWithEdges(
+        IReadOnlyList<L.FlowNode> nodes, IReadOnlyList<L.FlowEdge> edges, Action<ComponentParameterCollectionBuilder<L.FlowCanvas>>? extra = null)
+    {
+        IReadOnlyList<L.FlowNode> currentNodes = nodes;
+        IReadOnlyList<L.FlowEdge> currentEdges = edges;
+        IRenderedComponent<L.FlowCanvas>? cut = null;
+        cut = Ctx.Render<L.FlowCanvas>(p =>
+        {
+            p.Add(c => c.Nodes, nodes)
+             .Add(c => c.NodesChanged, (IReadOnlyList<L.FlowNode> n) =>
+             {
+                 currentNodes = n;
+                 cut!.Render(pp => pp.Add(c => c.Nodes, n));
+             })
+             .Add(c => c.Edges, edges)
+             .Add(c => c.EdgesChanged, (IReadOnlyList<L.FlowEdge> e) =>
+             {
+                 currentEdges = e;
+                 cut!.Render(pp => pp.Add(c => c.Edges, e));
+             })
+             .Add(c => c.FitViewOnInit, false);
+            extra?.Invoke(p);
+        });
+        return (cut, () => currentNodes, () => currentEdges);
+    }
 }

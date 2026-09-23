@@ -337,6 +337,8 @@ internal static partial class LumeoDefaultStrings
         ["Flow.Lock"] = "锁定画布",
         ["Flow.ConnectFrom"] = "从 {0} 连接",
         ["Flow.ConnectTo"] = "连接到 {0}",
+        ["Flow.MiniMap"] = "概览",
+        ["Flow.NodeToolbar"] = "节点操作",
         ["Gantt.ScrollToEarlierTask"] = "滚动到{0}(较早)",
         ["Gantt.ScrollToLaterTask"] = "滚动到{0}(较晚)",
         ["Gantt.Settings"] = "设置",

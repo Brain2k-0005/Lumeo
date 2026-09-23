@@ -30,6 +30,8 @@
          data-slot="flow-pane"
          data-flow-viewport="@ViewportStamp"
          data-flow-generation="@_state.Generation.ToString(CultureInfo.InvariantCulture)"
+         tabindex="-1"
+         @onkeydown="HandlePaneKeyDownAsync"
          style="position:relative;width:100%;height:100%;overflow:hidden;touch-action:none;">
         <CascadingValue Value="_context" IsFixed="false">
             <div data-slot="flow-viewport" style="@_viewportLayerStyle">
@@ -55,8 +57,11 @@
     /// <summary>Raised with the new node list after a committed drag or keyboard move.</summary>
     [Parameter] public EventCallback<IReadOnlyList<FlowNode>> NodesChanged { get; set; }
 
-    /// <summary>The edges to draw between nodes. Edges whose source or target node is missing are skipped.</summary>
+    /// <summary>The edges to draw between nodes. Edges whose source or target node is missing are skipped. Two-way bindable (<c>@@bind-Edges</c>): a committed connect or delete emits a new list through <see cref="EdgesChanged"/>. Without a binding the canvas keeps its own copy until you pass a different list — the same echo/replace rule <see cref="Nodes"/> follows.</summary>
     [Parameter] public IReadOnlyList<FlowEdge>? Edges { get; set; }
+
+    /// <summary>Raised with the new edge list after a committed connect (when <see cref="OnConnect"/> has no handler) or a delete that removed edges.</summary>
+    [Parameter] public EventCallback<IReadOnlyList<FlowEdge>> EdgesChanged { get; set; }
 
     /// <summary>The pan/zoom state. Two-way bindable (<c>@bind-Viewport</c>). Setting a new value moves the canvas; the canvas reports user pans and zooms back through <see cref="ViewportChanged"/>. A zoom of 0 or less means "not set" (the canvas starts at 0,0 and 100%).</summary>
     [Parameter] public FlowViewport Viewport { get; set; } = new(0, 0, 1);
@@ -67,7 +72,13 @@
     /// <summary>Renders each node's content. The canvas wraps it in a positioned, focusable host. Without a template a node renders a small card with its <c>Data</c> (or <c>Id</c>).</summary>
     [Parameter] public RenderFragment<FlowNodeContext>? NodeTemplate { get; set; }
 
-    /// <summary>Overlays rendered inside the pane: <see cref="FlowBackground"/>, <see cref="FlowControls"/>, your own panels.</summary>
+    /// <summary>Renders an edge's label. Without a template, <see cref="FlowEdge.Label"/> (when set) renders as a small themed pill. Positioned at the path midpoint and moved live by the engine while a connected node is dragged.</summary>
+    [Parameter] public RenderFragment<FlowEdgeContext>? EdgeLabelTemplate { get; set; }
+
+    /// <summary>Names a node for assistive technology (its host's <c>aria-label</c> and the "Connect from/to" handle labels). Without it every node is named by its <see cref="FlowNode.Id"/>.</summary>
+    [Parameter] public Func<FlowNode, string>? NodeAriaLabel { get; set; }
+
+    /// <summary>Overlays rendered inside the pane: <see cref="FlowBackground"/>, <see cref="FlowControls"/>, <see cref="FlowMiniMap"/>, <see cref="FlowPanel"/>, your own panels.</summary>
     [Parameter] public RenderFragment? ChildContent { get; set; }
 
     // ── Layout and behaviour ─────────────────────────────────────────────
@@ -102,7 +113,19 @@
     /// <summary>The mouse wheel zooms, anchored on the pointer (a plain wheel — no modifier — like React Flow; the page does not scroll while the pointer is over the canvas).</summary>
     [Parameter] public bool ZoomOnScroll { get; set; } = true;
 
-    /// <summary>Turns every editing gesture off (node drag and keyboard move now; connect and delete in later phases). Pan, zoom, selection and click events keep working.</summary>
+    /// <summary>Dragging from a source <see cref="FlowHandle"/> to a target handle proposes a connection (pointer or keyboard — Enter on a source handle, then Enter on a target). ANDed with <see cref="FlowNode.Connectable"/> on both ends, <see cref="Readonly"/> and the controls' lock toggle.</summary>
+    [Parameter] public bool NodesConnectable { get; set; } = true;
+
+    /// <summary>Nodes and edges can be selected: click, shift/ctrl-click to toggle, shift-drag for a marquee (<see cref="SelectionOnShiftDrag"/>). ANDed with <see cref="FlowNode.Selectable"/> per node.</summary>
+    [Parameter] public bool ElementsSelectable { get; set; } = true;
+
+    /// <summary>Shift-dragging the empty background draws a marquee that selects every intersected, selectable node. Requires <see cref="ElementsSelectable"/>.</summary>
+    [Parameter] public bool SelectionOnShiftDrag { get; set; } = true;
+
+    /// <summary>Key names (<c>KeyboardEventArgs.Key</c>) that delete the current selection while focus is anywhere inside the canvas.</summary>
+    [Parameter] public IReadOnlyList<string> DeleteKey { get; set; } = new[] { "Delete", "Backspace" };
+
+    /// <summary>Turns every editing gesture off (node drag, keyboard move, connect and delete). Pan, zoom, selection and click events keep working.</summary>
     [Parameter] public bool Readonly { get; set; }
 
     // ── Events ───────────────────────────────────────────────────────────
@@ -121,6 +144,28 @@
 
     /// <summary>A drag (or arrow-key move) was committed; one entry per moved node. Raised after <see cref="NodesChanged"/>.</summary>
     [Parameter] public EventCallback<IReadOnlyList<FlowNodeChange>> OnNodeDragStop { get; set; }
+
+    /// <summary>An edge was clicked (not raised for the click that ends a drag or that opens a connection).</summary>
+    [Parameter] public EventCallback<FlowEdge> OnEdgeClick { get; set; }
+
+    /// <summary>
+    /// A connection was dropped on a compatible target handle and passed <see cref="IsValidConnection"/>.
+    /// Without a handler the canvas appends a new <see cref="FlowEdge"/> itself and raises <see cref="EdgesChanged"/>.
+    /// </summary>
+    [Parameter] public EventCallback<FlowConnection> OnConnect { get; set; }
+
+    /// <summary>Called for every proposed connection (pointer drop or keyboard commit) before it is accepted. Returning <c>false</c> rejects it — no edge is added and <see cref="OnConnect"/> is not raised.</summary>
+    [Parameter] public Func<FlowConnection, bool>? IsValidConnection { get; set; }
+
+    /// <summary>Raised after the selection changes — a click, shift/ctrl-click, marquee, edge click, <see cref="SelectAsync"/>, <see cref="ClearSelectionAsync"/> or a pane click/Escape that clears it.</summary>
+    [Parameter] public EventCallback<FlowSelection> OnSelectionChanged { get; set; }
+
+    /// <summary>
+    /// <see cref="DeleteKey"/> was pressed with a non-empty, deletable selection.
+    /// Without a handler the canvas removes the selected nodes (and every edge touching one of them)
+    /// and the directly selected edges itself, raising <see cref="NodesChanged"/>/<see cref="EdgesChanged"/>.
+    /// </summary>
+    [Parameter] public EventCallback<FlowSelection> OnDelete { get; set; }
 
     /// <summary>Additional CSS classes merged onto the root element.</summary>
     [Parameter] public string? Class { get; set; }
@@ -142,12 +187,17 @@
 
     // ── State ────────────────────────────────────────────────────────────
 
+    [CascadingParameter(Name = "LumeoDirection")] private LayoutDirection? Direction { get; set; }
+
     internal readonly FlowState _state = new();
     private ElementReference _paneRef;
     private DotNetObjectReference<FlowCanvas>? _selfRef;
     private IReadOnlyList<FlowNode> _nodes = Array.Empty<FlowNode>();
     private IReadOnlyList<FlowNode>? _lastNodesParam;
     private readonly List<IReadOnlyList<FlowNode>> _recentEmitted = new();
+    private IReadOnlyList<FlowEdge> _edges = Array.Empty<FlowEdge>();
+    private IReadOnlyList<FlowEdge>? _lastEdgesParam;
+    private readonly List<IReadOnlyList<FlowEdge>> _recentEmittedEdges = new();
     private FlowViewport _lastViewportParam;
     private FlowViewport _initialViewport = new(0, 0, 1);
     private string _viewportLayerStyle = "";
@@ -162,7 +212,8 @@
     internal sealed record FlowEngineOptions(
         double MinZoom, double MaxZoom, bool SnapToGrid, double SnapX, double SnapY,
         bool NodesDraggable, bool PanOnDrag, bool ZoomOnScroll, bool Readonly,
-        bool FitViewOnInit, double FitViewPadding)
+        bool FitViewOnInit, double FitViewPadding,
+        bool Connectable, bool ElementsSelectable, bool SelectionOnShiftDrag, bool Rtl)
     {
         /// <summary>Serialised as <c>snap</c>: <c>[gx, gy]</c> or null.</summary>
         public double[]? Snap => SnapToGrid ? new[] { SnapX, SnapY } : null;
@@ -176,6 +227,15 @@
 
     internal bool Locked => _locked;
     internal bool CanMoveNodes => NodesDraggable && !Readonly && !_locked;
+    internal bool CanConnectGlobally => NodesConnectable && !Readonly && !_locked;
+    internal bool CanConnect(FlowNode node) => CanConnectGlobally && node.Connectable;
+    internal bool CanSelectEdges => ElementsSelectable;
+    internal string AriaLabelFor(FlowNode node) => NodeAriaLabel?.Invoke(node) ?? node.Id;
+    internal FlowRect GetNodeRect(FlowNode node) => _state.GetNodeRect(node);
+    internal FlowNode? SingleSelectedNode() => _state.SelectedNodeIds.Count == 1
+        ? _nodes.FirstOrDefault(n => n.Id == _state.SelectedNodeIds.First())
+        : null;
+    internal (double Width, double Height) PaneSize => (_state.PaneWidth, _state.PaneHeight);
 
     private string RootClass => Cx.Merge(
         "relative block w-full overflow-hidden rounded-lg border border-border bg-background text-foreground",
@@ -237,6 +297,28 @@
             }
         }
 
+        // Edges: the same echo/replace rule as Nodes, without a generation (edges are not committed
+        // through a JS drag, so there is no "stale drag" race to guard against).
+        if (!_initialized || !ReferenceEquals(Edges, _lastEdgesParam))
+        {
+            _lastEdgesParam = Edges;
+            var incoming = Edges ?? Array.Empty<FlowEdge>();
+            var emittedIndex = _recentEmittedEdges.FindIndex(l => ReferenceEquals(l, Edges));
+            if (!_initialized || emittedIndex < 0)
+            {
+                _edges = incoming;
+            }
+            else if (emittedIndex == _recentEmittedEdges.Count - 1)
+            {
+                _edges = incoming;
+            }
+            if (_state.SelectedEdgeIds.Count > 0)
+            {
+                var live = new HashSet<string>(_edges.Select(e => e.Id), StringComparer.Ordinal);
+                _state.SelectedEdgeIds.RemoveWhere(id => !live.Contains(id));
+            }
+        }
+
         // Viewport: the first value seeds the state and the server-rendered transform; later values
         // are instructions unless they are an echo of what the engine reported.
         if (!_initialized)
@@ -263,7 +345,8 @@
     private FlowEngineOptions BuildOptions() => new(
         MinZoom, MaxZoom, SnapToGrid, SnapGrid.X, SnapGrid.Y,
         CanMoveNodes, PanOnDrag, ZoomOnScroll, Readonly,
-        FitViewOnInit, FitViewPadding);
+        FitViewOnInit, FitViewPadding,
+        CanConnectGlobally, ElementsSelectable, SelectionOnShiftDrag, Direction == LayoutDirection.Rtl);
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -309,6 +392,7 @@
     // ── Node rendering helpers (used by FlowNodeHost / FlowEdgeLayer) ────
 
     internal bool IsSelected(string id) => _state.SelectedNodeIds.Contains(id);
+    internal bool IsEdgeSelected(string id) => _state.SelectedEdgeIds.Contains(id);
     internal bool IsDragging(string id) => _state.DraggingNodeIds.Contains(id);
     internal bool CanDrag(FlowNode node) => CanMoveNodes && node.Draggable;
     internal bool HasContextMenuHandler => OnNodeContextMenu.HasDelegate;
@@ -326,10 +410,10 @@
 
     internal IEnumerable<(FlowEdge Edge, FlowEdgePath Path)> RenderableEdges()
     {
-        if (Edges is null || Edges.Count == 0) yield break;
+        if (_edges.Count == 0) yield break;
         var byId = new Dictionary<string, FlowNode>(StringComparer.Ordinal);
         foreach (var n in _nodes) byId[n.Id] = n;
-        foreach (var edge in Edges)
+        foreach (var edge in _edges)
         {
             if (edge is null) continue;
             if (!byId.TryGetValue(edge.Source, out var s) || !byId.TryGetValue(edge.Target, out var t)) continue;
@@ -341,13 +425,31 @@
 
     // ── Node events (from FlowNodeHost) ──────────────────────────────────
 
-    internal async Task HandleNodeClickAsync(FlowNode node)
+    internal async Task HandleNodeClickAsync(FlowNode node, bool shift, bool ctrl)
     {
-        if (node.Selectable && !(_state.SelectedNodeIds.Count == 1 && _state.SelectedNodeIds.Contains(node.Id)))
+        if (ElementsSelectable && node.Selectable)
         {
-            _state.SelectedNodeIds.Clear();
-            _state.SelectedNodeIds.Add(node.Id);
-            StateHasChanged();
+            var toggle = shift || ctrl;
+            var changed = true;
+            if (toggle)
+            {
+                if (!_state.SelectedNodeIds.Add(node.Id)) _state.SelectedNodeIds.Remove(node.Id);
+            }
+            else if (_state.SelectedNodeIds.Count == 1 && _state.SelectedEdgeIds.Count == 0 && _state.SelectedNodeIds.Contains(node.Id))
+            {
+                changed = false;
+            }
+            else
+            {
+                _state.SelectedNodeIds.Clear();
+                _state.SelectedEdgeIds.Clear();
+                _state.SelectedNodeIds.Add(node.Id);
+            }
+            if (changed)
+            {
+                StateHasChanged();
+                await RaiseSelectionChangedAsync();
+            }
         }
         if (OnNodeClick.HasDelegate) await OnNodeClick.InvokeAsync(node);
     }
@@ -360,16 +462,33 @@
             ? OnNodeContextMenu.InvokeAsync(new FlowNodeContextMenuEventArgs(node, e.ClientX, e.ClientY))
             : Task.CompletedTask;
 
+    internal async Task HandleEdgeClickAsync(FlowEdge edge, bool shift, bool ctrl)
+    {
+        if (ElementsSelectable)
+        {
+            var toggle = shift || ctrl;
+            if (toggle)
+            {
+                if (!_state.SelectedEdgeIds.Add(edge.Id)) _state.SelectedEdgeIds.Remove(edge.Id);
+            }
+            else
+            {
+                _state.SelectedNodeIds.Clear();
+                _state.SelectedEdgeIds.Clear();
+                _state.SelectedEdgeIds.Add(edge.Id);
+            }
+            StateHasChanged();
+            await RaiseSelectionChangedAsync();
+        }
+        if (OnEdgeClick.HasDelegate) await OnEdgeClick.InvokeAsync(edge);
+    }
+
     internal async Task HandleNodeKeyDownAsync(FlowNode node, KeyboardEventArgs e)
     {
         switch (e.Key)
         {
             case "Escape":
-                if (_state.SelectedNodeIds.Count > 0)
-                {
-                    _state.SelectedNodeIds.Clear();
-                    StateHasChanged();
-                }
+                await ClearSelectionInternalAsync();
                 return;
             case "ArrowLeft":
             case "ArrowRight":
@@ -378,6 +497,69 @@
                 await MoveByKeyboardAsync(node, e.Key, e.ShiftKey);
                 return;
         }
+    }
+
+    private async Task HandlePaneKeyDownAsync(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape")
+        {
+            await ClearSelectionInternalAsync();
+            return;
+        }
+        if (DeleteKey.Contains(e.Key)) await DeleteSelectionAsync();
+    }
+
+    private async Task ClearSelectionInternalAsync()
+    {
+        if (!_state.ClearSelection()) return;
+        StateHasChanged();
+        await RaiseSelectionChangedAsync();
+    }
+
+    private Task RaiseSelectionChangedAsync()
+        => OnSelectionChanged.HasDelegate
+            ? OnSelectionChanged.InvokeAsync(new FlowSelection(
+                new HashSet<string>(_state.SelectedNodeIds, StringComparer.Ordinal),
+                new HashSet<string>(_state.SelectedEdgeIds, StringComparer.Ordinal)))
+            : Task.CompletedTask;
+
+    /// <summary>Deletes the current selection: honours <see cref="Readonly"/> and each element's <c>Deletable</c> flag. Without <see cref="OnDelete"/> the canvas removes the selected nodes (plus every edge touching one of them) and the directly selected edges itself.</summary>
+    internal async Task DeleteSelectionAsync()
+    {
+        if (Readonly) return;
+        var nodeIds = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var id in _state.SelectedNodeIds)
+        {
+            var n = _nodes.FirstOrDefault(x => x.Id == id);
+            if (n is not null && n.Deletable) nodeIds.Add(id);
+        }
+        var edgeIds = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var id in _state.SelectedEdgeIds)
+        {
+            var edge = _edges.FirstOrDefault(x => x.Id == id);
+            if (edge is not null && edge.Deletable) edgeIds.Add(id);
+        }
+        if (nodeIds.Count == 0 && edgeIds.Count == 0) return;
+
+        var selection = new FlowSelection(nodeIds, edgeIds);
+        if (OnDelete.HasDelegate)
+        {
+            await OnDelete.InvokeAsync(selection);
+            return;
+        }
+
+        if (nodeIds.Count > 0)
+        {
+            var nextNodes = _nodes.Where(n => !nodeIds.Contains(n.Id)).ToList();
+            await EmitNodesAsync(nextNodes);
+        }
+        var nextEdges = _edges.Where(e => !edgeIds.Contains(e.Id) && !nodeIds.Contains(e.Source) && !nodeIds.Contains(e.Target)).ToList();
+        if (nextEdges.Count != _edges.Count) await EmitEdgesAsync(nextEdges);
+
+        _state.SelectedNodeIds.Clear();
+        _state.SelectedEdgeIds.Clear();
+        StateHasChanged();
+        await RaiseSelectionChangedAsync();
     }
 
     private async Task MoveByKeyboardAsync(FlowNode node, string key, bool shift)
@@ -439,6 +621,15 @@
         return NodesChanged.HasDelegate ? NodesChanged.InvokeAsync(next) : Task.CompletedTask;
     }
 
+    private Task EmitEdgesAsync(List<FlowEdge> next)
+    {
+        _edges = next;
+        _recentEmittedEdges.Add(next);
+        if (_recentEmittedEdges.Count > 8) _recentEmittedEdges.RemoveAt(0);
+        StateHasChanged();
+        return EdgesChanged.HasDelegate ? EdgesChanged.InvokeAsync(next) : Task.CompletedTask;
+    }
+
     // ── Imperative API ───────────────────────────────────────────────────
 
     /// <summary>Fits every node into view. <paramref name="padding"/> defaults to <see cref="FitViewPadding"/>.</summary>
@@ -490,6 +681,21 @@
 
     /// <summary>Flow coordinates → pane-local pixels, using the latest known viewport.</summary>
     public FlowPoint FlowToScreen(double x, double y) => FlowGeometry.FlowToScreen(x, y, _state.Viewport);
+
+    /// <summary>Replaces the selection with the given node ids (unknown ids are ignored). Clears any selected edges. Raises <see cref="OnSelectionChanged"/>.</summary>
+    public async Task SelectAsync(IEnumerable<string> nodeIds)
+    {
+        ArgumentNullException.ThrowIfNull(nodeIds);
+        _state.SelectedNodeIds.Clear();
+        _state.SelectedEdgeIds.Clear();
+        var live = new HashSet<string>(_nodes.Select(n => n.Id), StringComparer.Ordinal);
+        foreach (var id in nodeIds) if (live.Contains(id)) _state.SelectedNodeIds.Add(id);
+        StateHasChanged();
+        await RaiseSelectionChangedAsync();
+    }
+
+    /// <summary>Clears the node and edge selection. Raises <see cref="OnSelectionChanged"/> when anything was selected.</summary>
+    public Task ClearSelectionAsync() => ClearSelectionInternalAsync();
 
     internal async Task SetLockedAsync(bool locked)
     {
@@ -617,12 +823,45 @@
     [JSInvokable, EditorBrowsable(EditorBrowsableState.Never)]
     public async Task PaneClicked(double x, double y)
     {
-        if (_state.SelectedNodeIds.Count > 0)
-        {
-            _state.SelectedNodeIds.Clear();
-            StateHasChanged();
-        }
+        await ClearSelectionInternalAsync();
         if (OnPaneClick.HasDelegate) await OnPaneClick.InvokeAsync(new FlowPoint(x, y));
+    }
+
+    /// <summary>Engine callback: a connection (pointer drop or keyboard commit) proposed source→target. Validated against <see cref="NodesConnectable"/>, both nodes' <c>Connectable</c>, <see cref="Readonly"/> and <see cref="IsValidConnection"/>; returns whether it was accepted. Not meant for application code.</summary>
+    [JSInvokable, EditorBrowsable(EditorBrowsableState.Never)]
+    public async Task<bool> CommitConnect(string source, string? sourceHandle, string target, string? targetHandle)
+    {
+        if (!CanConnectGlobally || string.IsNullOrEmpty(source) || string.IsNullOrEmpty(target)) return false;
+        var s = _nodes.FirstOrDefault(n => n.Id == source);
+        var t = _nodes.FirstOrDefault(n => n.Id == target);
+        if (s is null || t is null || !s.Connectable || !t.Connectable) return false;
+
+        var connection = new FlowConnection(source, sourceHandle, target, targetHandle);
+        if (IsValidConnection is not null && !IsValidConnection(connection)) return false;
+
+        if (OnConnect.HasDelegate)
+        {
+            await OnConnect.InvokeAsync(connection);
+            return true;
+        }
+
+        var id = "flow-edge-" + Guid.NewGuid().ToString("N")[..10];
+        var next = new List<FlowEdge>(_edges) { new(id, source, target, sourceHandle, targetHandle) };
+        await EmitEdgesAsync(next);
+        return true;
+    }
+
+    /// <summary>Engine callback: a marquee (shift-drag) selected these node ids. Replaces the selection. Not meant for application code.</summary>
+    [JSInvokable, EditorBrowsable(EditorBrowsableState.Never)]
+    public async Task CommitMarquee(string[] nodeIds)
+    {
+        if (!ElementsSelectable) return;
+        var live = new HashSet<string>(_nodes.Where(n => n.Selectable).Select(n => n.Id), StringComparer.Ordinal);
+        _state.SelectedNodeIds.Clear();
+        _state.SelectedEdgeIds.Clear();
+        if (nodeIds is not null) foreach (var id in nodeIds) if (live.Contains(id)) _state.SelectedNodeIds.Add(id);
+        StateHasChanged();
+        await RaiseSelectionChangedAsync();
     }
 
     /// <inheritdoc />

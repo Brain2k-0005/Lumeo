@@ -10,10 +10,10 @@
 
 <Alert Variant="Alert.AlertVariant.Info" ShowIcon="true" Class="mt-6">
     <ChildContent>
-        <strong>Phase 1 of Lumeo.Flow.</strong> This release ships the canvas engine: nodes, static edges,
-        pan, pointer-anchored wheel zoom, node drag with a real commit, snapping, background and controls.
-        Connecting handles, selection (shift-click, marquee), delete, edge labels and markers, the minimap
-        and panels arrive in the next phase — the node, edge and handle shapes you write today stay the same.
+        <strong>Phase 2 of Lumeo.Flow.</strong> Connect handles (pointer or keyboard), click/shift/marquee
+        selection, delete, edge labels and markers, and the minimap/panel/node-toolbar overlays are all here
+        now. Auto-layout, undo/redo and reconnect follow in phase 3 — the node, edge and handle shapes you
+        write today stay the same.
     </ChildContent>
 </Alert>
 
@@ -101,6 +101,97 @@
             </LazyRender>
         </Stack>
     </ComponentDemo>
+
+    <ComponentDemo Title="Connect handles — pointer and keyboard, with validation" Code="@_connectCode">
+        <Stack Gap="3" Class="w-full">
+            <Lumeo.Text Size="sm" Color="muted">
+                Drag from a source handle (the dot on a card's right edge) to a target handle to propose a
+                connection — <code>IsValidConnection</code> runs on every attempt. Here a <code>trigger</code>
+                card may only be a source: connecting into one is rejected. Keyboard: Tab to a source handle,
+                press <Kbd>Enter</Kbd> to start connecting (every compatible target handle highlights), Tab to
+                one and press <Kbd>Enter</Kbd> to commit, or <Kbd>Esc</Kbd> to cancel.
+            </Lumeo.Text>
+            <LazyRender Height="300px">
+                <FlowCanvas @bind-Nodes="_connectNodes" @bind-Edges="_connectEdges" Height="300px"
+                            IsValidConnection="ValidateConnection">
+                    <NodeTemplate Context="ctx">
+                        <div class="w-36 rounded-lg border border-border bg-card px-3 py-2 text-sm text-card-foreground shadow-sm">
+                            @if (ctx.Node.Type != "trigger")
+                            {
+                                <FlowHandle Type="FlowHandleType.Target" Position="FlowPosition.Left" />
+                            }
+                            @ctx.Node.Data
+                            <FlowHandle Type="FlowHandleType.Source" Position="FlowPosition.Right" />
+                        </div>
+                    </NodeTemplate>
+                    <ChildContent>
+                        <FlowBackground />
+                    </ChildContent>
+                </FlowCanvas>
+            </LazyRender>
+            <div class="rounded-md border border-border/60 bg-muted/40 p-3 text-sm">
+                <span class="font-mono text-xs text-muted-foreground">@(_lastConnectionMessage ?? "Try dragging \"Notify sales\" onto \"New order\" — it will be rejected.")</span>
+            </div>
+        </Stack>
+    </ComponentDemo>
+
+    <ComponentDemo Title="Selection and delete" Code="@_selectionCode">
+        <Stack Gap="3" Class="w-full">
+            <Lumeo.Text Size="sm" Color="muted">
+                Click selects a card, <Kbd>Shift</Kbd>/<Kbd>Ctrl</Kbd>-click toggles more into the selection,
+                and shift-dragging the background draws a marquee. Click an edge to select it too.
+                <Kbd>Delete</Kbd> or <Kbd>Backspace</Kbd> removes whatever is selected — nodes, the edges
+                touching them, and any directly selected edge.
+            </Lumeo.Text>
+            <LazyRender Height="280px">
+                <FlowCanvas @bind-Nodes="_selectionNodes" @bind-Edges="_selectionEdges" Height="280px"
+                            OnSelectionChanged="HandleSelectionChanged">
+                    <NodeTemplate Context="ctx">
+                        <div class="rounded-md border border-border bg-card px-3 py-2 text-sm font-medium text-card-foreground shadow-sm">
+                            @ctx.Node.Data
+                        </div>
+                    </NodeTemplate>
+                    <ChildContent>
+                        <FlowBackground Variant="FlowBackgroundVariant.Dots" />
+                    </ChildContent>
+                </FlowCanvas>
+            </LazyRender>
+            <div class="rounded-md border border-border/60 bg-muted/40 p-3 text-sm">
+                <span class="font-mono text-xs text-muted-foreground">@_selectionSummary</span>
+            </div>
+        </Stack>
+    </ComponentDemo>
+
+    <ComponentDemo Title="Minimap, panel and a node toolbar" Code="@_overlaysCode">
+        <Stack Gap="3" Class="w-full">
+            <Lumeo.Text Size="sm" Color="muted">
+                <code>FlowMiniMap</code> shows every node and the current viewport — click or drag it to pan.
+                <code>FlowPanel</code> is a plain corner overlay for your own content. <code>FlowNodeToolbar</code>
+                floats above the single selected node and follows it while dragging.
+            </Lumeo.Text>
+            <LazyRender Height="320px">
+                <FlowCanvas @bind-Nodes="_overlayNodes" Height="320px">
+                    <NodeTemplate Context="ctx">
+                        <div class="w-28 rounded-md border border-border bg-card px-2 py-1.5 text-xs font-medium text-card-foreground shadow-sm">
+                            @ctx.Node.Data
+                        </div>
+                    </NodeTemplate>
+                    <ChildContent>
+                        <FlowBackground />
+                        <FlowControls Position="FlowControls.ControlsPosition.BottomLeft" />
+                        <FlowMiniMap />
+                        <FlowPanel Position="FlowPanel.PanelPosition.TopLeft">
+                            <Badge Variant="Badge.BadgeVariant.Secondary" Size="Lumeo.Size.Sm">6 steps</Badge>
+                        </FlowPanel>
+                        <FlowNodeToolbar>
+                            <Button Variant="Button.ButtonVariant.Outline" Size="Button.ButtonSize.Sm" Class="bg-card">Duplicate</Button>
+                            <Button Variant="Button.ButtonVariant.Outline" Size="Button.ButtonSize.Sm" Class="bg-card text-destructive">Delete</Button>
+                        </FlowNodeToolbar>
+                    </ChildContent>
+                </FlowCanvas>
+            </LazyRender>
+        </Stack>
+    </ComponentDemo>
 </Stack>
 
 <div class="mt-16">
@@ -124,6 +215,21 @@
     <Heading Id="flowhandle" Level="3" Class="mt-8 scroll-mt-20">FlowHandle</Heading>
     <div class="mt-4">
         <PropsTable Slug="flow-canvas" SubComponent="FlowHandle" />
+    </div>
+
+    <Heading Id="flowminimap" Level="3" Class="mt-8 scroll-mt-20">FlowMiniMap</Heading>
+    <div class="mt-4">
+        <PropsTable Slug="flow-canvas" SubComponent="FlowMiniMap" />
+    </div>
+
+    <Heading Id="flowpanel" Level="3" Class="mt-8 scroll-mt-20">FlowPanel</Heading>
+    <div class="mt-4">
+        <PropsTable Slug="flow-canvas" SubComponent="FlowPanel" />
+    </div>
+
+    <Heading Id="flownodetoolbar" Level="3" Class="mt-8 scroll-mt-20">FlowNodeToolbar</Heading>
+    <div class="mt-4">
+        <PropsTable Slug="flow-canvas" SubComponent="FlowNodeToolbar" />
     </div>
 
     <Heading Id="building-blocks" Level="3" Class="mt-8 scroll-mt-20">Building blocks rendered by FlowCanvas</Heading>
@@ -154,6 +260,11 @@
                 <TableRow><TableCell Class="font-mono text-xs">FlowEdge.Source / Target</TableCell><TableCell Class="font-mono text-xs">string</TableCell><TableCell>Node ids. An edge whose node is missing is skipped.</TableCell></TableRow>
                 <TableRow><TableCell Class="font-mono text-xs">FlowEdge.SourceHandle / TargetHandle</TableCell><TableCell Class="font-mono text-xs">string?</TableCell><TableCell>A <code>FlowHandle</code> id; null attaches to the node's first handle of that type, or its right/left edge.</TableCell></TableRow>
                 <TableRow><TableCell Class="font-mono text-xs">FlowEdge.Type</TableCell><TableCell Class="font-mono text-xs">FlowEdgeType</TableCell><TableCell><code>Bezier</code> (default), <code>SmoothStep</code>, <code>Step</code> or <code>Straight</code>.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">FlowNode.Connectable / Deletable</TableCell><TableCell Class="font-mono text-xs">bool</TableCell><TableCell>Per-node connect/delete switches (combined with the canvas' own switches).</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">FlowEdge.Label</TableCell><TableCell Class="font-mono text-xs">string?</TableCell><TableCell>Renders as a small themed pill at the path midpoint; use <code>EdgeLabelTemplate</code> for custom content.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">FlowEdge.Animated / Dashed</TableCell><TableCell Class="font-mono text-xs">bool</TableCell><TableCell>A moving dash pattern (off under <code>prefers-reduced-motion</code>) or a static dashed stroke.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">FlowEdge.MarkerEnd</TableCell><TableCell Class="font-mono text-xs">string?</TableCell><TableCell>Any non-null value draws an arrowhead at the target; <code>null</code> draws none.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">FlowEdge.Deletable</TableCell><TableCell Class="font-mono text-xs">bool</TableCell><TableCell>Per-edge delete switch.</TableCell></TableRow>
             </TableBody>
         </Table>
     </div>
@@ -174,6 +285,8 @@
                 <TableRow><TableCell Class="font-mono text-xs">SetCenterAsync(x, y, zoom?)</TableCell><TableCell>Centres a flow point.</TableCell></TableRow>
                 <TableRow><TableCell Class="font-mono text-xs">SetViewportAsync(FlowViewport)</TableCell><TableCell>Moves the canvas to an exact viewport.</TableCell></TableRow>
                 <TableRow><TableCell Class="font-mono text-xs">ScreenToFlow(x, y) / FlowToScreen(x, y)</TableCell><TableCell>Converts between pane-local pixels and flow coordinates.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">SelectAsync(IEnumerable&lt;string&gt; nodeIds)</TableCell><TableCell>Replaces the selection with these node ids (unknown ids are ignored).</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">ClearSelectionAsync()</TableCell><TableCell>Clears the node and edge selection.</TableCell></TableRow>
             </TableBody>
         </Table>
     </div>
@@ -184,8 +297,11 @@
     <ul class="mt-4 list-disc list-inside space-y-1 text-muted-foreground text-sm">
         <li>The canvas is a labelled <code>role="application"</code> region; every node is a focusable <code>role="group"</code> in node order.</li>
         <li><Kbd>←</Kbd> <Kbd>→</Kbd> <Kbd>↑</Kbd> <Kbd>↓</Kbd> move the focused node by 1px (by one grid step with <code>SnapToGrid</code>); <Kbd>Shift</Kbd> moves 10×. Each press commits like a drop.</li>
-        <li><Kbd>Esc</Kbd> cancels a drag in progress (the node returns) and clears the selection.</li>
+        <li><Kbd>Esc</Kbd> cancels a drag or a connection in progress (the node/line returns) and clears the selection.</li>
         <li>Hold <Kbd>Space</Kbd> to pan by dragging anywhere, including over nodes.</li>
+        <li>Click selects a node or edge; <Kbd>Shift</Kbd>/<Kbd>Ctrl</Kbd>-click toggles it into a multi-selection; shift-dragging the background draws a marquee.</li>
+        <li><Kbd>Delete</Kbd>/<Kbd>Backspace</Kbd> removes the current selection (configurable via <code>DeleteKey</code>).</li>
+        <li>Handles are tab stops. <Kbd>Enter</Kbd>/<Kbd>Space</Kbd> on a source handle enters "connecting" mode (announced to screen readers and marked on every compatible target handle with <code>data-flow-handle-valid</code>); <Kbd>Enter</Kbd>/<Kbd>Space</Kbd> on a target handle commits it, <Kbd>Esc</Kbd> cancels.</li>
         <li>The controls are labelled buttons; the lock toggle reports <code>aria-pressed</code>.</li>
     </ul>
 </div>
@@ -208,6 +324,10 @@
                 <TableRow><TableCell Class="font-mono text-xs">data-flow-handle</TableCell><TableCell>Handle button</TableCell><TableCell>With <code>data-handle-type</code>, <code>data-handle-id</code>, <code>data-position</code>.</TableCell></TableRow>
                 <TableRow><TableCell Class="font-mono text-xs">data-flow-nodrag</TableCell><TableCell>Anything in a node</TableCell><TableCell>Add it to an element inside your template to stop a press there from dragging the node.</TableCell></TableRow>
                 <TableRow><TableCell Class="font-mono text-xs">data-flow-ready="done"</TableCell><TableCell>Canvas root</TableCell><TableCell>Set by the engine once it has mounted and applied the initial fit.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">data-flow-handle-valid</TableCell><TableCell>Handle button</TableCell><TableCell>Presence-only: a structurally compatible target while a connection (pointer or keyboard) is in progress.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">data-flow-connecting</TableCell><TableCell>Handle button</TableCell><TableCell>Presence-only: the source handle of an in-progress keyboard connection.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">data-flow-edge-label</TableCell><TableCell>Label div</TableCell><TableCell>With <code>data-edge-id</code>; positioned at the path midpoint.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">data-flow-toolbar-for="id"</TableCell><TableCell><code>FlowNodeToolbar</code></TableCell><TableCell>The node id it floats above; the engine repositions it live while that node is dragged.</TableCell></TableRow>
             </TableBody>
         </Table>
     </div>
@@ -346,6 +466,103 @@
     <ChildContent>
         <FlowBackground Variant=""FlowBackgroundVariant.Lines"" Gap=""20"" />
         <FlowControls Position=""FlowControls.ControlsPosition.TopRight"" />
+    </ChildContent>
+</FlowCanvas>";
+
+    // ── Demo 3 — connect with validation ──────────────────────────────────
+    private IReadOnlyList<FlowNode> _connectNodes = new List<FlowNode>
+    {
+        new("order", 0, 60, Type: "trigger", Data: "New order"),
+        new("check", 280, 0, Data: "Check stock"),
+        new("notify", 280, 130, Data: "Notify sales"),
+    };
+    private IReadOnlyList<FlowEdge> _connectEdges = new List<FlowEdge>();
+    private string? _lastConnectionMessage;
+
+    private bool ValidateConnection(FlowConnection connection)
+    {
+        var targetType = _connectNodes.FirstOrDefault(n => n.Id == connection.Target)?.Type;
+        var ok = targetType != "trigger";
+        _lastConnectionMessage = ok
+            ? $"{connection.Source} → {connection.Target}: connected."
+            : $"{connection.Source} → {connection.Target}: rejected — a trigger can't receive an incoming connection.";
+        return ok;
+    }
+
+    private const string _connectCode = @"<FlowCanvas @bind-Nodes=""_nodes"" @bind-Edges=""_edges"" Height=""300px""
+            IsValidConnection=""ValidateConnection"">
+    <NodeTemplate Context=""ctx"">
+        <div class=""w-36 rounded-lg border border-border bg-card px-3 py-2 text-sm shadow-sm"">
+            @if (ctx.Node.Type != ""trigger"")
+            {
+                <FlowHandle Type=""FlowHandleType.Target"" Position=""FlowPosition.Left"" />
+            }
+            @ctx.Node.Data
+            <FlowHandle Type=""FlowHandleType.Source"" Position=""FlowPosition.Right"" />
+        </div>
+    </NodeTemplate>
+</FlowCanvas>
+
+@code {
+    // A trigger card renders no target handle, but IsValidConnection is the real gate: it also
+    // rejects a connection dragged onto one from elsewhere (e.g. a custom node without that check).
+    private bool ValidateConnection(FlowConnection c)
+        => _nodes.FirstOrDefault(n => n.Id == c.Target)?.Type != ""trigger"";
+}";
+
+    // ── Demo 4 — selection and delete ───────────────────────────────────────
+    private IReadOnlyList<FlowNode> _selectionNodes = new List<FlowNode>
+    {
+        new("plan", 0, 0, Data: "Plan"),
+        new("design", 200, 0, Data: "Design"),
+        new("build", 100, 130, Data: "Build"),
+    };
+    private IReadOnlyList<FlowEdge> _selectionEdges = new List<FlowEdge>
+    {
+        new("plan-build", "plan", "build"),
+        new("design-build", "design", "build"),
+    };
+    private string _selectionSummary = "Nothing selected.";
+
+    private void HandleSelectionChanged(FlowSelection selection)
+        => _selectionSummary = selection.NodeIds.Count == 0 && selection.EdgeIds.Count == 0
+            ? "Nothing selected."
+            : $"{selection.NodeIds.Count} node(s), {selection.EdgeIds.Count} edge(s) selected — press Delete to remove.";
+
+    private const string _selectionCode = @"<FlowCanvas @bind-Nodes=""_nodes"" @bind-Edges=""_edges"" Height=""280px""
+            OnSelectionChanged=""HandleSelectionChanged"">
+    ...
+</FlowCanvas>
+
+@code {
+    // Without OnDelete the canvas removes the selection (and every edge touching a removed node)
+    // itself and raises NodesChanged/EdgesChanged through the bindings above.
+    private void HandleSelectionChanged(FlowSelection s) { /* show a count, enable a toolbar, ... */ }
+}";
+
+    // ── Demo 5 — minimap, panel, node toolbar ───────────────────────────────
+    private IReadOnlyList<FlowNode> _overlayNodes = new List<FlowNode>
+    {
+        new("s1", 0, 0, Data: "Intake"),
+        new("s2", 220, -80, Data: "Score"),
+        new("s3", 220, 80, Data: "Review"),
+        new("s4", 440, -80, Data: "Approve"),
+        new("s5", 440, 80, Data: "Escalate"),
+        new("s6", 660, 0, Data: "Close"),
+    };
+
+    private const string _overlaysCode = @"<FlowCanvas @bind-Nodes=""_nodes"" Height=""320px"">
+    <ChildContent>
+        <FlowBackground />
+        <FlowControls Position=""FlowControls.ControlsPosition.BottomLeft"" />
+        <FlowMiniMap />
+        <FlowPanel Position=""FlowPanel.PanelPosition.TopLeft"">
+            <Badge Size=""Lumeo.Size.Sm"">6 steps</Badge>
+        </FlowPanel>
+        <FlowNodeToolbar>
+            <Button Size=""Button.ButtonSize.Sm"">Duplicate</Button>
+            <Button Size=""Button.ButtonSize.Sm"">Delete</Button>
+        </FlowNodeToolbar>
     </ChildContent>
 </FlowCanvas>";
 }

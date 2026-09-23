@@ -337,6 +337,8 @@ internal static partial class LumeoDefaultStrings
         ["Flow.Lock"] = "Tuvali kilitle",
         ["Flow.ConnectFrom"] = "{0} öğesinden bağla",
         ["Flow.ConnectTo"] = "{0} öğesine bağla",
+        ["Flow.MiniMap"] = "Genel görünüm",
+        ["Flow.NodeToolbar"] = "Düğüm eylemleri",
         ["Gantt.ScrollToEarlierTask"] = "{0} konumuna kaydır (önce)",
         ["Gantt.ScrollToLaterTask"] = "{0} konumuna kaydır (sonra)",
         ["Gantt.Settings"] = "Ayarlar",
