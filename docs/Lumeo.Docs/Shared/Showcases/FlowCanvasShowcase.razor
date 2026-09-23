@@ -1,35 +1,44 @@
 @namespace Lumeo.Docs.Shared.Showcases
-@* Static exception (see ../README.md, and the pattern GanttChartShowcase/SchedulerShowcase use
-   for the same reason): FlowCanvas lives in the satellite package Lumeo.Flow, lazy-loaded only
-   on its own docs route (/components/flow-canvas) — the general /components catalog page never
-   loads that assembly, so a live <FlowCanvas> here throws a TypeLoadException the instant
-   CatalogCard mounts it (verified: "Could not load file or assembly 'Lumeo.Flow'").
-   This renders a faithful miniature of the real chrome instead: the dot-grid background pattern,
-   three node cards with their handle dots, and the same bezier/step edge shapes FlowGeometry
-   produces — fixed markup, no engine, no live wiring. *@
+@using Lumeo
 
-<div class="w-full max-w-[22rem] h-32 rounded-md border border-border/60 relative overflow-hidden bg-background">
-    <svg class="absolute inset-0 h-full w-full" aria-hidden="true">
-        <defs>
-            <pattern id="flow-showcase-dots" width="14" height="14" patternUnits="userSpaceOnUse">
-                <circle cx="1" cy="1" r="1" fill="var(--color-border)" />
-            </pattern>
-        </defs>
-        <rect width="100%" height="100%" fill="url(#flow-showcase-dots)" />
-        <path d="M74,44 C104,44 104,26 134,26" fill="none" stroke="var(--color-muted-foreground)" stroke-width="1.5" opacity="0.6" />
-        <path d="M74,52 C104,52 104,78 134,78" fill="none" stroke="var(--color-muted-foreground)" stroke-width="1.5" opacity="0.6" />
-    </svg>
+@* LIVE (see ../README.md's "Wave 1 — Data Display category" table + phase-3b promotion note):
+   CatalogCard now routes every showcase through SatelliteBoundShowcase, which lazy-loads
+   Lumeo.Flow.dll (ShowcaseResolver.SatelliteAssembliesFor) before this mounts — the
+   TypeLoadException that forced the earlier static dot-grid replica is gone. Real FlowCanvas,
+   three fixed nodes/two edges, a fixed non-fitting viewport (no FitViewOnInit measurement
+   race — deterministic every render per rule 1) and no pan/zoom (kept off so a stray wheel/
+   drag on the catalog page can't scroll the card away from its cards) — node drag stays on,
+   so the showcase is genuinely interactive: drag any card. *@
 
-    <div class="absolute rounded-md border border-border bg-card px-2 py-1 text-[10px] font-medium text-card-foreground shadow-sm" style="left:8px;top:34px;">
-        Intake
-        <span class="absolute rounded-full border border-muted-foreground bg-background" style="width:6px;height:6px;right:-3px;top:50%;transform:translateY(-50%);"></span>
-    </div>
-    <div class="absolute rounded-md border border-border bg-card px-2 py-1 text-[10px] font-medium text-card-foreground shadow-sm" style="left:134px;top:18px;">
-        <span class="absolute rounded-full border border-muted-foreground bg-background" style="width:6px;height:6px;left:-3px;top:50%;transform:translateY(-50%);"></span>
-        Score
-    </div>
-    <div class="absolute rounded-md border border-border bg-card px-2 py-1 text-[10px] font-medium text-card-foreground shadow-sm" style="left:134px;top:70px;">
-        <span class="absolute rounded-full border border-muted-foreground bg-background" style="width:6px;height:6px;left:-3px;top:50%;transform:translateY(-50%);"></span>
-        Review
-    </div>
+<div class="w-full max-w-[22rem] h-36 rounded-md border border-border/60 overflow-hidden bg-background">
+    <FlowCanvas Nodes="_nodes" Edges="_edges" Height="144px"
+                Viewport="new FlowViewport(20, 26, 0.58)" FitViewOnInit="false"
+                NodesConnectable="false" ElementsSelectable="true"
+                PanOnDrag="false" ZoomOnScroll="false" MinZoom="0.58" MaxZoom="0.58">
+        <NodeTemplate Context="ctx">
+            <div class="w-28 rounded-md border border-border bg-card px-2 py-1.5 text-[10px] font-medium text-card-foreground shadow-sm">
+                @(((StepInfo)ctx.Node.Data!).Title)
+            </div>
+        </NodeTemplate>
+        <ChildContent>
+            <FlowBackground Gap="14" Size="1" />
+        </ChildContent>
+    </FlowCanvas>
 </div>
+
+@code {
+    private sealed record StepInfo(string Title);
+
+    private readonly List<FlowNode> _nodes =
+    [
+        new("intake", 0, 44, Data: new StepInfo("New order")),
+        new("check", 168, 0, Data: new StepInfo("Check stock")),
+        new("ship", 168, 88, Data: new StepInfo("Dispatch")),
+    ];
+
+    private readonly List<FlowEdge> _edges =
+    [
+        new("e-intake-check", "intake", "check"),
+        new("e-intake-ship", "intake", "ship"),
+    ];
+}

@@ -1,0 +1,213 @@
+@page "/blocks/flow-pipeline"
+@namespace Lumeo.Docs.Pages.Patterns
+@using Lumeo
+@using Lumeo.Services
+@inject IToastService Toast
+
+<PageTitle>Data Pipeline — Lumeo</PageTitle>
+
+<PageHeader Title="Data Pipeline"
+            Description="A dependency-ordered data pipeline on FlowCanvas: approval gates that cannot be deleted, a Replay-from-here action that animates the run forward stage by stage, and cycle prevention on every new connection." />
+
+<ComponentDemo Title="Ingest → clean → approve → transform → approve → publish" Code="@_code">
+    <div class="h-[520px] w-full overflow-hidden rounded-lg border border-border/60">
+        <FlowCanvas @bind-Nodes="_nodes" @bind-Edges="_edges" Height="100%"
+                    NodesConnectable="true" ElementsSelectable="true"
+                    IsValidConnection="ValidateConnection"
+                    OnSelectionChanged="@(s => _selectedNodeId = s.NodeIds.Count == 1 ? s.NodeIds.First() : null)"
+                    Class="rounded-none border-0">
+            <NodeTemplate Context="ctx">
+                @{ var stage = (StageData)ctx.Node.Data!; }
+                <div class="@CardClass(stage.Kind, ctx.Selected)">
+                    @* Transform is the only node whose incoming edge wraps from row 1 (QA
+                       sign-off) down to row 2 - anchoring its target handle on Top instead of
+                       the usual Left keeps that edge's SmoothStep route a clean step-down
+                       instead of entering from the side across the other row-2 cards. *@
+                    <FlowHandle Type="FlowHandleType.Target" Position="@(ctx.Node.Id == "transform" ? FlowPosition.Top : FlowPosition.Left)" />
+                    <div class="flex items-center gap-1.5 px-2.5 py-1.5">
+                        <span class="flex size-5 items-center justify-center rounded bg-muted text-muted-foreground">
+                            <SvgGlyph Svg="@KindIcon(stage.Kind)" class="size-3" />
+                        </span>
+                        <span class="text-xs font-semibold">@stage.Title</span>
+                        @if (!ctx.Node.Deletable)
+                        {
+                            <span class="ms-auto flex size-4 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground" title="This gate can't be deleted">
+                                <SvgGlyph Svg="@(Lucide.Lock)" class="size-2.5" />
+                            </span>
+                        }
+                    </div>
+                    @if (_activeNodeId == ctx.Node.Id)
+                    {
+                        <div class="border-t border-border/60 px-2.5 py-1">
+                            <Badge Variant="Badge.BadgeVariant.Outline" Class="h-4 gap-1 px-1.5 text-[9px]">
+                                <span class="size-1.5 animate-pulse rounded-full bg-primary"></span>Running
+                            </Badge>
+                        </div>
+                    }
+                    <FlowHandle Type="FlowHandleType.Source" Position="FlowPosition.Right" />
+                    @if (ctx.Node.Id == "gate-qa")
+                    {
+                        @* A second, bottom-anchored source handle used only by the row-1 -> row-2
+                           wrap-around edge (SourceHandle="wrap"). Anchoring that edge here instead
+                           of the card's normal right-side handle keeps its SmoothStep route inside
+                           the gap between the two rows - leaving from the right handle instead
+                           routed back through row 1 at the cards' own height, hidden behind (but
+                           still visually crossing) Ingest/Clean (review round 2, second pass). *@
+                        <FlowHandle Type="FlowHandleType.Source" Position="FlowPosition.Bottom" Id="wrap" />
+                    }
+                </div>
+            </NodeTemplate>
+            <ChildContent>
+                <FlowBackground Variant="FlowBackgroundVariant.Dots" />
+                <FlowControls Position="FlowControls.ControlsPosition.BottomLeft" />
+                <FlowMiniMap Position="FlowMiniMap.MiniMapPosition.BottomRight"
+                              NodeColor="@(n => ((StageData)n.Data!).Kind == "gate" ? "var(--color-chart-4)" : "var(--color-muted-foreground)")" />
+                <FlowPanel Position="FlowPanel.PanelPosition.TopRight">
+                    <Button Size="Button.ButtonSize.Sm" Disabled="_replaying" OnClick="@(() => ReplayFromAsync(_nodes[0].Id))">
+                        <SvgGlyph Svg="@(Lucide.Play)" class="me-1.5 size-3.5" />Replay all
+                    </Button>
+                </FlowPanel>
+                @if (_selectedNodeId is not null)
+                {
+                    <FlowNodeToolbar>
+                        <div class="flex items-center gap-0.5 rounded-md border border-border bg-card p-0.5 shadow-sm">
+                            <Button Size="Button.ButtonSize.Sm" Variant="Button.ButtonVariant.Ghost" Class="h-7 gap-1 px-2 text-xs"
+                                    Disabled="_replaying" OnClick="@(() => ReplayFromAsync(_selectedNodeId!))">
+                                <SvgGlyph Svg="@(Lucide.Play)" class="size-3.5" />Replay from here
+                            </Button>
+                        </div>
+                    </FlowNodeToolbar>
+                }
+            </ChildContent>
+        </FlowCanvas>
+    </div>
+</ComponentDemo>
+
+@code {
+    private sealed record StageData(string Title, string Kind); // Kind: stage/gate
+
+    private string? _selectedNodeId;
+    private string? _activeNodeId;
+    private bool _replaying;
+
+    private IReadOnlyList<FlowNode> _nodes = new List<FlowNode>
+    {
+        // Zig-zag: row 1 reads left-to-right (Ingest -> Clean -> QA sign-off), then drops down
+        // to row 2 which also reads left-to-right (Transform -> Release sign-off -> Publish).
+        // Only 3 columns wide (not 6), which is what keeps FitView's zoom comfortably above the
+        // review-round-1 floor (>= 0.85) at the block's ~1060px preview width - a single row of
+        // all 6 stages landed around 0.5.
+        new("ingest", 0, 0, Data: new StageData("Ingest", "stage")),
+        new("clean", 280, 0, Data: new StageData("Clean", "stage")),
+        new("gate-qa", 560, 0, Data: new StageData("QA sign-off", "gate"), Deletable: false),
+        new("transform", 0, 170, Data: new StageData("Transform", "stage")),
+        new("gate-release", 280, 170, Data: new StageData("Release sign-off", "gate"), Deletable: false),
+        new("publish", 560, 170, Data: new StageData("Publish", "stage")),
+    };
+
+    private IReadOnlyList<FlowEdge> _edges = new List<FlowEdge>
+    {
+        new("e-ingest-clean", "ingest", "clean"),
+        new("e-clean-gate-qa", "clean", "gate-qa"),
+        // The one edge that wraps from row 1 back down to row 2 - SmoothStep (not the other
+        // edges' default Bezier) so it steps down and back around instead of drawing a long
+        // diagonal across the middle of the canvas, off QA sign-off's dedicated bottom "wrap"
+        // handle and into Transform's top handle, so the whole route stays in the gap between
+        // the two rows instead of doubling back through Ingest/Clean (review round 2).
+        new("e-gate-qa-transform", "gate-qa", "transform", SourceHandle: "wrap", Type: FlowEdgeType.SmoothStep),
+        new("e-transform-gate-release", "transform", "gate-release"),
+        new("e-gate-release-publish", "gate-release", "publish"),
+    };
+
+    // Rejects a connection that would create a cycle: adding source->target is only safe when
+    // target cannot already reach source by following the existing edges forward.
+    private bool ValidateConnection(FlowConnection c)
+    {
+        if (c.Source == c.Target)
+        {
+            Toast.Error("Can't connect", "A stage can't depend on itself.");
+            return false;
+        }
+        if (CanReach(c.Target, c.Source))
+        {
+            Toast.Error("Can't connect", "That connection would create a cycle in the pipeline.");
+            return false;
+        }
+        return true;
+    }
+
+    private bool CanReach(string from, string to)
+    {
+        var visited = new HashSet<string>();
+        var stack = new Stack<string>();
+        stack.Push(from);
+        while (stack.Count > 0)
+        {
+            var current = stack.Pop();
+            if (current == to) return true;
+            if (!visited.Add(current)) continue;
+            foreach (var e in _edges.Where(e => e.Source == current)) stack.Push(e.Target);
+        }
+        return false;
+    }
+
+    // Walks every stage reachable forward from startId (breadth-first over the current edge
+    // graph) and animates each edge in turn, briefly marking its destination "Running" — a
+    // deterministic, fixed-delay stand-in for a real pipeline run.
+    private async Task ReplayFromAsync(string startId)
+    {
+        if (_replaying) return;
+        _replaying = true;
+        try
+        {
+            var visited = new HashSet<string> { startId };
+            var queue = new Queue<string>();
+            queue.Enqueue(startId);
+            _activeNodeId = startId;
+            StateHasChanged();
+            await Task.Delay(300);
+
+            while (queue.Count > 0)
+            {
+                var current = queue.Dequeue();
+                foreach (var edge in _edges.Where(e => e.Source == current))
+                {
+                    _edges = _edges.Select(e => e.Id == edge.Id ? e with { Animated = true } : e).ToList();
+                    _activeNodeId = edge.Target;
+                    StateHasChanged();
+                    await Task.Delay(450);
+                    if (visited.Add(edge.Target)) queue.Enqueue(edge.Target);
+                }
+            }
+        }
+        finally
+        {
+            _edges = _edges.Select(e => e with { Animated = false }).ToList();
+            _activeNodeId = null;
+            _replaying = false;
+        }
+    }
+
+    private static string CardClass(string kind, bool selected)
+    {
+        var border = selected ? "border-primary ring-2 ring-primary/30" : kind == "gate" ? "border-chart-4/60" : "border-border";
+        // w-[220px] (not the other blocks' w-40/w-52): wide enough that "Release sign-off" -
+        // the longest title, plus its icon and lock badge - never truncates (review round 1).
+        return "relative w-[220px] rounded-lg border bg-card text-card-foreground shadow-sm " + border;
+    }
+
+    private static IconSource KindIcon(string kind) => kind == "gate" ? Lucide.ShieldCheck : Lucide.Database;
+
+    private const string _code = """
+<FlowCanvas @bind-Nodes="_nodes" @bind-Edges="_edges" NodesConnectable="true"
+            IsValidConnection="ValidateConnection">
+    <NodeTemplate Context="ctx">...stage card, lock badge when !ctx.Node.Deletable...</NodeTemplate>
+    <ChildContent>
+        <FlowBackground /><FlowControls /><FlowMiniMap NodeColor="..." />
+        <FlowPanel><Button OnClick="@(() => ReplayFromAsync(_nodes[0].Id))">Replay all</Button></FlowPanel>
+    </ChildContent>
+</FlowCanvas>
+
+private bool ValidateConnection(FlowConnection c) => !CanReach(c.Target, c.Source); // cycle guard
+""";
+}

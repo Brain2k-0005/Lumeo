@@ -204,8 +204,12 @@ above and `CatalogCard`'s own overflow-hidden note) — verified via screenshot
 to hold up in practice at 1440px in both themes.
 ## Wave 1 — Data Display category
 
-25 of the 33 `hasDocsPage: true` Data Display-category components got a live showcase
-(FlowCanvas joined the category in a later wave — see the exceptions below).
+29 of the 33 `hasDocsPage: true` Data Display-category components have a live showcase
+(FlowCanvas joined the category in a later wave; Gantt, GanttChart and Scheduler were
+promoted from static to live in Phase 3b once `CatalogCard`/`SatelliteBoundShowcase`
+started lazy-loading a showcase's satellite assembly before mounting it — see
+`ShowcaseResolver.SatelliteAssembliesFor` and the exceptions below for the 4 that remain
+static).
 
 | Component | Showcase state |
 | --- | --- |
@@ -221,12 +225,16 @@ to hold up in practice at 1440px in both themes.
 | Descriptions | 2-column key/value grid, 4 items |
 | Filter | `FilterBar` with 2 dismissible pills — click × to remove one |
 | Filters | The query-builder chip row, `Size="Sm"`, one preset rule already applied |
+| FlowCanvas | Real `FlowCanvas` (satellite: `Lumeo.Flow`), 3 fixed step cards + 2 edges, fixed non-fitting viewport, no pan/zoom — drag a card |
+| Gantt (legacy SVG engine) | Real `Gantt` (satellite: `Lumeo.Gantt`), 3 fixed tasks + a milestone over a 3-day window — its own Day/Week/Month/Year toolbar is built in and always renders; drag a bar |
+| GanttChart (v3 engine) | Same fixed 3-task/milestone set on the real `GanttChart` — its row virtualizer copes fine with a list this small; drag a bar |
 | Gauge | 2 small radial gauges (CPU/RAM) |
 | Image | A local inline-SVG data-URI "photo" (no external image host — deterministic, no network) |
 | ImageCompare | Local inline-SVG before/after data URIs, drag the divider |
 | List | 3 items with leading icons, one trailing badge |
 | PivotGrid | 2 regions × 2 years, one measure, `Compact="true"` |
 | QRCode | One small QR code (inline SVG, no JS) |
+| Scheduler | Real `Scheduler` (satellite: `Lumeo.Scheduler`), `SchedulerView.List`, 3 fixed events on a fixed `InitialDate` — its own toolbar (Today/prev/next/view switcher) is built in |
 | Sparkline | An inline trend line next to a value + delta |
 | Statistic | 2 stats with trend arrows |
 | Steps | 3 steps, step 2 active, `Clickable="true"` — click a step to jump to it |
@@ -235,11 +243,33 @@ to hold up in practice at 1440px in both themes.
 | TreeView | 2 folders, `ExpandAll="true"`, `Size="Sm"` |
 | Watermark | "Confidential" tiled over two lines of body text |
 
+### Satellite-package showcases — lazy-load the assembly first
+
+FlowCanvas, Gantt, GanttChart and Scheduler live in satellite packages
+(`Lumeo.Flow`/`Lumeo.Gantt`/`Lumeo.Scheduler`) the `/components` catalog page never
+navigates to, so it never triggers `App.razor`'s route-based lazy load — mounting a live
+instance straight away threw a `TypeLoadException` the instant `CatalogCard` mounted it
+(found via the headless screenshot proof for #phase2, not by inspection — worth checking
+any future satellite-package showcase against a real `/components` render before assuming
+"live" works). Phase 3b fixed the root cause instead of special-casing these four as
+another static exception: `CatalogCard` now renders every showcase through
+`Shared/SatelliteBoundShowcase.razor`, which calls `ISatelliteAssemblyLoader
+.EnsureLoadedAsync` (`Services/SatelliteAssemblyLoader.cs`, wraps the framework's
+`LazyAssemblyLoader`) with the DLL(s) `ShowcaseResolver.SatelliteAssembliesFor(name)`
+declares for that component, and keeps rendering the thumbnail fallback until it resolves
+— so a satellite fetch never blocks the catalog's first paint, and a showcase with no
+satellite dependency (i.e. every other one) skips the loader entirely (empty list -> ready
+immediately). `AllShowcasesRenderTests` doesn't need the real loader: bUnit registers a
+no-op `ISatelliteAssemblyLoader` (`DocsTestContext.AddDocsServices`) that resolves
+instantly, since the docs test project references every satellite project directly anyway
+— the real showcase types are already loaded in-process. Add a new satellite-package
+showcase by adding one entry to `ShowcaseResolver.SatelliteAssembliesFor`'s map; no other
+file needs touching.
+
 ### Exceptions — viewport/external-engine components
 
-These 8 components fundamentally need a real network resource, a JS charting/mapping
-engine, a satellite-package assembly the catalog page never lazy-loads, or a viewport
-taller than a catalog card to show anything meaningful. Each showcase instead renders a
+These 4 components fundamentally need a real network resource or a JS charting/mapping
+engine to show anything meaningful at card size. Each showcase instead renders a
 faithful **static rendition** of the component's own visible chrome (matching its real
 classes/markup where practical), with no live wiring:
 
@@ -250,29 +280,12 @@ classes/markup where practical), with no live wiring:
   classes as the real component) over a centered file-icon body, matching the unresolved/
   unsupported-preview state; its PDF/Code kinds delegate to PdfViewer/CodeEditor, both
   external-engine viewers.
-- **FlowCanvas** — lives in the satellite package `Lumeo.Flow`, lazy-loaded only on its
-  own docs route; the catalog page never loads that assembly, so a live `<FlowCanvas>`
-  throws a `TypeLoadException` the instant `CatalogCard` mounts it (found via the
-  headless screenshot proof for #phase2, not by inspection — worth checking any future
-  satellite-package showcase against a real `/components` render before assuming "live"
-  works). Static dot-grid background + 3 node cards with handle dots + the same
-  bezier/step edge shapes `FlowGeometry` produces, same treatment as Gantt/GanttChart/
-  Scheduler below (also satellite-adjacent, lazy-loaded engines).
-- **Gantt** (legacy SVG engine) — a day-scale header and 3 proportional task bars; the
-  real component needs real height/width to lay out day columns (420px in its own docs
-  demos) and has no tree pane to shrink further.
-- **GanttChart** (v3 engine) — same treatment; the real component virtualizes rows
-  against the actual scroll viewport (`GanttViewportReconciler`), which a static card
-  can't reproduce.
 - **Map** — a theme-tinted dot-grid backdrop with a `MapInfoChip` overlay (the docs'
   own reusable info-chip component) and a pin marker, in place of MapLibre GL tiles
   fetched from a real network.
 - **PdfViewer** — the toolbar chrome (page nav + zoom, same classes as the real
   component) over a page-shaped placeholder, in place of pdf.js rendering a real PDF to
   canvas.
-- **Scheduler** — the exact agenda-row markup `SchedulerAgendaView` itself produces
-  (color dot, title, time) for 3 fixed events; every real view needs 320px-640px of
-  height in its own docs demos to show more than an empty grid.
 ## Wave 1 — Forms category
 
 All 35 `hasDocsPage: true` Forms-category components got a showcase.

@@ -20,6 +20,11 @@ builder.Services.AddSingleton<DynamicIconResolver>();
 // to a Singleton, but DI lifetime validation requires the consumer match the dependency.
 builder.Services.AddScoped<NavConfigService>();
 builder.Services.AddScoped<RegistryService>();
+// Catalog-card live showcases for satellite-package components (Flow, Gantt,
+// GanttChart, Scheduler) — see ShowcaseResolver.SatelliteAssembliesFor and
+// Shared/SatelliteBoundShowcase.razor. Singleton so the loaded-assembly cache is
+// shared across every catalog card and every later navigation for the session.
+builder.Services.AddSingleton<ISatelliteAssemblyLoader, SatelliteAssemblyLoader>();
 
 var host = builder.Build();
 
