@@ -1,7 +1,7 @@
 @page "/e2e/flow-preview"
 @using System.Globalization
 
-@* FlowCanvas E2E fixture (Lumeo.Flow phase 1). Deliberately NOT linked in navigation and NOT part
+@* FlowCanvas E2E fixture (Lumeo.Flow). Deliberately NOT linked in navigation and NOT part
    of the component registry. The same nodes, edges and test ids as the Server-host fixture
    (tests/Lumeo.Tests.ServerHost/Components/Pages/E2E/FlowPage.razor) that the Playwright specs in
    tests/Lumeo.Tests.E2E/Flow drive over a real SignalR circuit; this copy runs the identical
@@ -9,8 +9,10 @@
 
    Query params: ?fit=0, ?snap=1, ?readonly=1. Sinks: flow-nodes-sink ("id:x,y;..." of the bound
    list), flow-viewport-sink ("x|y|zoom"), flow-commit-count (OnNodeDragStop calls),
-   flow-last-click. [data-testid="flow-root"] gets data-flow-ready="done" once the engine has
-   mounted and applied the initial fit. *@
+   flow-last-click, flow-edges-sink ("id:source-target;..." of the bound edge list),
+   flow-selection-sink ("nodeId,...|edgeId,..." of the latest OnSelectionChanged).
+   [data-testid="flow-root"] gets data-flow-ready="done" once the engine has mounted and applied
+   the initial fit. *@
 
 <PageTitle>Flow canvas preview — Lumeo</PageTitle>
 
@@ -22,12 +24,14 @@
                 Height="560px"
                 @bind-Nodes="_nodes"
                 @bind-Viewport="_viewport"
-                Edges="_edges"
+                @bind-Edges="_edges"
                 FitViewOnInit="@(Fit != "0")"
                 SnapToGrid="@(Snap == "1")"
                 Readonly="@(Readonly == "1")"
                 OnNodeDragStop="HandleDragStop"
-                OnNodeClick="@(n => _lastClick = n.Id)">
+                OnNodeClick="@(n => _lastClick = n.Id)"
+                OnSelectionChanged="HandleSelectionChanged"
+                IsValidConnection="RejectN1AsTarget">
         <NodeTemplate Context="ctx">
             <div class="w-40 rounded-lg border border-border bg-card px-3 py-2 text-sm text-card-foreground shadow-sm" data-testid="@("flow-card-" + ctx.Node.Id)">
                 <FlowHandle Type="FlowHandleType.Target" Position="FlowPosition.Left" />
@@ -39,6 +43,7 @@
         <ChildContent>
             <FlowBackground />
             <FlowControls />
+            <FlowMiniMap />
         </ChildContent>
     </FlowCanvas>
 </div>
@@ -47,6 +52,8 @@
 <pre data-testid="flow-viewport-sink" hidden>@ViewportText</pre>
 <pre data-testid="flow-commit-count" hidden>@_commits</pre>
 <pre data-testid="flow-last-click" hidden>@_lastClick</pre>
+<pre data-testid="flow-edges-sink" hidden>@EdgesText</pre>
+<pre data-testid="flow-selection-sink" hidden>@_selectionText</pre>
 
 @code {
     [SupplyParameterFromQuery] public string? Fit { get; set; }
@@ -63,7 +70,7 @@
         new("n6", 960, 420, Data: "Archive"),
     };
 
-    private readonly IReadOnlyList<FlowEdge> _edges = new List<FlowEdge>
+    private IReadOnlyList<FlowEdge> _edges = new List<FlowEdge>
     {
         new("e1", "n1", "n2"),
         new("e2", "n2", "n3", Type: FlowEdgeType.SmoothStep),
@@ -75,12 +82,23 @@
     private FlowViewport _viewport = new(0, 0, 1);
     private int _commits;
     private string _lastClick = "";
+    private string _selectionText = "|";
 
     private void HandleDragStop(IReadOnlyList<FlowNodeChange> changes) => _commits++;
+
+    // Test-only rule so the "invalid connection is rejected" E2E spec has something to reject:
+    // n1 may never be a connection TARGET (it already has two outgoing edges as a source).
+    private bool RejectN1AsTarget(FlowConnection c) => c.Target != "n1";
+
+    private void HandleSelectionChanged(FlowSelection selection)
+        => _selectionText = string.Join(",", selection.NodeIds.OrderBy(x => x, StringComparer.Ordinal))
+                             + "|" + string.Join(",", selection.EdgeIds.OrderBy(x => x, StringComparer.Ordinal));
 
     private static string R(double v) => v.ToString("R", CultureInfo.InvariantCulture);
 
     private string NodesText => string.Join(";", _nodes.Select(n => n.Id + ":" + R(n.X) + "," + R(n.Y)));
 
     private string ViewportText => R(_viewport.X) + "|" + R(_viewport.Y) + "|" + R(_viewport.Zoom);
+
+    private string EdgesText => string.Join(";", _edges.Select(e => e.Id + ":" + e.Source + "-" + e.Target));
 }

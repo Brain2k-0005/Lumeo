@@ -8,7 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- **New package `Lumeo.Flow`: `FlowCanvas`, a node/flow editor canvas (phase 1).** Your own Razor
+- **New package `Lumeo.Flow`: `FlowCanvas`, a node/flow editor canvas.** Your own Razor
   node templates and SVG edges (bezier, smooth-step, step, straight) on a pannable, zoomable canvas
   — a first-party engine, no third-party runtime dependency. Drag nodes (the connected edges follow
   live, the position is committed once on drop through `@bind-Nodes` and `OnNodeDragStop`), pan by
@@ -18,8 +18,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `ZoomToAsync` / `SetCenterAsync` / `SetViewportAsync` round it off, with `FlowBackground` (dots,
   lines, cross), `FlowControls` (zoom, fit, lock) and `FlowHandle` ports. Pan, zoom and drag never
   re-render per frame; a drag that started before the node list was replaced from outside is
-  never committed over it. Connecting handles, selection, delete, edge labels, the minimap and
-  panels follow in the next phase. Docs at `/components/flow-canvas`.
+  never committed over it.
+  - **Connect**: drag from a source `FlowHandle` to a target handle (or Tab to a source handle,
+    `Enter` to start connecting, `Enter` on a target to commit, `Esc` to cancel) proposes a
+    connection through `IsValidConnection` and `OnConnect`; without a handler the canvas appends
+    the `FlowEdge` itself via the new `@bind-Edges`/`EdgesChanged`. `NodesConnectable` and
+    per-node `Connectable` gate it, together with `Readonly` and the controls' lock toggle.
+  - **Selection**: click, `Shift`/`Ctrl`-click to toggle, shift-drag a marquee, click an edge —
+    all through `ElementsSelectable`/`SelectionOnShiftDrag`, `OnSelectionChanged`, and the new
+    `SelectAsync`/`ClearSelectionAsync` methods.
+  - **Delete**: `Delete`/`Backspace` (configurable via `DeleteKey`) removes the selection; without
+    `OnDelete` the canvas removes it itself (and every edge touching a removed node), honouring
+    `Deletable` on nodes and edges.
+  - **Edges**: `EdgeLabelTemplate` / `FlowEdge.Label` positioned at the path midpoint and moved
+    live during a drag, an arrowhead via `MarkerEnd`, `Animated` (reduced-motion aware) and
+    `Dashed` strokes, a wider invisible hit corridor so a thin edge is actually clickable, and a
+    default stroke colour that reads in light mode.
+  - **Overlays**: `FlowMiniMap` (a scaled overview with the viewport rectangle; click or drag to
+    pan), `FlowPanel` (a plain corner overlay for your own content) and `FlowNodeToolbar` (floats
+    above the single selected node and follows it while dragging).
+  - `NodeAriaLabel` names a node for assistive technology beyond its `Id`.
+  - Docs at `/components/flow-canvas`; a live catalog showcase card.
 
 ## [5.10.5] - 2026-09-23
 
