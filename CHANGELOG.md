@@ -5,6 +5,18 @@ All notable changes to Lumeo will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.10.5] - Unreleased
+
+### Fixed
+- **The Dutch locale is complete.** 166 of the 632 keys had no `nl` entry, so a Dutch UI fell back
+  to English for the whole Editor, the AI primitives (`AgentMessage`, `AgentMessageList`,
+  `PromptInput`), `QueryBuilder`, `PickList`, the theme switcher, the `TimePicker` labels, the
+  `FileManager` views and a few dozen aria-labels. Four existing strings are corrected
+  (`DataGrid.Global` read "Globaal", which means "roughly"; `Filters.Reorder` and its hint now use
+  the verb the grid and Gantt already use; `Gantt.ResizeTreePane` in natural word order) and the
+  duplicated `DataGrid.SortAscending`/`SortDescending` entries are removed. The key catalogue on
+  `/docs/localization` is regenerated.
+
 ## [5.10.4] - 2026-09-16
 
 ### Fixed
