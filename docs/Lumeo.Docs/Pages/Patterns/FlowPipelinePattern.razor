@@ -24,11 +24,11 @@
                         <span class="flex size-5 items-center justify-center rounded bg-muted text-muted-foreground">
                             <SvgGlyph Svg="@KindIcon(stage.Kind)" class="size-3" />
                         </span>
-                        <span class="truncate text-xs font-semibold">@stage.Title</span>
+                        <span class="text-xs font-semibold">@stage.Title</span>
                         @if (!ctx.Node.Deletable)
                         {
-                            <span class="ms-auto flex items-center gap-0.5 rounded-full bg-muted px-1.5 py-0.5 text-[9px] text-muted-foreground" title="This gate can't be deleted">
-                                <SvgGlyph Svg="@(Lucide.Lock)" class="size-2.5" />Locked
+                            <span class="ms-auto flex size-4 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground" title="This gate can't be deleted">
+                                <SvgGlyph Svg="@(Lucide.Lock)" class="size-2.5" />
                             </span>
                         }
                     </div>
@@ -78,12 +78,17 @@
 
     private IReadOnlyList<FlowNode> _nodes = new List<FlowNode>
     {
+        // Zig-zag: row 1 reads left-to-right (Ingest -> Clean -> QA sign-off), then drops down
+        // to row 2 which also reads left-to-right (Transform -> Release sign-off -> Publish).
+        // Only 3 columns wide (not 6), which is what keeps FitView's zoom comfortably above the
+        // review-round-1 floor (>= 0.85) at the block's ~1060px preview width - a single row of
+        // all 6 stages landed around 0.5.
         new("ingest", 0, 0, Data: new StageData("Ingest", "stage")),
-        new("clean", 240, 0, Data: new StageData("Clean", "stage")),
-        new("gate-qa", 480, 0, Data: new StageData("QA sign-off", "gate"), Deletable: false),
-        new("transform", 720, 0, Data: new StageData("Transform", "stage")),
-        new("gate-release", 960, 0, Data: new StageData("Release sign-off", "gate"), Deletable: false),
-        new("publish", 1200, 0, Data: new StageData("Publish", "stage")),
+        new("clean", 280, 0, Data: new StageData("Clean", "stage")),
+        new("gate-qa", 560, 0, Data: new StageData("QA sign-off", "gate"), Deletable: false),
+        new("transform", 0, 170, Data: new StageData("Transform", "stage")),
+        new("gate-release", 280, 170, Data: new StageData("Release sign-off", "gate"), Deletable: false),
+        new("publish", 560, 170, Data: new StageData("Publish", "stage")),
     };
 
     private IReadOnlyList<FlowEdge> _edges = new List<FlowEdge>
@@ -167,7 +172,9 @@
     private static string CardClass(string kind, bool selected)
     {
         var border = selected ? "border-primary ring-2 ring-primary/30" : kind == "gate" ? "border-chart-4/60" : "border-border";
-        return "relative w-40 rounded-lg border bg-card text-card-foreground shadow-sm " + border;
+        // w-[220px] (not the other blocks' w-40/w-52): wide enough that "Release sign-off" -
+        // the longest title, plus its icon and lock badge - never truncates (review round 1).
+        return "relative w-[220px] rounded-lg border bg-card text-card-foreground shadow-sm " + border;
     }
 
     private static IconSource KindIcon(string kind) => kind == "gate" ? Lucide.ShieldCheck : Lucide.Database;

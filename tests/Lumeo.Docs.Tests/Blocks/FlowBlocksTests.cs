@@ -136,7 +136,9 @@ public class FlowBlocksTests
         var ingest = canvas.Instance.CurrentNodes.Single(n => n.Id == "ingest");
         Assert.True(ingest.Deletable);
 
-        Assert.Contains("Locked", cut.Markup);
+        // The lock badge is icon-only (review round 1 shrank it to fit "Release sign-off" on
+        // one line without truncating) - its accessible name lives in the title attribute.
+        Assert.Contains("This gate can't be deleted", cut.Markup);
     }
 
     [Fact]
@@ -221,9 +223,13 @@ public class FlowBlocksTests
     private sealed class RecordingToastService : IToastService
     {
         public List<(string Title, string? Description)> Errors { get; } = new();
-        public event Action<ToastMessage>? OnShow;
-        public event Action<string>? OnDismiss;
-        public event Action<string, ToastOptions>? OnUpdate;
+        // Explicit (non-field-like) event accessors: this fake never raises them, and a plain
+        // field-like `event Action? OnShow;` declaration trips CS0067 ("event never used") under
+        // -warnaserror in CI. Empty add/remove bodies satisfy the interface without a backing
+        // field for the compiler to complain is unused.
+        public event Action<ToastMessage>? OnShow { add { } remove { } }
+        public event Action<string>? OnDismiss { add { } remove { } }
+        public event Action<string, ToastOptions>? OnUpdate { add { } remove { } }
         public string Show(string title, string? description = null, ToastVariant variant = ToastVariant.Default) => Guid.NewGuid().ToString();
         public string Show(ToastOptions options) => Guid.NewGuid().ToString();
         public string Show(Microsoft.AspNetCore.Components.RenderFragment content, ToastVariant variant = ToastVariant.Default, int? duration = null) => Guid.NewGuid().ToString();
