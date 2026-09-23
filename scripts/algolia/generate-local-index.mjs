@@ -63,6 +63,10 @@ const patterns = [
     { label: 'Settings',      slug: 'settings' },
     { label: 'Social Feed',   slug: 'social-feed' },
     { label: 'Tasks',         slug: 'tasks' },
+    { label: 'Automation Workflow',  slug: 'flow-automation' },
+    { label: 'AI Agent Tree',        slug: 'flow-agent-tree' },
+    { label: 'Data Pipeline',        slug: 'flow-pipeline' },
+    { label: 'Growth Impact Map',    slug: 'flow-impact-map' },
 ];
 
 const patternItems = patterns.map(p => ({
