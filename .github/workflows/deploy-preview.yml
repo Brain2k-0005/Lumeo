@@ -167,6 +167,17 @@ jobs:
           find release/wwwroot -name 'index.html.br' -delete
           find release/wwwroot -name 'index.html.gz' -delete
 
+      # The branch name goes into a wrangler command line (pages-action took it as
+      # a plain input), so it is reduced to [A-Za-z0-9._/-] first — a head_ref is
+      # attacker-controlled on a fork PR and must never reach a shell verbatim.
+      - name: Resolve preview branch name
+        id: branch
+        env:
+          RAW_BRANCH: ${{ github.head_ref || github.ref_name }}
+        run: |
+          safe="${RAW_BRANCH//[^A-Za-z0-9._\/-]/-}"
+          echo "name=$safe" >> "$GITHUB_OUTPUT"
+
       # cloudflare/pages-action was deleted from GitHub on 2026-09-23; see
       # deploy-cloudflare.yml. Non-master branch => Cloudflare creates a PREVIEW
       # deployment with its own URL; production (branch: master) is untouched.
@@ -177,27 +188,32 @@ jobs:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           gitHubToken: ${{ secrets.GITHUB_TOKEN }}
-          command: pages deploy release/wwwroot --project-name=lumeo --branch=${{ github.head_ref || github.ref_name }} --commit-dirty=true
+          command: pages deploy release/wwwroot --project-name=lumeo --branch=${{ steps.branch.outputs.name }} --commit-dirty=true
 
       - name: Publish preview URL to job summary
+        env:
+          PREVIEW_URL: ${{ steps.deploy.outputs.deployment-url }}
+          BRANCH_NAME: ${{ steps.branch.outputs.name }}
         run: |
           {
             echo "### Cloudflare Pages preview"
             echo ""
-            echo "Preview URL: ${{ steps.deploy.outputs.deployment-url }}"
+            echo "Preview URL: $PREVIEW_URL"
             echo ""
-            echo "_Branch: \`${{ github.head_ref || github.ref_name }}\` · commit \`${GITHUB_SHA:0:7}\`_"
+            echo "_Branch: \`$BRANCH_NAME\` · commit \`${GITHUB_SHA:0:7}\`_"
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Comment preview URL on PR
         if: ${{ github.event_name == 'pull_request' }}
         uses: actions/github-script@v7
+        env:
+          PREVIEW_URL: ${{ steps.deploy.outputs.deployment-url }}
         with:
           script: |
-            const url = '${{ steps.deploy.outputs.deployment-url }}';
+            const url = process.env.PREVIEW_URL;
             const sha = context.sha.substring(0, 7);
             const marker = '<!-- lumeo-preview-deploy -->';
-            const body = `${marker}\n### 🔎 Docs preview deployed\n\n**${url}**\n\n_Branch \`${{ github.head_ref }}\` · commit \`${sha}\` · updates on every push._`;
+            const body = `${marker}\n### 🔎 Docs preview deployed\n\n**${url}**\n\n_Branch \`${context.payload.pull_request.head.ref}\` · commit \`${sha}\` · updates on every push._`;
             const { owner, repo } = context.repo;
             const issue_number = context.issue.number;
             const comments = await github.rest.issues.listComments({ owner, repo, issue_number });
