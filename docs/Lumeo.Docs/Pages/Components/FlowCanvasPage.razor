@@ -10,10 +10,10 @@
 
 <Alert Variant="Alert.AlertVariant.Info" ShowIcon="true" Class="mt-6">
     <ChildContent>
-        <strong>Phase 2 of Lumeo.Flow.</strong> Connect handles (pointer or keyboard), click/shift/marquee
-        selection, delete, edge labels and markers, and the minimap/panel/node-toolbar overlays are all here
-        now. Auto-layout, undo/redo and reconnect follow in phase 3 — the node, edge and handle shapes you
-        write today stay the same.
+        <strong>Phase 3 of Lumeo.Flow.</strong> Auto-layout (<code>FlowLayout.Tree</code>/<code>Layered</code>),
+        undo/redo (<code>FlowHistory</code>), dragging an existing edge's end onto a new handle, a snap-grid
+        toggle and two-finger pinch-zoom are all here now — the node, edge and handle shapes you write stay
+        the same.
     </ChildContent>
 </Alert>
 
@@ -192,6 +192,94 @@
             </LazyRender>
         </Stack>
     </ComponentDemo>
+
+    <ComponentDemo Title="Auto-layout — tidy tree / layered" Code="@_layoutCode">
+        <Stack Gap="3" Class="w-full">
+            <Lumeo.Text Size="sm" Color="muted">
+                <code>FlowLayout.Tree</code> and <code>FlowLayout.Layered</code> are pure functions: they take
+                the current nodes and edges and return a new node list with fresh positions — apply it with
+                <code>Nodes = FlowLayout.Tree(...)</code>, then <code>FitViewAsync()</code>. Both break cycles
+                deterministically, so an accidental loop still lays out instead of hanging.
+            </Lumeo.Text>
+            <div class="flex flex-wrap items-center gap-2">
+                <Button Variant="Button.ButtonVariant.Outline" Size="Button.ButtonSize.Sm" OnClick="ApplyTreeLayoutAsync">Tidy tree</Button>
+                <Button Variant="Button.ButtonVariant.Outline" Size="Button.ButtonSize.Sm" OnClick="ApplyLayeredLayoutAsync">Layered</Button>
+                <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Sm" OnClick="ShuffleLayoutNodesAsync">Scramble positions</Button>
+            </div>
+            <LazyRender Height="340px">
+                <FlowCanvas @ref="_layoutCanvas" @bind-Nodes="_layoutNodes" Edges="_layoutEdges" Height="340px">
+                    <NodeTemplate Context="ctx">
+                        <div class="w-32 rounded-md border border-border bg-card px-2 py-1.5 text-xs font-medium text-card-foreground shadow-sm">
+                            <FlowHandle Type="FlowHandleType.Target" Position="FlowPosition.Left" />
+                            @ctx.Node.Data
+                            <FlowHandle Type="FlowHandleType.Source" Position="FlowPosition.Right" />
+                        </div>
+                    </NodeTemplate>
+                    <ChildContent>
+                        <FlowBackground Variant="FlowBackgroundVariant.Dots" />
+                    </ChildContent>
+                </FlowCanvas>
+            </LazyRender>
+        </Stack>
+    </ComponentDemo>
+
+    <ComponentDemo Title="Undo / redo with FlowHistory" Code="@_historyCode">
+        <Stack Gap="3" Class="w-full">
+            <Lumeo.Text Size="sm" Color="muted">
+                Give the canvas a <code>FlowHistory</code> and it records a snapshot after every committed
+                change — drag, keyboard move, connect, delete, an applied layout — and handles
+                <Kbd>Ctrl</Kbd>+<Kbd>Z</Kbd> / <Kbd>Ctrl</Kbd>+<Kbd>Y</Kbd> (or <Kbd>Ctrl</Kbd>+<Kbd>Shift</Kbd>+<Kbd>Z</Kbd>)
+                while the canvas has focus. <code>FlowControls</code>' <code>ShowHistory</code> adds undo/redo
+                buttons bound to the same history; <code>ShowSnapToggle</code> adds a grid toggle.
+            </Lumeo.Text>
+            <LazyRender Height="300px">
+                <FlowCanvas @bind-Nodes="_historyNodes" Height="300px" History="_history" SnapToGrid="_historySnap" SnapToGridChanged="v => _historySnap = v">
+                    <NodeTemplate Context="ctx">
+                        <div class="rounded-md border border-border bg-card px-3 py-2 text-sm font-medium text-card-foreground shadow-sm">
+                            @ctx.Node.Data
+                        </div>
+                    </NodeTemplate>
+                    <ChildContent>
+                        <FlowBackground Variant="FlowBackgroundVariant.Dots" />
+                        <FlowControls ShowSnapToggle="true" ShowHistory="true" />
+                    </ChildContent>
+                </FlowCanvas>
+            </LazyRender>
+            <div class="rounded-md border border-border/60 bg-muted/40 p-3 text-sm">
+                <span class="font-mono text-xs text-muted-foreground">Drag a card, then use the undo/redo buttons in the canvas (bottom-left) or Ctrl+Z / Ctrl+Y.</span>
+            </div>
+        </Stack>
+    </ComponentDemo>
+
+    <ComponentDemo Title="Reconnect an edge, touch and pinch" Code="@_reconnectCode">
+        <Stack Gap="3" Class="w-full">
+            <Lumeo.Text Size="sm" Color="muted">
+                Select an edge (click it) and small grab handles appear at each end — drag one onto a different
+                handle to move that end, validated through <code>IsValidConnection</code> the same way a fresh
+                connection is; <Kbd>Esc</Kbd> cancels mid-drag. On a touch screen: one finger pans the
+                background or drags a node (no long-press — it starts immediately), two fingers pinch-zoom
+                anchored on the midpoint between them.
+            </Lumeo.Text>
+            <LazyRender Height="260px">
+                <FlowCanvas @bind-Nodes="_reconnectNodes" @bind-Edges="_reconnectEdges" Height="260px"
+                            OnReconnect="HandleReconnect">
+                    <NodeTemplate Context="ctx">
+                        <div class="rounded-md border border-border bg-card px-3 py-2 text-sm font-medium text-card-foreground shadow-sm">
+                            <FlowHandle Type="FlowHandleType.Target" Position="FlowPosition.Left" />
+                            @ctx.Node.Data
+                            <FlowHandle Type="FlowHandleType.Source" Position="FlowPosition.Right" />
+                        </div>
+                    </NodeTemplate>
+                    <ChildContent>
+                        <FlowBackground />
+                    </ChildContent>
+                </FlowCanvas>
+            </LazyRender>
+            <div class="rounded-md border border-border/60 bg-muted/40 p-3 text-sm">
+                <span class="font-mono text-xs text-muted-foreground">@_reconnectMessage</span>
+            </div>
+        </Stack>
+    </ComponentDemo>
 </Stack>
 
 <div class="mt-16">
@@ -230,6 +318,50 @@
     <Heading Id="flownodetoolbar" Level="3" Class="mt-8 scroll-mt-20">FlowNodeToolbar</Heading>
     <div class="mt-4">
         <PropsTable Slug="flow-canvas" SubComponent="FlowNodeToolbar" />
+    </div>
+
+    <Heading Id="flowlayout" Level="3" Class="mt-8 scroll-mt-20">FlowLayout (static)</Heading>
+    <p class="mt-2 text-sm text-muted-foreground">
+        Pure functions, not a component — apply the result with <code>Nodes = FlowLayout.Tree(...)</code>.
+    </p>
+    <div class="overflow-x-auto mt-4">
+        <Table>
+            <TableHeader>
+                <TableRow>
+                    <TableHead Class="w-[320px]">Member</TableHead>
+                    <TableHead>Description</TableHead>
+                </TableRow>
+            </TableHeader>
+            <TableBody>
+                <TableRow><TableCell Class="font-mono text-xs">Tree(nodes, edges, options?, measured?)</TableCell><TableCell>Rooted tree/forest: a root per node with no incoming edge, children centred under their parent. A node reachable from two roots is placed under whichever reaches it first.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">Layered(nodes, edges, options?, measured?, sweeps = 4)</TableCell><TableCell>Longest-path ranking (a node's rank is one more than the deepest predecessor), then barycenter ordering within each rank to reduce crossings.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">FlowLayoutOptions</TableCell><TableCell><code>Direction</code> (<code>LeftToRight</code>/<code>TopToBottom</code>), <code>NodeSpacing</code>, <code>RankSpacing</code>.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">measured</TableCell><TableCell>A size per node id — pass <code>canvas.MeasuredSizes</code> so a node with no fixed <code>Width</code>/<code>Height</code> lays out at its real rendered size, not the library default.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">Cycles</TableCell><TableCell>Both break cycles first (a deterministic DFS back-edge removal, same input → same result) so a cyclic graph still lays out instead of looping.</TableCell></TableRow>
+            </TableBody>
+        </Table>
+    </div>
+
+    <Heading Id="flowhistory" Level="3" Class="mt-8 scroll-mt-20">FlowHistory</Heading>
+    <p class="mt-2 text-sm text-muted-foreground">
+        A plain class, not a component — construct one, pass it as <code>FlowCanvas.History</code>.
+    </p>
+    <div class="overflow-x-auto mt-4">
+        <Table>
+            <TableHeader>
+                <TableRow>
+                    <TableHead Class="w-[260px]">Member</TableHead>
+                    <TableHead>Description</TableHead>
+                </TableRow>
+            </TableHeader>
+            <TableBody>
+                <TableRow><TableCell Class="font-mono text-xs">FlowHistory(int capacity = 50)</TableCell><TableCell>The oldest snapshot is dropped once <code>Capacity</code> is exceeded.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">Push(nodes, edges)</TableCell><TableCell>Records a new current state; discards any redo future. The canvas calls this itself once per committed change.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">Undo() / Redo()</TableCell><TableCell>Returns the <code>Snapshot</code> to apply, or <code>null</code>. The canvas' own <code>UndoAsync</code>/<code>RedoAsync</code> apply it for you.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">CanUndo / CanRedo / Count / Current</TableCell><TableCell>State for your own UI (<code>FlowControls</code>' <code>ShowHistory</code> already wires these two).</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">Changed</TableCell><TableCell>Raised after <code>Push</code>/<code>Undo</code>/<code>Redo</code>/<code>Clear</code>.</TableCell></TableRow>
+            </TableBody>
+        </Table>
     </div>
 
     <Heading Id="building-blocks" Level="3" Class="mt-8 scroll-mt-20">Building blocks rendered by FlowCanvas</Heading>
@@ -287,6 +419,24 @@
                 <TableRow><TableCell Class="font-mono text-xs">ScreenToFlow(x, y) / FlowToScreen(x, y)</TableCell><TableCell>Converts between pane-local pixels and flow coordinates.</TableCell></TableRow>
                 <TableRow><TableCell Class="font-mono text-xs">SelectAsync(IEnumerable&lt;string&gt; nodeIds)</TableCell><TableCell>Replaces the selection with these node ids (unknown ids are ignored).</TableCell></TableRow>
                 <TableRow><TableCell Class="font-mono text-xs">ClearSelectionAsync()</TableCell><TableCell>Clears the node and edge selection.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">UndoAsync() / RedoAsync()</TableCell><TableCell>Applies one step of <code>History</code>; a no-op without a <code>History</code> or with nothing to undo/redo.</TableCell></TableRow>
+            </TableBody>
+        </Table>
+    </div>
+
+    <Heading Id="properties" Level="3" Class="mt-8 scroll-mt-20">Read-only properties</Heading>
+    <div class="overflow-x-auto mt-4">
+        <Table>
+            <TableHeader>
+                <TableRow>
+                    <TableHead Class="w-[260px]">Property</TableHead>
+                    <TableHead>Description</TableHead>
+                </TableRow>
+            </TableHeader>
+            <TableBody>
+                <TableRow><TableCell Class="font-mono text-xs">CurrentNodes / CurrentEdges</TableCell><TableCell>The nodes/edges as currently rendered — the bound list, or the canvas' own copy.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">MeasuredSizes</TableCell><TableCell>Every node's measured (width, height) known so far — pass to <code>FlowLayout</code>'s <code>measured</code> parameter.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">CurrentViewport</TableCell><TableCell>The viewport as .NET last knows it.</TableCell></TableRow>
             </TableBody>
         </Table>
     </div>
@@ -302,7 +452,10 @@
         <li>Click selects a node or edge; <Kbd>Shift</Kbd>/<Kbd>Ctrl</Kbd>-click toggles it into a multi-selection; shift-dragging the background draws a marquee.</li>
         <li><Kbd>Delete</Kbd>/<Kbd>Backspace</Kbd> removes the current selection (configurable via <code>DeleteKey</code>).</li>
         <li>Handles are tab stops. <Kbd>Enter</Kbd>/<Kbd>Space</Kbd> on a source handle enters "connecting" mode (announced to screen readers and marked on every compatible target handle with <code>data-flow-handle-valid</code>); <Kbd>Enter</Kbd>/<Kbd>Space</Kbd> on a target handle commits it, <Kbd>Esc</Kbd> cancels.</li>
-        <li>The controls are labelled buttons; the lock toggle reports <code>aria-pressed</code>.</li>
+        <li>The controls are labelled buttons; the lock and snap-grid toggles report <code>aria-pressed</code>, undo/redo report <code>disabled</code> when there is nothing to undo/redo.</li>
+        <li><Kbd>Ctrl</Kbd>+<Kbd>Z</Kbd> undoes, <Kbd>Ctrl</Kbd>+<Kbd>Y</Kbd> or <Kbd>Ctrl</Kbd>+<Kbd>Shift</Kbd>+<Kbd>Z</Kbd> redoes, while the canvas has focus and a <code>History</code> is set.</li>
+        <li>Reconnecting an edge (dragging one of a selected edge's grab handles) is pointer/touch only — there is no keyboard equivalent yet; the handles are <code>aria-hidden</code> so a screen reader doesn't announce an unreachable control. The edge itself stays fully keyboard-selectable and deletable.</li>
+        <li>Touch: one finger pans the background or drags a node (starts immediately, no long-press); two fingers pinch-zoom anchored on the midpoint between them. <code>touch-action: none</code> on the pane stops the browser from also scrolling/zooming the page.</li>
     </ul>
 </div>
 
@@ -328,6 +481,7 @@
                 <TableRow><TableCell Class="font-mono text-xs">data-flow-connecting</TableCell><TableCell>Handle button</TableCell><TableCell>Presence-only: the source handle of an in-progress keyboard connection.</TableCell></TableRow>
                 <TableRow><TableCell Class="font-mono text-xs">data-flow-edge-label</TableCell><TableCell>Label div</TableCell><TableCell>With <code>data-edge-id</code>; positioned at the path midpoint.</TableCell></TableRow>
                 <TableRow><TableCell Class="font-mono text-xs">data-flow-toolbar-for="id"</TableCell><TableCell><code>FlowNodeToolbar</code></TableCell><TableCell>The node id it floats above; the engine repositions it live while that node is dragged.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">data-flow-edge-end</TableCell><TableCell>Reconnect grab handle</TableCell><TableCell>With <code>data-edge-id</code> and <code>data-end</code> ("source"/"target"); rendered for a selected, reconnectable edge.</TableCell></TableRow>
             </TableBody>
         </Table>
     </div>
@@ -565,4 +719,125 @@
         </FlowNodeToolbar>
     </ChildContent>
 </FlowCanvas>";
+
+    // ── Demo 6 — auto-layout ─────────────────────────────────────────────
+    private FlowCanvas? _layoutCanvas;
+    private IReadOnlyList<FlowNode> _layoutNodes = new List<FlowNode>
+    {
+        new("root", 0, 0, Data: "Deploy"),
+        new("build", 0, 0, Data: "Build"),
+        new("test", 0, 0, Data: "Test"),
+        new("lint", 0, 0, Data: "Lint"),
+        new("unit", 0, 0, Data: "Unit tests"),
+        new("e2e", 0, 0, Data: "E2E tests"),
+    };
+    private readonly IReadOnlyList<FlowEdge> _layoutEdges = new List<FlowEdge>
+    {
+        new("r-b", "root", "build"), new("r-t", "root", "test"),
+        new("t-l", "test", "lint"), new("t-u", "test", "unit"), new("t-e", "test", "e2e"),
+    };
+
+    private async Task ApplyTreeLayoutAsync()
+    {
+        _layoutNodes = FlowLayout.Tree(_layoutNodes, _layoutEdges, new FlowLayoutOptions(NodeSpacing: 24, RankSpacing: 64));
+        StateHasChanged();
+        if (_layoutCanvas is not null) await _layoutCanvas.FitViewAsync();
+    }
+
+    private async Task ApplyLayeredLayoutAsync()
+    {
+        _layoutNodes = FlowLayout.Layered(_layoutNodes, _layoutEdges, new FlowLayoutOptions(NodeSpacing: 24, RankSpacing: 64));
+        StateHasChanged();
+        if (_layoutCanvas is not null) await _layoutCanvas.FitViewAsync();
+    }
+
+    private readonly Random _layoutRandom = new(7);
+
+    private async Task ShuffleLayoutNodesAsync()
+    {
+        _layoutNodes = _layoutNodes.Select(n => n with { X = _layoutRandom.Next(0, 500), Y = _layoutRandom.Next(0, 300) }).ToList();
+        StateHasChanged();
+        if (_layoutCanvas is not null) await _layoutCanvas.FitViewAsync();
+    }
+
+    private const string _layoutCode = @"<FlowCanvas @ref=""_canvas"" @bind-Nodes=""_nodes"" Edges=""_edges"" Height=""340px"">
+    ...
+</FlowCanvas>
+
+@code {
+    private FlowCanvas? _canvas;
+
+    private async Task ApplyTreeLayoutAsync()
+    {
+        _nodes = FlowLayout.Tree(_nodes, _edges, new FlowLayoutOptions(NodeSpacing: 24, RankSpacing: 64));
+        StateHasChanged();
+        if (_canvas is not null) await _canvas.FitViewAsync();
+    }
+
+    private async Task ApplyLayeredLayoutAsync()
+        => /* same shape, FlowLayout.Layered — longest-path ranks + barycenter crossing reduction */;
+}";
+
+    // ── Demo 7 — undo/redo ────────────────────────────────────────────────
+    private readonly FlowHistory _history = new();
+    private bool _historySnap;
+    private IReadOnlyList<FlowNode> _historyNodes = new List<FlowNode>
+    {
+        new("a", 20, 20, Data: "Draft"),
+        new("b", 220, 20, Data: "Review"),
+        new("c", 420, 20, Data: "Publish"),
+    };
+
+    private const string _historyCode = @"<FlowCanvas @bind-Nodes=""_nodes"" Height=""300px"" History=""_history"">
+    <ChildContent>
+        <FlowBackground />
+        <FlowControls ShowSnapToggle=""true"" ShowHistory=""true"" />
+    </ChildContent>
+</FlowCanvas>
+
+@code {
+    // A snapshot is pushed after every committed change; Ctrl+Z/Ctrl+Y work while the canvas has
+    // focus, and FlowControls' ShowHistory adds matching buttons bound to the same instance.
+    private readonly FlowHistory _history = new();
+}";
+
+    // ── Demo 8 — reconnect ───────────────────────────────────────────────
+    private IReadOnlyList<FlowNode> _reconnectNodes = new List<FlowNode>
+    {
+        new("in", 0, 60, Data: "Inbox"),
+        new("triage", 280, 0, Data: "Triage"),
+        new("archive", 280, 130, Data: "Archive"),
+    };
+    private IReadOnlyList<FlowEdge> _reconnectEdges = new List<FlowEdge> { new("in-triage", "in", "triage") };
+    private string _reconnectMessage = "Select the edge, then drag its right-hand end from \"Triage\" onto \"Archive\".";
+
+    private void HandleReconnect(FlowReconnectEventArgs args)
+    {
+        var updated = args.OldEdge with
+        {
+            Source = args.NewConnection.Source, SourceHandle = args.NewConnection.SourceHandle,
+            Target = args.NewConnection.Target, TargetHandle = args.NewConnection.TargetHandle,
+        };
+        _reconnectEdges = _reconnectEdges.Select(e => e.Id == updated.Id ? updated : e).ToList();
+        _reconnectMessage = $"{args.OldEdge.Source} → {args.OldEdge.Target} became {updated.Source} → {updated.Target}.";
+    }
+
+    private const string _reconnectCode = @"<FlowCanvas @bind-Nodes=""_nodes"" @bind-Edges=""_edges"" Height=""260px""
+            OnReconnect=""HandleReconnect"">
+    ...
+</FlowCanvas>
+
+@code {
+    // Without OnReconnect the canvas updates the moved end itself through @bind-Edges; a handler
+    // is only needed to intercept/reject it or, as here, to also show what changed.
+    private void HandleReconnect(FlowReconnectEventArgs args)
+    {
+        var updated = args.OldEdge with
+        {
+            Source = args.NewConnection.Source, SourceHandle = args.NewConnection.SourceHandle,
+            Target = args.NewConnection.Target, TargetHandle = args.NewConnection.TargetHandle,
+        };
+        _edges = _edges.Select(e => e.Id == updated.Id ? updated : e).ToList();
+    }
+}";
 }

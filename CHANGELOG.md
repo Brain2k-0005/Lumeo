@@ -39,6 +39,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     above the single selected node and follows it while dragging).
   - `NodeAriaLabel` names a node for assistive technology beyond its `Id`.
   - Docs at `/components/flow-canvas`; a live catalog showcase card.
+  - **Auto-layout**: `FlowLayout.Tree` (rooted tree/forest, children centred under their parent)
+    and `FlowLayout.Layered` (longest-path ranking + barycenter crossing reduction), both pure
+    functions returning a new node list — apply with `Nodes = FlowLayout.Tree(...)` then
+    `FitViewAsync()`. Both break cycles deterministically (DFS back-edge removal) so a cyclic
+    graph still lays out instead of looping; `FlowLayoutOptions` (direction, spacing) and the new
+    `FlowCanvas.MeasuredSizes`/`CurrentEdges` read-only properties round it off.
+  - **`FlowHistory`**: an undo/redo stack of node+edge snapshots (capped, default 50). Set it on
+    `FlowCanvas.History` and every committed change (drag, keyboard move, connect, delete, an
+    externally applied replace such as a layout result) pushes exactly once; `Ctrl+Z` undoes,
+    `Ctrl+Y`/`Ctrl+Shift+Z` redoes while the canvas has focus, and the new `UndoAsync`/`RedoAsync`
+    methods are there for your own buttons.
+  - **Reconnect**: dragging an existing selected edge's end onto a different handle (small grab
+    handles at each end, `data-flow-edge-end`) moves that end — validated through
+    `IsValidConnection` the same way a fresh connection is; without an `OnReconnect` handler the
+    canvas updates the edge itself. `EdgesReconnectable` gates it; `Esc` cancels mid-drag.
+  - **Touch and pinch**: one-finger pan/drag (immediate, no long-press) and two-finger pinch-zoom
+    anchored on the midpoint between the fingers, all through the same Pointer Events code path.
+  - **Snap-grid toggle**: `FlowControls`' new `ShowSnapToggle` adds a grid-icon button bound to
+    `SnapToGrid` (now two-way bindable, `@bind-SnapToGrid`); `ShowHistory` adds undo/redo buttons
+    bound to the canvas' `History`.
+  - The keyboard-connect aria-live announcements ("Connecting from…", "Connected.", "Connection
+    rejected/cancelled.") are now localized (`ILumeoLocalizer`) instead of English-only, across all
+    14 bundled locales.
 
 ## [5.10.5] - 2026-09-23
 
