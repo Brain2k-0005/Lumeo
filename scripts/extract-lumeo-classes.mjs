@@ -33,7 +33,7 @@ import { join, extname } from "node:path";
 
 const roots = [
   "src/Lumeo/UI", "src/Lumeo.DataGrid/UI", "src/Lumeo.Charts/UI", "src/Lumeo.Editor/UI",
-  "src/Lumeo.Scheduler/UI", "src/Lumeo.Gantt/UI", "src/Lumeo.Motion/UI",
+  "src/Lumeo.Scheduler/UI", "src/Lumeo.Gantt/UI", "src/Lumeo.Flow/UI", "src/Lumeo.Motion/UI",
 ];
 const exts = new Set([".razor", ".cs"]);
 const files = [];

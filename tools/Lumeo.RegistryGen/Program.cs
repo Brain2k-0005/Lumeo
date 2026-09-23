@@ -78,6 +78,8 @@ var componentToPackage = new Dictionary<string, string>(StringComparer.OrdinalIg
     // Gantt satellite
     ["Gantt"] = "Lumeo.Gantt",
     ["GanttChart"] = "Lumeo.Gantt",
+    // Flow satellite
+    ["FlowCanvas"] = "Lumeo.Flow",
     // PdfViewer satellite
     ["PdfViewer"] = "Lumeo.PdfViewer",
     // Maps satellite
@@ -201,6 +203,7 @@ var categoryMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCas
     ["Sparkline"] = "Data Display",
     ["Gantt"] = "Data Display",
     ["GanttChart"] = "Data Display",
+    ["FlowCanvas"] = "Data Display",
     ["Map"] = "Data Display",
     ["MapMarker"] = "Data Display",
     ["MapHeatmap"] = "Data Display",
@@ -341,6 +344,7 @@ var descriptions = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCa
     ["Window"] = "Non-modal draggable and resizable floating panel with minimize and maximize support.",
     ["Gauge"] = "Single-value gauge with radial, arc, and linear variants and threshold colour bands.",
     ["GanttChart"] = "Project timeline with dependency arrows, milestones, hierarchy tree pane, summary rollups, and a reject/accept/adjust drag commit gate.",
+    ["FlowCanvas"] = "Node/flow editor canvas — templated nodes, SVG edges, pan, pointer-anchored wheel zoom, node drag with snapping, background grid and zoom controls.",
     ["Barcode"] = "Inline SVG Code 128B barcode renderer (scannable).",
     ["RingProgress"] = "Circular determinate progress ring with optional centre label or custom content.",
     ["Highlighter"] = "Wraps occurrences of one or more search terms in the text with highlight marks.",

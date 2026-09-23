@@ -318,7 +318,7 @@ public static class PerComponentEnricher
     private static string? ResolvePackageRoot(List<string> files, string repoRoot)
     {
         // Probe for each candidate: file exists at repoRoot/<candidate>/<file>?
-        var candidates = new[] { "src/Lumeo", "src/Lumeo.Charts", "src/Lumeo.DataGrid", "src/Lumeo.Editor", "src/Lumeo.Scheduler", "src/Lumeo.Gantt", "src/Lumeo.Motion" };
+        var candidates = new[] { "src/Lumeo", "src/Lumeo.Charts", "src/Lumeo.DataGrid", "src/Lumeo.Editor", "src/Lumeo.Scheduler", "src/Lumeo.Gantt", "src/Lumeo.Flow", "src/Lumeo.Motion" };
         if (files.Count == 0) return "src/Lumeo";
         foreach (var c in candidates)
         {
