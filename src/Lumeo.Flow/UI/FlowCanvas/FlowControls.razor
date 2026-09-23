@@ -45,6 +45,29 @@
             <SvgGlyph Svg="@(LumeoIcons.Lock)" class="size-4" />
         </Button>
     }
+    @if (ShowSnapToggle)
+    {
+        <Button Variant="Button.ButtonVariant.Outline" Size="Button.ButtonSize.Icon"
+                Class="@Cx.Merge("size-8 bg-card", Cx.When(SnapToGrid, "bg-accent text-accent-foreground"))"
+                aria-label="@L["Flow.SnapToGrid"]" title="@L["Flow.SnapToGrid"]"
+                aria-pressed="@(SnapToGrid ? "true" : "false")"
+                OnClick="ToggleSnapAsync">
+            <SvgGlyph Svg="@(LumeoIcons.LayoutGrid)" class="size-4" />
+        </Button>
+    }
+    @if (ShowHistory)
+    {
+        <Button Variant="Button.ButtonVariant.Outline" Size="Button.ButtonSize.Icon" Class="size-8 bg-card"
+                aria-label="@L["Flow.Undo"]" title="@L["Flow.Undo"]"
+                Disabled="@(!CanUndo)" OnClick="UndoAsync">
+            <SvgGlyph Svg="@(LumeoIcons.Undo)" class="size-4" />
+        </Button>
+        <Button Variant="Button.ButtonVariant.Outline" Size="Button.ButtonSize.Icon" Class="size-8 bg-card"
+                aria-label="@L["Flow.Redo"]" title="@L["Flow.Redo"]"
+                Disabled="@(!CanRedo)" OnClick="RedoAsync">
+            <SvgGlyph Svg="@(LumeoIcons.Redo)" class="size-4" />
+        </Button>
+    }
     @ChildContent
 </div>
 
@@ -69,6 +92,12 @@
     /// <summary>Shows the lock toggle (locked = nodes cannot be moved; pan and zoom still work).</summary>
     [Parameter] public bool ShowLock { get; set; } = true;
 
+    /// <summary>Shows a grid-icon toggle bound to the canvas' <c>SnapToGrid</c>.</summary>
+    [Parameter] public bool ShowSnapToggle { get; set; }
+
+    /// <summary>Shows undo/redo buttons driven by the canvas' <c>History</c> (disabled with nothing to undo/redo, or when the canvas has no <c>History</c> set).</summary>
+    [Parameter] public bool ShowHistory { get; set; }
+
     /// <summary>Extra buttons appended after the built-in ones.</summary>
     [Parameter] public RenderFragment? ChildContent { get; set; }
 
@@ -79,9 +108,12 @@
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     private bool Locked => Context?.Locked == true;
+    private bool SnapToGrid => Context?.SnapToGrid == true;
     private double Zoom => Context?.Viewport.Zoom ?? 1;
     private bool CanZoomIn => Context is null || Zoom < Context.MaxZoom - 1e-9;
     private bool CanZoomOut => Context is null || Zoom > Context.MinZoom + 1e-9;
+    private bool CanUndo => Context?.Canvas.History?.CanUndo == true;
+    private bool CanRedo => Context?.Canvas.History?.CanRedo == true;
 
     private string RootClass => Cx.Merge(
         "flex gap-1 rounded-md",
@@ -99,4 +131,7 @@
     private Task ZoomOutAsync() => Context?.Canvas.ZoomOutAsync() ?? Task.CompletedTask;
     private Task FitViewAsync() => Context?.Canvas.FitViewAsync() ?? Task.CompletedTask;
     private Task ToggleLockAsync() => Context?.Canvas.SetLockedAsync(!Locked) ?? Task.CompletedTask;
+    private Task ToggleSnapAsync() => Context?.Canvas.SetSnapToGridAsync(!SnapToGrid) ?? Task.CompletedTask;
+    private Task UndoAsync() => Context?.Canvas.UndoAsync() ?? Task.CompletedTask;
+    private Task RedoAsync() => Context?.Canvas.RedoAsync() ?? Task.CompletedTask;
 }

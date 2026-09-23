@@ -42,6 +42,26 @@
                         <FlowNodeHost @key="node.Id" Node="node" />
                     }
                 </div>
+                @if (EdgesReconnectable && !Readonly)
+                {
+                    @* Reconnect grab handles: a SEPARATE overlay, rendered AFTER (so painted above)
+                       the node layer — an edge's anchor point routinely coincides exactly with a
+                       real FlowHandle button (same coordinates), which lives in the node layer and
+                       would otherwise always win the pointer hit test. Pointer/touch only; no
+                       keyboard equivalent yet (documented a11y gap in the docs page). *@
+                    <svg aria-hidden="true" style="position:absolute;left:0;top:0;width:1px;height:1px;overflow:visible;pointer-events:none;">
+                        @foreach (var (edge, _, sourcePt, targetPt) in RenderableEdges())
+                        {
+                            if (!IsEdgeSelected(edge.Id) || !CanSelectEdges) continue;
+                            <circle @key="@("end-source-" + edge.Id)" data-flow-edge-end data-edge-id="@edge.Id" data-end="source"
+                                    cx="@FlowGeometry.Fmt(sourcePt.X)" cy="@FlowGeometry.Fmt(sourcePt.Y)" r="6"
+                                    style="fill:var(--color-primary);stroke:var(--color-background);stroke-width:1.5;cursor:grab;pointer-events:all;" />
+                            <circle @key="@("end-target-" + edge.Id)" data-flow-edge-end data-edge-id="@edge.Id" data-end="target"
+                                    cx="@FlowGeometry.Fmt(targetPt.X)" cy="@FlowGeometry.Fmt(targetPt.Y)" r="6"
+                                    style="fill:var(--color-primary);stroke:var(--color-background);stroke-width:1.5;cursor:grab;pointer-events:all;" />
+                        }
+                    </svg>
+                }
             </div>
             @ChildContent
         </CascadingValue>
@@ -98,8 +118,16 @@
     /// <summary>Breathing room for fit-view, as a fraction of the nodes' bounds (0.1 = 10%).</summary>
     [Parameter] public double FitViewPadding { get; set; } = 0.1;
 
-    /// <summary>Snaps dragged and keyboard-moved nodes to <see cref="SnapGrid"/>.</summary>
+    /// <summary>
+    /// Snaps dragged and keyboard-moved nodes to <see cref="SnapGrid"/>. Two-way bindable
+    /// (<c>@bind-SnapToGrid</c>) so <see cref="FlowControls"/>' <c>ShowSnapToggle</c> button can flip
+    /// it; without a binding it still works, the canvas just keeps its own toggled copy after the
+    /// first render (the same rule <see cref="Nodes"/>/<see cref="Edges"/> follow).
+    /// </summary>
     [Parameter] public bool SnapToGrid { get; set; }
+
+    /// <summary>Raised when <see cref="SnapToGrid"/> changes — a caller toggle, or <see cref="FlowControls"/>' snap button.</summary>
+    [Parameter] public EventCallback<bool> SnapToGridChanged { get; set; }
 
     /// <summary>The snap grid in flow units (X, Y).</summary>
     [Parameter] public (double X, double Y) SnapGrid { get; set; } = (16, 16);
@@ -127,6 +155,19 @@
 
     /// <summary>Turns every editing gesture off (node drag, keyboard move, connect and delete). Pan, zoom, selection and click events keep working.</summary>
     [Parameter] public bool Readonly { get; set; }
+
+    /// <summary>
+    /// When set, the canvas records a snapshot after every committed change (drag stop, keyboard
+    /// move, connect, delete, an externally-applied <see cref="Nodes"/>/<see cref="Edges"/> replace
+    /// such as an auto-layout result) and handles <c>Ctrl+Z</c> (undo), <c>Ctrl+Shift+Z</c> and
+    /// <c>Ctrl+Y</c> (redo) while the canvas has focus. Selection changes alone do not push a
+    /// snapshot. Share one <see cref="FlowHistory"/> with your own undo/redo UI if you have one —
+    /// <see cref="UndoAsync"/>/<see cref="RedoAsync"/> are also public for that.
+    /// </summary>
+    [Parameter] public FlowHistory? History { get; set; }
+
+    /// <summary>Lets an existing selected edge's end be re-dragged onto a different handle (a small grab handle at each end of a selected edge). See <see cref="OnReconnect"/>.</summary>
+    [Parameter] public bool EdgesReconnectable { get; set; } = true;
 
     // ── Events ───────────────────────────────────────────────────────────
 
@@ -157,6 +198,13 @@
     /// <summary>Called for every proposed connection (pointer drop or keyboard commit) before it is accepted. Returning <c>false</c> rejects it — no edge is added and <see cref="OnConnect"/> is not raised.</summary>
     [Parameter] public Func<FlowConnection, bool>? IsValidConnection { get; set; }
 
+    /// <summary>
+    /// An existing selected edge's end was dragged onto a different (or the same) compatible handle
+    /// and passed <see cref="IsValidConnection"/>. Without a handler the canvas replaces the edge's
+    /// moved end itself and raises <see cref="EdgesChanged"/>. Requires <see cref="EdgesReconnectable"/>.
+    /// </summary>
+    [Parameter] public EventCallback<FlowReconnectEventArgs> OnReconnect { get; set; }
+
     /// <summary>Raised after the selection changes — a click, shift/ctrl-click, marquee, edge click, <see cref="SelectAsync"/>, <see cref="ClearSelectionAsync"/> or a pane click/Escape that clears it.</summary>
     [Parameter] public EventCallback<FlowSelection> OnSelectionChanged { get; set; }
 
@@ -183,7 +231,9 @@
     /// <param name="Locked">The lock toggle is on (no node drag).</param>
     /// <param name="MinZoom">The canvas' <c>MinZoom</c>.</param>
     /// <param name="MaxZoom">The canvas' <c>MaxZoom</c>.</param>
-    public record FlowCanvasContext(FlowCanvas Canvas, FlowViewport Viewport, FlowViewport InitialViewport, bool Locked, double MinZoom, double MaxZoom);
+    /// <param name="SnapToGrid">The canvas' effective <see cref="FlowCanvas.SnapToGrid"/> (parameter value or an internal toggle from <see cref="FlowControls"/>' snap button).</param>
+    /// <param name="HistoryVersion">Bumped on every <see cref="FlowHistory"/> push/undo/redo — its only job is giving this otherwise-unchanged record a reason to cascade again so <see cref="FlowControls"/>' undo/redo buttons re-evaluate <c>CanUndo</c>/<c>CanRedo</c>.</param>
+    public record FlowCanvasContext(FlowCanvas Canvas, FlowViewport Viewport, FlowViewport InitialViewport, bool Locked, double MinZoom, double MaxZoom, bool SnapToGrid, int HistoryVersion);
 
     // ── State ────────────────────────────────────────────────────────────
 
@@ -204,6 +254,10 @@
     private FlowCanvasContext _context = default!;
     private bool _initialized;
     private bool _locked;
+    private bool _snapOverride;
+    private bool _snapInitialized;
+    private bool _lastSnapToGridParam;
+    private int _historyVersion;
     private bool _registered;
     private bool _disposed;
     private FlowEngineOptions? _lastOptions;
@@ -213,11 +267,22 @@
         double MinZoom, double MaxZoom, bool SnapToGrid, double SnapX, double SnapY,
         bool NodesDraggable, bool PanOnDrag, bool ZoomOnScroll, bool Readonly,
         bool FitViewOnInit, double FitViewPadding,
-        bool Connectable, bool ElementsSelectable, bool SelectionOnShiftDrag, bool Rtl)
+        bool Connectable, bool ElementsSelectable, bool SelectionOnShiftDrag, bool Rtl,
+        bool Reconnectable, FlowEngineStrings Strings)
     {
         /// <summary>Serialised as <c>snap</c>: <c>[gx, gy]</c> or null.</summary>
         public double[]? Snap => SnapToGrid ? new[] { SnapX, SnapY } : null;
     }
+
+    /// <summary>
+    /// The localized strings the engine needs for its own aria-live announcements (keyboard connect
+    /// and reconnect) — pushed once up front with the rest of the options so no keystroke needs a
+    /// .NET round trip. <c>{0}</c> in <see cref="ConnectingFrom"/> is replaced with the source node's
+    /// id (matching <c>Flow.ConnectFrom</c>'s own <c>{0}</c> placeholder).
+    /// </summary>
+    internal sealed record FlowEngineStrings(
+        string ConnectingFrom, string Connected, string ConnectionRejected, string ConnectionCancelled,
+        string Reconnected, string ReconnectRejected);
 
     /// <summary>The viewport as .NET last knows it (engine reports and imperative changes).</summary>
     public FlowViewport CurrentViewport => _state.Viewport;
@@ -225,7 +290,15 @@
     /// <summary>The nodes as currently rendered (the bound list, or the canvas' own copy).</summary>
     public IReadOnlyList<FlowNode> CurrentNodes => _nodes;
 
+    /// <summary>The edges as currently rendered (the bound list, or the canvas' own copy).</summary>
+    public IReadOnlyList<FlowEdge> CurrentEdges => _edges;
+
+    /// <summary>Every node's measured (width, height) known so far — pass to <see cref="FlowLayout.Tree"/>/<see cref="FlowLayout.Layered"/>'s <c>measured</c> parameter so a layout uses real sizes instead of the library default for nodes without a fixed <see cref="FlowNode.Width"/>/<see cref="FlowNode.Height"/>.</summary>
+    public IReadOnlyDictionary<string, (double Width, double Height)> MeasuredSizes => _state.SnapshotSizes();
+
     internal bool Locked => _locked;
+    /// <summary>The effective <see cref="SnapToGrid"/> — the last value from the parameter or an internal toggle (<see cref="SetSnapToGridAsync"/>), whichever happened more recently.</summary>
+    internal bool EffectiveSnapToGrid => _snapOverride;
     internal bool CanMoveNodes => NodesDraggable && !Readonly && !_locked;
     internal bool CanConnectGlobally => NodesConnectable && !Readonly && !_locked;
     internal bool CanConnect(FlowNode node) => CanConnectGlobally && node.Connectable;
@@ -266,6 +339,10 @@
 
     protected override void OnParametersSet()
     {
+        var wasInitialized = _initialized;
+        var externalReplace = false; // Nodes or Edges replaced from OUTSIDE after init (e.g. an
+                                      // applied FlowLayout result) — a History commit, not an echo.
+
         // Nodes: a list we emitted ourselves coming back through @bind-Nodes is an echo; anything
         // else replaces the state from outside and bumps the generation, so a drag that started
         // before it can never commit over it.
@@ -288,6 +365,7 @@
             {
                 _nodes = incoming;
                 _state.BumpGeneration();
+                externalReplace = true;
             }
             _state.ForgetMissing(_nodes);
             if (_state.SelectedNodeIds.Count > 0)
@@ -307,6 +385,7 @@
             if (!_initialized || emittedIndex < 0)
             {
                 _edges = incoming;
+                if (_initialized && emittedIndex < 0) externalReplace = true;
             }
             else if (emittedIndex == _recentEmittedEdges.Count - 1)
             {
@@ -335,18 +414,95 @@
             if (!_state.IsEcho(Viewport) && !_state.IsEcho(v)) _state.Stamp(v);
         }
 
+        // SnapToGrid: the first value seeds the toggle; a later value different from what we last
+        // observed is a fresh instruction from outside (a real @bind-SnapToGrid, or the caller just
+        // changed the literal) and wins over whatever FlowControls' button last set — an internal
+        // toggle updates _lastSnapToGridParam itself (SetSnapToGridAsync), so its own echo through
+        // @bind never re-triggers this branch.
+        if (!_snapInitialized)
+        {
+            _snapOverride = SnapToGrid;
+            _lastSnapToGridParam = SnapToGrid;
+            _snapInitialized = true;
+        }
+        else if (SnapToGrid != _lastSnapToGridParam)
+        {
+            _lastSnapToGridParam = SnapToGrid;
+            _snapOverride = SnapToGrid;
+        }
+
         _initialized = true;
         RefreshContext();
+
+        // History: seed the undo baseline once, before the first edit; push once for any externally
+        // applied Nodes/Edges replace after that (e.g. Nodes = FlowLayout.Tree(...)) so it can be
+        // undone too — a canvas-internal commit (drag/connect/delete/keyboard move) pushes itself,
+        // right after it applies, not here (so it stays exactly one push per commit).
+        if (History is not null)
+        {
+            if (!wasInitialized && History.Current is null) History.Push(_nodes, _edges);
+            else if (wasInitialized && externalReplace) PushHistory();
+        }
+    }
+
+    private void PushHistory()
+    {
+        if (History is null) return;
+        History.Push(_nodes, _edges);
+        BumpHistoryVersion();
+    }
+
+    // Bumps _historyVersion and re-renders so FlowControls' undo/redo buttons re-evaluate
+    // CanUndo/CanRedo — FlowCanvasContext is a record (structural equality), so without an actual
+    // field change the CascadingValue would not notify its consumers at all.
+    private void BumpHistoryVersion()
+    {
+        _historyVersion++;
+        RefreshContext();
+        StateHasChanged();
+    }
+
+    /// <summary>Moves one step back in <see cref="History"/> and applies it, or does nothing without a history / without anything to undo.</summary>
+    public Task UndoAsync() => ApplyHistoryStepAsync(History?.Undo());
+
+    /// <summary>Moves one step forward in <see cref="History"/> and applies it, or does nothing without a history / without anything to redo.</summary>
+    public Task RedoAsync() => ApplyHistoryStepAsync(History?.Redo());
+
+    private async Task ApplyHistoryStepAsync(FlowHistory.Snapshot? snapshot)
+    {
+        if (snapshot is null) return;
+        // A drag (or any gesture) in flight against the pre-undo nodes must never land on top of
+        // this — same guard an externally replaced node list gets.
+        _state.BumpGeneration();
+        _nodes = snapshot.Nodes;
+        _recentEmitted.Add(_nodes);
+        if (_recentEmitted.Count > 8) _recentEmitted.RemoveAt(0);
+        _edges = snapshot.Edges;
+        _recentEmittedEdges.Add(_edges);
+        if (_recentEmittedEdges.Count > 8) _recentEmittedEdges.RemoveAt(0);
+        _state.ForgetMissing(_nodes);
+        var liveNodes = new HashSet<string>(_nodes.Select(n => n.Id), StringComparer.Ordinal);
+        _state.SelectedNodeIds.RemoveWhere(id => !liveNodes.Contains(id));
+        var liveEdges = new HashSet<string>(_edges.Select(e => e.Id), StringComparer.Ordinal);
+        _state.SelectedEdgeIds.RemoveWhere(id => !liveEdges.Contains(id));
+        BumpHistoryVersion(); // also calls StateHasChanged()
+        if (NodesChanged.HasDelegate) await NodesChanged.InvokeAsync(_nodes);
+        if (EdgesChanged.HasDelegate) await EdgesChanged.InvokeAsync(_edges);
     }
 
     private void RefreshContext()
-        => _context = new FlowCanvasContext(this, _state.Viewport, _initialViewport, _locked, MinZoom, MaxZoom);
+        => _context = new FlowCanvasContext(this, _state.Viewport, _initialViewport, _locked, MinZoom, MaxZoom, _snapOverride, _historyVersion);
 
     private FlowEngineOptions BuildOptions() => new(
-        MinZoom, MaxZoom, SnapToGrid, SnapGrid.X, SnapGrid.Y,
+        MinZoom, MaxZoom, EffectiveSnapToGrid, SnapGrid.X, SnapGrid.Y,
         CanMoveNodes, PanOnDrag, ZoomOnScroll, Readonly,
         FitViewOnInit, FitViewPadding,
-        CanConnectGlobally, ElementsSelectable, SelectionOnShiftDrag, Direction == LayoutDirection.Rtl);
+        CanConnectGlobally, ElementsSelectable, SelectionOnShiftDrag, Direction == LayoutDirection.Rtl,
+        EdgesReconnectable && !Readonly, BuildStrings());
+
+    private FlowEngineStrings BuildStrings() => new(
+        L["Flow.ConnectingFrom"], L["Flow.Connected"], L["Flow.ConnectionRejected"], L["Flow.ConnectionCancelled"],
+        L["Flow.Reconnected"], L["Flow.ReconnectRejected"]);
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -408,7 +564,7 @@
         builder.CloseElement();
     };
 
-    internal IEnumerable<(FlowEdge Edge, FlowEdgePath Path)> RenderableEdges()
+    internal IEnumerable<(FlowEdge Edge, FlowEdgePath Path, FlowPoint Source, FlowPoint Target)> RenderableEdges()
     {
         if (_edges.Count == 0) yield break;
         var byId = new Dictionary<string, FlowNode>(StringComparer.Ordinal);
@@ -419,7 +575,7 @@
             if (!byId.TryGetValue(edge.Source, out var s) || !byId.TryGetValue(edge.Target, out var t)) continue;
             var (sp, spos) = _state.GetAnchor(s, edge.SourceHandle, FlowHandleType.Source);
             var (tp, tpos) = _state.GetAnchor(t, edge.TargetHandle, FlowHandleType.Target);
-            yield return (edge, FlowGeometry.GetEdgePath(edge.Type, sp.X, sp.Y, spos, tp.X, tp.Y, tpos));
+            yield return (edge, FlowGeometry.GetEdgePath(edge.Type, sp.X, sp.Y, spos, tp.X, tp.Y, tpos), sp, tp);
         }
     }
 
@@ -506,6 +662,21 @@
             await ClearSelectionInternalAsync();
             return;
         }
+        if (History is not null && (e.CtrlKey || e.MetaKey) && !e.AltKey)
+        {
+            // Ctrl+Z: undo. Ctrl+Shift+Z and Ctrl+Y: redo (both spellings — Windows/Linux apps split
+            // on this; supporting either costs nothing).
+            if (string.Equals(e.Key, "z", StringComparison.OrdinalIgnoreCase))
+            {
+                await (e.ShiftKey ? RedoAsync() : UndoAsync());
+                return;
+            }
+            if (string.Equals(e.Key, "y", StringComparison.OrdinalIgnoreCase))
+            {
+                await RedoAsync();
+                return;
+            }
+        }
         if (DeleteKey.Contains(e.Key)) await DeleteSelectionAsync();
     }
 
@@ -555,6 +726,7 @@
         }
         var nextEdges = _edges.Where(e => !edgeIds.Contains(e.Id) && !nodeIds.Contains(e.Source) && !nodeIds.Contains(e.Target)).ToList();
         if (nextEdges.Count != _edges.Count) await EmitEdgesAsync(nextEdges);
+        PushHistory();
 
         _state.SelectedNodeIds.Clear();
         _state.SelectedEdgeIds.Clear();
@@ -568,8 +740,8 @@
         var current = _nodes.FirstOrDefault(n => n.Id == node.Id);
         if (current is null || !current.Draggable) return;
 
-        var stepX = SnapToGrid && SnapGrid.X > 0 ? SnapGrid.X : 1;
-        var stepY = SnapToGrid && SnapGrid.Y > 0 ? SnapGrid.Y : 1;
+        var stepX = EffectiveSnapToGrid && SnapGrid.X > 0 ? SnapGrid.X : 1;
+        var stepY = EffectiveSnapToGrid && SnapGrid.Y > 0 ? SnapGrid.Y : 1;
         if (shift) { stepX *= 10; stepY *= 10; }
         var (dx, dy) = key switch
         {
@@ -592,7 +764,7 @@
             {
                 var x = n.X + dx;
                 var y = n.Y + dy;
-                if (SnapToGrid)
+                if (EffectiveSnapToGrid)
                 {
                     x = FlowGeometry.Snap(x, SnapGrid.X);
                     y = FlowGeometry.Snap(y, SnapGrid.Y);
@@ -607,6 +779,7 @@
         }
         if (changes.Count == 0) return;
         await EmitNodesAsync(next);
+        PushHistory();
         if (OnNodeDragStop.HasDelegate) await OnNodeDragStop.InvokeAsync(changes);
     }
 
@@ -705,6 +878,17 @@
         await InvokeAsync(StateHasChanged);
     }
 
+    /// <summary>Toggles <see cref="SnapToGrid"/> (what <see cref="FlowControls"/>' snap button calls). Raises <see cref="SnapToGridChanged"/>.</summary>
+    internal async Task SetSnapToGridAsync(bool value)
+    {
+        if (_snapOverride == value) return;
+        _snapOverride = value;
+        _lastSnapToGridParam = value; // our own broadcast — the next OnParametersSet must not re-treat it as external
+        RefreshContext();
+        await InvokeAsync(StateHasChanged);
+        if (SnapToGridChanged.HasDelegate) await InvokeAsync(() => SnapToGridChanged.InvokeAsync(value));
+    }
+
     private async Task<FlowViewport> LiveViewportAsync()
     {
         if (_registered && !_disposed)
@@ -769,6 +953,7 @@
         }
 
         await EmitNodesAsync(next);
+        PushHistory();
         if (OnNodeDragStop.HasDelegate) await OnNodeDragStop.InvokeAsync(applied);
         return true;
     }
@@ -848,6 +1033,52 @@
         var id = "flow-edge-" + Guid.NewGuid().ToString("N")[..10];
         var next = new List<FlowEdge>(_edges) { new(id, source, target, sourceHandle, targetHandle) };
         await EmitEdgesAsync(next);
+        PushHistory();
+        return true;
+    }
+
+    /// <summary>
+    /// Engine callback: an existing edge's end (<paramref name="movingEnd"/>: "source" or "target")
+    /// was dragged onto a new handle. Re-validated against <see cref="NodesConnectable"/>, the new
+    /// endpoint node's <c>Connectable</c>, <see cref="Readonly"/>/<see cref="EdgesReconnectable"/> and
+    /// <see cref="IsValidConnection"/> (built from the edge's OTHER, unmoved end); returns whether it
+    /// was accepted. Not meant for application code.
+    /// </summary>
+    [JSInvokable, EditorBrowsable(EditorBrowsableState.Never)]
+    public async Task<bool> CommitReconnect(string edgeId, string movingEnd, string newNodeId, string? newHandleId)
+    {
+        if (!EdgesReconnectable || Readonly || !CanConnectGlobally) return false;
+        if (string.IsNullOrEmpty(edgeId) || string.IsNullOrEmpty(newNodeId)) return false;
+        var edge = _edges.FirstOrDefault(e => e.Id == edgeId);
+        if (edge is null) return false; // Deletable does not gate a reconnect — only a delete
+        var newNode = _nodes.FirstOrDefault(n => n.Id == newNodeId);
+        if (newNode is null || !newNode.Connectable) return false;
+
+        FlowConnection connection;
+        if (movingEnd == "source")
+        {
+            var t = _nodes.FirstOrDefault(n => n.Id == edge.Target);
+            if (t is null || !t.Connectable) return false;
+            connection = new FlowConnection(newNodeId, newHandleId, edge.Target, edge.TargetHandle);
+        }
+        else
+        {
+            var s = _nodes.FirstOrDefault(n => n.Id == edge.Source);
+            if (s is null || !s.Connectable) return false;
+            connection = new FlowConnection(edge.Source, edge.SourceHandle, newNodeId, newHandleId);
+        }
+        if (IsValidConnection is not null && !IsValidConnection(connection)) return false;
+
+        if (OnReconnect.HasDelegate)
+        {
+            await OnReconnect.InvokeAsync(new FlowReconnectEventArgs(edge, connection));
+            return true;
+        }
+
+        var updated = edge with { Source = connection.Source, SourceHandle = connection.SourceHandle, Target = connection.Target, TargetHandle = connection.TargetHandle };
+        var next = _edges.Select(e => e.Id == edgeId ? updated : e).ToList();
+        await EmitEdgesAsync(next);
+        PushHistory();
         return true;
     }
 
