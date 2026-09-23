@@ -12,10 +12,13 @@
    the app received through @bind-Nodes), flow-viewport-sink = "x|y|zoom" of the bound viewport,
    flow-commit-count = OnNodeDragStop calls, flow-last-click = the last OnNodeClick id,
    flow-edges-sink = "id:source-target;..." of the BOUND edge list, flow-selection-sink =
-   "nodeId,...|edgeId,..." of the latest OnSelectionChanged. *@
+   "nodeId,...|edgeId,..." of the latest OnSelectionChanged, flow-history-count = FlowHistory.Count.
+
+   data-testid="flow-layout-btn" applies FlowLayout.Tree (phase 3 auto-layout E2E spec). *@
 
 <div class="p-4">
-    <FlowCanvas data-testid="flow-root"
+    <button type="button" data-testid="flow-layout-btn" @onclick="ApplyLayoutAsync" class="mb-2 rounded border border-border px-2 py-1 text-xs">Apply layout</button>
+    <FlowCanvas @ref="_canvas" data-testid="flow-root"
                 Height="560px"
                 @bind-Nodes="_nodes"
                 @bind-Viewport="_viewport"
@@ -23,6 +26,8 @@
                 FitViewOnInit="@(Fit != "0")"
                 SnapToGrid="@(Snap == "1")"
                 Readonly="@(Readonly == "1")"
+                History="_history"
+                EdgesReconnectable="true"
                 OnNodeDragStop="HandleDragStop"
                 OnNodeClick="@(n => _lastClick = n.Id)"
                 OnSelectionChanged="HandleSelectionChanged"
@@ -37,7 +42,7 @@
         </NodeTemplate>
         <ChildContent>
             <FlowBackground />
-            <FlowControls />
+            <FlowControls ShowSnapToggle="true" ShowHistory="true" />
             <FlowMiniMap />
         </ChildContent>
     </FlowCanvas>
@@ -49,11 +54,22 @@
 <pre data-testid="flow-last-click" hidden>@_lastClick</pre>
 <pre data-testid="flow-edges-sink" hidden>@EdgesText</pre>
 <pre data-testid="flow-selection-sink" hidden>@_selectionText</pre>
+<pre data-testid="flow-history-count" hidden>@_history.Count</pre>
 
 @code {
     [SupplyParameterFromQuery] public string? Fit { get; set; }
     [SupplyParameterFromQuery] public string? Snap { get; set; }
     [SupplyParameterFromQuery] public string? Readonly { get; set; }
+
+    private FlowCanvas? _canvas;
+    private readonly FlowHistory _history = new();
+
+    private async Task ApplyLayoutAsync()
+    {
+        _nodes = FlowLayout.Tree(_nodes, _edges, new FlowLayoutOptions(NodeSpacing: 24, RankSpacing: 64));
+        StateHasChanged();
+        if (_canvas is not null) await _canvas.FitViewAsync();
+    }
 
     private IReadOnlyList<FlowNode> _nodes = new List<FlowNode>
     {

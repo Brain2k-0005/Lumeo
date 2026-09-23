@@ -20,11 +20,12 @@ public class FlowCanvasDocsPageTests : PlaywrightTestBase
     public override async Task InitializeAsync()
     {
         await base.InitializeAsync();
-        // The page has 5 ComponentDemo cards, each wrapping its FlowCanvas in LazyRender
+        // The page has 8 ComponentDemo cards (5 from phase 1/2 + auto-layout/undo-redo/reconnect
+        // from phase 3a), each wrapping its FlowCanvas in LazyRender
         // (docs/Lumeo.Docs/Shared/LazyRender.razor — IntersectionObserver, 200px root margin).
         // A normal-height viewport would leave the later demos unmounted until scrolled; a tall
         // viewport brings the whole page within the observer's bounds on first paint instead.
-        await Page.SetViewportSizeAsync(1280, 6000);
+        await Page.SetViewportSizeAsync(1280, 9000);
     }
 
     [Fact]
@@ -44,9 +45,9 @@ public class FlowCanvasDocsPageTests : PlaywrightTestBase
         await Goto("/components/flow-canvas");
         await Assertions.Expect(Page.Locator("h1", new() { HasTextString = "Flow Canvas" })).ToBeVisibleAsync(new() { Timeout = LongTimeoutMs });
 
-        // Five ComponentDemo cards on the page each hold one FlowCanvas, plus the minimap overlay
+        // Eight ComponentDemo cards on the page each hold one FlowCanvas, plus the minimap overlay
         // demo also renders FlowMiniMap.
-        await Assertions.Expect(Page.Locator("[data-slot='flow-canvas']")).ToHaveCountAsync(5, new() { Timeout = LongTimeoutMs });
+        await Assertions.Expect(Page.Locator("[data-slot='flow-canvas']")).ToHaveCountAsync(8, new() { Timeout = LongTimeoutMs });
         await Assertions.Expect(Page.Locator("[data-slot='flow-minimap']")).ToBeVisibleAsync(new() { Timeout = LongTimeoutMs });
     }
 }
