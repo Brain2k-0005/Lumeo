@@ -19,7 +19,11 @@
             <NodeTemplate Context="ctx">
                 @{ var stage = (StageData)ctx.Node.Data!; }
                 <div class="@CardClass(stage.Kind, ctx.Selected)">
-                    <FlowHandle Type="FlowHandleType.Target" Position="FlowPosition.Left" />
+                    @* Transform is the only node whose incoming edge wraps from row 1 (QA
+                       sign-off) down to row 2 - anchoring its target handle on Top instead of
+                       the usual Left keeps that edge's SmoothStep route a clean step-down
+                       instead of entering from the side across the other row-2 cards. *@
+                    <FlowHandle Type="FlowHandleType.Target" Position="@(ctx.Node.Id == "transform" ? FlowPosition.Top : FlowPosition.Left)" />
                     <div class="flex items-center gap-1.5 px-2.5 py-1.5">
                         <span class="flex size-5 items-center justify-center rounded bg-muted text-muted-foreground">
                             <SvgGlyph Svg="@KindIcon(stage.Kind)" class="size-3" />
@@ -41,6 +45,16 @@
                         </div>
                     }
                     <FlowHandle Type="FlowHandleType.Source" Position="FlowPosition.Right" />
+                    @if (ctx.Node.Id == "gate-qa")
+                    {
+                        @* A second, bottom-anchored source handle used only by the row-1 -> row-2
+                           wrap-around edge (SourceHandle="wrap"). Anchoring that edge here instead
+                           of the card's normal right-side handle keeps its SmoothStep route inside
+                           the gap between the two rows - leaving from the right handle instead
+                           routed back through row 1 at the cards' own height, hidden behind (but
+                           still visually crossing) Ingest/Clean (review round 2, second pass). *@
+                        <FlowHandle Type="FlowHandleType.Source" Position="FlowPosition.Bottom" Id="wrap" />
+                    }
                 </div>
             </NodeTemplate>
             <ChildContent>
@@ -95,7 +109,12 @@
     {
         new("e-ingest-clean", "ingest", "clean"),
         new("e-clean-gate-qa", "clean", "gate-qa"),
-        new("e-gate-qa-transform", "gate-qa", "transform"),
+        // The one edge that wraps from row 1 back down to row 2 - SmoothStep (not the other
+        // edges' default Bezier) so it steps down and back around instead of drawing a long
+        // diagonal across the middle of the canvas, off QA sign-off's dedicated bottom "wrap"
+        // handle and into Transform's top handle, so the whole route stays in the gap between
+        // the two rows instead of doubling back through Ingest/Clean (review round 2).
+        new("e-gate-qa-transform", "gate-qa", "transform", SourceHandle: "wrap", Type: FlowEdgeType.SmoothStep),
         new("e-transform-gate-release", "transform", "gate-release"),
         new("e-gate-release-publish", "gate-release", "publish"),
     };
