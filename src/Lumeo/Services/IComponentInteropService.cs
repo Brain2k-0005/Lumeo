@@ -1009,6 +1009,15 @@ public interface IComponentInteropService : IAsyncDisposable, IDisposable
     /// <summary>The engine's live viewport as <c>[x, y, zoom]</c>, or null when the engine is unavailable. Default null.</summary>
     Task<double[]?> FlowGetViewportAsync(Microsoft.AspNetCore.Components.ElementReference paneEl) => Task.FromResult<double[]?>(null);
 
+    /// <summary>
+    /// Whether <c>document.activeElement</c>, scoped to this pane, is an editable field (input,
+    /// textarea, select, contenteditable) or inside a <c>data-flow-nodrag</c> region — what
+    /// <c>FlowCanvas</c>'s own keydown handlers (undo/redo, delete, arrow-nudge) check before
+    /// acting, since <c>KeyboardEventArgs</c> carries no target of its own. Default false (assume
+    /// not editable, so the shortcuts keep working without a registered engine).
+    /// </summary>
+    Task<bool> FlowIsFocusedElementEditableAsync(Microsoft.AspNetCore.Components.ElementReference paneEl) => Task.FromResult(false);
+
     // --- Scheduler first-party view engine (wave 1b) ---
     // Own module (scheduler-views.js): drag, resize, drag-create and the now-indicator
     // for the Scheduler's Blazor-rendered views.

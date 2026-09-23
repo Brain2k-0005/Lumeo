@@ -124,6 +124,14 @@ internal sealed class FlowState
 
     public bool IsMeasured(string id) => _measured.ContainsKey(id);
 
+    /// <summary>A snapshot of every node's measured (width, height), for <see cref="FlowLayout"/>'s <c>measured</c> parameter.</summary>
+    public IReadOnlyDictionary<string, (double Width, double Height)> SnapshotSizes()
+    {
+        var result = new Dictionary<string, (double Width, double Height)>(StringComparer.Ordinal);
+        foreach (var (id, m) in _measured) result[id] = (m.Width, m.Height);
+        return result;
+    }
+
     /// <summary>The node's rect: fixed size &gt; measured size &gt; <see cref="FlowGeometry.DefaultNodeWidth"/>.</summary>
     public FlowRect GetNodeRect(FlowNode node)
     {

@@ -1888,6 +1888,16 @@ public sealed class ComponentInteropService : IComponentInteropService
         catch (JSDisconnectedException) { return null; }
     }
 
+    public async Task<bool> FlowIsFocusedElementEditableAsync(Microsoft.AspNetCore.Components.ElementReference paneEl)
+    {
+        try
+        {
+            var module = await GetFlowModuleAsync();
+            return await module.InvokeAsync<bool>("flow.isFocusedElementEditable", paneEl);
+        }
+        catch (JSDisconnectedException) { return false; }
+    }
+
     // --- Scheduler first-party view engine (wave 1b) — its own module
     // (scheduler-views.js) — drag, resize, drag-create and the now-indicator.
 

@@ -284,9 +284,19 @@ function ensureCss() {
     } catch { /* non-browser host */ }
 }
 
+const DEFAULT_STRINGS = {
+    connectingFrom: 'Connecting from {0}. Press Enter on a target handle to connect, Escape to cancel.',
+    connected: 'Connected.',
+    connectionRejected: 'Connection rejected.',
+    connectionCancelled: 'Connection cancelled.',
+    reconnected: 'Edge reconnected.',
+    reconnectRejected: 'Reconnect rejected.',
+};
+
 function normalizeOptions(o) {
     o = o || {};
     const snapArr = Array.isArray(o.snap) && o.snap.length === 2 ? [Number(o.snap[0]) || 0, Number(o.snap[1]) || 0] : null;
+    const s = o.strings || {};
     return {
         minZoom: Number.isFinite(o.minZoom) ? o.minZoom : 0.25,
         maxZoom: Number.isFinite(o.maxZoom) ? o.maxZoom : 2,
@@ -301,7 +311,20 @@ function normalizeOptions(o) {
         rtl: o.rtl === true,
         fitViewOnInit: o.fitViewOnInit === true,
         fitViewPadding: Number.isFinite(o.fitViewPadding) ? o.fitViewPadding : 0.1,
+        reconnectable: o.reconnectable !== false,
+        strings: {
+            connectingFrom: typeof s.connectingFrom === 'string' && s.connectingFrom ? s.connectingFrom : DEFAULT_STRINGS.connectingFrom,
+            connected: typeof s.connected === 'string' && s.connected ? s.connected : DEFAULT_STRINGS.connected,
+            connectionRejected: typeof s.connectionRejected === 'string' && s.connectionRejected ? s.connectionRejected : DEFAULT_STRINGS.connectionRejected,
+            connectionCancelled: typeof s.connectionCancelled === 'string' && s.connectionCancelled ? s.connectionCancelled : DEFAULT_STRINGS.connectionCancelled,
+            reconnected: typeof s.reconnected === 'string' && s.reconnected ? s.reconnected : DEFAULT_STRINGS.reconnected,
+            reconnectRejected: typeof s.reconnectRejected === 'string' && s.reconnectRejected ? s.reconnectRejected : DEFAULT_STRINGS.reconnectRejected,
+        },
     };
+}
+
+function fmtTemplate(template, value) {
+    return String(template).replace('{0}', value);
 }
 
 function call(reg, method, ...args) {
@@ -524,6 +547,92 @@ function endConnectGesture(reg, g, clientX, clientY) {
         .catch(() => { });
 }
 
+// ── Reconnect: dragging an existing selected edge's end onto a different handle ─────────────────
+// Mirrors the connect gesture above: a temp connection-line from the edge's FIXED end to the
+// pointer, valid-target highlighting (this time restricted to handles of the SAME type as the end
+// being moved — you move a target end onto a target handle, a source end onto a source handle),
+// CommitReconnect on drop, Escape cancels.
+function edgeEndOf(reg, edgeId) {
+    // The visible path carries the canonical data-* attributes (the hit twin mirrors them).
+    for (const el of reg.pane.querySelectorAll('[data-flow-edge][data-edge-id]')) {
+        if (el.getAttribute('data-edge-id') === edgeId) return el;
+    }
+    return null;
+}
+
+function markValidReconnectTargets(reg, wantType, excludeHandleEl) {
+    for (const h of reg.pane.querySelectorAll('[data-flow-handle][data-handle-type="' + wantType + '"]')) {
+        if (h === excludeHandleEl) continue;
+        const node = handleNode(h);
+        if (!node || node.getAttribute('data-connectable') === 'false') continue;
+        h.setAttribute('data-flow-handle-valid', '');
+    }
+}
+
+function isValidReconnectCandidate(reg, wantType, excludeHandleEl, candidateEl) {
+    if (!candidateEl) return false;
+    if (candidateEl.getAttribute('data-handle-type') !== wantType) return false;
+    const node = handleNode(candidateEl);
+    if (!node || node.getAttribute('data-connectable') === 'false') return false;
+    return true;
+}
+
+function updateReconnectLine(reg, fixedPoint, clientX, clientY) {
+    if (!reg.connLine) return;
+    const local = localPoint(reg, clientX, clientY);
+    const p = screenToFlow(local.x, local.y, reg.vp);
+    // The temp line always runs from the fixed end to the pointer, drawn as a straight-ish bezier
+    // (the fixed end's own handle position is used for direction; the pointer end has no "position"
+    // of its own, so it points back at the fixed end — the same trick the connect preview uses).
+    const path = edgePath('bezier', fixedPoint.x, fixedPoint.y, fixedPoint.position, p.x, p.y, oppositePosition(fixedPoint.position));
+    reg.connLine.setAttribute('d', path.d);
+}
+
+function beginReconnectGesture(reg, endEl, base) {
+    const edgeId = endEl.getAttribute('data-edge-id');
+    const movingEnd = endEl.getAttribute('data-end'); // 'source' or 'target'
+    const edgeEl = edgeEndOf(reg, edgeId);
+    if (!edgeEl) return;
+    const fixedType = movingEnd === 'source' ? 'target' : 'source';
+    const fixedNodeId = edgeEl.getAttribute(fixedType === 'source' ? 'data-source' : 'data-target');
+    const fixedHandleId = edgeEl.getAttribute(fixedType === 'source' ? 'data-source-handle' : 'data-target-handle');
+    const fixedNodeEl = findNode(reg, fixedNodeId);
+    if (!fixedNodeEl) return;
+    const fixedAnchor = anchorFor(reg, fixedNodeEl, fixedHandleId, fixedType, nodePos(reg, fixedNodeEl));
+
+    const g = Object.assign(base, {
+        kind: 'reconnect', edgeId, movingEnd, wantType: movingEnd, fixedPoint: fixedAnchor,
+    });
+    reg.gesture = g;
+    attachGestureListeners(reg);
+    capture(reg, g.pointerId);
+    markValidReconnectTargets(reg, g.wantType, endEl);
+    ensureConnLine(reg);
+    updateReconnectLine(reg, fixedAnchor, base.startX, base.startY);
+    diag({ ev: 'reconnect-start', edge: edgeId, movingEnd });
+}
+
+function endReconnectGesture(reg, g, clientX, clientY) {
+    removeConnLine(reg);
+    clearValidTargets(reg);
+    const el = document.elementFromPoint(clientX, clientY);
+    const targetHandle = el ? el.closest('[data-flow-handle]') : null;
+    if (!isValidReconnectCandidate(reg, g.wantType, null, targetHandle)) {
+        diag({ ev: 'reconnect-end', hasTarget: false });
+        return;
+    }
+    const targetNode = handleNode(targetHandle);
+    const newNodeId = targetNode.getAttribute('data-flow-node');
+    const newHandleId = handleIdOf(targetHandle);
+    diag({ ev: 'reconnect-end', hasTarget: true, target: newNodeId });
+    call(reg, 'CommitReconnect', g.edgeId, g.movingEnd, newNodeId, newHandleId)
+        .then(accepted => {
+            diag({ ev: 'reconnect-result', accepted: accepted === true });
+            announce(reg, accepted === true ? reg.options.strings.reconnected : reg.options.strings.reconnectRejected);
+        })
+        .catch(() => { });
+}
+
 function ensureLive(reg) {
     if (reg.liveEl && reg.liveEl.isConnected) return reg.liveEl;
     const el = document.createElement('div');
@@ -557,7 +666,7 @@ function handleConnectKey(reg, handleEl) {
         reg.kbConnect = { sourceHandleEl: handleEl, sourceId: node.getAttribute('data-flow-node'), sourceHandleId: handleIdOf(handleEl) };
         markValidTargets(reg, handleEl);
         handleEl.setAttribute('data-flow-connecting', '');
-        announce(reg, 'Connecting from ' + reg.kbConnect.sourceId + '. Press Enter on a target handle to connect, Escape to cancel.');
+        announce(reg, fmtTemplate(reg.options.strings.connectingFrom, reg.kbConnect.sourceId));
         diag({ ev: 'kbconnect-start', source: reg.kbConnect.sourceId });
         return;
     }
@@ -572,7 +681,7 @@ function handleConnectKey(reg, handleEl) {
     const src = reg.kbConnect;
     finishKbConnect(reg);
     call(reg, 'CommitConnect', src.sourceId, src.sourceHandleId, targetId, targetHandleId).then(accepted => {
-        announce(reg, accepted === true ? 'Connected.' : 'Connection rejected.');
+        announce(reg, accepted === true ? reg.options.strings.connected : reg.options.strings.connectionRejected);
         diag({ ev: 'kbconnect-result', accepted: accepted === true });
     }, () => { });
 }
@@ -587,7 +696,7 @@ function finishKbConnect(reg) {
 function cancelKbConnect(reg, reason) {
     if (!reg.kbConnect) return;
     finishKbConnect(reg);
-    announce(reg, 'Connection cancelled.');
+    announce(reg, reg.options.strings.connectionCancelled);
     diag({ ev: 'kbconnect-cancel', reason });
 }
 
@@ -817,6 +926,26 @@ function isEditable(target) {
     return !!(target && target.closest && target.closest('input, textarea, select, [contenteditable="true"], [contenteditable=""]'));
 }
 
+// A keydown target the canvas' own global shortcuts (undo/redo, delete, arrow-nudge) must leave
+// alone: an editable field, or anything the app opted out of gesture handling with
+// data-flow-nodrag (the same attribute already used to exempt a region from node-drag/pan —
+// reused here for the same "this is the app's own interactive content" meaning).
+function isKeyboardExempt(target) {
+    return !!(target && target.closest && target.closest('input, textarea, select, [contenteditable="true"], [contenteditable=""], [data-flow-nodrag]'));
+}
+
+// What document.activeElement is right now, scoped to this canvas' own pane (so a keydown handled
+// by one canvas never looks at a DIFFERENT canvas' focused field). Backs
+// FlowIsFocusedElementEditableAsync — the .NET half of the same guard (FlowCanvas.razor's
+// HandlePaneKeyDownAsync/HandleNodeKeyDownAsync); KeyboardEventArgs carries no target of its own,
+// so this is how the .NET side answers "was the real target editable" for the exact same keydown.
+function isFocusedElementEditable(pane) {
+    const el = document.activeElement;
+    if (!el || el === document.body) return false;
+    if (pane && pane.contains && !pane.contains(el)) return false;
+    return isKeyboardExempt(el);
+}
+
 function localPoint(reg, clientX, clientY) {
     const r = reg.pane.getBoundingClientRect();
     return { x: clientX - r.left, y: clientY - r.top };
@@ -980,14 +1109,61 @@ function cancelGesture(reg, reason) {
         removeConnLine(reg);
         clearValidTargets(reg);
         diag({ ev: 'connect-cancel', reason });
+    } else if (g.kind === 'reconnect') {
+        removeConnLine(reg);
+        clearValidTargets(reg);
+        diag({ ev: 'reconnect-cancel', reason });
     } else if (g.kind === 'marquee') {
         if (g.rectEl) g.rectEl.remove();
         diag({ ev: 'marquee-cancel', reason });
+    } else if (g.kind === 'pinch') {
+        reg.touchPoints.clear();
+        diag({ ev: 'pinch-cancel', reason });
     }
+}
+
+// ── Touch: two-finger pinch-zoom, anchored on the midpoint each frame ───────────────────────────
+// One-finger pan/drag needs nothing extra — Pointer Events unify touch with mouse/pen, so the
+// existing 'pan'/'node' gesture paths already handle a single touch. Node drag starts immediately
+// (no long-press), matching React Flow's own default. touch-action: none on the pane (FlowCanvas.razor)
+// keeps the browser from scrolling/zooming the page underneath either gesture.
+function pinchMidpoint(reg) {
+    const pts = Array.from(reg.touchPoints.values());
+    if (pts.length < 2) return null;
+    return { x: (pts[0].x + pts[1].x) / 2, y: (pts[0].y + pts[1].y) / 2 };
+}
+
+function pinchDistance(reg) {
+    const pts = Array.from(reg.touchPoints.values());
+    if (pts.length < 2) return 0;
+    return Math.hypot(pts[1].x - pts[0].x, pts[1].y - pts[0].y);
+}
+
+function beginPinchGesture(reg) {
+    const dist = pinchDistance(reg);
+    reg.gesture = { kind: 'pinch', startDist: dist || 1, startZoom: reg.vp.zoom };
+    attachGestureListeners(reg);
+    diag({ ev: 'pinch-start', dist });
 }
 
 function makeHandlers(reg) {
     reg.onPointerDown = (e) => {
+        if (e.pointerType === 'touch') {
+            reg.touchPoints.set(e.pointerId, { x: e.clientX, y: e.clientY });
+            if (reg.touchPoints.size === 2 && (!reg.gesture || reg.gesture.kind === 'pan')) {
+                // A second finger lands: promote (or start fresh) into a pinch, dropping whatever
+                // single-finger pan was in flight for the first one.
+                if (reg.gesture) {
+                    if (reg.gesture.kind === 'pan' && reg.gesture.moved) reg.pane.removeAttribute('data-flow-panning');
+                    detachGestureListeners(reg);
+                    release(reg, reg.gesture.pointerId);
+                    reg.gesture = null;
+                }
+                beginPinchGesture(reg);
+                return;
+            }
+            if (reg.touchPoints.size > 2) return; // a third finger: ignore, the pinch keeps running
+        }
         if (reg.gesture) return;
         if (e.pointerType === 'mouse' && e.button !== 0) return;
         const target = e.target;
@@ -995,6 +1171,14 @@ function makeHandlers(reg) {
         if (target.closest('[data-flow-overlay]')) return;
         const o = reg.options;
         const base = { pointerId: e.pointerId, startX: e.clientX, startY: e.clientY, lastX: e.clientX, lastY: e.clientY, opts: o };
+
+        const endEl = !reg.spaceDown ? target.closest('[data-flow-edge-end]') : null;
+        if (endEl) {
+            if (o.readonly || !o.reconnectable) return;
+            e.preventDefault();
+            beginReconnectGesture(reg, endEl, base);
+            return;
+        }
 
         const handleEl = !reg.spaceDown ? target.closest('[data-flow-handle]') : null;
         if (handleEl) {
@@ -1050,7 +1234,22 @@ function makeHandlers(reg) {
     };
 
     reg.onPointerMove = (e) => {
+        if (e.pointerType === 'touch' && reg.touchPoints.has(e.pointerId)) {
+            reg.touchPoints.set(e.pointerId, { x: e.clientX, y: e.clientY });
+        }
         const g = reg.gesture;
+        if (g && g.kind === 'pinch') {
+            if (!reg.touchPoints.has(e.pointerId)) return; // a pointer that isn't part of this pinch
+            const dist = pinchDistance(reg);
+            const mid = pinchMidpoint(reg);
+            if (!mid || dist <= 0) return;
+            const o = reg.options;
+            const newZoom = clampZoom(g.startZoom * (dist / g.startDist), o.minZoom, o.maxZoom);
+            const local = localPoint(reg, mid.x, mid.y);
+            applyViewport(reg, zoomAt(reg.vp, newZoom, local.x, local.y), 'pinch');
+            scheduleReport(reg);
+            return;
+        }
         if (!g || e.pointerId !== g.pointerId) return;
         const dist0 = Math.hypot(e.clientX - g.startX, e.clientY - g.startY);
         if (g.kind === 'node') {
@@ -1065,6 +1264,12 @@ function makeHandlers(reg) {
         }
         if (g.kind === 'connect') {
             updateConnectionLine(reg, g.sourceNodeEl, g.sourceHandleId, e.clientX, e.clientY);
+            g.lastX = e.clientX;
+            g.lastY = e.clientY;
+            return;
+        }
+        if (g.kind === 'reconnect') {
+            updateReconnectLine(reg, g.fixedPoint, e.clientX, e.clientY);
             g.lastX = e.clientX;
             g.lastY = e.clientY;
             return;
@@ -1090,7 +1295,20 @@ function makeHandlers(reg) {
     };
 
     reg.onPointerUp = (e) => {
+        if (e.pointerType === 'touch') reg.touchPoints.delete(e.pointerId);
         const g = reg.gesture;
+        if (g && g.kind === 'pinch') {
+            if (reg.touchPoints.size < 2) {
+                // Pinch ends when fewer than two fingers remain. No fallback to a single-finger pan
+                // for whichever finger is left — the next touchstart begins a fresh gesture, the
+                // simplest of the transition behaviours and the one React Flow itself uses.
+                reg.gesture = null;
+                detachGestureListeners(reg);
+                diag({ ev: 'pinch-end' });
+                reportFinal(reg);
+            }
+            return;
+        }
         if (!g || e.pointerId !== g.pointerId) return;
         reg.gesture = null;
         detachGestureListeners(reg);
@@ -1105,6 +1323,11 @@ function makeHandlers(reg) {
         if (g.kind === 'connect') {
             swallowNextClick();
             endConnectGesture(reg, g, e.clientX, e.clientY);
+            return;
+        }
+        if (g.kind === 'reconnect') {
+            swallowNextClick();
+            endReconnectGesture(reg, g, e.clientX, e.clientY);
             return;
         }
         if (g.kind === 'marquee') {
@@ -1126,7 +1349,16 @@ function makeHandlers(reg) {
     };
 
     reg.onPointerCancel = (e) => {
+        if (e.pointerType === 'touch') reg.touchPoints.delete(e.pointerId);
         const g = reg.gesture;
+        if (g && g.kind === 'pinch') {
+            if (reg.touchPoints.size < 2) {
+                reg.gesture = null;
+                detachGestureListeners(reg);
+                diag({ ev: 'pinch-cancel' });
+            }
+            return;
+        }
         if (!g || e.pointerId !== g.pointerId) return;
         cancelGesture(reg, 'pointercancel');
     };
@@ -1153,6 +1385,12 @@ function makeHandlers(reg) {
     };
 
     reg.onKeyDown = (e) => {
+        // Editable field / opted-out region: never intercept (arrow-key scroll suppression,
+        // Enter/Space connect) — same rule FlowCanvas.razor's own keydown handlers apply via
+        // FlowIsFocusedElementEditableAsync. The exact-target-equality checks below already imply
+        // this for the current two branches, but a new one added later might not — check explicitly.
+        if (isKeyboardExempt(e.target)) return;
+
         // Arrow keys on a node move it (FlowCanvas handles the move in .NET); stop the page from
         // scrolling underneath. Only when the node can actually move.
         if (e.key && e.key.startsWith('Arrow')) {
@@ -1282,6 +1520,7 @@ function registerCanvas(pane, dotNetRef, options) {
         kbConnect: null,
         connLine: null,
         liveEl: null,
+        touchPoints: new Map(), // active touch pointerId -> {x, y}, for two-finger pinch
         pending: new Map(),
         measured: new Map(),
         reportedMeasure: new Set(),
@@ -1386,12 +1625,14 @@ export const flow = {
     setViewport,
     fitView: fitViewExport,
     getViewport,
+    isFocusedElementEditable,
 };
 
 // Test-only seam: the pure geometry, importable from Node without a DOM (tests/js/*.mjs).
 export const __testing = {
     fmt, clampZoom, snap, screenToFlow, zoomAt, getBounds, fitView, handleAnchor,
     straightPath, bezierPath, smoothStepPath, stepPoints, edgePath,
+    isEditable, isKeyboardExempt, isFocusedElementEditable,
 };
 
 export default flow;

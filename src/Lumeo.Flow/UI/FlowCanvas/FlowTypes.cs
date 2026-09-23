@@ -125,6 +125,11 @@ public readonly record struct FlowEdgePath(string D, double LabelX, double Label
 /// <summary>A new connection proposed by dragging between two handles (phase 2).</summary>
 public sealed record FlowConnection(string Source, string? SourceHandle, string Target, string? TargetHandle);
 
+/// <summary>An existing edge's end was dragged onto a different handle (phase 3).</summary>
+/// <param name="OldEdge">The edge as it was before the reconnect.</param>
+/// <param name="NewConnection">Where it was dropped — same shape as a fresh <see cref="FlowConnection"/>.</param>
+public sealed record FlowReconnectEventArgs(FlowEdge OldEdge, FlowConnection NewConnection);
+
 /// <summary>One node's committed position after a drag or keyboard move.</summary>
 /// <param name="Id">The node's id.</param>
 /// <param name="X">New left edge in flow coordinates.</param>

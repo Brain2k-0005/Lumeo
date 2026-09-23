@@ -1,10 +1,10 @@
 {
   "$schema": "https://lumeo.nativ.sh/components-api-schema.json",
   "version": "5.10.5",
-  "generated": "2026-09-23T23:14:11.8128440Z",
+  "generated": "2026-09-23T23:36:13.8799603Z",
   "stats": {
     "componentCount": 169,
-    "totalParameters": 4978,
+    "totalParameters": 4984,
     "totalEnums": 111,
     "totalRecords": 66,
     "serviceCount": 33,
@@ -1861,6 +1861,12 @@
           "summary": null
         },
         {
+          "name": "FlowIsFocusedElementEditableAsync",
+          "returnType": "Task<bool>",
+          "signature": "FlowIsFocusedElementEditableAsync(Microsoft.AspNetCore.Components.ElementReference paneEl)",
+          "summary": null
+        },
+        {
           "name": "SchedulerViewsGetLocalDateAsync",
           "returnType": "Task<string?>",
           "signature": "SchedulerViewsGetLocalDateAsync()",
@@ -3379,6 +3385,12 @@
           "returnType": "Task<double[]?>",
           "signature": "FlowGetViewportAsync(Microsoft.AspNetCore.Components.ElementReference paneEl)",
           "summary": "The engine's live viewport as [x, y, zoom], or null when the engine is unavailable. Default null."
+        },
+        {
+          "name": "FlowIsFocusedElementEditableAsync",
+          "returnType": "Task<bool>",
+          "signature": "FlowIsFocusedElementEditableAsync(Microsoft.AspNetCore.Components.ElementReference paneEl)",
+          "summary": "Whether document.activeElement, scoped to this pane, is an editable field (input, textarea, select, contenteditable) or inside a data-flow-nodrag region — what FlowCanvas's own keydown handlers (undo/redo, delete, arrow-nudge) check before acting, since KeyboardEventArgs carries no target of its own. Default false (assume not editable, so the shortcuts keep working without a registered engine)."
         },
         {
           "name": "SchedulerViewsGetLocalDateAsync",
@@ -36403,6 +36415,8 @@
         "UI/FlowCanvas/FlowEdgeLayer.razor",
         "UI/FlowCanvas/FlowGeometry.cs",
         "UI/FlowCanvas/FlowHandle.razor",
+        "UI/FlowCanvas/FlowHistory.cs",
+        "UI/FlowCanvas/FlowLayout.cs",
         "UI/FlowCanvas/FlowMiniMap.razor",
         "UI/FlowCanvas/FlowNodeHost.razor",
         "UI/FlowCanvas/FlowNodeToolbar.razor",
@@ -36555,7 +36569,16 @@
           "name": "SnapToGrid",
           "type": "bool",
           "default": "false",
-          "description": "Snaps dragged and keyboard-moved nodes to SnapGrid.",
+          "description": "Snaps dragged and keyboard-moved nodes to SnapGrid. Two-way bindable (@bind-SnapToGrid) so FlowControls' ShowSnapToggle button can flip it; without a binding it still works, the canvas just keeps its own toggled copy after the first render (the same rule Nodes/Edges follow).",
+          "isCascading": false,
+          "captureUnmatched": false,
+          "isEditorRequired": false
+        },
+        {
+          "name": "SnapToGridChanged",
+          "type": "EventCallback<bool>",
+          "default": null,
+          "description": "Raised when SnapToGrid changes — a caller toggle, or FlowControls' snap button.",
           "isCascading": false,
           "captureUnmatched": false,
           "isEditorRequired": false
@@ -36642,6 +36665,24 @@
           "isEditorRequired": false
         },
         {
+          "name": "History",
+          "type": "FlowHistory?",
+          "default": null,
+          "description": "When set, the canvas records a snapshot after every committed change (drag stop, keyboard move, connect, delete, an externally-applied Nodes/Edges replace such as an auto-layout result) and handles Ctrl+Z (undo), Ctrl+Shift+Z and Ctrl+Y (redo) while the canvas has focus. Selection changes alone do not push a snapshot. Share one FlowHistory with your own undo/redo UI if you have one — UndoAsync/RedoAsync are also public for that.",
+          "isCascading": false,
+          "captureUnmatched": false,
+          "isEditorRequired": false
+        },
+        {
+          "name": "EdgesReconnectable",
+          "type": "bool",
+          "default": "true",
+          "description": "Lets an existing selected edge's end be re-dragged onto a different handle (a small grab handle at each end of a selected edge). See OnReconnect.",
+          "isCascading": false,
+          "captureUnmatched": false,
+          "isEditorRequired": false
+        },
+        {
           "name": "OnNodeClick",
           "type": "EventCallback<FlowNode>",
           "default": null,
@@ -36714,6 +36755,15 @@
           "isEditorRequired": false
         },
         {
+          "name": "OnReconnect",
+          "type": "EventCallback<FlowReconnectEventArgs>",
+          "default": null,
+          "description": "An existing selected edge's end was dragged onto a different (or the same) compatible handle and passed IsValidConnection. Without a handler the canvas replaces the edge's moved end itself and raises EdgesChanged. Requires EdgesReconnectable.",
+          "isCascading": false,
+          "captureUnmatched": false,
+          "isEditorRequired": false
+        },
+        {
           "name": "OnSelectionChanged",
           "type": "EventCallback<FlowSelection>",
           "default": null,
@@ -36776,6 +36826,11 @@
           "description": "Raised when the viewport changes — at most once per animation frame while a pan or wheel zoom is running, once more when it ends, and after every imperative change (FitViewAsync, ZoomInAsync, ...)."
         },
         {
+          "name": "SnapToGridChanged",
+          "type": "EventCallback<bool>",
+          "description": "Raised when SnapToGrid changes — a caller toggle, or FlowControls' snap button."
+        },
+        {
           "name": "OnNodeClick",
           "type": "EventCallback<FlowNode>",
           "description": "A node was clicked (not raised for the click that ends a drag)."
@@ -36809,6 +36864,11 @@
           "name": "OnConnect",
           "type": "EventCallback<FlowConnection>",
           "description": "A connection was dropped on a compatible target handle and passed IsValidConnection. Without a handler the canvas appends a new FlowEdge itself and raises EdgesChanged."
+        },
+        {
+          "name": "OnReconnect",
+          "type": "EventCallback<FlowReconnectEventArgs>",
+          "description": "An existing selected edge's end was dragged onto a different (or the same) compatible handle and passed IsValidConnection. Without a handler the canvas replaces the edge's moved end itself and raises EdgesChanged. Requires EdgesReconnectable."
         },
         {
           "name": "OnSelectionChanged",
@@ -36853,7 +36913,7 @@
       "records": [
         {
           "name": "FlowCanvasContext",
-          "signature": "FlowCanvasContext(FlowCanvas Canvas, FlowViewport Viewport, FlowViewport InitialViewport, bool Locked, double MinZoom, double MaxZoom)",
+          "signature": "FlowCanvasContext(FlowCanvas Canvas, FlowViewport Viewport, FlowViewport InitialViewport, bool Locked, double MinZoom, double MaxZoom, bool SnapToGrid, int HistoryVersion)",
           "description": "What the canvas cascades to FlowBackground, FlowControls and its own node/edge layers. Re-created on every render (cascaded with IsFixed=\"false\")."
         }
       ],
@@ -36996,6 +37056,24 @@
               "type": "bool",
               "default": "true",
               "description": "Shows the lock toggle (locked = nodes cannot be moved; pan and zoom still work).",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "ShowSnapToggle",
+              "type": "bool",
+              "default": "false",
+              "description": "Shows a grid-icon toggle bound to the canvas' SnapToGrid.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "ShowHistory",
+              "type": "bool",
+              "default": "false",
+              "description": "Shows undo/redo buttons driven by the canvas' History (disabled with nothing to undo/redo, or when the canvas has no History set).",
               "isCascading": false,
               "captureUnmatched": false,
               "isEditorRequired": false
