@@ -1,0 +1,108 @@
+@namespace Lumeo
+@using System.Globalization
+
+@* FlowBackground — a dots / lines / cross grid behind the nodes that pans and zooms with the
+   canvas. Place it inside FlowCanvas' ChildContent.
+
+   One <pattern> in flow units (Gap apart), moved and scaled by patternTransform. The engine owns
+   patternTransform after mount (it rewrites it with every viewport change, and re-applies it to a
+   background that mounts later); .NET only renders it for the first paint. Colour comes from the
+   theme (--color-border via lumeo-flow.css) — no hardcoded colours. *@
+
+<svg data-slot="flow-background"
+     data-variant="@VariantName"
+     aria-hidden="true"
+     class="@Cx.Merge("pointer-events-none absolute inset-0 h-full w-full", Class)"
+     style="position:absolute;left:0;top:0;width:100%;height:100%;z-index:0;pointer-events:none;"
+     @attributes="AdditionalAttributes">
+    <defs>
+        <pattern id="@_patternId"
+                 data-flow-background-pattern
+                 patternUnits="userSpaceOnUse"
+                 x="0" y="0"
+                 width="@F(EffectiveGap)" height="@F(EffectiveGap)"
+                 patternTransform="@InitialTransform">
+            @switch (Variant)
+            {
+                case FlowBackgroundVariant.Lines:
+                    <path data-flow-background-shape="line"
+                          d="@LinesPath"
+                          vector-effect="non-scaling-stroke" />
+                    break;
+                case FlowBackgroundVariant.Cross:
+                    <path data-flow-background-shape="line"
+                          d="@CrossPath"
+                          vector-effect="non-scaling-stroke" />
+                    break;
+                default:
+                    <circle data-flow-background-shape="dot"
+                            cx="@F(EffectiveGap / 2)" cy="@F(EffectiveGap / 2)"
+                            r="@F(EffectiveSize)" />
+                    break;
+            }
+        </pattern>
+    </defs>
+    <rect width="100%" height="100%" fill="url(#@_patternId)" />
+</svg>
+
+@code {
+    [CascadingParameter] private FlowCanvas.FlowCanvasContext? Context { get; set; }
+
+    /// <summary>What the grid draws.</summary>
+    [Parameter] public FlowBackgroundVariant Variant { get; set; } = FlowBackgroundVariant.Dots;
+
+    /// <summary>Grid spacing in flow units.</summary>
+    [Parameter] public double Gap { get; set; } = 20;
+
+    /// <summary>Dot radius (dots) or half the arm length (cross), in flow units. Ignored for lines.</summary>
+    [Parameter] public double Size { get; set; } = 1;
+
+    /// <summary>Additional CSS classes merged onto the background <c>&lt;svg&gt;</c>.</summary>
+    [Parameter] public string? Class { get; set; }
+
+    /// <summary>Captures unmatched attributes and applies them to the background <c>&lt;svg&gt;</c>.</summary>
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private readonly string _patternId = "lumeo-flow-bg-" + Guid.NewGuid().ToString("N")[..10];
+
+    private double EffectiveGap => Gap > 0 ? Gap : 20;
+    private double EffectiveSize => Size > 0 ? Size : 1;
+
+    private string VariantName => Variant switch
+    {
+        FlowBackgroundVariant.Lines => "lines",
+        FlowBackgroundVariant.Cross => "cross",
+        _ => "dots",
+    };
+
+    private string InitialTransform
+    {
+        get
+        {
+            var v = Context?.InitialViewport ?? new FlowViewport(0, 0, 1);
+            return "translate(" + FlowCanvas.R(v.X) + "," + FlowCanvas.R(v.Y) + ") scale(" + FlowCanvas.R(v.Zoom) + ")";
+        }
+    }
+
+    private string LinesPath
+    {
+        get
+        {
+            var g = F(EffectiveGap);
+            return "M0,0 L" + g + ",0 M0,0 L0," + g;
+        }
+    }
+
+    private string CrossPath
+    {
+        get
+        {
+            var c = EffectiveGap / 2;
+            var s = Math.Min(EffectiveSize * 3, c);
+            return "M" + F(c - s) + "," + F(c) + " L" + F(c + s) + "," + F(c)
+                 + " M" + F(c) + "," + F(c - s) + " L" + F(c) + "," + F(c + s);
+        }
+    }
+
+    private static string F(double v) => FlowGeometry.Fmt(v);
+}

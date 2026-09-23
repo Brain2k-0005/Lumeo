@@ -1825,6 +1825,69 @@ public sealed class ComponentInteropService : IComponentInteropService
         catch (JSDisconnectedException) { }
     }
 
+    // --- Lumeo.Flow — FlowCanvas engine (flow.js), its own lazily imported module ---
+
+    private IJSObjectReference? _flowModule;
+
+    private async Task<IJSObjectReference> GetFlowModuleAsync()
+    {
+        // Through AppendVersion like the Scheduler module: a browser holding a previous flow.js
+        // must not keep running it against a newer FlowCanvas.
+        _flowModule ??= await _jsRuntime.InvokeAsync<IJSObjectReference>(
+            "import", AppendVersion("./_content/Lumeo.Flow/js/flow.js"));
+        return _flowModule;
+    }
+
+    public async Task FlowRegisterCanvasAsync<[System.Diagnostics.CodeAnalysis.DynamicallyAccessedMembers(System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicMethods)] T>(Microsoft.AspNetCore.Components.ElementReference paneEl, DotNetObjectReference<T> dotNetRef, object options) where T : class
+    {
+        try
+        {
+            var module = await GetFlowModuleAsync();
+            await module.InvokeVoidAsync("flow.registerCanvas", paneEl, dotNetRef, options);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
+    public async Task FlowUnregisterCanvasAsync(Microsoft.AspNetCore.Components.ElementReference paneEl)
+    {
+        try
+        {
+            var module = await GetFlowModuleAsync();
+            await module.InvokeVoidAsync("flow.unregisterCanvas", paneEl);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
+    public async Task FlowUpdateOptionsAsync(Microsoft.AspNetCore.Components.ElementReference paneEl, object options)
+    {
+        try
+        {
+            var module = await GetFlowModuleAsync();
+            await module.InvokeVoidAsync("flow.updateOptions", paneEl, options);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
+    public async Task FlowFitViewAsync(Microsoft.AspNetCore.Components.ElementReference paneEl, double padding, double minZoom, double maxZoom)
+    {
+        try
+        {
+            var module = await GetFlowModuleAsync();
+            await module.InvokeVoidAsync("flow.fitView", paneEl, padding, minZoom, maxZoom);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
+    public async Task<double[]?> FlowGetViewportAsync(Microsoft.AspNetCore.Components.ElementReference paneEl)
+    {
+        try
+        {
+            var module = await GetFlowModuleAsync();
+            return await module.InvokeAsync<double[]?>("flow.getViewport", paneEl);
+        }
+        catch (JSDisconnectedException) { return null; }
+    }
+
     // --- Scheduler first-party view engine (wave 1b) — its own module
     // (scheduler-views.js) — drag, resize, drag-create and the now-indicator.
 
@@ -2174,6 +2237,18 @@ public sealed class ComponentInteropService : IComponentInteropService
             try
             {
                 await _ganttV3Module.DisposeAsync();
+            }
+            catch (JSDisconnectedException)
+            {
+                // Circuit disconnected, safe to ignore
+            }
+        }
+
+        if (_flowModule is not null)
+        {
+            try
+            {
+                await _flowModule.DisposeAsync();
             }
             catch (JSDisconnectedException)
             {

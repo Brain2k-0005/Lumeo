@@ -1,0 +1,639 @@
+@namespace Lumeo
+@implements IAsyncDisposable
+@using System.ComponentModel
+@using System.Globalization
+@inject Lumeo.Services.IComponentInteropService Interop
+@inject Lumeo.Services.Localization.ILumeoLocalizer L
+
+@* FlowCanvas — a node/flow editor surface (Lumeo.Flow, spec: src/Lumeo.Flow/DESIGN.md).
+
+   Rendering: the root carries role="application"; the pane clips and receives every gesture;
+   inside it one viewport layer (transform: translate + scale) holds the SVG edge layer and the
+   absolutely positioned node hosts, so nodes and edges live in FLOW coordinates and pan/zoom is a
+   single transform. ChildContent (FlowBackground, FlowControls, ...) renders beside the viewport
+   layer inside the pane.
+
+   Ownership: after the first render the viewport transform belongs to flow.js. .NET changes it
+   only by stamping data-flow-viewport="x|y|zoom|id" on the pane; the engine's MutationObserver
+   applies the stamp in the same frame the render lands. Pan, wheel zoom and node drag run in JS
+   without a render per frame; .NET hears about them through the JSInvokable members below. *@
+
+<div data-slot="flow-canvas"
+     role="application"
+     aria-label="@L["Flow.CanvasLabel"]"
+     class="@RootClass"
+     style="@RootStyle"
+     data-flow-fit-pending="@(FitViewOnInit ? "" : null)"
+     data-readonly="@(Readonly ? "" : null)"
+     @attributes="AdditionalAttributes">
+    <div @ref="_paneRef"
+         data-slot="flow-pane"
+         data-flow-viewport="@ViewportStamp"
+         data-flow-generation="@_state.Generation.ToString(CultureInfo.InvariantCulture)"
+         style="position:relative;width:100%;height:100%;overflow:hidden;touch-action:none;">
+        <CascadingValue Value="_context" IsFixed="false">
+            <div data-slot="flow-viewport" style="@_viewportLayerStyle">
+                <FlowEdgeLayer />
+                <div data-slot="flow-nodes">
+                    @foreach (var node in _nodes)
+                    {
+                        <FlowNodeHost @key="node.Id" Node="node" />
+                    }
+                </div>
+            </div>
+            @ChildContent
+        </CascadingValue>
+    </div>
+</div>
+
+@code {
+    // ── Data ─────────────────────────────────────────────────────────────
+
+    /// <summary>The nodes to render. Two-way bindable (<c>@bind-Nodes</c>): every committed drag or keyboard move emits a new list through <see cref="NodesChanged"/>. Without a binding the canvas keeps its own copy until you pass a different list.</summary>
+    [Parameter] public IReadOnlyList<FlowNode>? Nodes { get; set; }
+
+    /// <summary>Raised with the new node list after a committed drag or keyboard move.</summary>
+    [Parameter] public EventCallback<IReadOnlyList<FlowNode>> NodesChanged { get; set; }
+
+    /// <summary>The edges to draw between nodes. Edges whose source or target node is missing are skipped.</summary>
+    [Parameter] public IReadOnlyList<FlowEdge>? Edges { get; set; }
+
+    /// <summary>The pan/zoom state. Two-way bindable (<c>@bind-Viewport</c>). Setting a new value moves the canvas; the canvas reports user pans and zooms back through <see cref="ViewportChanged"/>. A zoom of 0 or less means "not set" (the canvas starts at 0,0 and 100%).</summary>
+    [Parameter] public FlowViewport Viewport { get; set; } = new(0, 0, 1);
+
+    /// <summary>Raised when the viewport changes — at most once per animation frame while a pan or wheel zoom is running, once more when it ends, and after every imperative change (<see cref="FitViewAsync"/>, <see cref="ZoomInAsync"/>, ...).</summary>
+    [Parameter] public EventCallback<FlowViewport> ViewportChanged { get; set; }
+
+    /// <summary>Renders each node's content. The canvas wraps it in a positioned, focusable host. Without a template a node renders a small card with its <c>Data</c> (or <c>Id</c>).</summary>
+    [Parameter] public RenderFragment<FlowNodeContext>? NodeTemplate { get; set; }
+
+    /// <summary>Overlays rendered inside the pane: <see cref="FlowBackground"/>, <see cref="FlowControls"/>, your own panels.</summary>
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    // ── Layout and behaviour ─────────────────────────────────────────────
+
+    /// <summary>CSS height of the canvas.</summary>
+    [Parameter] public string Height { get; set; } = "500px";
+
+    /// <summary>Smallest zoom a gesture or method may reach.</summary>
+    [Parameter] public double MinZoom { get; set; } = 0.25;
+
+    /// <summary>Largest zoom a gesture or method may reach.</summary>
+    [Parameter] public double MaxZoom { get; set; } = 2;
+
+    /// <summary>Fits every node into view once the canvas has mounted and measured its nodes (the nodes stay invisible until then, so the un-fitted frame never shows).</summary>
+    [Parameter] public bool FitViewOnInit { get; set; } = true;
+
+    /// <summary>Breathing room for fit-view, as a fraction of the nodes' bounds (0.1 = 10%).</summary>
+    [Parameter] public double FitViewPadding { get; set; } = 0.1;
+
+    /// <summary>Snaps dragged and keyboard-moved nodes to <see cref="SnapGrid"/>.</summary>
+    [Parameter] public bool SnapToGrid { get; set; }
+
+    /// <summary>The snap grid in flow units (X, Y).</summary>
+    [Parameter] public (double X, double Y) SnapGrid { get; set; } = (16, 16);
+
+    /// <summary>Nodes can be moved by dragging or with the arrow keys.</summary>
+    [Parameter] public bool NodesDraggable { get; set; } = true;
+
+    /// <summary>Dragging the empty background pans the canvas. Holding Space pans from anywhere either way.</summary>
+    [Parameter] public bool PanOnDrag { get; set; } = true;
+
+    /// <summary>The mouse wheel zooms, anchored on the pointer (a plain wheel — no modifier — like React Flow; the page does not scroll while the pointer is over the canvas).</summary>
+    [Parameter] public bool ZoomOnScroll { get; set; } = true;
+
+    /// <summary>Turns every editing gesture off (node drag and keyboard move now; connect and delete in later phases). Pan, zoom, selection and click events keep working.</summary>
+    [Parameter] public bool Readonly { get; set; }
+
+    // ── Events ───────────────────────────────────────────────────────────
+
+    /// <summary>A node was clicked (not raised for the click that ends a drag).</summary>
+    [Parameter] public EventCallback<FlowNode> OnNodeClick { get; set; }
+
+    /// <summary>A node was double-clicked.</summary>
+    [Parameter] public EventCallback<FlowNode> OnNodeDoubleClick { get; set; }
+
+    /// <summary>A node was right-clicked. The browser menu is suppressed while this has a handler.</summary>
+    [Parameter] public EventCallback<FlowNodeContextMenuEventArgs> OnNodeContextMenu { get; set; }
+
+    /// <summary>The empty background was clicked (not dragged); the point is in flow coordinates.</summary>
+    [Parameter] public EventCallback<FlowPoint> OnPaneClick { get; set; }
+
+    /// <summary>A drag (or arrow-key move) was committed; one entry per moved node. Raised after <see cref="NodesChanged"/>.</summary>
+    [Parameter] public EventCallback<IReadOnlyList<FlowNodeChange>> OnNodeDragStop { get; set; }
+
+    /// <summary>Additional CSS classes merged onto the root element.</summary>
+    [Parameter] public string? Class { get; set; }
+
+    /// <summary>Captures unmatched attributes and applies them to the root element.</summary>
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    /// <summary>
+    /// What the canvas cascades to <see cref="FlowBackground"/>, <see cref="FlowControls"/> and its own
+    /// node/edge layers. Re-created on every render (cascaded with <c>IsFixed="false"</c>).
+    /// </summary>
+    /// <param name="Canvas">The owning canvas.</param>
+    /// <param name="Viewport">The latest known viewport.</param>
+    /// <param name="InitialViewport">The viewport of the first render — what server-rendered transforms use; the engine owns them after mount.</param>
+    /// <param name="Locked">The lock toggle is on (no node drag).</param>
+    /// <param name="MinZoom">The canvas' <c>MinZoom</c>.</param>
+    /// <param name="MaxZoom">The canvas' <c>MaxZoom</c>.</param>
+    public record FlowCanvasContext(FlowCanvas Canvas, FlowViewport Viewport, FlowViewport InitialViewport, bool Locked, double MinZoom, double MaxZoom);
+
+    // ── State ────────────────────────────────────────────────────────────
+
+    internal readonly FlowState _state = new();
+    private ElementReference _paneRef;
+    private DotNetObjectReference<FlowCanvas>? _selfRef;
+    private IReadOnlyList<FlowNode> _nodes = Array.Empty<FlowNode>();
+    private IReadOnlyList<FlowNode>? _lastNodesParam;
+    private readonly List<IReadOnlyList<FlowNode>> _recentEmitted = new();
+    private FlowViewport _lastViewportParam;
+    private FlowViewport _initialViewport = new(0, 0, 1);
+    private string _viewportLayerStyle = "";
+    private FlowCanvasContext _context = default!;
+    private bool _initialized;
+    private bool _locked;
+    private bool _registered;
+    private bool _disposed;
+    private FlowEngineOptions? _lastOptions;
+
+    /// <summary>The options bag pushed to flow.js. A record, so "changed?" is structural equality.</summary>
+    internal sealed record FlowEngineOptions(
+        double MinZoom, double MaxZoom, bool SnapToGrid, double SnapX, double SnapY,
+        bool NodesDraggable, bool PanOnDrag, bool ZoomOnScroll, bool Readonly,
+        bool FitViewOnInit, double FitViewPadding)
+    {
+        /// <summary>Serialised as <c>snap</c>: <c>[gx, gy]</c> or null.</summary>
+        public double[]? Snap => SnapToGrid ? new[] { SnapX, SnapY } : null;
+    }
+
+    /// <summary>The viewport as .NET last knows it (engine reports and imperative changes).</summary>
+    public FlowViewport CurrentViewport => _state.Viewport;
+
+    /// <summary>The nodes as currently rendered (the bound list, or the canvas' own copy).</summary>
+    public IReadOnlyList<FlowNode> CurrentNodes => _nodes;
+
+    internal bool Locked => _locked;
+    internal bool CanMoveNodes => NodesDraggable && !Readonly && !_locked;
+
+    private string RootClass => Cx.Merge(
+        "relative block w-full overflow-hidden rounded-lg border border-border bg-background text-foreground",
+        Class);
+
+    private string RootStyle => "height:" + Height + ";";
+
+    private string ViewportStamp
+    {
+        get
+        {
+            var v = _state.StampedViewport;
+            return R(v.X) + "|" + R(v.Y) + "|" + R(v.Zoom) + "|" + _state.StampId.ToString(CultureInfo.InvariantCulture);
+        }
+    }
+
+    internal static string R(double value) => (value == 0 ? 0 : value).ToString("R", CultureInfo.InvariantCulture);
+
+    private static string LayerStyle(FlowViewport v)
+        => "position:absolute;left:0;top:0;z-index:1;transform-origin:0 0;transform:translate("
+           + R(v.X) + "px, " + R(v.Y) + "px) scale(" + R(v.Zoom) + ");";
+
+    private FlowViewport Sanitize(FlowViewport v)
+    {
+        if (!(v.Zoom > 0) || !double.IsFinite(v.Zoom) || !double.IsFinite(v.X) || !double.IsFinite(v.Y)) return new(0, 0, 1);
+        return v with { Zoom = FlowGeometry.ClampZoom(v.Zoom, MinZoom, MaxZoom) };
+    }
+
+    protected override void OnParametersSet()
+    {
+        // Nodes: a list we emitted ourselves coming back through @bind-Nodes is an echo; anything
+        // else replaces the state from outside and bumps the generation, so a drag that started
+        // before it can never commit over it.
+        if (!_initialized || !ReferenceEquals(Nodes, _lastNodesParam))
+        {
+            _lastNodesParam = Nodes;
+            var incoming = Nodes ?? Array.Empty<FlowNode>();
+            var emittedIndex = _recentEmitted.FindIndex(l => ReferenceEquals(l, Nodes));
+            if (!_initialized)
+            {
+                _nodes = incoming;
+            }
+            else if (emittedIndex >= 0)
+            {
+                // Our own list. Only the latest one is current; an older echo (two commits in quick
+                // succession, the parent catching up) must not roll the canvas back.
+                if (emittedIndex == _recentEmitted.Count - 1) _nodes = incoming;
+            }
+            else
+            {
+                _nodes = incoming;
+                _state.BumpGeneration();
+            }
+            _state.ForgetMissing(_nodes);
+            if (_state.SelectedNodeIds.Count > 0)
+            {
+                var live = new HashSet<string>(_nodes.Select(n => n.Id), StringComparer.Ordinal);
+                _state.SelectedNodeIds.RemoveWhere(id => !live.Contains(id));
+            }
+        }
+
+        // Viewport: the first value seeds the state and the server-rendered transform; later values
+        // are instructions unless they are an echo of what the engine reported.
+        if (!_initialized)
+        {
+            _initialViewport = Sanitize(Viewport);
+            _state.Initialize(_initialViewport);
+            _viewportLayerStyle = LayerStyle(_initialViewport);
+            _lastViewportParam = Viewport;
+        }
+        else if (Viewport != _lastViewportParam)
+        {
+            _lastViewportParam = Viewport;
+            var v = Sanitize(Viewport);
+            if (!_state.IsEcho(Viewport) && !_state.IsEcho(v)) _state.Stamp(v);
+        }
+
+        _initialized = true;
+        RefreshContext();
+    }
+
+    private void RefreshContext()
+        => _context = new FlowCanvasContext(this, _state.Viewport, _initialViewport, _locked, MinZoom, MaxZoom);
+
+    private FlowEngineOptions BuildOptions() => new(
+        MinZoom, MaxZoom, SnapToGrid, SnapGrid.X, SnapGrid.Y,
+        CanMoveNodes, PanOnDrag, ZoomOnScroll, Readonly,
+        FitViewOnInit, FitViewPadding);
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        var options = BuildOptions();
+        if (firstRender)
+        {
+            _selfRef ??= DotNetObjectReference.Create(this);
+            // Claimed BEFORE the await (memory: guard before the await) — a dispose that lands while
+            // the register call is in flight sees it and unregisters; the re-check after the await
+            // below closes the other half of that race.
+            _registered = true;
+            _lastOptions = options;
+            try
+            {
+                await Interop.FlowRegisterCanvasAsync(_paneRef, _selfRef, options);
+            }
+            catch (JSDisconnectedException)
+            {
+            }
+            catch (Exception)
+            {
+                // A custom interop service that throws: the canvas degrades to a static render
+                // instead of taking the page down. A later render does not retry — registration
+                // is a mount-time contract.
+                _registered = false;
+            }
+            if (_disposed)
+            {
+                try { await Interop.FlowUnregisterCanvasAsync(_paneRef); }
+                catch (JSDisconnectedException) { }
+            }
+            return;
+        }
+
+        if (_registered && !_disposed && options != _lastOptions)
+        {
+            _lastOptions = options;
+            try { await Interop.FlowUpdateOptionsAsync(_paneRef, options); }
+            catch (JSDisconnectedException) { }
+        }
+    }
+
+    // ── Node rendering helpers (used by FlowNodeHost / FlowEdgeLayer) ────
+
+    internal bool IsSelected(string id) => _state.SelectedNodeIds.Contains(id);
+    internal bool IsDragging(string id) => _state.DraggingNodeIds.Contains(id);
+    internal bool CanDrag(FlowNode node) => CanMoveNodes && node.Draggable;
+    internal bool HasContextMenuHandler => OnNodeContextMenu.HasDelegate;
+
+    internal RenderFragment RenderNodeContent(FlowNodeContext context)
+        => NodeTemplate is not null ? NodeTemplate(context) : DefaultNodeContent(context);
+
+    private static RenderFragment DefaultNodeContent(FlowNodeContext context) => builder =>
+    {
+        builder.OpenElement(0, "div");
+        builder.AddAttribute(1, "class", "rounded-md border border-border bg-card px-3 py-2 text-sm text-card-foreground shadow-sm");
+        builder.AddContent(2, context.Node.Data?.ToString() ?? context.Node.Id);
+        builder.CloseElement();
+    };
+
+    internal IEnumerable<(FlowEdge Edge, FlowEdgePath Path)> RenderableEdges()
+    {
+        if (Edges is null || Edges.Count == 0) yield break;
+        var byId = new Dictionary<string, FlowNode>(StringComparer.Ordinal);
+        foreach (var n in _nodes) byId[n.Id] = n;
+        foreach (var edge in Edges)
+        {
+            if (edge is null) continue;
+            if (!byId.TryGetValue(edge.Source, out var s) || !byId.TryGetValue(edge.Target, out var t)) continue;
+            var (sp, spos) = _state.GetAnchor(s, edge.SourceHandle, FlowHandleType.Source);
+            var (tp, tpos) = _state.GetAnchor(t, edge.TargetHandle, FlowHandleType.Target);
+            yield return (edge, FlowGeometry.GetEdgePath(edge.Type, sp.X, sp.Y, spos, tp.X, tp.Y, tpos));
+        }
+    }
+
+    // ── Node events (from FlowNodeHost) ──────────────────────────────────
+
+    internal async Task HandleNodeClickAsync(FlowNode node)
+    {
+        if (node.Selectable && !(_state.SelectedNodeIds.Count == 1 && _state.SelectedNodeIds.Contains(node.Id)))
+        {
+            _state.SelectedNodeIds.Clear();
+            _state.SelectedNodeIds.Add(node.Id);
+            StateHasChanged();
+        }
+        if (OnNodeClick.HasDelegate) await OnNodeClick.InvokeAsync(node);
+    }
+
+    internal Task HandleNodeDoubleClickAsync(FlowNode node)
+        => OnNodeDoubleClick.HasDelegate ? OnNodeDoubleClick.InvokeAsync(node) : Task.CompletedTask;
+
+    internal Task HandleNodeContextMenuAsync(FlowNode node, MouseEventArgs e)
+        => OnNodeContextMenu.HasDelegate
+            ? OnNodeContextMenu.InvokeAsync(new FlowNodeContextMenuEventArgs(node, e.ClientX, e.ClientY))
+            : Task.CompletedTask;
+
+    internal async Task HandleNodeKeyDownAsync(FlowNode node, KeyboardEventArgs e)
+    {
+        switch (e.Key)
+        {
+            case "Escape":
+                if (_state.SelectedNodeIds.Count > 0)
+                {
+                    _state.SelectedNodeIds.Clear();
+                    StateHasChanged();
+                }
+                return;
+            case "ArrowLeft":
+            case "ArrowRight":
+            case "ArrowUp":
+            case "ArrowDown":
+                await MoveByKeyboardAsync(node, e.Key, e.ShiftKey);
+                return;
+        }
+    }
+
+    private async Task MoveByKeyboardAsync(FlowNode node, string key, bool shift)
+    {
+        if (!CanMoveNodes) return;
+        var current = _nodes.FirstOrDefault(n => n.Id == node.Id);
+        if (current is null || !current.Draggable) return;
+
+        var stepX = SnapToGrid && SnapGrid.X > 0 ? SnapGrid.X : 1;
+        var stepY = SnapToGrid && SnapGrid.Y > 0 ? SnapGrid.Y : 1;
+        if (shift) { stepX *= 10; stepY *= 10; }
+        var (dx, dy) = key switch
+        {
+            "ArrowLeft" => (-stepX, 0d),
+            "ArrowRight" => (stepX, 0d),
+            "ArrowUp" => (0d, -stepY),
+            _ => (0d, stepY),
+        };
+
+        // The focused node, plus the rest of the selection when the focused node is part of it.
+        var moving = _state.SelectedNodeIds.Contains(current.Id)
+            ? new HashSet<string>(_state.SelectedNodeIds, StringComparer.Ordinal)
+            : new HashSet<string>(StringComparer.Ordinal) { current.Id };
+
+        var changes = new List<FlowNodeChange>();
+        var next = new List<FlowNode>(_nodes.Count);
+        foreach (var n in _nodes)
+        {
+            if (moving.Contains(n.Id) && n.Draggable)
+            {
+                var x = n.X + dx;
+                var y = n.Y + dy;
+                if (SnapToGrid)
+                {
+                    x = FlowGeometry.Snap(x, SnapGrid.X);
+                    y = FlowGeometry.Snap(y, SnapGrid.Y);
+                }
+                next.Add(n with { X = x, Y = y });
+                changes.Add(new FlowNodeChange(n.Id, x, y));
+            }
+            else
+            {
+                next.Add(n);
+            }
+        }
+        if (changes.Count == 0) return;
+        await EmitNodesAsync(next);
+        if (OnNodeDragStop.HasDelegate) await OnNodeDragStop.InvokeAsync(changes);
+    }
+
+    private Task EmitNodesAsync(List<FlowNode> next)
+    {
+        // State first, synchronously — anything that arrives while NodesChanged is awaited (a
+        // second commit, a keyboard move) builds on this list, not on the one it replaced.
+        _nodes = next;
+        _recentEmitted.Add(next);
+        if (_recentEmitted.Count > 8) _recentEmitted.RemoveAt(0);
+        StateHasChanged();
+        return NodesChanged.HasDelegate ? NodesChanged.InvokeAsync(next) : Task.CompletedTask;
+    }
+
+    // ── Imperative API ───────────────────────────────────────────────────
+
+    /// <summary>Fits every node into view. <paramref name="padding"/> defaults to <see cref="FitViewPadding"/>.</summary>
+    public async Task FitViewAsync(double? padding = null)
+    {
+        var pad = padding ?? FitViewPadding;
+        if (_nodes.Count == 0) return;
+        if (_state.PaneWidth > 0 && _state.PaneHeight > 0 && _state.AllSized(_nodes)
+            && _state.ComputeFit(_nodes, pad, MinZoom, MaxZoom) is { } vp)
+        {
+            await SetViewportCoreAsync(vp);
+            return;
+        }
+        // Some node has never been measured: let the engine measure the DOM and fit (it reports back).
+        if (_registered && !_disposed)
+        {
+            try { await Interop.FlowFitViewAsync(_paneRef, pad, MinZoom, MaxZoom); }
+            catch (JSDisconnectedException) { }
+        }
+    }
+
+    /// <summary>Zooms to <paramref name="zoom"/> (clamped to the zoom limits), keeping the pane centre fixed.</summary>
+    public async Task ZoomToAsync(double zoom)
+    {
+        var current = await LiveViewportAsync();
+        var z = FlowGeometry.ClampZoom(zoom, MinZoom, MaxZoom);
+        await SetViewportCoreAsync(FlowGeometry.ZoomAt(current, z, _state.PaneWidth / 2, _state.PaneHeight / 2));
+    }
+
+    /// <summary>Zooms in one step (×1.2) around the pane centre.</summary>
+    public async Task ZoomInAsync() => await ZoomToAsync((await LiveViewportAsync()).Zoom * FlowGeometry.ZoomStep);
+
+    /// <summary>Zooms out one step (÷1.2) around the pane centre.</summary>
+    public async Task ZoomOutAsync() => await ZoomToAsync((await LiveViewportAsync()).Zoom / FlowGeometry.ZoomStep);
+
+    /// <summary>Centres the pane on flow point (<paramref name="x"/>, <paramref name="y"/>), optionally at a new zoom.</summary>
+    public async Task SetCenterAsync(double x, double y, double? zoom = null)
+    {
+        var current = await LiveViewportAsync();
+        var z = FlowGeometry.ClampZoom(zoom ?? current.Zoom, MinZoom, MaxZoom);
+        await SetViewportCoreAsync(FlowGeometry.CenterOn(x, y, z, _state.PaneWidth, _state.PaneHeight));
+    }
+
+    /// <summary>Moves the canvas to <paramref name="viewport"/> (zoom clamped to the limits).</summary>
+    public Task SetViewportAsync(FlowViewport viewport) => SetViewportCoreAsync(Sanitize(viewport));
+
+    /// <summary>Pane-local pixels (relative to the canvas pane's top-left corner, e.g. <c>MouseEventArgs.OffsetX</c> on the pane) → flow coordinates, using the latest known viewport.</summary>
+    public FlowPoint ScreenToFlow(double x, double y) => FlowGeometry.ScreenToFlow(x, y, _state.Viewport);
+
+    /// <summary>Flow coordinates → pane-local pixels, using the latest known viewport.</summary>
+    public FlowPoint FlowToScreen(double x, double y) => FlowGeometry.FlowToScreen(x, y, _state.Viewport);
+
+    internal async Task SetLockedAsync(bool locked)
+    {
+        if (_locked == locked) return;
+        _locked = locked;
+        RefreshContext();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task<FlowViewport> LiveViewportAsync()
+    {
+        if (_registered && !_disposed)
+        {
+            try
+            {
+                var live = await Interop.FlowGetViewportAsync(_paneRef);
+                if (live is { Length: 3 } && live[2] > 0) return new FlowViewport(live[0], live[1], live[2]);
+            }
+            catch (JSDisconnectedException) { }
+        }
+        return _state.Viewport;
+    }
+
+    private async Task SetViewportCoreAsync(FlowViewport viewport)
+    {
+        _state.Stamp(viewport);
+        RefreshContext();
+        await InvokeAsync(StateHasChanged);
+        if (ViewportChanged.HasDelegate) await InvokeAsync(() => ViewportChanged.InvokeAsync(viewport));
+    }
+
+    // ── Engine callbacks (flow.js) ───────────────────────────────────────
+
+    /// <summary>Engine callback: a node drag ended. Applies the positions unless the drag started under an older node list (<paramref name="generation"/>) or editing is off; returns whether it did. Not meant for application code.</summary>
+    [JSInvokable, EditorBrowsable(EditorBrowsableState.Never)]
+    public async Task<bool> CommitNodeDrag(FlowNodeChange[] changes, int generation)
+    {
+        var hadDragging = _state.DraggingNodeIds.Count > 0;
+        _state.DraggingNodeIds.Clear();
+        if (changes is null || changes.Length == 0 || !CanMoveNodes || generation != _state.Generation)
+        {
+            if (hadDragging) StateHasChanged();
+            return false;
+        }
+
+        var map = new Dictionary<string, FlowNodeChange>(StringComparer.Ordinal);
+        foreach (var c in changes)
+        {
+            if (c is null || string.IsNullOrEmpty(c.Id) || !double.IsFinite(c.X) || !double.IsFinite(c.Y)) continue;
+            map[c.Id] = c;
+        }
+
+        var applied = new List<FlowNodeChange>();
+        var next = new List<FlowNode>(_nodes.Count);
+        foreach (var n in _nodes)
+        {
+            if (n.Draggable && map.TryGetValue(n.Id, out var c))
+            {
+                next.Add(n with { X = c.X, Y = c.Y });
+                applied.Add(new FlowNodeChange(n.Id, c.X, c.Y));
+            }
+            else
+            {
+                next.Add(n);
+            }
+        }
+        if (applied.Count == 0)
+        {
+            if (hadDragging) StateHasChanged();
+            return false;
+        }
+
+        await EmitNodesAsync(next);
+        if (OnNodeDragStop.HasDelegate) await OnNodeDragStop.InvokeAsync(applied);
+        return true;
+    }
+
+    /// <summary>Engine callback: a drag passed its threshold. Not meant for application code.</summary>
+    [JSInvokable, EditorBrowsable(EditorBrowsableState.Never)]
+    public void NodeDragStart(string[] ids)
+    {
+        _state.DraggingNodeIds.Clear();
+        if (ids is not null) foreach (var id in ids) if (!string.IsNullOrEmpty(id)) _state.DraggingNodeIds.Add(id);
+        StateHasChanged();
+    }
+
+    /// <summary>Engine callback: a drag was cancelled (Escape, pointer cancel). Not meant for application code.</summary>
+    [JSInvokable, EditorBrowsable(EditorBrowsableState.Never)]
+    public void NodeDragCancelled()
+    {
+        if (_state.DraggingNodeIds.Count == 0) return;
+        _state.DraggingNodeIds.Clear();
+        StateHasChanged();
+    }
+
+    /// <summary>Engine callback: the viewport moved (pan, wheel zoom, engine fit). Not meant for application code.</summary>
+    [JSInvokable, EditorBrowsable(EditorBrowsableState.Never)]
+    public async Task OnViewportChanged(double x, double y, double zoom, bool final)
+    {
+        if (!double.IsFinite(x) || !double.IsFinite(y) || !(zoom > 0)) return;
+        var viewport = new FlowViewport(x, y, zoom);
+        _state.Report(viewport);
+        if (ViewportChanged.HasDelegate) await ViewportChanged.InvokeAsync(viewport);
+        if (final)
+        {
+            // Once per gesture: refresh what depends on the zoom (the controls' limits).
+            RefreshContext();
+            StateHasChanged();
+        }
+    }
+
+    /// <summary>Engine callback: node sizes / handle offsets were measured. Not meant for application code.</summary>
+    [JSInvokable, EditorBrowsable(EditorBrowsableState.Never)]
+    public void NodesMeasured(FlowNodeMeasurement[] measurements)
+    {
+        if (measurements is null) return;
+        if (_state.ApplyMeasurements(measurements)) StateHasChanged();
+    }
+
+    /// <summary>Engine callback: the pane was resized. Not meant for application code.</summary>
+    [JSInvokable, EditorBrowsable(EditorBrowsableState.Never)]
+    public void PaneResized(double width, double height) => _state.SetPaneSize(width, height);
+
+    /// <summary>Engine callback: the background was clicked at a flow point. Not meant for application code.</summary>
+    [JSInvokable, EditorBrowsable(EditorBrowsableState.Never)]
+    public async Task PaneClicked(double x, double y)
+    {
+        if (_state.SelectedNodeIds.Count > 0)
+        {
+            _state.SelectedNodeIds.Clear();
+            StateHasChanged();
+        }
+        if (OnPaneClick.HasDelegate) await OnPaneClick.InvokeAsync(new FlowPoint(x, y));
+    }
+
+    /// <inheritdoc />
+    public async ValueTask DisposeAsync()
+    {
+        _disposed = true;
+        if (_registered)
+        {
+            try { await Interop.FlowUnregisterCanvasAsync(_paneRef); }
+            catch (JSDisconnectedException) { }
+        }
+        _selfRef?.Dispose();
+    }
+}

@@ -1,0 +1,79 @@
+@namespace Lumeo
+@using System.ComponentModel
+@inject Lumeo.Services.Localization.ILumeoLocalizer L
+@attribute [EditorBrowsable(EditorBrowsableState.Never)]
+
+@* FlowNodeHost — the positioned, focusable wrapper FlowCanvas renders around each node's template.
+   Rendered by FlowCanvas; not meant to be used directly (the Razor compiler always makes components
+   public, hence [EditorBrowsable(Never)]).
+
+   Position: transform: translate(Xpx, Ypx) in flow coordinates, plus data-x/data-y carrying the
+   same numbers at full precision — the engine reads those as the .NET truth when a drag starts or
+   has to be undone. During a drag the engine writes the transform directly; the render after the
+   commit writes the identical value, so the node never jumps. data-dragging is set by the engine
+   the moment a drag starts and mirrored here once .NET hears about it. *@
+
+<CascadingValue Value="Node" Name="LumeoFlowNode" IsFixed="false">
+    <div data-flow-node="@Node.Id"
+         data-x="@FlowCanvas.R(Node.X)"
+         data-y="@FlowCanvas.R(Node.Y)"
+         data-type="@Node.Type"
+         data-selected="@(Selected ? "" : null)"
+         data-dragging="@(Dragging ? "" : null)"
+         data-draggable="@(Draggable ? "true" : "false")"
+         tabindex="0"
+         role="group"
+         aria-roledescription="@L["Flow.NodeRole"]"
+         aria-label="@Node.Id"
+         aria-selected="@(Selected ? "true" : "false")"
+         class="@HostClass"
+         style="@HostStyle"
+         @onclick="HandleClickAsync"
+         @ondblclick="HandleDoubleClickAsync"
+         @oncontextmenu="HandleContextMenuAsync"
+         @oncontextmenu:preventDefault="@(Canvas?.HasContextMenuHandler == true)"
+         @onkeydown="HandleKeyDownAsync"
+         @attributes="AdditionalAttributes">
+        @if (Canvas is not null)
+        {
+            @Canvas.RenderNodeContent(new FlowNodeContext(Node, Selected, Dragging, Canvas))
+        }
+    </div>
+</CascadingValue>
+
+@code {
+    [CascadingParameter] private FlowCanvas.FlowCanvasContext? Context { get; set; }
+
+    /// <summary>The node this host positions and wraps.</summary>
+    [Parameter, EditorRequired] public FlowNode Node { get; set; } = default!;
+
+    /// <summary>Additional CSS classes merged onto the host element.</summary>
+    [Parameter] public string? Class { get; set; }
+
+    /// <summary>Captures unmatched attributes and applies them to the host element.</summary>
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private FlowCanvas? Canvas => Context?.Canvas;
+    private bool Selected => Canvas?.IsSelected(Node.Id) == true;
+    private bool Dragging => Canvas?.IsDragging(Node.Id) == true;
+    private bool Draggable => Canvas?.CanDrag(Node) == true;
+
+    private string HostClass => Cx.Merge("lumeo-flow-node", Class);
+
+    private string HostStyle
+    {
+        get
+        {
+            var style = "position:absolute;left:0;top:0;transform:translate(" + FlowCanvas.R(Node.X) + "px, " + FlowCanvas.R(Node.Y) + "px);";
+            if (Node.Width is { } w) style += "width:" + FlowCanvas.R(w) + "px;";
+            if (Node.Height is { } h) style += "height:" + FlowCanvas.R(h) + "px;";
+            if (Node.ZIndex is { } z) style += "z-index:" + z.ToString(System.Globalization.CultureInfo.InvariantCulture) + ";";
+            return style;
+        }
+    }
+
+    private Task HandleClickAsync() => Canvas?.HandleNodeClickAsync(Node) ?? Task.CompletedTask;
+    private Task HandleDoubleClickAsync() => Canvas?.HandleNodeDoubleClickAsync(Node) ?? Task.CompletedTask;
+    private Task HandleContextMenuAsync(MouseEventArgs e) => Canvas?.HandleNodeContextMenuAsync(Node, e) ?? Task.CompletedTask;
+    private Task HandleKeyDownAsync(KeyboardEventArgs e) => Canvas?.HandleNodeKeyDownAsync(Node, e) ?? Task.CompletedTask;
+}
