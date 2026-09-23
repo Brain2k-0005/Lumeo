@@ -1,0 +1,351 @@
+@page "/components/flow-canvas"
+@using System.Globalization
+
+<PageTitle>Flow Canvas — Lumeo</PageTitle>
+
+<PageHeader Title="Flow Canvas"
+            Description="A node/flow editor surface: your own Razor node cards and SVG edges on a pannable, zoomable canvas, with drag-to-move, snapping, a background grid and zoom controls. A first-party engine — no third-party runtime library." />
+
+<InstallUsage Component="FlowCanvas" Package="Lumeo.Flow" />
+
+<Alert Variant="Alert.AlertVariant.Info" ShowIcon="true" Class="mt-6">
+    <ChildContent>
+        <strong>Phase 1 of Lumeo.Flow.</strong> This release ships the canvas engine: nodes, static edges,
+        pan, pointer-anchored wheel zoom, node drag with a real commit, snapping, background and controls.
+        Connecting handles, selection (shift-click, marquee), delete, edge labels and markers, the minimap
+        and panels arrive in the next phase — the node, edge and handle shapes you write today stay the same.
+    </ChildContent>
+</Alert>
+
+<div class="mt-10 space-y-3">
+    <Heading Id="when-to-use" Level="2" Class="scroll-mt-20">When to Use</Heading>
+    <ul class="list-disc list-inside space-y-1 text-muted-foreground text-sm">
+        <li>Workflow and automation builders — triggers, conditions and actions as cards joined by edges.</li>
+        <li>Pipelines, dependency and impact maps where the user arranges the graph by hand.</li>
+        <li>Any diagram whose nodes are real Razor content (badges, avatars, buttons), not canvas pixels.</li>
+    </ul>
+</div>
+
+<Stack Gap="8" Class="mt-8">
+    <ComponentDemo Title="Custom node cards — drag, pan, zoom" Code="@_basicCode">
+        <Stack Gap="3" Class="w-full">
+            <Lumeo.Text Size="sm" Color="muted">
+                Drag a card to move it (the edges follow live, the position is committed once on drop through
+                <code>@@bind-Nodes</code>). Drag the background to pan, use the wheel to zoom around the pointer,
+                or focus a card and nudge it with the arrow keys (<Kbd>Shift</Kbd> for 10px).
+            </Lumeo.Text>
+            <LazyRender Height="440px">
+                <FlowCanvas @bind-Nodes="_basicNodes" Edges="_basicEdges" Height="440px"
+                            OnNodeDragStop="HandleDragStop" @bind-Viewport="_basicViewport">
+                    <NodeTemplate Context="ctx">
+                        <div class="w-52 rounded-lg border border-border bg-card text-card-foreground shadow-sm">
+                            <FlowHandle Type="FlowHandleType.Target" Position="FlowPosition.Left" />
+                            <div class="flex items-center gap-2 border-b border-border px-3 py-2">
+                                <span class="flex size-6 items-center justify-center rounded-md bg-muted text-muted-foreground">
+                                    <SvgGlyph Svg="@IconFor(ctx.Node.Type)" class="size-3.5" />
+                                </span>
+                                <span class="text-sm font-medium">@(((StepInfo)ctx.Node.Data!).Title)</span>
+                            </div>
+                            <div class="flex items-center justify-between px-3 py-2">
+                                <span class="text-xs text-muted-foreground">@(((StepInfo)ctx.Node.Data!).Detail)</span>
+                                <Badge Variant="@BadgeFor(ctx.Node.Type)" Size="Lumeo.Size.Sm">@ctx.Node.Type</Badge>
+                            </div>
+                            <FlowHandle Type="FlowHandleType.Source" Position="FlowPosition.Right" />
+                        </div>
+                    </NodeTemplate>
+                    <ChildContent>
+                        <FlowBackground />
+                        <FlowControls />
+                    </ChildContent>
+                </FlowCanvas>
+            </LazyRender>
+            <div class="rounded-md border border-border/60 bg-muted/40 p-3 text-sm">
+                <div class="font-medium mb-1">Last committed move</div>
+                <span class="font-mono text-xs text-muted-foreground">@_lastMove</span>
+                <div class="font-medium mt-2 mb-1">Viewport</div>
+                <span class="font-mono text-xs text-muted-foreground">x @_basicViewport.X.ToString("0", CultureInfo.InvariantCulture) · y @_basicViewport.Y.ToString("0", CultureInfo.InvariantCulture) · zoom @_basicViewport.Zoom.ToString("0.00", CultureInfo.InvariantCulture)</span>
+            </div>
+        </Stack>
+    </ComponentDemo>
+
+    <ComponentDemo Title="Read-only, background variants & controls" Code="@_variantsCode">
+        <Stack Gap="3" Class="w-full">
+            <Lumeo.Text Size="sm" Color="muted">
+                <code>Readonly</code> keeps pan and zoom but turns every edit off. <code>FlowBackground</code> draws
+                dots, lines or crosses that follow the viewport; <code>FlowControls</code> can sit in any corner.
+                <code>SnapToGrid</code> snaps drags to <code>SnapGrid</code> (here 20×20, matching the background).
+            </Lumeo.Text>
+            <div class="flex flex-wrap items-center gap-4">
+                <Segmented @bind-Value="_variant" Options="_variantOptions" />
+                <Segmented @bind-Value="_corner" Options="_cornerOptions" />
+                <div class="flex items-center gap-2 text-sm">
+                    <Switch @bind-Checked="_readonly" aria-label="Read-only" />
+                    <span>Read-only</span>
+                </div>
+            </div>
+            <LazyRender Height="360px">
+                <FlowCanvas @bind-Nodes="_variantNodes" Edges="_variantEdges" Height="360px"
+                            Readonly="_readonly" SnapToGrid="true" SnapGrid="(20, 20)">
+                    <NodeTemplate Context="ctx">
+                        <div class="rounded-md border border-border bg-card px-3 py-2 text-sm font-medium text-card-foreground shadow-sm">
+                            <FlowHandle Type="FlowHandleType.Target" Position="FlowPosition.Top" />
+                            @ctx.Node.Data
+                            <FlowHandle Type="FlowHandleType.Source" Position="FlowPosition.Bottom" />
+                        </div>
+                    </NodeTemplate>
+                    <ChildContent>
+                        <FlowBackground Variant="@VariantValue" Gap="20" />
+                        <FlowControls Position="@CornerValue" />
+                    </ChildContent>
+                </FlowCanvas>
+            </LazyRender>
+        </Stack>
+    </ComponentDemo>
+</Stack>
+
+<div class="mt-16">
+    <Heading Id="api-reference" Level="2" Class="scroll-mt-20">API Reference</Heading>
+
+    <Heading Id="flowcanvas" Level="3" Class="mt-8 scroll-mt-20">FlowCanvas</Heading>
+    <div class="mt-4">
+        <PropsTable Slug="flow-canvas" />
+    </div>
+
+    <Heading Id="flowbackground" Level="3" Class="mt-8 scroll-mt-20">FlowBackground</Heading>
+    <div class="mt-4">
+        <PropsTable Slug="flow-canvas" SubComponent="FlowBackground" />
+    </div>
+
+    <Heading Id="flowcontrols" Level="3" Class="mt-8 scroll-mt-20">FlowControls</Heading>
+    <div class="mt-4">
+        <PropsTable Slug="flow-canvas" SubComponent="FlowControls" />
+    </div>
+
+    <Heading Id="flowhandle" Level="3" Class="mt-8 scroll-mt-20">FlowHandle</Heading>
+    <div class="mt-4">
+        <PropsTable Slug="flow-canvas" SubComponent="FlowHandle" />
+    </div>
+
+    <Heading Id="building-blocks" Level="3" Class="mt-8 scroll-mt-20">Building blocks rendered by FlowCanvas</Heading>
+    <p class="mt-2 text-sm text-muted-foreground">You never place these yourself; they are listed for completeness.</p>
+    <div class="mt-4">
+        <PropsTable Slug="flow-canvas" SubComponent="FlowNodeHost" />
+    </div>
+    <div class="mt-4">
+        <PropsTable Slug="flow-canvas" SubComponent="FlowEdgeLayer" />
+    </div>
+
+    <Heading Id="flow-node" Level="3" Class="mt-8 scroll-mt-20">FlowNode / FlowEdge</Heading>
+    <div class="overflow-x-auto mt-4">
+        <Table>
+            <TableHeader>
+                <TableRow>
+                    <TableHead Class="w-[200px]">Field</TableHead>
+                    <TableHead Class="w-[200px]">Type</TableHead>
+                    <TableHead>Description</TableHead>
+                </TableRow>
+            </TableHeader>
+            <TableBody>
+                <TableRow><TableCell Class="font-mono text-xs">FlowNode.Id</TableCell><TableCell Class="font-mono text-xs">string</TableCell><TableCell>Stable identifier; edges reference nodes by it.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">FlowNode.X / Y</TableCell><TableCell Class="font-mono text-xs">double</TableCell><TableCell>Top-left corner in flow coordinates.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">FlowNode.Type / Data</TableCell><TableCell Class="font-mono text-xs">string? / object?</TableCell><TableCell>Your discriminator and payload for <code>NodeTemplate</code>.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">FlowNode.Width / Height</TableCell><TableCell Class="font-mono text-xs">double?</TableCell><TableCell>Fixed size; when null the node is sized by its content and measured.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">FlowNode.Draggable</TableCell><TableCell Class="font-mono text-xs">bool</TableCell><TableCell>Per-node drag switch (combined with the canvas' <code>NodesDraggable</code> / <code>Readonly</code>).</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">FlowEdge.Source / Target</TableCell><TableCell Class="font-mono text-xs">string</TableCell><TableCell>Node ids. An edge whose node is missing is skipped.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">FlowEdge.SourceHandle / TargetHandle</TableCell><TableCell Class="font-mono text-xs">string?</TableCell><TableCell>A <code>FlowHandle</code> id; null attaches to the node's first handle of that type, or its right/left edge.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">FlowEdge.Type</TableCell><TableCell Class="font-mono text-xs">FlowEdgeType</TableCell><TableCell><code>Bezier</code> (default), <code>SmoothStep</code>, <code>Step</code> or <code>Straight</code>.</TableCell></TableRow>
+            </TableBody>
+        </Table>
+    </div>
+
+    <Heading Id="methods" Level="3" Class="mt-8 scroll-mt-20">Methods (via @@ref)</Heading>
+    <div class="overflow-x-auto mt-4">
+        <Table>
+            <TableHeader>
+                <TableRow>
+                    <TableHead Class="w-[300px]">Method</TableHead>
+                    <TableHead>Effect</TableHead>
+                </TableRow>
+            </TableHeader>
+            <TableBody>
+                <TableRow><TableCell Class="font-mono text-xs">FitViewAsync(double? padding)</TableCell><TableCell>Fits every node into view.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">ZoomInAsync() / ZoomOutAsync()</TableCell><TableCell>One ×1.2 step around the pane centre.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">ZoomToAsync(double zoom)</TableCell><TableCell>Zooms to a level (clamped to <code>MinZoom</code>/<code>MaxZoom</code>) around the pane centre.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">SetCenterAsync(x, y, zoom?)</TableCell><TableCell>Centres a flow point.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">SetViewportAsync(FlowViewport)</TableCell><TableCell>Moves the canvas to an exact viewport.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">ScreenToFlow(x, y) / FlowToScreen(x, y)</TableCell><TableCell>Converts between pane-local pixels and flow coordinates.</TableCell></TableRow>
+            </TableBody>
+        </Table>
+    </div>
+</div>
+
+<div class="mt-16">
+    <Heading Id="keyboard" Level="2" Class="scroll-mt-20">Keyboard &amp; accessibility</Heading>
+    <ul class="mt-4 list-disc list-inside space-y-1 text-muted-foreground text-sm">
+        <li>The canvas is a labelled <code>role="application"</code> region; every node is a focusable <code>role="group"</code> in node order.</li>
+        <li><Kbd>←</Kbd> <Kbd>→</Kbd> <Kbd>↑</Kbd> <Kbd>↓</Kbd> move the focused node by 1px (by one grid step with <code>SnapToGrid</code>); <Kbd>Shift</Kbd> moves 10×. Each press commits like a drop.</li>
+        <li><Kbd>Esc</Kbd> cancels a drag in progress (the node returns) and clears the selection.</li>
+        <li>Hold <Kbd>Space</Kbd> to pan by dragging anywhere, including over nodes.</li>
+        <li>The controls are labelled buttons; the lock toggle reports <code>aria-pressed</code>.</li>
+    </ul>
+</div>
+
+<div class="mt-16">
+    <Heading Id="styling-hooks" Level="2" Class="scroll-mt-20">Styling hooks (data-*)</Heading>
+    <div class="overflow-x-auto mt-4">
+        <Table>
+            <TableHeader>
+                <TableRow>
+                    <TableHead Class="w-[220px]">Attribute</TableHead>
+                    <TableHead Class="w-[160px]">Element</TableHead>
+                    <TableHead>Meaning</TableHead>
+                </TableRow>
+            </TableHeader>
+            <TableBody>
+                <TableRow><TableCell Class="font-mono text-xs">data-flow-node="id"</TableCell><TableCell>Node host</TableCell><TableCell>The positioned wrapper around your template (also carries <code>data-type</code>).</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">data-selected / data-dragging</TableCell><TableCell>Node host</TableCell><TableCell>Presence-only: the node is selected / being dragged right now.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">data-flow-edge</TableCell><TableCell>Edge path</TableCell><TableCell>With <code>data-source</code>, <code>data-target</code>, <code>data-edge-type</code>.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">data-flow-handle</TableCell><TableCell>Handle button</TableCell><TableCell>With <code>data-handle-type</code>, <code>data-handle-id</code>, <code>data-position</code>.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">data-flow-nodrag</TableCell><TableCell>Anything in a node</TableCell><TableCell>Add it to an element inside your template to stop a press there from dragging the node.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">data-flow-ready="done"</TableCell><TableCell>Canvas root</TableCell><TableCell>Set by the engine once it has mounted and applied the initial fit.</TableCell></TableRow>
+            </TableBody>
+        </Table>
+    </div>
+</div>
+
+<div class="mt-12">
+    <Heading Id="related" Level="2" Class="scroll-mt-20">Related Components</Heading>
+    <ul class="mt-4 space-y-2 text-sm">
+        <li><a href="/components/gantt" class="text-primary hover:underline">Gantt Chart</a> — when the graph is really a schedule over time.</li>
+        <li><a href="/components/tree-view" class="text-primary hover:underline">Tree View</a> — strictly hierarchical data without free placement.</li>
+    </ul>
+</div>
+
+@code {
+    private sealed record StepInfo(string Title, string Detail);
+
+    // ── Demo 1 — custom node cards ───────────────────────────────────────
+    private IReadOnlyList<FlowNode> _basicNodes = new List<FlowNode>
+    {
+        new("trigger", 0, 60, Type: "trigger", Data: new StepInfo("New order", "Webhook")),
+        new("enrich", 300, 0, Type: "action", Data: new StepInfo("Look up customer", "CRM")),
+        new("score", 300, 150, Type: "action", Data: new StepInfo("Score risk", "Model")),
+        new("notify", 600, 0, Type: "output", Data: new StepInfo("Notify sales", "Email")),
+        new("store", 600, 150, Type: "output", Data: new StepInfo("Save order", "Database")),
+    };
+
+    private readonly IReadOnlyList<FlowEdge> _basicEdges = new List<FlowEdge>
+    {
+        new("t-e", "trigger", "enrich"),
+        new("t-s", "trigger", "score"),
+        new("e-n", "enrich", "notify", Type: FlowEdgeType.SmoothStep),
+        new("s-st", "score", "store", Type: FlowEdgeType.SmoothStep),
+    };
+
+    private FlowViewport _basicViewport = new(0, 0, 1);
+    private string _lastMove = "Drag a card to see its committed position.";
+
+    private void HandleDragStop(IReadOnlyList<FlowNodeChange> changes)
+        => _lastMove = string.Join(", ", changes.Select(c => $"{c.Id} → ({c.X.ToString("0", CultureInfo.InvariantCulture)}, {c.Y.ToString("0", CultureInfo.InvariantCulture)})"));
+
+    private static IconSource IconFor(string? type) => type switch
+    {
+        "trigger" => LumeoIcons.Zap,
+        "output" => LumeoIcons.Send,
+        _ => LumeoIcons.Sparkles,
+    };
+
+    private static Badge.BadgeVariant BadgeFor(string? type) => type switch
+    {
+        "trigger" => Badge.BadgeVariant.Default,
+        "output" => Badge.BadgeVariant.Success,
+        _ => Badge.BadgeVariant.Secondary,
+    };
+
+    private const string _basicCode = @"<FlowCanvas @bind-Nodes=""_nodes"" Edges=""_edges"" Height=""440px""
+            OnNodeDragStop=""HandleDragStop"" @bind-Viewport=""_viewport"">
+    <NodeTemplate Context=""ctx"">
+        <div class=""w-52 rounded-lg border border-border bg-card shadow-sm"">
+            <FlowHandle Type=""FlowHandleType.Target"" Position=""FlowPosition.Left"" />
+            <div class=""px-3 py-2 text-sm font-medium"">@(((StepInfo)ctx.Node.Data!).Title)</div>
+            <FlowHandle Type=""FlowHandleType.Source"" Position=""FlowPosition.Right"" />
+        </div>
+    </NodeTemplate>
+    <ChildContent>
+        <FlowBackground />
+        <FlowControls />
+    </ChildContent>
+</FlowCanvas>
+
+@code {
+    private IReadOnlyList<FlowNode> _nodes = new List<FlowNode>
+    {
+        new(""trigger"", 0, 60, Type: ""trigger"", Data: new StepInfo(""New order"", ""Webhook"")),
+        new(""enrich"", 300, 0, Type: ""action"", Data: new StepInfo(""Look up customer"", ""CRM"")),
+        // ...
+    };
+    private IReadOnlyList<FlowEdge> _edges = new List<FlowEdge>
+    {
+        new(""t-e"", ""trigger"", ""enrich""),
+        new(""e-n"", ""enrich"", ""notify"", Type: FlowEdgeType.SmoothStep),
+        // ...
+    };
+    private FlowViewport _viewport = new(0, 0, 1);
+
+    private void HandleDragStop(IReadOnlyList<FlowNodeChange> changes)
+    {
+        // Persist the committed positions (one entry per moved node).
+    }
+}";
+
+    // ── Demo 2 — readonly, background variants, controls ─────────────────
+    private IReadOnlyList<FlowNode> _variantNodes = new List<FlowNode>
+    {
+        new("a", 100, 0, Data: "Plan"),
+        new("b", 0, 140, Data: "Build"),
+        new("c", 200, 140, Data: "Test"),
+        new("d", 100, 280, Data: "Ship"),
+    };
+
+    private readonly IReadOnlyList<FlowEdge> _variantEdges = new List<FlowEdge>
+    {
+        new("a-b", "a", "b", Type: FlowEdgeType.Step),
+        new("a-c", "a", "c", Type: FlowEdgeType.Step),
+        new("b-d", "b", "d", Type: FlowEdgeType.Straight),
+        new("c-d", "c", "d", Type: FlowEdgeType.Straight),
+    };
+
+    private string _variant = nameof(FlowBackgroundVariant.Dots);
+    private string _corner = nameof(FlowControls.ControlsPosition.BottomLeft);
+    private bool _readonly;
+    private FlowBackgroundVariant VariantValue => Enum.Parse<FlowBackgroundVariant>(_variant);
+    private FlowControls.ControlsPosition CornerValue => Enum.Parse<FlowControls.ControlsPosition>(_corner);
+
+    private readonly List<Segmented.SegmentedOption> _variantOptions = new()
+    {
+        new() { Label = "Dots", Value = nameof(FlowBackgroundVariant.Dots) },
+        new() { Label = "Lines", Value = nameof(FlowBackgroundVariant.Lines) },
+        new() { Label = "Cross", Value = nameof(FlowBackgroundVariant.Cross) },
+    };
+
+    private readonly List<Segmented.SegmentedOption> _cornerOptions = new()
+    {
+        new() { Label = "Bottom left", Value = nameof(FlowControls.ControlsPosition.BottomLeft) },
+        new() { Label = "Top right", Value = nameof(FlowControls.ControlsPosition.TopRight) },
+    };
+
+    private const string _variantsCode = @"<FlowCanvas @bind-Nodes=""_nodes"" Edges=""_edges"" Height=""360px""
+            Readonly=""_readonly"" SnapToGrid=""true"" SnapGrid=""(20, 20)"">
+    <NodeTemplate Context=""ctx"">
+        <div class=""rounded-md border border-border bg-card px-3 py-2 text-sm font-medium shadow-sm"">
+            <FlowHandle Type=""FlowHandleType.Target"" Position=""FlowPosition.Top"" />
+            @ctx.Node.Data
+            <FlowHandle Type=""FlowHandleType.Source"" Position=""FlowPosition.Bottom"" />
+        </div>
+    </NodeTemplate>
+    <ChildContent>
+        <FlowBackground Variant=""FlowBackgroundVariant.Lines"" Gap=""20"" />
+        <FlowControls Position=""FlowControls.ControlsPosition.TopRight"" />
+    </ChildContent>
+</FlowCanvas>";
+}

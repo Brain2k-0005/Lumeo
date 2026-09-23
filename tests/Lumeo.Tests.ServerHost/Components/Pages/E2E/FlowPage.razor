@@ -1,0 +1,81 @@
+@page "/e2e/flow"
+@using System.Globalization
+
+@* Lumeo.Flow phase-1 E2E fixture on the real-circuit Server host (tests/Lumeo.Tests.E2E/Flow).
+   Mirrors docs/Lumeo.Docs/Pages/E2E/FlowPreview.razor (same nodes, same test ids) so the WASM docs
+   fixture and this Server fixture stay interchangeable.
+
+   Query params: ?fit=0 (no FitViewOnInit; the canvas starts at 0,0 / 100%), ?snap=1 (SnapToGrid,
+   16px), ?readonly=1.
+
+   Sinks (hidden <pre>s the specs read): flow-nodes-sink = "id:x,y;..." of the BOUND node list (what
+   the app received through @bind-Nodes), flow-viewport-sink = "x|y|zoom" of the bound viewport,
+   flow-commit-count = OnNodeDragStop calls, flow-last-click = the last OnNodeClick id. *@
+
+<div class="p-4">
+    <FlowCanvas data-testid="flow-root"
+                Height="560px"
+                @bind-Nodes="_nodes"
+                @bind-Viewport="_viewport"
+                Edges="_edges"
+                FitViewOnInit="@(Fit != "0")"
+                SnapToGrid="@(Snap == "1")"
+                Readonly="@(Readonly == "1")"
+                OnNodeDragStop="HandleDragStop"
+                OnNodeClick="@(n => _lastClick = n.Id)">
+        <NodeTemplate Context="ctx">
+            <div class="w-40 rounded-lg border border-border bg-card px-3 py-2 text-sm text-card-foreground shadow-sm" data-testid="@("flow-card-" + ctx.Node.Id)">
+                <FlowHandle Type="FlowHandleType.Target" Position="FlowPosition.Left" />
+                <div class="font-medium">@ctx.Node.Data</div>
+                <div class="text-xs text-muted-foreground">@ctx.Node.Id</div>
+                <FlowHandle Type="FlowHandleType.Source" Position="FlowPosition.Right" />
+            </div>
+        </NodeTemplate>
+        <ChildContent>
+            <FlowBackground />
+            <FlowControls />
+        </ChildContent>
+    </FlowCanvas>
+</div>
+
+<pre data-testid="flow-nodes-sink" hidden>@NodesText</pre>
+<pre data-testid="flow-viewport-sink" hidden>@ViewportText</pre>
+<pre data-testid="flow-commit-count" hidden>@_commits</pre>
+<pre data-testid="flow-last-click" hidden>@_lastClick</pre>
+
+@code {
+    [SupplyParameterFromQuery] public string? Fit { get; set; }
+    [SupplyParameterFromQuery] public string? Snap { get; set; }
+    [SupplyParameterFromQuery] public string? Readonly { get; set; }
+
+    private IReadOnlyList<FlowNode> _nodes = new List<FlowNode>
+    {
+        new("n1", 0, 0, Data: "Trigger"),
+        new("n2", 320, 0, Data: "Enrich"),
+        new("n3", 640, 0, Data: "Branch"),
+        new("n4", 0, 240, Data: "Notify"),
+        new("n5", 320, 240, Data: "Store"),
+        new("n6", 960, 420, Data: "Archive"),
+    };
+
+    private readonly IReadOnlyList<FlowEdge> _edges = new List<FlowEdge>
+    {
+        new("e1", "n1", "n2"),
+        new("e2", "n2", "n3", Type: FlowEdgeType.SmoothStep),
+        new("e3", "n1", "n4", Type: FlowEdgeType.Step),
+        new("e4", "n4", "n5"),
+        new("e5", "n3", "n6", Type: FlowEdgeType.Straight),
+    };
+
+    private FlowViewport _viewport = new(0, 0, 1);
+    private int _commits;
+    private string _lastClick = "";
+
+    private void HandleDragStop(IReadOnlyList<FlowNodeChange> changes) => _commits++;
+
+    private static string R(double v) => v.ToString("R", CultureInfo.InvariantCulture);
+
+    private string NodesText => string.Join(";", _nodes.Select(n => n.Id + ":" + R(n.X) + "," + R(n.Y)));
+
+    private string ViewportText => R(_viewport.X) + "|" + R(_viewport.Y) + "|" + R(_viewport.Zoom);
+}

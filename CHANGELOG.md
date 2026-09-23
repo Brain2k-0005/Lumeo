@@ -5,6 +5,22 @@ All notable changes to Lumeo will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **New package `Lumeo.Flow`: `FlowCanvas`, a node/flow editor canvas (phase 1).** Your own Razor
+  node templates and SVG edges (bezier, smooth-step, step, straight) on a pannable, zoomable canvas
+  — a first-party engine, no third-party runtime dependency. Drag nodes (the connected edges follow
+  live, the position is committed once on drop through `@bind-Nodes` and `OnNodeDragStop`), pan by
+  dragging the background (or anywhere with Space held), zoom with the wheel around the pointer,
+  snap to a grid, move a focused node with the arrow keys. `FitViewOnInit`, zoom limits,
+  `Readonly`, `@bind-Viewport` and the imperative `FitViewAsync` / `ZoomInAsync` / `ZoomOutAsync` /
+  `ZoomToAsync` / `SetCenterAsync` / `SetViewportAsync` round it off, with `FlowBackground` (dots,
+  lines, cross), `FlowControls` (zoom, fit, lock) and `FlowHandle` ports. Pan, zoom and drag never
+  re-render per frame; a drag that started before the node list was replaced from outside is
+  never committed over it. Connecting handles, selection, delete, edge labels, the minimap and
+  panels follow in the next phase. Docs at `/components/flow-canvas`.
+
 ## [5.10.5] - 2026-09-23
 
 ### Fixed
