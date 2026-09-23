@@ -1,20 +1,25 @@
 @namespace Lumeo.Docs.Shared.Showcases
-@* Static exception (see ../README.md): GanttChart virtualizes its rows against the real
-   scroll viewport (GanttViewportReconciler) and lays out a wide day-by-day header — there is
-   no small task set that reproduces that without a real, taller viewport to scroll. This
-   renders a faithful miniature of the visible chrome: a day-scale header and a handful of
-   task bars at proportional widths, without the drag/dependency machinery. *@
+@using Lumeo
 
-<div class="w-full max-w-[22rem] h-32 rounded-md border border-border/60 overflow-hidden flex flex-col text-xs">
-    <div class="flex border-b border-border/60 bg-muted/40 text-muted-foreground">
-        @foreach (var day in new[] { "Mon", "Tue", "Wed", "Thu", "Fri" })
-        {
-            <div class="flex-1 text-center py-1 border-e border-border/40 last:border-e-0">@day</div>
-        }
-    </div>
-    <div class="flex-1 flex flex-col justify-center gap-2 px-2 py-2">
-        <div class="h-3 rounded-sm bg-primary" style="width:60%"></div>
-        <div class="h-3 rounded-sm bg-primary" style="width:45%;margin-left:20%"></div>
-        <div class="h-3 rounded-sm bg-primary" style="width:70%;margin-left:10%"></div>
-    </div>
+@* LIVE (see ../README.md): SatelliteBoundShowcase now lazy-loads Lumeo.Gantt.dll
+   (ShowcaseResolver.SatelliteAssembliesFor) before this mounts. GanttChart's row
+   virtualizer (GanttViewportReconciler) copes fine with a small, fully-visible task list —
+   the old static replica's "needs a real scroll viewport" concern only bites once a task
+   list is taller than its container, which three rows never triggers. The component's own
+   view-mode/prev-next toolbar is built in (no way to hide it), so the box is a little taller
+   than the other live showcases to give the day grid below it real room. Fixed dates (no
+   DateTime.Now, per rule 1). Interactive: the real toolbar works, and a bar can be dragged
+   to reschedule it. *@
+
+<div class="w-full max-w-[22rem] h-40 rounded-md border border-border/60 overflow-hidden bg-background">
+    <GanttChart Tasks="_tasks" ViewMode="GanttViewMode.Day" Height="160px" />
 </div>
+
+@code {
+    private readonly List<GanttTask> _tasks =
+    [
+        new("design", "Design", new DateTime(2026, 3, 2), new DateTime(2026, 3, 4), 100),
+        new("build", "Build", new DateTime(2026, 3, 4), new DateTime(2026, 3, 7), 45, Dependencies: new[] { "design" }),
+        new("launch", "Launch", new DateTime(2026, 3, 7), new DateTime(2026, 3, 7), 0, IsMilestone: true, Dependencies: new[] { "build" }),
+    ];
+}

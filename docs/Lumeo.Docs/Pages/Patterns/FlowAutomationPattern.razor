@@ -1,0 +1,317 @@
+@page "/blocks/flow-automation"
+@namespace Lumeo.Docs.Pages.Patterns
+@using Lumeo
+@using Lumeo.Services
+@implements IDisposable
+@inject IResponsiveService Responsive
+@inject IToastService Toast
+
+<PageTitle>Automation Workflow — Lumeo</PageTitle>
+
+<PageHeader Title="Automation Workflow"
+            Description="An order-fulfillment automation builder on FlowCanvas: step cards with an owner, a duration and a run-status badge, a Yes/No condition branch, a toolbar and right-click menu on every node, and an inspector that edits the selected step." />
+
+<ComponentDemo Title="Order fulfillment automation" Code="@_code">
+    <div class="flex h-[560px] w-full flex-col overflow-hidden rounded-lg border border-border/60 lg:flex-row">
+        <div class="relative flex min-w-0 flex-1 flex-col">
+            <FlowCanvas @ref="_canvas" @bind-Nodes="_nodes" @bind-Edges="_edges" Height="100%"
+                        NodesConnectable="false" ElementsSelectable="true"
+                        OnSelectionChanged="HandleSelectionChanged"
+                        Class="rounded-none border-0">
+                <NodeTemplate Context="ctx">
+                    @{ var step = (StepData)ctx.Node.Data!; }
+                    <ContextMenu>
+                        <ContextMenuTrigger Class="block">
+                            <div class="@CardClass(ctx.Selected)">
+                                <div class="flex items-center gap-1.5 border-b border-border/60 px-2.5 py-1.5">
+                                    <span class="flex size-5 items-center justify-center rounded bg-muted text-muted-foreground">
+                                        <SvgGlyph Svg="@KindIcon(step.Kind)" class="size-3" />
+                                    </span>
+                                    <span class="truncate text-xs font-semibold">@step.Title</span>
+                                </div>
+                                <div class="flex items-center justify-between gap-2 px-2.5 py-1.5">
+                                    <div class="flex items-center gap-1.5">
+                                        <Avatar Size="Lumeo.Size.Xs">
+                                            <AvatarFallback Class="text-[8px]">@step.Owner</AvatarFallback>
+                                        </Avatar>
+                                        <span class="text-[10px] text-muted-foreground">@step.Duration</span>
+                                    </div>
+                                    <Badge Variant="@StatusVariant(step.Status)" Class="h-4 px-1.5 text-[9px]">@step.Status</Badge>
+                                </div>
+                            </div>
+                        </ContextMenuTrigger>
+                        <ContextMenuContent Class="w-36">
+                            <ContextMenuItem OnClick="@(() => EditNodeAsync(ctx.Node.Id))">
+                                <SvgGlyph Svg="@(Lucide.Pencil)" class="me-2 size-3.5" />Edit
+                            </ContextMenuItem>
+                            <ContextMenuItem OnClick="@(() => DuplicateNode(ctx.Node.Id))">
+                                <SvgGlyph Svg="@(Lucide.Copy)" class="me-2 size-3.5" />Duplicate
+                            </ContextMenuItem>
+                            <ContextMenuSeparator />
+                            <ContextMenuItem Variant="MenuItemVariant.Destructive" OnClick="@(() => DeleteNode(ctx.Node.Id))">
+                                <SvgGlyph Svg="@(Lucide.Trash2)" class="me-2 size-3.5" />Delete
+                            </ContextMenuItem>
+                        </ContextMenuContent>
+                    </ContextMenu>
+                </NodeTemplate>
+                <ChildContent>
+                    <FlowBackground Variant="FlowBackgroundVariant.Dots" />
+                    <FlowControls Position="FlowControls.ControlsPosition.BottomLeft" />
+                    <FlowMiniMap Position="FlowMiniMap.MiniMapPosition.BottomRight" />
+                    <FlowPanel Position="FlowPanel.PanelPosition.TopRight">
+                        <Button Size="Button.ButtonSize.Sm" OnClick="AddStep">
+                            <SvgGlyph Svg="@(Lucide.Plus)" class="me-1.5 size-3.5" />Add step
+                        </Button>
+                    </FlowPanel>
+                    @if (_selectedNodeId is not null)
+                    {
+                        <FlowNodeToolbar>
+                            <div class="flex items-center gap-0.5 rounded-md border border-border bg-card p-0.5 shadow-sm">
+                                <Button Size="Button.ButtonSize.Icon" Variant="Button.ButtonVariant.Ghost" Class="size-7"
+                                        aria-label="Edit step" OnClick="@(() => EditNodeAsync(_selectedNodeId!))">
+                                    <SvgGlyph Svg="@(Lucide.Pencil)" class="size-3.5" />
+                                </Button>
+                                <Button Size="Button.ButtonSize.Icon" Variant="Button.ButtonVariant.Ghost" Class="size-7"
+                                        aria-label="Duplicate step" OnClick="@(() => DuplicateNode(_selectedNodeId!))">
+                                    <SvgGlyph Svg="@(Lucide.Copy)" class="size-3.5" />
+                                </Button>
+                                <Button Size="Button.ButtonSize.Icon" Variant="Button.ButtonVariant.Ghost" Class="size-7 text-destructive hover:text-destructive"
+                                        aria-label="Delete step" OnClick="@(() => DeleteNode(_selectedNodeId!))">
+                                    <SvgGlyph Svg="@(Lucide.Trash2)" class="size-3.5" />
+                                </Button>
+                            </div>
+                        </FlowNodeToolbar>
+                    }
+                </ChildContent>
+            </FlowCanvas>
+        </div>
+
+        @if (IsDesktop)
+        {
+            @if (_selectedNode is { } node)
+            {
+                <aside class="flex w-72 shrink-0 flex-col border-s border-border/60 bg-card">
+                    @InspectorContent(node)
+                </aside>
+            }
+        }
+        else
+        {
+            <Sheet @bind-Open="_inspectorOpen">
+                <SheetContent Side="Side.Bottom" Size="SheetContent.SheetSize.Default">
+                    @if (_selectedNode is { } node)
+                    {
+                        @InspectorContent(node)
+                    }
+                </SheetContent>
+            </Sheet>
+        }
+    </div>
+</ComponentDemo>
+
+@code {
+    private enum RunStatus { Pending, Running, Success, Failed }
+
+    private sealed record StepData(string Title, string Owner, string Duration, RunStatus Status, string Kind);
+
+    private FlowCanvas? _canvas;
+    private int _nextId = 1;
+    private FlowSelection? _selection;
+    private bool _inspectorOpen;
+    private string _inspectorTab = "view";
+    private string _editTitle = "";
+    private string _editOwner = "";
+    private string _editDuration = "";
+    private RunStatus _editStatus;
+
+    private IReadOnlyList<FlowNode> _nodes = new List<FlowNode>
+    {
+        new("trigger", 0, 120, Data: new StepData("New order", "IN", "instant", RunStatus.Success, "trigger")),
+        new("condition", 260, 120, Data: new StepData("In stock?", "IN", "~1s", RunStatus.Success, "condition")),
+        new("reserve", 540, 0, Data: new StepData("Reserve stock", "OP", "~2m", RunStatus.Running, "action")),
+        new("notify", 540, 240, Data: new StepData("Notify ops", "OP", "~1m", RunStatus.Pending, "action")),
+        new("ship", 820, 0, Data: new StepData("Ship order", "DS", "~5m", RunStatus.Pending, "action")),
+    };
+
+    private IReadOnlyList<FlowEdge> _edges = new List<FlowEdge>
+    {
+        new("e-trigger-condition", "trigger", "condition"),
+        new("e-condition-reserve", "condition", "reserve", Label: "Yes"),
+        new("e-condition-notify", "condition", "notify", Label: "No"),
+        new("e-reserve-ship", "reserve", "ship"),
+    };
+
+    private bool IsDesktop => Responsive.IsDesktop;
+    private string? _selectedNodeId => _selection is { NodeIds.Count: 1 } ? _selection.NodeIds.First() : null;
+    private FlowNode? _selectedNode => _selectedNodeId is { } id ? _nodes.FirstOrDefault(n => n.Id == id) : null;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await Responsive.EnsureInitialisedAsync();
+            Responsive.ViewportChanged += OnViewportChanged;
+            StateHasChanged();
+        }
+    }
+
+    private void OnViewportChanged(ViewportInfo info) => InvokeAsync(StateHasChanged);
+
+    public void Dispose() => Responsive.ViewportChanged -= OnViewportChanged;
+
+    private void HandleSelectionChanged(FlowSelection selection)
+    {
+        _selection = selection;
+        if (_selectedNode is { } node)
+        {
+            LoadEditFields(node);
+            if (!IsDesktop) _inspectorOpen = true;
+        }
+        else
+        {
+            _inspectorOpen = false;
+        }
+    }
+
+    private void LoadEditFields(FlowNode node)
+    {
+        var step = (StepData)node.Data!;
+        _editTitle = step.Title;
+        _editOwner = step.Owner;
+        _editDuration = step.Duration;
+        _editStatus = step.Status;
+    }
+
+    private async Task EditNodeAsync(string id)
+    {
+        if (_canvas is not null) await _canvas.SelectAsync(new[] { id });
+        _selection = new FlowSelection(new HashSet<string> { id }, new HashSet<string>());
+        var node = _nodes.FirstOrDefault(n => n.Id == id);
+        if (node is not null) LoadEditFields(node);
+        _inspectorTab = "edit";
+        _inspectorOpen = true;
+    }
+
+    private void SaveEdit()
+    {
+        if (_selectedNodeId is not { } id) return;
+        _nodes = _nodes.Select(n => n.Id == id
+                ? n with { Data = new StepData(_editTitle, _editOwner, _editDuration, _editStatus, ((StepData)n.Data!).Kind) }
+                : n)
+            .ToList();
+    }
+
+    private void DuplicateNode(string id)
+    {
+        var source = _nodes.FirstOrDefault(n => n.Id == id);
+        if (source is null) return;
+        var newId = "step-" + _nextId++;
+        var clone = source with { Id = newId, X = source.X + 24, Y = source.Y + 160 };
+        _nodes = _nodes.Append(clone).ToList();
+    }
+
+    private void DeleteNode(string id)
+    {
+        _nodes = _nodes.Where(n => n.Id != id).ToList();
+        _edges = _edges.Where(e => e.Source != id && e.Target != id).ToList();
+        if (_selectedNodeId == id)
+        {
+            _selection = null;
+            _inspectorOpen = false;
+        }
+    }
+
+    private void AddStep()
+    {
+        var anchorId = _selectedNodeId ?? "trigger";
+        var anchor = _nodes.FirstOrDefault(n => n.Id == anchorId) ?? _nodes[0];
+        var newId = "step-" + _nextId++;
+        var newNode = new FlowNode(newId, anchor.X + 260, anchor.Y, Data: new StepData("New step", "OP", "~1m", RunStatus.Pending, "action"));
+        _nodes = _nodes.Append(newNode).ToList();
+        _edges = _edges.Append(new FlowEdge("e-" + anchorId + "-" + newId, anchorId, newId)).ToList();
+    }
+
+    private static string CardClass(bool selected) =>
+        "w-40 rounded-lg border bg-card text-card-foreground shadow-sm transition-shadow "
+        + (selected ? "border-primary ring-2 ring-primary/30" : "border-border");
+
+    private static IconSource KindIcon(string kind) => kind switch
+    {
+        "trigger" => Lucide.Zap,
+        "condition" => Lucide.GitBranch,
+        _ => Lucide.Workflow,
+    };
+
+    private static Badge.BadgeVariant StatusVariant(RunStatus status) => status switch
+    {
+        RunStatus.Success => Badge.BadgeVariant.Default,
+        RunStatus.Running => Badge.BadgeVariant.Outline,
+        RunStatus.Failed => Badge.BadgeVariant.Destructive,
+        _ => Badge.BadgeVariant.Secondary,
+    };
+
+    private RenderFragment InspectorContent(FlowNode node) => @<div class="flex h-full flex-col gap-3 p-4">
+        <div>
+            <Lumeo.Text Weight="semibold" Class="text-sm">Step inspector</Lumeo.Text>
+            <Lumeo.Text Size="xs" Color="muted">@node.Id</Lumeo.Text>
+        </div>
+        <Tabs @bind-ActiveValue="_inspectorTab" Class="w-full">
+            <TabsList>
+                <TabsTrigger Value="view">View</TabsTrigger>
+                <TabsTrigger Value="edit">Edit</TabsTrigger>
+            </TabsList>
+            <TabsContent Value="view">
+                <Stack Gap="2" Class="pt-2 text-sm">
+                    <Flex Justify="between"><Lumeo.Text Size="xs" Color="muted">Title</Lumeo.Text><span>@_editTitle</span></Flex>
+                    <Flex Justify="between"><Lumeo.Text Size="xs" Color="muted">Owner</Lumeo.Text><span>@_editOwner</span></Flex>
+                    <Flex Justify="between"><Lumeo.Text Size="xs" Color="muted">Duration</Lumeo.Text><span>@_editDuration</span></Flex>
+                    <Flex Justify="between"><Lumeo.Text Size="xs" Color="muted">Status</Lumeo.Text><Badge Variant="@StatusVariant(_editStatus)" Class="h-5 text-[10px]">@_editStatus</Badge></Flex>
+                </Stack>
+            </TabsContent>
+            <TabsContent Value="edit">
+                <Stack Gap="3" Class="pt-2">
+                    <div>
+                        <Label>Title</Label>
+                        <Input @bind-Value="_editTitle" Class="mt-1" />
+                    </div>
+                    <div>
+                        <Label>Owner initials</Label>
+                        <Input @bind-Value="_editOwner" Class="mt-1" />
+                    </div>
+                    <div>
+                        <Label>Duration</Label>
+                        <Input @bind-Value="_editDuration" Class="mt-1" />
+                    </div>
+                    <div>
+                        <Label>Status</Label>
+                        <Flex Gap="1" Class="mt-1 flex-wrap">
+                            @foreach (var s in Enum.GetValues<RunStatus>())
+                            {
+                                var status = s;
+                                <Button Size="Button.ButtonSize.Sm" Variant="@(_editStatus == status ? Button.ButtonVariant.Default : Button.ButtonVariant.Outline)"
+                                        OnClick="@(() => _editStatus = status)">@status</Button>
+                            }
+                        </Flex>
+                    </div>
+                    <Button OnClick="SaveEdit">Save changes</Button>
+                </Stack>
+            </TabsContent>
+        </Tabs>
+    </div>;
+
+    private const string _code = """
+<FlowCanvas @bind-Nodes="_nodes" @bind-Edges="_edges" OnSelectionChanged="HandleSelectionChanged">
+    <NodeTemplate Context="ctx">
+        <ContextMenu>
+            <ContextMenuTrigger>...step card, owner avatar, duration, status badge...</ContextMenuTrigger>
+            <ContextMenuContent>Edit / Duplicate / Delete</ContextMenuContent>
+        </ContextMenu>
+    </NodeTemplate>
+    <ChildContent>
+        <FlowBackground /><FlowControls /><FlowMiniMap />
+        <FlowPanel><Button OnClick="AddStep">Add step</Button></FlowPanel>
+        <FlowNodeToolbar>Edit / Duplicate / Delete</FlowNodeToolbar>
+    </ChildContent>
+</FlowCanvas>
+""";
+}

@@ -1,0 +1,182 @@
+@page "/blocks/flow-impact-map"
+@namespace Lumeo.Docs.Pages.Patterns
+@using Lumeo
+@using Lumeo.Services
+@implements IDisposable
+@inject IResponsiveService Responsive
+
+<PageTitle>Growth Impact Map — Lumeo</PageTitle>
+
+<PageHeader Title="Growth Impact Map"
+            Description="Initiatives feeding metrics feeding a north star on FlowCanvas: edge labels carry each correlation score, nodes are colored by initiative category on both the cards and the minimap, and the inspector shows the selected initiative's metric impact." />
+
+<ComponentDemo Title="What moves Weekly Active Teams" Code="@_code">
+    <div class="flex h-[520px] w-full flex-col overflow-hidden rounded-lg border border-border/60 lg:flex-row">
+        <div class="min-w-0 flex-1">
+            <FlowCanvas @bind-Nodes="_nodes" Edges="_edges" Height="100%" NodesConnectable="false"
+                        ElementsSelectable="true"
+                        OnSelectionChanged="HandleSelectionChanged"
+                        Class="rounded-none border-0">
+                <NodeTemplate Context="ctx">
+                    @{ var data = (ImpactNode)ctx.Node.Data!; }
+                    <div class="@CardClass(ctx.Selected)">
+                        <div class="flex items-center gap-1.5 px-2.5 py-1.5">
+                            <span class="flex size-5 items-center justify-center rounded bg-muted text-muted-foreground">
+                                <SvgGlyph Svg="@KindIcon(data.Kind)" class="size-3" />
+                            </span>
+                            <span class="text-xs font-semibold">@data.Title</span>
+                        </div>
+                        @if (data.Category is not null)
+                        {
+                            <div class="px-2.5 pb-1.5">
+                                <span class="inline-flex items-center gap-1 rounded-full border border-border/60 px-1.5 py-0.5 text-[9px] font-medium text-muted-foreground">
+                                    <span class="size-1.5 rounded-full" style="background-color:@CategoryColor(data.Category)"></span>@data.Category
+                                </span>
+                            </div>
+                        }
+                    </div>
+                </NodeTemplate>
+                <ChildContent>
+                    <FlowBackground Variant="FlowBackgroundVariant.Dots" />
+                    <FlowControls Position="FlowControls.ControlsPosition.BottomLeft" />
+                    <FlowMiniMap Position="FlowMiniMap.MiniMapPosition.BottomRight"
+                                  NodeColor="@(n => ((ImpactNode)n.Data!).Category is { } c ? CategoryColor(c) : "var(--color-muted-foreground)")" />
+                </ChildContent>
+            </FlowCanvas>
+        </div>
+
+        @if (IsDesktop)
+        {
+            <aside class="flex w-72 shrink-0 flex-col border-s border-border/60 bg-card">
+                @InspectorContent
+            </aside>
+        }
+        else
+        {
+            <Sheet @bind-Open="_inspectorOpen">
+                <SheetContent Side="Side.Bottom" Size="SheetContent.SheetSize.Default">
+                    @InspectorContent
+                </SheetContent>
+            </Sheet>
+        }
+    </div>
+</ComponentDemo>
+
+@code {
+    private sealed record ImpactNode(string Title, string Kind, string? Category = null); // Kind: initiative/metric/northstar
+
+    private string? _selectedId;
+    private bool _inspectorOpen;
+
+    private IReadOnlyList<FlowNode> _nodes = new List<FlowNode>
+    {
+        new("initiative-referral", 0, 0, Data: new ImpactNode("Referral program", "initiative", "Growth")),
+        new("initiative-onboarding", 0, 130, Data: new ImpactNode("Onboarding redesign", "initiative", "Growth")),
+        new("initiative-pricing", 0, 260, Data: new ImpactNode("Pricing experiment", "initiative", "Monetization")),
+        new("metric-activation", 280, 30, Data: new ImpactNode("Activation rate", "metric")),
+        new("metric-retention", 280, 160, Data: new ImpactNode("Retention D30", "metric")),
+        new("metric-arpu", 280, 290, Data: new ImpactNode("ARPU", "metric")),
+        new("north-star", 560, 145, Data: new ImpactNode("Weekly Active Teams", "northstar")),
+    };
+
+    private readonly IReadOnlyList<FlowEdge> _edges = new List<FlowEdge>
+    {
+        new("e-referral-activation", "initiative-referral", "metric-activation", Label: "r=0.61"),
+        new("e-onboarding-activation", "initiative-onboarding", "metric-activation", Label: "r=0.74"),
+        new("e-onboarding-retention", "initiative-onboarding", "metric-retention", Label: "r=0.55"),
+        new("e-pricing-arpu", "initiative-pricing", "metric-arpu", Label: "r=0.68"),
+        new("e-activation-northstar", "metric-activation", "north-star", Label: "32%"),
+        new("e-retention-northstar", "metric-retention", "north-star", Label: "41%"),
+        new("e-arpu-northstar", "metric-arpu", "north-star", Label: "27%"),
+    };
+
+    private bool IsDesktop => Responsive.IsDesktop;
+
+    private FlowNode? SelectedInitiative =>
+        _selectedId is { } id && _nodes.FirstOrDefault(n => n.Id == id) is { } n && ((ImpactNode)n.Data!).Kind == "initiative" ? n : null;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await Responsive.EnsureInitialisedAsync();
+            Responsive.ViewportChanged += OnViewportChanged;
+            StateHasChanged();
+        }
+    }
+
+    private void OnViewportChanged(ViewportInfo info) => InvokeAsync(StateHasChanged);
+
+    private void HandleSelectionChanged(FlowSelection selection)
+    {
+        _selectedId = selection.NodeIds.Count == 1 ? selection.NodeIds.First() : null;
+        if (!IsDesktop && SelectedInitiative is not null) _inspectorOpen = true;
+    }
+
+    public void Dispose() => Responsive.ViewportChanged -= OnViewportChanged;
+
+    private RenderFragment InspectorContent => @<div class="flex h-full flex-col gap-3 p-4">
+        <div>
+            <Lumeo.Text Weight="semibold" Class="text-sm">Initiative impact</Lumeo.Text>
+        </div>
+        @if (SelectedInitiative is { } node)
+        {
+            var data = (ImpactNode)node.Data!;
+            <Stack Gap="3">
+                <div>
+                    <Lumeo.Text Class="text-sm font-medium">@data.Title</Lumeo.Text>
+                    <span class="mt-1 inline-flex items-center gap-1 rounded-full border border-border/60 px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                        <span class="size-1.5 rounded-full" style="background-color:@CategoryColor(data.Category!)"></span>@data.Category
+                    </span>
+                </div>
+                <Separator />
+                <Lumeo.Text Size="xs" Color="muted">Correlated metrics</Lumeo.Text>
+                <Stack Gap="2">
+                    @foreach (var edge in _edges.Where(e => e.Source == node.Id))
+                    {
+                        var metric = _nodes.First(n => n.Id == edge.Target);
+                        <Flex Justify="between" Class="text-sm">
+                            <span>@((( ImpactNode)metric.Data!).Title)</span>
+                            <Badge Variant="Badge.BadgeVariant.Outline" Class="h-5 text-[10px]">@edge.Label</Badge>
+                        </Flex>
+                    }
+                </Stack>
+            </Stack>
+        }
+        else
+        {
+            <Lumeo.Text Size="sm" Color="muted">Select an initiative card to see which metrics it drives.</Lumeo.Text>
+        }
+    </div>;
+
+    // w-52 (not w-40): wide enough that "Onboarding redesign" and "Weekly Active Teams" - the
+    // longest initiative/north-star titles - never truncate (review round 1).
+    private static string CardClass(bool selected) =>
+        "w-52 rounded-lg border bg-card text-card-foreground shadow-sm " + (selected ? "border-primary ring-2 ring-primary/30" : "border-border");
+
+    private static IconSource KindIcon(string kind) => kind switch
+    {
+        "initiative" => Lucide.Rocket,
+        "metric" => Lucide.ChartBar,
+        _ => Lucide.Star,
+    };
+
+    private static string CategoryColor(string category) => category switch
+    {
+        "Growth" => "var(--color-chart-1)",
+        "Retention" => "var(--color-chart-2)",
+        "Monetization" => "var(--color-chart-3)",
+        _ => "var(--color-muted-foreground)",
+    };
+
+    private const string _code = """
+<FlowCanvas Nodes="_nodes" Edges="_edges" OnSelectionChanged="...">
+    <NodeTemplate Context="ctx">...initiative/metric/north-star card, category dot...</NodeTemplate>
+    <ChildContent>
+        <FlowBackground /><FlowControls />
+        <FlowMiniMap NodeColor="@(n => CategoryColor(...))" />
+    </ChildContent>
+</FlowCanvas>
+<!-- side panel / Sheet lists the selected initiative's outgoing edges (metric, correlation score) -->
+""";
+}

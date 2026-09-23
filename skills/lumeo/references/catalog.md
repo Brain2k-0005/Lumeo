@@ -1,6 +1,6 @@
 # Lumeo component catalog
 
-All 169 components by category, plus 17 full-page patterns and the 58 theme tokens. Generated from `components-api.json` (`node skills/lumeo/gen-catalog.mjs`).
+All 169 components by category, plus 21 full-page patterns and the 58 theme tokens. Generated from `components-api.json` (`node skills/lumeo/gen-catalog.mjs`).
 
 > This is the **offline fallback**. When the `lumeo-mcp` server is connected, prefer `lumeo_search` / `lumeo_get_component` / `lumeo_get_example` — they give the live, complete per-parameter API.
 
@@ -38,7 +38,7 @@ Satellite packages: a component tagged **[Charts]** needs `Lumeo.Charts`, **[Dat
 - **FileViewer** — Universal file preview — auto-detects type from MIME / extension and renders PDF, images, video, audio, Markdown, JSON, CSV, source code (CodeMirror), and plain text inline; unknown types fall back to a download CTA. Pluggable per-kind renderer overrides; auth-aware HttpClient hook.
 - **Filter** **[DataGrid]** — Composable faceted filter builder with chips. _(sub-components: FilterPill)_
 - **Filters** **[DataGrid]** — Filter builder: attribute, condition and value edited inside the chip, an editor per value kind, a query tree an API can consume. _(sub-components: FilterAdvancedGroup, FilterAdvancedNode, FilterAdvancedRow, FilterBooleanEditor, FilterChip, FilterCombinatorCell, FilterDateEditor, FilterEditorButtons, FilterFieldPicker, FilterMenu, FilterMoveToMenuItems, FilterMultiSelectEditor, FilterNumberEditor, FilterRangeEditor, FilterRowHandle, FilterRuleMenuItems, FilterSelectEditor, FilterTextEditor, FiltersAdvanced, FiltersAdvancedPanel, FiltersBuilder)_
-- **FlowCanvas** **[Flow]** — Node/flow editor canvas — templated nodes, SVG edges, pan, pointer-anchored wheel zoom, node drag with snapping, background grid and zoom controls. _(sub-components: FlowBackground, FlowControls, FlowEdgeLayer, FlowHandle, FlowNodeHost)_
+- **FlowCanvas** **[Flow]** — Node/flow editor canvas — templated nodes, SVG edges, pan, pointer-anchored wheel zoom, node drag with snapping, background grid and zoom controls. _(sub-components: FlowBackground, FlowControls, FlowEdgeLayer, FlowHandle, FlowMiniMap, FlowNodeHost, FlowNodeToolbar, FlowPanel)_
 - **Gantt** **[Gantt]** — Gantt component.
 - **GanttChart** **[Gantt]** — Project timeline with dependency arrows, milestones, hierarchy tree pane, summary rollups, and a reject/accept/adjust drag commit gate. _(sub-components: GanttArrowLayer, GanttBar, GanttNav, GanttSettingsMenu, GanttSummaryBar, GanttTimeline, GanttTree, GanttZoomControl)_
 - **Gauge** — Single-value gauge with radial, arc, and linear variants and threshold colour bands.
@@ -226,6 +226,10 @@ Composed examples built entirely from Lumeo components. Get the full Razor sourc
 - **E-Commerce** (`/blocks/ecommerce`) — An e-commerce admin dashboard with KPI cards, revenue chart, recent orders, top products, inventory alerts, and customer segment breakdown.
 - **File Manager** (`/blocks/file-manager`) — A Dropbox-inspired file manager with workspace navigation, pinned folders, recent files grid, full file table, and contextual hover actions.
 - **Filters** (`/blocks/filters`) — A full faceted-search product browser with a sticky filter sidebar, live category/brand/rating/price/date/stock filters, active chips, and a responsive product grid with favorites.
+- **AI Agent Tree** (`/blocks/flow-agent-tree`) — An orchestrator/sub-agent tree on FlowCanvas: named branch labels, inline “+ add tool” buttons on leaf nodes, dashed edges out to the model and its attachments, and a Tidy button that recomputes the whole layout.
+- **Automation Workflow** (`/blocks/flow-automation`) — An order-fulfillment automation builder on FlowCanvas: step cards with an owner, a duration and a run-status badge, a Yes/No condition branch, a toolbar and right-click menu on every node, and an inspector that edits the selected step.
+- **Growth Impact Map** (`/blocks/flow-impact-map`) — Initiatives feeding metrics feeding a north star on FlowCanvas: edge labels carry each correlation score, nodes are colored by initiative category on both the cards and the minimap, and the inspector shows the selected initiative's metric impact.
+- **Data Pipeline** (`/blocks/flow-pipeline`) — A dependency-ordered data pipeline on FlowCanvas: approval gates that cannot be deleted, a Replay-from-here action that animates the run forward stage by stage, and cycle prevention on every new connection.
 - **Multi-Step Form Wizard** (`/blocks/form-wizard`) — A polished four-step onboarding wizard with progress steps, real field inputs, preferences, and a review summary before submission.
 - **Kanban Board** (`/blocks/kanban`) — A sprint board with polished task cards and native HTML5 drag-and-drop between columns.
 - **Mail** (`/blocks/mail`) — shadcn's Mail example, ported one to one: three resizable panes with an account switcher and a folder nav that collapses into an icon rail with tooltips, an inbox list with All and Unread tabs and a search field, and a reading pane with archive, junk, trash, snooze (with a calendar), reply and forward actions and a reply composer. shadcn's 17 sample mails.

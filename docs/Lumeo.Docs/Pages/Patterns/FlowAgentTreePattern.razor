@@ -1,0 +1,164 @@
+@page "/blocks/flow-agent-tree"
+@namespace Lumeo.Docs.Pages.Patterns
+@using Lumeo
+
+<PageTitle>AI Agent Tree — Lumeo</PageTitle>
+
+<PageHeader Title="AI Agent Tree"
+            Description="An orchestrator/sub-agent tree on FlowCanvas: named branch labels, inline “+ add tool” buttons on leaf nodes, dashed edges out to the model and its attachments, and a Tidy button that recomputes the whole layout." />
+
+<ComponentDemo Title="Orchestrator and its sub-agents" Code="@_code">
+    <div class="h-[520px] w-full overflow-hidden rounded-lg border border-border/60">
+        <FlowCanvas @bind-Nodes="_nodes" Edges="_edges" Height="100%" NodesConnectable="false"
+                    ElementsSelectable="true" Class="rounded-none border-0">
+            <NodeTemplate Context="ctx">
+                @{ var data = (AgentNode)ctx.Node.Data!; }
+                <div class="@CardClass(data.Kind, ctx.Selected)">
+                    <div class="flex items-center gap-1.5 px-2.5 py-1.5">
+                        <span class="flex size-5 items-center justify-center rounded bg-muted text-muted-foreground">
+                            <SvgGlyph Svg="@KindIcon(data.Kind)" class="size-3" />
+                        </span>
+                        <span class="truncate text-xs font-semibold">@data.Title</span>
+                    </div>
+                    @if (data.Subtitle is not null)
+                    {
+                        <div class="px-2.5 pb-1.5 text-[10px] text-muted-foreground">@data.Subtitle</div>
+                    }
+                    @if (IsLeaf(ctx.Node.Id) && data.Kind is not ("model" or "attachment"))
+                    {
+                        <div class="border-t border-border/60 px-1.5 py-1">
+                            <button type="button" class="flex w-full items-center justify-center gap-1 rounded px-1.5 py-1 text-[10px] font-medium text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                                    @onclick="@(() => AddTool(ctx.Node.Id))">
+                                <SvgGlyph Svg="@(Lucide.Plus)" class="size-3" />Add tool
+                            </button>
+                        </div>
+                    }
+                </div>
+            </NodeTemplate>
+            <ChildContent>
+                <FlowBackground Variant="FlowBackgroundVariant.Dots" />
+                <FlowControls Position="FlowControls.ControlsPosition.BottomLeft" />
+                <FlowMiniMap Position="FlowMiniMap.MiniMapPosition.BottomRight" />
+                <FlowPanel Position="FlowPanel.PanelPosition.TopRight">
+                    <Button Size="Button.ButtonSize.Sm" Variant="Button.ButtonVariant.Outline" OnClick="Tidy">
+                        <SvgGlyph Svg="@(Lucide.LayoutGrid)" class="me-1.5 size-3.5" />Tidy
+                    </Button>
+                </FlowPanel>
+            </ChildContent>
+        </FlowCanvas>
+    </div>
+</ComponentDemo>
+
+@code {
+    private sealed record AgentNode(string Title, string Kind, string? Subtitle = null); // Kind: root/agent/tool/model/attachment
+
+    private int _nextId = 1;
+
+    private IReadOnlyList<FlowNode> _nodes = new List<FlowNode>
+    {
+        new("root", 0, 180, Data: new AgentNode("Orchestrator", "root")),
+        new("research", 220, 0, Data: new AgentNode("Research agent", "agent")),
+        new("coding", 220, 320, Data: new AgentNode("Coding agent", "agent")),
+        new("research-tool", 440, 0, Data: new AgentNode("Web search", "tool")),
+        new("coding-tool", 440, 320, Data: new AgentNode("Code exec", "tool")),
+        new("model", 0, 340, Data: new AgentNode("GPT-5.1", "model", "reasoning model")),
+        new("attachment", 0, 420, Data: new AgentNode("Project brief.pdf", "attachment")),
+    };
+
+    // Tree edges (undashed) drive the hand-written Tidy layout below. Dashed edges point at the
+    // model/attachment nodes the orchestrator carries with it — they aren't tree children, so
+    // Tidy hangs them just under their owner instead of giving them their own column.
+    private IReadOnlyList<FlowEdge> _edges = new List<FlowEdge>
+    {
+        new("e-root-research", "root", "research", Label: "delegates"),
+        new("e-root-coding", "root", "coding", Label: "delegates"),
+        new("e-research-tool", "research", "research-tool", Label: "uses"),
+        new("e-coding-tool", "coding", "coding-tool", Label: "uses"),
+        new("e-root-model", "root", "model", Dashed: true, MarkerEnd: null),
+        new("e-root-attachment", "root", "attachment", Dashed: true, MarkerEnd: null),
+    };
+
+    private bool IsLeaf(string id) => !_edges.Any(e => !e.Dashed && e.Source == id);
+
+    private void AddTool(string parentId)
+    {
+        var parent = _nodes.FirstOrDefault(n => n.Id == parentId);
+        if (parent is null) return;
+        var newId = "tool-" + _nextId++;
+        var newNode = new FlowNode(newId, parent.X + 220, parent.Y, Data: new AgentNode("New tool", "tool"));
+        _nodes = _nodes.Append(newNode).ToList();
+        _edges = _edges.Append(new FlowEdge("e-" + parentId + "-" + newId, parentId, newId, Label: "uses")).ToList();
+        Tidy();
+    }
+
+    // Hand-written recursive tree layout: children stack vertically (dy apart), a parent centers
+    // over its own children's vertical span, depth maps to X (dx apart). Deliberately simple —
+    // no collision avoidance beyond the fixed dy spacing, which is enough for this block's small
+    // trees. When Lumeo.Flow's own FlowLayout.Tree (phase 3a) ships, this method can be deleted
+    // and replaced with a single FlowLayout.Tree(_nodes, _edges) call.
+    private void Tidy()
+    {
+        var childrenOf = _edges.Where(e => !e.Dashed)
+            .GroupBy(e => e.Source)
+            .ToDictionary(g => g.Key, g => g.Select(e => e.Target).ToList());
+
+        var positions = new Dictionary<string, (double X, double Y)>();
+        double leafCursor = 0;
+        const double dx = 220, dy = 100;
+
+        double Layout(string id, int depth)
+        {
+            if (!childrenOf.TryGetValue(id, out var kids) || kids.Count == 0)
+            {
+                var y = leafCursor * dy;
+                leafCursor++;
+                positions[id] = (depth * dx, y);
+                return y;
+            }
+
+            var ys = kids.Select(k => Layout(k, depth + 1)).ToList();
+            var centerY = (ys.Min() + ys.Max()) / 2;
+            positions[id] = (depth * dx, centerY);
+            return centerY;
+        }
+
+        Layout("root", 0);
+
+        foreach (var e in _edges.Where(e => e.Dashed))
+        {
+            if (positions.TryGetValue(e.Source, out var p))
+            {
+                positions[e.Target] = (p.X - 40, p.Y + 120 + (e.Target == "attachment" ? 70 : 0));
+            }
+        }
+
+        _nodes = _nodes.Select(n => positions.TryGetValue(n.Id, out var pos) ? n with { X = pos.X, Y = pos.Y } : n).ToList();
+    }
+
+    private static string CardClass(string kind, bool selected)
+    {
+        var border = selected ? "border-primary ring-2 ring-primary/30" : kind is "model" or "attachment" ? "border-dashed border-border" : "border-border";
+        return "w-36 rounded-lg border bg-card text-card-foreground shadow-sm " + border;
+    }
+
+    private static IconSource KindIcon(string kind) => kind switch
+    {
+        "root" => Lucide.Bot,
+        "agent" => Lucide.Users,
+        "tool" => Lucide.Wrench,
+        "model" => Lucide.Cpu,
+        _ => Lucide.Paperclip,
+    };
+
+    private const string _code = """
+<FlowCanvas @bind-Nodes="_nodes" Edges="_edges">
+    <NodeTemplate Context="ctx">
+        ...agent/tool/model card, "+ Add tool" button on leaf nodes...
+    </NodeTemplate>
+    <ChildContent>
+        <FlowBackground /><FlowControls /><FlowMiniMap />
+        <FlowPanel><Button OnClick="Tidy">Tidy</Button></FlowPanel>
+    </ChildContent>
+</FlowCanvas>
+""";
+}

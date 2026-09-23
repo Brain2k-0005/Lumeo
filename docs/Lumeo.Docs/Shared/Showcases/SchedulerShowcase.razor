@@ -1,31 +1,24 @@
 @namespace Lumeo.Docs.Shared.Showcases
-@* Static exception (see ../README.md): every Scheduler view (month/week/day/agenda/resource)
-   needs real height (320px-640px in its own docs demos) to show more than an empty grid —
-   there is no meaningfully smaller live state that fits a 16:9 card. This renders the exact
-   agenda-row markup SchedulerAgendaView itself produces (color dot, title, time — same
-   classes) for a small fixed set of events, without the scrolling list container. *@
+@using Lumeo
 
-<div class="w-full max-w-[22rem] h-36 rounded-md border border-border/60 overflow-hidden flex flex-col">
-    <div class="px-3 pt-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Today</div>
-    <div class="flex flex-col px-2 pb-2">
-        @foreach (var ev in _events)
-        {
-            <div class="flex items-center gap-2.5 py-1.5 px-1 rounded-md">
-                <span class="w-2 h-2 rounded-full flex-none" style="background-color:@ev.Color"></span>
-                <span class="flex-1 min-w-0 text-sm font-medium truncate">@ev.Title</span>
-                <span class="text-xs text-muted-foreground flex-none">@ev.Time</span>
-            </div>
-        }
-    </div>
+@* LIVE (see ../README.md): SatelliteBoundShowcase now lazy-loads Lumeo.Scheduler.dll
+   (ShowcaseResolver.SatelliteAssembliesFor) before this mounts. SchedulerView.List renders
+   the same agenda-row markup the old static replica hand-copied, so three fixed events in a
+   slightly taller card (h-40, still inside the aspect-[16/9] preview box's own budget) show
+   the real toolbar + list with no page-scroll trap. Fixed InitialDate (no DateTime.Now, per
+   rule 1) so "today" always lands on the day the events are on. Interactive: click an event
+   to select it, Today/prev/next in the toolbar work.*@
+
+<div class="w-full max-w-[22rem] h-40 rounded-md border border-border/60 overflow-hidden bg-background">
+    <Scheduler Events="_events" InitialView="SchedulerView.List" InitialDate="new DateTime(2026, 3, 9)"
+               Height="160px" Editable="false" />
 </div>
 
 @code {
-    private record Event(string Title, string Time, string Color);
-
-    private readonly List<Event> _events = new()
-    {
-        new("Design sync", "10:00 AM", "var(--color-primary)"),
-        new("Release readiness", "3:00 PM", "var(--color-chart-2)"),
-        new("Client call", "4:30 PM", "var(--color-chart-4)"),
-    };
+    private readonly List<SchedulerEvent> _events =
+    [
+        new("design-sync", "Design sync", new DateTime(2026, 3, 9, 10, 0, 0), new DateTime(2026, 3, 9, 10, 30, 0)),
+        new("release", "Release readiness", new DateTime(2026, 3, 9, 15, 0, 0), new DateTime(2026, 3, 9, 15, 30, 0), Color: "var(--color-chart-2)"),
+        new("client-call", "Client call", new DateTime(2026, 3, 9, 16, 30, 0), new DateTime(2026, 3, 9, 17, 0, 0), Color: "var(--color-chart-4)"),
+    ];
 }
