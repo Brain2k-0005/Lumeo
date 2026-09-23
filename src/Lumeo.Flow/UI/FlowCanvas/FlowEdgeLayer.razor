@@ -1,24 +1,58 @@
 @namespace Lumeo
 @using System.ComponentModel
+@using System.Globalization
 @attribute [EditorBrowsable(EditorBrowsableState.Never)]
 
-@* FlowEdgeLayer — one <path> per edge, in flow coordinates, inside FlowCanvas' viewport layer.
+@* FlowEdgeLayer — one <path> per edge, in flow coordinates, inside FlowCanvas' viewport layer, plus
+   a sibling div per labelled edge (no <foreignObject> — a positioned div is simpler and themeable).
    Rendered by FlowCanvas; not meant to be used directly.
 
    The <svg> is zero-sized with overflow: visible so it never intercepts pointer events or affects
    layout; paths are drawn from FlowGeometry. While a node is dragged the engine rewrites the `d`
-   of every connected path with its JS port of the same math, keyed by the data-source/data-target/
-   data-*-handle/data-edge-type attributes below — keep those in sync with flow.js. *@
+   of every connected path (and moves the matching label div) with its JS port of the same math,
+   keyed by the data-source/data-target/data-*-handle/data-edge-type attributes below — keep those
+   in sync with flow.js. A path's own pointer-events override the layer's "none" so it can be
+   clicked/selected without the (invisible, 1x1) layer intercepting the rest of the pane. *@
 
 <svg data-slot="flow-edges"
      aria-hidden="true"
      class="@Cx.Merge("lumeo-flow-edges", Class)"
      style="position:absolute;left:0;top:0;width:1px;height:1px;overflow:visible;pointer-events:none;"
      @attributes="AdditionalAttributes">
+    <defs>
+        <marker id="@_markerId" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto-start-reverse" markerUnits="userSpaceOnUse">
+            <path d="M0,0 L8,4 L0,8 Z" fill="var(--color-muted-foreground)" />
+        </marker>
+    </defs>
     @if (Context is not null)
     {
         @foreach (var (edge, path) in Context.Canvas.RenderableEdges())
         {
+            var selected = Context.Canvas.IsEdgeSelected(edge.Id);
+            var selectable = Context.Canvas.CanSelectEdges;
+            if (selectable)
+            {
+                @* A wide, invisible "hit" twin of the visible path below — the 1.5px visible
+                   stroke is much too thin a click target on its own (real pointer/touch, and a
+                   fractional-pixel Playwright click, routinely miss it). Same d/data-* so
+                   flow.js's live redraw during a drag keeps both in lockstep; stroke="transparent"
+                   still registers pointer-events:stroke hits (painted-ness, not visible colour,
+                   is what the hit test cares about). *@
+                <path @key="@("hit-" + edge.Id)"
+                      data-flow-edge-hit
+                      data-edge-id="@edge.Id"
+                      data-source="@edge.Source"
+                      data-target="@edge.Target"
+                      data-source-handle="@edge.SourceHandle"
+                      data-target-handle="@edge.TargetHandle"
+                      data-edge-type="@FlowGeometry.FormatEdgeType(edge.Type)"
+                      d="@path.D"
+                      fill="none"
+                      stroke="transparent"
+                      stroke-width="14"
+                      style="pointer-events:stroke;cursor:pointer;"
+                      @onclick="e => Context.Canvas.HandleEdgeClickAsync(edge, e.ShiftKey, e.CtrlKey || e.MetaKey)" />
+            }
             <path @key="edge.Id"
                   data-flow-edge
                   data-edge-id="@edge.Id"
@@ -27,12 +61,39 @@
                   data-source-handle="@edge.SourceHandle"
                   data-target-handle="@edge.TargetHandle"
                   data-edge-type="@FlowGeometry.FormatEdgeType(edge.Type)"
+                  data-selected="@(selected ? "" : null)"
+                  data-animated="@(edge.Animated ? "" : null)"
                   d="@path.D"
                   fill="none"
-                  stroke="var(--color-border)" />
+                  stroke-dasharray="@(edge.Dashed || edge.Animated ? "5 4" : null)"
+                  marker-end="@(string.IsNullOrEmpty(edge.MarkerEnd) ? null : "url(#" + _markerId + ")")"
+                  style="@EdgeStyle(selectable, selected)"
+                  @onclick="e => Context.Canvas.HandleEdgeClickAsync(edge, e.ShiftKey, e.CtrlKey || e.MetaKey)" />
         }
     }
 </svg>
+@if (Context is not null)
+{
+    <div data-slot="flow-edge-labels" style="position:absolute;left:0;top:0;">
+        @foreach (var (edge, path) in Context.Canvas.RenderableEdges())
+        {
+            if (Context.Canvas.EdgeLabelTemplate is null && string.IsNullOrEmpty(edge.Label)) continue;
+            <div @key="@("label-" + edge.Id)"
+                 data-flow-edge-label
+                 data-edge-id="@edge.Id"
+                 style="@LabelStyle(path)">
+                @if (Context.Canvas.EdgeLabelTemplate is not null)
+                {
+                    @Context.Canvas.EdgeLabelTemplate(new FlowEdgeContext(edge, Context.Canvas.IsEdgeSelected(edge.Id), path.LabelX, path.LabelY))
+                }
+                else
+                {
+                    <span class="rounded border border-border bg-card px-1.5 py-0.5 text-[10px] text-card-foreground shadow-sm">@edge.Label</span>
+                }
+            </div>
+        }
+    </div>
+}
 
 @code {
     [CascadingParameter] private FlowCanvas.FlowCanvasContext? Context { get; set; }
@@ -42,4 +103,20 @@
 
     /// <summary>Captures unmatched attributes and applies them to the edge layer's <c>&lt;svg&gt;</c>.</summary>
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private readonly string _markerId = "lumeo-flow-arrow-" + Guid.NewGuid().ToString("N")[..10];
+
+    private static string LabelStyle(FlowEdgePath path)
+        => "position:absolute;left:" + FlowGeometry.Fmt(path.LabelX) + "px;top:" + FlowGeometry.Fmt(path.LabelY)
+           + "px;transform:translate(-50%,-50%);pointer-events:auto;";
+
+    // Inline (not just the lumeo-flow.css rule) so an edge is coloured correctly on the very first
+    // paint, before flow.js has injected the stylesheet — same reasoning as the pane's own inline
+    // layout styles. --color-muted-foreground at reduced opacity reads in both themes (the faint
+    // --color-border used in phase 1 was hard to see in light mode).
+    private static string EdgeStyle(bool selectable, bool selected)
+        => "stroke:" + (selected ? "var(--color-primary)" : "var(--color-muted-foreground)")
+           + ";opacity:" + (selected ? "1" : "0.6")
+           + ";stroke-width:1.5;pointer-events:" + (selectable ? "stroke" : "none") + ";"
+           + (selectable ? "cursor:pointer;" : "");
 }

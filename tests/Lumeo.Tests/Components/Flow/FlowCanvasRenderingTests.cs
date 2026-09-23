@@ -88,16 +88,16 @@ public class FlowCanvasRenderingTests : FlowCanvasTestBase
         var paths = cut.FindAll("[data-flow-edge]");
         Assert.Equal(2, paths.Count);
 
-        var ab = cut.Find("[data-edge-id='a-b']");
+        var ab = cut.Find("[data-flow-edge][data-edge-id='a-b']");
         Assert.Equal("a", ab.GetAttribute("data-source"));
         Assert.Equal("b", ab.GetAttribute("data-target"));
         Assert.Equal("bezier", ab.GetAttribute("data-edge-type"));
         Assert.Null(ab.GetAttribute("data-source-handle"));
         // Unmeasured nodes use the default 150x40 box: source right-middle (150,20), target left-middle (300,60).
         Assert.Equal(L.FlowGeometry.GetBezierPath(150, 20, L.FlowPosition.Right, 300, 60, L.FlowPosition.Left).D, ab.GetAttribute("d"));
-        Assert.Equal("var(--color-border)", ab.GetAttribute("stroke"));
+        Assert.Contains("stroke:var(--color-muted-foreground)", ab.GetAttribute("style"));
 
-        Assert.Equal("smoothstep", cut.Find("[data-edge-id='b-c']").GetAttribute("data-edge-type"));
+        Assert.Equal("smoothstep", cut.Find("[data-flow-edge][data-edge-id='b-c']").GetAttribute("data-edge-type"));
     }
 
     [Fact]
@@ -128,7 +128,7 @@ public class FlowCanvasRenderingTests : FlowCanvasTestBase
 
         // a at (0,0): handle out-2 at (100,80) facing down; b at (300,40): its target handle (80,0) facing up.
         var expected = L.FlowGeometry.GetBezierPath(100, 80, L.FlowPosition.Bottom, 380, 40, L.FlowPosition.Top).D;
-        cut.WaitForAssertion(() => Assert.Equal(expected, cut.Find("[data-edge-id='a-b']").GetAttribute("d")));
+        cut.WaitForAssertion(() => Assert.Equal(expected, cut.Find("[data-flow-edge][data-edge-id='a-b']").GetAttribute("d")));
     }
 
     [Fact]

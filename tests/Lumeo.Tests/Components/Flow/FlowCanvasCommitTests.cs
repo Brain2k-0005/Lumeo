@@ -37,7 +37,7 @@ public class FlowCanvasCommitTests : FlowCanvasTestBase
         var (cut, _) = RenderBound(ThreeNodes(), p => p.Add(c => c.Edges, TwoEdges()));
         await cut.InvokeAsync(() => cut.Instance.CommitNodeDrag(new[] { new L.FlowNodeChange("a", -100, 200) }, cut.Instance._state.Generation));
         var expected = L.FlowGeometry.GetBezierPath(50, 220, L.FlowPosition.Right, 300, 60, L.FlowPosition.Left).D;
-        Assert.Equal(expected, cut.Find("[data-edge-id='a-b']").GetAttribute("d"));
+        Assert.Equal(expected, cut.Find("[data-flow-edge][data-edge-id='a-b']").GetAttribute("d"));
     }
 
     [Fact]

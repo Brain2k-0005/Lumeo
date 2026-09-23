@@ -342,6 +342,8 @@ internal static partial class LumeoDefaultStrings
         ["Flow.Lock"] = "Заблокировать холст",
         ["Flow.ConnectFrom"] = "Соединить от {0}",
         ["Flow.ConnectTo"] = "Соединить с {0}",
+        ["Flow.MiniMap"] = "Обзор",
+        ["Flow.NodeToolbar"] = "Действия узла",
         ["Gantt.ScrollToEarlierTask"] = "Прокрутить к {0} (раньше)",
         ["Gantt.ScrollToLaterTask"] = "Прокрутить к {0} (позже)",
         ["Gantt.Settings"] = "Настройки",

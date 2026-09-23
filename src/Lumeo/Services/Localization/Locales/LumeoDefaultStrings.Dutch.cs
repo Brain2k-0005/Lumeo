@@ -398,6 +398,8 @@ internal static partial class LumeoDefaultStrings
         ["Flow.Lock"] = "Canvas vergrendelen",
         ["Flow.ConnectFrom"] = "Verbinden vanaf {0}",
         ["Flow.ConnectTo"] = "Verbinden met {0}",
+        ["Flow.MiniMap"] = "Overzicht",
+        ["Flow.NodeToolbar"] = "Knooppuntacties",
         ["Gantt.ScrollToEarlierTask"] = "Scrollen naar {0} (eerder)",
         ["Gantt.ScrollToLaterTask"] = "Scrollen naar {0} (later)",
         ["Gantt.Settings"] = "Instellingen",

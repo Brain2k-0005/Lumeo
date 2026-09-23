@@ -295,6 +295,7 @@ function normalizeOptions(o) {
         panOnDrag: o.panOnDrag !== false,
         zoomOnScroll: o.zoomOnScroll !== false,
         selectionOnShiftDrag: o.selectionOnShiftDrag !== false,
+        elementsSelectable: o.elementsSelectable !== false,
         connectable: o.connectable !== false,
         readonly: o.readonly === true,
         rtl: o.rtl === true,
@@ -399,7 +400,9 @@ function anchorFor(reg, el, handleId, type, pos) {
 }
 
 function edgeElements(reg) {
-    return reg.pane.querySelectorAll('[data-flow-edge]');
+    // Includes each edge's invisible wide "hit" twin (data-flow-edge-hit) so it stays glued to
+    // the visible path while a connected node is dragged — see FlowEdgeLayer.razor.
+    return reg.pane.querySelectorAll('[data-flow-edge], [data-flow-edge-hit]');
 }
 
 // Recomputes one edge path from the given position resolver (live drag positions or the truth).
@@ -410,6 +413,251 @@ function computeEdge(reg, edgeEl, posOf) {
     const sa = anchorFor(reg, s, edgeEl.getAttribute('data-source-handle'), 'source', posOf(s));
     const ta = anchorFor(reg, t, edgeEl.getAttribute('data-target-handle'), 'target', posOf(t));
     return edgePath(edgeEl.getAttribute('data-edge-type') || 'bezier', sa.x, sa.y, sa.position, ta.x, ta.y, ta.position);
+}
+
+function escAttr(v) {
+    return (typeof CSS !== 'undefined' && CSS.escape) ? CSS.escape(v) : String(v).replace(/"/g, '\\"');
+}
+
+// ── Handles: connect (pointer + keyboard), and node toolbars following a live drag ─────────────
+function handleNode(el) {
+    return el.closest('[data-flow-node]');
+}
+
+function handleIdOf(el) {
+    return el.getAttribute('data-handle-id') || null;
+}
+
+function oppositePosition(pos) {
+    switch (pos) {
+        case 'left': return 'right';
+        case 'right': return 'left';
+        case 'top': return 'bottom';
+        default: return 'top';
+    }
+}
+
+// Structural compatibility only (type=target, connectable, not the source's own handle) — the full
+// IsValidConnection predicate lives in .NET and is evaluated once, on drop/commit, by CommitConnect.
+function isValidTargetCandidate(reg, sourceHandleEl, candidateEl) {
+    if (!candidateEl || candidateEl === sourceHandleEl) return false;
+    if (candidateEl.getAttribute('data-handle-type') !== 'target') return false;
+    const node = handleNode(candidateEl);
+    if (!node || node.getAttribute('data-connectable') === 'false') return false;
+    return true;
+}
+
+function markValidTargets(reg, sourceHandleEl) {
+    for (const h of reg.pane.querySelectorAll('[data-flow-handle][data-handle-type="target"]')) {
+        if (isValidTargetCandidate(reg, sourceHandleEl, h)) h.setAttribute('data-flow-handle-valid', '');
+    }
+}
+
+function clearValidTargets(reg) {
+    for (const h of reg.pane.querySelectorAll('[data-flow-handle-valid]')) h.removeAttribute('data-flow-handle-valid');
+}
+
+function ensureConnLine(reg) {
+    const svg = reg.pane.querySelector('[data-slot="flow-edges"]');
+    if (!svg) return;
+    let el = svg.querySelector('[data-flow-connection-line]');
+    if (!el) {
+        el = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        el.setAttribute('data-flow-connection-line', '');
+        el.setAttribute('fill', 'none');
+        el.setAttribute('stroke-width', '1.5');
+        el.setAttribute('stroke-dasharray', '4 3');
+        el.setAttribute('pointer-events', 'none');
+        svg.appendChild(el);
+    }
+    reg.connLine = el;
+}
+
+function removeConnLine(reg) {
+    if (reg.connLine) {
+        reg.connLine.remove();
+        reg.connLine = null;
+    }
+}
+
+function updateConnectionLine(reg, sourceNodeEl, sourceHandleId, clientX, clientY) {
+    if (!reg.connLine) return;
+    const srcPos = nodePos(reg, sourceNodeEl);
+    const a = anchorFor(reg, sourceNodeEl, sourceHandleId, 'source', srcPos);
+    const local = localPoint(reg, clientX, clientY);
+    const p = screenToFlow(local.x, local.y, reg.vp);
+    const path = edgePath('bezier', a.x, a.y, a.position, p.x, p.y, oppositePosition(a.position));
+    reg.connLine.setAttribute('d', path.d);
+}
+
+function beginConnectGesture(reg, handleEl, base) {
+    const nodeEl = handleNode(handleEl);
+    if (!nodeEl) return;
+    const g = Object.assign(base, {
+        kind: 'connect', sourceHandleEl: handleEl, sourceNodeEl: nodeEl,
+        sourceId: nodeEl.getAttribute('data-flow-node'), sourceHandleId: handleIdOf(handleEl),
+    });
+    reg.gesture = g;
+    attachGestureListeners(reg);
+    capture(reg, g.pointerId);
+    markValidTargets(reg, handleEl);
+    ensureConnLine(reg);
+    updateConnectionLine(reg, nodeEl, g.sourceHandleId, base.startX, base.startY);
+    diag({ ev: 'connect-start', source: g.sourceId, handle: g.sourceHandleId });
+}
+
+function endConnectGesture(reg, g, clientX, clientY) {
+    removeConnLine(reg);
+    clearValidTargets(reg);
+    const el = document.elementFromPoint(clientX, clientY);
+    const targetHandle = el ? el.closest('[data-flow-handle]') : null;
+    if (!targetHandle || !isValidTargetCandidate(reg, g.sourceHandleEl, targetHandle)) {
+        diag({ ev: 'connect-end', hasTarget: false });
+        return;
+    }
+    const targetNode = handleNode(targetHandle);
+    const targetId = targetNode.getAttribute('data-flow-node');
+    const targetHandleId = handleIdOf(targetHandle);
+    diag({ ev: 'connect-end', hasTarget: true, target: targetId });
+    call(reg, 'CommitConnect', g.sourceId, g.sourceHandleId, targetId, targetHandleId)
+        .then(accepted => diag({ ev: 'connect-result', accepted: accepted === true }))
+        .catch(() => { });
+}
+
+function ensureLive(reg) {
+    if (reg.liveEl && reg.liveEl.isConnected) return reg.liveEl;
+    const el = document.createElement('div');
+    el.setAttribute('data-flow-live', '');
+    el.setAttribute('aria-live', 'polite');
+    el.style.position = 'absolute';
+    el.style.width = '1px';
+    el.style.height = '1px';
+    el.style.overflow = 'hidden';
+    el.style.clip = 'rect(0,0,0,0)';
+    el.style.whiteSpace = 'nowrap';
+    reg.pane.appendChild(el);
+    reg.liveEl = el;
+    return el;
+}
+
+function announce(reg, text) {
+    ensureLive(reg).textContent = text;
+}
+
+// Keyboard connect: Enter/Space on a source handle enters "connecting" mode; Enter/Space on a
+// compatible target commits. Handled entirely here (a pane-level keydown listener catches the
+// bubbled event from any focused handle) so there is no render round trip per keystroke.
+function handleConnectKey(reg, handleEl) {
+    const o = reg.options;
+    if (o.readonly || !o.connectable) return;
+    if (!reg.kbConnect) {
+        if (handleEl.getAttribute('data-handle-type') !== 'source') return;
+        const node = handleNode(handleEl);
+        if (!node || node.getAttribute('data-connectable') === 'false') return;
+        reg.kbConnect = { sourceHandleEl: handleEl, sourceId: node.getAttribute('data-flow-node'), sourceHandleId: handleIdOf(handleEl) };
+        markValidTargets(reg, handleEl);
+        handleEl.setAttribute('data-flow-connecting', '');
+        announce(reg, 'Connecting from ' + reg.kbConnect.sourceId + '. Press Enter on a target handle to connect, Escape to cancel.');
+        diag({ ev: 'kbconnect-start', source: reg.kbConnect.sourceId });
+        return;
+    }
+    if (handleEl === reg.kbConnect.sourceHandleEl) {
+        cancelKbConnect(reg, 'reselect-source');
+        return;
+    }
+    if (!isValidTargetCandidate(reg, reg.kbConnect.sourceHandleEl, handleEl)) return;
+    const targetNode = handleNode(handleEl);
+    const targetId = targetNode.getAttribute('data-flow-node');
+    const targetHandleId = handleIdOf(handleEl);
+    const src = reg.kbConnect;
+    finishKbConnect(reg);
+    call(reg, 'CommitConnect', src.sourceId, src.sourceHandleId, targetId, targetHandleId).then(accepted => {
+        announce(reg, accepted === true ? 'Connected.' : 'Connection rejected.');
+        diag({ ev: 'kbconnect-result', accepted: accepted === true });
+    }, () => { });
+}
+
+function finishKbConnect(reg) {
+    if (!reg.kbConnect) return;
+    reg.kbConnect.sourceHandleEl.removeAttribute('data-flow-connecting');
+    clearValidTargets(reg);
+    reg.kbConnect = null;
+}
+
+function cancelKbConnect(reg, reason) {
+    if (!reg.kbConnect) return;
+    finishKbConnect(reg);
+    announce(reg, 'Connection cancelled.');
+    diag({ ev: 'kbconnect-cancel', reason });
+}
+
+// ── Marquee (shift-drag) selection ──────────────────────────────────────────
+function createMarqueeRect(reg) {
+    const el = document.createElement('div');
+    el.setAttribute('data-flow-marquee', '');
+    el.style.position = 'absolute';
+    el.style.zIndex = '999';
+    el.style.pointerEvents = 'none';
+    reg.pane.appendChild(el);
+    diag({ ev: 'marquee-start' });
+    return el;
+}
+
+function rectFromPoints(reg, x0, y0, x1, y1) {
+    const p0 = localPoint(reg, x0, y0);
+    const p1 = localPoint(reg, x1, y1);
+    return { left: Math.min(p0.x, p1.x), top: Math.min(p0.y, p1.y), width: Math.abs(p1.x - p0.x), height: Math.abs(p1.y - p0.y) };
+}
+
+function updateMarqueeRect(reg, g, clientX, clientY) {
+    const r = rectFromPoints(reg, g.startX, g.startY, clientX, clientY);
+    g.rectEl.style.left = r.left + 'px';
+    g.rectEl.style.top = r.top + 'px';
+    g.rectEl.style.width = r.width + 'px';
+    g.rectEl.style.height = r.height + 'px';
+    g.lastRect = r;
+}
+
+function rectsIntersect(a, b) {
+    return a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y;
+}
+
+function endMarquee(reg, g) {
+    if (!g.rectEl) return;
+    const r = g.lastRect || { left: 0, top: 0, width: 0, height: 0 };
+    g.rectEl.remove();
+    const p0 = screenToFlow(r.left, r.top, reg.vp);
+    const p1 = screenToFlow(r.left + r.width, r.top + r.height, reg.vp);
+    const flowRect = { x: Math.min(p0.x, p1.x), y: Math.min(p0.y, p1.y), width: Math.abs(p1.x - p0.x), height: Math.abs(p1.y - p0.y) };
+    const ids = [];
+    for (const el of nodeElements(reg)) {
+        if (el.getAttribute('data-selectable') === 'false') continue;
+        const p = nodePos(reg, el);
+        const { width, height } = nodeSize(el);
+        if (rectsIntersect(flowRect, { x: p.x, y: p.y, width, height })) ids.push(el.getAttribute('data-flow-node'));
+    }
+    diag({ ev: 'marquee-end', count: ids.length });
+    call(reg, 'CommitMarquee', ids).catch(() => { });
+    try { reg.pane.focus({ preventScroll: true }); } catch { /* ignore */ }
+}
+
+// Repositions every node toolbar whose target node is part of the drag in flight — mirrors the
+// edge redraw above; FlowNodeToolbar computes its own screen position on every Blazor render, this
+// keeps it glued to the node between renders while a pointer drag is live.
+function redrawToolbars(reg, g) {
+    for (const el of reg.pane.querySelectorAll('[data-flow-toolbar-for]')) {
+        const id = el.getAttribute('data-flow-toolbar-for');
+        if (!g.ids || !g.ids.has(id)) continue;
+        const it = g.items.find(i => i.id === id);
+        if (!it) continue;
+        const { width, height } = nodeSize(it.el);
+        const zoom = reg.vp.zoom > 0 ? reg.vp.zoom : 1;
+        const cx = (it.x + width / 2) * zoom + reg.vp.x;
+        const isBottom = el.getAttribute('data-flow-toolbar-position') === 'bottom';
+        const edgeY = isBottom ? it.y + height : it.y;
+        el.style.left = cx + 'px';
+        el.style.top = (edgeY * zoom + reg.vp.y) + 'px';
+    }
 }
 
 // ── Viewport ───────────────────────────────────────────────────────────────
@@ -652,7 +900,15 @@ function livePos(g, el) {
 function redrawEdges(reg, edges, posOf) {
     for (const e of edges) {
         const p = computeEdge(reg, e, posOf);
-        if (p && e.getAttribute('d') !== p.d) e.setAttribute('d', p.d);
+        if (!p) continue;
+        if (e.getAttribute('d') !== p.d) e.setAttribute('d', p.d);
+        const id = e.getAttribute('data-edge-id');
+        if (!id) continue;
+        const label = reg.pane.querySelector('[data-flow-edge-label][data-edge-id="' + escAttr(id) + '"]');
+        if (label) {
+            label.style.left = p.labelX + 'px';
+            label.style.top = p.labelY + 'px';
+        }
     }
 }
 
@@ -669,6 +925,7 @@ function moveNodes(reg, g, clientX, clientY) {
         it.el.style.transform = nodeTransform(it.x, it.y);
     }
     redrawEdges(reg, g.edges, el => livePos(g, el) || nodePos(reg, el));
+    redrawToolbars(reg, g);
 }
 
 function endNodeVisuals(reg, g) {
@@ -719,6 +976,13 @@ function cancelGesture(reg, reason) {
     } else if (g.kind === 'pan' && g.moved) {
         reg.pane.removeAttribute('data-flow-panning');
         reportFinal(reg);
+    } else if (g.kind === 'connect') {
+        removeConnLine(reg);
+        clearValidTargets(reg);
+        diag({ ev: 'connect-cancel', reason });
+    } else if (g.kind === 'marquee') {
+        if (g.rectEl) g.rectEl.remove();
+        diag({ ev: 'marquee-cancel', reason });
     }
 }
 
@@ -730,11 +994,30 @@ function makeHandlers(reg) {
         if (!(target instanceof Element)) return;
         if (target.closest('[data-flow-overlay]')) return;
         const o = reg.options;
-        const nodeEl = target.closest('[data-flow-node]');
         const base = { pointerId: e.pointerId, startX: e.clientX, startY: e.clientY, lastX: e.clientX, lastY: e.clientY, opts: o };
 
+        const handleEl = !reg.spaceDown ? target.closest('[data-flow-handle]') : null;
+        if (handleEl) {
+            if (o.readonly || !o.connectable) return;
+            if (handleEl.getAttribute('data-handle-type') !== 'source') return;
+            const hNode = handleNode(handleEl);
+            if (!hNode || hNode.getAttribute('data-connectable') === 'false') return;
+            e.preventDefault();
+            beginConnectGesture(reg, handleEl, base);
+            return;
+        }
+
+        // An edge path (visible or its wide invisible hit twin) or an edge label: don't start a
+        // pan/marquee/pane-click gesture here — leave the pointerdown/click alone so the DOM click
+        // reaches Blazor's own @onclick on the path (HandleEdgeClickAsync). Without this a plain
+        // click on an edge fell through to the generic "background" branch below, which both
+        // cancels the click via preventDefault() and synthesizes its own PaneClicked instead.
+        const edgeEl = !reg.spaceDown ? target.closest('[data-flow-edge], [data-flow-edge-hit], [data-flow-edge-label]') : null;
+        if (edgeEl) return;
+
+        const nodeEl = target.closest('[data-flow-node]');
         if (nodeEl && !reg.spaceDown) {
-            if (target.closest('[data-flow-handle], [data-flow-nodrag]') || isEditable(target)) return;
+            if (target.closest('[data-flow-nodrag]') || isEditable(target)) return;
             if (o.readonly || !o.nodesDraggable || nodeEl.getAttribute('data-draggable') === 'false') return;
             reg.gesture = Object.assign(base, {
                 kind: 'node', nodeEl, started: false,
@@ -745,6 +1028,17 @@ function makeHandlers(reg) {
         }
 
         if (isEditable(target)) return;
+
+        // Shift-drag on the empty background: a marquee selection when enabled, otherwise falls
+        // through to a pan/pane-click like a plain drag would.
+        if (e.shiftKey && o.selectionOnShiftDrag && o.elementsSelectable && !reg.spaceDown) {
+            e.preventDefault();
+            capture(reg, e.pointerId);
+            reg.gesture = Object.assign(base, { kind: 'marquee', rectEl: null });
+            attachGestureListeners(reg);
+            return;
+        }
+
         // Background (or anywhere with Space held): a pan when enabled, else just a pane click.
         const canPan = o.panOnDrag || reg.spaceDown;
         reg.gesture = Object.assign(base, { kind: 'pan', canPan, moved: false, vp0: { x: reg.vp.x, y: reg.vp.y, zoom: reg.vp.zoom } });
@@ -765,6 +1059,19 @@ function makeHandlers(reg) {
                 beginNodeDrag(reg, g);
             }
             moveNodes(reg, g, e.clientX, e.clientY);
+            g.lastX = e.clientX;
+            g.lastY = e.clientY;
+            return;
+        }
+        if (g.kind === 'connect') {
+            updateConnectionLine(reg, g.sourceNodeEl, g.sourceHandleId, e.clientX, e.clientY);
+            g.lastX = e.clientX;
+            g.lastY = e.clientY;
+            return;
+        }
+        if (g.kind === 'marquee') {
+            if (!g.rectEl) g.rectEl = createMarqueeRect(reg);
+            updateMarqueeRect(reg, g, e.clientX, e.clientY);
             g.lastX = e.clientX;
             g.lastY = e.clientY;
             return;
@@ -793,6 +1100,16 @@ function makeHandlers(reg) {
                 swallowNextClick();
                 commitNodeDrag(reg, g);
             }
+            return;
+        }
+        if (g.kind === 'connect') {
+            swallowNextClick();
+            endConnectGesture(reg, g, e.clientX, e.clientY);
+            return;
+        }
+        if (g.kind === 'marquee') {
+            swallowNextClick();
+            endMarquee(reg, g);
             return;
         }
         if (g.moved) {
@@ -838,15 +1155,30 @@ function makeHandlers(reg) {
     reg.onKeyDown = (e) => {
         // Arrow keys on a node move it (FlowCanvas handles the move in .NET); stop the page from
         // scrolling underneath. Only when the node can actually move.
-        if (!e.key || !e.key.startsWith('Arrow')) return;
-        const nodeEl = e.target instanceof Element ? e.target.closest('[data-flow-node]') : null;
-        if (!nodeEl || e.target !== nodeEl) return;
-        const o = reg.options;
-        if (o.readonly || !o.nodesDraggable || nodeEl.getAttribute('data-draggable') === 'false') return;
-        e.preventDefault();
+        if (e.key && e.key.startsWith('Arrow')) {
+            const nodeEl = e.target instanceof Element ? e.target.closest('[data-flow-node]') : null;
+            if (nodeEl && e.target === nodeEl) {
+                const o = reg.options;
+                if (!o.readonly && o.nodesDraggable && nodeEl.getAttribute('data-draggable') !== 'false') e.preventDefault();
+            }
+            return;
+        }
+
+        // Enter/Space on a handle: keyboard connect (start, or commit against the mode's source).
+        if (e.key === 'Enter' || e.key === ' ') {
+            const handleEl = e.target instanceof Element ? e.target.closest('[data-flow-handle]') : null;
+            if (handleEl && e.target === handleEl) {
+                e.preventDefault();
+                handleConnectKey(reg, handleEl);
+            }
+        }
     };
 
     reg.onWindowKeyDown = (e) => {
+        if (e.key === 'Escape' && reg.kbConnect) {
+            cancelKbConnect(reg, 'escape-key');
+            return;
+        }
         if (e.key === 'Escape' && reg.gesture) {
             cancelGesture(reg, 'escape');
             return;
@@ -947,6 +1279,9 @@ function registerCanvas(pane, dotNetRef, options) {
         stampId: null,
         lastReported: null,
         gesture: null,
+        kbConnect: null,
+        connLine: null,
+        liveEl: null,
         pending: new Map(),
         measured: new Map(),
         reportedMeasure: new Set(),
@@ -998,17 +1333,11 @@ function unregisterCanvas(pane) {
     if (!pane) return;
     const reg = registrations.get(pane);
     if (!reg) return;
-    const g = reg.gesture;
-    if (g) {
-        // Never commit on teardown — put the DOM back and stop listening.
-        reg.gesture = null;
-        detachGestureListeners(reg);
-        release(reg, g.pointerId);
-        if (g.kind === 'node' && g.started) {
-            endNodeVisuals(reg, g);
-            restoreFromTruth(reg, g.items, g.edges);
-        }
-    }
+    // Never commit on teardown — put the DOM back and stop listening (reuses the Escape-cancel
+    // logic for every gesture kind, including a connect line or a marquee rect in progress).
+    if (reg.gesture) cancelGesture(reg, 'unregister');
+    if (reg.kbConnect) cancelKbConnect(reg, 'unregister');
+    if (reg.liveEl) reg.liveEl.remove();
     pane.removeEventListener('pointerdown', reg.onPointerDown);
     pane.removeEventListener('wheel', reg.onWheel);
     pane.removeEventListener('keydown', reg.onKeyDown);

@@ -400,6 +400,8 @@ internal static partial class LumeoDefaultStrings
         ["Flow.Lock"] = "Verrouiller le canevas",
         ["Flow.ConnectFrom"] = "Connecter depuis {0}",
         ["Flow.ConnectTo"] = "Connecter à {0}",
+        ["Flow.MiniMap"] = "Aperçu",
+        ["Flow.NodeToolbar"] = "Actions du nœud",
         ["Gantt.ScrollToEarlierTask"] = "Faire défiler vers {0} (plus tôt)",
         ["Gantt.ScrollToLaterTask"] = "Faire défiler vers {0} (plus tard)",
         ["Gantt.Settings"] = "Paramètres",

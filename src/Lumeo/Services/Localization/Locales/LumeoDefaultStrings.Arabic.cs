@@ -344,6 +344,8 @@ internal static partial class LumeoDefaultStrings
         ["Flow.Lock"] = "قفل اللوحة",
         ["Flow.ConnectFrom"] = "اتصال من {0}",
         ["Flow.ConnectTo"] = "اتصال بـ {0}",
+        ["Flow.MiniMap"] = "نظرة عامة",
+        ["Flow.NodeToolbar"] = "إجراءات العقدة",
         ["Gantt.ScrollToEarlierTask"] = "التمرير إلى {0} (سابقًا)",
         ["Gantt.ScrollToLaterTask"] = "التمرير إلى {0} (لاحقًا)",
         ["Gantt.Settings"] = "الإعدادات",
