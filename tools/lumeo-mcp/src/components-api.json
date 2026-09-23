@@ -1,12 +1,12 @@
 {
   "$schema": "https://lumeo.nativ.sh/components-api-schema.json",
   "version": "5.10.5",
-  "generated": "2026-09-23T18:19:18.6759326Z",
+  "generated": "2026-09-23T20:42:10.8531271Z",
   "stats": {
-    "componentCount": 168,
-    "totalParameters": 4895,
-    "totalEnums": 104,
-    "totalRecords": 65,
+    "componentCount": 169,
+    "totalParameters": 4948,
+    "totalEnums": 108,
+    "totalRecords": 66,
     "serviceCount": 33,
     "thinFallbacks": []
   },
@@ -1807,6 +1807,36 @@
           "summary": null
         },
         {
+          "name": "FlowRegisterCanvasAsync",
+          "returnType": "Task",
+          "signature": "FlowRegisterCanvasAsync<[System.Diagnostics.CodeAnalysis.DynamicallyAccessedMembers(System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicMethods)] T>(Microsoft.AspNetCore.Components.ElementReference paneEl, DotNetObjectReference<T> dotNetRef, object options)",
+          "summary": null
+        },
+        {
+          "name": "FlowUnregisterCanvasAsync",
+          "returnType": "Task",
+          "signature": "FlowUnregisterCanvasAsync(Microsoft.AspNetCore.Components.ElementReference paneEl)",
+          "summary": null
+        },
+        {
+          "name": "FlowUpdateOptionsAsync",
+          "returnType": "Task",
+          "signature": "FlowUpdateOptionsAsync(Microsoft.AspNetCore.Components.ElementReference paneEl, object options)",
+          "summary": null
+        },
+        {
+          "name": "FlowFitViewAsync",
+          "returnType": "Task",
+          "signature": "FlowFitViewAsync(Microsoft.AspNetCore.Components.ElementReference paneEl, double padding, double minZoom, double maxZoom)",
+          "summary": null
+        },
+        {
+          "name": "FlowGetViewportAsync",
+          "returnType": "Task<double[]?>",
+          "signature": "FlowGetViewportAsync(Microsoft.AspNetCore.Components.ElementReference paneEl)",
+          "summary": null
+        },
+        {
           "name": "SchedulerViewsGetLocalDateAsync",
           "returnType": "Task<string?>",
           "signature": "SchedulerViewsGetLocalDateAsync()",
@@ -3295,6 +3325,36 @@
           "returnType": "Task",
           "signature": "GanttV3ScrollToOffsetAsync(Microsoft.AspNetCore.Components.ElementReference el, double targetX, double offsetPx)",
           "summary": "Companion to GanttV3ScrollToXAsync — places targetX (the same timeline-origin-relative pixel space) at offsetPx pixels from el's own viewport left edge, instead of GanttV3ScrollToXAsync's hardcoded viewport-CENTER placement. The one caller is wheel-zoom's own pointer-anchored recenter (GanttTimeline.ScrollTargetOffsetOverride) — every other recenter in GanttV3 genuinely wants the target centered, so this is a NEW, separate write path rather than a GanttV3ScrollToXAsync overload, keeping that method's own existing behavior/E2E assertions untouched. Default no-op DIM so existing implementers/test doubles keep compiling."
+        },
+        {
+          "name": "FlowRegisterCanvasAsync",
+          "returnType": "Task",
+          "signature": "FlowRegisterCanvasAsync<[System.Diagnostics.CodeAnalysis.DynamicallyAccessedMembers(System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicMethods)] T>(Microsoft.AspNetCore.Components.ElementReference paneEl, DotNetObjectReference<T> dotNetRef, object options)",
+          "summary": "Registers the FlowCanvas engine (flow.js flow.registerCanvas) on paneEl — the canvas' [data-slot=\"flow-pane\"] element. One delegated pointer/wheel/keyboard listener set covers every node underneath, a ResizeObserver measures nodes, and a MutationObserver applies the data-flow-viewport stamp .NET renders for every .NET-originated viewport change. Calling this again for an already-registered paneEl swaps the stored dotNetRef/options in place (idempotent, no second listener set). Generic in the .NET reference type so this core interface stays decoupled from the satellite component. Default no-op DIM so existing implementers/test doubles keep compiling."
+        },
+        {
+          "name": "FlowUnregisterCanvasAsync",
+          "returnType": "Task",
+          "signature": "FlowUnregisterCanvasAsync(Microsoft.AspNetCore.Components.ElementReference paneEl)",
+          "summary": "Tears down the engine registered by FlowRegisterCanvasAsync{T} — removes every listener and observer and cancels (never commits) a gesture in flight. Default no-op."
+        },
+        {
+          "name": "FlowUpdateOptionsAsync",
+          "returnType": "Task",
+          "signature": "FlowUpdateOptionsAsync(Microsoft.AspNetCore.Components.ElementReference paneEl, object options)",
+          "summary": "Pushes a new options bag (zoom limits, snapping, drag/pan/zoom switches) to a registered canvas. A gesture already in flight keeps the snapshot it started with. Default no-op."
+        },
+        {
+          "name": "FlowFitViewAsync",
+          "returnType": "Task",
+          "signature": "FlowFitViewAsync(Microsoft.AspNetCore.Components.ElementReference paneEl, double padding, double minZoom, double maxZoom)",
+          "summary": "Fits every rendered node into the pane, measuring the nodes from the DOM (flow.js flow.fitView) — used when .NET does not know every node's size yet. The engine applies the viewport itself and reports it back like any other viewport change. Default no-op."
+        },
+        {
+          "name": "FlowGetViewportAsync",
+          "returnType": "Task<double[]?>",
+          "signature": "FlowGetViewportAsync(Microsoft.AspNetCore.Components.ElementReference paneEl)",
+          "summary": "The engine's live viewport as [x, y, zoom], or null when the engine is unavailable. Default null."
         },
         {
           "name": "SchedulerViewsGetLocalDateAsync",
@@ -36302,6 +36362,707 @@
         "keys": [],
         "keyboardInteractive": false,
         "focusManaged": false
+      },
+      "parseFailed": false,
+      "parseError": null
+    },
+    "FlowCanvas": {
+      "name": "FlowCanvas",
+      "category": "Data Display",
+      "subcategory": null,
+      "description": "Node/flow editor canvas — templated nodes, SVG edges, pan, pointer-anchored wheel zoom, node drag with snapping, background grid and zoom controls.",
+      "nugetPackage": "Lumeo.Flow",
+      "files": [
+        "UI/FlowCanvas/FlowBackground.razor",
+        "UI/FlowCanvas/FlowCanvas.razor",
+        "UI/FlowCanvas/FlowControls.razor",
+        "UI/FlowCanvas/FlowEdgeLayer.razor",
+        "UI/FlowCanvas/FlowGeometry.cs",
+        "UI/FlowCanvas/FlowHandle.razor",
+        "UI/FlowCanvas/FlowNodeHost.razor",
+        "UI/FlowCanvas/FlowState.cs",
+        "UI/FlowCanvas/FlowTypes.cs"
+      ],
+      "namespace": "Lumeo",
+      "inheritsFrom": null,
+      "implements": [
+        "IAsyncDisposable"
+      ],
+      "parameters": [
+        {
+          "name": "Nodes",
+          "type": "IReadOnlyList<FlowNode>?",
+          "default": null,
+          "description": "The nodes to render. Two-way bindable (@bind-Nodes): every committed drag or keyboard move emits a new list through NodesChanged. Without a binding the canvas keeps its own copy until you pass a different list.",
+          "isCascading": false,
+          "captureUnmatched": false,
+          "isEditorRequired": false
+        },
+        {
+          "name": "NodesChanged",
+          "type": "EventCallback<IReadOnlyList<FlowNode>>",
+          "default": null,
+          "description": "Raised with the new node list after a committed drag or keyboard move.",
+          "isCascading": false,
+          "captureUnmatched": false,
+          "isEditorRequired": false
+        },
+        {
+          "name": "Edges",
+          "type": "IReadOnlyList<FlowEdge>?",
+          "default": null,
+          "description": "The edges to draw between nodes. Edges whose source or target node is missing are skipped.",
+          "isCascading": false,
+          "captureUnmatched": false,
+          "isEditorRequired": false
+        },
+        {
+          "name": "Viewport",
+          "type": "FlowViewport",
+          "default": "new(0, 0, 1)",
+          "description": "The pan/zoom state. Two-way bindable (@bind-Viewport). Setting a new value moves the canvas; the canvas reports user pans and zooms back through ViewportChanged. A zoom of 0 or less means \"not set\" (the canvas starts at 0,0 and 100%).",
+          "isCascading": false,
+          "captureUnmatched": false,
+          "isEditorRequired": false
+        },
+        {
+          "name": "ViewportChanged",
+          "type": "EventCallback<FlowViewport>",
+          "default": null,
+          "description": "Raised when the viewport changes — at most once per animation frame while a pan or wheel zoom is running, once more when it ends, and after every imperative change (FitViewAsync, ZoomInAsync, ...).",
+          "isCascading": false,
+          "captureUnmatched": false,
+          "isEditorRequired": false
+        },
+        {
+          "name": "NodeTemplate",
+          "type": "RenderFragment<FlowNodeContext>?",
+          "default": null,
+          "description": "Renders each node's content. The canvas wraps it in a positioned, focusable host. Without a template a node renders a small card with its Data (or Id).",
+          "isCascading": false,
+          "captureUnmatched": false,
+          "isEditorRequired": false
+        },
+        {
+          "name": "ChildContent",
+          "type": "RenderFragment?",
+          "default": null,
+          "description": "Overlays rendered inside the pane: FlowBackground, FlowControls, your own panels.",
+          "isCascading": false,
+          "captureUnmatched": false,
+          "isEditorRequired": false
+        },
+        {
+          "name": "Height",
+          "type": "string",
+          "default": "\"500px\"",
+          "description": "CSS height of the canvas.",
+          "isCascading": false,
+          "captureUnmatched": false,
+          "isEditorRequired": false
+        },
+        {
+          "name": "MinZoom",
+          "type": "double",
+          "default": "0.25",
+          "description": "Smallest zoom a gesture or method may reach.",
+          "isCascading": false,
+          "captureUnmatched": false,
+          "isEditorRequired": false
+        },
+        {
+          "name": "MaxZoom",
+          "type": "double",
+          "default": "2",
+          "description": "Largest zoom a gesture or method may reach.",
+          "isCascading": false,
+          "captureUnmatched": false,
+          "isEditorRequired": false
+        },
+        {
+          "name": "FitViewOnInit",
+          "type": "bool",
+          "default": "true",
+          "description": "Fits every node into view once the canvas has mounted and measured its nodes (the nodes stay invisible until then, so the un-fitted frame never shows).",
+          "isCascading": false,
+          "captureUnmatched": false,
+          "isEditorRequired": false
+        },
+        {
+          "name": "FitViewPadding",
+          "type": "double",
+          "default": "0.1",
+          "description": "Breathing room for fit-view, as a fraction of the nodes' bounds (0.1 = 10%).",
+          "isCascading": false,
+          "captureUnmatched": false,
+          "isEditorRequired": false
+        },
+        {
+          "name": "SnapToGrid",
+          "type": "bool",
+          "default": "false",
+          "description": "Snaps dragged and keyboard-moved nodes to SnapGrid.",
+          "isCascading": false,
+          "captureUnmatched": false,
+          "isEditorRequired": false
+        },
+        {
+          "name": "SnapGrid",
+          "type": "(double X, double Y)",
+          "default": "(16, 16)",
+          "description": "The snap grid in flow units (X, Y).",
+          "isCascading": false,
+          "captureUnmatched": false,
+          "isEditorRequired": false
+        },
+        {
+          "name": "NodesDraggable",
+          "type": "bool",
+          "default": "true",
+          "description": "Nodes can be moved by dragging or with the arrow keys.",
+          "isCascading": false,
+          "captureUnmatched": false,
+          "isEditorRequired": false
+        },
+        {
+          "name": "PanOnDrag",
+          "type": "bool",
+          "default": "true",
+          "description": "Dragging the empty background pans the canvas. Holding Space pans from anywhere either way.",
+          "isCascading": false,
+          "captureUnmatched": false,
+          "isEditorRequired": false
+        },
+        {
+          "name": "ZoomOnScroll",
+          "type": "bool",
+          "default": "true",
+          "description": "The mouse wheel zooms, anchored on the pointer (a plain wheel — no modifier — like React Flow; the page does not scroll while the pointer is over the canvas).",
+          "isCascading": false,
+          "captureUnmatched": false,
+          "isEditorRequired": false
+        },
+        {
+          "name": "Readonly",
+          "type": "bool",
+          "default": "false",
+          "description": "Turns every editing gesture off (node drag and keyboard move now; connect and delete in later phases). Pan, zoom, selection and click events keep working.",
+          "isCascading": false,
+          "captureUnmatched": false,
+          "isEditorRequired": false
+        },
+        {
+          "name": "OnNodeClick",
+          "type": "EventCallback<FlowNode>",
+          "default": null,
+          "description": "A node was clicked (not raised for the click that ends a drag).",
+          "isCascading": false,
+          "captureUnmatched": false,
+          "isEditorRequired": false
+        },
+        {
+          "name": "OnNodeDoubleClick",
+          "type": "EventCallback<FlowNode>",
+          "default": null,
+          "description": "A node was double-clicked.",
+          "isCascading": false,
+          "captureUnmatched": false,
+          "isEditorRequired": false
+        },
+        {
+          "name": "OnNodeContextMenu",
+          "type": "EventCallback<FlowNodeContextMenuEventArgs>",
+          "default": null,
+          "description": "A node was right-clicked. The browser menu is suppressed while this has a handler.",
+          "isCascading": false,
+          "captureUnmatched": false,
+          "isEditorRequired": false
+        },
+        {
+          "name": "OnPaneClick",
+          "type": "EventCallback<FlowPoint>",
+          "default": null,
+          "description": "The empty background was clicked (not dragged); the point is in flow coordinates.",
+          "isCascading": false,
+          "captureUnmatched": false,
+          "isEditorRequired": false
+        },
+        {
+          "name": "OnNodeDragStop",
+          "type": "EventCallback<IReadOnlyList<FlowNodeChange>>",
+          "default": null,
+          "description": "A drag (or arrow-key move) was committed; one entry per moved node. Raised after NodesChanged.",
+          "isCascading": false,
+          "captureUnmatched": false,
+          "isEditorRequired": false
+        },
+        {
+          "name": "Class",
+          "type": "string?",
+          "default": null,
+          "description": "Additional CSS classes merged onto the root element.",
+          "isCascading": false,
+          "captureUnmatched": false,
+          "isEditorRequired": false
+        },
+        {
+          "name": "AdditionalAttributes",
+          "type": "Dictionary<string, object>?",
+          "default": null,
+          "description": "Captures unmatched attributes and applies them to the root element.",
+          "isCascading": false,
+          "captureUnmatched": true,
+          "isEditorRequired": false
+        }
+      ],
+      "events": [
+        {
+          "name": "NodesChanged",
+          "type": "EventCallback<IReadOnlyList<FlowNode>>",
+          "description": "Raised with the new node list after a committed drag or keyboard move."
+        },
+        {
+          "name": "ViewportChanged",
+          "type": "EventCallback<FlowViewport>",
+          "description": "Raised when the viewport changes — at most once per animation frame while a pan or wheel zoom is running, once more when it ends, and after every imperative change (FitViewAsync, ZoomInAsync, ...)."
+        },
+        {
+          "name": "OnNodeClick",
+          "type": "EventCallback<FlowNode>",
+          "description": "A node was clicked (not raised for the click that ends a drag)."
+        },
+        {
+          "name": "OnNodeDoubleClick",
+          "type": "EventCallback<FlowNode>",
+          "description": "A node was double-clicked."
+        },
+        {
+          "name": "OnNodeContextMenu",
+          "type": "EventCallback<FlowNodeContextMenuEventArgs>",
+          "description": "A node was right-clicked. The browser menu is suppressed while this has a handler."
+        },
+        {
+          "name": "OnPaneClick",
+          "type": "EventCallback<FlowPoint>",
+          "description": "The empty background was clicked (not dragged); the point is in flow coordinates."
+        },
+        {
+          "name": "OnNodeDragStop",
+          "type": "EventCallback<IReadOnlyList<FlowNodeChange>>",
+          "description": "A drag (or arrow-key move) was committed; one entry per moved node. Raised after NodesChanged."
+        }
+      ],
+      "enums": [
+        {
+          "name": "FlowBackgroundVariant",
+          "values": [
+            "Dots",
+            "Lines",
+            "Cross"
+          ],
+          "description": "The pattern FlowBackground draws."
+        },
+        {
+          "name": "FlowHandleType",
+          "values": [
+            "Source",
+            "Target"
+          ],
+          "description": "Whether a FlowHandle starts connections (Source) or accepts them (Target)."
+        },
+        {
+          "name": "FlowPosition",
+          "values": [
+            "Left",
+            "Right",
+            "Top",
+            "Bottom"
+          ],
+          "description": "The PHYSICAL side of a node a handle sits on, and the direction an edge leaves/enters it. Physical, not logical: Left stays left under dir=\"rtl\" (the canvas is a geometric surface, not a text flow)."
+        }
+      ],
+      "records": [
+        {
+          "name": "FlowCanvasContext",
+          "signature": "FlowCanvasContext(FlowCanvas Canvas, FlowViewport Viewport, FlowViewport InitialViewport, bool Locked, double MinZoom, double MaxZoom)",
+          "description": "What the canvas cascades to FlowBackground, FlowControls and its own node/edge layers. Re-created on every render (cascaded with IsFixed=\"false\")."
+        }
+      ],
+      "gotchas": [],
+      "cssVars": [
+        "--color-accent",
+        "--color-accent-foreground",
+        "--color-background",
+        "--color-border",
+        "--color-card",
+        "--color-card-foreground",
+        "--color-foreground",
+        "--radius"
+      ],
+      "examples": [],
+      "subComponents": {
+        "FlowBackground": {
+          "componentName": "FlowBackground",
+          "fileName": "FlowBackground.razor",
+          "namespace": "Lumeo",
+          "inheritsFrom": null,
+          "implements": [],
+          "parameters": [
+            {
+              "name": "Context",
+              "type": "FlowCanvas.FlowCanvasContext?",
+              "default": null,
+              "description": null,
+              "isCascading": true,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "Variant",
+              "type": "FlowBackgroundVariant",
+              "default": "FlowBackgroundVariant.Dots",
+              "description": "What the grid draws.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "Gap",
+              "type": "double",
+              "default": "20",
+              "description": "Grid spacing in flow units.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "Size",
+              "type": "double",
+              "default": "1",
+              "description": "Dot radius (dots) or half the arm length (cross), in flow units. Ignored for lines.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "Class",
+              "type": "string?",
+              "default": null,
+              "description": "Additional CSS classes merged onto the background <svg>.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "AdditionalAttributes",
+              "type": "Dictionary<string, object>?",
+              "default": null,
+              "description": "Captures unmatched attributes and applies them to the background <svg>.",
+              "isCascading": false,
+              "captureUnmatched": true,
+              "isEditorRequired": false
+            }
+          ],
+          "events": [],
+          "enums": [],
+          "records": [],
+          "gotchas": [],
+          "parseFailed": false,
+          "parseError": null
+        },
+        "FlowControls": {
+          "componentName": "FlowControls",
+          "fileName": "FlowControls.razor",
+          "namespace": "Lumeo",
+          "inheritsFrom": null,
+          "implements": [],
+          "parameters": [
+            {
+              "name": "Context",
+              "type": "FlowCanvas.FlowCanvasContext?",
+              "default": null,
+              "description": null,
+              "isCascading": true,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "Position",
+              "type": "ControlsPosition",
+              "default": "ControlsPosition.BottomLeft",
+              "description": "The corner the controls sit in.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "Horizontal",
+              "type": "bool",
+              "default": "false",
+              "description": "Lays the buttons out in a row instead of a column.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "ShowZoom",
+              "type": "bool",
+              "default": "true",
+              "description": "Shows the zoom in / zoom out buttons.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "ShowFitView",
+              "type": "bool",
+              "default": "true",
+              "description": "Shows the fit-view button.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "ShowLock",
+              "type": "bool",
+              "default": "true",
+              "description": "Shows the lock toggle (locked = nodes cannot be moved; pan and zoom still work).",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "ChildContent",
+              "type": "RenderFragment?",
+              "default": null,
+              "description": "Extra buttons appended after the built-in ones.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "Class",
+              "type": "string?",
+              "default": null,
+              "description": "Additional CSS classes merged onto the toolbar.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "AdditionalAttributes",
+              "type": "Dictionary<string, object>?",
+              "default": null,
+              "description": "Captures unmatched attributes and applies them to the toolbar.",
+              "isCascading": false,
+              "captureUnmatched": true,
+              "isEditorRequired": false
+            }
+          ],
+          "events": [],
+          "enums": [
+            {
+              "name": "ControlsPosition",
+              "values": [
+                "TopLeft",
+                "TopRight",
+                "BottomLeft",
+                "BottomRight"
+              ],
+              "description": "Where the controls sit inside the canvas."
+            }
+          ],
+          "records": [],
+          "gotchas": [],
+          "parseFailed": false,
+          "parseError": null
+        },
+        "FlowEdgeLayer": {
+          "componentName": "FlowEdgeLayer",
+          "fileName": "FlowEdgeLayer.razor",
+          "namespace": "Lumeo",
+          "inheritsFrom": null,
+          "implements": [],
+          "parameters": [
+            {
+              "name": "Context",
+              "type": "FlowCanvas.FlowCanvasContext?",
+              "default": null,
+              "description": null,
+              "isCascading": true,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "Class",
+              "type": "string?",
+              "default": null,
+              "description": "Additional CSS classes merged onto the edge layer's <svg>.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "AdditionalAttributes",
+              "type": "Dictionary<string, object>?",
+              "default": null,
+              "description": "Captures unmatched attributes and applies them to the edge layer's <svg>.",
+              "isCascading": false,
+              "captureUnmatched": true,
+              "isEditorRequired": false
+            }
+          ],
+          "events": [],
+          "enums": [],
+          "records": [],
+          "gotchas": [],
+          "parseFailed": false,
+          "parseError": null
+        },
+        "FlowHandle": {
+          "componentName": "FlowHandle",
+          "fileName": "FlowHandle.razor",
+          "namespace": "Lumeo",
+          "inheritsFrom": null,
+          "implements": [],
+          "parameters": [
+            {
+              "name": "Node",
+              "type": "FlowNode?",
+              "default": null,
+              "description": null,
+              "isCascading": true,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "Type",
+              "type": "FlowHandleType",
+              "default": "FlowHandleType.Source",
+              "description": "Source (edges start here) or target (edges end here).",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "Position",
+              "type": "FlowPosition",
+              "default": "FlowPosition.Right",
+              "description": "The side of the node the handle sits on, and the direction edges leave/enter it.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "Id",
+              "type": "string?",
+              "default": null,
+              "description": "Handle id, for nodes with several handles of the same type (matched by FlowEdge.SourceHandle/TargetHandle).",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "Class",
+              "type": "string?",
+              "default": null,
+              "description": "Additional CSS classes merged onto the handle button.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "AdditionalAttributes",
+              "type": "Dictionary<string, object>?",
+              "default": null,
+              "description": "Captures unmatched attributes and applies them to the handle button.",
+              "isCascading": false,
+              "captureUnmatched": true,
+              "isEditorRequired": false
+            }
+          ],
+          "events": [],
+          "enums": [],
+          "records": [],
+          "gotchas": [],
+          "parseFailed": false,
+          "parseError": null
+        },
+        "FlowNodeHost": {
+          "componentName": "FlowNodeHost",
+          "fileName": "FlowNodeHost.razor",
+          "namespace": "Lumeo",
+          "inheritsFrom": null,
+          "implements": [],
+          "parameters": [
+            {
+              "name": "Context",
+              "type": "FlowCanvas.FlowCanvasContext?",
+              "default": null,
+              "description": null,
+              "isCascading": true,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "Node",
+              "type": "FlowNode",
+              "default": "default!",
+              "description": "The node this host positions and wraps.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": true
+            },
+            {
+              "name": "Class",
+              "type": "string?",
+              "default": null,
+              "description": "Additional CSS classes merged onto the host element.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "AdditionalAttributes",
+              "type": "Dictionary<string, object>?",
+              "default": null,
+              "description": "Captures unmatched attributes and applies them to the host element.",
+              "isCascading": false,
+              "captureUnmatched": true,
+              "isEditorRequired": false
+            }
+          ],
+          "events": [],
+          "enums": [],
+          "records": [],
+          "gotchas": [],
+          "parseFailed": false,
+          "parseError": null
+        }
+      },
+      "a11y": {
+        "roles": [
+          "application",
+          "group",
+          "toolbar"
+        ],
+        "ariaAttributes": [
+          "aria-hidden",
+          "aria-label",
+          "aria-orientation",
+          "aria-pressed",
+          "aria-roledescription",
+          "aria-selected"
+        ],
+        "keys": [
+          "ArrowDown",
+          "ArrowLeft",
+          "ArrowRight",
+          "ArrowUp",
+          "Escape"
+        ],
+        "keyboardInteractive": true,
+        "focusManaged": true
       },
       "parseFailed": false,
       "parseError": null

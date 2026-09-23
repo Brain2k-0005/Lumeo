@@ -974,6 +974,41 @@ public interface IComponentInteropService : IAsyncDisposable, IDisposable
     /// </summary>
     Task GanttV3ScrollToOffsetAsync(Microsoft.AspNetCore.Components.ElementReference el, double targetX, double offsetPx) => Task.CompletedTask;
 
+    // --- Lumeo.Flow — FlowCanvas node/flow engine (flow.js) ---
+    // Its own module, loaded lazily on the first FlowCanvas like every other satellite engine.
+    // Pan, pointer-anchored wheel zoom, node drag and measurement all run in JS; .NET is told
+    // once per commit (drop) and at most once per animation frame for the viewport.
+
+    /// <summary>
+    /// Registers the FlowCanvas engine (flow.js <c>flow.registerCanvas</c>) on <paramref name="paneEl"/>
+    /// — the canvas' <c>[data-slot="flow-pane"]</c> element. One delegated pointer/wheel/keyboard
+    /// listener set covers every node underneath, a ResizeObserver measures nodes, and a
+    /// MutationObserver applies the <c>data-flow-viewport</c> stamp .NET renders for every
+    /// .NET-originated viewport change. Calling this again for an already-registered
+    /// <paramref name="paneEl"/> swaps the stored <paramref name="dotNetRef"/>/<paramref name="options"/>
+    /// in place (idempotent, no second listener set). Generic in the .NET reference type so this core
+    /// interface stays decoupled from the satellite component. Default no-op DIM so existing
+    /// implementers/test doubles keep compiling.
+    /// </summary>
+    Task FlowRegisterCanvasAsync<[System.Diagnostics.CodeAnalysis.DynamicallyAccessedMembers(System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicMethods)] T>(Microsoft.AspNetCore.Components.ElementReference paneEl, DotNetObjectReference<T> dotNetRef, object options) where T : class
+        => Task.CompletedTask;
+
+    /// <summary>Tears down the engine registered by <see cref="FlowRegisterCanvasAsync{T}"/> — removes every listener and observer and cancels (never commits) a gesture in flight. Default no-op.</summary>
+    Task FlowUnregisterCanvasAsync(Microsoft.AspNetCore.Components.ElementReference paneEl) => Task.CompletedTask;
+
+    /// <summary>Pushes a new options bag (zoom limits, snapping, drag/pan/zoom switches) to a registered canvas. A gesture already in flight keeps the snapshot it started with. Default no-op.</summary>
+    Task FlowUpdateOptionsAsync(Microsoft.AspNetCore.Components.ElementReference paneEl, object options) => Task.CompletedTask;
+
+    /// <summary>
+    /// Fits every rendered node into the pane, measuring the nodes from the DOM (flow.js
+    /// <c>flow.fitView</c>) — used when .NET does not know every node's size yet. The engine applies the
+    /// viewport itself and reports it back like any other viewport change. Default no-op.
+    /// </summary>
+    Task FlowFitViewAsync(Microsoft.AspNetCore.Components.ElementReference paneEl, double padding, double minZoom, double maxZoom) => Task.CompletedTask;
+
+    /// <summary>The engine's live viewport as <c>[x, y, zoom]</c>, or null when the engine is unavailable. Default null.</summary>
+    Task<double[]?> FlowGetViewportAsync(Microsoft.AspNetCore.Components.ElementReference paneEl) => Task.FromResult<double[]?>(null);
+
     // --- Scheduler first-party view engine (wave 1b) ---
     // Own module (scheduler-views.js): drag, resize, drag-create and the now-indicator
     // for the Scheduler's Blazor-rendered views.

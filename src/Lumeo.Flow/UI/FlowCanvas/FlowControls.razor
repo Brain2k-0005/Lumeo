@@ -1,0 +1,102 @@
+@namespace Lumeo
+@inject Lumeo.Services.Localization.ILumeoLocalizer L
+
+@* FlowControls — zoom in / zoom out / fit view / lock, stacked in a corner of the canvas. Place it
+   inside FlowCanvas' ChildContent. Built from Lumeo Buttons (Outline, icon size); any ChildContent
+   is appended as extra buttons. data-flow-overlay keeps the canvas engine from treating a press
+   here as a pan. *@
+
+<div data-slot="flow-controls"
+     data-flow-overlay
+     role="toolbar"
+     aria-label="@L["Flow.Controls"]"
+     aria-orientation="@(Horizontal ? "horizontal" : "vertical")"
+     class="@RootClass"
+     style="position:absolute;z-index:5;"
+     @attributes="AdditionalAttributes">
+    @if (ShowZoom)
+    {
+        <Button Variant="Button.ButtonVariant.Outline" Size="Button.ButtonSize.Icon" Class="size-8 bg-card"
+                aria-label="@L["Flow.ZoomIn"]" title="@L["Flow.ZoomIn"]"
+                Disabled="@(!CanZoomIn)" OnClick="ZoomInAsync">
+            <SvgGlyph Svg="@(LumeoIcons.Plus)" class="size-4" />
+        </Button>
+        <Button Variant="Button.ButtonVariant.Outline" Size="Button.ButtonSize.Icon" Class="size-8 bg-card"
+                aria-label="@L["Flow.ZoomOut"]" title="@L["Flow.ZoomOut"]"
+                Disabled="@(!CanZoomOut)" OnClick="ZoomOutAsync">
+            <SvgGlyph Svg="@(LumeoIcons.Minus)" class="size-4" />
+        </Button>
+    }
+    @if (ShowFitView)
+    {
+        <Button Variant="Button.ButtonVariant.Outline" Size="Button.ButtonSize.Icon" Class="size-8 bg-card"
+                aria-label="@L["Flow.FitView"]" title="@L["Flow.FitView"]"
+                OnClick="FitViewAsync">
+            <SvgGlyph Svg="@(LumeoIcons.Maximize2)" class="size-4" />
+        </Button>
+    }
+    @if (ShowLock)
+    {
+        <Button Variant="Button.ButtonVariant.Outline" Size="Button.ButtonSize.Icon"
+                Class="@Cx.Merge("size-8 bg-card", Cx.When(Locked, "bg-accent text-accent-foreground"))"
+                aria-label="@L["Flow.Lock"]" title="@L["Flow.Lock"]"
+                aria-pressed="@(Locked ? "true" : "false")"
+                OnClick="ToggleLockAsync">
+            <SvgGlyph Svg="@(LumeoIcons.Lock)" class="size-4" />
+        </Button>
+    }
+    @ChildContent
+</div>
+
+@code {
+    [CascadingParameter] private FlowCanvas.FlowCanvasContext? Context { get; set; }
+
+    /// <summary>Where the controls sit inside the canvas.</summary>
+    public enum ControlsPosition { TopLeft, TopRight, BottomLeft, BottomRight }
+
+    /// <summary>The corner the controls sit in.</summary>
+    [Parameter] public ControlsPosition Position { get; set; } = ControlsPosition.BottomLeft;
+
+    /// <summary>Lays the buttons out in a row instead of a column.</summary>
+    [Parameter] public bool Horizontal { get; set; }
+
+    /// <summary>Shows the zoom in / zoom out buttons.</summary>
+    [Parameter] public bool ShowZoom { get; set; } = true;
+
+    /// <summary>Shows the fit-view button.</summary>
+    [Parameter] public bool ShowFitView { get; set; } = true;
+
+    /// <summary>Shows the lock toggle (locked = nodes cannot be moved; pan and zoom still work).</summary>
+    [Parameter] public bool ShowLock { get; set; } = true;
+
+    /// <summary>Extra buttons appended after the built-in ones.</summary>
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    /// <summary>Additional CSS classes merged onto the toolbar.</summary>
+    [Parameter] public string? Class { get; set; }
+
+    /// <summary>Captures unmatched attributes and applies them to the toolbar.</summary>
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private bool Locked => Context?.Locked == true;
+    private double Zoom => Context?.Viewport.Zoom ?? 1;
+    private bool CanZoomIn => Context is null || Zoom < Context.MaxZoom - 1e-9;
+    private bool CanZoomOut => Context is null || Zoom > Context.MinZoom + 1e-9;
+
+    private string RootClass => Cx.Merge(
+        "flex gap-1 rounded-md",
+        Horizontal ? "flex-row" : "flex-col",
+        Position switch
+        {
+            ControlsPosition.TopLeft => "left-3 top-3",
+            ControlsPosition.TopRight => "right-3 top-3",
+            ControlsPosition.BottomRight => "right-3 bottom-3",
+            _ => "left-3 bottom-3",
+        },
+        Class);
+
+    private Task ZoomInAsync() => Context?.Canvas.ZoomInAsync() ?? Task.CompletedTask;
+    private Task ZoomOutAsync() => Context?.Canvas.ZoomOutAsync() ?? Task.CompletedTask;
+    private Task FitViewAsync() => Context?.Canvas.FitViewAsync() ?? Task.CompletedTask;
+    private Task ToggleLockAsync() => Context?.Canvas.SetLockedAsync(!Locked) ?? Task.CompletedTask;
+}

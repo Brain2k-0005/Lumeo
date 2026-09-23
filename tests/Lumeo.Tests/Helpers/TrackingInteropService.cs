@@ -927,6 +927,54 @@ public class TrackingInteropService : IComponentInteropService
         return Task.CompletedTask;
     }
 
+    // Lumeo.Flow engine registration tracking (FlowCanvas phase 1) — records every
+    // register/unregister/options/fit call so tests can assert the lifecycle (registered once,
+    // re-pushed on an options change, torn down on dispose, and torn down AGAIN when a dispose
+    // lands while the register call is still in flight — FlowRegisterCanvasGate suspends it).
+    private int _flowRegisterCanvasCallCount;
+    private int _flowUnregisterCanvasCallCount;
+    private int _flowUpdateOptionsCallCount;
+    private readonly List<(double Padding, double MinZoom, double MaxZoom)> _flowFitViewCalls = new();
+    public int FlowRegisterCanvasCallCount => _flowRegisterCanvasCallCount;
+    public int FlowUnregisterCanvasCallCount => _flowUnregisterCanvasCallCount;
+    public int FlowUpdateOptionsCallCount => _flowUpdateOptionsCallCount;
+    public IReadOnlyList<(double Padding, double MinZoom, double MaxZoom)> FlowFitViewCalls => _flowFitViewCalls;
+    public object? LastFlowOptions { get; private set; }
+    public object? LastFlowDotNetRef { get; private set; }
+    /// <summary>When set, <see cref="FlowRegisterCanvasAsync{T}"/> returns this gate's Task
+    /// (the call is still recorded first) — suspends the canvas' registration mid-flight.</summary>
+    public TaskCompletionSource? FlowRegisterCanvasGate { get; set; }
+    /// <summary>When set, <see cref="FlowRegisterCanvasAsync{T}"/> throws it (a failed registration).</summary>
+    public Exception? FlowRegisterCanvasException { get; set; }
+    /// <summary>What <see cref="FlowGetViewportAsync"/> returns — the "live" engine viewport.</summary>
+    public double[]? FlowLiveViewport { get; set; }
+    public Task FlowRegisterCanvasAsync<T>(ElementReference paneEl, DotNetObjectReference<T> dotNetRef, object options) where T : class
+    {
+        _flowRegisterCanvasCallCount++;
+        LastFlowOptions = options;
+        LastFlowDotNetRef = dotNetRef;
+        if (FlowRegisterCanvasException is not null) throw FlowRegisterCanvasException;
+        if (FlowRegisterCanvasGate is not null) return FlowRegisterCanvasGate.Task;
+        return Task.CompletedTask;
+    }
+    public Task FlowUnregisterCanvasAsync(ElementReference paneEl)
+    {
+        _flowUnregisterCanvasCallCount++;
+        return Task.CompletedTask;
+    }
+    public Task FlowUpdateOptionsAsync(ElementReference paneEl, object options)
+    {
+        _flowUpdateOptionsCallCount++;
+        LastFlowOptions = options;
+        return Task.CompletedTask;
+    }
+    public Task FlowFitViewAsync(ElementReference paneEl, double padding, double minZoom, double maxZoom)
+    {
+        _flowFitViewCalls.Add((padding, minZoom, maxZoom));
+        return Task.CompletedTask;
+    }
+    public Task<double[]?> FlowGetViewportAsync(ElementReference paneEl) => Task.FromResult(FlowLiveViewport);
+
     // Scheduler first-party view engine drag/now-indicator registration tracking
     // (wave 1b) — same shape as the GanttV3 block above, for the same reason:
     // a test needs to assert the options bag actually pushed (hasCanDrop,

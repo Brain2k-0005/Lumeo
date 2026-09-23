@@ -1,0 +1,57 @@
+@namespace Lumeo
+@inject Lumeo.Services.Localization.ILumeoLocalizer L
+
+@* FlowHandle — a connection port, placed inside a node template. Positions itself on the node
+   host's edge (the host is the containing block), and tells the engine where edges attach: the
+   engine measures every [data-flow-handle] inside a node and edges bound to this handle (by Id,
+   or the node's first handle of this Type) start/end at its centre.
+
+   Phase 1 renders the port and its data attributes; dragging from it to create an edge is phase 2.
+   Until then it is not a tab stop (tabindex="-1") — nothing to activate yet. *@
+
+<button type="button"
+        data-flow-handle
+        data-handle-type="@(Type == FlowHandleType.Source ? "source" : "target")"
+        data-handle-id="@Id"
+        data-position="@FlowGeometry.FormatPosition(Position)"
+        tabindex="-1"
+        aria-label="@AriaLabel"
+        class="@Cx.Merge("lumeo-flow-handle", Class)"
+        style="@PositionStyle"
+        @attributes="AdditionalAttributes"></button>
+
+@code {
+    [CascadingParameter(Name = "LumeoFlowNode")] private FlowNode? Node { get; set; }
+
+    /// <summary>Source (edges start here) or target (edges end here).</summary>
+    [Parameter] public FlowHandleType Type { get; set; } = FlowHandleType.Source;
+
+    /// <summary>The side of the node the handle sits on, and the direction edges leave/enter it.</summary>
+    [Parameter] public FlowPosition Position { get; set; } = FlowPosition.Right;
+
+    /// <summary>Handle id, for nodes with several handles of the same type (matched by <c>FlowEdge.SourceHandle</c>/<c>TargetHandle</c>).</summary>
+    [Parameter] public string? Id { get; set; }
+
+    /// <summary>Additional CSS classes merged onto the handle button.</summary>
+    [Parameter] public string? Class { get; set; }
+
+    /// <summary>Captures unmatched attributes and applies them to the handle button.</summary>
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private string AriaLabel
+    {
+        get
+        {
+            var name = Node?.Id ?? string.Empty;
+            return Type == FlowHandleType.Source ? L["Flow.ConnectFrom", name] : L["Flow.ConnectTo", name];
+        }
+    }
+
+    private string PositionStyle => Position switch
+    {
+        FlowPosition.Left => "position:absolute;left:0;top:50%;transform:translate(-50%,-50%);",
+        FlowPosition.Right => "position:absolute;left:100%;top:50%;transform:translate(-50%,-50%);",
+        FlowPosition.Top => "position:absolute;left:50%;top:0;transform:translate(-50%,-50%);",
+        _ => "position:absolute;left:50%;top:100%;transform:translate(-50%,-50%);",
+    };
+}

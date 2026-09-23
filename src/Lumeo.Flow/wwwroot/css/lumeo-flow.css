@@ -1,0 +1,105 @@
+/* Lumeo.Flow — FlowCanvas plain rules.
+   Theme tokens only (the --color-* / --radius-* variables lumeo.css declares); no hex, no dark:
+   variants — dark mode is the variable swap. Loaded automatically by flow.js on the first
+   FlowCanvas; link _content/Lumeo.Flow/css/lumeo-flow.css yourself to have it before first paint.
+   The structural styles a canvas needs to lay out at all (absolute positioning, transform origin)
+   are inline in the markup, so a canvas renders correctly even before this file arrives. */
+
+[data-slot="flow-pane"] {
+    cursor: grab;
+    touch-action: none;
+}
+
+[data-slot="flow-pane"][data-flow-panning],
+[data-slot="flow-pane"][data-flow-space-pan] {
+    cursor: grabbing;
+}
+
+[data-slot="flow-pane"][data-flow-dragging],
+[data-slot="flow-pane"][data-flow-panning] {
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+/* Nodes */
+[data-flow-node] {
+    cursor: grab;
+    outline: none;
+}
+
+[data-flow-node][data-draggable="false"] {
+    cursor: default;
+}
+
+[data-flow-node][data-dragging] {
+    cursor: grabbing;
+}
+
+[data-flow-node]:focus-visible {
+    outline: 2px solid var(--color-ring);
+    outline-offset: 2px;
+    border-radius: var(--radius-md);
+}
+
+[data-flow-node][data-selected] {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 2px;
+    border-radius: var(--radius-md);
+}
+
+/* Edges */
+[data-flow-edge] {
+    fill: none;
+    stroke: var(--color-border);
+    stroke-width: 1.5;
+}
+
+[data-flow-edge][data-selected] {
+    stroke: var(--color-primary);
+}
+
+/* Handles */
+[data-flow-handle] {
+    width: 8px;
+    height: 8px;
+    padding: 0;
+    border-radius: 9999px;
+    border: 1px solid var(--color-muted-foreground);
+    background: var(--color-background);
+    cursor: crosshair;
+}
+
+[data-flow-handle]:focus-visible {
+    outline: 2px solid var(--color-ring);
+    outline-offset: 1px;
+}
+
+/* Background grid */
+[data-slot="flow-background"] [data-flow-background-shape="dot"] {
+    fill: var(--color-border);
+}
+
+[data-slot="flow-background"] [data-flow-background-shape="line"] {
+    fill: none;
+    stroke: var(--color-border);
+    stroke-width: 1;
+}
+
+/* Initial fit: while a FitViewOnInit canvas waits for the engine's first fit, keep the node
+   layer invisible so the un-fitted frame never paints. The engine stamps data-flow-ready="done"
+   in the same frame it applies the fit. If the engine never loads, the layer reveals itself
+   after 1.5s rather than staying hidden. */
+[data-slot="flow-canvas"][data-flow-fit-pending]:not([data-flow-ready]) [data-slot="flow-viewport"] {
+    opacity: 0;
+    animation: lumeo-flow-reveal 0s linear 1.5s forwards;
+}
+
+@keyframes lumeo-flow-reveal {
+    to { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    [data-flow-edge] {
+        animation: none;
+    }
+}

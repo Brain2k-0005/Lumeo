@@ -1,0 +1,930 @@
+{
+  "name": "FlowCanvas",
+  "category": "Data Display",
+  "subcategory": null,
+  "description": "Node/flow editor canvas — templated nodes, SVG edges, pan, pointer-anchored wheel zoom, node drag with snapping, background grid and zoom controls.",
+  "thumbnail": "/preview-cards/flow-canvas.webp",
+  "hasDocsPage": true,
+  "nugetPackage": "Lumeo.Flow",
+  "files": [
+    "UI/FlowCanvas/FlowBackground.razor",
+    "UI/FlowCanvas/FlowCanvas.razor",
+    "UI/FlowCanvas/FlowControls.razor",
+    "UI/FlowCanvas/FlowEdgeLayer.razor",
+    "UI/FlowCanvas/FlowGeometry.cs",
+    "UI/FlowCanvas/FlowHandle.razor",
+    "UI/FlowCanvas/FlowNodeHost.razor",
+    "UI/FlowCanvas/FlowState.cs",
+    "UI/FlowCanvas/FlowTypes.cs"
+  ],
+  "dependencies": [
+    "button",
+    "sidebar"
+  ],
+  "packageDependencies": [],
+  "cssVars": [
+    "--color-accent",
+    "--color-accent-foreground",
+    "--color-background",
+    "--color-border",
+    "--color-card",
+    "--color-card-foreground",
+    "--color-foreground",
+    "--radius"
+  ],
+  "gotchas": [],
+  "api": {
+    "name": "FlowCanvas",
+    "category": "Data Display",
+    "subcategory": null,
+    "description": "Node/flow editor canvas — templated nodes, SVG edges, pan, pointer-anchored wheel zoom, node drag with snapping, background grid and zoom controls.",
+    "nugetPackage": "Lumeo.Flow",
+    "files": [
+      "UI/FlowCanvas/FlowBackground.razor",
+      "UI/FlowCanvas/FlowCanvas.razor",
+      "UI/FlowCanvas/FlowControls.razor",
+      "UI/FlowCanvas/FlowEdgeLayer.razor",
+      "UI/FlowCanvas/FlowGeometry.cs",
+      "UI/FlowCanvas/FlowHandle.razor",
+      "UI/FlowCanvas/FlowNodeHost.razor",
+      "UI/FlowCanvas/FlowState.cs",
+      "UI/FlowCanvas/FlowTypes.cs"
+    ],
+    "namespace": "Lumeo",
+    "inheritsFrom": null,
+    "implements": [
+      "IAsyncDisposable"
+    ],
+    "parameters": [
+      {
+        "name": "Nodes",
+        "type": "IReadOnlyList<FlowNode>?",
+        "default": null,
+        "description": "The nodes to render. Two-way bindable (@bind-Nodes): every committed drag or keyboard move emits a new list through NodesChanged. Without a binding the canvas keeps its own copy until you pass a different list.",
+        "isCascading": false,
+        "captureUnmatched": false,
+        "isEditorRequired": false
+      },
+      {
+        "name": "NodesChanged",
+        "type": "EventCallback<IReadOnlyList<FlowNode>>",
+        "default": null,
+        "description": "Raised with the new node list after a committed drag or keyboard move.",
+        "isCascading": false,
+        "captureUnmatched": false,
+        "isEditorRequired": false
+      },
+      {
+        "name": "Edges",
+        "type": "IReadOnlyList<FlowEdge>?",
+        "default": null,
+        "description": "The edges to draw between nodes. Edges whose source or target node is missing are skipped.",
+        "isCascading": false,
+        "captureUnmatched": false,
+        "isEditorRequired": false
+      },
+      {
+        "name": "Viewport",
+        "type": "FlowViewport",
+        "default": "new(0, 0, 1)",
+        "description": "The pan/zoom state. Two-way bindable (@bind-Viewport). Setting a new value moves the canvas; the canvas reports user pans and zooms back through ViewportChanged. A zoom of 0 or less means \"not set\" (the canvas starts at 0,0 and 100%).",
+        "isCascading": false,
+        "captureUnmatched": false,
+        "isEditorRequired": false
+      },
+      {
+        "name": "ViewportChanged",
+        "type": "EventCallback<FlowViewport>",
+        "default": null,
+        "description": "Raised when the viewport changes — at most once per animation frame while a pan or wheel zoom is running, once more when it ends, and after every imperative change (FitViewAsync, ZoomInAsync, ...).",
+        "isCascading": false,
+        "captureUnmatched": false,
+        "isEditorRequired": false
+      },
+      {
+        "name": "NodeTemplate",
+        "type": "RenderFragment<FlowNodeContext>?",
+        "default": null,
+        "description": "Renders each node's content. The canvas wraps it in a positioned, focusable host. Without a template a node renders a small card with its Data (or Id).",
+        "isCascading": false,
+        "captureUnmatched": false,
+        "isEditorRequired": false
+      },
+      {
+        "name": "ChildContent",
+        "type": "RenderFragment?",
+        "default": null,
+        "description": "Overlays rendered inside the pane: FlowBackground, FlowControls, your own panels.",
+        "isCascading": false,
+        "captureUnmatched": false,
+        "isEditorRequired": false
+      },
+      {
+        "name": "Height",
+        "type": "string",
+        "default": "\"500px\"",
+        "description": "CSS height of the canvas.",
+        "isCascading": false,
+        "captureUnmatched": false,
+        "isEditorRequired": false
+      },
+      {
+        "name": "MinZoom",
+        "type": "double",
+        "default": "0.25",
+        "description": "Smallest zoom a gesture or method may reach.",
+        "isCascading": false,
+        "captureUnmatched": false,
+        "isEditorRequired": false
+      },
+      {
+        "name": "MaxZoom",
+        "type": "double",
+        "default": "2",
+        "description": "Largest zoom a gesture or method may reach.",
+        "isCascading": false,
+        "captureUnmatched": false,
+        "isEditorRequired": false
+      },
+      {
+        "name": "FitViewOnInit",
+        "type": "bool",
+        "default": "true",
+        "description": "Fits every node into view once the canvas has mounted and measured its nodes (the nodes stay invisible until then, so the un-fitted frame never shows).",
+        "isCascading": false,
+        "captureUnmatched": false,
+        "isEditorRequired": false
+      },
+      {
+        "name": "FitViewPadding",
+        "type": "double",
+        "default": "0.1",
+        "description": "Breathing room for fit-view, as a fraction of the nodes' bounds (0.1 = 10%).",
+        "isCascading": false,
+        "captureUnmatched": false,
+        "isEditorRequired": false
+      },
+      {
+        "name": "SnapToGrid",
+        "type": "bool",
+        "default": "false",
+        "description": "Snaps dragged and keyboard-moved nodes to SnapGrid.",
+        "isCascading": false,
+        "captureUnmatched": false,
+        "isEditorRequired": false
+      },
+      {
+        "name": "SnapGrid",
+        "type": "(double X, double Y)",
+        "default": "(16, 16)",
+        "description": "The snap grid in flow units (X, Y).",
+        "isCascading": false,
+        "captureUnmatched": false,
+        "isEditorRequired": false
+      },
+      {
+        "name": "NodesDraggable",
+        "type": "bool",
+        "default": "true",
+        "description": "Nodes can be moved by dragging or with the arrow keys.",
+        "isCascading": false,
+        "captureUnmatched": false,
+        "isEditorRequired": false
+      },
+      {
+        "name": "PanOnDrag",
+        "type": "bool",
+        "default": "true",
+        "description": "Dragging the empty background pans the canvas. Holding Space pans from anywhere either way.",
+        "isCascading": false,
+        "captureUnmatched": false,
+        "isEditorRequired": false
+      },
+      {
+        "name": "ZoomOnScroll",
+        "type": "bool",
+        "default": "true",
+        "description": "The mouse wheel zooms, anchored on the pointer (a plain wheel — no modifier — like React Flow; the page does not scroll while the pointer is over the canvas).",
+        "isCascading": false,
+        "captureUnmatched": false,
+        "isEditorRequired": false
+      },
+      {
+        "name": "Readonly",
+        "type": "bool",
+        "default": "false",
+        "description": "Turns every editing gesture off (node drag and keyboard move now; connect and delete in later phases). Pan, zoom, selection and click events keep working.",
+        "isCascading": false,
+        "captureUnmatched": false,
+        "isEditorRequired": false
+      },
+      {
+        "name": "OnNodeClick",
+        "type": "EventCallback<FlowNode>",
+        "default": null,
+        "description": "A node was clicked (not raised for the click that ends a drag).",
+        "isCascading": false,
+        "captureUnmatched": false,
+        "isEditorRequired": false
+      },
+      {
+        "name": "OnNodeDoubleClick",
+        "type": "EventCallback<FlowNode>",
+        "default": null,
+        "description": "A node was double-clicked.",
+        "isCascading": false,
+        "captureUnmatched": false,
+        "isEditorRequired": false
+      },
+      {
+        "name": "OnNodeContextMenu",
+        "type": "EventCallback<FlowNodeContextMenuEventArgs>",
+        "default": null,
+        "description": "A node was right-clicked. The browser menu is suppressed while this has a handler.",
+        "isCascading": false,
+        "captureUnmatched": false,
+        "isEditorRequired": false
+      },
+      {
+        "name": "OnPaneClick",
+        "type": "EventCallback<FlowPoint>",
+        "default": null,
+        "description": "The empty background was clicked (not dragged); the point is in flow coordinates.",
+        "isCascading": false,
+        "captureUnmatched": false,
+        "isEditorRequired": false
+      },
+      {
+        "name": "OnNodeDragStop",
+        "type": "EventCallback<IReadOnlyList<FlowNodeChange>>",
+        "default": null,
+        "description": "A drag (or arrow-key move) was committed; one entry per moved node. Raised after NodesChanged.",
+        "isCascading": false,
+        "captureUnmatched": false,
+        "isEditorRequired": false
+      },
+      {
+        "name": "Class",
+        "type": "string?",
+        "default": null,
+        "description": "Additional CSS classes merged onto the root element.",
+        "isCascading": false,
+        "captureUnmatched": false,
+        "isEditorRequired": false
+      },
+      {
+        "name": "AdditionalAttributes",
+        "type": "Dictionary<string, object>?",
+        "default": null,
+        "description": "Captures unmatched attributes and applies them to the root element.",
+        "isCascading": false,
+        "captureUnmatched": true,
+        "isEditorRequired": false
+      }
+    ],
+    "events": [
+      {
+        "name": "NodesChanged",
+        "type": "EventCallback<IReadOnlyList<FlowNode>>",
+        "description": "Raised with the new node list after a committed drag or keyboard move."
+      },
+      {
+        "name": "ViewportChanged",
+        "type": "EventCallback<FlowViewport>",
+        "description": "Raised when the viewport changes — at most once per animation frame while a pan or wheel zoom is running, once more when it ends, and after every imperative change (FitViewAsync, ZoomInAsync, ...)."
+      },
+      {
+        "name": "OnNodeClick",
+        "type": "EventCallback<FlowNode>",
+        "description": "A node was clicked (not raised for the click that ends a drag)."
+      },
+      {
+        "name": "OnNodeDoubleClick",
+        "type": "EventCallback<FlowNode>",
+        "description": "A node was double-clicked."
+      },
+      {
+        "name": "OnNodeContextMenu",
+        "type": "EventCallback<FlowNodeContextMenuEventArgs>",
+        "description": "A node was right-clicked. The browser menu is suppressed while this has a handler."
+      },
+      {
+        "name": "OnPaneClick",
+        "type": "EventCallback<FlowPoint>",
+        "description": "The empty background was clicked (not dragged); the point is in flow coordinates."
+      },
+      {
+        "name": "OnNodeDragStop",
+        "type": "EventCallback<IReadOnlyList<FlowNodeChange>>",
+        "description": "A drag (or arrow-key move) was committed; one entry per moved node. Raised after NodesChanged."
+      }
+    ],
+    "enums": [
+      {
+        "name": "FlowBackgroundVariant",
+        "values": [
+          "Dots",
+          "Lines",
+          "Cross"
+        ],
+        "description": "The pattern FlowBackground draws."
+      },
+      {
+        "name": "FlowHandleType",
+        "values": [
+          "Source",
+          "Target"
+        ],
+        "description": "Whether a FlowHandle starts connections (Source) or accepts them (Target)."
+      },
+      {
+        "name": "FlowPosition",
+        "values": [
+          "Left",
+          "Right",
+          "Top",
+          "Bottom"
+        ],
+        "description": "The PHYSICAL side of a node a handle sits on, and the direction an edge leaves/enters it. Physical, not logical: Left stays left under dir=\"rtl\" (the canvas is a geometric surface, not a text flow)."
+      }
+    ],
+    "records": [
+      {
+        "name": "FlowCanvasContext",
+        "signature": "FlowCanvasContext(FlowCanvas Canvas, FlowViewport Viewport, FlowViewport InitialViewport, bool Locked, double MinZoom, double MaxZoom)",
+        "description": "What the canvas cascades to FlowBackground, FlowControls and its own node/edge layers. Re-created on every render (cascaded with IsFixed=\"false\")."
+      }
+    ],
+    "gotchas": [],
+    "cssVars": [
+      "--color-accent",
+      "--color-accent-foreground",
+      "--color-background",
+      "--color-border",
+      "--color-card",
+      "--color-card-foreground",
+      "--color-foreground",
+      "--radius"
+    ],
+    "examples": [],
+    "subComponents": {
+      "FlowBackground": {
+        "componentName": "FlowBackground",
+        "fileName": "FlowBackground.razor",
+        "namespace": "Lumeo",
+        "inheritsFrom": null,
+        "implements": [],
+        "parameters": [
+          {
+            "name": "Context",
+            "type": "FlowCanvas.FlowCanvasContext?",
+            "default": null,
+            "description": null,
+            "isCascading": true,
+            "captureUnmatched": false,
+            "isEditorRequired": false
+          },
+          {
+            "name": "Variant",
+            "type": "FlowBackgroundVariant",
+            "default": "FlowBackgroundVariant.Dots",
+            "description": "What the grid draws.",
+            "isCascading": false,
+            "captureUnmatched": false,
+            "isEditorRequired": false
+          },
+          {
+            "name": "Gap",
+            "type": "double",
+            "default": "20",
+            "description": "Grid spacing in flow units.",
+            "isCascading": false,
+            "captureUnmatched": false,
+            "isEditorRequired": false
+          },
+          {
+            "name": "Size",
+            "type": "double",
+            "default": "1",
+            "description": "Dot radius (dots) or half the arm length (cross), in flow units. Ignored for lines.",
+            "isCascading": false,
+            "captureUnmatched": false,
+            "isEditorRequired": false
+          },
+          {
+            "name": "Class",
+            "type": "string?",
+            "default": null,
+            "description": "Additional CSS classes merged onto the background <svg>.",
+            "isCascading": false,
+            "captureUnmatched": false,
+            "isEditorRequired": false
+          },
+          {
+            "name": "AdditionalAttributes",
+            "type": "Dictionary<string, object>?",
+            "default": null,
+            "description": "Captures unmatched attributes and applies them to the background <svg>.",
+            "isCascading": false,
+            "captureUnmatched": true,
+            "isEditorRequired": false
+          }
+        ],
+        "events": [],
+        "enums": [],
+        "records": [],
+        "gotchas": [],
+        "parseFailed": false,
+        "parseError": null
+      },
+      "FlowControls": {
+        "componentName": "FlowControls",
+        "fileName": "FlowControls.razor",
+        "namespace": "Lumeo",
+        "inheritsFrom": null,
+        "implements": [],
+        "parameters": [
+          {
+            "name": "Context",
+            "type": "FlowCanvas.FlowCanvasContext?",
+            "default": null,
+            "description": null,
+            "isCascading": true,
+            "captureUnmatched": false,
+            "isEditorRequired": false
+          },
+          {
+            "name": "Position",
+            "type": "ControlsPosition",
+            "default": "ControlsPosition.BottomLeft",
+            "description": "The corner the controls sit in.",
+            "isCascading": false,
+            "captureUnmatched": false,
+            "isEditorRequired": false
+          },
+          {
+            "name": "Horizontal",
+            "type": "bool",
+            "default": "false",
+            "description": "Lays the buttons out in a row instead of a column.",
+            "isCascading": false,
+            "captureUnmatched": false,
+            "isEditorRequired": false
+          },
+          {
+            "name": "ShowZoom",
+            "type": "bool",
+            "default": "true",
+            "description": "Shows the zoom in / zoom out buttons.",
+            "isCascading": false,
+            "captureUnmatched": false,
+            "isEditorRequired": false
+          },
+          {
+            "name": "ShowFitView",
+            "type": "bool",
+            "default": "true",
+            "description": "Shows the fit-view button.",
+            "isCascading": false,
+            "captureUnmatched": false,
+            "isEditorRequired": false
+          },
+          {
+            "name": "ShowLock",
+            "type": "bool",
+            "default": "true",
+            "description": "Shows the lock toggle (locked = nodes cannot be moved; pan and zoom still work).",
+            "isCascading": false,
+            "captureUnmatched": false,
+            "isEditorRequired": false
+          },
+          {
+            "name": "ChildContent",
+            "type": "RenderFragment?",
+            "default": null,
+            "description": "Extra buttons appended after the built-in ones.",
+            "isCascading": false,
+            "captureUnmatched": false,
+            "isEditorRequired": false
+          },
+          {
+            "name": "Class",
+            "type": "string?",
+            "default": null,
+            "description": "Additional CSS classes merged onto the toolbar.",
+            "isCascading": false,
+            "captureUnmatched": false,
+            "isEditorRequired": false
+          },
+          {
+            "name": "AdditionalAttributes",
+            "type": "Dictionary<string, object>?",
+            "default": null,
+            "description": "Captures unmatched attributes and applies them to the toolbar.",
+            "isCascading": false,
+            "captureUnmatched": true,
+            "isEditorRequired": false
+          }
+        ],
+        "events": [],
+        "enums": [
+          {
+            "name": "ControlsPosition",
+            "values": [
+              "TopLeft",
+              "TopRight",
+              "BottomLeft",
+              "BottomRight"
+            ],
+            "description": "Where the controls sit inside the canvas."
+          }
+        ],
+        "records": [],
+        "gotchas": [],
+        "parseFailed": false,
+        "parseError": null
+      },
+      "FlowEdgeLayer": {
+        "componentName": "FlowEdgeLayer",
+        "fileName": "FlowEdgeLayer.razor",
+        "namespace": "Lumeo",
+        "inheritsFrom": null,
+        "implements": [],
+        "parameters": [
+          {
+            "name": "Context",
+            "type": "FlowCanvas.FlowCanvasContext?",
+            "default": null,
+            "description": null,
+            "isCascading": true,
+            "captureUnmatched": false,
+            "isEditorRequired": false
+          },
+          {
+            "name": "Class",
+            "type": "string?",
+            "default": null,
+            "description": "Additional CSS classes merged onto the edge layer's <svg>.",
+            "isCascading": false,
+            "captureUnmatched": false,
+            "isEditorRequired": false
+          },
+          {
+            "name": "AdditionalAttributes",
+            "type": "Dictionary<string, object>?",
+            "default": null,
+            "description": "Captures unmatched attributes and applies them to the edge layer's <svg>.",
+            "isCascading": false,
+            "captureUnmatched": true,
+            "isEditorRequired": false
+          }
+        ],
+        "events": [],
+        "enums": [],
+        "records": [],
+        "gotchas": [],
+        "parseFailed": false,
+        "parseError": null
+      },
+      "FlowHandle": {
+        "componentName": "FlowHandle",
+        "fileName": "FlowHandle.razor",
+        "namespace": "Lumeo",
+        "inheritsFrom": null,
+        "implements": [],
+        "parameters": [
+          {
+            "name": "Node",
+            "type": "FlowNode?",
+            "default": null,
+            "description": null,
+            "isCascading": true,
+            "captureUnmatched": false,
+            "isEditorRequired": false
+          },
+          {
+            "name": "Type",
+            "type": "FlowHandleType",
+            "default": "FlowHandleType.Source",
+            "description": "Source (edges start here) or target (edges end here).",
+            "isCascading": false,
+            "captureUnmatched": false,
+            "isEditorRequired": false
+          },
+          {
+            "name": "Position",
+            "type": "FlowPosition",
+            "default": "FlowPosition.Right",
+            "description": "The side of the node the handle sits on, and the direction edges leave/enter it.",
+            "isCascading": false,
+            "captureUnmatched": false,
+            "isEditorRequired": false
+          },
+          {
+            "name": "Id",
+            "type": "string?",
+            "default": null,
+            "description": "Handle id, for nodes with several handles of the same type (matched by FlowEdge.SourceHandle/TargetHandle).",
+            "isCascading": false,
+            "captureUnmatched": false,
+            "isEditorRequired": false
+          },
+          {
+            "name": "Class",
+            "type": "string?",
+            "default": null,
+            "description": "Additional CSS classes merged onto the handle button.",
+            "isCascading": false,
+            "captureUnmatched": false,
+            "isEditorRequired": false
+          },
+          {
+            "name": "AdditionalAttributes",
+            "type": "Dictionary<string, object>?",
+            "default": null,
+            "description": "Captures unmatched attributes and applies them to the handle button.",
+            "isCascading": false,
+            "captureUnmatched": true,
+            "isEditorRequired": false
+          }
+        ],
+        "events": [],
+        "enums": [],
+        "records": [],
+        "gotchas": [],
+        "parseFailed": false,
+        "parseError": null
+      },
+      "FlowNodeHost": {
+        "componentName": "FlowNodeHost",
+        "fileName": "FlowNodeHost.razor",
+        "namespace": "Lumeo",
+        "inheritsFrom": null,
+        "implements": [],
+        "parameters": [
+          {
+            "name": "Context",
+            "type": "FlowCanvas.FlowCanvasContext?",
+            "default": null,
+            "description": null,
+            "isCascading": true,
+            "captureUnmatched": false,
+            "isEditorRequired": false
+          },
+          {
+            "name": "Node",
+            "type": "FlowNode",
+            "default": "default!",
+            "description": "The node this host positions and wraps.",
+            "isCascading": false,
+            "captureUnmatched": false,
+            "isEditorRequired": true
+          },
+          {
+            "name": "Class",
+            "type": "string?",
+            "default": null,
+            "description": "Additional CSS classes merged onto the host element.",
+            "isCascading": false,
+            "captureUnmatched": false,
+            "isEditorRequired": false
+          },
+          {
+            "name": "AdditionalAttributes",
+            "type": "Dictionary<string, object>?",
+            "default": null,
+            "description": "Captures unmatched attributes and applies them to the host element.",
+            "isCascading": false,
+            "captureUnmatched": true,
+            "isEditorRequired": false
+          }
+        ],
+        "events": [],
+        "enums": [],
+        "records": [],
+        "gotchas": [],
+        "parseFailed": false,
+        "parseError": null
+      }
+    },
+    "a11y": {
+      "roles": [
+        "application",
+        "group",
+        "toolbar"
+      ],
+      "ariaAttributes": [
+        "aria-hidden",
+        "aria-label",
+        "aria-orientation",
+        "aria-pressed",
+        "aria-roledescription",
+        "aria-selected"
+      ],
+      "keys": [
+        "ArrowDown",
+        "ArrowLeft",
+        "ArrowRight",
+        "ArrowUp",
+        "Escape"
+      ],
+      "keyboardInteractive": true,
+      "focusManaged": true
+    },
+    "parseFailed": false,
+    "parseError": null
+  },
+  "testCoverage": {
+    "tier": 3,
+    "files": 0,
+    "tests": 0,
+    "relatedFiles": 6,
+    "render": true,
+    "behavior": true,
+    "a11y": true,
+    "keyboard": true,
+    "scale": false,
+    "e2e": false,
+    "e2eFiles": [],
+    "contract": "smoke"
+  },
+  "$schema": "https://lumeo.nativ.sh/registry-component-schema.json",
+  "key": "flow-canvas",
+  "docsUrl": "https://lumeo.nativ.sh/components/flow-canvas",
+  "sourceUrl": [
+    {
+      "file": "UI/FlowCanvas/FlowBackground.razor",
+      "url": "https://github.com/Brain2k-0005/Lumeo/tree/master/src/Lumeo.Flow/UI/FlowCanvas/FlowBackground.razor"
+    },
+    {
+      "file": "UI/FlowCanvas/FlowCanvas.razor",
+      "url": "https://github.com/Brain2k-0005/Lumeo/tree/master/src/Lumeo.Flow/UI/FlowCanvas/FlowCanvas.razor"
+    },
+    {
+      "file": "UI/FlowCanvas/FlowControls.razor",
+      "url": "https://github.com/Brain2k-0005/Lumeo/tree/master/src/Lumeo.Flow/UI/FlowCanvas/FlowControls.razor"
+    },
+    {
+      "file": "UI/FlowCanvas/FlowEdgeLayer.razor",
+      "url": "https://github.com/Brain2k-0005/Lumeo/tree/master/src/Lumeo.Flow/UI/FlowCanvas/FlowEdgeLayer.razor"
+    },
+    {
+      "file": "UI/FlowCanvas/FlowGeometry.cs",
+      "url": "https://github.com/Brain2k-0005/Lumeo/tree/master/src/Lumeo.Flow/UI/FlowCanvas/FlowGeometry.cs"
+    },
+    {
+      "file": "UI/FlowCanvas/FlowHandle.razor",
+      "url": "https://github.com/Brain2k-0005/Lumeo/tree/master/src/Lumeo.Flow/UI/FlowCanvas/FlowHandle.razor"
+    },
+    {
+      "file": "UI/FlowCanvas/FlowNodeHost.razor",
+      "url": "https://github.com/Brain2k-0005/Lumeo/tree/master/src/Lumeo.Flow/UI/FlowCanvas/FlowNodeHost.razor"
+    },
+    {
+      "file": "UI/FlowCanvas/FlowState.cs",
+      "url": "https://github.com/Brain2k-0005/Lumeo/tree/master/src/Lumeo.Flow/UI/FlowCanvas/FlowState.cs"
+    },
+    {
+      "file": "UI/FlowCanvas/FlowTypes.cs",
+      "url": "https://github.com/Brain2k-0005/Lumeo/tree/master/src/Lumeo.Flow/UI/FlowCanvas/FlowTypes.cs"
+    }
+  ],
+  "source": [
+    {
+      "path": "UI/FlowCanvas/FlowBackground.razor",
+      "content": "@namespace Lumeo\n@using System.Globalization\n\n@* FlowBackground — a dots / lines / cross grid behind the nodes that pans and zooms with the\n   canvas. Place it inside FlowCanvas' ChildContent.\n\n   One <pattern> in flow units (Gap apart), moved and scaled by patternTransform. The engine owns\n   patternTransform after mount (it rewrites it with every viewport change, and re-applies it to a\n   background that mounts later); .NET only renders it for the first paint. Colour comes from the\n   theme (--color-border via lumeo-flow.css) — no hardcoded colours. *@\n\n<svg data-slot=\"flow-background\"\n     data-variant=\"@VariantName\"\n     aria-hidden=\"true\"\n     class=\"@Cx.Merge(\"pointer-events-none absolute inset-0 h-full w-full\", Class)\"\n     style=\"position:absolute;left:0;top:0;width:100%;height:100%;z-index:0;pointer-events:none;\"\n     @attributes=\"AdditionalAttributes\">\n    <defs>\n        <pattern id=\"@_patternId\"\n                 data-flow-background-pattern\n                 patternUnits=\"userSpaceOnUse\"\n                 x=\"0\" y=\"0\"\n                 width=\"@F(EffectiveGap)\" height=\"@F(EffectiveGap)\"\n                 patternTransform=\"@InitialTransform\">\n            @switch (Variant)\n            {\n                case FlowBackgroundVariant.Lines:\n                    <path data-flow-background-shape=\"line\"\n                          d=\"@LinesPath\"\n                          vector-effect=\"non-scaling-stroke\" />\n                    break;\n                case FlowBackgroundVariant.Cross:\n                    <path data-flow-background-shape=\"line\"\n                          d=\"@CrossPath\"\n                          vector-effect=\"non-scaling-stroke\" />\n                    break;\n                default:\n                    <circle data-flow-background-shape=\"dot\"\n                            cx=\"@F(EffectiveGap / 2)\" cy=\"@F(EffectiveGap / 2)\"\n                            r=\"@F(EffectiveSize)\" />\n                    break;\n            }\n        </pattern>\n    </defs>\n    <rect width=\"100%\" height=\"100%\" fill=\"url(#@_patternId)\" />\n</svg>\n\n@code {\n    [CascadingParameter] private FlowCanvas.FlowCanvasContext? Context { get; set; }\n\n    /// <summary>What the grid draws.</summary>\n    [Parameter] public FlowBackgroundVariant Variant { get; set; } = FlowBackgroundVariant.Dots;\n\n    /// <summary>Grid spacing in flow units.</summary>\n    [Parameter] public double Gap { get; set; } = 20;\n\n    /// <summary>Dot radius (dots) or half the arm length (cross), in flow units. Ignored for lines.</summary>\n    [Parameter] public double Size { get; set; } = 1;\n\n    /// <summary>Additional CSS classes merged onto the background <c>&lt;svg&gt;</c>.</summary>\n    [Parameter] public string? Class { get; set; }\n\n    /// <summary>Captures unmatched attributes and applies them to the background <c>&lt;svg&gt;</c>.</summary>\n    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }\n\n    private readonly string _patternId = \"lumeo-flow-bg-\" + Guid.NewGuid().ToString(\"N\")[..10];\n\n    private double EffectiveGap => Gap > 0 ? Gap : 20;\n    private double EffectiveSize => Size > 0 ? Size : 1;\n\n    private string VariantName => Variant switch\n    {\n        FlowBackgroundVariant.Lines => \"lines\",\n        FlowBackgroundVariant.Cross => \"cross\",\n        _ => \"dots\",\n    };\n\n    private string InitialTransform\n    {\n        get\n        {\n            var v = Context?.InitialViewport ?? new FlowViewport(0, 0, 1);\n            return \"translate(\" + FlowCanvas.R(v.X) + \",\" + FlowCanvas.R(v.Y) + \") scale(\" + FlowCanvas.R(v.Zoom) + \")\";\n        }\n    }\n\n    private string LinesPath\n    {\n        get\n        {\n            var g = F(EffectiveGap);\n            return \"M0,0 L\" + g + \",0 M0,0 L0,\" + g;\n        }\n    }\n\n    private string CrossPath\n    {\n        get\n        {\n            var c = EffectiveGap / 2;\n            var s = Math.Min(EffectiveSize * 3, c);\n            return \"M\" + F(c - s) + \",\" + F(c) + \" L\" + F(c + s) + \",\" + F(c)\n                 + \" M\" + F(c) + \",\" + F(c - s) + \" L\" + F(c) + \",\" + F(c + s);\n        }\n    }\n\n    private static string F(double v) => FlowGeometry.Fmt(v);\n}\n"
+    },
+    {
+      "path": "UI/FlowCanvas/FlowCanvas.razor",
+      "content": "@namespace Lumeo\n@implements IAsyncDisposable\n@using System.ComponentModel\n@using System.Globalization\n@inject Lumeo.Services.IComponentInteropService Interop\n@inject Lumeo.Services.Localization.ILumeoLocalizer L\n\n@* FlowCanvas — a node/flow editor surface (Lumeo.Flow, spec: src/Lumeo.Flow/DESIGN.md).\n\n   Rendering: the root carries role=\"application\"; the pane clips and receives every gesture;\n   inside it one viewport layer (transform: translate + scale) holds the SVG edge layer and the\n   absolutely positioned node hosts, so nodes and edges live in FLOW coordinates and pan/zoom is a\n   single transform. ChildContent (FlowBackground, FlowControls, ...) renders beside the viewport\n   layer inside the pane.\n\n   Ownership: after the first render the viewport transform belongs to flow.js. .NET changes it\n   only by stamping data-flow-viewport=\"x|y|zoom|id\" on the pane; the engine's MutationObserver\n   applies the stamp in the same frame the render lands. Pan, wheel zoom and node drag run in JS\n   without a render per frame; .NET hears about them through the JSInvokable members below. *@\n\n<div data-slot=\"flow-canvas\"\n     role=\"application\"\n     aria-label=\"@L[\"Flow.CanvasLabel\"]\"\n     class=\"@RootClass\"\n     style=\"@RootStyle\"\n     data-flow-fit-pending=\"@(FitViewOnInit ? \"\" : null)\"\n     data-readonly=\"@(Readonly ? \"\" : null)\"\n     @attributes=\"AdditionalAttributes\">\n    <div @ref=\"_paneRef\"\n         data-slot=\"flow-pane\"\n         data-flow-viewport=\"@ViewportStamp\"\n         data-flow-generation=\"@_state.Generation.ToString(CultureInfo.InvariantCulture)\"\n         style=\"position:relative;width:100%;height:100%;overflow:hidden;touch-action:none;\">\n        <CascadingValue Value=\"_context\" IsFixed=\"false\">\n            <div data-slot=\"flow-viewport\" style=\"@_viewportLayerStyle\">\n                <FlowEdgeLayer />\n                <div data-slot=\"flow-nodes\">\n                    @foreach (var node in _nodes)\n                    {\n                        <FlowNodeHost @key=\"node.Id\" Node=\"node\" />\n                    }\n                </div>\n            </div>\n            @ChildContent\n        </CascadingValue>\n    </div>\n</div>\n\n@code {\n    // ── Data ─────────────────────────────────────────────────────────────\n\n    /// <summary>The nodes to render. Two-way bindable (<c>@bind-Nodes</c>): every committed drag or keyboard move emits a new list through <see cref=\"NodesChanged\"/>. Without a binding the canvas keeps its own copy until you pass a different list.</summary>\n    [Parameter] public IReadOnlyList<FlowNode>? Nodes { get; set; }\n\n    /// <summary>Raised with the new node list after a committed drag or keyboard move.</summary>\n    [Parameter] public EventCallback<IReadOnlyList<FlowNode>> NodesChanged { get; set; }\n\n    /// <summary>The edges to draw between nodes. Edges whose source or target node is missing are skipped.</summary>\n    [Parameter] public IReadOnlyList<FlowEdge>? Edges { get; set; }\n\n    /// <summary>The pan/zoom state. Two-way bindable (<c>@bind-Viewport</c>). Setting a new value moves the canvas; the canvas reports user pans and zooms back through <see cref=\"ViewportChanged\"/>. A zoom of 0 or less means \"not set\" (the canvas starts at 0,0 and 100%).</summary>\n    [Parameter] public FlowViewport Viewport { get; set; } = new(0, 0, 1);\n\n    /// <summary>Raised when the viewport changes — at most once per animation frame while a pan or wheel zoom is running, once more when it ends, and after every imperative change (<see cref=\"FitViewAsync\"/>, <see cref=\"ZoomInAsync\"/>, ...).</summary>\n    [Parameter] public EventCallback<FlowViewport> ViewportChanged { get; set; }\n\n    /// <summary>Renders each node's content. The canvas wraps it in a positioned, focusable host. Without a template a node renders a small card with its <c>Data</c> (or <c>Id</c>).</summary>\n    [Parameter] public RenderFragment<FlowNodeContext>? NodeTemplate { get; set; }\n\n    /// <summary>Overlays rendered inside the pane: <see cref=\"FlowBackground\"/>, <see cref=\"FlowControls\"/>, your own panels.</summary>\n    [Parameter] public RenderFragment? ChildContent { get; set; }\n\n    // ── Layout and behaviour ─────────────────────────────────────────────\n\n    /// <summary>CSS height of the canvas.</summary>\n    [Parameter] public string Height { get; set; } = \"500px\";\n\n    /// <summary>Smallest zoom a gesture or method may reach.</summary>\n    [Parameter] public double MinZoom { get; set; } = 0.25;\n\n    /// <summary>Largest zoom a gesture or method may reach.</summary>\n    [Parameter] public double MaxZoom { get; set; } = 2;\n\n    /// <summary>Fits every node into view once the canvas has mounted and measured its nodes (the nodes stay invisible until then, so the un-fitted frame never shows).</summary>\n    [Parameter] public bool FitViewOnInit { get; set; } = true;\n\n    /// <summary>Breathing room for fit-view, as a fraction of the nodes' bounds (0.1 = 10%).</summary>\n    [Parameter] public double FitViewPadding { get; set; } = 0.1;\n\n    /// <summary>Snaps dragged and keyboard-moved nodes to <see cref=\"SnapGrid\"/>.</summary>\n    [Parameter] public bool SnapToGrid { get; set; }\n\n    /// <summary>The snap grid in flow units (X, Y).</summary>\n    [Parameter] public (double X, double Y) SnapGrid { get; set; } = (16, 16);\n\n    /// <summary>Nodes can be moved by dragging or with the arrow keys.</summary>\n    [Parameter] public bool NodesDraggable { get; set; } = true;\n\n    /// <summary>Dragging the empty background pans the canvas. Holding Space pans from anywhere either way.</summary>\n    [Parameter] public bool PanOnDrag { get; set; } = true;\n\n    /// <summary>The mouse wheel zooms, anchored on the pointer (a plain wheel — no modifier — like React Flow; the page does not scroll while the pointer is over the canvas).</summary>\n    [Parameter] public bool ZoomOnScroll { get; set; } = true;\n\n    /// <summary>Turns every editing gesture off (node drag and keyboard move now; connect and delete in later phases). Pan, zoom, selection and click events keep working.</summary>\n    [Parameter] public bool Readonly { get; set; }\n\n    // ── Events ───────────────────────────────────────────────────────────\n\n    /// <summary>A node was clicked (not raised for the click that ends a drag).</summary>\n    [Parameter] public EventCallback<FlowNode> OnNodeClick { get; set; }\n\n    /// <summary>A node was double-clicked.</summary>\n    [Parameter] public EventCallback<FlowNode> OnNodeDoubleClick { get; set; }\n\n    /// <summary>A node was right-clicked. The browser menu is suppressed while this has a handler.</summary>\n    [Parameter] public EventCallback<FlowNodeContextMenuEventArgs> OnNodeContextMenu { get; set; }\n\n    /// <summary>The empty background was clicked (not dragged); the point is in flow coordinates.</summary>\n    [Parameter] public EventCallback<FlowPoint> OnPaneClick { get; set; }\n\n    /// <summary>A drag (or arrow-key move) was committed; one entry per moved node. Raised after <see cref=\"NodesChanged\"/>.</summary>\n    [Parameter] public EventCallback<IReadOnlyList<FlowNodeChange>> OnNodeDragStop { get; set; }\n\n    /// <summary>Additional CSS classes merged onto the root element.</summary>\n    [Parameter] public string? Class { get; set; }\n\n    /// <summary>Captures unmatched attributes and applies them to the root element.</summary>\n    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }\n\n    /// <summary>\n    /// What the canvas cascades to <see cref=\"FlowBackground\"/>, <see cref=\"FlowControls\"/> and its own\n    /// node/edge layers. Re-created on every render (cascaded with <c>IsFixed=\"false\"</c>).\n    /// </summary>\n    /// <param name=\"Canvas\">The owning canvas.</param>\n    /// <param name=\"Viewport\">The latest known viewport.</param>\n    /// <param name=\"InitialViewport\">The viewport of the first render — what server-rendered transforms use; the engine owns them after mount.</param>\n    /// <param name=\"Locked\">The lock toggle is on (no node drag).</param>\n    /// <param name=\"MinZoom\">The canvas' <c>MinZoom</c>.</param>\n    /// <param name=\"MaxZoom\">The canvas' <c>MaxZoom</c>.</param>\n    public record FlowCanvasContext(FlowCanvas Canvas, FlowViewport Viewport, FlowViewport InitialViewport, bool Locked, double MinZoom, double MaxZoom);\n\n    // ── State ────────────────────────────────────────────────────────────\n\n    internal readonly FlowState _state = new();\n    private ElementReference _paneRef;\n    private DotNetObjectReference<FlowCanvas>? _selfRef;\n    private IReadOnlyList<FlowNode> _nodes = Array.Empty<FlowNode>();\n    private IReadOnlyList<FlowNode>? _lastNodesParam;\n    private readonly List<IReadOnlyList<FlowNode>> _recentEmitted = new();\n    private FlowViewport _lastViewportParam;\n    private FlowViewport _initialViewport = new(0, 0, 1);\n    private string _viewportLayerStyle = \"\";\n    private FlowCanvasContext _context = default!;\n    private bool _initialized;\n    private bool _locked;\n    private bool _registered;\n    private bool _disposed;\n    private FlowEngineOptions? _lastOptions;\n\n    /// <summary>The options bag pushed to flow.js. A record, so \"changed?\" is structural equality.</summary>\n    internal sealed record FlowEngineOptions(\n        double MinZoom, double MaxZoom, bool SnapToGrid, double SnapX, double SnapY,\n        bool NodesDraggable, bool PanOnDrag, bool ZoomOnScroll, bool Readonly,\n        bool FitViewOnInit, double FitViewPadding)\n    {\n        /// <summary>Serialised as <c>snap</c>: <c>[gx, gy]</c> or null.</summary>\n        public double[]? Snap => SnapToGrid ? new[] { SnapX, SnapY } : null;\n    }\n\n    /// <summary>The viewport as .NET last knows it (engine reports and imperative changes).</summary>\n    public FlowViewport CurrentViewport => _state.Viewport;\n\n    /// <summary>The nodes as currently rendered (the bound list, or the canvas' own copy).</summary>\n    public IReadOnlyList<FlowNode> CurrentNodes => _nodes;\n\n    internal bool Locked => _locked;\n    internal bool CanMoveNodes => NodesDraggable && !Readonly && !_locked;\n\n    private string RootClass => Cx.Merge(\n        \"relative block w-full overflow-hidden rounded-lg border border-border bg-background text-foreground\",\n        Class);\n\n    private string RootStyle => \"height:\" + Height + \";\";\n\n    private string ViewportStamp\n    {\n        get\n        {\n            var v = _state.StampedViewport;\n            return R(v.X) + \"|\" + R(v.Y) + \"|\" + R(v.Zoom) + \"|\" + _state.StampId.ToString(CultureInfo.InvariantCulture);\n        }\n    }\n\n    internal static string R(double value) => (value == 0 ? 0 : value).ToString(\"R\", CultureInfo.InvariantCulture);\n\n    private static string LayerStyle(FlowViewport v)\n        => \"position:absolute;left:0;top:0;z-index:1;transform-origin:0 0;transform:translate(\"\n           + R(v.X) + \"px, \" + R(v.Y) + \"px) scale(\" + R(v.Zoom) + \");\";\n\n    private FlowViewport Sanitize(FlowViewport v)\n    {\n        if (!(v.Zoom > 0) || !double.IsFinite(v.Zoom) || !double.IsFinite(v.X) || !double.IsFinite(v.Y)) return new(0, 0, 1);\n        return v with { Zoom = FlowGeometry.ClampZoom(v.Zoom, MinZoom, MaxZoom) };\n    }\n\n    protected override void OnParametersSet()\n    {\n        // Nodes: a list we emitted ourselves coming back through @bind-Nodes is an echo; anything\n        // else replaces the state from outside and bumps the generation, so a drag that started\n        // before it can never commit over it.\n        if (!_initialized || !ReferenceEquals(Nodes, _lastNodesParam))\n        {\n            _lastNodesParam = Nodes;\n            var incoming = Nodes ?? Array.Empty<FlowNode>();\n            var emittedIndex = _recentEmitted.FindIndex(l => ReferenceEquals(l, Nodes));\n            if (!_initialized)\n            {\n                _nodes = incoming;\n            }\n            else if (emittedIndex >= 0)\n            {\n                // Our own list. Only the latest one is current; an older echo (two commits in quick\n                // succession, the parent catching up) must not roll the canvas back.\n                if (emittedIndex == _recentEmitted.Count - 1) _nodes = incoming;\n            }\n            else\n            {\n                _nodes = incoming;\n                _state.BumpGeneration();\n            }\n            _state.ForgetMissing(_nodes);\n            if (_state.SelectedNodeIds.Count > 0)\n            {\n                var live = new HashSet<string>(_nodes.Select(n => n.Id), StringComparer.Ordinal);\n                _state.SelectedNodeIds.RemoveWhere(id => !live.Contains(id));\n            }\n        }\n\n        // Viewport: the first value seeds the state and the server-rendered transform; later values\n        // are instructions unless they are an echo of what the engine reported.\n        if (!_initialized)\n        {\n            _initialViewport = Sanitize(Viewport);\n            _state.Initialize(_initialViewport);\n            _viewportLayerStyle = LayerStyle(_initialViewport);\n            _lastViewportParam = Viewport;\n        }\n        else if (Viewport != _lastViewportParam)\n        {\n            _lastViewportParam = Viewport;\n            var v = Sanitize(Viewport);\n            if (!_state.IsEcho(Viewport) && !_state.IsEcho(v)) _state.Stamp(v);\n        }\n\n        _initialized = true;\n        RefreshContext();\n    }\n\n    private void RefreshContext()\n        => _context = new FlowCanvasContext(this, _state.Viewport, _initialViewport, _locked, MinZoom, MaxZoom);\n\n    private FlowEngineOptions BuildOptions() => new(\n        MinZoom, MaxZoom, SnapToGrid, SnapGrid.X, SnapGrid.Y,\n        CanMoveNodes, PanOnDrag, ZoomOnScroll, Readonly,\n        FitViewOnInit, FitViewPadding);\n\n    protected override async Task OnAfterRenderAsync(bool firstRender)\n    {\n        var options = BuildOptions();\n        if (firstRender)\n        {\n            _selfRef ??= DotNetObjectReference.Create(this);\n            // Claimed BEFORE the await (memory: guard before the await) — a dispose that lands while\n            // the register call is in flight sees it and unregisters; the re-check after the await\n            // below closes the other half of that race.\n            _registered = true;\n            _lastOptions = options;\n            try\n            {\n                await Interop.FlowRegisterCanvasAsync(_paneRef, _selfRef, options);\n            }\n            catch (JSDisconnectedException)\n            {\n            }\n            catch (Exception)\n            {\n                // A custom interop service that throws: the canvas degrades to a static render\n                // instead of taking the page down. A later render does not retry — registration\n                // is a mount-time contract.\n                _registered = false;\n            }\n            if (_disposed)\n            {\n                try { await Interop.FlowUnregisterCanvasAsync(_paneRef); }\n                catch (JSDisconnectedException) { }\n            }\n            return;\n        }\n\n        if (_registered && !_disposed && options != _lastOptions)\n        {\n            _lastOptions = options;\n            try { await Interop.FlowUpdateOptionsAsync(_paneRef, options); }\n            catch (JSDisconnectedException) { }\n        }\n    }\n\n    // ── Node rendering helpers (used by FlowNodeHost / FlowEdgeLayer) ────\n\n    internal bool IsSelected(string id) => _state.SelectedNodeIds.Contains(id);\n    internal bool IsDragging(string id) => _state.DraggingNodeIds.Contains(id);\n    internal bool CanDrag(FlowNode node) => CanMoveNodes && node.Draggable;\n    internal bool HasContextMenuHandler => OnNodeContextMenu.HasDelegate;\n\n    internal RenderFragment RenderNodeContent(FlowNodeContext context)\n        => NodeTemplate is not null ? NodeTemplate(context) : DefaultNodeContent(context);\n\n    private static RenderFragment DefaultNodeContent(FlowNodeContext context) => builder =>\n    {\n        builder.OpenElement(0, \"div\");\n        builder.AddAttribute(1, \"class\", \"rounded-md border border-border bg-card px-3 py-2 text-sm text-card-foreground shadow-sm\");\n        builder.AddContent(2, context.Node.Data?.ToString() ?? context.Node.Id);\n        builder.CloseElement();\n    };\n\n    internal IEnumerable<(FlowEdge Edge, FlowEdgePath Path)> RenderableEdges()\n    {\n        if (Edges is null || Edges.Count == 0) yield break;\n        var byId = new Dictionary<string, FlowNode>(StringComparer.Ordinal);\n        foreach (var n in _nodes) byId[n.Id] = n;\n        foreach (var edge in Edges)\n        {\n            if (edge is null) continue;\n            if (!byId.TryGetValue(edge.Source, out var s) || !byId.TryGetValue(edge.Target, out var t)) continue;\n            var (sp, spos) = _state.GetAnchor(s, edge.SourceHandle, FlowHandleType.Source);\n            var (tp, tpos) = _state.GetAnchor(t, edge.TargetHandle, FlowHandleType.Target);\n            yield return (edge, FlowGeometry.GetEdgePath(edge.Type, sp.X, sp.Y, spos, tp.X, tp.Y, tpos));\n        }\n    }\n\n    // ── Node events (from FlowNodeHost) ──────────────────────────────────\n\n    internal async Task HandleNodeClickAsync(FlowNode node)\n    {\n        if (node.Selectable && !(_state.SelectedNodeIds.Count == 1 && _state.SelectedNodeIds.Contains(node.Id)))\n        {\n            _state.SelectedNodeIds.Clear();\n            _state.SelectedNodeIds.Add(node.Id);\n            StateHasChanged();\n        }\n        if (OnNodeClick.HasDelegate) await OnNodeClick.InvokeAsync(node);\n    }\n\n    internal Task HandleNodeDoubleClickAsync(FlowNode node)\n        => OnNodeDoubleClick.HasDelegate ? OnNodeDoubleClick.InvokeAsync(node) : Task.CompletedTask;\n\n    internal Task HandleNodeContextMenuAsync(FlowNode node, MouseEventArgs e)\n        => OnNodeContextMenu.HasDelegate\n            ? OnNodeContextMenu.InvokeAsync(new FlowNodeContextMenuEventArgs(node, e.ClientX, e.ClientY))\n            : Task.CompletedTask;\n\n    internal async Task HandleNodeKeyDownAsync(FlowNode node, KeyboardEventArgs e)\n    {\n        switch (e.Key)\n        {\n            case \"Escape\":\n                if (_state.SelectedNodeIds.Count > 0)\n                {\n                    _state.SelectedNodeIds.Clear();\n                    StateHasChanged();\n                }\n                return;\n            case \"ArrowLeft\":\n            case \"ArrowRight\":\n            case \"ArrowUp\":\n            case \"ArrowDown\":\n                await MoveByKeyboardAsync(node, e.Key, e.ShiftKey);\n                return;\n        }\n    }\n\n    private async Task MoveByKeyboardAsync(FlowNode node, string key, bool shift)\n    {\n        if (!CanMoveNodes) return;\n        var current = _nodes.FirstOrDefault(n => n.Id == node.Id);\n        if (current is null || !current.Draggable) return;\n\n        var stepX = SnapToGrid && SnapGrid.X > 0 ? SnapGrid.X : 1;\n        var stepY = SnapToGrid && SnapGrid.Y > 0 ? SnapGrid.Y : 1;\n        if (shift) { stepX *= 10; stepY *= 10; }\n        var (dx, dy) = key switch\n        {\n            \"ArrowLeft\" => (-stepX, 0d),\n            \"ArrowRight\" => (stepX, 0d),\n            \"ArrowUp\" => (0d, -stepY),\n            _ => (0d, stepY),\n        };\n\n        // The focused node, plus the rest of the selection when the focused node is part of it.\n        var moving = _state.SelectedNodeIds.Contains(current.Id)\n            ? new HashSet<string>(_state.SelectedNodeIds, StringComparer.Ordinal)\n            : new HashSet<string>(StringComparer.Ordinal) { current.Id };\n\n        var changes = new List<FlowNodeChange>();\n        var next = new List<FlowNode>(_nodes.Count);\n        foreach (var n in _nodes)\n        {\n            if (moving.Contains(n.Id) && n.Draggable)\n            {\n                var x = n.X + dx;\n                var y = n.Y + dy;\n                if (SnapToGrid)\n                {\n                    x = FlowGeometry.Snap(x, SnapGrid.X);\n                    y = FlowGeometry.Snap(y, SnapGrid.Y);\n                }\n                next.Add(n with { X = x, Y = y });\n                changes.Add(new FlowNodeChange(n.Id, x, y));\n            }\n            else\n            {\n                next.Add(n);\n            }\n        }\n        if (changes.Count == 0) return;\n        await EmitNodesAsync(next);\n        if (OnNodeDragStop.HasDelegate) await OnNodeDragStop.InvokeAsync(changes);\n    }\n\n    private Task EmitNodesAsync(List<FlowNode> next)\n    {\n        // State first, synchronously — anything that arrives while NodesChanged is awaited (a\n        // second commit, a keyboard move) builds on this list, not on the one it replaced.\n        _nodes = next;\n        _recentEmitted.Add(next);\n        if (_recentEmitted.Count > 8) _recentEmitted.RemoveAt(0);\n        StateHasChanged();\n        return NodesChanged.HasDelegate ? NodesChanged.InvokeAsync(next) : Task.CompletedTask;\n    }\n\n    // ── Imperative API ───────────────────────────────────────────────────\n\n    /// <summary>Fits every node into view. <paramref name=\"padding\"/> defaults to <see cref=\"FitViewPadding\"/>.</summary>\n    public async Task FitViewAsync(double? padding = null)\n    {\n        var pad = padding ?? FitViewPadding;\n        if (_nodes.Count == 0) return;\n        if (_state.PaneWidth > 0 && _state.PaneHeight > 0 && _state.AllSized(_nodes)\n            && _state.ComputeFit(_nodes, pad, MinZoom, MaxZoom) is { } vp)\n        {\n            await SetViewportCoreAsync(vp);\n            return;\n        }\n        // Some node has never been measured: let the engine measure the DOM and fit (it reports back).\n        if (_registered && !_disposed)\n        {\n            try { await Interop.FlowFitViewAsync(_paneRef, pad, MinZoom, MaxZoom); }\n            catch (JSDisconnectedException) { }\n        }\n    }\n\n    /// <summary>Zooms to <paramref name=\"zoom\"/> (clamped to the zoom limits), keeping the pane centre fixed.</summary>\n    public async Task ZoomToAsync(double zoom)\n    {\n        var current = await LiveViewportAsync();\n        var z = FlowGeometry.ClampZoom(zoom, MinZoom, MaxZoom);\n        await SetViewportCoreAsync(FlowGeometry.ZoomAt(current, z, _state.PaneWidth / 2, _state.PaneHeight / 2));\n    }\n\n    /// <summary>Zooms in one step (×1.2) around the pane centre.</summary>\n    public async Task ZoomInAsync() => await ZoomToAsync((await LiveViewportAsync()).Zoom * FlowGeometry.ZoomStep);\n\n    /// <summary>Zooms out one step (÷1.2) around the pane centre.</summary>\n    public async Task ZoomOutAsync() => await ZoomToAsync((await LiveViewportAsync()).Zoom / FlowGeometry.ZoomStep);\n\n    /// <summary>Centres the pane on flow point (<paramref name=\"x\"/>, <paramref name=\"y\"/>), optionally at a new zoom.</summary>\n    public async Task SetCenterAsync(double x, double y, double? zoom = null)\n    {\n        var current = await LiveViewportAsync();\n        var z = FlowGeometry.ClampZoom(zoom ?? current.Zoom, MinZoom, MaxZoom);\n        await SetViewportCoreAsync(FlowGeometry.CenterOn(x, y, z, _state.PaneWidth, _state.PaneHeight));\n    }\n\n    /// <summary>Moves the canvas to <paramref name=\"viewport\"/> (zoom clamped to the limits).</summary>\n    public Task SetViewportAsync(FlowViewport viewport) => SetViewportCoreAsync(Sanitize(viewport));\n\n    /// <summary>Pane-local pixels (relative to the canvas pane's top-left corner, e.g. <c>MouseEventArgs.OffsetX</c> on the pane) → flow coordinates, using the latest known viewport.</summary>\n    public FlowPoint ScreenToFlow(double x, double y) => FlowGeometry.ScreenToFlow(x, y, _state.Viewport);\n\n    /// <summary>Flow coordinates → pane-local pixels, using the latest known viewport.</summary>\n    public FlowPoint FlowToScreen(double x, double y) => FlowGeometry.FlowToScreen(x, y, _state.Viewport);\n\n    internal async Task SetLockedAsync(bool locked)\n    {\n        if (_locked == locked) return;\n        _locked = locked;\n        RefreshContext();\n        await InvokeAsync(StateHasChanged);\n    }\n\n    private async Task<FlowViewport> LiveViewportAsync()\n    {\n        if (_registered && !_disposed)\n        {\n            try\n            {\n                var live = await Interop.FlowGetViewportAsync(_paneRef);\n                if (live is { Length: 3 } && live[2] > 0) return new FlowViewport(live[0], live[1], live[2]);\n            }\n            catch (JSDisconnectedException) { }\n        }\n        return _state.Viewport;\n    }\n\n    private async Task SetViewportCoreAsync(FlowViewport viewport)\n    {\n        _state.Stamp(viewport);\n        RefreshContext();\n        await InvokeAsync(StateHasChanged);\n        if (ViewportChanged.HasDelegate) await InvokeAsync(() => ViewportChanged.InvokeAsync(viewport));\n    }\n\n    // ── Engine callbacks (flow.js) ───────────────────────────────────────\n\n    /// <summary>Engine callback: a node drag ended. Applies the positions unless the drag started under an older node list (<paramref name=\"generation\"/>) or editing is off; returns whether it did. Not meant for application code.</summary>\n    [JSInvokable, EditorBrowsable(EditorBrowsableState.Never)]\n    public async Task<bool> CommitNodeDrag(FlowNodeChange[] changes, int generation)\n    {\n        var hadDragging = _state.DraggingNodeIds.Count > 0;\n        _state.DraggingNodeIds.Clear();\n        if (changes is null || changes.Length == 0 || !CanMoveNodes || generation != _state.Generation)\n        {\n            if (hadDragging) StateHasChanged();\n            return false;\n        }\n\n        var map = new Dictionary<string, FlowNodeChange>(StringComparer.Ordinal);\n        foreach (var c in changes)\n        {\n            if (c is null || string.IsNullOrEmpty(c.Id) || !double.IsFinite(c.X) || !double.IsFinite(c.Y)) continue;\n            map[c.Id] = c;\n        }\n\n        var applied = new List<FlowNodeChange>();\n        var next = new List<FlowNode>(_nodes.Count);\n        foreach (var n in _nodes)\n        {\n            if (n.Draggable && map.TryGetValue(n.Id, out var c))\n            {\n                next.Add(n with { X = c.X, Y = c.Y });\n                applied.Add(new FlowNodeChange(n.Id, c.X, c.Y));\n            }\n            else\n            {\n                next.Add(n);\n            }\n        }\n        if (applied.Count == 0)\n        {\n            if (hadDragging) StateHasChanged();\n            return false;\n        }\n\n        await EmitNodesAsync(next);\n        if (OnNodeDragStop.HasDelegate) await OnNodeDragStop.InvokeAsync(applied);\n        return true;\n    }\n\n    /// <summary>Engine callback: a drag passed its threshold. Not meant for application code.</summary>\n    [JSInvokable, EditorBrowsable(EditorBrowsableState.Never)]\n    public void NodeDragStart(string[] ids)\n    {\n        _state.DraggingNodeIds.Clear();\n        if (ids is not null) foreach (var id in ids) if (!string.IsNullOrEmpty(id)) _state.DraggingNodeIds.Add(id);\n        StateHasChanged();\n    }\n\n    /// <summary>Engine callback: a drag was cancelled (Escape, pointer cancel). Not meant for application code.</summary>\n    [JSInvokable, EditorBrowsable(EditorBrowsableState.Never)]\n    public void NodeDragCancelled()\n    {\n        if (_state.DraggingNodeIds.Count == 0) return;\n        _state.DraggingNodeIds.Clear();\n        StateHasChanged();\n    }\n\n    /// <summary>Engine callback: the viewport moved (pan, wheel zoom, engine fit). Not meant for application code.</summary>\n    [JSInvokable, EditorBrowsable(EditorBrowsableState.Never)]\n    public async Task OnViewportChanged(double x, double y, double zoom, bool final)\n    {\n        if (!double.IsFinite(x) || !double.IsFinite(y) || !(zoom > 0)) return;\n        var viewport = new FlowViewport(x, y, zoom);\n        _state.Report(viewport);\n        if (ViewportChanged.HasDelegate) await ViewportChanged.InvokeAsync(viewport);\n        if (final)\n        {\n            // Once per gesture: refresh what depends on the zoom (the controls' limits).\n            RefreshContext();\n            StateHasChanged();\n        }\n    }\n\n    /// <summary>Engine callback: node sizes / handle offsets were measured. Not meant for application code.</summary>\n    [JSInvokable, EditorBrowsable(EditorBrowsableState.Never)]\n    public void NodesMeasured(FlowNodeMeasurement[] measurements)\n    {\n        if (measurements is null) return;\n        if (_state.ApplyMeasurements(measurements)) StateHasChanged();\n    }\n\n    /// <summary>Engine callback: the pane was resized. Not meant for application code.</summary>\n    [JSInvokable, EditorBrowsable(EditorBrowsableState.Never)]\n    public void PaneResized(double width, double height) => _state.SetPaneSize(width, height);\n\n    /// <summary>Engine callback: the background was clicked at a flow point. Not meant for application code.</summary>\n    [JSInvokable, EditorBrowsable(EditorBrowsableState.Never)]\n    public async Task PaneClicked(double x, double y)\n    {\n        if (_state.SelectedNodeIds.Count > 0)\n        {\n            _state.SelectedNodeIds.Clear();\n            StateHasChanged();\n        }\n        if (OnPaneClick.HasDelegate) await OnPaneClick.InvokeAsync(new FlowPoint(x, y));\n    }\n\n    /// <inheritdoc />\n    public async ValueTask DisposeAsync()\n    {\n        _disposed = true;\n        if (_registered)\n        {\n            try { await Interop.FlowUnregisterCanvasAsync(_paneRef); }\n            catch (JSDisconnectedException) { }\n        }\n        _selfRef?.Dispose();\n    }\n}\n"
+    },
+    {
+      "path": "UI/FlowCanvas/FlowControls.razor",
+      "content": "@namespace Lumeo\n@inject Lumeo.Services.Localization.ILumeoLocalizer L\n\n@* FlowControls — zoom in / zoom out / fit view / lock, stacked in a corner of the canvas. Place it\n   inside FlowCanvas' ChildContent. Built from Lumeo Buttons (Outline, icon size); any ChildContent\n   is appended as extra buttons. data-flow-overlay keeps the canvas engine from treating a press\n   here as a pan. *@\n\n<div data-slot=\"flow-controls\"\n     data-flow-overlay\n     role=\"toolbar\"\n     aria-label=\"@L[\"Flow.Controls\"]\"\n     aria-orientation=\"@(Horizontal ? \"horizontal\" : \"vertical\")\"\n     class=\"@RootClass\"\n     style=\"position:absolute;z-index:5;\"\n     @attributes=\"AdditionalAttributes\">\n    @if (ShowZoom)\n    {\n        <Button Variant=\"Button.ButtonVariant.Outline\" Size=\"Button.ButtonSize.Icon\" Class=\"size-8 bg-card\"\n                aria-label=\"@L[\"Flow.ZoomIn\"]\" title=\"@L[\"Flow.ZoomIn\"]\"\n                Disabled=\"@(!CanZoomIn)\" OnClick=\"ZoomInAsync\">\n            <SvgGlyph Svg=\"@(LumeoIcons.Plus)\" class=\"size-4\" />\n        </Button>\n        <Button Variant=\"Button.ButtonVariant.Outline\" Size=\"Button.ButtonSize.Icon\" Class=\"size-8 bg-card\"\n                aria-label=\"@L[\"Flow.ZoomOut\"]\" title=\"@L[\"Flow.ZoomOut\"]\"\n                Disabled=\"@(!CanZoomOut)\" OnClick=\"ZoomOutAsync\">\n            <SvgGlyph Svg=\"@(LumeoIcons.Minus)\" class=\"size-4\" />\n        </Button>\n    }\n    @if (ShowFitView)\n    {\n        <Button Variant=\"Button.ButtonVariant.Outline\" Size=\"Button.ButtonSize.Icon\" Class=\"size-8 bg-card\"\n                aria-label=\"@L[\"Flow.FitView\"]\" title=\"@L[\"Flow.FitView\"]\"\n                OnClick=\"FitViewAsync\">\n            <SvgGlyph Svg=\"@(LumeoIcons.Maximize2)\" class=\"size-4\" />\n        </Button>\n    }\n    @if (ShowLock)\n    {\n        <Button Variant=\"Button.ButtonVariant.Outline\" Size=\"Button.ButtonSize.Icon\"\n                Class=\"@Cx.Merge(\"size-8 bg-card\", Cx.When(Locked, \"bg-accent text-accent-foreground\"))\"\n                aria-label=\"@L[\"Flow.Lock\"]\" title=\"@L[\"Flow.Lock\"]\"\n                aria-pressed=\"@(Locked ? \"true\" : \"false\")\"\n                OnClick=\"ToggleLockAsync\">\n            <SvgGlyph Svg=\"@(LumeoIcons.Lock)\" class=\"size-4\" />\n        </Button>\n    }\n    @ChildContent\n</div>\n\n@code {\n    [CascadingParameter] private FlowCanvas.FlowCanvasContext? Context { get; set; }\n\n    /// <summary>Where the controls sit inside the canvas.</summary>\n    public enum ControlsPosition { TopLeft, TopRight, BottomLeft, BottomRight }\n\n    /// <summary>The corner the controls sit in.</summary>\n    [Parameter] public ControlsPosition Position { get; set; } = ControlsPosition.BottomLeft;\n\n    /// <summary>Lays the buttons out in a row instead of a column.</summary>\n    [Parameter] public bool Horizontal { get; set; }\n\n    /// <summary>Shows the zoom in / zoom out buttons.</summary>\n    [Parameter] public bool ShowZoom { get; set; } = true;\n\n    /// <summary>Shows the fit-view button.</summary>\n    [Parameter] public bool ShowFitView { get; set; } = true;\n\n    /// <summary>Shows the lock toggle (locked = nodes cannot be moved; pan and zoom still work).</summary>\n    [Parameter] public bool ShowLock { get; set; } = true;\n\n    /// <summary>Extra buttons appended after the built-in ones.</summary>\n    [Parameter] public RenderFragment? ChildContent { get; set; }\n\n    /// <summary>Additional CSS classes merged onto the toolbar.</summary>\n    [Parameter] public string? Class { get; set; }\n\n    /// <summary>Captures unmatched attributes and applies them to the toolbar.</summary>\n    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }\n\n    private bool Locked => Context?.Locked == true;\n    private double Zoom => Context?.Viewport.Zoom ?? 1;\n    private bool CanZoomIn => Context is null || Zoom < Context.MaxZoom - 1e-9;\n    private bool CanZoomOut => Context is null || Zoom > Context.MinZoom + 1e-9;\n\n    private string RootClass => Cx.Merge(\n        \"flex gap-1 rounded-md\",\n        Horizontal ? \"flex-row\" : \"flex-col\",\n        Position switch\n        {\n            ControlsPosition.TopLeft => \"left-3 top-3\",\n            ControlsPosition.TopRight => \"right-3 top-3\",\n            ControlsPosition.BottomRight => \"right-3 bottom-3\",\n            _ => \"left-3 bottom-3\",\n        },\n        Class);\n\n    private Task ZoomInAsync() => Context?.Canvas.ZoomInAsync() ?? Task.CompletedTask;\n    private Task ZoomOutAsync() => Context?.Canvas.ZoomOutAsync() ?? Task.CompletedTask;\n    private Task FitViewAsync() => Context?.Canvas.FitViewAsync() ?? Task.CompletedTask;\n    private Task ToggleLockAsync() => Context?.Canvas.SetLockedAsync(!Locked) ?? Task.CompletedTask;\n}\n"
+    },
+    {
+      "path": "UI/FlowCanvas/FlowEdgeLayer.razor",
+      "content": "@namespace Lumeo\n@using System.ComponentModel\n@attribute [EditorBrowsable(EditorBrowsableState.Never)]\n\n@* FlowEdgeLayer — one <path> per edge, in flow coordinates, inside FlowCanvas' viewport layer.\n   Rendered by FlowCanvas; not meant to be used directly.\n\n   The <svg> is zero-sized with overflow: visible so it never intercepts pointer events or affects\n   layout; paths are drawn from FlowGeometry. While a node is dragged the engine rewrites the `d`\n   of every connected path with its JS port of the same math, keyed by the data-source/data-target/\n   data-*-handle/data-edge-type attributes below — keep those in sync with flow.js. *@\n\n<svg data-slot=\"flow-edges\"\n     aria-hidden=\"true\"\n     class=\"@Cx.Merge(\"lumeo-flow-edges\", Class)\"\n     style=\"position:absolute;left:0;top:0;width:1px;height:1px;overflow:visible;pointer-events:none;\"\n     @attributes=\"AdditionalAttributes\">\n    @if (Context is not null)\n    {\n        @foreach (var (edge, path) in Context.Canvas.RenderableEdges())\n        {\n            <path @key=\"edge.Id\"\n                  data-flow-edge\n                  data-edge-id=\"@edge.Id\"\n                  data-source=\"@edge.Source\"\n                  data-target=\"@edge.Target\"\n                  data-source-handle=\"@edge.SourceHandle\"\n                  data-target-handle=\"@edge.TargetHandle\"\n                  data-edge-type=\"@FlowGeometry.FormatEdgeType(edge.Type)\"\n                  d=\"@path.D\"\n                  fill=\"none\"\n                  stroke=\"var(--color-border)\" />\n        }\n    }\n</svg>\n\n@code {\n    [CascadingParameter] private FlowCanvas.FlowCanvasContext? Context { get; set; }\n\n    /// <summary>Additional CSS classes merged onto the edge layer's <c>&lt;svg&gt;</c>.</summary>\n    [Parameter] public string? Class { get; set; }\n\n    /// <summary>Captures unmatched attributes and applies them to the edge layer's <c>&lt;svg&gt;</c>.</summary>\n    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }\n}\n"
+    },
+    {
+      "path": "UI/FlowCanvas/FlowGeometry.cs",
+      "content": "using System.Globalization;\nusing System.Text;\n\nnamespace Lumeo;\n\n/// <summary>\n/// Pure flow-canvas math: coordinate transforms, snapping, fit-view and the four edge path\n/// generators. No DOM, no state — every member is a function of its arguments.\n/// </summary>\n/// <remarks>\n/// <b>Lockstep with <c>flow.js</c>.</b> The engine rewrites edge paths live while a node is\n/// dragged, with its own JavaScript port of <see cref=\"GetEdgePath\"/>; the next Blazor render then\n/// writes the path this class produces. The two must agree to the character or an edge visibly\n/// twitches on drop. <c>FlowGeometryLockstepTests</c> compares this class against a table the JS\n/// functions produce (<c>tests/js/flow-geometry-table.mjs</c>) — change both sides together and\n/// regenerate the table.\n/// </remarks>\npublic static class FlowGeometry\n{\n    /// <summary>Size used for a node that has neither a fixed size nor a measurement yet.</summary>\n    public const double DefaultNodeWidth = 150;\n\n    /// <summary>Size used for a node that has neither a fixed size nor a measurement yet.</summary>\n    public const double DefaultNodeHeight = 40;\n\n    /// <summary>The factor <c>ZoomInAsync</c>/<c>ZoomOutAsync</c> multiply/divide by.</summary>\n    public const double ZoomStep = 1.2;\n\n    /// <summary>How far a step/smooth-step route runs straight out of a handle before turning.</summary>\n    public const double StepOffset = 20;\n\n    /// <summary>Corner radius of a smooth-step route.</summary>\n    public const double SmoothStepRadius = 5;\n\n    /// <summary>Control-point curvature for a Bézier whose target lies behind its source.</summary>\n    public const double BezierCurvature = 0.25;\n\n    // ── Coordinate spaces ────────────────────────────────────────────────\n\n    /// <summary>\n    /// Pane-local pixels (relative to the pane's top-left corner) → flow coordinates:\n    /// <c>(local - viewport.XY) / viewport.Zoom</c>.\n    /// </summary>\n    public static FlowPoint ScreenToFlow(double x, double y, FlowViewport viewport)\n    {\n        var zoom = viewport.Zoom > 0 ? viewport.Zoom : 1;\n        return new FlowPoint((x - viewport.X) / zoom, (y - viewport.Y) / zoom);\n    }\n\n    /// <summary>Flow coordinates → pane-local pixels: <c>flow * viewport.Zoom + viewport.XY</c>.</summary>\n    public static FlowPoint FlowToScreen(double x, double y, FlowViewport viewport)\n    {\n        var zoom = viewport.Zoom > 0 ? viewport.Zoom : 1;\n        return new FlowPoint(x * zoom + viewport.X, y * zoom + viewport.Y);\n    }\n\n    /// <summary>Clamps <paramref name=\"zoom\"/> into <c>[min, max]</c> (a max below min collapses to min).</summary>\n    public static double ClampZoom(double zoom, double min, double max)\n    {\n        if (max < min) max = min;\n        if (double.IsNaN(zoom)) return min;\n        return Math.Min(max, Math.Max(min, zoom));\n    }\n\n    /// <summary>\n    /// Re-scales <paramref name=\"viewport\"/> to <paramref name=\"zoom\"/> while keeping the flow point\n    /// under the pane-local anchor exactly where it is — the pointer-anchored wheel zoom.\n    /// </summary>\n    public static FlowViewport ZoomAt(FlowViewport viewport, double zoom, double anchorX, double anchorY)\n    {\n        var p = ScreenToFlow(anchorX, anchorY, viewport);\n        return new FlowViewport(anchorX - p.X * zoom, anchorY - p.Y * zoom, zoom);\n    }\n\n    /// <summary>\n    /// A viewport that shows flow point (<paramref name=\"x\"/>, <paramref name=\"y\"/>) at the centre of\n    /// a pane of the given size.\n    /// </summary>\n    public static FlowViewport CenterOn(double x, double y, double zoom, double paneWidth, double paneHeight)\n        => new(paneWidth / 2 - x * zoom, paneHeight / 2 - y * zoom, zoom);\n\n    // ── Snapping ─────────────────────────────────────────────────────────\n\n    /// <summary>\n    /// Rounds <paramref name=\"value\"/> to the nearest multiple of <paramref name=\"grid\"/> (ties round\n    /// up, like JavaScript's <c>Math.round</c> — the engine snaps with the same rule). A grid of 0 or\n    /// less returns the value unchanged.\n    /// </summary>\n    public static double Snap(double value, double grid)\n        => grid > 0 ? Math.Floor(value / grid + 0.5) * grid : value;\n\n    /// <summary>Snaps both axes of a point.</summary>\n    public static FlowPoint Snap(FlowPoint point, double gridX, double gridY)\n        => new(Snap(point.X, gridX), Snap(point.Y, gridY));\n\n    // ── Bounds and fit-view ──────────────────────────────────────────────\n\n    /// <summary>The union of <paramref name=\"rects\"/>, or <c>null</c> when there are none.</summary>\n    public static FlowRect? GetBounds(IEnumerable<FlowRect> rects)\n    {\n        ArgumentNullException.ThrowIfNull(rects);\n        double minX = double.PositiveInfinity, minY = double.PositiveInfinity;\n        double maxX = double.NegativeInfinity, maxY = double.NegativeInfinity;\n        var any = false;\n        foreach (var r in rects)\n        {\n            any = true;\n            minX = Math.Min(minX, r.X);\n            minY = Math.Min(minY, r.Y);\n            maxX = Math.Max(maxX, r.X + r.Width);\n            maxY = Math.Max(maxY, r.Y + r.Height);\n        }\n        return any ? new FlowRect(minX, minY, maxX - minX, maxY - minY) : null;\n    }\n\n    /// <summary>\n    /// The viewport that fits every rect into a pane of the given size, centred.\n    /// <paramref name=\"padding\"/> is a fraction of the bounds (0.1 = 10% breathing room in total);\n    /// the zoom is clamped to <c>[minZoom, maxZoom]</c>. Returns <c>null</c> when there is nothing to\n    /// fit or the pane has no size yet.\n    /// </summary>\n    public static FlowViewport? FitView(IEnumerable<FlowRect> rects, double paneWidth, double paneHeight,\n        double padding, double minZoom, double maxZoom)\n    {\n        var bounds = GetBounds(rects);\n        if (bounds is not { } b || !(paneWidth > 0) || !(paneHeight > 0)) return null;\n        var pad = padding > 0 ? padding : 0;\n        var bw = Math.Max(b.Width, 1);\n        var bh = Math.Max(b.Height, 1);\n        var xZoom = paneWidth / (bw * (1 + pad));\n        var yZoom = paneHeight / (bh * (1 + pad));\n        var zoom = ClampZoom(Math.Min(xZoom, yZoom), minZoom, maxZoom);\n        var cx = b.X + b.Width / 2;\n        var cy = b.Y + b.Height / 2;\n        return CenterOn(cx, cy, zoom, paneWidth, paneHeight);\n    }\n\n    // ── Handles ──────────────────────────────────────────────────────────\n\n    /// <summary>\n    /// The default anchor on a node's side — the midpoint of that edge. Used when the node renders\n    /// no matching <see cref=\"FlowHandle\"/> (or it has not been measured yet).\n    /// </summary>\n    public static FlowPoint GetHandleAnchor(FlowRect node, FlowPosition position) => position switch\n    {\n        FlowPosition.Left => new(node.X, node.Y + node.Height / 2),\n        FlowPosition.Right => new(node.X + node.Width, node.Y + node.Height / 2),\n        FlowPosition.Top => new(node.X + node.Width / 2, node.Y),\n        _ => new(node.X + node.Width / 2, node.Y + node.Height),\n    };\n\n    // ── Edge paths ───────────────────────────────────────────────────────\n\n    /// <summary>Dispatches to the generator for <paramref name=\"type\"/>.</summary>\n    public static FlowEdgePath GetEdgePath(FlowEdgeType type,\n        double sourceX, double sourceY, FlowPosition sourcePosition,\n        double targetX, double targetY, FlowPosition targetPosition) => type switch\n    {\n        FlowEdgeType.Straight => GetStraightPath(sourceX, sourceY, targetX, targetY),\n        FlowEdgeType.Step => GetStepPath(sourceX, sourceY, sourcePosition, targetX, targetY, targetPosition),\n        FlowEdgeType.SmoothStep => GetSmoothStepPath(sourceX, sourceY, sourcePosition, targetX, targetY, targetPosition),\n        _ => GetBezierPath(sourceX, sourceY, sourcePosition, targetX, targetY, targetPosition),\n    };\n\n    /// <summary>A straight line; the label sits at its midpoint.</summary>\n    public static FlowEdgePath GetStraightPath(double sourceX, double sourceY, double targetX, double targetY)\n    {\n        var d = \"M\" + Fmt(sourceX) + \",\" + Fmt(sourceY) + \" L\" + Fmt(targetX) + \",\" + Fmt(targetY);\n        return new FlowEdgePath(d, (sourceX + targetX) / 2, (sourceY + targetY) / 2);\n    }\n\n    /// <summary>\n    /// A cubic Bézier whose control points run out of each anchor along its handle's direction —\n    /// half the anchor distance when the other end lies ahead, a curvature-scaled loop when it lies\n    /// behind. The label sits on the curve at t = 0.5.\n    /// </summary>\n    public static FlowEdgePath GetBezierPath(double sourceX, double sourceY, FlowPosition sourcePosition,\n        double targetX, double targetY, FlowPosition targetPosition)\n    {\n        var (c1x, c1y) = ControlPoint(sourcePosition, sourceX, sourceY, targetX, targetY);\n        var (c2x, c2y) = ControlPoint(targetPosition, targetX, targetY, sourceX, sourceY);\n        var d = \"M\" + Fmt(sourceX) + \",\" + Fmt(sourceY)\n              + \" C\" + Fmt(c1x) + \",\" + Fmt(c1y)\n              + \" \" + Fmt(c2x) + \",\" + Fmt(c2y)\n              + \" \" + Fmt(targetX) + \",\" + Fmt(targetY);\n        var lx = sourceX * 0.125 + c1x * 0.375 + c2x * 0.375 + targetX * 0.125;\n        var ly = sourceY * 0.125 + c1y * 0.375 + c2y * 0.375 + targetY * 0.125;\n        return new FlowEdgePath(d, lx, ly);\n    }\n\n    /// <summary>An orthogonal route with sharp corners (a smooth-step with radius 0).</summary>\n    public static FlowEdgePath GetStepPath(double sourceX, double sourceY, FlowPosition sourcePosition,\n        double targetX, double targetY, FlowPosition targetPosition)\n        => GetSmoothStepPath(sourceX, sourceY, sourcePosition, targetX, targetY, targetPosition, 0, StepOffset);\n\n    /// <summary>\n    /// An orthogonal route: straight out of the source handle by <paramref name=\"offset\"/>, across,\n    /// and straight into the target handle, every corner rounded by up to\n    /// <paramref name=\"borderRadius\"/>. The label sits halfway along the route.\n    /// </summary>\n    public static FlowEdgePath GetSmoothStepPath(double sourceX, double sourceY, FlowPosition sourcePosition,\n        double targetX, double targetY, FlowPosition targetPosition,\n        double borderRadius = SmoothStepRadius, double offset = StepOffset)\n    {\n        var pts = StepPoints(sourceX, sourceY, sourcePosition, targetX, targetY, targetPosition, offset);\n\n        var sb = new StringBuilder();\n        sb.Append('M').Append(Fmt(pts[0].X)).Append(',').Append(Fmt(pts[0].Y));\n        for (var i = 1; i < pts.Count - 1; i++)\n        {\n            var a = pts[i - 1];\n            var b = pts[i];\n            var c = pts[i + 1];\n            var lab = Dist(a, b);\n            var lbc = Dist(b, c);\n            var r = Math.Min(borderRadius, Math.Min(lab / 2, lbc / 2));\n            if (r > 0 && lab > 0 && lbc > 0)\n            {\n                var inX = b.X - (b.X - a.X) / lab * r;\n                var inY = b.Y - (b.Y - a.Y) / lab * r;\n                var outX = b.X + (c.X - b.X) / lbc * r;\n                var outY = b.Y + (c.Y - b.Y) / lbc * r;\n                sb.Append(\" L\").Append(Fmt(inX)).Append(',').Append(Fmt(inY));\n                sb.Append(\" Q\").Append(Fmt(b.X)).Append(',').Append(Fmt(b.Y));\n                sb.Append(' ').Append(Fmt(outX)).Append(',').Append(Fmt(outY));\n            }\n            else\n            {\n                sb.Append(\" L\").Append(Fmt(b.X)).Append(',').Append(Fmt(b.Y));\n            }\n        }\n        var last = pts[^1];\n        sb.Append(\" L\").Append(Fmt(last.X)).Append(',').Append(Fmt(last.Y));\n\n        var (lx, ly) = PolylineMidpoint(pts);\n        return new FlowEdgePath(sb.ToString(), lx, ly);\n    }\n\n    /// <summary>\n    /// The corner points of an orthogonal route (source anchor, offset point, turns, target offset\n    /// point, target anchor), with duplicates and straight-through points removed.\n    /// </summary>\n    internal static List<FlowPoint> StepPoints(double sx, double sy, FlowPosition sPos,\n        double tx, double ty, FlowPosition tPos, double offset)\n    {\n        var (sdx, sdy) = Direction(sPos);\n        var (tdx, tdy) = Direction(tPos);\n        var s0 = new FlowPoint(sx, sy);\n        var t0 = new FlowPoint(tx, ty);\n        var s1 = new FlowPoint(sx + sdx * offset, sy + sdy * offset);\n        var t1 = new FlowPoint(tx + tdx * offset, ty + tdy * offset);\n        var sH = sPos is FlowPosition.Left or FlowPosition.Right;\n        var tH = tPos is FlowPosition.Left or FlowPosition.Right;\n\n        var raw = new List<FlowPoint> { s0, s1 };\n        if (sH && tH)\n        {\n            if (sPos == tPos)\n            {\n                // Both handles face the same way: run out to whichever offset point is further along.\n                var ex = sdx > 0 ? Math.Max(s1.X, t1.X) : Math.Min(s1.X, t1.X);\n                raw.Add(new FlowPoint(ex, s1.Y));\n                raw.Add(new FlowPoint(ex, t1.Y));\n            }\n            else if (sdx * (t1.X - s1.X) >= 0)\n            {\n                var mx = (s1.X + t1.X) / 2;\n                raw.Add(new FlowPoint(mx, s1.Y));\n                raw.Add(new FlowPoint(mx, t1.Y));\n            }\n            else\n            {\n                // Target lies behind the source: cross over halfway between the two rows instead.\n                var my = (s1.Y + t1.Y) / 2;\n                raw.Add(new FlowPoint(s1.X, my));\n                raw.Add(new FlowPoint(t1.X, my));\n            }\n        }\n        else if (!sH && !tH)\n        {\n            if (sPos == tPos)\n            {\n                var ey = sdy > 0 ? Math.Max(s1.Y, t1.Y) : Math.Min(s1.Y, t1.Y);\n                raw.Add(new FlowPoint(s1.X, ey));\n                raw.Add(new FlowPoint(t1.X, ey));\n            }\n            else if (sdy * (t1.Y - s1.Y) >= 0)\n            {\n                var my = (s1.Y + t1.Y) / 2;\n                raw.Add(new FlowPoint(s1.X, my));\n                raw.Add(new FlowPoint(t1.X, my));\n            }\n            else\n            {\n                var mx = (s1.X + t1.X) / 2;\n                raw.Add(new FlowPoint(mx, s1.Y));\n                raw.Add(new FlowPoint(mx, t1.Y));\n            }\n        }\n        else if (sH)\n        {\n            raw.Add(new FlowPoint(t1.X, s1.Y));\n        }\n        else\n        {\n            raw.Add(new FlowPoint(s1.X, t1.Y));\n        }\n        raw.Add(t1);\n        raw.Add(t0);\n\n        // Drop repeated points, then points a straight segment merely passes through (same\n        // direction on both sides). A reversal is kept: removing it would change the route.\n        var dedup = new List<FlowPoint>(raw.Count);\n        foreach (var p in raw)\n        {\n            if (dedup.Count > 0 && Same(dedup[^1], p)) continue;\n            dedup.Add(p);\n        }\n        var result = new List<FlowPoint>(dedup.Count);\n        for (var i = 0; i < dedup.Count; i++)\n        {\n            if (i > 0 && i < dedup.Count - 1)\n            {\n                var a = result[^1];\n                var b = dedup[i];\n                var c = dedup[i + 1];\n                var cross = (b.X - a.X) * (c.Y - b.Y) - (b.Y - a.Y) * (c.X - b.X);\n                var dot = (b.X - a.X) * (c.X - b.X) + (b.Y - a.Y) * (c.Y - b.Y);\n                if (Math.Abs(cross) < 1e-9 && dot >= 0) continue;\n            }\n            result.Add(dedup[i]);\n        }\n        return result;\n    }\n\n    private static (double X, double Y) PolylineMidpoint(List<FlowPoint> pts)\n    {\n        var total = 0.0;\n        for (var i = 1; i < pts.Count; i++) total += Dist(pts[i - 1], pts[i]);\n        if (total <= 0) return (pts[0].X, pts[0].Y);\n        var half = total / 2;\n        var walked = 0.0;\n        for (var i = 1; i < pts.Count; i++)\n        {\n            var seg = Dist(pts[i - 1], pts[i]);\n            if (walked + seg >= half && seg > 0)\n            {\n                var t = (half - walked) / seg;\n                return (pts[i - 1].X + (pts[i].X - pts[i - 1].X) * t, pts[i - 1].Y + (pts[i].Y - pts[i - 1].Y) * t);\n            }\n            walked += seg;\n        }\n        return (pts[^1].X, pts[^1].Y);\n    }\n\n    private static (double X, double Y) ControlPoint(FlowPosition position, double x1, double y1, double x2, double y2) => position switch\n    {\n        FlowPosition.Left => (x1 - ControlOffset(x1 - x2), y1),\n        FlowPosition.Right => (x1 + ControlOffset(x2 - x1), y1),\n        FlowPosition.Top => (x1, y1 - ControlOffset(y1 - y2)),\n        _ => (x1, y1 + ControlOffset(y2 - y1)),\n    };\n\n    private static double ControlOffset(double distance)\n        => distance >= 0 ? 0.5 * distance : BezierCurvature * 25 * Math.Sqrt(-distance);\n\n    private static (double X, double Y) Direction(FlowPosition position) => position switch\n    {\n        FlowPosition.Left => (-1, 0),\n        FlowPosition.Right => (1, 0),\n        FlowPosition.Top => (0, -1),\n        _ => (0, 1),\n    };\n\n    private static double Dist(FlowPoint a, FlowPoint b)\n    {\n        var dx = b.X - a.X;\n        var dy = b.Y - a.Y;\n        return Math.Sqrt(dx * dx + dy * dy);\n    }\n\n    private static bool Same(FlowPoint a, FlowPoint b) => Math.Abs(a.X - b.X) < 1e-9 && Math.Abs(a.Y - b.Y) < 1e-9;\n\n    /// <summary>\n    /// Formats a coordinate the way <c>flow.js</c> does: rounded to 3 decimals with\n    /// <c>floor(v * 1000 + 0.5) / 1000</c> (JavaScript's <c>Math.round</c>), culture-invariant, shortest\n    /// round-trip digits, and never \"-0\".\n    /// </summary>\n    internal static string Fmt(double value)\n    {\n        if (!double.IsFinite(value)) return \"0\";\n        var r = Math.Floor(value * 1000 + 0.5) / 1000;\n        if (r == 0) r = 0; // normalises -0\n        return r.ToString(\"R\", CultureInfo.InvariantCulture);\n    }\n\n    internal static string FormatPosition(FlowPosition position) => position switch\n    {\n        FlowPosition.Left => \"left\",\n        FlowPosition.Right => \"right\",\n        FlowPosition.Top => \"top\",\n        _ => \"bottom\",\n    };\n\n    internal static FlowPosition? ParsePosition(string? value) => value switch\n    {\n        \"left\" => FlowPosition.Left,\n        \"right\" => FlowPosition.Right,\n        \"top\" => FlowPosition.Top,\n        \"bottom\" => FlowPosition.Bottom,\n        _ => null,\n    };\n\n    internal static string FormatEdgeType(FlowEdgeType type) => type switch\n    {\n        FlowEdgeType.SmoothStep => \"smoothstep\",\n        FlowEdgeType.Step => \"step\",\n        FlowEdgeType.Straight => \"straight\",\n        _ => \"bezier\",\n    };\n}\n"
+    },
+    {
+      "path": "UI/FlowCanvas/FlowHandle.razor",
+      "content": "@namespace Lumeo\n@inject Lumeo.Services.Localization.ILumeoLocalizer L\n\n@* FlowHandle — a connection port, placed inside a node template. Positions itself on the node\n   host's edge (the host is the containing block), and tells the engine where edges attach: the\n   engine measures every [data-flow-handle] inside a node and edges bound to this handle (by Id,\n   or the node's first handle of this Type) start/end at its centre.\n\n   Phase 1 renders the port and its data attributes; dragging from it to create an edge is phase 2.\n   Until then it is not a tab stop (tabindex=\"-1\") — nothing to activate yet. *@\n\n<button type=\"button\"\n        data-flow-handle\n        data-handle-type=\"@(Type == FlowHandleType.Source ? \"source\" : \"target\")\"\n        data-handle-id=\"@Id\"\n        data-position=\"@FlowGeometry.FormatPosition(Position)\"\n        tabindex=\"-1\"\n        aria-label=\"@AriaLabel\"\n        class=\"@Cx.Merge(\"lumeo-flow-handle\", Class)\"\n        style=\"@PositionStyle\"\n        @attributes=\"AdditionalAttributes\"></button>\n\n@code {\n    [CascadingParameter(Name = \"LumeoFlowNode\")] private FlowNode? Node { get; set; }\n\n    /// <summary>Source (edges start here) or target (edges end here).</summary>\n    [Parameter] public FlowHandleType Type { get; set; } = FlowHandleType.Source;\n\n    /// <summary>The side of the node the handle sits on, and the direction edges leave/enter it.</summary>\n    [Parameter] public FlowPosition Position { get; set; } = FlowPosition.Right;\n\n    /// <summary>Handle id, for nodes with several handles of the same type (matched by <c>FlowEdge.SourceHandle</c>/<c>TargetHandle</c>).</summary>\n    [Parameter] public string? Id { get; set; }\n\n    /// <summary>Additional CSS classes merged onto the handle button.</summary>\n    [Parameter] public string? Class { get; set; }\n\n    /// <summary>Captures unmatched attributes and applies them to the handle button.</summary>\n    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }\n\n    private string AriaLabel\n    {\n        get\n        {\n            var name = Node?.Id ?? string.Empty;\n            return Type == FlowHandleType.Source ? L[\"Flow.ConnectFrom\", name] : L[\"Flow.ConnectTo\", name];\n        }\n    }\n\n    private string PositionStyle => Position switch\n    {\n        FlowPosition.Left => \"position:absolute;left:0;top:50%;transform:translate(-50%,-50%);\",\n        FlowPosition.Right => \"position:absolute;left:100%;top:50%;transform:translate(-50%,-50%);\",\n        FlowPosition.Top => \"position:absolute;left:50%;top:0;transform:translate(-50%,-50%);\",\n        _ => \"position:absolute;left:50%;top:100%;transform:translate(-50%,-50%);\",\n    };\n}\n"
+    },
+    {
+      "path": "UI/FlowCanvas/FlowNodeHost.razor",
+      "content": "@namespace Lumeo\n@using System.ComponentModel\n@inject Lumeo.Services.Localization.ILumeoLocalizer L\n@attribute [EditorBrowsable(EditorBrowsableState.Never)]\n\n@* FlowNodeHost — the positioned, focusable wrapper FlowCanvas renders around each node's template.\n   Rendered by FlowCanvas; not meant to be used directly (the Razor compiler always makes components\n   public, hence [EditorBrowsable(Never)]).\n\n   Position: transform: translate(Xpx, Ypx) in flow coordinates, plus data-x/data-y carrying the\n   same numbers at full precision — the engine reads those as the .NET truth when a drag starts or\n   has to be undone. During a drag the engine writes the transform directly; the render after the\n   commit writes the identical value, so the node never jumps. data-dragging is set by the engine\n   the moment a drag starts and mirrored here once .NET hears about it. *@\n\n<CascadingValue Value=\"Node\" Name=\"LumeoFlowNode\" IsFixed=\"false\">\n    <div data-flow-node=\"@Node.Id\"\n         data-x=\"@FlowCanvas.R(Node.X)\"\n         data-y=\"@FlowCanvas.R(Node.Y)\"\n         data-type=\"@Node.Type\"\n         data-selected=\"@(Selected ? \"\" : null)\"\n         data-dragging=\"@(Dragging ? \"\" : null)\"\n         data-draggable=\"@(Draggable ? \"true\" : \"false\")\"\n         tabindex=\"0\"\n         role=\"group\"\n         aria-roledescription=\"@L[\"Flow.NodeRole\"]\"\n         aria-label=\"@Node.Id\"\n         aria-selected=\"@(Selected ? \"true\" : \"false\")\"\n         class=\"@HostClass\"\n         style=\"@HostStyle\"\n         @onclick=\"HandleClickAsync\"\n         @ondblclick=\"HandleDoubleClickAsync\"\n         @oncontextmenu=\"HandleContextMenuAsync\"\n         @oncontextmenu:preventDefault=\"@(Canvas?.HasContextMenuHandler == true)\"\n         @onkeydown=\"HandleKeyDownAsync\"\n         @attributes=\"AdditionalAttributes\">\n        @if (Canvas is not null)\n        {\n            @Canvas.RenderNodeContent(new FlowNodeContext(Node, Selected, Dragging, Canvas))\n        }\n    </div>\n</CascadingValue>\n\n@code {\n    [CascadingParameter] private FlowCanvas.FlowCanvasContext? Context { get; set; }\n\n    /// <summary>The node this host positions and wraps.</summary>\n    [Parameter, EditorRequired] public FlowNode Node { get; set; } = default!;\n\n    /// <summary>Additional CSS classes merged onto the host element.</summary>\n    [Parameter] public string? Class { get; set; }\n\n    /// <summary>Captures unmatched attributes and applies them to the host element.</summary>\n    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }\n\n    private FlowCanvas? Canvas => Context?.Canvas;\n    private bool Selected => Canvas?.IsSelected(Node.Id) == true;\n    private bool Dragging => Canvas?.IsDragging(Node.Id) == true;\n    private bool Draggable => Canvas?.CanDrag(Node) == true;\n\n    private string HostClass => Cx.Merge(\"lumeo-flow-node\", Class);\n\n    private string HostStyle\n    {\n        get\n        {\n            var style = \"position:absolute;left:0;top:0;transform:translate(\" + FlowCanvas.R(Node.X) + \"px, \" + FlowCanvas.R(Node.Y) + \"px);\";\n            if (Node.Width is { } w) style += \"width:\" + FlowCanvas.R(w) + \"px;\";\n            if (Node.Height is { } h) style += \"height:\" + FlowCanvas.R(h) + \"px;\";\n            if (Node.ZIndex is { } z) style += \"z-index:\" + z.ToString(System.Globalization.CultureInfo.InvariantCulture) + \";\";\n            return style;\n        }\n    }\n\n    private Task HandleClickAsync() => Canvas?.HandleNodeClickAsync(Node) ?? Task.CompletedTask;\n    private Task HandleDoubleClickAsync() => Canvas?.HandleNodeDoubleClickAsync(Node) ?? Task.CompletedTask;\n    private Task HandleContextMenuAsync(MouseEventArgs e) => Canvas?.HandleNodeContextMenuAsync(Node, e) ?? Task.CompletedTask;\n    private Task HandleKeyDownAsync(KeyboardEventArgs e) => Canvas?.HandleNodeKeyDownAsync(Node, e) ?? Task.CompletedTask;\n}\n"
+    },
+    {
+      "path": "UI/FlowCanvas/FlowState.cs",
+      "content": "namespace Lumeo;\n\n/// <summary>\n/// A FlowCanvas' non-render state: the latest known viewport, the viewport .NET last asked the\n/// engine to apply (the stamp), measured node sizes and handle offsets, the pane size, the current\n/// selection and the node-list generation. No render-loop coupling — the canvas decides when to\n/// render; this class only answers questions.\n/// </summary>\ninternal sealed class FlowState\n{\n    private readonly Dictionary<string, Measured> _measured = new(StringComparer.Ordinal);\n    private readonly Queue<FlowViewport> _recentReports = new();\n\n    private sealed record Measured(double Width, double Height, IReadOnlyList<HandleInfo> Handles);\n\n    /// <summary>A measured handle: centre offset from the node's top-left, in flow units.</summary>\n    internal sealed record HandleInfo(string? Id, FlowHandleType Type, FlowPosition Position, double X, double Y);\n\n    /// <summary>The latest viewport known to .NET — engine reports or .NET-originated sets.</summary>\n    public FlowViewport Viewport { get; private set; } = new(0, 0, 1);\n\n    /// <summary>The viewport of the latest .NET-originated set (what the stamp carries).</summary>\n    public FlowViewport StampedViewport { get; private set; } = new(0, 0, 1);\n\n    /// <summary>Monotonic id of the latest .NET-originated viewport set; 0 = the initial viewport.</summary>\n    public long StampId { get; private set; }\n\n    /// <summary>\n    /// Bumped whenever the node list is replaced from OUTSIDE (not an echo of the canvas' own\n    /// commit). A drag that started under an older generation is stale and never committed.\n    /// </summary>\n    public int Generation { get; private set; }\n\n    public double PaneWidth { get; private set; }\n    public double PaneHeight { get; private set; }\n\n    public HashSet<string> SelectedNodeIds { get; } = new(StringComparer.Ordinal);\n    public HashSet<string> DraggingNodeIds { get; } = new(StringComparer.Ordinal);\n\n    public void Initialize(FlowViewport viewport)\n    {\n        Viewport = viewport;\n        StampedViewport = viewport;\n    }\n\n    /// <summary>A .NET-originated viewport change: recorded and given a fresh stamp id.</summary>\n    public void Stamp(FlowViewport viewport)\n    {\n        Viewport = viewport;\n        StampedViewport = viewport;\n        StampId++;\n    }\n\n    /// <summary>\n    /// The engine reported <paramref name=\"viewport\"/>. Remembered for echo detection: a bound\n    /// <c>Viewport</c> parameter that comes back with a value the engine itself reported is not a\n    /// new instruction.\n    /// </summary>\n    public void Report(FlowViewport viewport)\n    {\n        Viewport = viewport;\n        _recentReports.Enqueue(viewport);\n        while (_recentReports.Count > 16) _recentReports.Dequeue();\n    }\n\n    public bool IsEcho(FlowViewport viewport) => viewport == Viewport || _recentReports.Contains(viewport);\n\n    public void BumpGeneration() => Generation++;\n\n    public void SetPaneSize(double width, double height)\n    {\n        PaneWidth = width > 0 ? width : 0;\n        PaneHeight = height > 0 ? height : 0;\n    }\n\n    /// <summary>Applies an engine measurement batch; returns true when anything changed.</summary>\n    public bool ApplyMeasurements(IEnumerable<FlowNodeMeasurement> measurements)\n    {\n        var changed = false;\n        foreach (var m in measurements)\n        {\n            if (m is null || string.IsNullOrEmpty(m.Id)) continue;\n            var handles = new List<HandleInfo>();\n            if (m.Handles is not null)\n            {\n                foreach (var h in m.Handles)\n                {\n                    if (h is null) continue;\n                    var type = string.Equals(h.Type, \"target\", StringComparison.OrdinalIgnoreCase) ? FlowHandleType.Target : FlowHandleType.Source;\n                    var pos = FlowGeometry.ParsePosition(h.Position?.ToLowerInvariant())\n                              ?? (type == FlowHandleType.Source ? FlowPosition.Right : FlowPosition.Left);\n                    handles.Add(new HandleInfo(string.IsNullOrEmpty(h.Id) ? null : h.Id, type, pos, h.X, h.Y));\n                }\n            }\n            var next = new Measured(m.Width, m.Height, handles);\n            if (_measured.TryGetValue(m.Id, out var prev)\n                && prev.Width == next.Width && prev.Height == next.Height\n                && prev.Handles.SequenceEqual(next.Handles))\n            {\n                continue;\n            }\n            _measured[m.Id] = next;\n            changed = true;\n        }\n        return changed;\n    }\n\n    public void ForgetMissing(IEnumerable<FlowNode> nodes)\n    {\n        if (_measured.Count == 0) return;\n        var live = new HashSet<string>(nodes.Select(n => n.Id), StringComparer.Ordinal);\n        foreach (var id in _measured.Keys.Where(id => !live.Contains(id)).ToList()) _measured.Remove(id);\n    }\n\n    public bool IsMeasured(string id) => _measured.ContainsKey(id);\n\n    /// <summary>The node's rect: fixed size &gt; measured size &gt; <see cref=\"FlowGeometry.DefaultNodeWidth\"/>.</summary>\n    public FlowRect GetNodeRect(FlowNode node)\n    {\n        _measured.TryGetValue(node.Id, out var m);\n        var w = node.Width ?? m?.Width ?? FlowGeometry.DefaultNodeWidth;\n        var h = node.Height ?? m?.Height ?? FlowGeometry.DefaultNodeHeight;\n        return new FlowRect(node.X, node.Y, w, h);\n    }\n\n    /// <summary>\n    /// Where an edge attaches: the handle with <paramref name=\"handleId\"/> (or the node's first\n    /// handle of <paramref name=\"type\"/> when the id is null), else the default side — right for a\n    /// source, left for a target. Mirrors <c>anchorFor</c> in flow.js.\n    /// </summary>\n    public (FlowPoint Point, FlowPosition Position) GetAnchor(FlowNode node, string? handleId, FlowHandleType type)\n    {\n        var rect = GetNodeRect(node);\n        if (_measured.TryGetValue(node.Id, out var m) && m.Handles.Count > 0)\n        {\n            HandleInfo? match = null;\n            foreach (var h in m.Handles)\n            {\n                if (h.Type != type) continue;\n                if (handleId is null || string.Equals(h.Id, handleId, StringComparison.Ordinal))\n                {\n                    match = h;\n                    break;\n                }\n            }\n            if (match is not null)\n            {\n                return (new FlowPoint(node.X + match.X, node.Y + match.Y), match.Position);\n            }\n        }\n        var side = type == FlowHandleType.Source ? FlowPosition.Right : FlowPosition.Left;\n        return (FlowGeometry.GetHandleAnchor(rect, side), side);\n    }\n\n    /// <summary>The viewport that fits <paramref name=\"nodes\"/> into the pane, or null when not computable.</summary>\n    public FlowViewport? ComputeFit(IReadOnlyList<FlowNode> nodes, double padding, double minZoom, double maxZoom)\n        => FlowGeometry.FitView(nodes.Select(GetNodeRect), PaneWidth, PaneHeight, padding, minZoom, maxZoom);\n\n    /// <summary>True when every node has a fixed size or a measurement — a .NET-side fit is exact.</summary>\n    public bool AllSized(IReadOnlyList<FlowNode> nodes)\n        => nodes.All(n => (n.Width is not null && n.Height is not null) || _measured.ContainsKey(n.Id));\n}\n"
+    },
+    {
+      "path": "UI/FlowCanvas/FlowTypes.cs",
+      "content": "using System.ComponentModel;\n\nnamespace Lumeo;\n\n/// <summary>Whether a <see cref=\"FlowHandle\"/> starts connections (<see cref=\"Source\"/>) or accepts them (<see cref=\"Target\"/>).</summary>\npublic enum FlowHandleType\n{\n    /// <summary>An outgoing port — edges start here.</summary>\n    Source,\n    /// <summary>An incoming port — edges end here.</summary>\n    Target,\n}\n\n/// <summary>\n/// The PHYSICAL side of a node a handle sits on, and the direction an edge leaves/enters it.\n/// Physical, not logical: <see cref=\"Left\"/> stays left under <c>dir=\"rtl\"</c> (the canvas is a\n/// geometric surface, not a text flow).\n/// </summary>\npublic enum FlowPosition\n{\n    /// <summary>The node's left edge.</summary>\n    Left,\n    /// <summary>The node's right edge.</summary>\n    Right,\n    /// <summary>The node's top edge.</summary>\n    Top,\n    /// <summary>The node's bottom edge.</summary>\n    Bottom,\n}\n\n/// <summary>How an edge's path is routed between its two anchors.</summary>\npublic enum FlowEdgeType\n{\n    /// <summary>A cubic Bézier that leaves/enters each anchor along its handle's direction.</summary>\n    Bezier,\n    /// <summary>An orthogonal route with rounded corners.</summary>\n    SmoothStep,\n    /// <summary>An orthogonal route with sharp corners.</summary>\n    Step,\n    /// <summary>A straight line.</summary>\n    Straight,\n}\n\n/// <summary>The pattern <see cref=\"FlowBackground\"/> draws.</summary>\npublic enum FlowBackgroundVariant\n{\n    /// <summary>A dot at every grid intersection.</summary>\n    Dots,\n    /// <summary>Continuous grid lines.</summary>\n    Lines,\n    /// <summary>A small cross at every grid intersection.</summary>\n    Cross,\n}\n\n/// <summary>\n/// One node on a <see cref=\"FlowCanvas\"/>. Immutable — update with <c>with</c>, the canvas emits a\n/// new list through <c>NodesChanged</c> on every committed move.\n/// </summary>\n/// <param name=\"Id\">Stable identifier; edges reference nodes by it.</param>\n/// <param name=\"X\">Left edge in flow coordinates.</param>\n/// <param name=\"Y\">Top edge in flow coordinates.</param>\n/// <param name=\"Type\">Your own discriminator for <c>NodeTemplate</c> (e.g. \"trigger\", \"action\").</param>\n/// <param name=\"Data\">Arbitrary payload for the template.</param>\n/// <param name=\"Width\">Fixed width in flow units; <c>null</c> = sized by its content and measured.</param>\n/// <param name=\"Height\">Fixed height in flow units; <c>null</c> = sized by its content and measured.</param>\n/// <param name=\"Draggable\">Per-node drag switch (ANDed with the canvas' own switches).</param>\n/// <param name=\"Selectable\">Per-node selection switch.</param>\n/// <param name=\"Connectable\">Per-node connect switch (phase 2).</param>\n/// <param name=\"Deletable\">Per-node delete switch (phase 2).</param>\n/// <param name=\"ZIndex\">Explicit stacking order; <c>null</c> = document order.</param>\npublic sealed record FlowNode(\n    string Id, double X, double Y,\n    string? Type = null,\n    object? Data = null,\n    double? Width = null, double? Height = null,\n    bool Draggable = true, bool Selectable = true, bool Connectable = true,\n    bool Deletable = true, int? ZIndex = null);\n\n/// <summary>An edge between two nodes, drawn as one SVG path.</summary>\n/// <param name=\"Id\">Stable identifier.</param>\n/// <param name=\"Source\">The source node's <see cref=\"FlowNode.Id\"/>.</param>\n/// <param name=\"Target\">The target node's <see cref=\"FlowNode.Id\"/>.</param>\n/// <param name=\"SourceHandle\">The source <see cref=\"FlowHandle\"/>'s <c>Id</c>; <c>null</c> = the node's first source handle, or its right edge.</param>\n/// <param name=\"TargetHandle\">The target <see cref=\"FlowHandle\"/>'s <c>Id</c>; <c>null</c> = the node's first target handle, or its left edge.</param>\n/// <param name=\"Label\">Optional label (rendered from phase 2).</param>\n/// <param name=\"Type\">Path routing.</param>\n/// <param name=\"Animated\">Dash animation (phase 2).</param>\n/// <param name=\"Dashed\">Dashed stroke (phase 2).</param>\n/// <param name=\"Deletable\">Per-edge delete switch (phase 2).</param>\n/// <param name=\"MarkerEnd\">End marker id (phase 2).</param>\n/// <param name=\"Data\">Arbitrary payload.</param>\npublic sealed record FlowEdge(\n    string Id, string Source, string Target,\n    string? SourceHandle = null, string? TargetHandle = null,\n    string? Label = null, FlowEdgeType Type = FlowEdgeType.Bezier,\n    bool Animated = false, bool Dashed = false, bool Deletable = true,\n    string? MarkerEnd = \"arrow\", object? Data = null);\n\n/// <summary>\n/// The pan/zoom state: a flow point <c>p</c> is drawn at pane-local <c>p * Zoom + (X, Y)</c>.\n/// </summary>\n/// <param name=\"X\">Horizontal translation in pane pixels.</param>\n/// <param name=\"Y\">Vertical translation in pane pixels.</param>\n/// <param name=\"Zoom\">Scale factor (1 = 100%).</param>\npublic readonly record struct FlowViewport(double X, double Y, double Zoom);\n\n/// <summary>A point, in whichever space the member that returns it documents.</summary>\npublic readonly record struct FlowPoint(double X, double Y);\n\n/// <summary>An axis-aligned rectangle in flow coordinates.</summary>\npublic readonly record struct FlowRect(double X, double Y, double Width, double Height)\n{\n    /// <summary>The right edge.</summary>\n    public double Right => X + Width;\n    /// <summary>The bottom edge.</summary>\n    public double Bottom => Y + Height;\n}\n\n/// <summary>A generated edge path plus the point its label is centred on.</summary>\n/// <param name=\"D\">The SVG path data (culture-invariant, 3 decimals).</param>\n/// <param name=\"LabelX\">Label anchor X in flow coordinates.</param>\n/// <param name=\"LabelY\">Label anchor Y in flow coordinates.</param>\npublic readonly record struct FlowEdgePath(string D, double LabelX, double LabelY);\n\n/// <summary>A new connection proposed by dragging between two handles (phase 2).</summary>\npublic sealed record FlowConnection(string Source, string? SourceHandle, string Target, string? TargetHandle);\n\n/// <summary>One node's committed position after a drag or keyboard move.</summary>\n/// <param name=\"Id\">The node's id.</param>\n/// <param name=\"X\">New left edge in flow coordinates.</param>\n/// <param name=\"Y\">New top edge in flow coordinates.</param>\npublic sealed record FlowNodeChange(string Id, double X, double Y);\n\n/// <summary>The selected node and edge ids.</summary>\npublic sealed record FlowSelection(IReadOnlySet<string> NodeIds, IReadOnlySet<string> EdgeIds);\n\n/// <summary>What <c>NodeTemplate</c> receives for each node.</summary>\n/// <param name=\"Node\">The node being rendered.</param>\n/// <param name=\"Selected\">The node is selected.</param>\n/// <param name=\"Dragging\">A pointer drag is moving the node right now.</param>\n/// <param name=\"Canvas\">The owning canvas (for its imperative methods).</param>\npublic sealed record FlowNodeContext(FlowNode Node, bool Selected, bool Dragging, FlowCanvas Canvas);\n\n/// <summary>What an edge label template receives (phase 2).</summary>\npublic sealed record FlowEdgeContext(FlowEdge Edge, bool Selected, double LabelX, double LabelY);\n\n/// <summary>Arguments for <c>FlowCanvas.OnNodeContextMenu</c>.</summary>\n/// <param name=\"Node\">The node that was right-clicked.</param>\n/// <param name=\"ClientX\">Pointer X in viewport (client) pixels — ready for positioning a menu.</param>\n/// <param name=\"ClientY\">Pointer Y in viewport (client) pixels.</param>\npublic sealed record FlowNodeContextMenuEventArgs(FlowNode Node, double ClientX, double ClientY);\n\n/// <summary>\n/// Interop payload: one node's measured size and its handles, reported by the engine.\n/// Not meant for application code.\n/// </summary>\n[EditorBrowsable(EditorBrowsableState.Never)]\npublic sealed record FlowNodeMeasurement(string Id, double Width, double Height, FlowHandleMeasurement[]? Handles);\n\n/// <summary>\n/// Interop payload: a handle's centre relative to its node's top-left corner, in flow units.\n/// <paramref name=\"Type\"/> is \"source\"/\"target\", <paramref name=\"Position\"/> \"left\"/\"right\"/\"top\"/\"bottom\".\n/// Not meant for application code.\n/// </summary>\n[EditorBrowsable(EditorBrowsableState.Never)]\npublic sealed record FlowHandleMeasurement(string? Id, string Type, string Position, double X, double Y);\n"
+    }
+  ],
+  "slots": [
+    {
+      "name": "NodeTemplate",
+      "owner": "FlowCanvas",
+      "type": "RenderFragment<FlowNodeContext>?",
+      "description": "Renders each node's content. The canvas wraps it in a positioned, focusable host. Without a template a node renders a small card with its Data (or Id)."
+    },
+    {
+      "name": "ChildContent",
+      "owner": "FlowCanvas",
+      "type": "RenderFragment?",
+      "description": "Overlays rendered inside the pane: FlowBackground, FlowControls, your own panels."
+    },
+    {
+      "name": "ChildContent",
+      "owner": "FlowControls",
+      "type": "RenderFragment?",
+      "description": "Extra buttons appended after the built-in ones."
+    }
+  ],
+  "serviceDependencies": [
+    {
+      "service": "IComponentInteropService",
+      "namespace": "Lumeo.Services"
+    },
+    {
+      "service": "ILumeoLocalizer",
+      "namespace": "Lumeo.Services.Localization"
+    }
+  ],
+  "cascadingDependencies": [
+    {
+      "name": "Context",
+      "type": "FlowCanvas.FlowCanvasContext?",
+      "required": false
+    },
+    {
+      "name": "Node",
+      "type": "FlowNode?",
+      "required": false
+    }
+  ],
+  "relatedComponents": [
+    {
+      "name": "FlowBackground",
+      "reason": "sub-component"
+    },
+    {
+      "name": "FlowControls",
+      "reason": "sub-component"
+    },
+    {
+      "name": "FlowEdgeLayer",
+      "reason": "sub-component"
+    },
+    {
+      "name": "FlowHandle",
+      "reason": "sub-component"
+    },
+    {
+      "name": "FlowNodeHost",
+      "reason": "sub-component"
+    },
+    {
+      "name": "Button",
+      "reason": "used internally"
+    }
+  ],
+  "keyboardInteractions": [
+    {
+      "key": "Escape",
+      "action": "HandleNodeKeyDownAsync handles Escape in FlowCanvas.razor"
+    },
+    {
+      "key": "ArrowLeft",
+      "action": "HandleNodeKeyDownAsync handles ArrowLeft in FlowCanvas.razor"
+    },
+    {
+      "key": "ArrowRight",
+      "action": "HandleNodeKeyDownAsync handles ArrowRight in FlowCanvas.razor"
+    },
+    {
+      "key": "ArrowUp",
+      "action": "HandleNodeKeyDownAsync handles ArrowUp in FlowCanvas.razor"
+    },
+    {
+      "key": "ArrowDown",
+      "action": "HandleNodeKeyDownAsync handles ArrowDown in FlowCanvas.razor"
+    }
+  ],
+  "tests": [
+    "tests/Lumeo.Tests.E2E/Flow/FlowCanvasTests.cs",
+    "tests/Lumeo.Tests/Components/Flow/FlowCanvasCommitTests.cs",
+    "tests/Lumeo.Tests/Components/Flow/FlowCanvasInteropTests.cs",
+    "tests/Lumeo.Tests/Components/Flow/FlowCanvasKeyboardTests.cs",
+    "tests/Lumeo.Tests/Components/Flow/FlowCanvasRenderingTests.cs",
+    "tests/Lumeo.Tests/Components/Flow/FlowCanvasTestBase.cs",
+    "tests/Lumeo.Tests/Components/Flow/FlowCanvasViewportTests.cs"
+  ],
+  "mdSummary": "# FlowCanvas\n\nNode/flow editor canvas — templated nodes, SVG edges, pan, pointer-anchored wheel zoom, node drag with snapping, background grid and zoom controls.\n\n**Package:** `Lumeo.Flow` · **Category:** Data Display\n**Docs:** https://lumeo.nativ.sh/components/flow-canvas\n\n## Parameters\n| Owner | Name | Type | Default | Description |\n|---|---|---|---|---|\n| FlowCanvas | Nodes | `IReadOnlyList<FlowNode>?` | `` | The nodes to render. Two-way bindable (@bind-Nodes): every committed drag or keyboard move emits a new list through NodesChanged. Without a binding the canvas keeps its own copy until you pass a different list. |\n| FlowCanvas | NodesChanged | `EventCallback<IReadOnlyList<FlowNode>>` | `` | Raised with the new node list after a committed drag or keyboard move. |\n| FlowCanvas | Edges | `IReadOnlyList<FlowEdge>?` | `` | The edges to draw between nodes. Edges whose source or target node is missing are skipped. |\n| FlowCanvas | Viewport | `FlowViewport` | `new(0, 0, 1)` | The pan/zoom state. Two-way bindable (@bind-Viewport). Setting a new value moves the canvas; the canvas reports user pans and zooms back through ViewportChanged. A zoom of 0 or less means \"not set\" (the canvas starts at 0,0 and 100%). |\n| FlowCanvas | ViewportChanged | `EventCallback<FlowViewport>` | `` | Raised when the viewport changes — at most once per animation frame while a pan or wheel zoom is running, once more when it ends, and after every imperative change (FitViewAsync, ZoomInAsync, ...). |\n| FlowCanvas | NodeTemplate | `RenderFragment<FlowNodeContext>?` | `` | Renders each node's content. The canvas wraps it in a positioned, focusable host. Without a template a node renders a small card with its Data (or Id). |\n| FlowCanvas | ChildContent | `RenderFragment?` | `` | Overlays rendered inside the pane: FlowBackground, FlowControls, your own panels. |\n| FlowCanvas | Height | `string` | `\"500px\"` | CSS height of the canvas. |\n| FlowCanvas | MinZoom | `double` | `0.25` | Smallest zoom a gesture or method may reach. |\n| FlowCanvas | MaxZoom | `double` | `2` | Largest zoom a gesture or method may reach. |\n| FlowCanvas | FitViewOnInit | `bool` | `true` | Fits every node into view once the canvas has mounted and measured its nodes (the nodes stay invisible until then, so the un-fitted frame never shows). |\n| FlowCanvas | FitViewPadding | `double` | `0.1` | Breathing room for fit-view, as a fraction of the nodes' bounds (0.1 = 10%). |\n| FlowCanvas | SnapToGrid | `bool` | `false` | Snaps dragged and keyboard-moved nodes to SnapGrid. |\n| FlowCanvas | SnapGrid | `(double X, double Y)` | `(16, 16)` | The snap grid in flow units (X, Y). |\n| FlowCanvas | NodesDraggable | `bool` | `true` | Nodes can be moved by dragging or with the arrow keys. |\n| FlowCanvas | PanOnDrag | `bool` | `true` | Dragging the empty background pans the canvas. Holding Space pans from anywhere either way. |\n| FlowCanvas | ZoomOnScroll | `bool` | `true` | The mouse wheel zooms, anchored on the pointer (a plain wheel — no modifier — like React Flow; the page does not scroll while the pointer is over the canvas). |\n| FlowCanvas | Readonly | `bool` | `false` | Turns every editing gesture off (node drag and keyboard move now; connect and delete in later phases). Pan, zoom, selection and click events keep working. |\n| FlowCanvas | OnNodeClick | `EventCallback<FlowNode>` | `` | A node was clicked (not raised for the click that ends a drag). |\n| FlowCanvas | OnNodeDoubleClick | `EventCallback<FlowNode>` | `` | A node was double-clicked. |\n| FlowCanvas | OnNodeContextMenu | `EventCallback<FlowNodeContextMenuEventArgs>` | `` | A node was right-clicked. The browser menu is suppressed while this has a handler. |\n| FlowCanvas | OnPaneClick | `EventCallback<FlowPoint>` | `` | The empty background was clicked (not dragged); the point is in flow coordinates. |\n| FlowCanvas | OnNodeDragStop | `EventCallback<IReadOnlyList<FlowNodeChange>>` | `` | A drag (or arrow-key move) was committed; one entry per moved node. Raised after NodesChanged. |\n| FlowCanvas | Class | `string?` | `` | Additional CSS classes merged onto the root element. |\n| FlowCanvas | AdditionalAttributes | `Dictionary<string, object>?` | `` | Captures unmatched attributes and applies them to the root element. |\n| FlowBackground | Context | `FlowCanvas.FlowCanvasContext?` | `` |  |\n| FlowBackground | Variant | `FlowBackgroundVariant` | `FlowBackgroundVariant.Dots` | What the grid draws. |\n| FlowBackground | Gap | `double` | `20` | Grid spacing in flow units. |\n| FlowBackground | Size | `double` | `1` | Dot radius (dots) or half the arm length (cross), in flow units. Ignored for lines. |\n| FlowBackground | Class | `string?` | `` | Additional CSS classes merged onto the background \\<svg\\>. |\n| FlowBackground | AdditionalAttributes | `Dictionary<string, object>?` | `` | Captures unmatched attributes and applies them to the background \\<svg\\>. |\n| FlowControls | Context | `FlowCanvas.FlowCanvasContext?` | `` |  |\n| FlowControls | Position | `ControlsPosition` | `ControlsPosition.BottomLeft` | The corner the controls sit in. |\n| FlowControls | Horizontal | `bool` | `false` | Lays the buttons out in a row instead of a column. |\n| FlowControls | ShowZoom | `bool` | `true` | Shows the zoom in / zoom out buttons. |\n| FlowControls | ShowFitView | `bool` | `true` | Shows the fit-view button. |\n| FlowControls | ShowLock | `bool` | `true` | Shows the lock toggle (locked = nodes cannot be moved; pan and zoom still work). |\n| FlowControls | ChildContent | `RenderFragment?` | `` | Extra buttons appended after the built-in ones. |\n| FlowControls | Class | `string?` | `` | Additional CSS classes merged onto the toolbar. |\n| FlowControls | AdditionalAttributes | `Dictionary<string, object>?` | `` | Captures unmatched attributes and applies them to the toolbar. |\n| FlowEdgeLayer | Context | `FlowCanvas.FlowCanvasContext?` | `` |  |\n| FlowEdgeLayer | Class | `string?` | `` | Additional CSS classes merged onto the edge layer's \\<svg\\>. |\n| FlowEdgeLayer | AdditionalAttributes | `Dictionary<string, object>?` | `` | Captures unmatched attributes and applies them to the edge layer's \\<svg\\>. |\n| FlowHandle | Node | `FlowNode?` | `` |  |\n| FlowHandle | Type | `FlowHandleType` | `FlowHandleType.Source` | Source (edges start here) or target (edges end here). |\n| FlowHandle | Position | `FlowPosition` | `FlowPosition.Right` | The side of the node the handle sits on, and the direction edges leave/enter it. |\n| FlowHandle | Id | `string?` | `` | Handle id, for nodes with several handles of the same type (matched by FlowEdge.SourceHandle/TargetHandle). |\n| FlowHandle | Class | `string?` | `` | Additional CSS classes merged onto the handle button. |\n| FlowHandle | AdditionalAttributes | `Dictionary<string, object>?` | `` | Captures unmatched attributes and applies them to the handle button. |\n| FlowNodeHost | Context | `FlowCanvas.FlowCanvasContext?` | `` |  |\n| FlowNodeHost | Node | `FlowNode` | `default!` | The node this host positions and wraps. |\n| FlowNodeHost | Class | `string?` | `` | Additional CSS classes merged onto the host element. |\n| FlowNodeHost | AdditionalAttributes | `Dictionary<string, object>?` | `` | Captures unmatched attributes and applies them to the host element. |\n\n## Slots\n- `NodeTemplate` (FlowCanvas) — Renders each node's content. The canvas wraps it in a positioned, focusable host. Without a template a node renders a small card with its Data (or Id).\n- `ChildContent` (FlowCanvas) — Overlays rendered inside the pane: FlowBackground, FlowControls, your own panels.\n- `ChildContent` (FlowControls) — Extra buttons appended after the built-in ones.\n\n## Events\n- `NodesChanged` (`EventCallback<IReadOnlyList<FlowNode>>`) — Raised with the new node list after a committed drag or keyboard move.\n- `ViewportChanged` (`EventCallback<FlowViewport>`) — Raised when the viewport changes — at most once per animation frame while a pan or wheel zoom is running, once more when it ends, and after every imperative change (FitViewAsync, ZoomInAsync, ...).\n- `OnNodeClick` (`EventCallback<FlowNode>`) — A node was clicked (not raised for the click that ends a drag).\n- `OnNodeDoubleClick` (`EventCallback<FlowNode>`) — A node was double-clicked.\n- `OnNodeContextMenu` (`EventCallback<FlowNodeContextMenuEventArgs>`) — A node was right-clicked. The browser menu is suppressed while this has a handler.\n- `OnPaneClick` (`EventCallback<FlowPoint>`) — The empty background was clicked (not dragged); the point is in flow coordinates.\n- `OnNodeDragStop` (`EventCallback<IReadOnlyList<FlowNodeChange>>`) — A drag (or arrow-key move) was committed; one entry per moved node. Raised after NodesChanged.\n\n## Sub-components\n- `FlowBackground`, `FlowControls`, `FlowEdgeLayer`, `FlowHandle`, `FlowNodeHost`\n\n## Cascading values it expects\n- `Context` (`FlowCanvas.FlowCanvasContext?`)\n- `Node` (`FlowNode?`)\n\n## Services it injects\n- `IComponentInteropService` (Lumeo.Services)\n- `ILumeoLocalizer` (Lumeo.Services.Localization)\n\n## Keyboard\n- `Escape` — HandleNodeKeyDownAsync handles Escape in FlowCanvas.razor\n- `ArrowLeft` — HandleNodeKeyDownAsync handles ArrowLeft in FlowCanvas.razor\n- `ArrowRight` — HandleNodeKeyDownAsync handles ArrowRight in FlowCanvas.razor\n- `ArrowUp` — HandleNodeKeyDownAsync handles ArrowUp in FlowCanvas.razor\n- `ArrowDown` — HandleNodeKeyDownAsync handles ArrowDown in FlowCanvas.razor\n\n## Example\n```razor\n<FlowCanvas />\n```\n\n## CSS variables\n`--color-accent`, `--color-accent-foreground`, `--color-background`, `--color-border`, `--color-card`, `--color-card-foreground`, `--color-foreground`, `--radius`\n\n## Files\n- `UI/FlowCanvas/FlowBackground.razor`\n- `UI/FlowCanvas/FlowCanvas.razor`\n- `UI/FlowCanvas/FlowControls.razor`\n- `UI/FlowCanvas/FlowEdgeLayer.razor`\n- `UI/FlowCanvas/FlowGeometry.cs`\n- `UI/FlowCanvas/FlowHandle.razor`\n- `UI/FlowCanvas/FlowNodeHost.razor`\n- `UI/FlowCanvas/FlowState.cs`\n- `UI/FlowCanvas/FlowTypes.cs`\n"
+}
