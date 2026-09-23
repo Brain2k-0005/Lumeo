@@ -650,6 +650,11 @@
             case "ArrowRight":
             case "ArrowUp":
             case "ArrowDown":
+                // A node template can render its own focusable content (an inline-edit <input>, an
+                // inspector field). The arrow-nudge must leave an editable target's own cursor
+                // movement/text-selection keys alone — checked here, not just in flow.js, because
+                // KeyboardEventArgs carries no DOM target for a pure-.NET check to use directly.
+                if (await IsKeydownFromEditableTargetAsync()) return;
                 await MoveByKeyboardAsync(node, e.Key, e.ShiftKey);
                 return;
         }
@@ -662,6 +667,11 @@
             await ClearSelectionInternalAsync();
             return;
         }
+        // Same guard as the arrow-nudge above: undo/redo/delete must not fire while the user is
+        // typing in an editable field somewhere inside the canvas (a node's own input, an
+        // inspector panel rendered through ChildContent/FlowPanel) — native browser undo and
+        // text editing inside that field keep working since nothing here calls preventDefault.
+        if (await IsKeydownFromEditableTargetAsync()) return;
         if (History is not null && (e.CtrlKey || e.MetaKey) && !e.AltKey)
         {
             // Ctrl+Z: undo. Ctrl+Shift+Z and Ctrl+Y: redo (both spellings — Windows/Linux apps split
@@ -679,6 +689,13 @@
         }
         if (DeleteKey.Contains(e.Key)) await DeleteSelectionAsync();
     }
+
+    // Shared by both keydown paths above (and flow.js's own pane keydown listener applies the
+    // identical rule independently — see isKeyboardExempt/isFocusedElementEditable in flow.js —
+    // so the guard exists once per runtime, not once globally, because .NET and JS never share a
+    // call stack for the same event).
+    private Task<bool> IsKeydownFromEditableTargetAsync()
+        => _registered && !_disposed ? Interop.FlowIsFocusedElementEditableAsync(_paneRef) : Task.FromResult(false);
 
     private async Task ClearSelectionInternalAsync()
     {

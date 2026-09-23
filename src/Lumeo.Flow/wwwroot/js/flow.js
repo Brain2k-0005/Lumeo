@@ -926,6 +926,26 @@ function isEditable(target) {
     return !!(target && target.closest && target.closest('input, textarea, select, [contenteditable="true"], [contenteditable=""]'));
 }
 
+// A keydown target the canvas' own global shortcuts (undo/redo, delete, arrow-nudge) must leave
+// alone: an editable field, or anything the app opted out of gesture handling with
+// data-flow-nodrag (the same attribute already used to exempt a region from node-drag/pan —
+// reused here for the same "this is the app's own interactive content" meaning).
+function isKeyboardExempt(target) {
+    return !!(target && target.closest && target.closest('input, textarea, select, [contenteditable="true"], [contenteditable=""], [data-flow-nodrag]'));
+}
+
+// What document.activeElement is right now, scoped to this canvas' own pane (so a keydown handled
+// by one canvas never looks at a DIFFERENT canvas' focused field). Backs
+// FlowIsFocusedElementEditableAsync — the .NET half of the same guard (FlowCanvas.razor's
+// HandlePaneKeyDownAsync/HandleNodeKeyDownAsync); KeyboardEventArgs carries no target of its own,
+// so this is how the .NET side answers "was the real target editable" for the exact same keydown.
+function isFocusedElementEditable(pane) {
+    const el = document.activeElement;
+    if (!el || el === document.body) return false;
+    if (pane && pane.contains && !pane.contains(el)) return false;
+    return isKeyboardExempt(el);
+}
+
 function localPoint(reg, clientX, clientY) {
     const r = reg.pane.getBoundingClientRect();
     return { x: clientX - r.left, y: clientY - r.top };
@@ -1365,6 +1385,12 @@ function makeHandlers(reg) {
     };
 
     reg.onKeyDown = (e) => {
+        // Editable field / opted-out region: never intercept (arrow-key scroll suppression,
+        // Enter/Space connect) — same rule FlowCanvas.razor's own keydown handlers apply via
+        // FlowIsFocusedElementEditableAsync. The exact-target-equality checks below already imply
+        // this for the current two branches, but a new one added later might not — check explicitly.
+        if (isKeyboardExempt(e.target)) return;
+
         // Arrow keys on a node move it (FlowCanvas handles the move in .NET); stop the page from
         // scrolling underneath. Only when the node can actually move.
         if (e.key && e.key.startsWith('Arrow')) {
@@ -1599,12 +1625,14 @@ export const flow = {
     setViewport,
     fitView: fitViewExport,
     getViewport,
+    isFocusedElementEditable,
 };
 
 // Test-only seam: the pure geometry, importable from Node without a DOM (tests/js/*.mjs).
 export const __testing = {
     fmt, clampZoom, snap, screenToFlow, zoomAt, getBounds, fitView, handleAnchor,
     straightPath, bezierPath, smoothStepPath, stepPoints, edgePath,
+    isEditable, isKeyboardExempt, isFocusedElementEditable,
 };
 
 export default flow;

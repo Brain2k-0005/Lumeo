@@ -974,6 +974,9 @@ public class TrackingInteropService : IComponentInteropService
         return Task.CompletedTask;
     }
     public Task<double[]?> FlowGetViewportAsync(ElementReference paneEl) => Task.FromResult(FlowLiveViewport);
+    /// <summary>What <see cref="FlowIsFocusedElementEditableAsync"/> returns — simulates "the real DOM's <c>document.activeElement</c> is currently an editable field/data-flow-nodrag region" for a test, since bUnit has no real DOM to query.</summary>
+    public bool FlowFocusedElementEditable { get; set; }
+    public Task<bool> FlowIsFocusedElementEditableAsync(ElementReference paneEl) => Task.FromResult(FlowFocusedElementEditable);
 
     // Scheduler first-party view engine drag/now-indicator registration tracking
     // (wave 1b) — same shape as the GanttV3 block above, for the same reason:
