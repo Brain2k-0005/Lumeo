@@ -1,0 +1,44 @@
+@namespace Lumeo.Docs.Shared
+@using Lumeo.Docs.Services
+@inject ISatelliteAssemblyLoader SatelliteLoader
+
+@* Wraps a catalog showcase whose type lives in a satellite package (Lumeo.Flow, Lumeo.Gantt,
+   Lumeo.Scheduler, ...) that the /components catalog page never lazy-loads on its own — see
+   ShowcaseResolver.SatelliteAssembliesFor and Shared/Showcases/README.md. Renders Fallback
+   (the same thumbnail/icon CatalogCard falls back to when there is no showcase at all) until
+   the satellite assembly has been fetched, then swaps to the live showcase. Mounted from
+   CatalogCard's existing Eager / LazyRender branches unchanged, so a satellite fetch never
+   blocks the catalog's first paint — it only starts once THIS card is about to render (eager
+   row) or has scrolled into view (LazyRender), same timing as the showcase itself always had. *@
+
+@if (_ready)
+{
+    <DynamicComponent Type="@ShowcaseType" />
+}
+else
+{
+    @Fallback
+}
+
+@code {
+    /// <summary>The showcase component type to render once ready.</summary>
+    [Parameter, EditorRequired] public Type ShowcaseType { get; set; } = null!;
+
+    /// <summary>The satellite DLL(s) the showcase needs loaded first; <c>null</c>/empty renders immediately.</summary>
+    [Parameter] public IReadOnlyList<string>? AssemblyNames { get; set; }
+
+    /// <summary>Shown while the satellite assembly is loading (or if it failed to load).</summary>
+    [Parameter] public RenderFragment? Fallback { get; set; }
+
+    private bool _ready;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (AssemblyNames is not { Count: > 0 })
+        {
+            _ready = true;
+            return;
+        }
+        _ready = await SatelliteLoader.EnsureLoadedAsync(AssemblyNames);
+    }
+}

@@ -1,19 +1,24 @@
 @namespace Lumeo.Docs.Shared.Showcases
-@* Static exception (see ../README.md): the legacy SVG Gantt needs real height/width to lay
-   out its day columns (420px in its own docs demos) and has no tree pane to shrink further —
-   the same "needs a viewport" case as GanttChart. This renders a faithful miniature of the
-   visible chrome: a day-scale header and task bars, without the drag machinery. *@
+@using Lumeo
 
-<div class="w-full max-w-[22rem] h-32 rounded-md border border-border/60 overflow-hidden flex flex-col text-xs">
-    <div class="flex border-b border-border/60 bg-muted/40 text-muted-foreground">
-        @foreach (var day in new[] { "5", "6", "7", "8", "9" })
-        {
-            <div class="flex-1 text-center py-1 border-e border-border/40 last:border-e-0">@day</div>
-        }
-    </div>
-    <div class="flex-1 flex flex-col justify-center gap-2 px-2 py-2">
-        <div class="h-3 rounded bg-primary" style="width:50%"></div>
-        <div class="h-3 rounded bg-primary" style="width:55%;margin-left:15%"></div>
-        <div class="h-3 rounded bg-primary" style="width:40%;margin-left:35%"></div>
-    </div>
+@* LIVE (see ../README.md): SatelliteBoundShowcase now lazy-loads Lumeo.Gantt.dll
+   (ShowcaseResolver.SatelliteAssembliesFor) before this mounts, so the legacy SVG engine no
+   longer needs the real-viewport room the old static replica's comment described. The
+   component's own view-mode/prev-next toolbar is built in (no way to hide it), so the box is
+   a little taller than the other live showcases to give the day grid below it real room; a
+   compact three-task, three-day window still fits without an inner scrollbar. Fixed dates (no
+   DateTime.Now, per rule 1). Interactive: the real toolbar works (switch Day/Week/Month/Year),
+   and a bar can be dragged to reschedule it. *@
+
+<div class="w-full max-w-[22rem] h-40 rounded-md border border-border/60 overflow-hidden bg-background">
+    <Gantt Tasks="_tasks" ViewMode="GanttViewMode.Day" Height="160px" ColumnWidth="18" />
 </div>
+
+@code {
+    private readonly List<GanttTask> _tasks =
+    [
+        new("design", "Design", new DateTime(2026, 3, 2), new DateTime(2026, 3, 4), 100),
+        new("build", "Build", new DateTime(2026, 3, 4), new DateTime(2026, 3, 7), 45, Dependencies: new[] { "design" }),
+        new("launch", "Launch", new DateTime(2026, 3, 7), new DateTime(2026, 3, 7), 0, IsMilestone: true, Dependencies: new[] { "build" }),
+    ];
+}

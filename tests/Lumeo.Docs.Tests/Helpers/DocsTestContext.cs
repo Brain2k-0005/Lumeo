@@ -31,7 +31,18 @@ public static class DocsTestContextExtensions
         // if the dependency isn't registered. Singleton is fine here — the
         // OverlayService itself is just an event broker, no per-scope state.
         ctx.Services.AddSingleton<OverlayService>();
+        // SatelliteBoundShowcase (live catalog showcases for Flow/Gantt/GanttChart/Scheduler)
+        // needs ISatelliteAssemblyLoader; the real impl wraps LazyAssemblyLoader, a
+        // WASM-host-only framework service bUnit cannot supply. This fake resolves
+        // immediately — the docs test project references every satellite project
+        // directly, so the real showcase types are already loaded in-process regardless.
+        ctx.Services.AddSingleton<ISatelliteAssemblyLoader, NoopSatelliteAssemblyLoader>();
     }
+}
+
+internal sealed class NoopSatelliteAssemblyLoader : ISatelliteAssemblyLoader
+{
+    public ValueTask<bool> EnsureLoadedAsync(IReadOnlyList<string> assemblyNames) => ValueTask.FromResult(true);
 }
 
 internal sealed class NoopInteropService : IComponentInteropService
