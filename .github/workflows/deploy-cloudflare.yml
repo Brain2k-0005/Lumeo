@@ -251,17 +251,18 @@ jobs:
           find release/wwwroot -name 'index.html.br' -delete
           find release/wwwroot -name 'index.html.gz' -delete
 
+      # cloudflare/pages-action was deleted from GitHub on 2026-09-23 (every job
+      # failed at "Set up job" with "Unable to resolve action"); wrangler-action
+      # is Cloudflare's replacement and drives the same Pages project through
+      # `wrangler pages deploy`. Deploys to the `master` branch of the CF Pages
+      # project (= production); other branches show up as preview deployments.
       - name: Deploy to Cloudflare Pages
-        uses: cloudflare/pages-action@v1
+        uses: cloudflare/wrangler-action@v4
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          projectName: lumeo
-          directory: release/wwwroot
           gitHubToken: ${{ secrets.GITHUB_TOKEN }}
-          # Deploy to the `master` branch of the CF Pages project (= production).
-          # Other branches show up as preview deployments.
-          branch: master
+          command: pages deploy release/wwwroot --project-name=lumeo --branch=master --commit-dirty=true
 
       # NOTE: No "Push search index to Algolia" step — we use Algolia DocSearch,
       # which has its own hosted crawler that scrapes lumeo.nativ.sh on schedule.
