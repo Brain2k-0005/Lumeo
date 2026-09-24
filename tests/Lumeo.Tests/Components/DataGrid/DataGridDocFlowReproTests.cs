@@ -137,11 +137,15 @@ public class DataGridDocFlowReproTests : IAsyncLifetime
         Assert.True(requests.Count >= 1);
     }
 
-    // --- D3: a FillWidth column must never shrink below its MinWidth; the table should
-    // grow past the container (and scroll) instead, once ColumnSizing="FitWithMinimum". ---
+    // --- D3 / DocFlow (5.11.0): a FillWidth column must never shrink below its MinWidth;
+    // the table should grow past the container (and scroll) instead, once
+    // ColumnSizing="FitWithMinimum". See DataGridFitWithMinimumWidthsTests for full
+    // coverage of the fix (table-layout: fixed with computed widths once the container
+    // has been measured) — this class only keeps the PRE-measurement fallback covered,
+    // since bUnit never fires the JS ResizeObserver round-trip. ---
 
     [Fact]
-    public void D3_FitWithMinimum_Emits_MinWidth_Not_Width_And_Auto_Layout()
+    public void D3_FitWithMinimum_Before_Measurement_Emits_Width_And_MinWidth_Under_Auto_Layout()
     {
         var cut = _ctx.Render<Lumeo.DataGrid<Row>>(p => p
             .Add(g => g.Items, new List<Row> { new(1, "Alice", "Berlin") })
@@ -152,6 +156,8 @@ public class DataGridDocFlowReproTests : IAsyncLifetime
                 new() { Field = "City", Title = "City", Width = 150, MinWidth = 100 },
             }));
 
+        // No ResizeObserver round-trip has happened yet (bUnit never runs real JS) —
+        // DataGrid.TableStyle falls back to auto layout until the container is measured.
         var tableStyle = cut.Find("table").GetAttribute("style") ?? "";
         Assert.Contains("table-layout: auto", tableStyle);
         Assert.DoesNotContain("table-layout: fixed", tableStyle);
@@ -160,10 +166,11 @@ public class DataGridDocFlowReproTests : IAsyncLifetime
         var nameStyle = headers[0].GetAttribute("style") ?? "";
         var cityStyle = headers[1].GetAttribute("style") ?? "";
 
-        // The floor is MinWidth, not the old fixed Width — and it's min-width so
-        // table-layout:auto actually enforces it, unlike table-layout:fixed.
+        // Fixed (DocFlow finding 2): the declared/resized Width is now ALSO emitted, not
+        // dropped on the floor — min-width still carries MinWidth as the true floor.
+        Assert.Contains("width: 200px", nameStyle);
         Assert.Contains("min-width: 120px", nameStyle);
-        Assert.DoesNotContain("width: 200px", nameStyle.Replace("min-width: 120px", ""));
+        Assert.Contains("width: 150px", cityStyle);
         Assert.Contains("min-width: 100px", cityStyle);
     }
 

@@ -793,6 +793,31 @@ public sealed class ComponentInteropService : IComponentInteropService
         await _utility.UnregisterViewportWidth(module, elementId);
     }
 
+    // --- DataGrid Column Fit (ColumnSizing="FitWithMinimum") --- see
+    // IComponentInteropService.RegisterColumnFitObserver's remarks for why this needs a real
+    // .NET round-trip (unlike RegisterViewportWidth above) — mirrors AiObserveScrollButton's
+    // shape, calling the module directly rather than through the UtilityInterop adapter, which
+    // isn't set up for a generic DotNetObjectReference<T> parameter.
+    public async ValueTask RegisterColumnFitObserver<[System.Diagnostics.CodeAnalysis.DynamicallyAccessedMembers(System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicMethods)] T>(string elementId, DotNetObjectReference<T> dotNetRef) where T : class
+    {
+        try
+        {
+            var module = await GetModuleAsync();
+            await module.InvokeVoidAsync("registerColumnFitObserver", elementId, dotNetRef);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
+    public async ValueTask UnregisterColumnFitObserver(string elementId)
+    {
+        try
+        {
+            var module = await GetModuleAsync();
+            await module.InvokeVoidAsync("unregisterColumnFitObserver", elementId);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
     // --- OTP Paste ---
 
     public async ValueTask RegisterOtpPaste(string baseId, int length, Func<string, Task> handler)

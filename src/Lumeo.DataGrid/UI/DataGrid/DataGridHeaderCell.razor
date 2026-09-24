@@ -678,14 +678,33 @@
             var parts = new List<string>();
             if (Context?.ColumnSizing == DataGridColumnSizing.FitWithMinimum)
             {
-                // Never a fixed pixel width here — table-layout: auto (set on <table> by
-                // DataGrid.TableStyle for this mode) only honours min-width as a floor,
-                // and a fixed width would defeat "fill when there's room". Prefer the
-                // column's own MinWidth; fall back to Width so a column that only ever set
-                // Width (the pre-existing, Auto-mode parameter) still gets a sane floor
-                // instead of none.
-                var floor = Column.MinWidth ?? Column.Width;
-                if (floor.HasValue) parts.Add($"min-width: {floor.Value}px");
+                // Context.FitColumnWidths carries the negotiated pixel width DataGrid computed
+                // (DataGridColumnFit.Compute) from the LAST MEASURED container width — table-layout:
+                // fixed (DataGrid.TableStyle for this mode) then uses that width verbatim as a real
+                // ceiling AND floor, instead of leaving growth to table-layout: auto's content-based
+                // algorithm, which never actually caps a nowrap cell (DocFlow field report, 5.11.0
+                // finding: a fixed-layout column ignores content entirely, so an explicit width here
+                // is a hard cap where the old min-width-only render never was).
+                if (Context.FitColumnWidths.TryGetValue(Column.Id, out var fitWidth))
+                {
+                    parts.Add($"width: {fitWidth}px");
+                    parts.Add($"min-width: {fitWidth}px");
+                }
+                else
+                {
+                    // Not measured yet (first paint before JS reports the container's width, or a
+                    // test host with no ResizeObserver round-trip): emit BOTH a width hint (the
+                    // resized/layout-restored/declared value, so a drag or restore is at least
+                    // visible instead of silently discarded) and the true min-width floor. Under
+                    // table-layout: auto this is still only a hint against nowrap content — the
+                    // hard ceiling only exists once FitColumnWidths is populated — but it's
+                    // strictly better than the old min-width-only render, which dropped the
+                    // resized/restored width on the floor entirely (DocFlow finding 2).
+                    var desired = Column.Width ?? Column.MinWidth;
+                    var floor = Column.MinWidth ?? Column.Width;
+                    if (desired.HasValue) parts.Add($"width: {desired.Value}px");
+                    if (floor.HasValue) parts.Add($"min-width: {floor.Value}px");
+                }
             }
             else if (Column.Width.HasValue)
             {

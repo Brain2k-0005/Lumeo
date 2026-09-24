@@ -168,10 +168,11 @@
             var striped = Context?.Striped == true;
             var hoverable = Context?.Hoverable == true;
             var compact = Context?.Compact == true;
+            var fitWithMinimum = Context?.ColumnSizing == DataGridColumnSizing.FitWithMinimum;
             // `compact` is part of the memo key so toggling Compact AFTER first
             // render invalidates the cached css and the cell re-pads (px-2 py-1
             // vs px-3 py-2) instead of latching to the first-render density.
-            var key = (pin, dirty, selected, striped, hoverable, compact, RowIndex % 2, Column.CssClass, cellClass, Class);
+            var key = (pin, dirty, selected, striped, hoverable, compact, fitWithMinimum, RowIndex % 2, Column.CssClass, cellClass, Class);
             if (_cssCache is { } c && c.Key.Equals(key)) return c.Css;
 
             // Pinned cells need an opaque background so the scrolling
@@ -202,6 +203,12 @@
                 // shrinks; the default stays px-3 py-2. text-sm is kept in both.
                 $"{(compact ? "px-2 py-1" : "px-[var(--lumeo-grid-cell-px,calc(var(--spacing,0.25rem)*3))] py-[var(--lumeo-grid-cell-py,calc(var(--spacing,0.25rem)*2))]")} text-sm",
                 "outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
+                // FitWithMinimum negotiates an exact pixel width per column (table-layout: fixed
+                // — see DataGridColumnSizing.FitWithMinimum's remarks) instead of growing to fit
+                // content; without this the cell's own content would still overflow/wrap past
+                // that width. `truncate` (overflow-hidden + text-overflow-ellipsis + nowrap) is
+                // the same utility DataGridHeaderCell's title <span> already uses.
+                fitWithMinimum ? "truncate" : null,
                 pinClass,
                 // Batch-edit dirty marker: subtle left border accent + warning
                 // background tint. Uses the lumeo.css --color-warning token so
