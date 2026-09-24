@@ -235,20 +235,25 @@ else
                    stopPropagation would otherwise keep a click on the field from reaching
                    the wrapper handler. *@
                 <div class="@CssClass" @onclick="HandleInputClick" @onclick:stopPropagation="true" @attributes="AdditionalAttributes">
-                    @* @onkeydown:stopPropagation is gated on _isOpen (the state as of the
-                       LAST render, i.e. before this keystroke) rather than an unconditional
-                       "true": while the calendar is open, containing every key (incl. Escape)
-                       stops it from ALSO reaching an ancestor Dialog/Sheet's own Escape-to-
-                       dismiss handler and closing that too — HandleInputKeyDown below already
-                       closes the calendar on Escape, one press should only close the nearest
-                       thing. Once the calendar is already closed, HandleInputKeyDown has
-                       nothing left to do for Escape — stopping propagation then just swallows
-                       it before that ancestor Dialog/Sheet can dismiss on it (Codex P2).
-                       Enter/Space are handled separately: PopoverTrigger.SuppressActivationKeys
-                       (set below) stops its role=button wrapper from treating either as a
-                       toggle regardless of open/closed state — @onkeydown:stopPropagation being
-                       a static per-render flag (not evaluated per key) can't do that alone
-                       without also swallowing Escape (PR #356 round-2, Codex/CodeRabbit). *@
+                    @* @onkeydown:stopPropagation is a STATIC "true", NOT gated on _isOpen —
+                       an earlier version gated it on _isOpen (the state as of the last render)
+                       specifically so Escape could still bubble to an ancestor Dialog/Sheet
+                       once the calendar was already closed. That gating looks correct and
+                       compiles, but does not reliably stop the event reaching the ancestor's
+                       Escape handler in a real browser: confirmed live (DocFlow follow-up,
+                       #523) on Combobox's identical pattern — Blazor WASM still invoked the
+                       ancestor's handler even though the expression evaluated true at the
+                       moment this handler ran, and bUnit's simulated dispatch does not
+                       reproduce the discrepancy, so a bUnit-only suite stayed green while the
+                       real page kept double-closing. HandleInputKeyDown below is idempotent
+                       when already closed (resets the buffer, _isOpen stays false), so the
+                       static "true" is safe; the trade-off is the same as Combobox's — Escape
+                       on a closed-but-focused input no longer bubbles to an ancestor overlay
+                       in one press. Enter/Space are handled separately: PopoverTrigger.
+                       SuppressActivationKeys (set below) stops its role=button wrapper from
+                       treating either as a toggle regardless of open/closed state — a static
+                       stopPropagation can't do that alone without also swallowing Escape
+                       (PR #356 round-2, Codex/CodeRabbit). *@
                     <input id="@EffectiveTriggerId"
                            type="text"
                            name="@Name"
@@ -263,7 +268,7 @@ else
                            @oninput="HandleInputChanged"
                            @onblur="HandleInputBlur"
                            @onkeydown="HandleInputKeyDown"
-                           @onkeydown:stopPropagation="_isOpen"
+                           @onkeydown:stopPropagation="true"
                            @onclick="HandleInputClick"
                            @onclick:stopPropagation="true"
                            @attributes="slot.Attributes" />

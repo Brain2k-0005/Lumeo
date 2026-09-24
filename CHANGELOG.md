@@ -62,10 +62,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the node's first handle of the matching type, even for edges that never named one; only an
   explicit handle id now switches an edge into handle-based anchoring. SQL Analyst field report,
   finding LU-11.
+- **MCP: `lumeo_search` no longer requires the whole query to appear verbatim.** A
+  multi-word query (e.g. `"flow diagram nodes edges"`) is now tokenized and scored per
+  word, so a component surfaces when it matches ANY of the query's words instead of only
+  the exact phrase — `lumeo_search("flow diagram nodes edges")` now returns `FlowCanvas`
+  first. (Field report finding LU-15.)
+- **MCP: `publish-mcp` now fails the release if the regenerated data doesn't match the
+  tag.** A hard version-match assertion (and a Lumeo.Flow presence check) runs right
+  after `Lumeo.RegistryGen`, before build/publish, so a stale or partial regen can never
+  ship silently again. (Field report finding LU-15.)
+- **MCP: `lumeo_get_install` no longer names DI methods that don't exist.** `AddLumeoDataGrid()`,
+  `AddLumeoCharts()`, `AddLumeoEditor()`, `AddLumeoScheduler()`, `AddLumeoGantt()` and
+  `AddLumeoMotion()` were never real methods — `AddLumeo()` is the only service-collection
+  extension in the library, and it already registers everything satellites need (including
+  `IDataGridExportService`). Fixed in the MCP install notes and in `skills/lumeo/SKILL.md`.
+  A new test derives the ground truth from the actual C# source and fails if any install
+  note ever names a method that isn't real. (Field report finding LU-16.)
+- **Every satellite package now ships its own README, not the core library's.**
+  `Directory.Build.targets` used to unconditionally pack the repo-root `README.md` into
+  every package that opted in — so `Lumeo.Flow`, `Lumeo.DataGrid`, `Lumeo.Charts` and
+  every other satellite's `.nupkg` (plus every `Lumeo.Icons.*` pack) showed the generic
+  core-library description on nuget.org, with no mention of what the package actually
+  provides. `Lumeo.DataGrid.Export` had no README at all. Each satellite now carries a
+  concise, install-and-usage README next to its `.csproj`; the packing rule prefers it
+  when present. (Field report finding LU-17.)
 
 ## [5.11.0] - 2026-09-24
 
-### Added
 - **New package `Lumeo.Flow`: `FlowCanvas`, a node/flow editor canvas.** Your own Razor
   node templates and SVG edges (bezier, smooth-step, step, straight) on a pannable, zoomable canvas
   — a first-party engine, no third-party runtime dependency. Drag nodes (the connected edges follow
@@ -211,7 +234,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   on the content element regardless of the flag, for a custom `Class` to derive its own width from.
   Default unchanged (#518).
 
-### Fixed
 - **DataGrid: `ApplyLayoutAsync` reloads exactly like a header click.** A layout applied with a
   new sort now raises `OnServerRequest` in `ServerMode` and re-sorts the bound list in client
   mode; a grid using server-side row virtualization (`Virtualized` + `OnRangeRequest`) now routes

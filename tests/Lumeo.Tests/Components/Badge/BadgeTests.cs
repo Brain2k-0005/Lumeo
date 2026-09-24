@@ -77,7 +77,10 @@ public class BadgeTests : IAsyncLifetime
 
         var cls = cut.Find("div").GetAttribute("class");
         Assert.Contains("bg-destructive", cls);
-        Assert.Contains("text-destructive-foreground", cls);
+        // text-white (not text-destructive-foreground) — matches shadcn new-york v4's
+        // badge.tsx; see BadgeDestructiveForegroundTests for the full LU-14 writeup.
+        Assert.Contains("text-white", cls);
+        Assert.DoesNotContain("text-destructive-foreground", cls);
     }
 
     [Fact]
