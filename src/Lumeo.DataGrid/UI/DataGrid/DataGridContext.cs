@@ -187,6 +187,16 @@ public record DataGridContext<TItem>(
     /// <summary>Whether a row click toggles selection; see <c>DataGrid.SelectOnRowClick</c>.</summary>
     public bool SelectOnRowClick { get; init; } = true;
 
+    /// <summary>How the grid lays out column widths; see <c>DataGrid.ColumnSizing</c>.</summary>
+    public DataGridColumnSizing ColumnSizing { get; init; } = DataGridColumnSizing.Auto;
+
+    /// <summary>True when the grid has <c>Bordered="true"</c>; see <c>DataGrid.Bordered</c>.
+    /// Read by <see cref="DataGridRow{TItem}"/> to pick its divider style — an inset
+    /// box-shadow when unbordered (DocFlow D8; pairs with the table's border-separate in
+    /// that mode), the historic border-b when Bordered (pairs with border-collapse, which
+    /// Bordered relies on to merge cell borders into single-pixel grid lines).</summary>
+    public bool Bordered { get; init; }
+
     /// <summary>Whether header cells render the reorder grip; see <c>DataGrid.ShowReorderHandle</c>.</summary>
     public bool ShowReorderHandle { get; init; } = true;
 
