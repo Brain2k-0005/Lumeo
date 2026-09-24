@@ -10,10 +10,10 @@
 
 <Alert Variant="Alert.AlertVariant.Info" ShowIcon="true" Class="mt-6">
     <ChildContent>
-        <strong>Phase 3 of Lumeo.Flow.</strong> Auto-layout (<code>FlowLayout.Tree</code>/<code>Layered</code>),
-        undo/redo (<code>FlowHistory</code>), dragging an existing edge's end onto a new handle, a snap-grid
-        toggle and two-finger pinch-zoom are all here now — the node, edge and handle shapes you write stay
-        the same.
+        <strong>Phase 4 of Lumeo.Flow.</strong> Resize a node (<code>FlowNodeResizer</code>) with live helper
+        lines, a clipboard (<code>Ctrl</code>+<code>C</code>/<code>V</code>/<code>D</code>), loose connections,
+        inline edge-label editing and JSON/SVG/PNG export are all here now — the node, edge and handle shapes
+        you write stay the same.
     </ChildContent>
 </Alert>
 
@@ -280,6 +280,115 @@
             </div>
         </Stack>
     </ComponentDemo>
+
+    <ComponentDemo Title="Resize, with helper lines" Code="@_resizeCode">
+        <Stack Gap="3" Class="w-full">
+            <Lumeo.Text Size="sm" Color="muted">
+                Select a card, then drag a grip — corners resize both axes (<Kbd>Shift</Kbd> keeps the card's
+                aspect ratio), edges resize one. Drag the whole card near another one to see the alignment
+                guide (<code>HelperLines</code>).
+            </Lumeo.Text>
+            <LazyRender Height="260px">
+                <FlowCanvas @bind-Nodes="_resizeNodes" Height="260px" HelperLines="true">
+                    <NodeTemplate Context="ctx">
+                        <div class="h-full w-full rounded-md border border-border bg-card px-3 py-2 text-sm font-medium text-card-foreground shadow-sm">
+                            <FlowNodeResizer MinWidth="90" MinHeight="50" />
+                            @ctx.Node.Data
+                        </div>
+                    </NodeTemplate>
+                    <ChildContent>
+                        <FlowBackground />
+                    </ChildContent>
+                </FlowCanvas>
+            </LazyRender>
+        </Stack>
+    </ComponentDemo>
+
+    <ComponentDemo Title="Clipboard — copy, paste, duplicate" Code="@_clipboardCode">
+        <Stack Gap="3" Class="w-full">
+            <Lumeo.Text Size="sm" Color="muted">
+                Click a card to focus the canvas, then <Kbd>Ctrl</Kbd>+<Kbd>C</Kbd> / <Kbd>Ctrl</Kbd>+<Kbd>V</Kbd>
+                copies and pastes it (and any edge between two copied cards) at a (20, 20) offset with a new id;
+                <Kbd>Ctrl</Kbd>+<Kbd>D</Kbd> duplicates the current selection directly.
+            </Lumeo.Text>
+            <LazyRender Height="260px">
+                <FlowCanvas @bind-Nodes="_clipboardNodes" @bind-Edges="_clipboardEdges" Height="260px" OnPaste="HandlePaste">
+                    <NodeTemplate Context="ctx">
+                        <div class="rounded-md border border-border bg-card px-3 py-2 text-sm font-medium text-card-foreground shadow-sm">
+                            <FlowHandle Type="FlowHandleType.Target" Position="FlowPosition.Left" />
+                            @ctx.Node.Data
+                            <FlowHandle Type="FlowHandleType.Source" Position="FlowPosition.Right" />
+                        </div>
+                    </NodeTemplate>
+                    <ChildContent>
+                        <FlowBackground />
+                    </ChildContent>
+                </FlowCanvas>
+            </LazyRender>
+            <div class="rounded-md border border-border/60 bg-muted/40 p-3 text-sm">
+                <span class="font-mono text-xs text-muted-foreground">@_clipboardMessage</span>
+            </div>
+        </Stack>
+    </ComponentDemo>
+
+    <ComponentDemo Title="Loose connections and editable labels" Code="@_looseCode">
+        <Stack Gap="3" Class="w-full">
+            <Lumeo.Text Size="sm" Color="muted">
+                <code>ConnectionMode.Loose</code> lets a drag start on either handle and land on either handle —
+                try dragging from a target port to another target port. Double-click "next" to edit it inline
+                (<code>EdgeLabelEditable</code>); <Kbd>Enter</Kbd> commits, <Kbd>Esc</Kbd> cancels.
+            </Lumeo.Text>
+            <LazyRender Height="220px">
+                <FlowCanvas @bind-Nodes="_looseNodes" @bind-Edges="_looseEdges" Height="220px"
+                            ConnectionMode="FlowConnectionMode.Loose" EdgeLabelEditable="true">
+                    <NodeTemplate Context="ctx">
+                        <div class="rounded-md border border-border bg-card px-3 py-2 text-sm font-medium text-card-foreground shadow-sm">
+                            <FlowHandle Type="FlowHandleType.Target" Position="FlowPosition.Left" />
+                            @ctx.Node.Data
+                            <FlowHandle Type="FlowHandleType.Source" Position="FlowPosition.Right" />
+                        </div>
+                    </NodeTemplate>
+                    <ChildContent>
+                        <FlowBackground />
+                    </ChildContent>
+                </FlowCanvas>
+            </LazyRender>
+        </Stack>
+    </ComponentDemo>
+
+    <ComponentDemo Title="Export and import" Code="@_exportCode">
+        <Stack Gap="3" Class="w-full">
+            <Lumeo.Text Size="sm" Color="muted">
+                <code>ToDocument()</code> / <code>LoadDocumentAsync()</code> round-trip the whole canvas as JSON;
+                <code>ExportSvgAsync()</code> is a pure-vector snapshot; <code>ExportPngAsync()</code> rasterizes
+                the live node DOM (best effort — it can return <code>null</code> on a tainted canvas).
+            </Lumeo.Text>
+            <LazyRender Height="220px">
+                <FlowCanvas @ref="_exportCanvas" @bind-Nodes="_exportNodes" @bind-Edges="_exportEdges" Height="220px">
+                    <NodeTemplate Context="ctx">
+                        <div class="rounded-md border border-border bg-card px-3 py-2 text-sm font-medium text-card-foreground shadow-sm">@ctx.Node.Data</div>
+                    </NodeTemplate>
+                    <ChildContent>
+                        <FlowBackground />
+                    </ChildContent>
+                </FlowCanvas>
+            </LazyRender>
+            <div class="flex flex-wrap gap-2">
+                <Button Size="Button.ButtonSize.Sm" Variant="Button.ButtonVariant.Outline" OnClick="ExportJsonAsync">Export JSON</Button>
+                <Button Size="Button.ButtonSize.Sm" Variant="Button.ButtonVariant.Outline" OnClick="LoadJsonAsync">Load</Button>
+                <Button Size="Button.ButtonSize.Sm" Variant="Button.ButtonVariant.Outline" OnClick="ExportPngAsync">Export PNG</Button>
+            </div>
+            <Textarea @bind-Value="_exportJson" rows="4" Class="font-mono text-xs" placeholder="ToDocument() JSON appears here" />
+            @if (_exportPng is not null)
+            {
+                <img src="@_exportPng" alt="Exported canvas" class="max-h-40 rounded-md border border-border" />
+            }
+            else if (_exportPngAttempted)
+            {
+                <Lumeo.Text Size="sm" Color="muted">PNG export returned null (see ExportPngAsync's documented limitations).</Lumeo.Text>
+            }
+        </Stack>
+    </ComponentDemo>
 </Stack>
 
 <div class="mt-16">
@@ -316,8 +425,18 @@
     </div>
 
     <Heading Id="flownodetoolbar" Level="3" Class="mt-8 scroll-mt-20">FlowNodeToolbar</Heading>
+    <p class="mt-2 text-sm text-muted-foreground">
+        With two or more nodes selected, one toolbar renders at the SELECTION'S bounding box top (phase 4)
+        instead of nothing.
+    </p>
     <div class="mt-4">
         <PropsTable Slug="flow-canvas" SubComponent="FlowNodeToolbar" />
+    </div>
+
+    <Heading Id="flownoderesizer" Level="3" Class="mt-8 scroll-mt-20">FlowNodeResizer</Heading>
+    <p class="mt-2 text-sm text-muted-foreground">Place inside <code>NodeTemplate</code>, next to <code>FlowHandle</code>.</p>
+    <div class="mt-4">
+        <PropsTable Slug="flow-canvas" SubComponent="FlowNodeResizer" />
     </div>
 
     <Heading Id="flowlayout" Level="3" Class="mt-8 scroll-mt-20">FlowLayout (static)</Heading>
@@ -420,6 +539,10 @@
                 <TableRow><TableCell Class="font-mono text-xs">SelectAsync(IEnumerable&lt;string&gt; nodeIds)</TableCell><TableCell>Replaces the selection with these node ids (unknown ids are ignored).</TableCell></TableRow>
                 <TableRow><TableCell Class="font-mono text-xs">ClearSelectionAsync()</TableCell><TableCell>Clears the node and edge selection.</TableCell></TableRow>
                 <TableRow><TableCell Class="font-mono text-xs">UndoAsync() / RedoAsync()</TableCell><TableCell>Applies one step of <code>History</code>; a no-op without a <code>History</code> or with nothing to undo/redo.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">ToDocument()</TableCell><TableCell>The current nodes, edges and viewport as one <code>FlowDocument</code> (phase 4).</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">LoadDocumentAsync(FlowDocument)</TableCell><TableCell>Replaces nodes/edges/viewport, clears the selection, pushes one <code>History</code> snapshot (phase 4).</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">ExportSvgAsync()</TableCell><TableCell>A self-contained vector SVG (edges + node boxes with their label text) built purely from canvas state — never fails (phase 4).</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">ExportPngAsync(double scale = 1)</TableCell><TableCell>Best-effort raster of the live node DOM as a <code>data:image/png</code> URL; <code>null</code> on failure (a cross-origin image/font is the usual cause), never throws (phase 4).</TableCell></TableRow>
             </TableBody>
         </Table>
     </div>
@@ -844,5 +967,105 @@
         };
         _edges = _edges.Select(e => e.Id == updated.Id ? updated : e).ToList();
     }
+}";
+
+    // ── Demo 9 — resize + helper lines ─────────────────────────────────────
+    private IReadOnlyList<FlowNode> _resizeNodes = new List<FlowNode>
+    {
+        new("a", 0, 0, Data: "Card A", Width: 140, Height: 70),
+        new("b", 260, 100, Data: "Card B", Width: 140, Height: 70),
+    };
+
+    private const string _resizeCode = @"<FlowCanvas @bind-Nodes=""_nodes"" HelperLines=""true"">
+    <NodeTemplate Context=""ctx"">
+        <div class=""h-full w-full ..."">
+            <FlowNodeResizer MinWidth=""90"" MinHeight=""50"" />
+            @ctx.Node.Data
+        </div>
+    </NodeTemplate>
+</FlowCanvas>";
+
+    // ── Demo 10 — clipboard ──────────────────────────────────────────────
+    private IReadOnlyList<FlowNode> _clipboardNodes = new List<FlowNode>
+    {
+        new("step1", 0, 40, Data: "Fetch"),
+        new("step2", 260, 40, Data: "Transform"),
+    };
+    private IReadOnlyList<FlowEdge> _clipboardEdges = new List<FlowEdge> { new("step1-step2", "step1", "step2") };
+    private string _clipboardMessage = "Select a card, then Ctrl+C / Ctrl+V, or Ctrl+D to duplicate.";
+
+    private void HandlePaste(FlowPasteEventArgs args)
+        => _clipboardMessage = $"Pasted {args.Nodes.Count} node(s) and {args.Edges.Count} edge(s).";
+
+    private const string _clipboardCode = @"<FlowCanvas @bind-Nodes=""_nodes"" @bind-Edges=""_edges"" OnPaste=""HandlePaste"">
+    ...
+</FlowCanvas>
+
+@code {
+    // Ctrl+C/Ctrl+V/Ctrl+D are global canvas shortcuts — no extra wiring needed beyond a
+    // selection; OnPaste is only for reacting to what landed.
+    private void HandlePaste(FlowPasteEventArgs args) { /* args.Nodes, args.Edges */ }
+}";
+
+    // ── Demo 11 — loose connections + editable labels ───────────────────
+    private IReadOnlyList<FlowNode> _looseNodes = new List<FlowNode>
+    {
+        new("left", 0, 40, Data: "Left"),
+        new("right", 280, 40, Data: "Right"),
+    };
+    private IReadOnlyList<FlowEdge> _looseEdges = new List<FlowEdge> { new("left-right", "left", "right", Label: "next") };
+
+    private const string _looseCode = @"<FlowCanvas @bind-Nodes=""_nodes"" @bind-Edges=""_edges""
+            ConnectionMode=""FlowConnectionMode.Loose"" EdgeLabelEditable=""true"">
+    ...
+</FlowCanvas>";
+
+    // ── Demo 12 — export / import ────────────────────────────────────────
+    private FlowCanvas? _exportCanvas;
+    private IReadOnlyList<FlowNode> _exportNodes = new List<FlowNode>
+    {
+        new("x", 0, 0, Data: "Start"),
+        new("y", 240, 0, Data: "End"),
+    };
+    private IReadOnlyList<FlowEdge> _exportEdges = new List<FlowEdge> { new("x-y", "x", "y") };
+    private string _exportJson = "";
+    private string? _exportPng;
+    private bool _exportPngAttempted;
+
+    private async Task ExportJsonAsync()
+    {
+        if (_exportCanvas is null) return;
+        _exportJson = System.Text.Json.JsonSerializer.Serialize(_exportCanvas.ToDocument(),
+            new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+    }
+
+    private async Task LoadJsonAsync()
+    {
+        if (_exportCanvas is null || string.IsNullOrWhiteSpace(_exportJson)) return;
+        var doc = System.Text.Json.JsonSerializer.Deserialize<FlowDocument>(_exportJson);
+        if (doc is not null) await _exportCanvas.LoadDocumentAsync(doc);
+    }
+
+    private async Task ExportPngAsync()
+    {
+        if (_exportCanvas is null) return;
+        _exportPng = await _exportCanvas.ExportPngAsync();
+        _exportPngAttempted = true;
+    }
+
+    private const string _exportCode = @"<FlowCanvas @ref=""_canvas"" @bind-Nodes=""_nodes"" @bind-Edges=""_edges"" />
+
+@code {
+    private FlowCanvas? _canvas;
+
+    private void ExportJson() => _json = JsonSerializer.Serialize(_canvas!.ToDocument());
+
+    private async Task LoadJson()
+    {
+        var doc = JsonSerializer.Deserialize<FlowDocument>(_json);
+        if (doc is not null) await _canvas!.LoadDocumentAsync(doc);
+    }
+
+    private async Task<string?> ExportPngAsync() => await _canvas!.ExportPngAsync();
 }";
 }

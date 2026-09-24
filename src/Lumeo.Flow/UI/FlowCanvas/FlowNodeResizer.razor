@@ -67,11 +67,25 @@
     private bool Selected => Node is not null && Canvas?.IsSelected(Node.Id) == true;
     private string? _registeredFor;
 
+    // Registers/unregisters in lockstep with whether the grips actually RENDER (AlwaysVisible ||
+    // Selected) — not unconditionally on every parameter set. Placing a FlowNodeResizer in a
+    // template that only shows it once selected must not silently change what Shift+arrow does
+    // (FlowCanvas.HandleNodeKeyDownAsync's resize-vs-move branch) for every OTHER, unselected
+    // node too; it only takes over once the resizer itself is visible for that node.
     protected override void OnParametersSet()
     {
         if (Node is null || Canvas is null) return;
-        Canvas.RegisterResizer(Node.Id, MinWidth, MinHeight, MaxWidth, MaxHeight);
-        _registeredFor = Node.Id;
+        var visible = AlwaysVisible || Selected;
+        if (visible)
+        {
+            Canvas.RegisterResizer(Node.Id, MinWidth, MinHeight, MaxWidth, MaxHeight);
+            _registeredFor = Node.Id;
+        }
+        else if (_registeredFor is { } id)
+        {
+            Canvas.UnregisterResizer(id);
+            _registeredFor = null;
+        }
     }
 
     /// <inheritdoc />

@@ -128,10 +128,10 @@ public class FlowCanvasPhase4Tests : GanttParityTestBase
     public async Task DoubleClicking_A_Label_Opens_An_Inline_Editor_And_Enter_Commits()
     {
         await OpenAsync();
-        var label = Page.Locator("[data-testid='flow-root'] [data-flow-edge-label][data-edge-id='e1']");
+        var label = Page.Locator("[data-testid='flow-root'] [data-flow-edge-label][data-edge-id='e4']");
         await label.DblClickAsync();
 
-        var input = Page.Locator("[data-testid='flow-root'] [data-flow-edge-label][data-edge-id='e1'] input");
+        var input = Page.Locator("[data-testid='flow-root'] [data-flow-edge-label][data-edge-id='e4'] input");
         await Assertions.Expect(input).ToBeVisibleAsync(new() { Timeout = 5000 });
         await Assertions.Expect(input).ToHaveValueAsync("next");
         await input.FillAsync("later");
@@ -140,12 +140,12 @@ public class FlowCanvasPhase4Tests : GanttParityTestBase
         try
         {
             await Page.WaitForFunctionAsync(
-                "() => (document.querySelector(\"[data-testid='flow-edges-sink']\").textContent || '').includes('e1:n1-n2:later')",
+                "() => (document.querySelector(\"[data-testid='flow-edges-sink']\").textContent || '').includes('e4:n4-n5:later')",
                 new PageWaitForFunctionOptions { Timeout = 10000 });
         }
         catch (TimeoutException)
         {
-            Assert.Fail("expected e1's label to commit to 'later'" + await DumpAsync());
+            Assert.Fail("expected e4's label to commit to 'later'" + await DumpAsync());
         }
     }
 

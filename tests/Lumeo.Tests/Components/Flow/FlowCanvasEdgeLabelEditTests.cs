@@ -15,6 +15,19 @@ public class FlowCanvasEdgeLabelEditTests : FlowCanvasTestBase
     private static List<L.FlowEdge> LabelledEdge() => new() { new("a-b", "a", "b", Label: "Approved") };
 
     [Fact]
+    public void EdgeLabelEditable_True_Renders_No_Label_Div_For_An_Unlabelled_Edge()
+    {
+        // A regression the E2E suite caught: an always-present (even empty) label div at every
+        // edge's midpoint would sit on top of a bare edge's own path and eat its click — breaking
+        // "click an edge to select it" for every edge with no Label the moment EdgeLabelEditable
+        // is turned on anywhere on the canvas.
+        var edges = new List<L.FlowEdge> { new("a-b", "a", "b") }; // no Label
+        var (cut, _, _) = RenderBoundWithEdges(ThreeNodes(), edges, p => p.Add(c => c.EdgeLabelEditable, true));
+
+        Assert.Empty(cut.FindAll("[data-flow-edge-label][data-edge-id='a-b']"));
+    }
+
+    [Fact]
     public void EdgeLabelEditable_False_Ignores_A_DoubleClick()
     {
         var (cut, _, _) = RenderBoundWithEdges(ThreeNodes(), LabelledEdge());

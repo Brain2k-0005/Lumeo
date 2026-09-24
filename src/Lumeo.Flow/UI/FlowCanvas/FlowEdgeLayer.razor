@@ -79,14 +79,19 @@
         @foreach (var (edge, path, _, _) in Context.Canvas.RenderableEdges())
         {
             var editable = Context.Canvas.EdgeLabelEditable;
-            if (!editable && Context.Canvas.EdgeLabelTemplate is null && string.IsNullOrEmpty(edge.Label)) continue;
+            var editingThis = editable && _editingEdgeId == edge.Id;
+            // Still requires an existing Label/EdgeLabelTemplate (or an edit already in flight) to
+            // render at all — EdgeLabelEditable alone must NOT put an always-present, always-hit-
+            // testable div at every edge's midpoint: a genuinely empty one there would silently eat
+            // the click a bare edge (no label) otherwise needs for on-path selection.
+            if (!editingThis && Context.Canvas.EdgeLabelTemplate is null && string.IsNullOrEmpty(edge.Label)) continue;
             <div @key="@("label-" + edge.Id)"
                  data-flow-edge-label
                  data-flow-nodrag
                  data-edge-id="@edge.Id"
                  style="@LabelStyle(path)"
                  @ondblclick="@(() => BeginEdit(edge))">
-                @if (editable && _editingEdgeId == edge.Id)
+                @if (editingThis)
                 {
                     <div @onclick:stopPropagation="true" style="min-width:6rem;">
                         <Input @bind-Value="_editText" Size="Lumeo.Size.Sm" AutoFocus="true" aria-label="@L["Flow.EdgeLabelEdit"]"

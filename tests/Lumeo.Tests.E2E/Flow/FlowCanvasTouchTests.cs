@@ -100,7 +100,11 @@ public class FlowCanvasTouchTests : GanttParityTestBase
         };
         var screenAfterX = flowUnderCentreBefore.X * after.Zoom + after.X;
         var screenAfterY = flowUnderCentreBefore.Y * after.Zoom + after.Y;
-        Assert.True(Math.Abs(screenAfterX - (cx - pane.X)) <= 2 && Math.Abs(screenAfterY - (cy - pane.Y)) <= 2,
+        // A few pixels of tolerance, not the wheel-zoom spec's ±2px: each touchMove reports the
+        // midpoint's INTEGER pixel coordinates (CDP touch points), so the anchor is recomputed
+        // from a slightly rounded midpoint on every one of the six synthesized frames, compounding
+        // a small, real quantization drift a continuous mouse-wheel anchor never has.
+        Assert.True(Math.Abs(screenAfterX - (cx - pane.X)) <= 5 && Math.Abs(screenAfterY - (cy - pane.Y)) <= 5,
             $"expected the pinch midpoint's flow point to stay under it, drifted to ({screenAfterX:F1}, {screenAfterY:F1}) vs pane-local ({cx - pane.X:F1}, {cy - pane.Y:F1})");
     }
 
