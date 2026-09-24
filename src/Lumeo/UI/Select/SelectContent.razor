@@ -4,8 +4,15 @@
 
 @if (Context.IsOpen)
 {
+    @* @onkeydown:stopPropagation — mirrors Dialog/Sheet/Drawer/AlertDialog's own content
+       root: this listbox owns the keys pressed while it's open, most importantly Escape.
+       Without this, Escape closed the listbox (HandleKeyDown below) AND bubbled past this
+       div to any ancestor Dialog/Sheet/Drawer/AlertDialog's own Escape handler, closing
+       that too — a Select opened inside a Dialog dismissed the whole dialog on Escape
+       (field report, present since 5.10.0). Static (not gated on IsOpen) is safe here:
+       this div only renders at all while Context.IsOpen is true. *@
     <div data-slot="select-content" id="@Context.ContentId" role="listbox" aria-multiselectable="@(Context.Multiple ? "true" : null)" class="@CssClass"
-         @onkeydown="HandleKeyDown" tabindex="-1" @attributes="AdditionalAttributes">
+         @onkeydown="HandleKeyDown" @onkeydown:stopPropagation tabindex="-1" @attributes="AdditionalAttributes">
         @if (Context.Searchable)
         {
             <div class="px-1 pb-1">

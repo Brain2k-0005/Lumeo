@@ -3,7 +3,13 @@
 
 @if (Context.IsOpen)
 {
-    <div data-slot="popover-content" id="@_contentId" role="dialog" class="@CssClass" @onkeydown="HandleKeyDown" tabindex="-1" @attributes="AdditionalAttributes">
+    @* @onkeydown:stopPropagation — mirrors Dialog/Sheet/Drawer/AlertDialog's own content
+       root (see SelectContent for the full writeup): without it, Escape closing this
+       popover also bubbled to an ancestor Dialog/Sheet's own Escape handler and closed
+       that too (this also covers DatePicker/TimePicker, which host their calendar/time
+       grid in a PopoverContent). Static is safe — this div only renders while
+       Context.IsOpen is true. *@
+    <div data-slot="popover-content" id="@_contentId" role="dialog" class="@CssClass" @onkeydown="HandleKeyDown" @onkeydown:stopPropagation tabindex="-1" @attributes="AdditionalAttributes">
         @ChildContent
         @if (ShowArrow)
         {
@@ -78,7 +84,11 @@
     private (string Side, string Align)? _appliedAnchor;
 
     private string CssClass => Cx.Merge(
-        "fixed z-50 rounded-md border border-border/60 bg-popover p-2.5 text-popover-foreground shadow-md outline-none",
+        // A token-driven padding class instead of a plain p-2.5 (DocFlow T2 density
+        // follow-up): gives the popover's inner padding its own override knob short of
+        // Class="!p-*". Fallback is the exact value p-2.5 already resolved to (10px), so
+        // the default is unchanged.
+        "fixed z-50 rounded-md border border-border/60 bg-popover p-[var(--lumeo-popover-p,calc(var(--spacing,0.25rem)*2.5))] text-popover-foreground shadow-md outline-none",
         // MatchTriggerWidth: skip the fixed w-72 so the panel doesn't flash at 18rem before
         // the positioning JS applies the real trigger width as an inline style (which would
         // win the cascade over w-72 anyway, but the first paint would still be wrong).

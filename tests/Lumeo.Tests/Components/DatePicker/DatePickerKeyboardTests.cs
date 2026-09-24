@@ -146,15 +146,27 @@ public class DatePickerKeyboardTests : IAsyncLifetime
         }
     }
 
-    // --- Escape must only be contained while the picker itself has something to
-    //     close (Codex P2 round-2, PR #356): @onkeydown:stopPropagation used to be
-    //     an unconditional "true", so a typeable DatePicker nested in a Dialog/Sheet
-    //     swallowed Escape even when the calendar was ALREADY closed, leaving the
-    //     ancestor modal unable to dismiss on it. Bunit doesn't execute real DOM
-    //     bubbling/stopPropagation (no browser), so the regression is pinned at the
-    //     render-tree level: the directive is present (stops propagation) only while
-    //     _isOpen is true, and absent (lets Escape bubble to the modal) once closed —
-    //     temp-reverting to an unconditional "true" fails BOTH assertions below.
+    // --- @onkeydown:stopPropagation on the typeable input is a STATIC "true",
+    //     unconditional regardless of open/closed state (DocFlow follow-up, #523).
+    //
+    //     History: this used to be gated on _isOpen (present only while the calendar
+    //     was open, absent once closed) specifically so Escape could still bubble to
+    //     an ancestor Dialog/Sheet once there was nothing left for the picker itself
+    //     to close (Codex P2 round-2, PR #356). That gating looked correct at the
+    //     render-tree level — which is as far as bUnit could ever verify it, since
+    //     bUnit does not execute real DOM event bubbling/propagation — but it does
+    //     NOT reliably stop the event reaching the ancestor's Escape handler in an
+    //     actual browser: confirmed live against Combobox's identical pattern, where
+    //     Blazor WASM still invoked the ancestor Dialog's handler even though the
+    //     gating expression evaluated true at the moment the descendant handler ran.
+    //     A bUnit-only suite (this one, before this fix) stayed green throughout
+    //     while the real page kept double-closing — exactly the gap a browser E2E
+    //     run exists to catch. HandleInputKeyDown is idempotent when already closed
+    //     (reverts the buffer, _isOpen stays false), so making the directive
+    //     unconditional is safe; the trade-off is that Escape on a closed-but-
+    //     focused input no longer bubbles to an ancestor overlay in one press —
+    //     still resolvable via the dialog's close button, backdrop click, or Escape
+    //     after focus moves elsewhere.
 
     [Fact]
     public void Input_Keydown_Stops_Propagation_While_The_Calendar_Is_Open()
@@ -168,26 +180,27 @@ public class DatePickerKeyboardTests : IAsyncLifetime
     }
 
     [Fact]
-    public void Input_Keydown_Does_Not_Stop_Propagation_While_The_Calendar_Is_Closed()
+    public void Input_Keydown_Stops_Propagation_Even_While_The_Calendar_Is_Closed()
     {
-        // Closed from the start — nothing for HandleInputKeyDown to revert/close,
-        // so Escape (or any other key) must be free to bubble to an ancestor
-        // Dialog/Sheet's own Escape-to-dismiss handler.
+        // Closed from the start. The directive is unconditional now (see the block
+        // comment above) — bUnit can only pin its render-tree presence, not real
+        // propagation; that real-browser behaviour is covered by an E2E spec instead.
         var cut = RenderPicker(value: new DateOnly(2026, 6, 10));
         Assert.False(IsOpen(cut));
 
-        Assert.DoesNotContain("onkeydown:stoppropagation", cut.Find("input").OuterHtml, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("onkeydown:stoppropagation", cut.Find("input").OuterHtml, StringComparison.OrdinalIgnoreCase);
     }
 
     // --- Trigger activation keys must not fire from the typeable input, even
     //     while the calendar is CLOSED (Codex/CodeRabbit round-2, PR #356):
-    //     @onkeydown:stopPropagation above is gated on _isOpen, so while closed
-    //     it lets everything bubble (by design — see the "does not stop
-    //     propagation while closed" test above, needed for Escape/Dialog). That
-    //     meant Enter/Space typed into the closed input ALSO reached
-    //     PopoverTrigger's own role=button Enter/Space handler and silently
-    //     reopened the calendar. Bunit can't execute real DOM bubbling to prove
-    //     that directly (see the comment block above), so this is pinned one
+    //     @onkeydown:stopPropagation above is now unconditional (see the block
+    //     comment further up), but SuppressActivationKeys still earns its keep
+    //     independently of that directive — it is what stops PopoverTrigger's own
+    //     role=button Enter/Space handler from treating either as a toggle in the
+    //     first place, for BOTH the typeable-input branch and the plain
+    //     button-trigger branch below (which needs it for an unrelated reason —
+    //     native click synthesis, not Blazor propagation). Bunit can't execute
+    //     real DOM bubbling to prove propagation directly, so this is pinned one
     //     level down at the mechanism PopoverTrigger actually uses to suppress
     //     it: SuppressActivationKeys must reach the typeable-input trigger,
     //     proven via the same JS-registration signal
