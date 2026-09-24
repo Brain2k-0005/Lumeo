@@ -93,6 +93,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     instead of a hand-written recursive layout.
   - Touch/pinch (shipped in phase 3a) now has real E2E coverage via CDP `Input.dispatchTouchEvent`.
 
+### Fixed
+- **DataGrid: `ApplyLayoutAsync` reloads exactly like a header click.** A layout applied with a
+  new sort now raises `OnServerRequest` in `ServerMode` and re-sorts the bound list in client
+  mode; a grid using server-side row virtualization (`Virtualized` + `OnRangeRequest`) now routes
+  through `RefreshVirtualizedAsync`, matching `HandleSort`/`HandleFilter` — previously it silently
+  fell through to `ProcessClientData` against an `Items` list that, by design in that mode, isn't
+  the full set (consumer report).
+- **DataGrid: a `LayoutStorageKey`-persisted layout is now restored before the initial
+  `ServerMode` request**, instead of after it — the header no longer briefly shows the saved sort
+  while the rows are still the first (default-sort) request's, and `ServerMode` no longer pays for
+  two round trips on first load (consumer report).
+- **DataGrid: the selection checkbox column is sticky-left by default** whenever the grid scrolls
+  horizontally, not only when another column is *also* pinned left (consumer report).
+- **DataGrid: `DataGridColumnDef.Title` reactivity now also covers the `Columns` PARAMETER path**
+  (a host-rebuilt `List<DataGridColumn<TItem>>`, e.g. to translate headers on a UI-language
+  switch) — previously only declarative `DataGridColumnDef` children picked up a changed `Title`;
+  the `Columns`-parameter path never did, because column identity there was compared by
+  `DataGridColumn.Id` (a random per-instance GUID) instead of `Field`, so a freshly rebuilt list
+  looked like an entirely different column set every render (consumer report).
+- **DataGrid: the row divider no longer renders blurry** on some displays/zoom levels. Rows now
+  draw it as an inset `box-shadow` instead of `border-b`, paired with `border-separate` on the
+  table, so it isn't subject to a `border-collapse` merge landing on a sub-pixel boundary;
+  `Bordered="true"` grids are unchanged (that variant relies on `border-collapse` merging cell
+  borders into single-pixel grid lines) (consumer report).
+- **Sidebar: `SidebarMenuButton`'s icon-mode size/padding no longer ship `!important`.** A
+  consumer's own `Class="group-data-[collapsible=icon]:px-0"` (or similar) used to lose to the
+  library's `!important` regardless of being merged in last; default (uncustomized) visuals are
+  unchanged (consumer report).
+
+### Added
+- **DataGrid: `ColumnSizing` parameter** (`DataGridColumnSizing.Auto`, the default, or
+  `FitWithMinimum`). `Auto` is the historic `table-layout: fixed` behavior, under which a
+  `FillWidth` column can be squeezed to 0px with enough other columns visible — fixed table
+  layout does not honor CSS `min-width` on cells. `FitWithMinimum` fills the available width when
+  there's room and never shrinks a column below its own `MinWidth` (falling back to `Width`);
+  once the visible columns' combined floor exceeds the container, the grid scrolls horizontally
+  instead of squeezing a column away (consumer report).
+
 ## [5.10.5] - 2026-09-23
 
 ### Fixed

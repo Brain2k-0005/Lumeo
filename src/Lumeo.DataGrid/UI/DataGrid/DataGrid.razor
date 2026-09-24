@@ -100,6 +100,8 @@
         ToggleSelectionModifiedAt = ToggleSelectionModifiedAt,
         SelectOnRowClick = SelectOnRowClick,
         ShowReorderHandle = ShowReorderHandle,
+        ColumnSizing = ColumnSizing,
+        Bordered = Bordered,
         ShowPinButton = ShowPinButton,
         SortIconTemplate = SortIconTemplate,
         ColumnMenuContent = ColumnMenuContent,
@@ -341,7 +343,18 @@
            Interop.PositionFixed) — they mispositioned against this wrapper and got
            clipped by its own overflow-auto. See components.js's registerViewportWidth. *@
         <div id="@_viewportId" class="overflow-auto flex-1" @onclick="CloseContextMenu">
-            <table class="w-full caption-bottom text-sm"
+            @* border-separate + border-spacing-0 (DocFlow D8), only when NOT Bordered:
+               Tailwind preflight sets border-collapse: collapse on every <table>, which
+               merges each row's border-b with the next row's own borders into one shared
+               line — at fractional device pixel ratios (or fractional row heights from
+               Compact/density tokens) that shared line can land on a half-pixel and render
+               blurry. Rows draw their own divider as an inset box-shadow (DataGridRow.CssClass)
+               instead of border-b in this mode, which isn't affected by border-collapse and
+               (being an inset shadow, not a border) adds no extra box height — no layout
+               shift switching between the two. Left untouched when Bordered="true": that
+               variant relies on border-collapse to merge adjacent [&_td]:border/[&_th]:border
+               rules into single-pixel grid lines — border-separate would double them up.  *@
+            <table class="@($"w-full caption-bottom text-sm{(Bordered ? "" : " border-separate border-spacing-0")}")"
                    style="@TableStyle"
                    id="@_gridId"
                    role="@(IsTreeGridMode ? "treegrid" : "grid")"
@@ -605,6 +618,15 @@
     /// <summary>Enables drag-to-reorder columns via a pointer drag on the header cell.
     /// Default false.</summary>
     [Parameter] public bool Reorderable { get; set; }
+
+    /// <summary>How the grid lays out column widths. Default <see cref="DataGridColumnSizing.Auto"/>
+    /// (the historic <c>table-layout: fixed</c> behaviour). Set
+    /// <see cref="DataGridColumnSizing.FitWithMinimum"/> so columns — in particular a
+    /// <see cref="DataGridColumn{TItem}.FillWidth"/> column — fill the available width when there's
+    /// room and never shrink below their own <see cref="DataGridColumn{TItem}.MinWidth"/>; once the
+    /// visible columns' combined floor exceeds the container, the grid scrolls horizontally instead
+    /// of squeezing a column to nothing (DocFlow field report §1.12).</summary>
+    [Parameter] public DataGridColumnSizing ColumnSizing { get; set; } = DataGridColumnSizing.Auto;
 
     /// <summary>When true, a click on a column header opens a column menu, as the shadcn/ReUI
     /// data grid does, instead of toggling the sort: sort ascending / descending, fit to
@@ -1299,6 +1321,16 @@
     {
         get
         {
+            // FitWithMinimum: table-layout: auto lets the browser distribute space among
+            // columns (giving a FillWidth column, which carries no fixed width, whatever is
+            // left) and — unlike table-layout: fixed — actually honours a per-column
+            // min-width as a floor (DataGridHeaderCell.StyleString emits min-width, never
+            // width, for this mode). width: 100% is the starting point; once the columns'
+            // combined min-width exceeds the container the table naturally grows past it
+            // and the existing overflow-x-auto scroll container takes over.
+            if (ColumnSizing == DataGridColumnSizing.FitWithMinimum)
+                return "table-layout: auto; width: 100%;";
+
             if (_visibleColumns.Count == 0 || _visibleColumns.Any(c => !c.Width.HasValue)) return null;
             var sum = _visibleColumns.Sum(c => c.Width!.Value);
             var fill = _visibleColumns.Any(c => c.FillWidth);
@@ -1872,16 +1904,47 @@
     {
         var source = SourceColumns;
 
-        // If ordered columns has different column set (by ID), rebuild from source
-        // Preserve user-reordered order for existing columns
-        var sourceIds = source.Select(c => c.Id).ToHashSet();
-        var orderedIds = _orderedColumns.Select(c => c.Id).ToHashSet();
+        // Identity uses ColumnKey (Field, falling back to Id) — the same key the rest of
+        // the file uses for column identity (AddColumnDef/RemoveColumnDef/UpdateColumnHeader/
+        // ApplyColumnWidth). Comparing raw .Id here used to defeat the Columns PARAMETER path
+        // entirely: DataGridColumn.Id defaults to a fresh random Guid per instance, so a host
+        // that rebuilds its Columns list on every render (the normal pattern for anything
+        // computed — translated titles, feature-flagged columns) never had a stable identity
+        // and Title updates on an existing column looked like "remove + re-add" every time.
+        var sourceIds = source.Select(ColumnKey).ToHashSet();
+        var orderedIds = _orderedColumns.Select(ColumnKey).ToHashSet();
 
-        if (sourceIds.SetEquals(orderedIds)) return; // Same columns, keep user order
+        if (sourceIds.SetEquals(orderedIds))
+        {
+            // Same columns, keep the tracked instances (they carry the user's live
+            // Visible/Pin/Width/Order state) — but a host using the Columns PARAMETER
+            // (as opposed to declarative ColumnDef children) rebuilds a fresh list of
+            // fresh DataGridColumn objects on every render, e.g. to translate Title
+            // when the UI language changes. DataGridColumnDef already re-pushes a
+            // changed Title into the tracked column (UpdateColumnHeader, field report
+            // §1.5); the Columns-parameter path never did, so the tracked (old)
+            // instance's Title/HeaderTemplate silently went stale forever (DocFlow D7).
+            // Sync just those two declarative, non-interactive fields here — never
+            // Visible/Pin/Width, which are runtime UI state the grid itself owns once
+            // the user touches them.
+            if (Columns is not null && Columns.Count > 0)
+            {
+                var bySourceKey = source.ToDictionary(ColumnKey);
+                foreach (var tracked in _orderedColumns)
+                {
+                    if (bySourceKey.TryGetValue(ColumnKey(tracked), out var fresh) && !ReferenceEquals(tracked, fresh))
+                    {
+                        tracked.Title = fresh.Title;
+                        tracked.HeaderTemplate = fresh.HeaderTemplate;
+                    }
+                }
+            }
+            return;
+        }
 
         // Columns changed — rebuild keeping existing order for known columns, append new ones
-        var newOrder = _orderedColumns.Where(c => sourceIds.Contains(c.Id)).ToList();
-        var added = source.Where(c => !orderedIds.Contains(c.Id)).ToList();
+        var newOrder = _orderedColumns.Where(c => sourceIds.Contains(ColumnKey(c))).ToList();
+        var added = source.Where(c => !orderedIds.Contains(ColumnKey(c))).ToList();
         newOrder.AddRange(added);
         _orderedColumns = newOrder;
         RefreshVisibleColumns();
@@ -2033,23 +2096,40 @@
     {
         if (firstRender)
         {
-            // Second chance for the initial server request. OnInitializedAsync fires before
-            // children register and before the first render, so a ServerMode or handler that
-            // arrives even slightly later missed it entirely - and the grid then sat in its
-            // empty state forever, with no error and no way to ask again (#442). By first
-            // render the columns have registered, so this request also carries the real
-            // descriptor set.
-            if (ServerMode && OnServerRequest.HasDelegate && !_initialServerRequestSent)
-            {
-                await RequestServerData();
-            }
-
             _layoutService ??= new DataGridLayoutService(Interop, ex =>
             {
                 if (OnError.HasDelegate)
                     InvokeAsync(() => OnError.InvokeAsync(ex));
             });
             _serverService ??= new DataGridServerService();
+
+            // Restore a LayoutStorageKey-persisted layout BEFORE the initial server request
+            // fires (DocFlow D2). This used to run AFTER the request below: the first
+            // OnServerRequest went out with the default sort/filters, then the saved layout
+            // landed and called ApplyLayoutAsync — which raises its OWN OnServerRequest — so
+            // ServerMode paid for two round trips and briefly showed a header sort that didn't
+            // match the rows still in flight from the first one (in client mode the same
+            // ordering meant a moment of default-order rows). Loading the persisted layout
+            // first means ApplyLayoutAsync (when a layout is found) already fires the ONE
+            // request with the restored sort/filters, and the initial-request guard below
+            // (_initialServerRequestSent) then correctly no-ops.
+            if (EnableLayoutPersistence && !_layoutService.LayoutLoaded)
+            {
+                var key = LayoutStorageKey ?? _layoutId;
+                await _layoutService.LoadPersistedLayoutAsync(key, ApplyLayoutAsync);
+            }
+
+            // Second chance for the initial server request. OnInitializedAsync fires before
+            // children register and before the first render, so a ServerMode or handler that
+            // arrives even slightly later missed it entirely - and the grid then sat in its
+            // empty state forever, with no error and no way to ask again (#442). By first
+            // render the columns have registered, so this request also carries the real
+            // descriptor set. Also the fallback path when there is no persisted layout to
+            // restore (or layout persistence is off).
+            if (ServerMode && OnServerRequest.HasDelegate && !_initialServerRequestSent)
+            {
+                await RequestServerData();
+            }
 
             // Snapshot default layout now that columns are registered (via ColumnDef)
             if (_defaultLayout is null && EffectiveColumns.Count > 0)
@@ -2081,12 +2161,6 @@
                         $"{string.Join(", ", unknown)}. Grouping matches DataGridColumnDef.Field (not Title). " +
                         $"Available fields: {available}.");
                 }
-            }
-
-            if (EnableLayoutPersistence && !_layoutService.LayoutLoaded)
-            {
-                var key = LayoutStorageKey ?? _layoutId;
-                await _layoutService.LoadPersistedLayoutAsync(key, ApplyLayoutAsync);
             }
 
             // Suppress the browser default-scroll on the grid's keyboard-nav keys
@@ -4793,7 +4867,15 @@
 
         _currentPage = 1;
 
-        if (ServerMode)
+        // Mirror HandleSort/HandleFilter's reload precedence (DocFlow D1): a grid using
+        // server-side row virtualization (Virtualized + OnRangeRequest, independent of
+        // ServerMode) must be refreshed through RefreshVirtualizedAsync, not through
+        // RequestServerData/ProcessClientData — neither of those talks to the range
+        // provider, so a layout applied with a new sort/filter left a virtualized grid's
+        // rows exactly as they were (only the header UI reflected the new layout).
+        if (_useServerVirtualization)
+            await RefreshVirtualizedAsync();
+        else if (ServerMode)
             await RequestServerData();
         else
             ProcessClientData();

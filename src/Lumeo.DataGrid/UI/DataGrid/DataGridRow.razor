@@ -52,15 +52,17 @@
 
     @if (Context?.SelectionMode == DataGridSelectionMode.Multiple)
     {
-        @* When any column is pinned left, the selection cell must also be sticky at
-           left:0 so it stays visible during horizontal scroll and doesn't slide
-           behind the pinned data column. Matches the z-index of DataGridHeaderCell
-           pinned headers (z-20 on thead, z-10 on body cells). *@
+        @* Sticky left:0 by default (DocFlow D6), not only when a data column is ALSO
+           pinned left — a checkbox column that scrolls out of view with the rest of a
+           wide grid defeats its own purpose. Sticky is inert until the grid actually
+           overflows horizontally, so there's no visual change on a grid that fits.
+           Matches the z-index of DataGridHeaderCell pinned headers (z-20 on thead,
+           z-10 on body cells). *@
         @* stopPropagation is required: without it, clicking the checkbox toggles
            selection (via OnCheckChanged) AND the click bubbles to <tr>'s HandleClick
            which toggles selection again — net no-op. The single-select cell below
            already does this on its <button>. *@
-        <td role="gridcell" class="@($"{(Context.Compact ? "px-2 py-1" : "px-3 py-2")} w-10{(Context.HasPinnedLeft ? " sticky left-0 z-10 group-hover/row:bg-muted/50" : "")}")" style="@SelectionPinStyle"
+        <td role="gridcell" class="@($"{(Context.Compact ? "px-2 py-1" : "px-3 py-2")} w-10 sticky left-0 z-10 group-hover/row:bg-muted/50")" style="@SelectionPinStyle"
             @onpointerdown="HandleSelectionPointerDown"
             @onpointercancel="ClearSelectionPointer"
             @onpointerleave="ClearSelectionPointer"
@@ -77,7 +79,7 @@
     }
     else if (Context?.SelectionMode == DataGridSelectionMode.Single)
     {
-        <td role="gridcell" class="@($"{(Context.Compact ? "px-2 py-1" : "px-3 py-2")} w-10{(Context.HasPinnedLeft ? " sticky left-0 z-10 group-hover/row:bg-muted/50" : "")}")" style="@SelectionPinStyle">
+        <td role="gridcell" class="@($"{(Context.Compact ? "px-2 py-1" : "px-3 py-2")} w-10 sticky left-0 z-10 group-hover/row:bg-muted/50")" style="@SelectionPinStyle">
             @* button-name (axe): icon-only radio-style selector, no visible label. *@
             <button type="button"
                     class="h-4 w-4 rounded-full border border-primary @(IsSelected ? "bg-primary" : "bg-background")"
@@ -352,12 +354,21 @@
             // the memo key makes a runtime flip of Hoverable re-render the row with the
             // hover class added/removed, matching Compact's established pattern below.
             var hoverable = Context?.Hoverable != false; // default true when Context is null (e.g. isolated render)
-            var key = (RowIndex, IsSelected, IsEditing, custom, Class, hoverable);
+            var bordered = Context?.Bordered == true;
+            var key = (RowIndex, IsSelected, IsEditing, custom, Class, hoverable, bordered);
             if (_cssCache is { } c && c.Key.Equals(key)) return c.Css;
 
             var css = string.Join(" ", new[]
             {
-                "border-b transition-colors",
+                // DocFlow D8: an unbordered grid's table has border-separate (DataGrid's
+                // table style) — border-b there would leave a 0 gap (border-spacing-0) with
+                // no collapsing partner, still hittable by device-pixel rounding. An inset
+                // box-shadow divider isn't part of the border box at all, so it can't blur
+                // from collapsing/rounding and adds no extra row height. Bordered keeps
+                // border-b: that variant relies on border-collapse (the table's default
+                // there) merging this with [&_td]:border into the single-pixel grid lines.
+                bordered ? "border-b" : "[box-shadow:inset_0_-1px_0_0_var(--color-border)]",
+                "transition-colors",
                 hoverable ? "hover:bg-muted/50" : null,
                 IsSelected ? "bg-primary/5" : null,
                 IsEditing ? "bg-muted/20" : null,
@@ -379,7 +390,7 @@
     {
         get
         {
-            if (Context?.HasPinnedLeft != true) return string.Empty;
+            if (Context?.SelectionMode == DataGridSelectionMode.None) return string.Empty;
             return (Context?.Striped == true && RowIndex % 2 == 1)
                 ? "background-color: color-mix(in srgb, var(--color-card) 70%, var(--color-muted));"
                 : "background-color: var(--color-card);";
