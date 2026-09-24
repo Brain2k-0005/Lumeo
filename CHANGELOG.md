@@ -92,6 +92,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - The agent-tree block (`/blocks/flow-agent-tree`) now lays itself out with `FlowLayout.Tree`
     instead of a hand-written recursive layout.
   - Touch/pinch (shipped in phase 3a) now has real E2E coverage via CDP `Input.dispatchTouchEvent`.
+  - **Sub-flows / groups**: `FlowNode.ParentId` puts a node inside a group node — its `X`/`Y` become
+    relative to the group, it paints above the group (edges between nested nodes too) and moves
+    with it: dragging a group moves its whole subtree live. `FlowNode.Extent = FlowExtent.Parent`
+    keeps a child inside its group while dragged or arrow-key moved. `FlowGroupNode` is the default
+    group chrome (label, tinted box, resizable; a west/north resize keeps the children in place).
+    `Ctrl+G` / `Ctrl+Shift+G` (and `GroupSelectionAsync` / `UngroupSelectionAsync`) group and
+    ungroup the selection; deleting a group deletes its subtree (React Flow's behaviour — a
+    non-`Deletable` child survives, re-parented one level up); copy/duplicate carry a group's
+    children; `FlowLayout.Tree`/`Layered` lay out per group (new `GroupPadding`/`GroupHeaderHeight`
+    options); edges, fit-view, the minimap, marquee, helper lines and export all use absolute
+    positions (`GetAbsolutePosition`, `FlowGeometry.GetAbsolutePositions`); a group is announced
+    with its child count. `ParentId`/`Extent` were appended as optional trailing parameters and the
+    twelve-member `Deconstruct` is kept, so existing code compiles unchanged; `FlowDocument`
+    round-trips them.
+  - **Virtualization**: `OnlyRenderVisibleNodes` mounts only the nodes inside the viewport plus one
+    viewport of margin (with their parent groups) and the edges touching them, and follows pans and
+    zooms from the engine's viewport reports with hysteresis and an 80 ms throttle. Measurements
+    survive an unmount; selection, delete, clipboard, keyboard moves and a drag of the selection
+    still reach off-screen nodes; fit-view and the minimap work on every node. A 2000-node E2E
+    fixture paints its first node about 130 ms after navigation (budget 1.5 s) and loses no
+    viewport report during a long pan.
+  - Docs: sub-flow and 1,500-node demos; the small demos (three nodes or fewer) cap `MaxZoom` at
+    1 so fit-view no longer blows two cards up to 200%.
 
 ### Fixed
 - **DataGrid: `ApplyLayoutAsync` reloads exactly like a header click.** A layout applied with a

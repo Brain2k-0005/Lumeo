@@ -20,13 +20,14 @@ public class FlowCanvasDocsPageTests : PlaywrightTestBase
     public override async Task InitializeAsync()
     {
         await base.InitializeAsync();
-        // The page has 12 ComponentDemo cards (5 from phase 1/2, auto-layout/undo-redo/reconnect
-        // from phase 3a, resize+helper-lines/clipboard/loose-connections/export from phase 4),
+        // The page has 14 ComponentDemo cards (5 from phase 1/2, auto-layout/undo-redo/reconnect
+        // from phase 3a, resize+helper-lines/clipboard/loose-connections/export from phase 4, sub-flows and the
+        // 1,500-node virtualized canvas from phase 5),
         // each wrapping its FlowCanvas in LazyRender
         // (docs/Lumeo.Docs/Shared/LazyRender.razor — IntersectionObserver, 200px root margin).
         // A normal-height viewport would leave the later demos unmounted until scrolled; a tall
         // viewport brings the whole page within the observer's bounds on first paint instead.
-        await Page.SetViewportSizeAsync(1280, 9000);
+        await Page.SetViewportSizeAsync(1280, 11000);
     }
 
     [Fact]
@@ -46,9 +47,9 @@ public class FlowCanvasDocsPageTests : PlaywrightTestBase
         await Goto("/components/flow-canvas");
         await Assertions.Expect(Page.Locator("h1", new() { HasTextString = "Flow Canvas" })).ToBeVisibleAsync(new() { Timeout = LongTimeoutMs });
 
-        // Twelve ComponentDemo cards on the page each hold one FlowCanvas, plus the minimap overlay
-        // demo also renders FlowMiniMap.
-        await Assertions.Expect(Page.Locator("[data-slot='flow-canvas']")).ToHaveCountAsync(12, new() { Timeout = LongTimeoutMs });
-        await Assertions.Expect(Page.Locator("[data-slot='flow-minimap']")).ToBeVisibleAsync(new() { Timeout = LongTimeoutMs });
+        // Fourteen ComponentDemo cards on the page each hold one FlowCanvas, plus the minimap overlay
+        // and virtualization demos also render FlowMiniMap.
+        await Assertions.Expect(Page.Locator("[data-slot='flow-canvas']")).ToHaveCountAsync(14, new() { Timeout = LongTimeoutMs });
+        await Assertions.Expect(Page.Locator("[data-slot='flow-minimap']").First).ToBeVisibleAsync(new() { Timeout = LongTimeoutMs });
     }
 }

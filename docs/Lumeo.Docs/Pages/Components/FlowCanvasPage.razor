@@ -10,10 +10,11 @@
 
 <Alert Variant="Alert.AlertVariant.Info" ShowIcon="true" Class="mt-6">
     <ChildContent>
-        <strong>Phase 4 of Lumeo.Flow.</strong> Resize a node (<code>FlowNodeResizer</code>) with live helper
-        lines, a clipboard (<code>Ctrl</code>+<code>C</code>/<code>V</code>/<code>D</code>), loose connections,
-        inline edge-label editing and JSON/SVG/PNG export are all here now — the node, edge and handle shapes
-        you write stay the same.
+        <strong>Phase 5 of Lumeo.Flow.</strong> Sub-flows — nodes nested in groups (<code>ParentId</code>,
+        <code>FlowExtent.Parent</code>, <code>FlowGroupNode</code>, <code>Ctrl</code>+<code>G</code>) — and
+        virtualization for large graphs (<code>OnlyRenderVisibleNodes</code>) join resizing, helper lines, the
+        clipboard, loose connections, inline label editing and export. The node, edge and handle shapes you
+        write stay the same.
     </ChildContent>
 </Alert>
 
@@ -112,7 +113,7 @@
                 one and press <Kbd>Enter</Kbd> to commit, or <Kbd>Esc</Kbd> to cancel.
             </Lumeo.Text>
             <LazyRender Height="300px">
-                <FlowCanvas @bind-Nodes="_connectNodes" @bind-Edges="_connectEdges" Height="300px"
+                <FlowCanvas @bind-Nodes="_connectNodes" MaxZoom="1" @bind-Edges="_connectEdges" Height="300px"
                             IsValidConnection="ValidateConnection">
                     <NodeTemplate Context="ctx">
                         <div class="w-36 rounded-lg border border-border bg-card px-3 py-2 text-sm text-card-foreground shadow-sm">
@@ -144,7 +145,7 @@
                 touching them, and any directly selected edge.
             </Lumeo.Text>
             <LazyRender Height="280px">
-                <FlowCanvas @bind-Nodes="_selectionNodes" @bind-Edges="_selectionEdges" Height="280px"
+                <FlowCanvas @bind-Nodes="_selectionNodes" MaxZoom="1" @bind-Edges="_selectionEdges" Height="280px"
                             OnSelectionChanged="HandleSelectionChanged">
                     <NodeTemplate Context="ctx">
                         <div class="rounded-md border border-border bg-card px-3 py-2 text-sm font-medium text-card-foreground shadow-sm">
@@ -233,7 +234,7 @@
                 buttons bound to the same history; <code>ShowSnapToggle</code> adds a grid toggle.
             </Lumeo.Text>
             <LazyRender Height="300px">
-                <FlowCanvas @bind-Nodes="_historyNodes" Height="300px" History="_history" SnapToGrid="_historySnap" SnapToGridChanged="v => _historySnap = v">
+                <FlowCanvas @bind-Nodes="_historyNodes" MaxZoom="1" Height="300px" History="_history" SnapToGrid="_historySnap" SnapToGridChanged="v => _historySnap = v">
                     <NodeTemplate Context="ctx">
                         <div class="rounded-md border border-border bg-card px-3 py-2 text-sm font-medium text-card-foreground shadow-sm">
                             @ctx.Node.Data
@@ -261,7 +262,7 @@
                 anchored on the midpoint between them.
             </Lumeo.Text>
             <LazyRender Height="260px">
-                <FlowCanvas @bind-Nodes="_reconnectNodes" @bind-Edges="_reconnectEdges" Height="260px"
+                <FlowCanvas @bind-Nodes="_reconnectNodes" MaxZoom="1" @bind-Edges="_reconnectEdges" Height="260px"
                             OnReconnect="HandleReconnect">
                     <NodeTemplate Context="ctx">
                         <div class="rounded-md border border-border bg-card px-3 py-2 text-sm font-medium text-card-foreground shadow-sm">
@@ -289,7 +290,7 @@
                 guide (<code>HelperLines</code>).
             </Lumeo.Text>
             <LazyRender Height="260px">
-                <FlowCanvas @bind-Nodes="_resizeNodes" Height="260px" HelperLines="true">
+                <FlowCanvas @bind-Nodes="_resizeNodes" MaxZoom="1" Height="260px" HelperLines="true">
                     <NodeTemplate Context="ctx">
                         <div class="h-full w-full rounded-md border border-border bg-card px-3 py-2 text-sm font-medium text-card-foreground shadow-sm">
                             <FlowNodeResizer MinWidth="90" MinHeight="50" />
@@ -312,7 +313,7 @@
                 <Kbd>Ctrl</Kbd>+<Kbd>D</Kbd> duplicates the current selection directly.
             </Lumeo.Text>
             <LazyRender Height="260px">
-                <FlowCanvas @bind-Nodes="_clipboardNodes" @bind-Edges="_clipboardEdges" Height="260px" OnPaste="HandlePaste">
+                <FlowCanvas @bind-Nodes="_clipboardNodes" MaxZoom="1" @bind-Edges="_clipboardEdges" Height="260px" OnPaste="HandlePaste">
                     <NodeTemplate Context="ctx">
                         <div class="rounded-md border border-border bg-card px-3 py-2 text-sm font-medium text-card-foreground shadow-sm">
                             <FlowHandle Type="FlowHandleType.Target" Position="FlowPosition.Left" />
@@ -339,7 +340,7 @@
                 (<code>EdgeLabelEditable</code>); <Kbd>Enter</Kbd> commits, <Kbd>Esc</Kbd> cancels.
             </Lumeo.Text>
             <LazyRender Height="220px">
-                <FlowCanvas @bind-Nodes="_looseNodes" @bind-Edges="_looseEdges" Height="220px"
+                <FlowCanvas @bind-Nodes="_looseNodes" MaxZoom="1" @bind-Edges="_looseEdges" Height="220px"
                             ConnectionMode="FlowConnectionMode.Loose" EdgeLabelEditable="true">
                     <NodeTemplate Context="ctx">
                         <div class="rounded-md border border-border bg-card px-3 py-2 text-sm font-medium text-card-foreground shadow-sm">
@@ -364,7 +365,7 @@
                 the live node DOM (best effort — it can return <code>null</code> on a tainted canvas).
             </Lumeo.Text>
             <LazyRender Height="220px">
-                <FlowCanvas @ref="_exportCanvas" @bind-Nodes="_exportNodes" @bind-Edges="_exportEdges" Height="220px">
+                <FlowCanvas @ref="_exportCanvas" @bind-Nodes="_exportNodes" MaxZoom="1" @bind-Edges="_exportEdges" Height="220px">
                     <NodeTemplate Context="ctx">
                         <div class="rounded-md border border-border bg-card px-3 py-2 text-sm font-medium text-card-foreground shadow-sm">@ctx.Node.Data</div>
                     </NodeTemplate>
@@ -387,6 +388,80 @@
             {
                 <Lumeo.Text Size="sm" Color="muted">PNG export returned null (see ExportPngAsync's documented limitations).</Lumeo.Text>
             }
+        </Stack>
+    </ComponentDemo>
+
+    <ComponentDemo Title="Sub-flows — nested groups" Code="@_groupsCode">
+        <Stack Gap="3" Class="w-full">
+            <Lumeo.Text Size="sm" Color="muted">
+                A node with a <code>ParentId</code> lives inside that group: its <code>X</code>/<code>Y</code> are
+                relative to the group, so dragging "Checkout" moves everything in it. "Payment" and its cards use
+                <code>Extent="FlowExtent.Parent"</code> — try dragging them out. Select cards and press
+                <Kbd>Ctrl</Kbd>+<Kbd>G</Kbd> to group them, <Kbd>Ctrl</Kbd>+<Kbd>Shift</Kbd>+<Kbd>G</Kbd> on a group
+                to dissolve it. Deleting a group deletes what is inside it.
+            </Lumeo.Text>
+            <LazyRender Height="380px">
+                <FlowCanvas @ref="_groupsCanvas" @bind-Nodes="_groupNodes" @bind-Edges="_groupEdges" Height="380px" MaxZoom="1">
+                    <NodeTemplate Context="ctx">
+                        @if (ctx.Node.Type == FlowGroupNode.GroupType)
+                        {
+                            <FlowGroupNode />
+                        }
+                        else
+                        {
+                            <div class="w-36 rounded-md border border-border bg-card px-3 py-2 text-sm font-medium text-card-foreground shadow-sm">
+                                <FlowHandle Type="FlowHandleType.Target" Position="FlowPosition.Left" />
+                                @ctx.Node.Data
+                                <FlowHandle Type="FlowHandleType.Source" Position="FlowPosition.Right" />
+                            </div>
+                        }
+                    </NodeTemplate>
+                    <ChildContent>
+                        <FlowBackground />
+                        <FlowControls />
+                    </ChildContent>
+                </FlowCanvas>
+            </LazyRender>
+            <div class="flex flex-wrap gap-2">
+                <Button Size="Button.ButtonSize.Sm" Variant="Button.ButtonVariant.Outline" OnClick="GroupSelectedAsync">Group selection</Button>
+                <Button Size="Button.ButtonSize.Sm" Variant="Button.ButtonVariant.Outline" OnClick="UngroupSelectedAsync">Ungroup</Button>
+                <Button Size="Button.ButtonSize.Sm" Variant="Button.ButtonVariant.Outline" OnClick="LayoutGroupsAsync">Auto-layout per group</Button>
+            </div>
+        </Stack>
+    </ComponentDemo>
+
+    <ComponentDemo Title="1,500 nodes — only the visible ones are rendered" Code="@_virtualCode">
+        <Stack Gap="3" Class="w-full">
+            <Lumeo.Text Size="sm" Color="muted">
+                <code>OnlyRenderVisibleNodes</code> mounts just the nodes inside the viewport plus one viewport of
+                margin, and follows pans and zooms with hysteresis. Pan around — the minimap still shows all
+                1,500. (Fit view shows everything at once, so everything mounts: virtualization helps when the
+                graph is larger than what is on screen.)
+            </Lumeo.Text>
+            <LazyRender Height="420px">
+                <FlowCanvas @bind-Nodes="_virtualNodes" @bind-Edges="_virtualEdges" Height="420px"
+                            OnlyRenderVisibleNodes="true" FitViewOnInit="false" MinZoom="0.1"
+                            Viewport="_virtualViewport" ViewportChanged="v => _virtualViewport = v">
+                    <NodeTemplate Context="ctx">
+                        <div class="h-full rounded-md border border-border bg-card px-2 py-1 text-xs text-card-foreground shadow-sm">
+                            <FlowHandle Type="FlowHandleType.Target" Position="FlowPosition.Left" />
+                            <span class="font-medium">@ctx.Node.Data</span>
+                            <FlowHandle Type="FlowHandleType.Source" Position="FlowPosition.Right" />
+                        </div>
+                    </NodeTemplate>
+                    <ChildContent>
+                        <FlowBackground />
+                        <FlowControls />
+                        <FlowMiniMap />
+                    </ChildContent>
+                </FlowCanvas>
+            </LazyRender>
+            <div class="rounded-md border border-border/60 bg-muted/40 p-3 text-sm">
+                <span class="font-mono text-xs text-muted-foreground">
+                    @_virtualNodes.Count.ToString("N0", CultureInfo.InvariantCulture) nodes, @_virtualEdges.Count.ToString("N0", CultureInfo.InvariantCulture) edges — viewport
+                    (@_virtualViewport.X.ToString("0", CultureInfo.InvariantCulture), @_virtualViewport.Y.ToString("0", CultureInfo.InvariantCulture)) at @((_virtualViewport.Zoom * 100).ToString("0", CultureInfo.InvariantCulture))%
+                </span>
+            </div>
         </Stack>
     </ComponentDemo>
 </Stack>
@@ -439,6 +514,16 @@
         <PropsTable Slug="flow-canvas" SubComponent="FlowNodeResizer" />
     </div>
 
+    <Heading Id="flowgroupnode" Level="3" Class="mt-8 scroll-mt-20">FlowGroupNode</Heading>
+    <p class="mt-2 text-sm text-muted-foreground">
+        The default chrome for a group node (label, tinted box, resize grips while selected). Render it from
+        <code>NodeTemplate</code> for nodes of <code>Type == FlowGroupNode.GroupType</code> ("group"); without a
+        <code>NodeTemplate</code> the canvas uses it by itself for those nodes.
+    </p>
+    <div class="mt-4">
+        <PropsTable Slug="flow-canvas" SubComponent="FlowGroupNode" />
+    </div>
+
     <Heading Id="flowlayout" Level="3" Class="mt-8 scroll-mt-20">FlowLayout (static)</Heading>
     <p class="mt-2 text-sm text-muted-foreground">
         Pure functions, not a component — apply the result with <code>Nodes = FlowLayout.Tree(...)</code>.
@@ -454,7 +539,8 @@
             <TableBody>
                 <TableRow><TableCell Class="font-mono text-xs">Tree(nodes, edges, options?, measured?)</TableCell><TableCell>Rooted tree/forest: a root per node with no incoming edge, children centred under their parent. A node reachable from two roots is placed under whichever reaches it first.</TableCell></TableRow>
                 <TableRow><TableCell Class="font-mono text-xs">Layered(nodes, edges, options?, measured?, sweeps = 4)</TableCell><TableCell>Longest-path ranking (a node's rank is one more than the deepest predecessor), then barycenter ordering within each rank to reduce crossings.</TableCell></TableRow>
-                <TableRow><TableCell Class="font-mono text-xs">FlowLayoutOptions</TableCell><TableCell><code>Direction</code> (<code>LeftToRight</code>/<code>TopToBottom</code>), <code>NodeSpacing</code>, <code>RankSpacing</code>.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">FlowLayoutOptions</TableCell><TableCell><code>Direction</code> (<code>LeftToRight</code>/<code>TopToBottom</code>), <code>NodeSpacing</code>, <code>RankSpacing</code>, <code>GroupPadding</code> (20), <code>GroupHeaderHeight</code> (28).</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">Groups</TableCell><TableCell>With nested nodes (<code>ParentId</code>) each group's children are laid out on their own, inside the group (relative, inset by <code>GroupPadding</code> plus <code>GroupHeaderHeight</code>), deepest groups first; a group grows (never shrinks) to fit them; then the top level is laid out with edges that cross a group border counted as edges of that group.</TableCell></TableRow>
                 <TableRow><TableCell Class="font-mono text-xs">measured</TableCell><TableCell>A size per node id — pass <code>canvas.MeasuredSizes</code> so a node with no fixed <code>Width</code>/<code>Height</code> lays out at its real rendered size, not the library default.</TableCell></TableRow>
                 <TableRow><TableCell Class="font-mono text-xs">Cycles</TableCell><TableCell>Both break cycles first (a deterministic DFS back-edge removal, same input → same result) so a cyclic graph still lays out instead of looping.</TableCell></TableRow>
             </TableBody>
@@ -508,6 +594,8 @@
                 <TableRow><TableCell Class="font-mono text-xs">FlowNode.Type / Data</TableCell><TableCell Class="font-mono text-xs">string? / object?</TableCell><TableCell>Your discriminator and payload for <code>NodeTemplate</code>.</TableCell></TableRow>
                 <TableRow><TableCell Class="font-mono text-xs">FlowNode.Width / Height</TableCell><TableCell Class="font-mono text-xs">double?</TableCell><TableCell>Fixed size; when null the node is sized by its content and measured.</TableCell></TableRow>
                 <TableRow><TableCell Class="font-mono text-xs">FlowNode.Draggable</TableCell><TableCell Class="font-mono text-xs">bool</TableCell><TableCell>Per-node drag switch (combined with the canvas' <code>NodesDraggable</code> / <code>Readonly</code>).</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">FlowNode.ParentId</TableCell><TableCell Class="font-mono text-xs">string?</TableCell><TableCell>The group node this node sits in. Its <code>X</code>/<code>Y</code> are then relative to that group's top-left corner, it paints above the group and moves with it. A missing parent or a parent cycle counts as top-level.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">FlowNode.Extent</TableCell><TableCell Class="font-mono text-xs">FlowExtent</TableCell><TableCell><code>None</code> (default) or <code>Parent</code> — keeps the node inside its parent's rect while dragged or moved with the arrow keys.</TableCell></TableRow>
                 <TableRow><TableCell Class="font-mono text-xs">FlowEdge.Source / Target</TableCell><TableCell Class="font-mono text-xs">string</TableCell><TableCell>Node ids. An edge whose node is missing is skipped.</TableCell></TableRow>
                 <TableRow><TableCell Class="font-mono text-xs">FlowEdge.SourceHandle / TargetHandle</TableCell><TableCell Class="font-mono text-xs">string?</TableCell><TableCell>A <code>FlowHandle</code> id; null attaches to the node's first handle of that type, or its right/left edge.</TableCell></TableRow>
                 <TableRow><TableCell Class="font-mono text-xs">FlowEdge.Type</TableCell><TableCell Class="font-mono text-xs">FlowEdgeType</TableCell><TableCell><code>Bezier</code> (default), <code>SmoothStep</code>, <code>Step</code> or <code>Straight</code>.</TableCell></TableRow>
@@ -542,6 +630,9 @@
                 <TableRow><TableCell Class="font-mono text-xs">ToDocument()</TableCell><TableCell>The current nodes, edges and viewport as one <code>FlowDocument</code> (phase 4).</TableCell></TableRow>
                 <TableRow><TableCell Class="font-mono text-xs">LoadDocumentAsync(FlowDocument)</TableCell><TableCell>Replaces nodes/edges/viewport, clears the selection, pushes one <code>History</code> snapshot (phase 4).</TableCell></TableRow>
                 <TableRow><TableCell Class="font-mono text-xs">ExportSvgAsync()</TableCell><TableCell>A self-contained vector SVG (edges + node boxes with their label text) built purely from canvas state — never fails (phase 4).</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">GroupSelectionAsync()</TableCell><TableCell>What <Kbd>Ctrl</Kbd>+<Kbd>G</Kbd> does: wraps the selection in a new <code>"group"</code> node (bounds + padding + a label row) in the selection's common parent, re-parents the selected nodes into it at unchanged screen positions and selects it (phase 5).</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">UngroupSelectionAsync()</TableCell><TableCell>What <Kbd>Ctrl</Kbd>+<Kbd>Shift</Kbd>+<Kbd>G</Kbd> does: dissolves each selected group (its children move one level up, the group and its own edges are removed); with no group selected, takes the selected nodes out of their group (phase 5).</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">GetAbsolutePosition(string nodeId)</TableCell><TableCell>A node's top-left corner in absolute flow coordinates (a child's own <code>X</code>/<code>Y</code> are relative to its group), or <code>null</code> for an unknown id (phase 5). <code>FlowGeometry.GetAbsolutePositions(nodes)</code> does the same for a whole list, without a canvas.</TableCell></TableRow>
                 <TableRow><TableCell Class="font-mono text-xs">ExportPngAsync(double scale = 1)</TableCell><TableCell>Best-effort raster of the live node DOM as a <code>data:image/png</code> URL; <code>null</code> on failure (a cross-origin image/font is the usual cause), never throws (phase 4).</TableCell></TableRow>
             </TableBody>
         </Table>
@@ -583,6 +674,7 @@
         <li><Kbd>Ctrl</Kbd>+<Kbd>Z</Kbd> undoes, <Kbd>Ctrl</Kbd>+<Kbd>Y</Kbd> or <Kbd>Ctrl</Kbd>+<Kbd>Shift</Kbd>+<Kbd>Z</Kbd> redoes, while the canvas has focus and a <code>History</code> is set.</li>
         <li>Undo/redo, delete and the arrow-key nudge all skip a keystroke aimed at an editable field — an input, textarea, select, contenteditable region, or anything marked <code>data-flow-nodrag</code> (e.g. a node card's own inline-edit box, or an inspector panel rendered through <code>FlowPanel</code>) — so typing there never undoes a graph change or deletes the selected node; the field's own native undo/typing keeps working. <Kbd>Esc</Kbd> is not gated.</li>
         <li>Reconnecting an edge (dragging one of a selected edge's grab handles) is pointer/touch only — there is no keyboard equivalent yet; the handles are <code>aria-hidden</code> so a screen reader doesn't announce an unreachable control. The edge itself stays fully keyboard-selectable and deletable.</li>
+        <li><Kbd>Ctrl</Kbd>+<Kbd>G</Kbd> groups the selection, <Kbd>Ctrl</Kbd>+<Kbd>Shift</Kbd>+<Kbd>G</Kbd> ungroups — both announced to screen readers; a group node's name includes how many nodes it holds ("Payment, 3 nodes") and its role description is "group". Like the other shortcuts they skip a keystroke aimed at an editable field.</li>
         <li>Touch: one finger pans the background or drags a node (starts immediately, no long-press); two fingers pinch-zoom anchored on the midpoint between them. <code>touch-action: none</code> on the pane stops the browser from also scrolling/zooming the page.</li>
     </ul>
 </div>
@@ -609,6 +701,9 @@
                 <TableRow><TableCell Class="font-mono text-xs">data-flow-connecting</TableCell><TableCell>Handle button</TableCell><TableCell>Presence-only: the source handle of an in-progress keyboard connection.</TableCell></TableRow>
                 <TableRow><TableCell Class="font-mono text-xs">data-flow-edge-label</TableCell><TableCell>Label div</TableCell><TableCell>With <code>data-edge-id</code>; positioned at the path midpoint.</TableCell></TableRow>
                 <TableRow><TableCell Class="font-mono text-xs">data-flow-toolbar-for="id"</TableCell><TableCell><code>FlowNodeToolbar</code></TableCell><TableCell>The node id it floats above; the engine repositions it live while that node is dragged.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">data-parent-id / data-extent</TableCell><TableCell>Node host</TableCell><TableCell>A nested node's resolved group id, and <code>"parent"</code> when it is clamped inside it (phase 5).</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">data-flow-group</TableCell><TableCell>Node host</TableCell><TableCell>Presence-only: the node has children (phase 5).</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">data-flow-virtualized</TableCell><TableCell>Canvas root</TableCell><TableCell>Presence-only: <code>OnlyRenderVisibleNodes</code> is on (phase 5).</TableCell></TableRow>
                 <TableRow><TableCell Class="font-mono text-xs">data-flow-edge-end</TableCell><TableCell>Reconnect grab handle</TableCell><TableCell>With <code>data-edge-id</code> and <code>data-end</code> ("source"/"target"); rendered for a selected, reconnectable edge.</TableCell></TableRow>
             </TableBody>
         </Table>
@@ -1067,5 +1162,124 @@
     }
 
     private async Task<string?> ExportPngAsync() => await _canvas!.ExportPngAsync();
+}";
+
+    // ── Demo 13 — sub-flows ──────────────────────────────────────────────
+    private FlowCanvas? _groupsCanvas;
+    private IReadOnlyList<FlowNode> _groupNodes = new List<FlowNode>
+    {
+        new("checkout", 0, 0, Type: FlowGroupNode.GroupType, Data: "Checkout", Width: 620, Height: 300),
+        new("cart", 20, 48, Data: "Cart", ParentId: "checkout"),
+        new("payment", 200, 48, Type: FlowGroupNode.GroupType, Data: "Payment", Width: 390, Height: 228,
+            ParentId: "checkout", Extent: FlowExtent.Parent),
+        new("card", 20, 48, Data: "Card", ParentId: "payment", Extent: FlowExtent.Parent),
+        new("verify", 220, 48, Data: "3-D Secure", ParentId: "payment", Extent: FlowExtent.Parent),
+        new("capture", 120, 150, Data: "Capture", ParentId: "payment", Extent: FlowExtent.Parent),
+        new("ship", 720, 130, Data: "Ship"),
+    };
+    private IReadOnlyList<FlowEdge> _groupEdges = new List<FlowEdge>
+    {
+        new("cart-card", "cart", "card"),
+        new("card-verify", "card", "verify"),
+        new("verify-capture", "verify", "capture", Type: FlowEdgeType.SmoothStep),
+        new("capture-ship", "capture", "ship"),
+    };
+
+    private Task GroupSelectedAsync() => _groupsCanvas?.GroupSelectionAsync() ?? Task.CompletedTask;
+    private Task UngroupSelectedAsync() => _groupsCanvas?.UngroupSelectionAsync() ?? Task.CompletedTask;
+
+    private async Task LayoutGroupsAsync()
+    {
+        if (_groupsCanvas is null) return;
+        _groupNodes = FlowLayout.Layered(_groupNodes, _groupEdges, new FlowLayoutOptions(NodeSpacing: 24, RankSpacing: 48), _groupsCanvas.MeasuredSizes);
+        StateHasChanged();
+        await _groupsCanvas.FitViewAsync();
+    }
+
+    private const string _groupsCode = @"<FlowCanvas @ref=""_canvas"" @bind-Nodes=""_nodes"" @bind-Edges=""_edges"">
+    <NodeTemplate Context=""ctx"">
+        @if (ctx.Node.Type == FlowGroupNode.GroupType)
+        {
+            <FlowGroupNode />   @* label, tinted box, resize grips when selected *@
+        }
+        else
+        {
+            <div class=""w-36 rounded-md border border-border bg-card px-3 py-2 text-sm"">...</div>
+        }
+    </NodeTemplate>
+</FlowCanvas>
+
+@code {
+    private IReadOnlyList<FlowNode> _nodes = new List<FlowNode>
+    {
+        new(""checkout"", 0, 0, Type: FlowGroupNode.GroupType, Data: ""Checkout"", Width: 620, Height: 300),
+        new(""cart"", 20, 48, Data: ""Cart"", ParentId: ""checkout""),            // relative to checkout
+        new(""payment"", 200, 48, Type: FlowGroupNode.GroupType, Data: ""Payment"", Width: 390, Height: 228,
+            ParentId: ""checkout"", Extent: FlowExtent.Parent),                   // a group inside a group
+        new(""card"", 20, 48, Data: ""Card"", ParentId: ""payment"", Extent: FlowExtent.Parent),
+        // ...
+    };
+
+    // Ctrl+G / Ctrl+Shift+G work out of the box; the same actions are public for your own buttons.
+    private Task Group() => _canvas!.GroupSelectionAsync();
+    private Task Ungroup() => _canvas!.UngroupSelectionAsync();
+
+    // FlowLayout lays out each group's children inside it, then the top level.
+    private async Task Layout()
+    {
+        _nodes = FlowLayout.Layered(_nodes, _edges, measured: _canvas!.MeasuredSizes);
+        await _canvas.FitViewAsync();
+    }
+}";
+
+    // ── Demo 14 — 1,500 nodes, virtualized ───────────────────────────────
+    private const int VirtualColumns = 50;
+    private const int VirtualRows = 30;
+    private IReadOnlyList<FlowNode> _virtualNodes = BuildVirtualNodes();
+    private IReadOnlyList<FlowEdge> _virtualEdges = BuildVirtualEdges();
+    private FlowViewport _virtualViewport = new(24, 24, 1);
+
+    // Deterministic: the same 1,500 nodes (a 50 x 30 grid) on every render and every visit.
+    private static IReadOnlyList<FlowNode> BuildVirtualNodes()
+    {
+        var list = new List<FlowNode>(VirtualColumns * VirtualRows);
+        for (var r = 0; r < VirtualRows; r++)
+            for (var c = 0; c < VirtualColumns; c++)
+                list.Add(new FlowNode(VirtualId(r, c), c * 200, r * 90,
+                    Data: "Task " + (r * VirtualColumns + c + 1).ToString("0000", CultureInfo.InvariantCulture),
+                    Width: 150, Height: 40));
+        return list;
+    }
+
+    private static IReadOnlyList<FlowEdge> BuildVirtualEdges()
+    {
+        var list = new List<FlowEdge>(VirtualRows * (VirtualColumns - 1));
+        for (var r = 0; r < VirtualRows; r++)
+            for (var c = 0; c < VirtualColumns - 1; c++)
+                list.Add(new FlowEdge("e" + VirtualId(r, c), VirtualId(r, c), VirtualId(r, c + 1)));
+        return list;
+    }
+
+    private static string VirtualId(int r, int c)
+        => "v" + r.ToString(CultureInfo.InvariantCulture) + "-" + c.ToString(CultureInfo.InvariantCulture);
+
+    private const string _virtualCode = @"<FlowCanvas @bind-Nodes=""_nodes"" @bind-Edges=""_edges"" Height=""420px""
+            OnlyRenderVisibleNodes=""true"" FitViewOnInit=""false"" MinZoom=""0.1"">
+    <NodeTemplate Context=""ctx"">
+        <div class=""h-full rounded-md border border-border bg-card px-2 py-1 text-xs"">@ctx.Node.Data</div>
+    </NodeTemplate>
+    <ChildContent>
+        <FlowBackground />
+        <FlowControls />
+        <FlowMiniMap />   @* still draws every node *@
+    </ChildContent>
+</FlowCanvas>
+
+@code {
+    // 1,500 nodes on a 50 x 30 grid, each wired to its right-hand neighbour. Fixed Width/Height
+    // let the canvas place and fit nodes it has never mounted without measuring them first.
+    private IReadOnlyList<FlowNode> _nodes = Enumerable.Range(0, 1500)
+        .Select(i => new FlowNode($""v{i}"", i % 50 * 200, i / 50 * 90, Data: $""Task {i + 1:0000}"", Width: 150, Height: 40))
+        .ToList();
 }";
 }

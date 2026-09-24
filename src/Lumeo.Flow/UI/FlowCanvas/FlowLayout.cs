@@ -13,13 +13,25 @@ public enum FlowLayoutDirection
 /// <param name="Direction">The axis nodes grow along.</param>
 /// <param name="NodeSpacing">Gap, in flow units, between two nodes in the same rank (perpendicular to <paramref name="Direction"/>).</param>
 /// <param name="RankSpacing">Gap, in flow units, between two ranks (parallel to <paramref name="Direction"/>).</param>
+/// <param name="GroupPadding">Phase 5 sub-flows: the inset, in flow units, between a group's border and the children laid out inside it.</param>
+/// <param name="GroupHeaderHeight">Phase 5 sub-flows: extra room above a group's children for its label row (<see cref="FlowGroupNode"/>'s), in flow units.</param>
 public sealed record FlowLayoutOptions(
     FlowLayoutDirection Direction = FlowLayoutDirection.LeftToRight,
     double NodeSpacing = 48,
-    double RankSpacing = 96)
+    double RankSpacing = 96,
+    double GroupPadding = 20,
+    double GroupHeaderHeight = 28)
 {
     /// <summary>The default options: left-to-right, 48px node spacing, 96px rank spacing.</summary>
     public static readonly FlowLayoutOptions Default = new();
+
+    /// <summary>The phase 3 positional deconstruction, kept so <c>var (direction, nodeSpacing, rankSpacing) = options;</c> still compiles after the phase 5 group members were appended.</summary>
+    public void Deconstruct(out FlowLayoutDirection Direction, out double NodeSpacing, out double RankSpacing)
+    {
+        Direction = this.Direction;
+        NodeSpacing = this.NodeSpacing;
+        RankSpacing = this.RankSpacing;
+    }
 }
 
 /// <summary>
@@ -48,7 +60,13 @@ public static class FlowLayout
     {
         ArgumentNullException.ThrowIfNull(nodes);
         ArgumentNullException.ThrowIfNull(edges);
-        var opts = options ?? FlowLayoutOptions.Default;
+        return LayoutPerGroup(nodes, edges, options ?? FlowLayoutOptions.Default, measured, TreeCore);
+    }
+
+    private static IReadOnlyList<FlowNode> TreeCore(
+        IReadOnlyList<FlowNode> nodes, IReadOnlyList<FlowEdge> edges,
+        FlowLayoutOptions opts, IReadOnlyDictionary<string, (double Width, double Height)>? measured)
+    {
         if (nodes.Count == 0) return Array.Empty<FlowNode>();
 
         var ids = nodes.Select(n => n.Id).ToList();
@@ -161,7 +179,104 @@ public static class FlowLayout
     {
         ArgumentNullException.ThrowIfNull(nodes);
         ArgumentNullException.ThrowIfNull(edges);
-        var opts = options ?? FlowLayoutOptions.Default;
+        return LayoutPerGroup(nodes, edges, options ?? FlowLayoutOptions.Default, measured,
+            (n, e, o, m) => LayeredCore(n, e, o, m, crossingReductionSweeps));
+    }
+
+    // ── Phase 5: per-group layout ────────────────────────────────────────
+
+    private delegate IReadOnlyList<FlowNode> LayoutCore(
+        IReadOnlyList<FlowNode> nodes, IReadOnlyList<FlowEdge> edges,
+        FlowLayoutOptions opts, IReadOnlyDictionary<string, (double Width, double Height)>? measured);
+
+    /// <summary>
+    /// Sub-flows: every sibling set (the children of one group, and the top-level nodes) is laid out
+    /// on its own with the same algorithm — deepest groups first — using only the edges between two
+    /// members of that set (an edge from inside a group to outside it counts as an edge from the group
+    /// at the level where both ends meet). Children land inside their group at
+    /// (<see cref="FlowLayoutOptions.GroupPadding"/>, <see cref="FlowLayoutOptions.GroupPadding"/> +
+    /// <see cref="FlowLayoutOptions.GroupHeaderHeight"/>) — their X/Y stay RELATIVE to it — and a group
+    /// grows (never shrinks) its <see cref="FlowNode.Width"/>/<see cref="FlowNode.Height"/> to fit
+    /// them before its own level is laid out. Without any <see cref="FlowNode.ParentId"/> this is
+    /// exactly the flat algorithm.
+    /// </summary>
+    private static IReadOnlyList<FlowNode> LayoutPerGroup(
+        IReadOnlyList<FlowNode> nodes, IReadOnlyList<FlowEdge> edges, FlowLayoutOptions opts,
+        IReadOnlyDictionary<string, (double Width, double Height)>? measured, LayoutCore core)
+    {
+        if (nodes.Count == 0) return Array.Empty<FlowNode>();
+        var hierarchy = new FlowHierarchy(nodes);
+        if (!hierarchy.HasGroups) return core(nodes, edges, opts, measured);
+
+        var current = new Dictionary<string, FlowNode>(StringComparer.Ordinal);
+        foreach (var n in nodes) if (n is not null && !string.IsNullOrEmpty(n.Id)) current.TryAdd(n.Id, n);
+        var sizes = new Dictionary<string, (double Width, double Height)>(StringComparer.Ordinal);
+        if (measured is not null) foreach (var (k, v) in measured) sizes[k] = v;
+
+        // Groups deepest first, so a group's final size is known when its own level is laid out.
+        var groups = current.Keys.Where(hierarchy.HasChildren)
+            .OrderByDescending(hierarchy.DepthOf)
+            .ToList();
+        foreach (var groupId in groups)
+        {
+            var kids = hierarchy.ChildrenOf(groupId).Select(id => current[id]).ToList();
+            var kidSet = new HashSet<string>(kids.Select(k => k.Id), StringComparer.Ordinal);
+            var laid = core(kids, LevelEdges(edges, kidSet, hierarchy), opts, sizes);
+            var offsetX = opts.GroupPadding;
+            var offsetY = opts.GroupPadding + opts.GroupHeaderHeight;
+            double needW = 0, needH = 0;
+            var laidSizes = SizesOf(laid, sizes);
+            foreach (var k in laid)
+            {
+                var placed = k with { X = k.X + offsetX, Y = k.Y + offsetY };
+                current[k.Id] = placed;
+                var (w, h) = laidSizes[k.Id];
+                needW = Math.Max(needW, placed.X + w + opts.GroupPadding);
+                needH = Math.Max(needH, placed.Y + h + opts.GroupPadding);
+            }
+            var group = current[groupId];
+            var groupSize = SizesOf(new[] { group }, sizes)[groupId];
+            var grown = group with { Width = Math.Max(groupSize.Width, needW), Height = Math.Max(groupSize.Height, needH) };
+            current[groupId] = grown;
+            sizes[groupId] = (grown.Width!.Value, grown.Height!.Value);
+        }
+
+        var roots = current.Values.Where(n => hierarchy.ParentOf(n.Id) is null).ToList();
+        var rootSet = new HashSet<string>(roots.Select(r => r.Id), StringComparer.Ordinal);
+        foreach (var r in core(roots, LevelEdges(edges, rootSet, hierarchy), opts, sizes)) current[r.Id] = r;
+
+        return nodes.Select(n => current.TryGetValue(n.Id, out var laidOut) ? laidOut : n).ToList();
+    }
+
+    // The edges between two DIFFERENT members of one sibling set, each end mapped to the member that
+    // contains it (itself, or its ancestor in the set) — deduplicated, in input order.
+    private static List<FlowEdge> LevelEdges(IReadOnlyList<FlowEdge> edges, HashSet<string> members, FlowHierarchy hierarchy)
+    {
+        string? MemberOf(string id)
+        {
+            var cursor = hierarchy.Contains(id) ? id : null;
+            while (cursor is not null && !members.Contains(cursor)) cursor = hierarchy.ParentOf(cursor);
+            return cursor;
+        }
+
+        var result = new List<FlowEdge>();
+        var seen = new HashSet<(string, string)>();
+        foreach (var e in edges)
+        {
+            if (e is null) continue;
+            var s = MemberOf(e.Source);
+            var t = MemberOf(e.Target);
+            if (s is null || t is null || s == t || !seen.Add((s, t))) continue;
+            result.Add(s == e.Source && t == e.Target ? e : new FlowEdge(e.Id, s, t));
+        }
+        return result;
+    }
+
+    private static IReadOnlyList<FlowNode> LayeredCore(
+        IReadOnlyList<FlowNode> nodes, IReadOnlyList<FlowEdge> edges,
+        FlowLayoutOptions opts, IReadOnlyDictionary<string, (double Width, double Height)>? measured,
+        int crossingReductionSweeps)
+    {
         if (nodes.Count == 0) return Array.Empty<FlowNode>();
 
         var ids = nodes.Select(n => n.Id).ToList();

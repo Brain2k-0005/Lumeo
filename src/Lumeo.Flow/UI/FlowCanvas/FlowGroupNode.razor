@@ -1,0 +1,63 @@
+@namespace Lumeo
+
+@* FlowGroupNode — the default chrome for a sub-flow group (phase 5): a tinted, dashed-border box with a
+   label row, resizable through FlowNodeResizer. Render it from NodeTemplate for your group nodes
+   (typically `@if (ctx.Node.Type == FlowGroupNode.GroupType) { <FlowGroupNode /> }`); without a
+   NodeTemplate the canvas renders it by itself for every node of Type "group" — which is what
+   FlowCanvas.GroupSelectionAsync (Ctrl+G) creates.
+
+   The group node itself is an ordinary FlowNode (give it a Width/Height; the box fills the host).
+   Its children are the nodes whose ParentId points at it: their X/Y are relative to its top-left
+   corner, they paint above it, and dragging the group moves them live. *@
+
+@if (Node is not null)
+{
+    <div data-slot="flow-group"
+         class="@RootClass"
+         style="@RootStyle"
+         @attributes="AdditionalAttributes">
+        <div data-slot="flow-group-label" class="truncate px-2.5 pt-1.5 text-xs font-medium text-muted-foreground">
+            @(Label ?? Node.Data?.ToString() ?? Node.Id)
+        </div>
+        @ChildContent
+        @if (Resizable)
+        {
+            <FlowNodeResizer MinWidth="MinWidth" MinHeight="MinHeight" />
+        }
+    </div>
+}
+
+@code {
+    /// <summary>The <see cref="FlowNode.Type"/> the canvas treats as a group: <see cref="FlowCanvas.GroupSelectionAsync"/> creates nodes of this type, and a canvas without a <c>NodeTemplate</c> renders them with this component.</summary>
+    public const string GroupType = "group";
+
+    [CascadingParameter(Name = "LumeoFlowNode")] private FlowNode? Node { get; set; }
+
+    /// <summary>The label in the top-left corner. Defaults to the node's <see cref="FlowNode.Data"/> (as text), else its <see cref="FlowNode.Id"/>.</summary>
+    [Parameter] public string? Label { get; set; }
+
+    /// <summary>Renders <see cref="FlowNodeResizer"/> grips while the group is selected. On by default.</summary>
+    [Parameter] public bool Resizable { get; set; } = true;
+
+    /// <summary>Smallest width, both for the box and for a resize, in flow units.</summary>
+    [Parameter] public double MinWidth { get; set; } = 120;
+
+    /// <summary>Smallest height, both for the box and for a resize, in flow units.</summary>
+    [Parameter] public double MinHeight { get; set; } = 80;
+
+    /// <summary>Extra content rendered below the label (a toolbar, a badge).</summary>
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    /// <summary>Additional CSS classes merged onto the group box.</summary>
+    [Parameter] public string? Class { get; set; }
+
+    /// <summary>Captures unmatched attributes and applies them to the group box.</summary>
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private string RootClass => Cx.Merge(
+        "relative h-full w-full rounded-lg border border-dashed border-primary/30 bg-primary/5",
+        Class);
+
+    private string RootStyle
+        => "min-width:" + FlowCanvas.R(MinWidth) + "px;min-height:" + FlowCanvas.R(MinHeight) + "px;box-sizing:border-box;";
+}

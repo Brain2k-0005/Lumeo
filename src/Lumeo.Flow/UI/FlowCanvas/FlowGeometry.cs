@@ -189,6 +189,39 @@ public static class FlowGeometry
         return new FlowHelperLineResult(snapX, snapY, lines);
     }
 
+    // ── Sub-flows (phase 5) ──────────────────────────────────────────────
+
+    /// <summary>
+    /// Every node's top-left corner in ABSOLUTE flow coordinates. A node with a
+    /// <see cref="FlowNode.ParentId"/> stores its <see cref="FlowNode.X"/>/<see cref="FlowNode.Y"/>
+    /// relative to its parent's top-left corner; this resolves the whole chain. A missing parent or a
+    /// parent cycle counts as top-level (its own X/Y). A duplicate id keeps its first occurrence.
+    /// </summary>
+    public static IReadOnlyDictionary<string, FlowPoint> GetAbsolutePositions(IReadOnlyList<FlowNode> nodes)
+    {
+        ArgumentNullException.ThrowIfNull(nodes);
+        var hierarchy = new FlowHierarchy(nodes);
+        var result = new Dictionary<string, FlowPoint>(StringComparer.Ordinal);
+        foreach (var n in nodes)
+        {
+            if (n is null || string.IsNullOrEmpty(n.Id) || result.ContainsKey(n.Id)) continue;
+            result[n.Id] = hierarchy.AbsoluteOf(n);
+        }
+        return result;
+    }
+
+    /// <summary>
+    /// Clamps a child's RELATIVE top-left corner so a <paramref name="width"/> × <paramref name="height"/>
+    /// box stays inside a parent of <paramref name="parentWidth"/> × <paramref name="parentHeight"/>
+    /// (<see cref="FlowExtent.Parent"/>). A child larger than its parent pins to the parent's top-left.
+    /// </summary>
+    public static FlowPoint ClampToParent(double x, double y, double width, double height, double parentWidth, double parentHeight)
+    {
+        var maxX = Math.Max(0, parentWidth - width);
+        var maxY = Math.Max(0, parentHeight - height);
+        return new FlowPoint(Math.Clamp(x, 0, maxX), Math.Clamp(y, 0, maxY));
+    }
+
     // ── Handles ──────────────────────────────────────────────────────────
 
     /// <summary>
