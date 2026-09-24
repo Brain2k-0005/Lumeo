@@ -895,6 +895,27 @@ export function positionFixed(contentId, referenceId, align, matchWidth, side, o
         content.style.setProperty('--lumeo-arrow-x', `${arrowX}px`);
         content.style.setProperty('--lumeo-arrow-y', `${arrowY}px`);
 
+        // Radix `--radix-popover-trigger-width` parity: the reference element's rendered
+        // width, republished as a CSS custom property on the content so a consumer (or
+        // PopoverContent's own MatchTriggerWidth) can drive `width` from it in CSS instead
+        // of needing matchWidth to force an inline style. Kept live by the same scroll/
+        // resize/rAF-watch listeners that already re-run update(). Set unconditionally —
+        // consumers that don't read the var are unaffected (same precedent as arrow-x/y).
+        content.style.setProperty('--lumeo-popover-trigger-width', `${rRect.width}px`);
+
+        // Radix `--radix-dropdown-menu-content-available-height` parity: the vertical gap
+        // between the content's final top edge and the viewport bottom (the same 8px
+        // breathing room used by the clamp guards above), republished as a CSS custom
+        // property so a component with a built-in scrollable inner viewport (e.g.
+        // DropdownMenuContent, ContextMenuContent, MenubarContent) can cap its own height
+        // and scroll instead of overflowing the viewport, without duplicating this
+        // collision math. Kept live by the same listeners that re-run update().
+        const finalTopForHeight = parseFloat(content.style.top);
+        if (Number.isFinite(finalTopForHeight)) {
+            const availableHeight = Math.max(0, window.innerHeight - finalTopForHeight - 8);
+            content.style.setProperty('--lumeo-dropdown-available-height', `${availableHeight}px`);
+        }
+
         // Notify .NET of a LATER side change (skips the very first pass — lastReportedSide is still null
         // there, and that placement is already conveyed by positionFixed's synchronous return).
         if (dotnetRef && lastReportedSide !== null && computedSide !== lastReportedSide) {
@@ -1051,6 +1072,16 @@ export function positionAtPoint(contentId, x, y) {
     const offY = settled.top - top;
     if (Math.abs(offX) > 0.5) el.style.left = `${left - offX}px`;
     if (Math.abs(offY) > 0.5) el.style.top = `${top - offY}px`;
+
+    // Same `--lumeo-dropdown-available-height` parity as positionFixed's update() (see
+    // there for the rationale) — ContextMenuContent has no anchor element so it positions
+    // via this function instead, but it shares the same overflow-visible/scrollable-
+    // viewport pattern and needs the same live available-height signal.
+    const finalTop = parseFloat(el.style.top);
+    if (Number.isFinite(finalTop)) {
+        const availableHeight = Math.max(0, vh - finalTop - margin);
+        el.style.setProperty('--lumeo-dropdown-available-height', `${availableHeight}px`);
+    }
 }
 
 // --- Viewport Size ---

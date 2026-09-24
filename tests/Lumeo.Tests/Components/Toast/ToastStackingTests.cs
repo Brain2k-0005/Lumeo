@@ -528,8 +528,22 @@ public class ToastStackingTests : IAsyncLifetime
         // back-to-back, with NO intervening wait — the deferred-collapse guard (OnFocusIn
         // cancelling any pending OnFocusOut collapse) must keep the group expanded the whole way
         // through, never rendering data-expanded="false" for even one frame in between.
-        cut.FindAll("[role='alert'],[role='status'] button")[0].FocusOut();
-        cut.FindAll("[role='alert'],[role='status'] button")[1].FocusIn();
+        //
+        // Issue #447: both dispatches are AWAITED, back-to-back in ONE dispatcher turn — the way a
+        // browser delivers the pair. bUnit's synchronous FocusOut()/FocusIn() only queue the event
+        // when the renderer's dispatcher is busy (probe: FocusOut() returned in 2ms while the
+        // dispatcher was held), so button[1] used to be queried BEFORE the queued focusout's
+        // re-render replaced the group's event-handler ids. The focusin then went to a stale id and
+        // was dropped without an error, nothing cancelled the 30ms collapse, and the group was
+        // collapsed at the post-wait assertion below — the "Expected true, Actual false" seen once
+        // in 20 whole-class loops under CPU load. The product's grace window was never at fault.
+        // Holding the dispatcher for the pair also keeps the 30ms grace timer's collapse from
+        // landing between them however long the test thread is descheduled.
+        await cut.InvokeAsync(async () =>
+        {
+            await cut.FindAll("[role='alert'],[role='status'] button")[0].FocusOutAsync(new Microsoft.AspNetCore.Components.Web.FocusEventArgs());
+            await cut.FindAll("[role='alert'],[role='status'] button")[1].FocusInAsync(new Microsoft.AspNetCore.Components.Web.FocusEventArgs());
+        });
         Assert.Equal("true", Attr(cut.Find("[data-stacked='true']"), "data-expanded"));
 
         // Give the (0ms, but still asynchronous) deferred-collapse timer every chance to fire if
@@ -662,42 +676,55 @@ public class ToastStackingTests : IAsyncLifetime
         var toastService = GetToastService();
         var cut = _ctx.Render<L.ToastProvider>(p => p.Add(x => x.MaxToasts, 1));
 
+        // Issue #447: every delay in this sequence (A's exit, B's 100ms duration) runs on a clock
+        // this test advances. On the real clock, CI run 33597070952 failed at "B appears within
+        // 2s" with a check count of 1 — not one render in 2s, i.e. A's 220ms exit continuation
+        // never got a thread-pool thread in time. (#477 then widened the 400ms wait further down,
+        // which was not the line that failed.) Nothing here measures wall-clock time any more;
+        // the waits below only guard against a hang.
+        var clock = new ManualTimeProvider();
+        cut.Instance.Clock = clock;
+
         toastService.Show(new ToastOptions { Title = "A", Duration = 60000 });
         cut.WaitForAssertion(() =>
             Assert.Contains(cut.FindAll("[role='alert'],[role='status']"), e => e.TextContent.Contains("A")));
 
-        // Hover the (default, always-rendered) group's own viewport container.
-        cut.Find("[role='alert'],[role='status']").ParentElement!.MouseEnter();
+        // Hover the (default, always-rendered) group's own viewport container. Awaited, so the
+        // handler (and the pause it applies to A) has run before anything below.
+        await cut.Find("[role='alert'],[role='status']").ParentElement!.MouseEnterAsync(new Microsoft.AspNetCore.Components.Web.MouseEventArgs());
         cut.WaitForAssertion(() =>
             Assert.Equal("true", Attr(cut.Find("[data-stack-edge='up']"), "data-expanded")));
+        Assert.Equal(0, clock.ArmedTimerCount); // A's own 60s timer is paused, not running
 
-        // Showing B at MaxToasts=1 evicts A (its ~220ms exit) and, once that completes, admits B
-        // into the freed slot — all within the SAME ReconcileGroup call the eviction started, with
-        // the pointer never having left the group.
+        // Showing B at MaxToasts=1 evicts A (its exit animation) and, once that completes, admits
+        // B into the freed slot — all within the SAME ReconcileGroup call the eviction started,
+        // with the pointer never having left the group.
         toastService.Show(new ToastOptions { Title = "B", Duration = 100 });
+        clock.WaitForArmedTimers(1); // A's exit delay
+        clock.Advance(TimeSpan.FromMilliseconds(cut.Instance.ExitAnimationMs));
         cut.WaitForAssertion(() =>
             Assert.Contains(cut.FindAll("[role='alert'],[role='status']"), e => e.TextContent.Contains("B")),
-            TimeSpan.FromSeconds(2));
+            TimeSpan.FromSeconds(30));
 
-        // Wait well past B's 100ms duration (and past A's ~220ms exit) while STILL hovered —
-        // pre-fix, B's timer started running unpaused the instant it was admitted (the stale
-        // `_expandedGroups` clear from A's eviction already ran by then) and would have
-        // auto-dismissed here even though the pointer never left the group.
-        //
-        // Field report #464, finding #447: this is a real-clock margin over B's 100ms duration —
-        // under CI/full-suite thread-pool contention a too-tight margin here reads as a flake
-        // that has nothing to do with the pause logic actually being tested. 900ms (a 9x margin,
-        // not the original 4x) gives real scheduling jitter far more room without meaningfully
-        // slowing this test down.
-        await Task.Delay(900);
-        Assert.Contains(cut.FindAll("[role='alert'],[role='status']"), e => e.TextContent.Contains("B"));
+        // B was admitted into a still-hovered group, so its timer must not be running at all —
+        // pre-fix, it started unpaused the instant it was admitted (the stale `_expandedGroups`
+        // clear from A's eviction had already run) and would have auto-dismissed while the
+        // pointer never left the group. Nine times B's duration of clock time changes nothing.
+        Assert.Equal(0, clock.ArmedTimerCount);
+        clock.Advance(TimeSpan.FromMilliseconds(900));
+        await cut.InvokeAsync(() =>
+            Assert.Contains(cut.FindAll("[role='alert'],[role='status']"), e => e.TextContent.Contains("B")));
 
         // Leaving now resumes B's timer (it never ran while paused) — it auto-dismisses like any
         // other real-duration toast, proving this isn't just a timer that got lost.
-        cut.Find("[role='alert'],[role='status']").ParentElement!.MouseLeave();
+        await cut.Find("[role='alert'],[role='status']").ParentElement!.MouseLeaveAsync(new Microsoft.AspNetCore.Components.Web.MouseEventArgs());
+        clock.WaitForArmedTimers(1); // B's resumed 100ms timer
+        clock.Advance(TimeSpan.FromMilliseconds(100));
+        clock.WaitForArmedTimers(1); // B's exit delay
+        clock.Advance(TimeSpan.FromMilliseconds(cut.Instance.ExitAnimationMs));
         cut.WaitForAssertion(() =>
             Assert.DoesNotContain(cut.FindAll("[role='alert'],[role='status']"), e => e.TextContent.Contains("B")),
-            TimeSpan.FromSeconds(5));
+            TimeSpan.FromSeconds(30));
     }
 
     // ── Held-fill entrance class: never park animate-toast-in ──────────────

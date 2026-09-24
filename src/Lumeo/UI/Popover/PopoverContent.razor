@@ -49,6 +49,20 @@
     /// surface wins, which is a race rather than a contract.
     /// </summary>
     [Parameter] public string? FocusTargetId { get; set; }
+
+    /// <summary>
+    /// When <c>true</c>, the popover's width follows the trigger's rendered width instead of
+    /// the fixed default (Radix's <c>--radix-popover-trigger-width</c> pattern). Reuses the
+    /// positioning JS's existing <c>matchWidth</c> plumbing (already used by Select/Combobox/
+    /// TreeSelect) so the width re-measures on the same scroll/resize/trigger-resize cadence
+    /// that already drives repositioning — no separate ResizeObserver needed. The trigger's
+    /// rendered width is also published as <c>--lumeo-popover-trigger-width</c> on the content
+    /// element regardless of this flag, so a consumer can drive their own <c>Class</c> width
+    /// from it (e.g. <c>calc(var(--lumeo-popover-trigger-width) + 1rem)</c>) without opting
+    /// into the forced <c>width</c>. Default <c>false</c> — existing fixed-width popovers are
+    /// unaffected.
+    /// </summary>
+    [Parameter] public bool MatchTriggerWidth { get; set; }
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
@@ -64,7 +78,11 @@
     private (string Side, string Align)? _appliedAnchor;
 
     private string CssClass => Cx.Merge(
-        "fixed z-50 w-72 rounded-md border border-border/60 bg-popover p-2.5 text-popover-foreground shadow-md outline-none",
+        "fixed z-50 rounded-md border border-border/60 bg-popover p-2.5 text-popover-foreground shadow-md outline-none",
+        // MatchTriggerWidth: skip the fixed w-72 so the panel doesn't flash at 18rem before
+        // the positioning JS applies the real trigger width as an inline style (which would
+        // win the cascade over w-72 anyway, but the first paint would still be wrong).
+        MatchTriggerWidth ? "w-auto" : "w-72",
         ShowArrow ? "overflow-visible" : "overflow-hidden",
         "animate-fade-in",
         Class);
@@ -101,7 +119,7 @@
     {
         if (Context.IsOpen && !_registered)
         {
-            await Interop.PositionFixed(_contentId, Context.WrapperId, AlignStr, false, SideStr, SideOffset, AlignOffset);
+            await Interop.PositionFixed(_contentId, Context.WrapperId, AlignStr, MatchTriggerWidth, SideStr, SideOffset, AlignOffset);
             _appliedAnchor = (SideStr, AlignStr);
             await Interop.RegisterClickOutside(_contentId, Context.WrapperId, async () =>
             {
@@ -136,7 +154,7 @@
             // #86 — Side/Align changed while the popover stayed open: re-run
             // PositionFixed against the new anchor. The tuple compare keeps a
             // same-anchor re-render from churning the floating-ui placement.
-            await Interop.PositionFixed(_contentId, Context.WrapperId, AlignStr, false, SideStr, SideOffset, AlignOffset);
+            await Interop.PositionFixed(_contentId, Context.WrapperId, AlignStr, MatchTriggerWidth, SideStr, SideOffset, AlignOffset);
             _appliedAnchor = (SideStr, AlignStr);
         }
         else if (!Context.IsOpen && _registered)

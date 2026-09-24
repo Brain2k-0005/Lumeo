@@ -136,6 +136,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   instead (draggable thumbs, appear on hover/scroll, RTL-safe, `prefers-reduced-motion`-aware,
   reserves no layout space) — off by default, so existing consumers see no change (consumer
   report).
+- **DropdownMenu/ContextMenu/Menubar: content scrolls a long list itself.** `DropdownMenuContent`
+  (and `ContextMenuContent`/`MenubarContent`, which share the same overflow-visible/fixed-submenu
+  pattern) now cap an inner item viewport to the live available viewport space in the placement
+  direction — `--lumeo-dropdown-available-height`, positioning JS's parity with Radix's
+  `--radix-dropdown-menu-content-available-height` — and scroll past it, overridable per-panel
+  with the new `MaxHeight` parameter. The outer panel stays `overflow-visible` so a submenu
+  (`position: fixed`) keeps escaping it fully unclipped, even from an item deep in the scrolled
+  list — no more reaching for a consumer-supplied wrapper, which could reintroduce clipping by
+  giving the panel a containing block (#520).
+- **Popover: content can follow the trigger's rendered width.** `PopoverContent.MatchTriggerWidth`
+  reuses the positioning JS's existing trigger-width-matching plumbing (already used by
+  Select/Combobox/TreeSelect) so the panel's width tracks the trigger live instead of needing a
+  manual `Class="w-full"` alongside `PopoverTrigger AsChild`. The trigger's rendered width is also
+  published as `--lumeo-popover-trigger-width` (Radix's `--radix-popover-trigger-width` pattern)
+  on the content element regardless of the flag, for a custom `Class` to derive its own width from.
+  Default unchanged (#518).
 
 ### Fixed
 - **DataGrid: `ApplyLayoutAsync` reloads exactly like a header click.** A layout applied with a
@@ -170,7 +186,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [5.10.5] - 2026-09-23
 
-### Fixed
 - **The Dutch locale is complete.** 166 of the 632 keys had no `nl` entry, so a Dutch UI fell back
   to English for the whole Editor, the AI primitives (`AgentMessage`, `AgentMessageList`,
   `PromptInput`), `QueryBuilder`, `PickList`, the theme switcher, the `TimePicker` labels, the
@@ -182,7 +197,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [5.10.4] - 2026-09-16
 
-### Fixed
 - **Tooltip/Popover placement**: overlays anchored inside wide scrolled containers no longer measure their
   wrapped static-position size (a `position: fixed` box measured before `left`/`top` are set wraps at its static
   position deep inside the canvas and inflates its height), so Gantt bar tooltips sit on their bars; the anchor is
@@ -200,7 +214,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [5.10.3] - 2026-09-16
 
-### Fixed
 - **Gantt bar labels stay readable across the progress fill.** The completed part of a bar was
   an opaque dark fill with the label drawn inline across it, so a label vanished wherever it
   crossed the fill; the fill is now a translucent overlay of the bar colour in both the
@@ -209,7 +222,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   equals its foreground, as in zinc dark), and the horizontal scrollbar no longer overlays the
   last row.
 
-### Added
 - **DataGrid: `FilteredRowCount`, `TotalRowCount` and `OnRowCountChanged`.** The count of rows
   that survive the grid's own filters and search (before paging; the server total in
   `ServerMode` and row virtualization) and the source count, plus an event so a host can
@@ -224,7 +236,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [5.10.2] - 2026-09-16
 
-### Fixed
 - **"Menu Color" follows the active theme and stays out of embedded previews.** The setting
   wrote eight zinc-grey `--color-sidebar*` values as inline properties on `<html>`, so every
   sidebar on the page (docs demos, the dashboard block, the home teaser) turned zinc-dark, and a
@@ -237,7 +248,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [5.10.1] - 2026-09-15
 
-### Fixed
 - **`SvgGlyph` has a real `Class` parameter.** It took `class` only through the attribute
   splat, so a call site writing `Class="h-4 w-4"` set an attribute literally named `Class` on
   the `<svg>`, which on an SVG element is not `class`: after WASM hydration the glyph had no
@@ -264,7 +274,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Field report #464 (a Blazor WASM product on 5.0.0) is worked through in this release: the four
 new findings and the carried list, each either fixed, added, or verified and pinned with a test.
 
-### Added
 - **`IconPicker`**, a searchable, virtualized icon grid behind a `Popover` trigger (field report
   #464). It is pack-agnostic: it takes an `IReadOnlyList<IconPickerItem>` (name, `IconSource`,
   optional keywords) built from any installed `Lumeo.Icons.*` pack, the docs show the one-line
@@ -311,7 +320,6 @@ new findings and the carried list, each either fixed, added, or verified and pin
 - **The build references `Microsoft.SourceLink.GitHub` 10.0.401**; the 8.0.0 build task fails
   NuGet's audit (CVE-2026-62900) and, with warnings as errors, every clean restore.
 
-### Fixed
 - **`Select` with `Searchable` filters composed `<SelectItem>` children** (field report #464,
   finding 1). The filter only ran over `Items`, so a select composed from children went empty on
   the first keystroke. Composed items now filter on their rendered label, then an explicit
@@ -378,7 +386,6 @@ new findings and the carried list, each either fixed, added, or verified and pin
 
 ## [5.9.1] - 2026-09-04
 
-### Fixed
 - **The inline filter editor's popover is one control tall.** The text and number editors sat as
   a bordered group inside a padded popover, so the popover stood 16px taller than the chip it
   edits and framed the field twice; the group's dark focus frame made it heavier still. The
@@ -395,7 +402,6 @@ new findings and the carried list, each either fixed, added, or verified and pin
 
 ## [5.9.0] - 2026-09-04
 
-### Added
 - **`Filters.MenuActions` and `FilterField.MenuActions`** (field report §16). The entries of a
   rule's menu as flags (`Duplicate`, `Negate`, `Group`, `Remove`); the bar sets them for every
   rule, a field narrows them, a rule shows the intersection, and a chip drops its menu segment
@@ -418,7 +424,6 @@ new findings and the carried list, each either fixed, added, or verified and pin
   `md:text-xs`, and that inner field shrinks with its wrapper (`min-w-0`) instead of
   overflowing it.
 
-### Fixed
 - **Shift-click on the selection checkbox selects the range** (field report §16.2, follows
   #440). The Checkbox's own click ran before the cell's, toggled the row and re-anchored the
   range on it, so the cell's Shift handler then filled a range of one: exactly the two clicked
@@ -429,7 +434,6 @@ new findings and the carried list, each either fixed, added, or verified and pin
 
 ## [5.8.0] - 2026-09-03
 
-### Added
 - **`Filters`, a filter builder in `Lumeo.DataGrid`** (field report §15, ReUI's Filters ported).
   Add a filter, pick the attribute in a searchable list (nested attributes drill down), then the
   condition and the value inside the chip; the chip's menu duplicates, negates or removes.
@@ -459,7 +463,6 @@ new findings and the carried list, each either fixed, added, or verified and pin
   (`UnknownField`, `UnknownOperator`); a `DateOnly` or `DateTime` value keeps its type through
   JSON.
 
-### Fixed
 - **Shift-click selects a range in virtualized server mode.** With `Virtualized="true"` and
   `OnRangeRequest`, rows go from the provider straight into `<Virtualize>` and the grid holds
   no row list, so a Shift-click could not find the anchor and quietly toggled the one row
@@ -474,7 +477,6 @@ The items of the DocFlow field report that were still open after 5.6.0, re-check
 against the current source. Several entries the report still lists as open had been
 shipped between 5.1.0 and 5.6.0 and are only re-confirmed here; the ones below changed.
 
-### Added
 - **DataGrid `SelectOnRowClick`** (field report 1.8). `false` keeps selection on the checkbox
   column and leaves the row click to `OnRowClick`, e.g. to open a detail view.
 - **DataGrid `ShowReorderHandle` / `ShowPinButton`** (1.11). Hide the grip and the pin button;
@@ -490,7 +492,6 @@ shipped between 5.1.0 and 5.6.0 and are only re-confirmed here; the ones below c
 - **Calendar geometry tokens** (4.10). `--lumeo-calendar-cell-size` (32px) and
   `--lumeo-calendar-p` (12px) size the day cells and the frame; the week grid follows.
 
-### Changed
 - **Badge's default rung is shadcn's badge** (2.2): `px-2 py-0.5 text-xs` on a 16px line,
   22px tall, so descenders no longer clip inside a truncating span. The larger rungs moved
   up one step to keep the ladder ordered. 5.0 to 5.6 sat on reui's 20px `leading-none`
@@ -508,7 +509,6 @@ shipped between 5.1.0 and 5.6.0 and are only re-confirmed here; the ones below c
   `overflow-visible`: they have no scroll height of their own, and a sub-menu is a DOM child
   that `overflow-hidden` clipped whenever a host's CSS gave the content a containing block.
 
-### Fixed
 - **A single-value Select shows its label** (4.1b). A `SelectTrigger` without custom
   content rendered nothing for the selected value, against its own documentation. It now
   shows the item's label, and a closed composition-mode Select registers its items so a
@@ -527,7 +527,6 @@ shipped between 5.1.0 and 5.6.0 and are only re-confirmed here; the ones below c
 
 The remaining items from the DocFlow field report.
 
-### Added
 
 - **`SideOffset` and `AlignOffset`** on `DropdownMenuContent`, `DropdownMenuSubContent`,
   `ContextMenuSubContent`, `PopoverContent` and `HoverCardContent` (Radix's `sideOffset` /
@@ -542,7 +541,6 @@ The remaining items from the DocFlow field report.
   ship through `LumeoLocalizationOptions.AddMany` (Croatian as the example). Field report
   1.19 / 1.20.
 
-### Fixed
 
 - **A click on a modal backdrop no longer takes the keyboard out of the dialog.** The
   backdrop moved focus to the page body, or to an outer dialog when one dialog sat inside
@@ -557,7 +555,6 @@ The remaining items from the DocFlow field report.
 Issue #434, in the order the field report suggested: stable override contracts first,
 then a small fixed token set. Nothing renders differently until you use them.
 
-### Added
 
 - **`data-slot` on every component.** All 324 element-rooted components mark their root
   with `data-slot="<component-in-kebab-case>"` (`button`, `sidebar-menu-button`,
@@ -581,7 +578,6 @@ then a small fixed token set. Nothing renders differently until you use them.
 
 ## [5.4.0] - 2026-09-02
 
-### Added
 
 - **`DataGrid` column menu.** `ColumnMenu="true"` turns the header click into the
   shadcn/ReUI column menu instead of a sort toggle: sort ascending / descending (a check
@@ -599,7 +595,6 @@ then a small fixed token set. Nothing renders differently until you use them.
   absorbs the grid's free space, as ReUI's `meta.fillWidth` does, so the grid keeps spanning
   its container while every other column stays exactly its width.
 
-### Changed
 
 - **Column resizing moves one edge only.** With every visible column sized, the grid lays
   out fixed at the sum of the widths: each column renders exactly its `Width` (it used to be
@@ -612,7 +607,6 @@ then a small fixed token set. Nothing renders differently until you use them.
 
 ## [5.3.1] - 2026-09-02
 
-### Fixed
 
 - **Every border defaults to the border token.** shadcn's base layer sets
   `border-color` to the border token on every element, so a bare `border` class draws
@@ -620,7 +614,6 @@ then a small fixed token set. Nothing renders differently until you use them.
   verbatim shadcn port, drew `currentColor`, a near-black frame. The rule lives in
   `@layer base` in `lumeo.css`, so utilities like `border-primary` still win.
 
-### Docs
 
 - **Mail and Music** are shadcn's examples, ported one to one from the last commit
   that carried them: the resizable three-pane inbox with the collapsing folder rail,
@@ -638,7 +631,6 @@ shadcn's four example apps are in the blocks catalogue now, ported one to one fr
 the current sources, and porting them verbatim showed where four primitives still
 drew their own thing. Each of those lands on shadcn v4 here.
 
-### Added
 
 - **`CardAction`** and a two-row `CardHeader` grid, ported from shadcn's `card.tsx`:
   the header grows a second column only when an action is present, and the action
@@ -654,7 +646,6 @@ drew their own thing. Each of those lands on shadcn v4 here.
   replaces "Dashboard (full)", Tasks replaces "Task Tracker", Authentication replaces
   the three-screen page; Playground is new.
 
-### Changed
 
 - **`Slider` looks like shadcn's**: a 16px white thumb with a primary hairline and
   `shadow-sm` that grows a 4px ring on hover and focus, a 6px muted track with
@@ -668,7 +659,6 @@ drew their own thing. Each of those lands on shadcn v4 here.
   does not intercept the pointer; a command-item icon without its own text colour
   is muted. They used to render at the icon's natural size.
 
-### Fixed
 
 - **Chart gradient stops resolved to `0`** when a series colour was a token that
   pointed at another token (`--chart-1: var(--color-primary)`): the interop's
@@ -694,7 +684,6 @@ than re-imagined. Doing that honestly exposed two families the library was missi
 shadcn's form-layout primitive, and half of its sidebar. Both ship here, measured live
 on ui.shadcn.com on 2026-09-02.
 
-### Added
 
 - **The Field family** — `Field`, `FieldGroup`, `FieldSet`, `FieldLegend`, `FieldLabel`,
   `FieldTitle`, `FieldContent`, `FieldDescription`, `FieldSeparator`, `FieldError` —
@@ -715,7 +704,6 @@ on ui.shadcn.com on 2026-09-02.
 - **Blocks**: shadcn's `login-01`…`login-05`, `signup-01`…`signup-05` and `sidebar-07`,
   each as its own demo with source, replacing the hand-built Sign In / Sign Up pages.
 
-### Changed
 
 - **`SidebarHeader` and `SidebarFooter` no longer draw a border by default**, and the
   aside drops its permanent edge border: shadcn's sidebar has neither, the `--sidebar`
@@ -724,7 +712,6 @@ on ui.shadcn.com on 2026-09-02.
   `bg-sidebar-accent text-sidebar-accent-foreground` on hover, instead of
   `text-muted-foreground` / `hover:text-foreground`.
 
-### Fixed
 
 - **A collapsed icon rail reaches the bottom of its shell.** `h-full` on the in-flow
   aside resolved to `auto` inside a wrapper that only had a `min-height`, which defeated
@@ -738,7 +725,6 @@ measured equal; what still read as heavier was the resting shadow Lumeo put on e
 control, and a card that spaced itself the way shadcn's did two versions ago. Both
 measured live on ui.shadcn.com and reui.io on 2026-09-02, and the two agree.
 
-### Changed
 
 - **BREAKING — controls carry no resting shadow.** Button (every variant),
   AlertDialogAction and AlertDialogCancel, UploadTrigger, Badge, Input, Switch lose
@@ -769,7 +755,6 @@ inheriting the page's 16px text, a radius scale two pixels rounder on every rung
 icons that had to be sized by hand. Each of those is now measured equal to shadcn's live
 docs, and most of that stylesheet is no longer needed.
 
-### Changed
 
 - **BREAKING — the radius scale is shadcn's.** `--radius-sm/md/lg/xl` were
   `0.5r / r / 1.25r / 1.5r` (5 / 10 / 12.5 / 15px); shadcn v4 has `r-4px / r-2px / r / r+4px`
@@ -810,7 +795,6 @@ docs, and most of that stylesheet is no longer needed.
   for (1.44 MB brotli) whether or not export was on. CSV stays built in; add the new
   package for the other two formats.
 
-### Fixed
 
 - **DataGrid `OnRangeRequest` fires** (#431). The empty-state branch matched the
   deliberately empty `Items` list before the server-virtualization branch, so
@@ -833,7 +817,6 @@ docs, and most of that stylesheet is no longer needed.
   `Common.Expand`/`Collapse`, the three Gantt keyboard announcements and
   `Kanban.CardRoleDescription`. A test now holds German to full parity with English.
 
-### Added
 
 - **Icons size themselves.** Button, DropdownMenuItem, DropdownMenuSubTrigger and
   SidebarMenuButton apply `size-4` to any `<svg>` without an explicit `size-*`/`h-*` class,
@@ -853,7 +836,6 @@ docs, and most of that stylesheet is no longer needed.
   `text-center` silently overrides Lumeo's `sm:text-start`. That was the mechanism behind
   the "dialog headers always centred" report. The CLI copies the file in prebuilt mode.
 
-### Docs
 
 - The README and the install page now say how to run your own Tailwind build with
   Lumeo — `@source` the safelist and drop the bundle — and why loading both is wrong.
@@ -873,7 +855,6 @@ Every control in Lumeo was one step larger than its shadcn counterpart. Measured
 against a React project built with the shadcn CLI, that turned out to be exactly
 what it was: a systematic one-rung offset rather than scattered drift.
 
-### Changed
 
 - **BREAKING — `Label` is a flex container.** It now matches shadcn's
   `flex items-center gap-2`, which is what lets a label hold an icon or a required
@@ -907,7 +888,6 @@ what it was: a systematic one-rung offset rather than scattered drift.
   can wrap themselves in `DensityScope` at `Density.Spacious`, which lands within a hair
   of the old values.
 
-### Fixed
 
 - **A badge no longer stretches to its container.** `inline-flex` alone does not prevent
   it; shadcn and reui both carry `w-fit shrink-0 whitespace-nowrap`. Measured in a flex
@@ -924,7 +904,6 @@ what it was: a systematic one-rung offset rather than scattered drift.
 - **Compact inputs keep room for their line box** at every breakpoint, and an `Xxs`
   avatar's fallback initials are no longer clipped.
 
-### Added
 
 - **`AvatarGroup.Size`** and **`SplitButton.Density`**.
 - **`/e2e/shadcn-parity`** — one element per primitive at its defaults, the counterpart
@@ -932,7 +911,6 @@ what it was: a systematic one-rung offset rather than scattered drift.
 
 ## [4.3.3] - 2026-07-18
 
-### Added
 - **Custom number steppers on `Input`.** `<Input Type="number">` now renders themed
   vertical ▲▼ stepper buttons in place of the browser's native spinner arrows (which
   are always hidden for number inputs). They honour `min`/`max`/`step` from the usual
@@ -940,7 +918,6 @@ what it was: a systematic one-rung offset rather than scattered drift.
   New `ShowStepButtons` parameter (default `true`) renders a clean, spinner-free number
   field when set to `false`. The stepping core is shared with `NumberInput`.
 
-### Fixed
 - **Dead `disabled:opacity-50` on wrapped inputs.** The reduced-opacity style sat on the
   wrapper `<div>` (which can never match `:disabled`) instead of the `<input>`, so
   disabled inputs using the prefix/suffix/search/clearable/number layout did not dim.
@@ -948,7 +925,6 @@ what it was: a systematic one-rung offset rather than scattered drift.
 
 ## [4.3.2] - 2026-07-14
 
-### Fixed
 - **DataGrid: probabilistic "duplicate key" crash on large grids.** Row keys for
   reference-type items without a user-supplied `RowKey` were derived from the runtime
   identity hash, which is effectively 26-bit on CoreCLR — with ~1,200 distinct row
@@ -964,7 +940,6 @@ what it was: a systematic one-rung offset rather than scattered drift.
 
 DataGrid column-header interaction rework, driven by hands-on playground testing.
 
-### Changed
 - **Whole-header column drag.** Click anywhere on a header to sort; drag it (>5px,
   or long-press on touch) to reorder — the grip remains as a hover affordance and
   immediate handle. A completed drag never triggers a sort. Subtle lift animation
@@ -980,7 +955,6 @@ DataGrid column-header interaction rework, driven by hands-on playground testing
   was removed with the native drag retirement; it was unusable outside the grid's
   internals. New `DataGrid.UpdateColumnFlags` supports runtime column-flag updates.
 
-### Fixed
 - **Runtime-frozen column flags**: `Sortable`, `Filterable`, `Resizable`, `Pinnable`
   and row `Hoverable` now react to parameter changes at runtime (previously captured
   once at registration).
@@ -995,7 +969,6 @@ The trust release: a seven-point maturity campaign hardened over ~13 automated r
 waves, plus a full-library screen-reader audit. Everything below shipped through
 feature-branch PRs with green CI, a docs-parity gate, and API-stability baselines.
 
-### Added
 - **Toast stacking (sonner-style).** `ToastProvider.StackToasts` (default `true`):
   when a position group holds more than one toast, the newest renders in front
   at full scale while older toasts collapse behind it with a small directional
@@ -1036,7 +1009,6 @@ feature-branch PRs with green CI, a docs-parity gate, and API-stability baseline
   baselines on all shipped packages; a weekly NuGet-free eject gate proves all 164
   components vendor and compile standalone.
 
-### Changed
 - **Toast exits now animate** (previously removed without an exit transition), and
   toast stacking is on by default — see `StackToasts` above to opt out.
 - **DataGrid `aria-rowindex`/`aria-rowcount`** are now computed by a single row
@@ -1046,7 +1018,6 @@ feature-branch PRs with green CI, a docs-parity gate, and API-stability baseline
   (component/block counts, test totals, a11y coverage), and the accessibility page
   documents the real audit state including the tracked axe baseline.
 
-### Fixed
 - **Trimmed publish: components crashed at runtime** — under `PublishTrimmed`, the
   linker strips constructor parameter names and removes reflection-only parameterless
   constructors, so any anonymous type or positional record crossing JS interop threw
@@ -1082,7 +1053,6 @@ feature-branch PRs with green CI, a docs-parity gate, and API-stability baseline
 DataGrid column/row interaction suite rebuilt to flagship level (PR #353), hardened
 over a 13-round automated review loop plus a 41-scenario real-pointer browser harness.
 
-### Added
 - **DataGrid column resize, complete.** Always-visible hover handle, a resize
   guideline that tracks the exact cell edge (correct under min/max clamping,
   horizontal scroll, first column, and RTL), double-click auto-fit to intrinsic
@@ -1102,7 +1072,6 @@ over a 13-round automated review loop plus a 41-scenario real-pointer browser ha
   `IComponentInteropService` (existing implementations keep compiling); reorder and
   resize strings localized in all 14 locales.
 
-### Changed
 - **Interaction robustness.** A per-grid arbiter serializes every mutating gesture
   (drag, resize, double-click auto-fit, keyboard nudge) and is held until the .NET
   commit — including awaited consumer callbacks like `OnColumnResize` /
@@ -1114,7 +1083,6 @@ over a 13-round automated review loop plus a 41-scenario real-pointer browser ha
 - **Performance.** All per-move work stays in JavaScript (zero .NET interop calls
   during drag/resize movement), measured at ~0.004–0.007 ms per move event.
 
-### Changed
 - **Blazicons is gone everywhere.** The library decoupled in 4.1.0; this release
   removes every remaining live reference across the repo: the docs' third-party
   interop packages, lazy assembly groups and comparison surfaces (the icon page and
@@ -1133,7 +1101,6 @@ over a 13-round automated review loop plus a 41-scenario real-pointer browser ha
   `--dry-run` previews exactly what a real apply would write, warnings included.
   A compile-level drift guard ties the CLI's known-id set to the icon pack catalog.
 
-### Changed
 - **Docs/interop cleanup — Blazicons removed everywhere outside history.** The docs site
   no longer references or bundles any Blazicons package: the `/components/icon` browser and
   the customizer's icon-library picker are first-party `Lumeo.Icons.*` only, and the
@@ -1148,7 +1115,6 @@ over a 13-round automated review loop plus a 41-scenario real-pointer browser ha
 Bug-fix and TreeView-UX roll-up hardened over twenty-one review rounds (PR #351),
 including a structural rebuild of the TreeView's internal state ownership.
 
-### Added
 - **TreeView row-click expand (VS Code pattern).** Clicking anywhere on a parent row
   now selects it AND toggles its expansion by default; the chevron keeps working and
   still toggles without selecting. New `ExpandOnRowClick` parameter (default `true`) —
@@ -1172,7 +1138,6 @@ including a structural rebuild of the TreeView's internal state ownership.
   reloads (identity cannot be proven) while consumer value-seeds keep binding every
   match — both rules are documented in the component.
 
-### Fixed
 - **TreeView parent selection (#350).** Selection is tracked by node identity, so
   clicking a container node with a null or duplicate `Value` selects only that node
   instead of every node sharing the value. Identity survives same-content `Items`
@@ -1230,7 +1195,6 @@ a11y) hardened over ten Codex review rounds.
   `SIDEBAR_WIDTH_ICON`) and collapse/expand timing matches shadcn 1:1
   (`duration-200 ease-linear`).
 
-### Added
 - **First-party icon family — 16 trimmable packs (~51,000 icons), all
   `IsTrimmable`.** `Lumeo.IconSource` + `SvgGlyph` are the native icon
   model/renderer (Stroke/Fill styles, viewBox scaling, `StrokeWidth` override,
@@ -1310,7 +1274,6 @@ a11y) hardened over ten Codex review rounds.
   (`MapMarker.ClusterExclude`/`Properties`, `Map.ClusterProperties`/
   `ClusterColorExpression`/`ClusterRadius`/`ClusterMaxZoom`/`ElementId`).
 
-### Changed
 - **Theme-radius wave — ~75 hardcoded roundings across ~40 components now follow
   the `--radius` token** (Switch, Badge, Tabs Pill, remove/clear buttons, DataGrid
   chips, FABs, and more). Every stock theme renders **pixel-identical** to 4.0;
@@ -1330,7 +1293,6 @@ a11y) hardened over ten Codex review rounds.
   allowInEditable)` overloads as default interface members — additive, legacy
   3-param implementors compile and route unchanged.
 
-### Fixed
 - **Overlay exit saga (B11) — declarative Sheets and every service-opened
   Dialog/Drawer/AlertDialog now animate out reliably.** The final structural fix
   ports the exit to the Radix/shadcn **Presence** pattern: on close the
@@ -1379,7 +1341,6 @@ a11y) hardened over ten Codex review rounds.
 
 ## [4.1.0-preview.15] - 2026-07-06
 
-### Fixed
 - **B11, the structural fix — the exiting panel was FROZEN, not mistimed**:
   frame-sampling finally revealed the real culprit behind "the backdrop is
   gone before the sheet". After the slide-in, the containing-block guard
@@ -1403,7 +1364,6 @@ a11y) hardened over ten Codex review rounds.
 
 ## [4.1.0-preview.14] - 2026-07-06
 
-### Fixed
 - **Overlay exit: backdrop and panel now finish in sync** (consumer retest of
   preview.13: "the backdrop is gone before the sheet"). The exit keyframe
   durations were mismatched (fade-out 0.2s vs slide-out 0.25s vs zoom-out
@@ -1417,7 +1377,6 @@ a11y) hardened over ten Codex review rounds.
 
 ## [4.1.0-preview.13] - 2026-07-06
 
-### Fixed
 - **B11, the real fix — service overlays could still hard-close without their
   exit animation**: the exit latch was set only AFTER the open-interop chain
   completed in `OnAfterRenderAsync` (scroll lock -> focus trap -> slide-end ->
@@ -1437,7 +1396,6 @@ a11y) hardened over ten Codex review rounds.
 
 ## [4.1.0-preview.12] - 2026-07-06
 
-### Fixed
 - **Service-opened Dialog, Drawer and AlertDialog had no exit animation
   (B11)**: closing one (X button, backdrop click, Escape, or a programmatic
   `Close`/`Cancel`) removed the backdrop and panel in the same DOM mutation
@@ -1457,7 +1415,6 @@ a11y) hardened over ten Codex review rounds.
   panel. The awaiting `Show*Async` task still resolves immediately on
   close-intent — the exit is purely visual.
 
-### Added
 - **`DialogContent.PlayExitAnimation` / `DrawerContent.PlayExitAnimation` /
   `AlertDialogContent.PlayExitAnimation`** (default `false`) — when `true`, the
   panel stays mounted for a zoom-out / slide-out (with the backdrop fading in
@@ -1470,7 +1427,6 @@ a11y) hardened over ten Codex review rounds.
 
 Device-testing feedback wave.
 
-### Fixed
 - **Service-opened Sheet backdrop caught no clicks (B10)**: every overlay
   backdrop lives inside an intentionally `pointer-events-none` host (so idle
   overlays never block the page) and must re-enable its own pointer events —
@@ -1481,7 +1437,6 @@ Device-testing feedback wave.
   branches; browser-verified (backdrop is the hit-target and closes the
   sheet); consumers can drop their CSS workaround.
 
-### Added
 - **`Chip.IconContent`** — a leading slot (TabsTrigger/SegmentedItem pattern)
   that keeps sized content intact (`shrink-0` wrapper): color dots stay dots,
   icons sit beside the label instead of stacking. ChildContent-only chips
@@ -1502,7 +1457,6 @@ Device-testing feedback wave.
 
 Templates, round two: the app starter grew up and got a full-stack sibling.
 
-### Added
 - **`dotnet new lumeo-fullstack`** — the batteries-included starter: a Blazor
   WASM client plus an ASP.NET Core API with Identity (`MapIdentityApi`, real
   e-mail confirmation), EF Core + PostgreSQL (auto-migrate + seed in dev),
@@ -1522,7 +1476,6 @@ Templates, round two: the app starter grew up and got a full-stack sibling.
   a binary Light/Dark toggle (an invisible System->Dark first click read as
   a broken button in app shells).
 
-### Fixed
 - `lumeo-app` shell polish from hands-on review: sidebar ported to the
   demo-grade rail (centered icon anchors, tooltips, clip animation), topbar
   is a breadcrumb instead of duplicating the page title, brand row content
@@ -1536,7 +1489,6 @@ Templates, round two: the app starter grew up and got a full-stack sibling.
 
 The templates release: `dotnet new` is a real getting-started path now.
 
-### Added
 - **`dotnet new lumeo-app`** — a full Blazor WASM starter that boots styled
   with zero manual steps: `AddLumeo()` wired, prebuilt CSS + OKLCH default
   theme + `theme.js`/`components.js` linked, collapsible Sidebar shell with a
@@ -1546,7 +1498,6 @@ The templates release: `dotnet new` is a real getting-started path now.
   vendor via CLI / eject). Lumeo package versions are stamped from the
   lockstep version at pack time.
 
-### Fixed
 - **Item templates were stale and partly broken**: they emitted the removed
   `PageHeader` component (titles silently rendered as nothing), taught the
   removed Blazicons pattern, and the form scaffold's validation never
@@ -1561,7 +1512,6 @@ The templates release: `dotnet new` is a real getting-started path now.
 
 ## [4.1.0-preview.8] - 2026-07-04
 
-### Fixed
 - **DataGrid column pinning actually moves columns now** (consumer report:
   Pin right / Unpin always appeared to land left). The grid set the correct
   sticky offsets but never reordered pinned columns in DOM order — and
@@ -1573,7 +1523,6 @@ The templates release: `dotnet new` is a real getting-started path now.
   right pins stack from the right edge, mixed left+right coexist, unpin
   restores normal flow — all verified through full horizontal scroll.
 
-### Added
 - **Header-level pin control**: `Pinnable` columns now show a keyboard-
   accessible pin button in the column header (reveals on hover/focus, lit
   while pinned) with a Pin left / Pin right / Unpin menu — no more detour
@@ -1581,7 +1530,6 @@ The templates release: `dotnet new` is a real getting-started path now.
 
 ## [4.1.0-preview.7] - 2026-07-04
 
-### Fixed
 - **Fixed-position popovers opened offset inside transformed ancestors**
   (consumer report: the DataGrid group-panel "Add group level" menu and the
   Columns popover opened ~a sidebar-width away from their trigger). Root
@@ -1600,7 +1548,6 @@ Ten component fixes surfaced by battle-testing the library through the new
 full-page demo apps — every fix consumer-verified by removing the demos'
 workarounds and adopting the real API.
 
-### Fixed
 - **DataGrid drag lag (MEASURED)**: `@ondragover` was bound to .NET on the
   header cells and the grid root, re-rendering the whole grid up to 60x/s
   while dragging — the group-panel path cost ~198 ms PER EVENT on a 640-row
@@ -1625,7 +1572,6 @@ workarounds and adopting the real API.
 - **Gantt today-line** rendered over task-bar labels; now a subtle guide
   behind the bars with stable CSS override hooks.
 
-### Added
 - `DataGridColumnDef.Visible`/`VisibleChanged` (programmatic column
   visibility) and `DataGrid.SetColumnVisibility`.
 - `CommandInput.AutoFocus` — focus the palette input on open.
@@ -1640,7 +1586,6 @@ workarounds and adopting the real API.
 
 The icons release: Lumeo owns its icon story end to end.
 
-### BREAKING
 - **Blazicons fully decoupled.** `Icon.Svg`, `MegaMenuLink.Icon`, `MegaMenuItem.Icon`,
   `PopConfirm.Icon` and `TreeViewItem.Icon` now take the new `Lumeo.IconSource` instead of
   `Blazicons.SvgIcon`; no Lumeo package references Blazicons anymore. Migration is
@@ -1650,7 +1595,6 @@ The icons release: Lumeo owns its icon story end to end.
   slots — it just left Lumeo's dependency graph and public API. The NuGet-free standalone
   eject is now truly dependency-free (it previously force-installed Blazicons.Lucide).
 
-### Added
 - **`Lumeo.IconSource` + `SvgGlyph`** — the native icon model/renderer (Stroke/Fill
   styles, viewBox-driven scaling, `StrokeWidth` override, duotone content supported);
   `Icon` gained a `StrokeWidth` passthrough and renders natively.
@@ -1671,7 +1615,6 @@ The icons release: Lumeo owns its icon story end to end.
 
 ## [4.1.0-preview.4] - 2026-07-02
 
-### Fixed
 - **Avatar — Square/Themed avatars with initials rendered as circles**: `AvatarFallback`
   painted its `bg-muted` surface with its own hardcoded full-circle radius; the avatar's
   shape clip is larger than that circle, so clipping never took effect and any
@@ -1682,7 +1625,6 @@ The icons release: Lumeo owns its icon story end to end.
 
 ## [4.1.0-preview.3] - 2026-07-02
 
-### Fixed
 - **Theme radius wave — ~75 hardcoded roundings across ~40 components now follow the
   radius token** (consumer report, starting from the Switch): Switch track/thumb, Badge
   (Pill variant, ping/pulse, dot, dismiss), Tabs Pill variant, Chip/TagInput/Combobox/
@@ -1701,14 +1643,12 @@ The icons release: Lumeo owns its icon story end to end.
   pick-point, drawer grabber, circular avatars and their embedded followers, map-marker
   legend) and pinned by a new source-level guard test with an audited allowlist.
 
-### Added
 - **`AvatarShape.Themed`** — third avatar shape following the theme radius (identical to
   Circle at stock radii, squares off in sharp themes). `Circle` and `Square` remain
   literal contracts: a consumer who asked for a circle keeps a circle in every theme.
 
 ## [4.1.0-preview.2] - 2026-07-02
 
-### Added
 - **`TabsVariant.Underline`** — text tabs with an underline indicator: the classic compact
   style for detail pages with many tabs (previously only Default/Card/Pill existed, so
   consumers hand-built this with raw buttons + CSS). The list draws a shared baseline
@@ -1730,7 +1670,6 @@ feature additions. Please battle-test before the stable 4.1.0.
 > commit directly before the release commit and the section was written against the
 > release commit's diff only. Nothing about the package changed; only this document.
 
-### Fixed
 - **Tooltip stays open after clicking its trigger (B8, the click/pin path)** — HandleTap
   toggled the touch tap-to-pin state on EVERY click, so a desktop mouse click pinned the
   tooltip open (mouseleave only clears the hover bit; the pin kept it visible until a
@@ -1802,7 +1741,6 @@ feature additions. Please battle-test before the stable 4.1.0.
   clustering has been native MapLibre GL layers for a long time. Rewritten (registry/MCP
   regenerate from it).
 
-### Added
 - **`TooltipContent.Align`** (Start/Center/End, default Center) — matches
   Popover/HoverCard/DropdownMenu; RTL-aware via the existing interop; renders
   `data-align`. The 4.1 arrow anchoring is align-agnostic and keeps pointing at the
@@ -1828,7 +1766,6 @@ feature additions. Please battle-test before the stable 4.1.0.
 
 ## [4.0.4] - 2026-07-01
 
-### Fixed
 - **Tooltip — a Tooltip-wrapped clickable trigger stays open after a click**: clicking any
   Tooltip-wrapped clickable element (a button, an icon action, a sidebar toggle, ...) left
   its tooltip visibly stuck open until focus happened to move elsewhere for an unrelated
@@ -1845,7 +1782,6 @@ feature additions. Please battle-test before the stable 4.1.0.
 
 ## [4.0.3] - 2026-07-01
 
-### Fixed
 - **Sidebar — asymmetric label-fade timing against the container's collapse/expand
   transition**: `SidebarMenuButton`'s label faded with `duration-150` and an asymmetric
   delay per direction (`delay-0` collapsing, `delay-150` expanding) and its own explicit
@@ -1861,7 +1797,6 @@ feature additions. Please battle-test before the stable 4.1.0.
 
 ## [4.0.2] - 2026-07-01
 
-### Fixed
 - **DataGrid — ServerMode grouping: expand/collapse "reloads" the whole grid**: after the
   4.0.1 fix restored expand/collapse *state*, a follow-up report showed every toggle
   visibly rebuilding the grid. Root cause: `RegroupServerItems()` regrouped from
@@ -1896,7 +1831,6 @@ feature additions. Please battle-test before the stable 4.1.0.
 
 ## [4.0.1] - 2026-07-01
 
-### Fixed
 - **DataGrid — ServerMode + grouping**: a manually collapsed group was silently re-expanded
   (and the rows the user was looking at could appear to vanish) on the next page turn, sort,
   filter, or search. `RegroupServerItems()` ran after every server refresh and intersected the
@@ -1918,7 +1852,6 @@ Two things in one release: a Radix/Base-UI/shadcn **parity audit** (accessibilit
 
 This release also ships the CLI's headline **NuGet-free "standalone" eject**: `lumeo add` can now vendor a component *and its full runtime closure* as source, so a project compiles and runs with **zero Lumeo/satellite `PackageReference`** — proven across all 164 components.
 
-### Added
 - **CLI — NuGet-free "standalone" eject**: `lumeo init --standalone` (or `lumeo eject` on an existing project) makes `add` vendor each component **plus the shared runtime it needs** (the `Internal`/`Services`/`Theming`/interop closure, once, into `_LumeoRuntime/`) as source under the `Lumeo` namespace, so the project builds and runs with **zero Lumeo/satellite `PackageReference`**. Satellites (DataGrid, Editor, …) vendor their source + JS too; external NuGet deps a component genuinely uses (e.g. QRCoder, Mammoth) are still installed. Validated by building **all 164 components** standalone (164/164 green).
 - **DirectionProvider**: new component — `<DirectionProvider Direction="LayoutDirection.Rtl">` sets the native `dir` (and cascades it) so descendant layout mirrors for RTL.
 - **Tabs**: `IconReveal` — inactive triggers collapse to icon-only and the active trigger smoothly animates its text label open next to the icon (CSS grid `0fr → 1fr`).
@@ -1940,7 +1873,6 @@ This release also ships the CLI's headline **NuGet-free "standalone" eject**: `l
 - **LumeoFormGenerator**: TimeOnly/TimeSpan→TimePicker, `List<string>`→TagInput, MultilineText→Textarea, Phone/Url→typed Input; `[Range]`→Min/Max, `[StringLength]/[MaxLength]`→MaxLength+counter; `bool` no longer implicitly required; nullable numerics clear to null; `[Display(Order)]` field ordering.
 - **MCP**: type-bound enum validation (`Size="Large"` is now caught), cascading-gated parent-child rule, per-component test-coverage and `[EditorRequired]` surfaced, and a new `lumeo_get_a11y` tool (roles, keyboard keys, focus).
 
-### Changed
 - **Theme**: the entire colour palette (base + all 8 themes, 878 tokens) migrated from HSL to **OKLCH** — exact 1:1 conversion (brand identity unchanged), matching Tailwind v4 / current shadcn.
 - **Badge (behaviour)**: a removable badge no longer optimistically hides itself on remove-click — visibility is now fully controlled (data-driven), matching the controlled-component model. Remove the item from your own model in `OnRemove` (and `@key` your list). See `MIGRATION.md`.
 - **Progress / Gauge / RingProgress (behaviour)**: out-of-range values are clamped (`Value=150, Max=100` → `100`; negative → `0`); the indeterminate state reports `aria-busy="true"` and omits `aria-valuenow` instead of rendering a stale determinate value.
@@ -1968,11 +1900,9 @@ This release also ships the CLI's headline **NuGet-free "standalone" eject**: `l
 
 Two P1 audit features from the backlog. Additive and opt-in.
 
-### Added
 - **Drawer (#218)**: vaul-style snap points — `SnapPoints` (ascending fractions, e.g. `[0.4, 0.75, 1]`) + two-way `ActiveSnapPoint`/`ActiveSnapPointChanged`. A Top/Bottom drawer rests at fractional heights, drags between them, and dismisses below the lowest snap; programmatically setting `ActiveSnapPoint` moves it. A `PreventClose` drawer still snaps but never dismisses.
 - **Drawer (#218)**: velocity/flick dismiss — a fast flick in the dismiss direction closes even below the distance threshold, tunable via `LumeoGestureOptions.SwipeDismissVelocity` (default `0.4` px/ms; `0` = distance-only).
 
-### Improved
 - **Drawer (#218)**: the backdrop now uses the `--color-overlay-backdrop` theme token instead of a hardcoded `bg-black/80`, matching Sheet/Dialog (light + dark).
 - **RichTextEditor (#320)**: the floating bubble toolbar is keyboard-operable — `Alt+F10` moves focus into it (ARIA Authoring-Practices pattern), arrow/Home/End rove between buttons, `Escape`/`Tab` return focus to the editor (staying inside any modal focus trap), and it hides once focus leaves.
 - **RichTextEditor (#320)**: the slash/mention suggestion listbox wires `aria-activedescendant` (+ `aria-controls`/`aria-expanded`) on the editor so screen readers announce the highlighted option as you arrow through.
@@ -1981,7 +1911,6 @@ Two P1 audit features from the backlog. Additive and opt-in.
 
 Bundled audit-backlog batch closing the remaining cleanly-doable component gaps in a single release. All additive and opt-in — existing usage is unchanged.
 
-### Added
 - **Pagination (#210)**: opt-in data-driven mode — set `Page` + `TotalPages` (or `TotalItems` + `PageSize`) and the component renders the full page list itself (prev/next, first/last boundaries, sibling window, `…` ellipsis gaps) and raises `PageChanged`. `SiblingCount`/`BoundaryCount` tune the window. The original `ChildContent` composition still works.
 - **Button (#269)**: `Href` — when set, the button renders as an `<a>` link-button (shared loading/icon/content), with `aria-disabled` + `pointer-events-none` when disabled or loading.
 - **Heading (#295)**: `As` — render the heading as any element (e.g. a `div` styled as a heading) while keeping the visual `Level`/`Size`, for correct document outline without forcing an `h1`–`h6` tag.
@@ -1991,14 +1920,12 @@ Bundled audit-backlog batch closing the remaining cleanly-doable component gaps 
 - **Statistic (#273)**: `ValueContent` slot overriding the formatted value — drop in a `NumberTicker` (Lumeo.Motion) for an animated count-up instead of duplicating animation in core.
 - **Gauge (#277)**: `LabelContent` slot overriding the center/label text — same composable pattern for an animated value.
 
-### Improved
 - **SparkCard (#276)**: the inline chart now delegates to the full `Sparkline`, so it gains `Type` (Line/Area/Bars), `ShowArea`, `ShowLast`, `ShowTooltips` and `SparkColor` instead of a hardcoded less-capable polyline. A single data point still renders no chart (two-point minimum preserved).
 
 ## [3.17.0] - 2026-06-18
 
 Bundled feature batch (component capability gaps), all additive and opt-in.
 
-### Added
 - **Barcode (#291)**: `OnError` callback (fires the encoding error message, or `null` on a successful encode) as a validation hook; the quiet zone now scales with `BarWidth` (10× the narrow module) instead of a fixed 10px.
 - **Highlighter (#293)**: opt-in `RegexMode` — `Highlight`/`HighlightTerms` are treated as regular-expression patterns instead of literal text; invalid patterns fall back to plain rendering.
 - **Grid (#250)**: opt-in `Responsive` — collapses to 1 column (mobile) / 2 (sm) and expands to `Columns` at `lg`, using purge-safe static utility strings for 1–6 columns. Off by default.
@@ -2007,38 +1934,31 @@ Bundled feature batch (component capability gaps), all additive and opt-in.
 
 a11y / i18n polish and small improvements following 3.15.0.
 
-### Added
 - **ReasoningDisplay (#305)**: opt-in `Markdown` rendering (+ a `MarkdownRenderer` hook), mirroring `StreamingText` — reasoning traces render as markdown via the built-in XSS-safe renderer (or a supplied one). Plain-text default unchanged.
 - **ButtonGroup (#270)**: `AriaLabel` parameter; the group now exposes `role="group"` (roving tabindex stays a `Toolbar` concern, by design).
 
-### Improved
 - **Stepper (#245)**: Next/Back/Finish nav labels are localized (fall back to `L["Stepper.*"]`, shipped for every locale); explicit `*Label` params still override.
 - **Result (#284)**: `role` is `alert` (assertive) for Error/Forbidden/ServerError and `status` otherwise, so assistive tech interrupts on failures.
 - **BackToTop (#247)**: the scroll handler is throttled to one check per animation frame and only crosses the JS↔.NET interop boundary when visibility actually flips.
 
-### Fixed
 - **Collapsible (#238)**: in controlled mode (`@bind-Open`), `Toggle` no longer mutates its own `Open` parameter — it fires `OpenChanged` and renders from the parent's value, fixing a desync when the parent rejected/ignored the change.
 
 ## [3.15.0] - 2026-06-18
 
 Follow-up to the 3.14.0 audit pass: the two P0 cascade/layout fixes (browser-verified by new Playwright e2e coverage) plus a small a11y/i18n polish batch.
 
-### Fixed
 - **Overlays (#172)**: `positionFixed` — the shared positioner for Popover, Select, DropdownMenu, ContextMenu, Menubar and Tooltip — now positions with explicit `top`/`left` only and never sets a CSS `transform`. A transformed overlay established a containing block for its `position:fixed` descendants, so a nested overlay (`DropdownMenuSubContent`, popover-in-popover, ContextMenu/Menubar submenu) resolved against the transformed parent instead of the viewport and opened off-screen. All viewport flip/clamp guards are preserved; visually identical for the existing cases.
 - **Icon (#173)**: size utilities (`h-/w-/size-`) now win under Tailwind v4. Blazicons injects an unlayered `svg[blazicon]{width:1em}` rule that beat `@layer utilities`, silently collapsing every icon to the font size; an unlayered, higher-specificity `revert-layer` reset defers sizing back to the utilities layer (a consumer's own `Class` override still wins). Effective on the unlayered `<link>` path; layered-import consumers add the reset themselves (documented inline).
 - **RingProgress (#278)**: `aria-valuenow` is clamped/rounded into `[aria-valuemin, aria-valuemax]`.
 
-### Improved
 - **Hero (#297) / CTASection (#298) / FeatureGrid (#299)**: the `<section>` landmark now carries an accessible name via `aria-labelledby` → its heading, so assistive tech exposes it as a named region.
 
-### Added
 - **Spinner (#282) / Skeleton (#281)**: `AriaLabel` parameter (defaults to "Loading") so the screen-reader name is localizable without a visible label.
 
 ## [3.14.0] - 2026-06-17
 
 Library-wide audit-remediation release. Building on the 3.13.0 audit, this release closes accessibility (keyboard/ARIA), lifecycle, interop-safety, culture and motion gaps across ~60 components, adds several audit-flagged feature gaps, and honors `prefers-reduced-motion` across the Motion package. Full per-component detail is tracked in audit issues #171–#335.
 
-### Added
 - **Calendar / DatePicker**: multiple-date selection (`IsMultiple` + `Values`/`ValuesChanged`).
 - **Transfer**: per-panel select-all and per-item `Disabled`.
 - **PickList**: within-list keyboard reordering + listbox ARIA.
@@ -2053,13 +1973,11 @@ Library-wide audit-remediation release. Building on the 3.13.0 audit, this relea
 - **AudioPlayer**: playback-rate, skip and volume controls.
 - **ThemeSwitcher**: live OS `prefers-color-scheme` and cross-tab sync.
 
-### Improved
 - **prefers-reduced-motion** is now honored across `Lumeo.Motion` (AnimatedBeam, BlurFade, BorderBeam, Marquee, NumberTicker, ShimmerButton, Sparkles, TextReveal, Confetti, Dock, TouchRipple) and overlay exit animations; NumberTicker now formats with the current culture's group/decimal separators.
 - **Keyboard / ARIA**: roving-tabindex, arrow/Home/End navigation, typeahead and focus management added or hardened across Select, Combobox, TreeSelect, Cascader, Mention, Command, Menubar, MegaMenu, DropdownMenu, ToggleGroup, Segmented, Calendar, Accordion, Steps, Toolbar, SpeedDial and Sortable — disabled items are skipped consistently and keyboard activation no longer double-fires.
 - **Overlays**: Sheet/Dialog/Popover/Tooltip focus management, theme-token backdrops, exit animations and Escape handling hardened (a pinned Tooltip now dismisses on Escape; the Sheet no longer flickers on close).
 - **Interop safety**: JS-disconnect/disposal guards added across component teardown; the `prefers-reduced-motion` query and theme listeners are pruned/guarded on async failure.
 
-### Fixed
 - **Splitter**: dead `Collapsible` wired up, late-added panes are now sized, drags clamp at min/max (instead of being rejected), a collapsed pane re-expands on drag-out, and an `OnAfterRender` redistribution loop that could overflow the stack is closed.
 - **CodeEditor**: core/language/theme/minimap module caches are keyed by resolved ESM base, so two editors pointing at different bases no longer share modules.
 - **DataGrid**: a Select column's operator is preserved on Apply instead of being reset to `Contains`.
@@ -2072,20 +1990,17 @@ Library-wide audit-remediation release. Building on the 3.13.0 audit, this relea
 - **Markdown**: link URLs containing `_`/`*` are no longer corrupted by the emphasis passes.
 - **Window**: shared z-index is assigned atomically.
 
-### Deferred
 - **#172** (nested-overlay positioning under a transformed parent) and **#173** (Icon sizing under Tailwind v4) require real-browser verification and ship in a dedicated follow-up PR.
 - **#320** (RichTextEditor TipTap extensions) and **#196** (Code syntax highlighting) pend an npm/bundle build step.
 
 ## [3.13.2] - 2026-06-12
 
-### Fixed
 - **DataGrid (ServerMode)**: group expand/collapse now regroups the server-delivered page — the toggles previously dispatched to the client pipeline, which re-applied client filtering/sorting/paging over the server page and could corrupt the row set on every collapse.
 - **DataGrid (layouts)**: filter values restored from JSON (persisted layouts, the `SavedLayout` parameter, named layouts) are normalized from `JsonElement` to CLR primitives — number/date filters compared lexicographically before (`">5"` dropped `10`), and ServerMode consumers now receive comparable descriptor values in `OnServerRequest`.
 - **DataGrid (layouts)**: removing a group chip after a layout restore unhides its auto-hidden column — the un-group snapshot is now seeded for restored chips.
 
 ## [3.13.1] - 2026-06-12
 
-### Fixed
 - **Tabs (Card variant)**: the active tab now fuses with the list's edge border — axis-aware seam (bottom for horizontal, right for vertical) with squared seam corners; previously the card floated above the border line with the base rounding peeking through.
 - **Tabs (Card variant)**: switching tabs no longer flickers — every card tab carries identical box metrics (inactive tabs render a transparent border), so activation swaps colors only instead of animating a 2px layout reflow.
 
@@ -2095,7 +2010,6 @@ Component-audit hardening release: a full-library audit benchmarked against shad
 
 > Changelog entries between `1.0.0-beta.5` and this release were tracked via git history and GitHub Releases rather than this file.
 
-### Fixed
 - **DataGrid**: `GroupBy`/`GroupByFields` silently rendered a flat grid with declarative `<DataGridColumnDef>` children (regression since 3.10.0) — the grouping seed validated against an empty column list before the children registered. It now re-seeds when the matching column arrives, and warns when a group field matches no column.
 - **Select / Combobox**: data-bound keyboard navigation (Arrow/Home/End/Enter) was dead; search cleared registrations and showed a spurious empty state; the trigger click could not reliably close the popup.
 - **Menus** (Menubar / DropdownMenu / ContextMenu / MegaMenu): Enter/Space double-fire made keyboard activation a no-op; click-outside couldn't dismiss via the trigger; ContextMenu key handlers were unreachable; Menubar gained full WAI-ARIA navigation.
@@ -2111,7 +2025,6 @@ Component-audit hardening release: a full-library audit benchmarked against shad
 - **Culture / locale**: AspectRatio and Watermark emitted invalid CSS/SVG on comma-decimal cultures; Statistic mis-parsed localized decimals; Progress now clamps negative values; Grid/Container shipped the missing `grid-cols-9..12` / `max-w-*` utilities.
 - Mention no longer throws on empty results or mangles inserted text; QRCode logo scales to the code; Tour scrolls off-screen targets into view; Carousel and Splitter keyboard traps removed; Input `Clearable` no longer drops focus while typing; Form can submit again after a fixed validation error.
 
-### Added
 - `IComponentInteropService.RegisterPreventDefaultKeys` — key-selective, IME-safe `preventDefault` applied synchronously in the native event dispatch (replaces the render-time `@onkeydown:preventDefault` flag pattern).
 - Localization keys for ConfirmButton, PickList, FileManager, AudioPlayer, ThemeSwitcher, Stepper and Breadcrumb strings across all 14 locales.
 - Wired previously-inert parameters: Tooltip `Offset`, HoverCard `Side` (Left/Right), PopConfirm `Placement`, SpeedDial `Icon`/`Variant`, Highlighter `Tag`.
@@ -2119,13 +2032,11 @@ Component-audit hardening release: a full-library audit benchmarked against shad
 
 ## [1.0.0-beta.5] - 2026-03-19
 
-### Improved
 - Updated NuGet package description (90+ → 103 components, added test count and feature list)
 - Updated README with accurate component count, themes, and install command
 
 ## [1.0.0-beta.4] - 2026-03-19
 
-### Added
 - Checkbox: Label, Description parameters with auto-Id for form association
 - RadioGroupItem: Description text support
 - Steps: Error state per step with red X icon, custom Icon slot
@@ -2136,18 +2047,15 @@ Component-audit hardening release: a full-library audit benchmarked against shad
 - "When to Use" and "Related Components" sections on 62 more component pages (82 total)
 - API reference tables now on all 136 component documentation pages
 
-### Improved
 - Home page stats updated (75→103 components, 7→8 themes)
 - Chart patterns integrated into Patterns page with filter category
 - All hardcoded colors replaced with CSS variables (Avatar, Statistic, Result, KanbanCard)
 
-### Fixed
 - MentionPage Razor escape for @user syntax
 - Statistic and Result test assertions updated for CSS variable colors
 
 ## [1.0.0-beta.3] - 2026-03-19
 
-### Added
 - Dialog size variants (Sm, Default, Lg, Xl, Full) and Scrollable content mode
 - Drawer multi-position support (Top, Right, Bottom, Left) with direction-aware swipe
 - Alert: Title, Description, Icon slots, ShowIcon with default icons per variant, AutoDismiss timer
@@ -2172,12 +2080,10 @@ Component-audit hardening release: a full-library audit benchmarked against shad
 - API reference tables for 30 additional component documentation pages (55 total)
 - "When to Use", "Keyboard Interactions", and "Related Components" sections on 20 component pages
 
-### Improved
 - Animation keyframes and utility classes now ship in lumeo.css for NuGet package consumers
 - Production-quality spring easing curves on all animations
 - Rating colors now use themeable `--color-rating` CSS variable instead of hardcoded yellow
 
-### Fixed
 - Broken animations for NuGet package consumers (keyframes were only in docs site)
 - Missing `animate-toast-in` — Toast slide-in animation was never defined
 - Added aria-labels to PasswordInput toggle, TagInput close buttons, DatePicker clear button, Carousel navigation
@@ -2185,19 +2091,16 @@ Component-audit hardening release: a full-library audit benchmarked against shad
 
 ## [1.0.0-beta.2] - 2026-03-12
 
-### Added
 - 14 new components: Cascader, ColorPicker, DateRangePicker, DateTimePicker, Filter, ImageCompare, InplaceEditor, InputMask, Kanban, MegaMenu, Mention, NumberInput, PasswordInput, SortableList
 - Keyboard shortcuts: R to shuffle themes, Ctrl+D for dark mode, Ctrl+/ for shortcuts help
 - Redesigned WASM loader with animated splash screen and ripple animation
 - Floating navbar and floating sidebar design for docs site
 - NuGet package icon (Lumeo logo)
 
-### Improved
 - All UI corners respect CSS radius variable for zero-radius presets like Lyra
 - Customizer sidebar moved to header button with Ctrl+B toggle shortcut
 - CommandEmpty now always renders regardless of Command context
 
-### Fixed
 - Customizer radius bug where radius values did not apply correctly
 - Mobile docs improvements and API table horizontal scrolling
 - Floating nav sticky positioning
@@ -2206,7 +2109,6 @@ Component-audit hardening release: a full-library audit benchmarked against shad
 
 ## [1.0.0-beta.1] - 2026-03-12
 
-### Added
 - 90+ Blazor components built on Tailwind CSS v4
 - Layout primitives: Stack, Flex, Grid, Container, Center, Spacer
 - Typography primitives: Text, Heading, Link, Code
@@ -2222,7 +2124,6 @@ Component-audit hardening release: a full-library audit benchmarked against shad
 - 45+ pattern examples showing real-world component compositions
 - GitHub Pages deployment at lumeo.nativ.sh
 
-### Fixed
 - Chart color resolution for modern CSS color formats (oklch, hsl, color())
 - WordCloud extension race condition causing render failures
 - Bar chart rendering broken by NaN borderRadius from CSS variable parsing

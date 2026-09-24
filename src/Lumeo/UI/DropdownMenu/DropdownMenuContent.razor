@@ -17,7 +17,9 @@
          tabindex="-1"
          inert="@ExitInert"
          @attributes="AdditionalAttributes">
-        @ChildContent
+        <div data-slot="dropdown-menu-viewport" class="overflow-y-auto overscroll-contain" style="@ViewportStyle">
+            @ChildContent
+        </div>
         @if (ShowArrow)
         {
             <div class="@ArrowClasses"></div>
@@ -48,6 +50,16 @@
     /// <summary>Shift along the alignment axis in pixels, Radix's <c>alignOffset</c>: positive moves a
     /// bottom or top placement toward the end (right in LTR), a left or right placement down. Default 0.</summary>
     [Parameter] public int AlignOffset { get; set; }
+
+    /// <summary>
+    /// Overrides the panel's built-in scroll cap on its inner item viewport (a CSS length,
+    /// e.g. <c>"20rem"</c> or <c>"400px"</c>). By default the viewport caps itself to the
+    /// available viewport space in the placement direction — <c>--lumeo-dropdown-available-height</c>,
+    /// set live by the positioning JS (Radix's <c>--radix-dropdown-menu-content-available-height</c>
+    /// parity) — and scrolls past that. Setting this replaces that live value with a fixed cap;
+    /// the panel still scrolls once content exceeds it.
+    /// </summary>
+    [Parameter] public string? MaxHeight { get; set; }
 
     /// <summary>Additional CSS classes merged onto the panel.</summary>
     [Parameter] public string? Class { get; set; }
@@ -87,6 +99,15 @@
         // the content a containing block (field report 4.4.1).
         "overflow-visible",
         Class);
+
+    // Inner scroll viewport: max-height either the caller's override or the live
+    // available-height custom property (fallback 24rem — the same max-h-96 cap Select/
+    // Combobox already use for a long list). Inline style, not a Tailwind arbitrary-value
+    // class: MaxHeight is a free-form caller string and the fallback carries a CSS var, so
+    // neither is a static class the extractor could see (project convention — see
+    // Cx.Merge usage notes in CLAUDE.md on dynamic classes).
+    private string ViewportStyle =>
+        $"max-height: {(string.IsNullOrWhiteSpace(MaxHeight) ? "var(--lumeo-dropdown-available-height, 24rem)" : MaxHeight)};";
 
     private string ArrowClasses => Side switch
     {

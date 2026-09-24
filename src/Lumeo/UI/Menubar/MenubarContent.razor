@@ -6,7 +6,9 @@
 {
     <div data-slot="menubar-content" id="@_contentId" role="menu" aria-orientation="vertical" data-state="@(IsOpen ? "open" : "closed")" class="@CssClass" @onkeydown="HandleKeyDown" tabindex="-1" inert="@ExitInert" @attributes="AdditionalAttributes">
         <CascadingValue Value="_keyNavGuard" IsFixed="true">
-            @ChildContent
+            <div data-slot="menubar-viewport" class="overflow-y-auto overscroll-contain" style="@ViewportStyle">
+                @ChildContent
+            </div>
         </CascadingValue>
     </div>
 }
@@ -18,6 +20,13 @@
     [CascadingParameter] public MenubarMenu.MenubarMenuContext MenuContext { get; set; } = default!;
     /// <summary>The menu's items, rendered inside the <c>role="menu"</c> popup.</summary>
     [Parameter] public RenderFragment? ChildContent { get; set; }
+    /// <summary>
+    /// Overrides the popup's built-in scroll cap on its inner item viewport (a CSS length,
+    /// e.g. <c>"20rem"</c> or <c>"400px"</c>). By default the viewport caps itself to the
+    /// available viewport space in the placement direction — <c>--lumeo-dropdown-available-height</c>,
+    /// set live by the positioning JS — and scrolls past that.
+    /// </summary>
+    [Parameter] public string? MaxHeight { get; set; }
     /// <summary>Additional CSS classes merged onto the menu popup.</summary>
     [Parameter] public string? Class { get; set; }
     /// <summary>Captures any unmatched attributes and applies them to the menu popup.</summary>
@@ -45,6 +54,11 @@
     private string? ExitInert => _exit.Exiting ? "true" : null;
 
     private string CssClass => Cx.Merge("fixed z-50 min-w-[12rem] overflow-visible rounded-md border border-border/40 bg-popover p-1 text-popover-foreground shadow-lg", AnimationClass, Class);
+
+    // Same fallback (24rem) as DropdownMenuContent's inner viewport — see there for the
+    // inline-style rationale.
+    private string ViewportStyle =>
+        $"max-height: {(string.IsNullOrWhiteSpace(MaxHeight) ? "var(--lumeo-dropdown-available-height, 24rem)" : MaxHeight)};";
 
     protected override void OnParametersSet()
         => _exit.OnParameters(IsOpen, ExitDurationMs, () => InvokeAsync(FinishExit));
