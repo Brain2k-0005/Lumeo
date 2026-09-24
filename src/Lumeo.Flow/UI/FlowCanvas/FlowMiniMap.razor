@@ -24,7 +24,7 @@
              viewBox="@("0 0 " + F(Width) + " " + F(Height))"
              role="img"
              aria-label="@L["Flow.MiniMap"]"
-             class="rounded-md border border-border bg-card"
+             class="rounded-md border border-border/60 bg-card/95 shadow-sm"
              style="display:block;cursor:pointer;"
              @onpointerdown="e => PanToAsync(bounds, e)"
              @onpointermove="e => HandleMoveAsync(bounds, e)"
@@ -33,12 +33,16 @@
             @foreach (var node in Context.Canvas.CurrentNodes)
             {
                 var r = MapRect(bounds, Context.Canvas.GetNodeRect(node));
-                <rect @key="node.Id" x="@F(r.X)" y="@F(r.Y)" width="@F(r.Width)" height="@F(r.Height)" rx="1.5" fill="@ColorFor(node)" />
+                <rect @key="node.Id" x="@F(r.X)" y="@F(r.Y)" width="@F(r.Width)" height="@F(r.Height)" rx="2" fill="@ColorFor(node)" fill-opacity="0.55" />
             }
             @{
-                var vr = MapRect(bounds, ViewportRectInFlow());
+                var vr = ClampToMap(MapRect(bounds, ViewportRectInFlow()));
             }
-            <rect x="@F(vr.X)" y="@F(vr.Y)" width="@F(vr.Width)" height="@F(vr.Height)" fill="none" stroke="var(--color-primary)" stroke-width="1.5" />
+            @* React Flow's minimap idiom: everything OUTSIDE the visible viewport is dimmed by an
+               even-odd mask, and the viewport itself gets a hairline — not a thick primary-coloured
+               frame, which read as a second border around the whole map at fit-view. *@
+            <path d="@MaskPath(vr)" fill="var(--color-foreground)" fill-opacity="0.06" fill-rule="evenodd" pointer-events="none" />
+            <rect x="@F(vr.X)" y="@F(vr.Y)" width="@F(vr.Width)" height="@F(vr.Height)" rx="2" fill="none" stroke="var(--color-foreground)" stroke-opacity="0.35" stroke-width="1" pointer-events="none" />
         </svg>
     }
 </div>
@@ -87,6 +91,23 @@
     }
 
     private static string F(double v) => v.ToString("0.##", CultureInfo.InvariantCulture);
+
+    // Keeps the viewport frame inside the map with a 1px inset, so a fit-view viewport (which is
+    // larger than the node bounds) draws as a tidy inner frame instead of hugging or overflowing
+    // the map's own border.
+    private FlowRect ClampToMap(FlowRect r)
+    {
+        const double inset = 1.5;
+        var x1 = Math.Clamp(r.X, inset, Width - inset);
+        var y1 = Math.Clamp(r.Y, inset, Height - inset);
+        var x2 = Math.Clamp(r.X + r.Width, inset, Width - inset);
+        var y2 = Math.Clamp(r.Y + r.Height, inset, Height - inset);
+        return new FlowRect(x1, y1, Math.Max(0, x2 - x1), Math.Max(0, y2 - y1));
+    }
+
+    // Even-odd path: the whole map minus the viewport hole.
+    private string MaskPath(FlowRect v) =>
+        $"M0 0H{F(Width)}V{F(Height)}H0Z M{F(v.X)} {F(v.Y)}h{F(v.Width)}v{F(v.Height)}h{F(-v.Width)}Z";
 
     private string ColorFor(FlowNode node) => NodeColor?.Invoke(node) ?? "var(--color-muted-foreground)";
 
