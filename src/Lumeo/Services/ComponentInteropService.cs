@@ -1902,12 +1902,32 @@ public sealed class ComponentInteropService : IComponentInteropService
         catch (JSDisconnectedException) { }
     }
 
+    public async Task FlowFitViewAsync(Microsoft.AspNetCore.Components.ElementReference paneEl, double padding, double minZoom, double maxZoom, string? anchorNodeId)
+    {
+        try
+        {
+            var module = await GetFlowModuleAsync();
+            await module.InvokeVoidAsync("flow.fitView", paneEl, padding, minZoom, maxZoom, anchorNodeId);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
     public async Task<double[]?> FlowGetViewportAsync(Microsoft.AspNetCore.Components.ElementReference paneEl)
     {
         try
         {
             var module = await GetFlowModuleAsync();
             return await module.InvokeAsync<double[]?>("flow.getViewport", paneEl);
+        }
+        catch (JSDisconnectedException) { return null; }
+    }
+
+    public async Task<double[]?> FlowGetPaneSizeAsync(Microsoft.AspNetCore.Components.ElementReference paneEl)
+    {
+        try
+        {
+            var module = await GetFlowModuleAsync();
+            return await module.InvokeAsync<double[]?>("flow.getPaneSize", paneEl);
         }
         catch (JSDisconnectedException) { return null; }
     }

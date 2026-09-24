@@ -21,7 +21,21 @@
    stacks at N - 1) and below the nested nodes (which stack at N and come later in the DOM). Without
    that a group's tinted background would cover the edges between its own children.
    data-sa/data-ta stamp each end's anchor ("x|y|position") so the engine can still redraw an edge
-   whose OTHER end is not mounted (virtualization) while its mounted end is dragged. *@
+   whose OTHER end is not mounted (virtualization) while its mounted end is dragged.
+
+   LU-02/03: the DEFAULT stroke is a CSS custom property (`--lumeo-flow-edge-stroke`, declared in
+   lumeo-flow.css), referenced through `var()` even in the INLINE style below (needed so the very
+   first paint, before flow.js injects lumeo-flow.css, already shows the right colour) — a consumer
+   can still win over it without `!important` by setting that custom property from an external rule
+   (`[data-edge-id="x"] { --lumeo-flow-edge-stroke: ...; }`, or via `edge.Class`), because a `var()`
+   reference resolves the custom property from wherever the cascade sets it, inline or not.
+   `edge.Style` is appended last so it always wins (the documented one-off escape hatch).
+   Two markers: the default one tracks that same custom property (falls back to
+   `context-stroke` under `@supports` for Chromium, which then follows the LIVE resolved stroke
+   including any consumer override — Firefox/Safari get the correct DEFAULT colour, and the correct
+   SELECTED colour from the second, always-primary marker, but not a fully custom per-edge colour,
+   since a `<marker>` in `<defs>` is not a DOM descendant of the `<path>` that references it and so
+   does not inherit a property scoped to that one path — documented). *@
 
 <svg data-slot="flow-edges"
      aria-hidden="true"
@@ -30,7 +44,10 @@
      @attributes="AdditionalAttributes">
     <defs>
         <marker id="@_markerId" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto-start-reverse" markerUnits="userSpaceOnUse">
-            <path d="M0,0 L8,4 L0,8 Z" fill="var(--color-muted-foreground)" />
+            <path class="lumeo-flow-marker-path" d="M0,0 L8,4 L0,8 Z" fill="var(--lumeo-flow-edge-stroke, var(--color-muted-foreground))" />
+        </marker>
+        <marker id="@_selectedMarkerId" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto-start-reverse" markerUnits="userSpaceOnUse">
+            <path d="M0,0 L8,4 L0,8 Z" fill="var(--color-primary)" />
         </marker>
     </defs>
     @if (Context is not null)
@@ -83,7 +100,10 @@
                 }
                 else
                 {
-                    <span class="rounded border border-border bg-card px-1.5 py-0.5 text-[10px] text-card-foreground shadow-sm">@edge.Label</span>
+                    @* LU-09: nowrap so a short label ("owns · X") never wraps into a two-line pill
+                       with background per line; a long label instead truncates with an ellipsis
+                       rather than growing the pill unboundedly. *@
+                    <span class="max-w-32 overflow-hidden text-ellipsis whitespace-nowrap rounded border border-border bg-card px-1.5 py-0.5 text-[10px] text-card-foreground shadow-sm" title="@edge.Label">@edge.Label</span>
                 }
             </div>
         }
@@ -100,6 +120,7 @@
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     private readonly string _markerId = "lumeo-flow-arrow-" + Guid.NewGuid().ToString("N")[..10];
+    private readonly string _selectedMarkerId = "lumeo-flow-arrow-selected-" + Guid.NewGuid().ToString("N")[..10];
 
     // Phase 4: inline edge-label editing state. Lives here (not on FlowCanvas) because only this
     // component renders the label — at most one edge editing at a time.
@@ -162,10 +183,34 @@
                   data-animated="@(edge.Animated ? "" : null)"
                   d="@path.D"
                   fill="none"
-                  stroke-dasharray="@(edge.Dashed || edge.Animated ? "5 4" : null)"
-                  marker-end="@(string.IsNullOrEmpty(edge.MarkerEnd) ? null : "url(#" + _markerId + ")")"
-                  style="@EdgeStyle(selectable, selected)"
+                  class="@Cx.Merge(edge.Class)"
+                  stroke-dasharray="@(edge.Dashed ? "5 4" : null)"
+                  marker-end="@(string.IsNullOrEmpty(edge.MarkerEnd) ? null : "url(#" + (selected ? _selectedMarkerId : _markerId) + ")")"
+                  style="@EdgeStyle(selectable, selected, edge)"
                   @onclick="e => canvas.HandleEdgeClickAsync(edge, e.ShiftKey, e.CtrlKey || e.MetaKey)" />
+            @* LU-04: Animated no longer forces a dash on the edge itself — a decorative, aria-hidden
+               "flow" overlay (sparse dash + travelling offset) sits on top instead, so a solid
+               Animated=true/Dashed=false edge stays visually solid. Only rendered for that
+               combination; a Dashed edge's own stroke-dasharray already reads as "in motion" once
+               data-animated triggers its dash-offset animation (unchanged phase-2 behaviour).
+               Reduced motion turns the animation off in CSS; the overlay itself still draws (a
+               static sparse dash), same as a paused film frame rather than disappearing. *@
+            @if (edge.Animated && !edge.Dashed)
+            {
+                <path @key="@("flow-" + edge.Id)"
+                      data-flow-edge-flow
+                      data-source="@edge.Source"
+                      data-target="@edge.Target"
+                      data-source-handle="@edge.SourceHandle"
+                      data-target-handle="@edge.TargetHandle"
+                      data-edge-type="@FlowGeometry.FormatEdgeType(edge.Type)"
+                      data-sa="@sa"
+                      data-ta="@ta"
+                      aria-hidden="true"
+                      d="@path.D"
+                      fill="none"
+                      style="@FlowStyle(selected)" />
+            }
         }
     }
 
@@ -200,11 +245,25 @@
 
     // Inline (not just the lumeo-flow.css rule) so an edge is coloured correctly on the very first
     // paint, before flow.js has injected the stylesheet — same reasoning as the pane's own inline
-    // layout styles. --color-muted-foreground at reduced opacity reads in both themes (the faint
-    // --color-border used in phase 1 was hard to see in light mode).
-    private static string EdgeStyle(bool selectable, bool selected)
-        => "stroke:" + (selected ? "var(--color-primary)" : "var(--color-muted-foreground)")
+    // layout styles. LU-02: the DEFAULT branch goes through the --lumeo-flow-edge-stroke custom
+    // property (var()'s fallback chain, not a literal colour) so a consumer's external rule setting
+    // that property still wins despite this being inline (see the component-level comment above the
+    // markup); the SELECTED branch stays a literal var(--color-primary) — the selection highlight is
+    // deliberately not overridable per edge, it must always read as "selected". edge.Style is
+    // appended last so it always wins over both (the documented one-off escape hatch).
+    private static string EdgeStyle(bool selectable, bool selected, FlowEdge edge)
+        => "stroke:" + (selected ? "var(--color-primary)" : "var(--lumeo-flow-edge-stroke, var(--color-muted-foreground))")
            + ";opacity:" + (selected ? "1" : "0.6")
            + ";stroke-width:1.5;pointer-events:" + (selectable ? "stroke" : "none") + ";"
-           + (selectable ? "cursor:pointer;" : "");
+           + (selectable ? "cursor:pointer;" : "")
+           + edge.Style;
+
+    // LU-04: the travelling-dash overlay for a solid Animated edge. Sparse dashes (short mark, long
+    // gap) read as "flow" rather than "outline", at the same opacity/colour rule as the base edge
+    // (minus pointer handling — aria-hidden, decorative only) so a selected animated edge still
+    // shows the primary highlight colour travelling along it.
+    private static string FlowStyle(bool selected)
+        => "stroke:" + (selected ? "var(--color-primary)" : "var(--lumeo-flow-edge-stroke, var(--color-muted-foreground))")
+           + ";opacity:" + (selected ? "1" : "0.6")
+           + ";stroke-width:1.5;stroke-dasharray:2 10;pointer-events:none;";
 }

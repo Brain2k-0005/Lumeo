@@ -5,6 +5,64 @@ All notable changes to Lumeo will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **`Lumeo.Flow`: `FlowEdge.Class`/`Style`, per-edge colouring without `!important`.** The default
+  edge stroke now reads a `--lumeo-flow-edge-stroke` CSS custom property (falls back to
+  `--color-muted-foreground`) instead of a literal inline colour, so an external rule — via the new
+  `FlowEdge.Class` merged onto the edge's path, or scoped to the whole canvas — wins in the cascade
+  with no `!important`; `FlowEdge.Style` remains a one-off inline escape hatch appended last. The
+  default arrowhead marker follows the same token (and upgrades to `context-stroke` under
+  `@supports` in engines that implement it, so a selected/recoloured edge's arrowhead tracks it
+  too). SQL Analyst field report (5.11.0), finding LU-02/LU-03.
+- **`Lumeo.Flow`: `FlowCanvas.FitViewAsync(FlowFitViewOptions)`, `PaneSize`, `GetPaneSizeAsync()`, `OnFitView`.**
+  Per-call `Padding`/`MinZoom`/`MaxZoom` overrides and an optional `AnchorNodeId` — when the plain
+  fit would need a zoom below `MinZoom`, the canvas centres on that node at `MinZoom` instead of
+  zooming out further ("start readable" on a large graph). `PaneSize` exposes the pane's last known
+  size; `GetPaneSizeAsync()` re-measures it fresh from the DOM. `OnFitView` fires once a fit
+  completes, including the engine's own initial `FitViewOnInit` fit. SQL Analyst field report,
+  finding LU-08.
+
+### Fixed
+- **`Lumeo.Flow`: `FlowLayout.Layered` no longer throws on a duplicate node id.** It built its
+  in-degree map with `ids.ToDictionary(id => id, ...)`, which threw `ArgumentException` the second
+  time a node id repeated (real data — a SQL Server deadlock XML repeating a resource id — crashed
+  the whole Blazor Server circuit); `FlowLayout.Tree` and the internal back-edge removal already
+  handled duplicates and were audited for the same class of bug. SQL Analyst field report, finding
+  LU-01.
+- **`Lumeo.Flow`: `Animated` no longer forces a dashed stroke.** `Animated=true, Dashed=false` now
+  stays a solid line with a small travelling-dash overlay, instead of always rendering
+  `stroke-dasharray`; `Dashed` alone is unaffected, and the overlay respects
+  `prefers-reduced-motion`. SQL Analyst field report, finding LU-04.
+- **`Lumeo.Flow`: `FlowHandle` drops out of the tab order (and goes `aria-hidden`) when connecting is impossible.**
+  Previously it stayed a focusable, announced "Connect from/to" control even under `Readonly`,
+  `NodesConnectable="false"` or a node's own `Connectable="false"` — a dead-end tab stop with
+  misleading screen-reader text. It stays visually a port either way. SQL Analyst field report,
+  finding LU-05.
+- **`Lumeo.Flow`: `Enter`/`Space` on a focused node now raises `OnNodeClick`.** Matches a mouse
+  click (including the selection toggle), respects the editable-target guard the rest of the
+  canvas' shortcuts already use, and `Space` no longer scrolls the page. SQL Analyst field report,
+  finding LU-06.
+- **`Lumeo.Flow`: `FitViewAsync` after a container resize now fits the CURRENT pane size.**
+  It used to compute against the last debounced resize report, which can still be in flight right
+  after a container grows/shrinks in the same tick (fits against the previous size); it now
+  re-measures the pane fresh from the DOM first. SQL Analyst field report, finding LU-07.
+- **`Lumeo.Flow`: the default edge label pill no longer wraps.** Added `white-space: nowrap`
+  (truncating a very long label with an ellipsis past a small max-width) instead of letting a
+  short label like "owns · X" wrap into a two-line pill with background per line. SQL Analyst
+  field report, finding LU-09.
+- **`Lumeo.Flow`: `FlowLayout.Tree` places a multi-parent node under its DEEPEST parent.** A
+  node's depth was already the longest path reaching it; it is now centred under the single
+  parent that explains that depth, instead of under whichever parent's subtree walk happened to
+  reach it first (previously the column and the visual parent could disagree). SQL Analyst field
+  report, finding LU-10.
+- **`Lumeo.Flow`: an edge without an explicit `SourceHandle`/`TargetHandle` keeps the default side anchor.**
+  Adding any `FlowHandle` to a node used to silently re-anchor every edge from/to that node onto
+  the node's first handle of the matching type, even for edges that never named one; only an
+  explicit handle id now switches an edge into handle-based anchoring. SQL Analyst field report,
+  finding LU-11.
+
 ## [5.11.0] - 2026-09-24
 
 ### Added

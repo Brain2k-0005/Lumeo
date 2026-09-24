@@ -157,12 +157,38 @@ public enum FlowExtent
 /// <param name="Deletable">Per-edge delete switch (phase 2).</param>
 /// <param name="MarkerEnd">End marker id (phase 2).</param>
 /// <param name="Data">Arbitrary payload.</param>
+/// <param name="Class">
+/// Additional CSS class(es) merged onto the edge's <c>&lt;path&gt;</c>. Combine with a rule that sets
+/// the <c>--lumeo-flow-edge-stroke</c> custom property (e.g. <c>.critical { --lumeo-flow-edge-stroke: var(--color-destructive); }</c>)
+/// to recolour this edge without <c>!important</c> — see <see cref="Style"/> for a one-off inline override instead.
+/// </param>
+/// <param name="Style">
+/// Additional inline CSS appended after the edge's own style (so it wins over the library's
+/// defaults, including the selected-state colour) — a per-edge escape hatch for anything
+/// <see cref="Class"/> does not cover.
+/// </param>
 public sealed record FlowEdge(
     string Id, string Source, string Target,
     string? SourceHandle = null, string? TargetHandle = null,
     string? Label = null, FlowEdgeType Type = FlowEdgeType.Bezier,
     bool Animated = false, bool Dashed = false, bool Deletable = true,
-    string? MarkerEnd = "arrow", object? Data = null);
+    string? MarkerEnd = "arrow", object? Data = null,
+    string? Class = null, string? Style = null)
+{
+    /// <summary>
+    /// The pre-LU-02 positional deconstruction (every member up to <see cref="Data"/>), kept so
+    /// existing <c>var (id, source, target, ...) = edge;</c> code with twelve variables still
+    /// compiles after <see cref="Class"/>/<see cref="Style"/> were appended.
+    /// </summary>
+    public void Deconstruct(out string Id, out string Source, out string Target, out string? SourceHandle,
+        out string? TargetHandle, out string? Label, out FlowEdgeType Type, out bool Animated, out bool Dashed,
+        out bool Deletable, out string? MarkerEnd, out object? Data)
+    {
+        Id = this.Id; Source = this.Source; Target = this.Target; SourceHandle = this.SourceHandle;
+        TargetHandle = this.TargetHandle; Label = this.Label; Type = this.Type; Animated = this.Animated;
+        Dashed = this.Dashed; Deletable = this.Deletable; MarkerEnd = this.MarkerEnd; Data = this.Data;
+    }
+}
 
 /// <summary>
 /// The pan/zoom state: a flow point <c>p</c> is drawn at pane-local <c>p * Zoom + (X, Y)</c>.
@@ -174,6 +200,22 @@ public readonly record struct FlowViewport(double X, double Y, double Zoom);
 
 /// <summary>A point, in whichever space the member that returns it documents.</summary>
 public readonly record struct FlowPoint(double X, double Y);
+
+/// <summary>
+/// Options for <c>FlowCanvas.FitViewAsync(FlowFitViewOptions)</c> (LU-08): per-call overrides for
+/// the padding/zoom limits, and an optional anchor to keep the view readable on a large graph.
+/// </summary>
+/// <param name="Padding">Overrides the canvas' own <c>FitViewPadding</c> for this one fit; <c>null</c> keeps it.</param>
+/// <param name="MinZoom">Overrides the canvas' own <c>MinZoom</c> for this one fit; <c>null</c> keeps it.</param>
+/// <param name="MaxZoom">Overrides the canvas' own <c>MaxZoom</c> for this one fit; <c>null</c> keeps it.</param>
+/// <param name="AnchorNodeId">
+/// When fitting every node would need a zoom below <paramref name="MinZoom"/> (a large graph, a tight
+/// minimum), centre on this node at <paramref name="MinZoom"/> instead of zooming out further and
+/// centring on the whole (still-clamped, so still-partly-offscreen) bounds — "start readable" rather
+/// than "start complete". Ignored — the ordinary fit runs instead — when the id is null, unknown, or
+/// the plain fit does not need clamping.
+/// </param>
+public sealed record FlowFitViewOptions(double? Padding = null, double? MinZoom = null, double? MaxZoom = null, string? AnchorNodeId = null);
 
 /// <summary>An axis-aligned rectangle in flow coordinates.</summary>
 public readonly record struct FlowRect(double X, double Y, double Width, double Height)

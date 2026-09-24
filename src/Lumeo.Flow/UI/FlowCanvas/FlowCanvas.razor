@@ -98,8 +98,17 @@
     /// <summary>The pan/zoom state. Two-way bindable (<c>@bind-Viewport</c>). Setting a new value moves the canvas; the canvas reports user pans and zooms back through <see cref="ViewportChanged"/>. A zoom of 0 or less means "not set" (the canvas starts at 0,0 and 100%).</summary>
     [Parameter] public FlowViewport Viewport { get; set; } = new(0, 0, 1);
 
-    /// <summary>Raised when the viewport changes — at most once per animation frame while a pan or wheel zoom is running, once more when it ends, and after every imperative change (<see cref="FitViewAsync"/>, <see cref="ZoomInAsync"/>, ...).</summary>
+    /// <summary>Raised when the viewport changes — at most once per animation frame while a pan or wheel zoom is running, once more when it ends, and after every imperative change (<see cref="FitViewAsync(double?)"/>, <see cref="ZoomInAsync"/>, ...).</summary>
     [Parameter] public EventCallback<FlowViewport> ViewportChanged { get; set; }
+
+    /// <summary>
+    /// LU-08: raised after every fit-into-view completes — an explicit <see cref="FitViewAsync(double?)"/>/<see cref="FitViewAsync(FlowFitViewOptions)"/>
+    /// call AND the engine's own DOM-measured fit (including <see cref="FitViewOnInit"/>'s initial
+    /// fit, which no awaited call otherwise reports completion for). <see cref="ViewportChanged"/>
+    /// also fires for a fit (it is a viewport change); this is additionally scoped to "a fit just
+    /// finished" specifically.
+    /// </summary>
+    [Parameter] public EventCallback<FlowViewport> OnFitView { get; set; }
 
     /// <summary>Renders each node's content. The canvas wraps it in a positioned, focusable host. Without a template a node renders a small card with its <c>Data</c> (or <c>Id</c>).</summary>
     [Parameter] public RenderFragment<FlowNodeContext>? NodeTemplate { get; set; }
@@ -230,7 +239,7 @@
     /// being dragged), and only edges touching a mounted node are drawn. The window follows pans and
     /// zooms with hysteresis — it is rebuilt only once the viewport has drifted half a viewport away
     /// (or zoomed in past half its size) — at most every 80 ms while a gesture runs, plus once when it
-    /// ends. Selection, delete, clipboard, keyboard moves, <see cref="FitViewAsync"/>,
+    /// ends. Selection, delete, clipboard, keyboard moves, <see cref="FitViewAsync(double?)"/>,
     /// <see cref="FlowMiniMap"/> and export keep working on EVERY node (they read the model, not the
     /// DOM); sizes measured while a node was mounted are remembered after it unmounts. Helper lines,
     /// marquee and connect targets only see mounted nodes (everything within one viewport of the
@@ -417,7 +426,38 @@
     internal FlowNode? SingleSelectedNode() => _state.SelectedNodeIds.Count == 1
         ? _nodes.FirstOrDefault(n => n.Id == _state.SelectedNodeIds.First())
         : null;
-    internal (double Width, double Height) PaneSize => (_state.PaneWidth, _state.PaneHeight);
+    /// <summary>
+    /// LU-08: the pane's last KNOWN size (from the most recent <see cref="PaneResized"/> report or
+    /// engine registration) — (0, 0) before either has happened. For a size guaranteed fresh right
+    /// now (e.g. right after a container resize, in the same tick), await <see cref="GetPaneSizeAsync"/>
+    /// instead; this member does not talk to the engine.
+    /// </summary>
+    public (double Width, double Height) PaneSize => (_state.PaneWidth, _state.PaneHeight);
+
+    /// <summary>
+    /// LU-07/LU-08: the pane's size, measured fresh from the DOM right now (not the last debounced
+    /// <see cref="PaneResized"/> report, which can still be in flight after a container resize in
+    /// the same tick — the reported bug). Also refreshes <see cref="PaneSize"/>. Falls back to
+    /// <see cref="PaneSize"/> when the engine is not registered (prerender, a torn-down circuit, a
+    /// custom no-op <c>IComponentInteropService</c>).
+    /// </summary>
+    public async Task<(double Width, double Height)> GetPaneSizeAsync()
+    {
+        if (_registered && !_disposed)
+        {
+            try
+            {
+                var live = await Interop.FlowGetPaneSizeAsync(_paneRef);
+                if (live is { Length: 2 } && live[0] > 0 && live[1] > 0)
+                {
+                    _state.SetPaneSize(live[0], live[1]);
+                    return (live[0], live[1]);
+                }
+            }
+            catch (JSDisconnectedException) { }
+        }
+        return PaneSize;
+    }
 
     /// <summary>The union of every selected node's rect, for <see cref="FlowNodeToolbar"/>'s multi-selection layout. Null with zero nodes selected.</summary>
     internal FlowRect? SelectedNodesBounds()
@@ -942,6 +982,18 @@
             case "Escape":
                 await ClearSelectionInternalAsync();
                 return;
+            // LU-06: Enter/Space on a focused node raises OnNodeClick (and runs the same
+            // selection toggle a mouse click does) — the same editable-target guard as the
+            // arrow-nudge below, so typing Space/Enter into a node template's own input (an
+            // inline edit field) does not also "click" the node. flow.js's own pane keydown
+            // listener calls preventDefault() for Space on the node host itself (not on an
+            // editable target either) so the page never scrolls; Blazor's own dispatch of this
+            // same native event still reaches this handler regardless of that preventDefault.
+            case "Enter":
+            case " ":
+                if (await IsKeydownFromEditableTargetAsync()) return;
+                await HandleNodeClickAsync(node, e.ShiftKey, e.CtrlKey || e.MetaKey);
+                return;
             case "ArrowLeft":
             case "ArrowRight":
             case "ArrowUp":
@@ -1439,25 +1491,60 @@
     // ── Imperative API ───────────────────────────────────────────────────
 
     /// <summary>Fits every node into view. <paramref name="padding"/> defaults to <see cref="FitViewPadding"/>.</summary>
-    public async Task FitViewAsync(double? padding = null)
+    public Task FitViewAsync(double? padding = null) => FitViewAsync(new FlowFitViewOptions(padding));
+
+    /// <summary>
+    /// LU-08: like <see cref="FitViewAsync(double?)"/>, with per-call <see cref="FlowFitViewOptions.MinZoom"/>/<see cref="FlowFitViewOptions.MaxZoom"/>
+    /// overrides and an optional <see cref="FlowFitViewOptions.AnchorNodeId"/> for a large graph
+    /// that would otherwise fit below the minimum zoom. Raises <see cref="OnFitView"/> once the fit
+    /// is applied (in addition to <see cref="ViewportChanged"/>, which every viewport change raises).
+    /// </summary>
+    public async Task FitViewAsync(FlowFitViewOptions options)
     {
-        var pad = padding ?? FitViewPadding;
+        ArgumentNullException.ThrowIfNull(options);
+        var pad = options.Padding ?? FitViewPadding;
+        var minZoom = options.MinZoom ?? MinZoom;
+        var maxZoom = options.MaxZoom ?? MaxZoom;
         if (_nodes.Count == 0) return;
+
+        // LU-07: re-measure the pane fresh before computing a .NET-side fit — the last PaneResized
+        // report (what PaneWidth/PaneHeight otherwise hold) can still be in flight right after a
+        // container resize in the same tick, which used to fit against the PREVIOUS size.
+        await GetPaneSizeAsync();
+
         // Virtualized: the DOM only holds the mounted window, so the engine's DOM fit would fit that
         // window, not the graph — fit from the model instead (unmeasured nodes count at their fixed
         // size or the library default).
         if (_state.PaneWidth > 0 && _state.PaneHeight > 0 && (OnlyRenderVisibleNodes || _state.AllSized(_nodes))
-            && _state.ComputeFit(_nodes, pad, MinZoom, MaxZoom) is { } vp)
+            && _state.ComputeFit(_nodes, pad, minZoom, maxZoom, options.AnchorNodeId) is { } vp)
         {
             await SetViewportCoreAsync(vp);
+            await RaiseFitViewAsync(vp);
             return;
         }
-        // Some node has never been measured: let the engine measure the DOM and fit (it reports back).
+        // Some node has never been measured: let the engine measure the DOM and fit (it reports back,
+        // including OnFitView — see FitCompleted). Only the anchor overload when an anchor was asked
+        // for, so the plain (overwhelmingly common) case keeps calling the exact same interop member
+        // it always has.
         if (_registered && !_disposed)
         {
-            try { await Interop.FlowFitViewAsync(_paneRef, pad, MinZoom, MaxZoom); }
+            try
+            {
+                if (options.AnchorNodeId is not null) await Interop.FlowFitViewAsync(_paneRef, pad, minZoom, maxZoom, options.AnchorNodeId);
+                else await Interop.FlowFitViewAsync(_paneRef, pad, minZoom, maxZoom);
+            }
             catch (JSDisconnectedException) { }
         }
+    }
+
+    private Task RaiseFitViewAsync(FlowViewport viewport) => OnFitView.HasDelegate ? OnFitView.InvokeAsync(viewport) : Task.CompletedTask;
+
+    /// <summary>Engine callback: a DOM-measured fit (explicit or <see cref="FitViewOnInit"/>'s initial fit) completed. Not meant for application code.</summary>
+    [JSInvokable, EditorBrowsable(EditorBrowsableState.Never)]
+    public async Task FitCompleted(double x, double y, double zoom)
+    {
+        if (!double.IsFinite(x) || !double.IsFinite(y) || !(zoom > 0)) return;
+        await RaiseFitViewAsync(new FlowViewport(x, y, zoom));
     }
 
     /// <summary>Zooms to <paramref name="zoom"/> (clamped to the zoom limits), keeping the pane centre fixed.</summary>
