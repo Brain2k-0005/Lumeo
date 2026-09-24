@@ -19,7 +19,9 @@
          tabindex="-1"
          inert="@ExitInert"
          @attributes="AdditionalAttributes">
-        @ChildContent
+        <div data-slot="context-menu-viewport" class="overflow-y-auto overscroll-contain" style="@ViewportStyle">
+            @ChildContent
+        </div>
     </div>
 }
 
@@ -30,6 +32,13 @@
     /// <summary>The menu's items — typically <see cref="ContextMenuItem"/>, <see cref="ContextMenuCheckboxItem"/>,
     /// <see cref="ContextMenuRadioGroup"/>, <see cref="ContextMenuSub"/>, and <see cref="ContextMenuSeparator"/>.</summary>
     [Parameter] public RenderFragment? ChildContent { get; set; }
+    /// <summary>
+    /// Overrides the panel's built-in scroll cap on its inner item viewport (a CSS length,
+    /// e.g. <c>"20rem"</c> or <c>"400px"</c>). By default the viewport caps itself to the
+    /// available viewport space below the open point — <c>--lumeo-dropdown-available-height</c>,
+    /// set live by the positioning JS — and scrolls past that.
+    /// </summary>
+    [Parameter] public string? MaxHeight { get; set; }
     /// <summary>Additional CSS classes merged onto the menu panel.</summary>
     [Parameter] public string? Class { get; set; }
     /// <summary>Additional HTML attributes captured and forwarded to the menu panel.</summary>
@@ -65,6 +74,12 @@
     // clamps the menu inside the viewport. The root menu previously rendered
     // partly off-screen near the bottom/right edges (submenus already flip).
     private string PositionStyle => string.Create(System.Globalization.CultureInfo.InvariantCulture, $"position: fixed; left: {Context.X}px; top: {Context.Y}px");
+
+    // Same fallback (24rem) as DropdownMenuContent's inner viewport — see there for the
+    // inline-style rationale (MaxHeight is a free-form caller string, the fallback carries
+    // a CSS var; neither is a static class the extractor could see).
+    private string ViewportStyle =>
+        $"max-height: {(string.IsNullOrWhiteSpace(MaxHeight) ? "var(--lumeo-dropdown-available-height, 24rem)" : MaxHeight)};";
 
     // Latch the exit on the open->closed transition so the panel stays mounted for
     // the zoom-out. The click-outside/focus cleanup still runs immediately on close.

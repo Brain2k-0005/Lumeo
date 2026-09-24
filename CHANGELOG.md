@@ -122,6 +122,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   there's room and never shrinks a column below its own `MinWidth` (falling back to `Width`);
   once the visible columns' combined floor exceeds the container, the grid scrolls horizontally
   instead of squeezing a column away (consumer report).
+- **DropdownMenu/ContextMenu/Menubar: content scrolls a long list itself.** `DropdownMenuContent`
+  (and `ContextMenuContent`/`MenubarContent`, which share the same overflow-visible/fixed-submenu
+  pattern) now cap an inner item viewport to the live available viewport space in the placement
+  direction — `--lumeo-dropdown-available-height`, positioning JS's parity with Radix's
+  `--radix-dropdown-menu-content-available-height` — and scroll past it, overridable per-panel
+  with the new `MaxHeight` parameter. The outer panel stays `overflow-visible` so a submenu
+  (`position: fixed`) keeps escaping it fully unclipped, even from an item deep in the scrolled
+  list — no more reaching for a consumer-supplied wrapper, which could reintroduce clipping by
+  giving the panel a containing block (#520).
+- **Popover: content can follow the trigger's rendered width.** `PopoverContent.MatchTriggerWidth`
+  reuses the positioning JS's existing trigger-width-matching plumbing (already used by
+  Select/Combobox/TreeSelect) so the panel's width tracks the trigger live instead of needing a
+  manual `Class="w-full"` alongside `PopoverTrigger AsChild`. The trigger's rendered width is also
+  published as `--lumeo-popover-trigger-width` (Radix's `--radix-popover-trigger-width` pattern)
+  on the content element regardless of the flag, for a custom `Class` to derive its own width from.
+  Default unchanged (#518).
 
 ### Fixed
 - **DataGrid: `ApplyLayoutAsync` reloads exactly like a header click.** A layout applied with a
