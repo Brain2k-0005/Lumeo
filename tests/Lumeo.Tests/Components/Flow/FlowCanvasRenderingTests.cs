@@ -95,7 +95,10 @@ public class FlowCanvasRenderingTests : FlowCanvasTestBase
         Assert.Null(ab.GetAttribute("data-source-handle"));
         // Unmeasured nodes use the default 150x40 box: source right-middle (150,20), target left-middle (300,60).
         Assert.Equal(L.FlowGeometry.GetBezierPath(150, 20, L.FlowPosition.Right, 300, 60, L.FlowPosition.Left).D, ab.GetAttribute("d"));
-        Assert.Contains("stroke:var(--color-muted-foreground)", ab.GetAttribute("style"));
+        // LU-02: the default stroke is the --lumeo-flow-edge-stroke custom property (falling back
+        // to --color-muted-foreground), not a literal colour — so a consumer can win over it from
+        // an external rule without !important despite this being inline. See lumeo-flow.css.
+        Assert.Contains("stroke:var(--lumeo-flow-edge-stroke, var(--color-muted-foreground))", ab.GetAttribute("style"));
 
         Assert.Equal("smoothstep", cut.Find("[data-flow-edge][data-edge-id='b-c']").GetAttribute("data-edge-type"));
     }
@@ -110,8 +113,13 @@ public class FlowCanvasRenderingTests : FlowCanvasTestBase
     }
 
     [Fact]
-    public void Measured_Handles_Move_The_Edge_Anchors()
+    public void Measured_Handles_Move_The_Edge_Anchors_Only_When_Explicitly_Named()
     {
+        // LU-11: an edge only anchors to a measured handle when it names one explicitly
+        // (SourceHandle here). Its TargetHandle is null, so even though "b" has a single
+        // measured target handle, the edge keeps the default LEFT-side anchor on "b" instead of
+        // jumping to that handle's (80,0)/top position — this was the reported bug ("adding a
+        // single FlowHandle anywhere changes anchoring of ALL edges without SourceHandle").
         var cut = Ctx.Render<L.FlowCanvas>(p => p
             .Add(c => c.Nodes, ThreeNodes())
             .Add(c => c.Edges, new List<L.FlowEdge> { new("a-b", "a", "b", SourceHandle: "out-2", TargetHandle: null) }));
@@ -126,7 +134,26 @@ public class FlowCanvasRenderingTests : FlowCanvasTestBase
             new L.FlowNodeMeasurement("b", 160, 50, new[] { new L.FlowHandleMeasurement(null, "target", "top", 80, 0) }),
         }));
 
-        // a at (0,0): handle out-2 at (100,80) facing down; b at (300,40): its target handle (80,0) facing up.
+        // a at (0,0): explicit handle out-2 at (100,80) facing down; b at (300,40), 160x50: no
+        // TargetHandle named, so the default LEFT-side anchor (300, 65) facing left, not the
+        // measured (unnamed) target handle at (380, 40)/top.
+        var expected = L.FlowGeometry.GetBezierPath(100, 80, L.FlowPosition.Bottom, 300, 65, L.FlowPosition.Left).D;
+        cut.WaitForAssertion(() => Assert.Equal(expected, cut.Find("[data-flow-edge][data-edge-id='a-b']").GetAttribute("d")));
+    }
+
+    [Fact]
+    public void An_Explicit_Target_Handle_Id_Still_Anchors_To_The_Measured_Handle()
+    {
+        var cut = Ctx.Render<L.FlowCanvas>(p => p
+            .Add(c => c.Nodes, ThreeNodes())
+            .Add(c => c.Edges, new List<L.FlowEdge> { new("a-b", "a", "b", SourceHandle: "out-2", TargetHandle: "in-1") }));
+
+        cut.InvokeAsync(() => cut.Instance.NodesMeasured(new[]
+        {
+            new L.FlowNodeMeasurement("a", 200, 80, new[] { new L.FlowHandleMeasurement("out-2", "source", "bottom", 100, 80) }),
+            new L.FlowNodeMeasurement("b", 160, 50, new[] { new L.FlowHandleMeasurement("in-1", "target", "top", 80, 0) }),
+        }));
+
         var expected = L.FlowGeometry.GetBezierPath(100, 80, L.FlowPosition.Bottom, 380, 40, L.FlowPosition.Top).D;
         cut.WaitForAssertion(() => Assert.Equal(expected, cut.Find("[data-flow-edge][data-edge-id='a-b']").GetAttribute("d")));
     }

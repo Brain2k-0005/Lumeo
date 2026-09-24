@@ -47,10 +47,16 @@
     border-radius: var(--radius-md);
 }
 
-/* Edges — colour comes from FlowEdgeLayer's inline style (so the very first paint is already
-   correct, before this file arrives); this rule only fixes what inline styles can't: the marker
-   arrowhead is painted from the path's own computed stroke via `fill: context-stroke` where
-   supported, dashed/animated get their pattern here. */
+/* Edges — LU-02: --lumeo-flow-edge-stroke is the token a consumer overrides (per edge via
+   edge.Class targeting [data-edge-id="…"], or canvas-wide on an ancestor) to recolour edges
+   WITHOUT !important: FlowEdgeLayer's inline style already reads this same var() chain (that is
+   what lets an external rule win despite the default being inline — see the component's own
+   comment), this rule is the fallback source for anything that reads the token from outside a
+   path's own inline style (the default marker, below). */
+:root {
+    --lumeo-flow-edge-stroke: var(--color-muted-foreground);
+}
+
 [data-flow-edge] {
     fill: none;
 }
@@ -59,8 +65,32 @@
     animation: lumeo-flow-dash 0.6s linear infinite;
 }
 
+/* LU-04: the travelling-dash overlay a solid (Dashed=false) Animated edge renders alongside its
+   own solid path (FlowEdgeLayer) — a different, sparser pattern/period than the dashed-edge
+   animation above so the two read as distinct: a genuinely dashed edge's dashes shift, a solid
+   edge gets a small mark travelling along it. */
+[data-flow-edge-flow] {
+    animation: lumeo-flow-edge-travel 0.9s linear infinite;
+}
+
 @keyframes lumeo-flow-dash {
     to { stroke-dashoffset: -18; }
+}
+
+@keyframes lumeo-flow-edge-travel {
+    to { stroke-dashoffset: -24; }
+}
+
+/* LU-03: the default marker's arrowhead tracks --lumeo-flow-edge-stroke via its own fill (inline
+   in FlowEdgeLayer's markup) in every engine; where `context-stroke` is supported (Chromium) it
+   is upgraded to track the PATH's actual resolved stroke instead, so a consumer override reaches
+   the marker there too — Firefox/Safari keep the token-based fallback (correct for the default AND
+   selected colours, since selected uses its own dedicated marker; only a fully custom PER-EDGE
+   override does not reach the marker in those two engines, documented in FlowEdgeLayer.razor). */
+@supports (fill: context-stroke) {
+    .lumeo-flow-marker-path {
+        fill: context-stroke;
+    }
 }
 
 /* Handles */

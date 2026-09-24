@@ -939,10 +939,16 @@ public class TrackingInteropService : IComponentInteropService
     private int _flowUnregisterCanvasCallCount;
     private int _flowUpdateOptionsCallCount;
     private readonly List<(double Padding, double MinZoom, double MaxZoom)> _flowFitViewCalls = new();
+    private readonly List<(double Padding, double MinZoom, double MaxZoom, string? AnchorNodeId)> _flowFitViewAnchorCalls = new();
     public int FlowRegisterCanvasCallCount => _flowRegisterCanvasCallCount;
     public int FlowUnregisterCanvasCallCount => _flowUnregisterCanvasCallCount;
     public int FlowUpdateOptionsCallCount => _flowUpdateOptionsCallCount;
     public IReadOnlyList<(double Padding, double MinZoom, double MaxZoom)> FlowFitViewCalls => _flowFitViewCalls;
+    /// <summary>Calls to the LU-08 anchor overload of <see cref="FlowFitViewAsync(ElementReference, double, double, double, string?)"/>.</summary>
+    public IReadOnlyList<(double Padding, double MinZoom, double MaxZoom, string? AnchorNodeId)> FlowFitViewAnchorCalls => _flowFitViewAnchorCalls;
+    /// <summary>What <see cref="FlowGetPaneSizeAsync"/> returns — the engine's freshly-measured pane size (LU-07), simulating a resize the last <c>PaneResized</c> report has not caught up with yet. Null (default) simulates "no registered engine" / falls back to the last known size.</summary>
+    public double[]? FlowFreshPaneSize { get; set; }
+    public int FlowGetPaneSizeCallCount { get; private set; }
     public object? LastFlowOptions { get; private set; }
     public object? LastFlowDotNetRef { get; private set; }
     /// <summary>When set, <see cref="FlowRegisterCanvasAsync{T}"/> returns this gate's Task
@@ -977,7 +983,17 @@ public class TrackingInteropService : IComponentInteropService
         _flowFitViewCalls.Add((padding, minZoom, maxZoom));
         return Task.CompletedTask;
     }
+    public Task FlowFitViewAsync(ElementReference paneEl, double padding, double minZoom, double maxZoom, string? anchorNodeId)
+    {
+        _flowFitViewAnchorCalls.Add((padding, minZoom, maxZoom, anchorNodeId));
+        return Task.CompletedTask;
+    }
     public Task<double[]?> FlowGetViewportAsync(ElementReference paneEl) => Task.FromResult(FlowLiveViewport);
+    public Task<double[]?> FlowGetPaneSizeAsync(ElementReference paneEl)
+    {
+        FlowGetPaneSizeCallCount++;
+        return Task.FromResult(FlowFreshPaneSize);
+    }
     /// <summary>What <see cref="FlowIsFocusedElementEditableAsync"/> returns — simulates "the real DOM's <c>document.activeElement</c> is currently an editable field/data-flow-nodrag region" for a test, since bUnit has no real DOM to query.</summary>
     public bool FlowFocusedElementEditable { get; set; }
     public Task<bool> FlowIsFocusedElementEditableAsync(ElementReference paneEl) => Task.FromResult(FlowFocusedElementEditable);

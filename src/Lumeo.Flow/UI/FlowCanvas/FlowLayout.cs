@@ -49,9 +49,14 @@ public static class FlowLayout
 {
     /// <summary>
     /// Lays out <paramref name="nodes"/> as a rooted tree (or forest — every node with no incoming
-    /// edge is its own root). A node reachable from more than one root is placed under whichever root
-    /// reaches it first (input order); cycles are broken the same way <see cref="Layered"/> breaks
-    /// them (DFS back-edge removal) before the tree is built, so a cyclic graph still lays out
+    /// edge is its own root). LU-10: a node's DEPTH is the longest path reaching it from any root (so
+    /// a multi-parent node never sits shallower than a parent's own depth demands); it is then
+    /// PLACED — centred, for the perpendicular/column position — under the single parent whose own
+    /// depth explains that depth (<c>parent.Depth + 1 == node.Depth</c>, the deepest of its parents;
+    /// ties keep the first such parent in edge input order), not under whichever parent's subtree
+    /// walk happens to reach it first. A node's depth and its placement parent are therefore always
+    /// consistent with each other. Cycles are broken the same way <see cref="Layered"/> breaks them
+    /// (DFS back-edge removal) before the tree is built, so a cyclic graph still lays out
     /// deterministically instead of looping.
     /// </summary>
     public static IReadOnlyList<FlowNode> Tree(
@@ -87,13 +92,31 @@ public static class FlowLayout
         var roots = ids.Where(id => !hasIncoming.Contains(id)).ToList();
         if (roots.Count == 0) roots.Add(ids[0]); // a pure cycle: pick a deterministic root
 
-        // Depth = shallowest distance from any root that reaches the node (BFS-style, first writer
-        // wins) so "reachable from more than one root" resolves to whichever root reaches it first,
-        // in root/child input order.
+        // Depth = LONGEST distance from any root that reaches the node: AssignDepth only overwrites
+        // an already-visited node when the new candidate depth is greater (never shallower), so a
+        // node with several parents ends up at the depth its deepest-reaching parent demands,
+        // regardless of which root/child is visited first.
         var depthOf = new Dictionary<string, int>(StringComparer.Ordinal);
         foreach (var root in roots) AssignDepth(root, 0, children, depthOf);
         foreach (var id in ids) if (!depthOf.ContainsKey(id)) depthOf[id] = 0; // unreachable node: its own root at depth 0
         var rankStart = ComputeRankStarts(ids, depthOf, sizes, opts);
+
+        // LU-10: PLACEMENT uses a single parent per node — the one that actually explains its (already
+        // longest-path) depth, i.e. parent.Depth + 1 == node.Depth (the deepest of its parents when it
+        // has more than one); the first edge in input order wins a tie. Without this a multi-parent
+        // node's column (from depthOf, already correct) and the parent it is centred under (from the
+        // raw, still-multi-parent `children` map) could disagree — e.g. a node reachable from both a
+        // root and that root's own child ends up centred under the root's subtree instead of the
+        // child's, even though its depth already reflects the longer path through the child.
+        var layoutParentOf = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var (s, t) in acyclic)
+        {
+            if (layoutParentOf.ContainsKey(t)) continue; // already has its depth-determining parent
+            if (depthOf.TryGetValue(s, out var sd) && sd + 1 == depthOf[t]) layoutParentOf[t] = s;
+        }
+        var layoutChildren = new Dictionary<string, List<string>>(StringComparer.Ordinal);
+        foreach (var id in ids) layoutChildren[id] = new List<string>();
+        foreach (var (t, s) in layoutParentOf) layoutChildren[s].Add(t);
 
         var placed = new Dictionary<string, (double X, double Y)>(StringComparer.Ordinal);
         var cursor = 0.0; // next free perpendicular offset, shared across every root/orphan
@@ -103,7 +126,7 @@ public static class FlowLayout
         double PlaceSubtree(string id)
         {
             if (placed.TryGetValue(id, out var already)) return Perp(already, opts.Direction);
-            var kids = children[id].Where(c => !placed.ContainsKey(c)).ToList();
+            var kids = layoutChildren[id].Where(c => !placed.ContainsKey(c)).ToList();
             double perp;
             if (kids.Count == 0)
             {
@@ -171,6 +194,9 @@ public static class FlowLayout
     /// removal breaks cycles first, so every graph terminates), then ordered within each rank by
     /// barycenter of their neighbours in the adjacent rank (a few sweeps, alternating up/down) to
     /// reduce edge crossings. Deterministic for a fixed input order.
+    /// LU-01: a duplicate node id never throws — like <see cref="Tree"/> and the internal back-edge
+    /// removal, it is handled (every occurrence is ranked and placed the same way; real data such as
+    /// a SQL Server deadlock XML repeating a resource id lays out instead of crashing the circuit).
     /// </summary>
     public static IReadOnlyList<FlowNode> Layered(
         IReadOnlyList<FlowNode> nodes, IReadOnlyList<FlowEdge> edges,
@@ -292,7 +318,12 @@ public static class FlowLayout
         // Rank = longest path from any source (in-degree 0 in the acyclic graph). Processed in a
         // topological order (Kahn) so every predecessor's rank is final before a node is ranked.
         var rank = new Dictionary<string, int>(StringComparer.Ordinal);
-        var indeg = ids.ToDictionary(id => id, id => inAdj[id].Count, StringComparer.Ordinal);
+        // LU-01: a plain assignment loop, not ToDictionary — `ids` can contain a duplicate node id
+        // (real data, e.g. a SQL Server deadlock XML repeating a resource id) and ToDictionary throws
+        // ArgumentException on the second occurrence. inAdj[id].Count is a pure function of id, so
+        // writing it more than once for the same duplicate id is harmless (same value every time).
+        var indeg = new Dictionary<string, int>(StringComparer.Ordinal);
+        foreach (var id in ids) indeg[id] = inAdj[id].Count;
         var queue = new Queue<string>(ids.Where(id => indeg[id] == 0));
         foreach (var id in ids.Where(id => indeg[id] == 0)) rank[id] = 0;
         var processed = new HashSet<string>(StringComparer.Ordinal);

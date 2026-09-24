@@ -1041,8 +1041,26 @@ public interface IComponentInteropService : IAsyncDisposable, IDisposable
     /// </summary>
     Task FlowFitViewAsync(Microsoft.AspNetCore.Components.ElementReference paneEl, double padding, double minZoom, double maxZoom) => Task.CompletedTask;
 
+    /// <summary>
+    /// LU-08: like <see cref="FlowFitViewAsync(Microsoft.AspNetCore.Components.ElementReference, double, double, double)"/>,
+    /// but when the DOM-measured fit would need a zoom below <paramref name="minZoom"/>, centres on
+    /// the node <paramref name="anchorNodeId"/> at <paramref name="minZoom"/> instead of the whole
+    /// (still-clamped) bounds. A new overload rather than a new parameter on the existing member, so
+    /// nothing implementing the interface before this had to change. Default no-op.
+    /// </summary>
+    Task FlowFitViewAsync(Microsoft.AspNetCore.Components.ElementReference paneEl, double padding, double minZoom, double maxZoom, string? anchorNodeId) => Task.CompletedTask;
+
     /// <summary>The engine's live viewport as <c>[x, y, zoom]</c>, or null when the engine is unavailable. Default null.</summary>
     Task<double[]?> FlowGetViewportAsync(Microsoft.AspNetCore.Components.ElementReference paneEl) => Task.FromResult<double[]?>(null);
+
+    /// <summary>
+    /// LU-07: the pane's LIVE measured size (a fresh <c>clientWidth</c>/<c>clientHeight</c> read,
+    /// forcing layout), not whatever the ResizeObserver's own debounced report happened to have
+    /// delivered by the time this is called — used by <c>FlowCanvas.FitViewAsync</c> right after a
+    /// container resize, where that report can still be in flight. <c>[width, height]</c>, or
+    /// <c>null</c> when the engine is unavailable. Default null.
+    /// </summary>
+    Task<double[]?> FlowGetPaneSizeAsync(Microsoft.AspNetCore.Components.ElementReference paneEl) => Task.FromResult<double[]?>(null);
 
     /// <summary>
     /// Whether <c>document.activeElement</c>, scoped to this pane, is an editable field (input,
