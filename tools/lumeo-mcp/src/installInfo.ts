@@ -45,7 +45,10 @@ export const PACKAGE_SETUP: Record<string, PackageSetup> = {
     dotnetAdd: "dotnet add package Lumeo.Charts --prerelease",
     lumeoAddNote: "`lumeo add chart` copies the Chart component + ECharts interop.",
     usings: ["@using Lumeo"],
-    di: ["builder.Services.AddLumeo();", "builder.Services.AddLumeoCharts();"],
+    // LU-16: there is no AddLumeoCharts() — `AddLumeo()` is the only DI registration
+    // extension method in the whole library (src/Lumeo/Extensions/LumeoServiceExtensions.cs);
+    // satellites add components/markup, not their own service registrations.
+    di: ["builder.Services.AddLumeo();"],
     hostIncludes: [
       `<script src="_content/Lumeo.Charts/js/echarts.min.js"></script>`,
       `<script src="_content/Lumeo.Charts/js/chart-interop.js"></script>`,
@@ -57,7 +60,9 @@ export const PACKAGE_SETUP: Record<string, PackageSetup> = {
     dotnetAdd: "dotnet add package Lumeo.DataGrid --prerelease",
     lumeoAddNote: "`lumeo add datagrid` copies the DataGrid + supporting types.",
     usings: ["@using Lumeo"],
-    di: ["builder.Services.AddLumeo();", "builder.Services.AddLumeoDataGrid();  // registers IDataGridExportService"],
+    // LU-16: there is no AddLumeoDataGrid() — IDataGridExportService is already
+    // registered by the core AddLumeo() call (see LumeoServiceExtensions.cs).
+    di: ["builder.Services.AddLumeo();  // also registers IDataGridExportService"],
     hostIncludes: [],
     notes: [
       "Excel/PDF export pulls in ClosedXML (MIT) and QuestPDF (dual-licensed — free under $1M revenue, otherwise paid). CSV/JSON export has no third-party dependency.",
@@ -69,7 +74,8 @@ export const PACKAGE_SETUP: Record<string, PackageSetup> = {
     dotnetAdd: "dotnet add package Lumeo.Editor --prerelease",
     lumeoAddNote: "`lumeo add rich-text-editor`.",
     usings: ["@using Lumeo"],
-    di: ["builder.Services.AddLumeo();", "builder.Services.AddLumeoEditor();"],
+    // LU-16: there is no AddLumeoEditor().
+    di: ["builder.Services.AddLumeo();"],
     hostIncludes: [`<script src="_content/Lumeo.Editor/js/editor-interop.js"></script>`],
     notes: [],
   },
@@ -78,7 +84,8 @@ export const PACKAGE_SETUP: Record<string, PackageSetup> = {
     dotnetAdd: "dotnet add package Lumeo.Scheduler --prerelease",
     lumeoAddNote: "`lumeo add scheduler`.",
     usings: ["@using Lumeo"],
-    di: ["builder.Services.AddLumeo();", "builder.Services.AddLumeoScheduler();"],
+    // LU-16: there is no AddLumeoScheduler().
+    di: ["builder.Services.AddLumeo();"],
     hostIncludes: [],
     notes: [],
   },
@@ -87,7 +94,8 @@ export const PACKAGE_SETUP: Record<string, PackageSetup> = {
     dotnetAdd: "dotnet add package Lumeo.Gantt --prerelease",
     lumeoAddNote: "`lumeo add gantt`.",
     usings: ["@using Lumeo"],
-    di: ["builder.Services.AddLumeo();", "builder.Services.AddLumeoGantt();"],
+    // LU-16: there is no AddLumeoGantt().
+    di: ["builder.Services.AddLumeo();"],
     hostIncludes: [],
     notes: [],
   },
@@ -96,7 +104,8 @@ export const PACKAGE_SETUP: Record<string, PackageSetup> = {
     dotnetAdd: "dotnet add package Lumeo.Motion --prerelease",
     lumeoAddNote: "`lumeo add <motion-component>` (e.g. `lumeo add border-beam`).",
     usings: ["@using Lumeo"],
-    di: ["builder.Services.AddLumeo();", "builder.Services.AddLumeoMotion();"],
+    // LU-16: there is no AddLumeoMotion().
+    di: ["builder.Services.AddLumeo();"],
     hostIncludes: [`<script src="_content/Lumeo.Motion/js/motion-interop.js"></script>`],
     notes: ["Animation primitives (BorderBeam, Marquee, NumberTicker, Confetti, …). Most are pure CSS; a few use a small JS interop module."],
   },
