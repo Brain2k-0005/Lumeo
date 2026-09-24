@@ -252,6 +252,27 @@ jobs:
       - name: Regenerate MCP registry against current source
         run: dotnet run --project tools/Lumeo.RegistryGen
 
+      # LU-15: every earlier failure mode here (rc.38-shipped-under-2.0.0, and the
+      # SQL Analyst field report against 5.11.0 finding the npm package still on
+      # 5.10.5 with no Lumeo.Flow) was the SAME shape — the regen step above silently
+      # no-op'd, or ran against stale source, and nothing downstream noticed before
+      # the package shipped. Fail loudly, here, before build/publish spend any more
+      # CI minutes on data that doesn't match the tag being released.
+      - name: Verify regenerated data matches the release tag
+        run: |
+          data_version=$(grep -oP '"version":\s*"\K[^"]+' tools/lumeo-mcp/src/components-api.json | head -1)
+          tag_version="${{ steps.ver.outputs.version }}"
+          echo "components-api.json version: $data_version"
+          echo "release tag version:         $tag_version"
+          if [ "$data_version" != "$tag_version" ]; then
+            echo "::error::MCP data version ($data_version) != release tag ($tag_version) — RegistryGen did not regenerate against the tagged commit. Refusing to publish stale data."
+            exit 1
+          fi
+          if ! grep -q '"nugetPackage": *"Lumeo.Flow"' tools/lumeo-mcp/src/components-api.json; then
+            echo "::error::components-api.json has no Lumeo.Flow components — satellite discovery regressed."
+            exit 1
+          fi
+
       - name: Install deps
         working-directory: tools/lumeo-mcp
         run: npm ci
