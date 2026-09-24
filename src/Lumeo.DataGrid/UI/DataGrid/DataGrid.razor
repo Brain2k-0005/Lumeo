@@ -11,6 +11,14 @@
     // safe to run during render and covers every path that mutates _displayedItems
     // (sort, filter, paging, grouping, external data changes).
     ClampFocusedCell();
+    // FitWithMinimum: recomputed fresh every render, same discipline as PinnedLeftOffsets/
+    // PinnedRightOffsets below — a pure function of the current visible columns and the last
+    // measured container width, so every mutation path that already calls StateHasChanged
+    // (resize, autosize, reset, layout restore, column add/remove/visibility) picks up a
+    // fresh distribution without a separate invalidation mechanism to keep in sync.
+    _fitColumnWidths = ColumnSizing == DataGridColumnSizing.FitWithMinimum && _fitContainerWidth is double fitContainerWidth
+        ? ComputeFitColumnWidths(fitContainerWidth)
+        : DataGridColumnFit.Empty;
     var context = new DataGridContext<TItem>(
         Columns: _visibleColumns,
         // _visibleColumns is itself the filtered cache (Visible == true) — we
@@ -101,6 +109,7 @@
         SelectOnRowClick = SelectOnRowClick,
         ShowReorderHandle = ShowReorderHandle,
         ColumnSizing = ColumnSizing,
+        FitColumnWidths = _fitColumnWidths,
         Bordered = Bordered,
         ShowPinButton = ShowPinButton,
         SortIconTemplate = SortIconTemplate,
@@ -1261,6 +1270,12 @@
     private async ValueTask<Microsoft.AspNetCore.Components.Web.Virtualization.ItemsProviderResult<DataGridBody<TItem>.IndexedItem>>
         ServerVirtualizationProviderImpl(Microsoft.AspNetCore.Components.Web.Virtualization.ItemsProviderRequest req)
     {
+        // Only ever awaits on the FIRST call (see _initialVirtualizationLayoutGate's
+        // remarks): once resolved, every later await on the same completed Task returns
+        // synchronously, so this costs nothing after startup.
+        if (_initialVirtualizationLayoutGate is not null)
+            await _initialVirtualizationLayoutGate.Task;
+
         if (OnRangeRequest is null)
         {
             return new Microsoft.AspNetCore.Components.Web.Virtualization.ItemsProviderResult<DataGridBody<TItem>.IndexedItem>(
@@ -1336,15 +1351,27 @@
     {
         get
         {
-            // FitWithMinimum: table-layout: auto lets the browser distribute space among
-            // columns (giving a FillWidth column, which carries no fixed width, whatever is
-            // left) and — unlike table-layout: fixed — actually honours a per-column
-            // min-width as a floor (DataGridHeaderCell.StyleString emits min-width, never
-            // width, for this mode). width: 100% is the starting point; once the columns'
-            // combined min-width exceeds the container the table naturally grows past it
-            // and the existing overflow-x-auto scroll container takes over.
+            // FitWithMinimum: once the container has been measured (_fitColumnWidths populated —
+            // see the @{ } block above and OnFitContainerWidthChanged), lay out table-layout:
+            // fixed at the EXACT sum of DataGridColumnFit.Compute's per-column widths.
+            // DataGridHeaderCell.StyleString renders each column at that same computed width, so
+            // fixed layout — which uses only the widths it's given, never content — becomes a
+            // real ceiling AND floor, unlike table-layout: auto (see DataGridColumnSizing.
+            // FitWithMinimum's remarks for why auto could never actually cap a nowrap cell).
+            // The sum already equals the container width in the fit/grow/shrink cases and
+            // sum(MinWidth) in the overflow case (DataGridColumnFit.Compute's own contract), so
+            // it doubles as the "grow past the container and scroll" signal without recomputing
+            // anything here.
             if (ColumnSizing == DataGridColumnSizing.FitWithMinimum)
+            {
+                if (_fitColumnWidths.Count > 0)
+                {
+                    var fitSum = _fitColumnWidths.Values.Sum();
+                    return $"table-layout: fixed; width: {fitSum.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)}px;";
+                }
+                // Not measured yet — see DataGridHeaderCell.StyleString's matching fallback.
                 return "table-layout: auto; width: 100%;";
+            }
 
             if (_visibleColumns.Count == 0 || _visibleColumns.Any(c => !c.Width.HasValue)) return null;
             var sum = _visibleColumns.Sum(c => c.Width!.Value);
@@ -1565,6 +1592,55 @@
     // Overlay scrollbar (#517) — see the register/unregister block in
     // OnAfterRenderAsync and DisposeAsync, and _viewportId above.
     private bool _overlayScrollbarRegistered;
+
+    // --- FitWithMinimum column-width distribution (DocFlow field report, 5.11.0) ---
+    // Reuses _viewportId (the same horizontal scroll wrapper the two observers above watch)
+    // for its own, separate ResizeObserver — see the register/unregister block in
+    // OnAfterRenderAsync and DisposeAsync. Unlike RegisterViewportWidth (JS-only, writes a
+    // CSS custom property), this one round-trips the measured width to .NET: the distribution
+    // (DataGridColumnFit.Compute) needs the column model — MinWidth/MaxWidth/FillWidth and the
+    // live, possibly-resized Column.Width — which only C# has.
+    private bool _fitWidthObserverRegistered;
+    private DotNetObjectReference<DataGrid<TItem>>? _fitWidthSelfRef;
+    /// <summary>Last width (px) the ResizeObserver reported for the horizontal scroll wrapper.
+    /// Null until JS has measured at least once — see DataGridColumnSizing.FitWithMinimum's
+    /// remarks for the pre-measurement fallback this drives in TableStyle/StyleString.</summary>
+    private double? _fitContainerWidth;
+    /// <summary>Recomputed every render (see the @{ } block above) from <see cref="_fitContainerWidth"/>
+    /// and <see cref="_visibleColumns"/>; empty outside FitWithMinimum or before the first measurement.</summary>
+    private IReadOnlyDictionary<string, double> _fitColumnWidths = DataGridColumnFit.Empty;
+    private bool WantsColumnFitObserver => ColumnSizing == DataGridColumnSizing.FitWithMinimum;
+
+    /// <summary>Projects the current visible columns into <see cref="DataGridColumnFit.ColumnFitSpec"/>
+    /// and runs the distribution for <paramref name="containerWidth"/>. See that type's remarks for
+    /// the Desired/Floor priority (live Column.Width — already resize/restore/autosize-applied —
+    /// over MinWidth over a sane default).</summary>
+    private IReadOnlyDictionary<string, double> ComputeFitColumnWidths(double containerWidth)
+    {
+        if (_visibleColumns.Count == 0) return DataGridColumnFit.Empty;
+        var specs = new DataGridColumnFit.ColumnFitSpec[_visibleColumns.Count];
+        for (var i = 0; i < _visibleColumns.Count; i++)
+        {
+            var c = _visibleColumns[i];
+            var desired = c.Width ?? c.MinWidth ?? DataGridColumnFit.DefaultDesiredWidth;
+            var floor = c.MinWidth ?? c.Width ?? 0;
+            specs[i] = new DataGridColumnFit.ColumnFitSpec(c.Id, desired, floor, c.MaxWidth, c.FillWidth);
+        }
+        return DataGridColumnFit.Compute(specs, containerWidth);
+    }
+
+    /// <summary>
+    /// Invoked from JS (components.js's registerColumnFitObserver) whenever the horizontal
+    /// scroll wrapper's client width changes — first paint and every resize thereafter. Only
+    /// registered while <see cref="WantsColumnFitObserver"/> is true.
+    /// </summary>
+    [JSInvokable]
+    public void OnFitContainerWidthChanged(double width)
+    {
+        if (_fitContainerWidth is double current && Math.Abs(current - width) < 0.5) return;
+        _fitContainerWidth = width;
+        StateHasChanged();
+    }
 
     private List<DataGridGroupSection<TItem>> _groupedSections = new();
     private HashSet<string> _expandedGroups = new();
@@ -2142,8 +2218,29 @@
             if (EnableLayoutPersistence && !_layoutService.LayoutLoaded)
             {
                 var key = LayoutStorageKey ?? _layoutId;
-                await _layoutService.LoadPersistedLayoutAsync(key, ApplyLayoutAsync);
+                await _layoutService.LoadPersistedLayoutAsync(key, async layout =>
+                {
+                    // Suppress ApplyLayoutAsync's own RefreshVirtualizedAsync call for THIS
+                    // invocation: the still-gated natural <Virtualize> fetch below is what
+                    // fires the (single) initial request once released — a second, ApplyLayoutAsync
+                    // -triggered one here would either race it for _sorts (TrySetResult's
+                    // continuation can resume on the thread pool concurrently with this method's
+                    // own remaining synchronous work — NOT guaranteed to happen-after it) or, once
+                    // sequenced safely, simply duplicate it. See _initialVirtualizationLayoutGate's
+                    // remarks.
+                    _suppressNextVirtualizationRefresh = _useServerVirtualization;
+                    await ApplyLayoutAsync(layout); // sets _sorts/_filters synchronously; may no-op its own refresh
+                    // Only NOW release — after ApplyLayoutAsync (and the suppressed-refresh
+                    // no-op) has fully completed, so _sorts/_filters are guaranteed final before
+                    // any blocked caller can observe them. No happens-before race, unlike
+                    // releasing first and calling ApplyLayoutAsync after.
+                    _initialVirtualizationLayoutGate?.TrySetResult();
+                });
             }
+            // Nothing was persisted (or layout persistence is off) — release unconditionally;
+            // TrySetResult is idempotent with the callback above. LoadPersistedLayoutAsync
+            // swallows its own errors, so this always runs.
+            _initialVirtualizationLayoutGate?.TrySetResult();
 
             // Second chance for the initial server request. OnInitializedAsync fires before
             // children register and before the first render, so a ServerMode or handler that
@@ -2304,6 +2401,29 @@
             _viewportWidthRegistered = false;
         }
 
+        // FitWithMinimum column-fit observer: reactive to ColumnSizing changing at runtime,
+        // not just first render — same shape as the viewport-width block above. A separate
+        // DotNetObjectReference method the grid already registers rather than reuses the
+        // viewport-width one because it needs a live .NET round-trip on every resize, not a
+        // JS-only CSS-var write — see WantsColumnFitObserver's field comment.
+        if (WantsColumnFitObserver && !_fitWidthObserverRegistered)
+        {
+            try
+            {
+                _fitWidthSelfRef ??= DotNetObjectReference.Create(this);
+                await Interop.RegisterColumnFitObserver(_viewportId, _fitWidthSelfRef);
+                _fitWidthObserverRegistered = true;
+            }
+            catch (JSDisconnectedException) { }
+        }
+        else if (!WantsColumnFitObserver && _fitWidthObserverRegistered)
+        {
+            try { await Interop.UnregisterColumnFitObserver(_viewportId); }
+            catch (JSDisconnectedException) { }
+            _fitWidthObserverRegistered = false;
+            _fitContainerWidth = null;
+        }
+
         // Overlay scrollbar (#517): reactive to OverlayScrollbar flipping at runtime,
         // not just first render — same shape as the viewport-width block above.
         if (OverlayScrollbar && !_overlayScrollbarRegistered)
@@ -2424,7 +2544,47 @@
             SeedDefaultSorts();
             await RequestServerData();
         }
+
+        // See _initialVirtualizationLayoutGate's remarks: only meaningful (and only
+        // created) when there's an actual persisted layout that could still be in flight
+        // when the FIRST range request goes out.
+        if (_useServerVirtualization && EnableLayoutPersistence)
+            _initialVirtualizationLayoutGate = new TaskCompletionSource();
     }
+
+    /// <summary>
+    /// Gates <see cref="ServerVirtualizationProviderImpl"/>'s FIRST call until a pending
+    /// <see cref="LayoutStorageKey"/> restore has resolved, so that call carries the restored
+    /// sort/filters instead of the default ones.
+    ///
+    /// The ServerMode initial-request reordering fix (DocFlow D2 / PR #514) restores a
+    /// persisted layout in <see cref="OnAfterRenderAsync(bool)"/> BEFORE the first
+    /// <see cref="OnServerRequest"/> goes out, because that request is one this code fires
+    /// itself. Server virtualization's first request is NOT fired by this code — Blazor's
+    /// <c>&lt;Virtualize ItemsProvider&gt;</c> fires it from the CHILD component's own
+    /// initialization, which runs as part of the SAME initial render pass that mounts it,
+    /// strictly before this ancestor's <c>OnAfterRenderAsync(firstRender)</c> gets to await
+    /// the persisted-layout read. Without this gate the very first range request always
+    /// carried the default sort/filters, and the restored ones only arrived on a SECOND
+    /// request once <see cref="ApplyLayoutAsync"/>'s <see cref="RefreshVirtualizedAsync"/>
+    /// call landed a moment later — a visible reorder flicker on every load (field report
+    /// LU-13; PR #514 only fixed the ServerMode and ApplyLayoutAsync-reload paths for
+    /// virtualized grids, not this initial one).
+    ///
+    /// Null (no gate, no wait) whenever there's nothing to restore, so a grid without
+    /// <see cref="EnableLayoutPersistence"/> never pays for it.
+    ///
+    /// Released only AFTER a found layout's <see cref="ApplyLayoutAsync"/> call has fully
+    /// completed (see the call site), never before/concurrently with it — releasing first and
+    /// calling ApplyLayoutAsync after would race this gate's blocked caller (which resumes via
+    /// a thread-pool-scheduled continuation, not guaranteed to happen-after the rest of this
+    /// method's own synchronous work) for `_sorts`/`_filters`. ApplyLayoutAsync's own
+    /// <c>RefreshVirtualizedAsync</c> call is suppressed for this one bootstrap invocation
+    /// (<see cref="_suppressNextVirtualizationRefresh"/>) so the still-gated natural
+    /// <c>&lt;Virtualize&gt;</c> fetch this releases is the ONLY request that fires — not a
+    /// redundant second one.
+    /// </summary>
+    private TaskCompletionSource? _initialVirtualizationLayoutGate;
 
     // Whether the mount-time server request has gone out. Guards the first-render retry
     // and the ServerMode false->true transition below, so at most one initial request is
@@ -4918,7 +5078,20 @@
         // provider, so a layout applied with a new sort/filter left a virtualized grid's
         // rows exactly as they were (only the header UI reflected the new layout).
         if (_useServerVirtualization)
-            await RefreshVirtualizedAsync();
+        {
+            // The bootstrap-only exception (LU-13): OnAfterRenderAsync's initial
+            // LayoutStorageKey restore sets this before calling us here, because the still-
+            // gated natural <Virtualize> fetch it's about to release is what fires that
+            // single initial request — firing a second one here too would either race it for
+            // _sorts (this call and the gate's release aren't ordered against each other) or,
+            // once sequenced safely, simply duplicate it. Every OTHER caller (a user manually
+            // applying a saved/named layout, ResetLayoutAsync, etc.) leaves this false and
+            // gets the normal refresh.
+            if (_suppressNextVirtualizationRefresh)
+                _suppressNextVirtualizationRefresh = false;
+            else
+                await RefreshVirtualizedAsync();
+        }
         else if (ServerMode)
             await RequestServerData();
         else
@@ -4926,6 +5099,9 @@
 
         StateHasChanged();
     }
+
+    /// <summary>See <see cref="ApplyLayoutAsync"/>'s server-virtualization branch remarks.</summary>
+    private bool _suppressNextVirtualizationRefresh;
 
     public async Task ResetLayoutAsync()
     {
@@ -5380,6 +5556,16 @@
             catch { /* best-effort */ }
             _overlayScrollbarRegistered = false;
         }
+
+        // Tear down the FitWithMinimum column-fit observer registered on the scroll wrapper.
+        if (_fitWidthObserverRegistered)
+        {
+            try { await Interop.UnregisterColumnFitObserver(_viewportId); }
+            catch (Microsoft.JSInterop.JSDisconnectedException) { /* circuit gone */ }
+            catch { /* best-effort */ }
+            _fitWidthObserverRegistered = false;
+        }
+        _fitWidthSelfRef?.Dispose();
 
         // Defensive: if disposed while still in fullscreen, unlock scroll AND drop
         // the html-level fullscreen class. ToggleExpanded adds

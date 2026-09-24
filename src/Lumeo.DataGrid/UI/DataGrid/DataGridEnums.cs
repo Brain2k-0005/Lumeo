@@ -40,9 +40,24 @@ public enum DataGridColumnSizing
     /// their own <see cref="DataGridColumn{TItem}.MinWidth"/> (falling back to
     /// <see cref="DataGridColumn{TItem}.Width"/> when <c>MinWidth</c> isn't set) — once the sum of
     /// every visible column's floor exceeds the container, the table grows past it and the grid's
-    /// existing horizontal scrollbar takes over, instead of columns collapsing. Implemented with
-    /// <c>table-layout: auto</c> plus a per-column CSS <c>min-width</c> (never a fixed pixel
-    /// <c>width</c>), which — unlike <c>table-layout: fixed</c> — browsers do honour as a floor.
+    /// existing horizontal scrollbar takes over, instead of columns collapsing. A user-resized or
+    /// <c>LayoutStorageKey</c>-restored width always wins over the declared width, clamped to
+    /// <c>MinWidth</c>/<c>MaxWidth</c>.
+    ///
+    /// Implemented by measuring the grid's horizontal scroll wrapper (a <c>ResizeObserver</c>
+    /// reporting back to .NET — see <c>DataGrid.OnFitContainerWidthChanged</c>) and computing an
+    /// explicit pixel width per column from it (<see cref="DataGridColumnFit.Compute"/>), then
+    /// rendering with <c>table-layout: fixed</c> at that computed width — NOT <c>table-layout:
+    /// auto</c> with only a CSS <c>min-width</c>, which an earlier version of this mode used and
+    /// which never actually capped growth: under auto layout a <c>white-space: nowrap</c> cell's
+    /// minimum content width is its full rendered text width regardless of any width/min-width
+    /// declared on the cell, so a 12-column grid of short nowrap values could render wider than
+    /// its container even with room to spare (DocFlow field report against 5.11.0). Fixed layout
+    /// uses only the widths it's given, never content, so it's a real ceiling; cell content then
+    /// truncates with an ellipsis (<see cref="DataGridCell{TItem}"/>) instead of forcing the
+    /// column wider. Before the first measurement (SSR, prerender, a host with no ResizeObserver)
+    /// the header falls back to a width/min-width hint from the column's own declared/resized
+    /// value under <c>table-layout: auto</c>, upgraded to the exact computed width on first paint.
     /// </summary>
     FitWithMinimum
 }

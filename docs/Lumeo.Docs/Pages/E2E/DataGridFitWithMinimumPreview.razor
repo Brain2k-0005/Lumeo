@@ -1,0 +1,93 @@
+@page "/e2e/datagrid-fit-with-minimum"
+
+@* E2E-only harness for the DocFlow field report against 5.11.0 (Lumeo.Tests.E2E's
+   DataGridFitWithMinimumTests). Deliberately minimal, deterministic and NOT linked in
+   navigation — see docs/Lumeo.Docs/Pages/E2E/P0Harness.razor's remarks for the pattern.
+
+   ColumnSizing="FitWithMinimum" is a real-browser layout contract (table-layout: fixed at a
+   ResizeObserver-measured container width, with `white-space: nowrap` cells that must
+   truncate instead of forcing the column wider) that bUnit's headless DOM diff can't verify
+   — it has no layout engine, so DataGridColumnFitTests (the pure algorithm) and
+   DataGridFitWithMinimumWidthsTests (the JSInvokable-driven header style strings) are the
+   bUnit-side coverage; this page is what Playwright measures pixels against.
+
+   Two fixtures:
+   - #two-col-repro: the exact DocFlow repro (Wide 150/100, Narrow 100/80, nowrap content
+     longer than either MinWidth) with LayoutStorageKey so a drag-resize survives a reload.
+   - #twelve-col-repro: 12 short nowrap columns — the "1512px in a 1310px container" finding. *@
+
+<PageTitle>DataGrid FitWithMinimum harness</PageTitle>
+<HeadContent>
+    <meta name="robots" content="noindex" />
+</HeadContent>
+
+<div class="p-6 space-y-10">
+    <h1 class="text-lg font-bold">DataGrid FitWithMinimum harness</h1>
+
+    <section>
+        <h2 class="text-sm font-semibold mb-2">Two-column repro (resize + LayoutStorageKey)</h2>
+        @* Fixed-width wrapper so the container size is deterministic at load; the test
+           further overrides it via JS the same way DataGridColumnResizeTests.cs does. *@
+        <div id="two-col-repro" style="width: 300px;">
+            <DataGrid TItem="FitRow" Items="@_rows" ColumnSizing="DataGridColumnSizing.FitWithMinimum"
+                      EnableLayoutPersistence="true" LayoutStorageKey="e2e-datagrid-fit-two-col"
+                      ShowPagination="false" ShowToolbar="false">
+                <DataGridColumnDef TItem="FitRow" Title="Wide" Field="Wide" Width="150" MinWidth="100"
+                                    CellClass="@(_ => "whitespace-nowrap")" />
+                <DataGridColumnDef TItem="FitRow" Title="Narrow" Field="Narrow" Width="100" MinWidth="80"
+                                    CellClass="@(_ => "whitespace-nowrap")" />
+            </DataGrid>
+        </div>
+    </section>
+
+    <section>
+        <h2 class="text-sm font-semibold mb-2">Twelve-column repro (fills container / overflow scroll)</h2>
+        <div id="twelve-col-repro" style="width: 1310px;">
+            <DataGrid TItem="FitRow" Items="@_rows" ColumnSizing="DataGridColumnSizing.FitWithMinimum"
+                      ShowPagination="false" ShowToolbar="false">
+                @for (var i = 0; i < 12; i++)
+                {
+                    var field = $"Col{i}";
+                    <DataGridColumnDef TItem="FitRow" Title="@field" Field="@field" Width="100" MinWidth="80"
+                                        CellClass="@(_ => "whitespace-nowrap")" />
+                }
+            </DataGrid>
+        </div>
+    </section>
+</div>
+
+@code {
+    public class FitRow
+    {
+        public string Wide { get; set; } = "";
+        public string Narrow { get; set; } = "";
+        public string Col0 { get; set; } = "";
+        public string Col1 { get; set; } = "";
+        public string Col2 { get; set; } = "";
+        public string Col3 { get; set; } = "";
+        public string Col4 { get; set; } = "";
+        public string Col5 { get; set; } = "";
+        public string Col6 { get; set; } = "";
+        public string Col7 { get; set; } = "";
+        public string Col8 { get; set; } = "";
+        public string Col9 { get; set; } = "";
+        public string Col10 { get; set; } = "";
+        public string Col11 { get; set; } = "";
+    }
+
+    // Content deliberately longer than either column's MinWidth, so a `white-space: nowrap`
+    // cell (CellClass above) has real growth pressure — the exact condition that used to blow
+    // FitWithMinimum's table past its container (DocFlow finding 1).
+    private const string LongValue = "A rather long cell value";
+
+    private List<FitRow> _rows = new()
+    {
+        new FitRow
+        {
+            Wide = LongValue, Narrow = LongValue,
+            Col0 = LongValue, Col1 = LongValue, Col2 = LongValue, Col3 = LongValue,
+            Col4 = LongValue, Col5 = LongValue, Col6 = LongValue, Col7 = LongValue,
+            Col8 = LongValue, Col9 = LongValue, Col10 = LongValue, Col11 = LongValue,
+        }
+    };
+}
