@@ -1,10 +1,10 @@
 {
   "$schema": "https://lumeo.nativ.sh/components-api-schema.json",
   "version": "5.11.0",
-  "generated": "2026-09-24T15:15:55.7467130Z",
+  "generated": "2026-09-24T19:05:53.0337030Z",
   "stats": {
     "componentCount": 169,
-    "totalParameters": 5015,
+    "totalParameters": 5017,
     "totalEnums": 113,
     "totalRecords": 66,
     "serviceCount": 33,
@@ -1873,9 +1873,21 @@
           "summary": null
         },
         {
+          "name": "FlowFitViewAsync",
+          "returnType": "Task",
+          "signature": "FlowFitViewAsync(Microsoft.AspNetCore.Components.ElementReference paneEl, double padding, double minZoom, double maxZoom, string? anchorNodeId)",
+          "summary": null
+        },
+        {
           "name": "FlowGetViewportAsync",
           "returnType": "Task<double[]?>",
           "signature": "FlowGetViewportAsync(Microsoft.AspNetCore.Components.ElementReference paneEl)",
+          "summary": null
+        },
+        {
+          "name": "FlowGetPaneSizeAsync",
+          "returnType": "Task<double[]?>",
+          "signature": "FlowGetPaneSizeAsync(Microsoft.AspNetCore.Components.ElementReference paneEl)",
           "summary": null
         },
         {
@@ -3423,10 +3435,22 @@
           "summary": "Fits every rendered node into the pane, measuring the nodes from the DOM (flow.js flow.fitView) — used when .NET does not know every node's size yet. The engine applies the viewport itself and reports it back like any other viewport change. Default no-op."
         },
         {
+          "name": "FlowFitViewAsync",
+          "returnType": "Task",
+          "signature": "FlowFitViewAsync(Microsoft.AspNetCore.Components.ElementReference paneEl, double padding, double minZoom, double maxZoom, string? anchorNodeId)",
+          "summary": "LU-08: like FlowFitViewAsync(Microsoft.AspNetCore.Components.ElementReference, double, double, double), but when the DOM-measured fit would need a zoom below minZoom, centres on the node anchorNodeId at minZoom instead of the whole (still-clamped) bounds. A new overload rather than a new parameter on the existing member, so nothing implementing the interface before this had to change. Default no-op."
+        },
+        {
           "name": "FlowGetViewportAsync",
           "returnType": "Task<double[]?>",
           "signature": "FlowGetViewportAsync(Microsoft.AspNetCore.Components.ElementReference paneEl)",
           "summary": "The engine's live viewport as [x, y, zoom], or null when the engine is unavailable. Default null."
+        },
+        {
+          "name": "FlowGetPaneSizeAsync",
+          "returnType": "Task<double[]?>",
+          "signature": "FlowGetPaneSizeAsync(Microsoft.AspNetCore.Components.ElementReference paneEl)",
+          "summary": "LU-07: the pane's LIVE measured size (a fresh clientWidth/clientHeight read, forcing layout), not whatever the ResizeObserver's own debounced report happened to have delivered by the time this is called — used by FlowCanvas.FitViewAsync right after a container resize, where that report can still be in flight. [width, height], or null when the engine is unavailable. Default null."
         },
         {
           "name": "FlowIsFocusedElementEditableAsync",
@@ -36589,7 +36613,16 @@
           "name": "ViewportChanged",
           "type": "EventCallback<FlowViewport>",
           "default": null,
-          "description": "Raised when the viewport changes — at most once per animation frame while a pan or wheel zoom is running, once more when it ends, and after every imperative change (FitViewAsync, ZoomInAsync, ...).",
+          "description": "Raised when the viewport changes — at most once per animation frame while a pan or wheel zoom is running, once more when it ends, and after every imperative change (FitViewAsync(double?), ZoomInAsync, ...).",
+          "isCascading": false,
+          "captureUnmatched": false,
+          "isEditorRequired": false
+        },
+        {
+          "name": "OnFitView",
+          "type": "EventCallback<FlowViewport>",
+          "default": null,
+          "description": "LU-08: raised after every fit-into-view completes — an explicit FitViewAsync(double?)/FitViewAsync(FlowFitViewOptions) call AND the engine's own DOM-measured fit (including FitViewOnInit's initial fit, which no awaited call otherwise reports completion for). ViewportChanged also fires for a fit (it is a viewport change); this is additionally scoped to \"a fit just finished\" specifically.",
           "isCascading": false,
           "captureUnmatched": false,
           "isEditorRequired": false
@@ -36850,7 +36883,7 @@
           "name": "OnlyRenderVisibleNodes",
           "type": "bool",
           "default": "false",
-          "description": "Virtualization for large graphs: only nodes whose rect intersects the visible viewport plus one viewport of margin in every direction are mounted (plus their parent groups, and any node being dragged), and only edges touching a mounted node are drawn. The window follows pans and zooms with hysteresis — it is rebuilt only once the viewport has drifted half a viewport away (or zoomed in past half its size) — at most every 80 ms while a gesture runs, plus once when it ends. Selection, delete, clipboard, keyboard moves, FitViewAsync, FlowMiniMap and export keep working on EVERY node (they read the model, not the DOM); sizes measured while a node was mounted are remembered after it unmounts. Helper lines, marquee and connect targets only see mounted nodes (everything within one viewport of the visible area). Off by default.",
+          "description": "Virtualization for large graphs: only nodes whose rect intersects the visible viewport plus one viewport of margin in every direction are mounted (plus their parent groups, and any node being dragged), and only edges touching a mounted node are drawn. The window follows pans and zooms with hysteresis — it is rebuilt only once the viewport has drifted half a viewport away (or zoomed in past half its size) — at most every 80 ms while a gesture runs, plus once when it ends. Selection, delete, clipboard, keyboard moves, FitViewAsync(double?), FlowMiniMap and export keep working on EVERY node (they read the model, not the DOM); sizes measured while a node was mounted are remembered after it unmounts. Helper lines, marquee and connect targets only see mounted nodes (everything within one viewport of the visible area). Off by default.",
           "isCascading": false,
           "captureUnmatched": false,
           "isEditorRequired": false
@@ -37023,7 +37056,12 @@
         {
           "name": "ViewportChanged",
           "type": "EventCallback<FlowViewport>",
-          "description": "Raised when the viewport changes — at most once per animation frame while a pan or wheel zoom is running, once more when it ends, and after every imperative change (FitViewAsync, ZoomInAsync, ...)."
+          "description": "Raised when the viewport changes — at most once per animation frame while a pan or wheel zoom is running, once more when it ends, and after every imperative change (FitViewAsync(double?), ZoomInAsync, ...)."
+        },
+        {
+          "name": "OnFitView",
+          "type": "EventCallback<FlowViewport>",
+          "description": "LU-08: raised after every fit-into-view completes — an explicit FitViewAsync(double?)/FitViewAsync(FlowFitViewOptions) call AND the engine's own DOM-measured fit (including FitViewOnInit's initial fit, which no awaited call otherwise reports completion for). ViewportChanged also fires for a fit (it is a viewport change); this is additionally scoped to \"a fit just finished\" specifically."
         },
         {
           "name": "SnapToGridChanged",
@@ -37458,6 +37496,15 @@
           "inheritsFrom": null,
           "implements": [],
           "parameters": [
+            {
+              "name": "Context",
+              "type": "FlowCanvas.FlowCanvasContext?",
+              "default": null,
+              "description": null,
+              "isCascading": true,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
             {
               "name": "Node",
               "type": "FlowNode?",
@@ -37921,7 +37968,8 @@
           "ArrowRight",
           "ArrowUp",
           "Enter",
-          "Escape"
+          "Escape",
+          "Space"
         ],
         "keyboardInteractive": true,
         "focusManaged": true
