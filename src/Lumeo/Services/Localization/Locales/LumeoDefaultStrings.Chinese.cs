@@ -349,6 +349,8 @@ internal static partial class LumeoDefaultStrings
         ["Flow.ConnectionCancelled"] = "连接已取消。",
         ["Flow.Reconnected"] = "边已重新连接。",
         ["Flow.ReconnectRejected"] = "重新连接被拒绝。",
+        ["Flow.EdgeLabelEdit"] = "编辑连线标签",
+        ["Flow.EdgeLabelUpdated"] = "标签已更新。",
         ["Gantt.ScrollToEarlierTask"] = "滚动到{0}(较早)",
         ["Gantt.ScrollToLaterTask"] = "滚动到{0}(较晚)",
         ["Gantt.Settings"] = "设置",

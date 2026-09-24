@@ -1898,6 +1898,16 @@ public sealed class ComponentInteropService : IComponentInteropService
         catch (JSDisconnectedException) { return false; }
     }
 
+    public async Task<string?> FlowExportPngAsync(Microsoft.AspNetCore.Components.ElementReference paneEl, double scale)
+    {
+        try
+        {
+            var module = await GetFlowModuleAsync();
+            return await module.InvokeAsync<string?>("flow.exportPng", paneEl, scale);
+        }
+        catch (JSDisconnectedException) { return null; }
+    }
+
     // --- Scheduler first-party view engine (wave 1b) — its own module
     // (scheduler-views.js) — drag, resize, drag-create and the now-indicator.
 

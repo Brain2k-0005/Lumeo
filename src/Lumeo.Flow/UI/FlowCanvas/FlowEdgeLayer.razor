@@ -1,6 +1,7 @@
 @namespace Lumeo
 @using System.ComponentModel
 @using System.Globalization
+@inject Lumeo.Services.Localization.ILumeoLocalizer L
 @attribute [EditorBrowsable(EditorBrowsableState.Never)]
 
 @* FlowEdgeLayer — one <path> per edge, in flow coordinates, inside FlowCanvas' viewport layer, plus
@@ -77,12 +78,21 @@
     <div data-slot="flow-edge-labels" style="position:absolute;left:0;top:0;">
         @foreach (var (edge, path, _, _) in Context.Canvas.RenderableEdges())
         {
-            if (Context.Canvas.EdgeLabelTemplate is null && string.IsNullOrEmpty(edge.Label)) continue;
+            var editable = Context.Canvas.EdgeLabelEditable;
+            if (!editable && Context.Canvas.EdgeLabelTemplate is null && string.IsNullOrEmpty(edge.Label)) continue;
             <div @key="@("label-" + edge.Id)"
                  data-flow-edge-label
+                 data-flow-nodrag
                  data-edge-id="@edge.Id"
-                 style="@LabelStyle(path)">
-                @if (Context.Canvas.EdgeLabelTemplate is not null)
+                 style="@LabelStyle(path)"
+                 @ondblclick="@(() => BeginEdit(edge))">
+                @if (editable && _editingEdgeId == edge.Id)
+                {
+                    <div @onkeydown="@(e => HandleEditKeyDownAsync(e, edge))" @onclick:stopPropagation="true" style="min-width:6rem;">
+                        <Input @bind-Value="_editText" Size="Lumeo.Size.Sm" AutoFocus="true" AriaLabel="@L["Flow.EdgeLabelEdit"]" />
+                    </div>
+                }
+                else if (Context.Canvas.EdgeLabelTemplate is not null)
                 {
                     @Context.Canvas.EdgeLabelTemplate(new FlowEdgeContext(edge, Context.Canvas.IsEdgeSelected(edge.Id), path.LabelX, path.LabelY))
                 }
@@ -105,6 +115,32 @@
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     private readonly string _markerId = "lumeo-flow-arrow-" + Guid.NewGuid().ToString("N")[..10];
+
+    // Phase 4: inline edge-label editing state. Lives here (not on FlowCanvas) because only this
+    // component renders the label — at most one edge editing at a time.
+    private string? _editingEdgeId;
+    private string _editText = "";
+
+    private void BeginEdit(FlowEdge edge)
+    {
+        if (Context is null || !Context.Canvas.EdgeLabelEditable) return;
+        _editingEdgeId = edge.Id;
+        _editText = edge.Label ?? "";
+    }
+
+    private async Task HandleEditKeyDownAsync(KeyboardEventArgs e, FlowEdge edge)
+    {
+        switch (e.Key)
+        {
+            case "Enter":
+                _editingEdgeId = null;
+                await Context!.Canvas.CommitEdgeLabelAsync(edge, _editText);
+                return;
+            case "Escape":
+                _editingEdgeId = null;
+                return;
+        }
+    }
 
     private static string LabelStyle(FlowEdgePath path)
         => "position:absolute;left:" + FlowGeometry.Fmt(path.LabelX) + "px;top:" + FlowGeometry.Fmt(path.LabelY)

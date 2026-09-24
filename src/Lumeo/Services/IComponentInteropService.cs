@@ -1018,6 +1018,15 @@ public interface IComponentInteropService : IAsyncDisposable, IDisposable
     /// </summary>
     Task<bool> FlowIsFocusedElementEditableAsync(Microsoft.AspNetCore.Components.ElementReference paneEl) => Task.FromResult(false);
 
+    /// <summary>
+    /// Phase 4 best-effort raster export: rasterizes every <c>[data-flow-node]</c> element under
+    /// <paramref name="paneEl"/> (computed styles inlined, drawn through an SVG <c>&lt;foreignObject&gt;</c>
+    /// onto a <c>&lt;canvas&gt;</c>) at <paramref name="scale"/>× and returns a <c>data:image/png</c>
+    /// URL, or <c>null</c> on any failure (no registered canvas, no nodes, a tainted canvas from a
+    /// cross-origin image/font in a node template) — never throws. Default null.
+    /// </summary>
+    Task<string?> FlowExportPngAsync(Microsoft.AspNetCore.Components.ElementReference paneEl, double scale) => Task.FromResult<string?>(null);
+
     // --- Scheduler first-party view engine (wave 1b) ---
     // Own module (scheduler-views.js): drag, resize, drag-create and the now-indicator
     // for the Scheduler's Blazor-rendered views.

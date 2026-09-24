@@ -349,6 +349,8 @@ internal static partial class LumeoDefaultStrings
         ["Flow.ConnectionCancelled"] = "Bağlantı iptal edildi.",
         ["Flow.Reconnected"] = "Kenar yeniden bağlandı.",
         ["Flow.ReconnectRejected"] = "Yeniden bağlanma reddedildi.",
+        ["Flow.EdgeLabelEdit"] = "Kenar etiketini düzenle",
+        ["Flow.EdgeLabelUpdated"] = "Etiket güncellendi.",
         ["Gantt.ScrollToEarlierTask"] = "{0} konumuna kaydır (önce)",
         ["Gantt.ScrollToLaterTask"] = "{0} konumuna kaydır (sonra)",
         ["Gantt.Settings"] = "Ayarlar",

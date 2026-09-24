@@ -570,6 +570,8 @@ internal static partial class LumeoDefaultStrings
         ["Flow.ConnectionCancelled"] = "Connection cancelled.",
         ["Flow.Reconnected"] = "Edge reconnected.",
         ["Flow.ReconnectRejected"] = "Reconnect rejected.",
+        ["Flow.EdgeLabelEdit"] = "Edit edge label",
+        ["Flow.EdgeLabelUpdated"] = "Label updated.",
         ["Gantt.ScrollToEarlierTask"] = "Scroll to {0} (earlier)",
         ["Gantt.ScrollToLaterTask"] = "Scroll to {0} (later)",
         // Arrow-key navigation's own aria-live announcements (design spec —
@@ -1351,6 +1353,8 @@ internal static partial class LumeoDefaultStrings
         ["Flow.ConnectionCancelled"] = "Verbindung abgebrochen.",
         ["Flow.Reconnected"] = "Kante neu verbunden.",
         ["Flow.ReconnectRejected"] = "Neuverbindung abgelehnt.",
+        ["Flow.EdgeLabelEdit"] = "Kantenbeschriftung bearbeiten",
+        ["Flow.EdgeLabelUpdated"] = "Beschriftung aktualisiert.",
         ["Gantt.ScrollToEarlierTask"] = "Zu {0} scrollen (früher)",
         ["Gantt.ScrollToLaterTask"] = "Zu {0} scrollen (später)",
         ["Gantt.Settings"] = "Einstellungen",

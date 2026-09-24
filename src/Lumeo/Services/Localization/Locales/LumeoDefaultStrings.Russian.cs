@@ -354,6 +354,8 @@ internal static partial class LumeoDefaultStrings
         ["Flow.ConnectionCancelled"] = "Соединение отменено.",
         ["Flow.Reconnected"] = "Ребро переподключено.",
         ["Flow.ReconnectRejected"] = "Переподключение отклонено.",
+        ["Flow.EdgeLabelEdit"] = "Изменить подпись связи",
+        ["Flow.EdgeLabelUpdated"] = "Подпись обновлена.",
         ["Gantt.ScrollToEarlierTask"] = "Прокрутить к {0} (раньше)",
         ["Gantt.ScrollToLaterTask"] = "Прокрутить к {0} (позже)",
         ["Gantt.Settings"] = "Настройки",

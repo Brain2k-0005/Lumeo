@@ -53,6 +53,39 @@ public enum FlowBackgroundVariant
 }
 
 /// <summary>
+/// What a connection gesture (pointer drag or keyboard connect) accepts as a valid target
+/// (phase 4). Structural only — <c>IsValidConnection</c> still runs on top of either mode.
+/// </summary>
+public enum FlowConnectionMode
+{
+    /// <summary>A connection may only be dragged FROM a source handle TO a target handle (React Flow's default).</summary>
+    Strict,
+    /// <summary>Any handle may be dragged to any other handle; the drag's start/end order decides <see cref="FlowConnection.Source"/>/<see cref="FlowConnection.Target"/>.</summary>
+    Loose,
+}
+
+/// <summary>The physical direction a <see cref="FlowNodeResizer"/> grip resizes from (phase 4).</summary>
+public enum FlowResizeDirection
+{
+    /// <summary>Top-left corner: resizes width and height, moves X and Y.</summary>
+    NorthWest,
+    /// <summary>Top edge: resizes height, moves Y.</summary>
+    North,
+    /// <summary>Top-right corner: resizes width and height, moves Y.</summary>
+    NorthEast,
+    /// <summary>Right edge: resizes width.</summary>
+    East,
+    /// <summary>Bottom-right corner: resizes width and height.</summary>
+    SouthEast,
+    /// <summary>Bottom edge: resizes height.</summary>
+    South,
+    /// <summary>Bottom-left corner: resizes width and height, moves X.</summary>
+    SouthWest,
+    /// <summary>Left edge: resizes width, moves X.</summary>
+    West,
+}
+
+/// <summary>
 /// One node on a <see cref="FlowCanvas"/>. Immutable — update with <c>with</c>, the canvas emits a
 /// new list through <c>NodesChanged</c> on every committed move.
 /// </summary>
@@ -129,6 +162,51 @@ public sealed record FlowConnection(string Source, string? SourceHandle, string 
 /// <param name="OldEdge">The edge as it was before the reconnect.</param>
 /// <param name="NewConnection">Where it was dropped — same shape as a fresh <see cref="FlowConnection"/>.</param>
 public sealed record FlowReconnectEventArgs(FlowEdge OldEdge, FlowConnection NewConnection);
+
+/// <summary>One node's committed size (and, for a left/top grip, position) after a resize (phase 4).</summary>
+/// <param name="Id">The node's id.</param>
+/// <param name="X">New left edge in flow coordinates (unchanged unless a west-facing grip moved it).</param>
+/// <param name="Y">New top edge in flow coordinates (unchanged unless a north-facing grip moved it).</param>
+/// <param name="Width">New width in flow units.</param>
+/// <param name="Height">New height in flow units.</param>
+public sealed record FlowNodeResizeChange(string Id, double X, double Y, double Width, double Height);
+
+/// <summary>A batch paste or duplicate landed on the canvas (phase 4). See <c>FlowCanvas.OnPaste</c>.</summary>
+/// <param name="Nodes">The newly created nodes (new ids from <c>NewNodeId</c>, offset by (20, 20) from what was copied).</param>
+/// <param name="Edges">The newly created edges between two of <paramref name="Nodes"/> (remapped from whichever of the copied edges had both ends in the copied selection).</param>
+public sealed record FlowPasteEventArgs(IReadOnlyList<FlowNode> Nodes, IReadOnlyList<FlowEdge> Edges);
+
+/// <summary>
+/// A canvas' full state as JSON (phase 4): see <c>FlowCanvas.ToDocument()</c> / <c>LoadDocumentAsync</c>.
+/// Round-trips through <c>System.Text.Json</c> as long as every node's <see cref="FlowNode.Data"/> does
+/// (a plain string/number/dictionary does; an app-defined class needs its own <c>JsonSerializerContext</c>
+/// the caller supplies to <c>JsonSerializer</c> — <see cref="FlowDocument"/> itself has no source-gen
+/// context of its own since <c>Data</c>'s runtime type is the caller's, not this library's).
+/// </summary>
+/// <param name="Nodes">Every node, in order.</param>
+/// <param name="Edges">Every edge, in order.</param>
+/// <param name="Viewport">The pan/zoom at the time of export.</param>
+public sealed record FlowDocument(IReadOnlyList<FlowNode> Nodes, IReadOnlyList<FlowEdge> Edges, FlowViewport Viewport);
+
+/// <summary>A vertical or horizontal alignment guide (phase 4 helper lines). See <c>FlowGeometry.ComputeHelperLines</c>.</summary>
+/// <param name="Position">The flow-coordinate the guide runs along — an X for <see cref="Axis"/> Vertical, a Y for Horizontal.</param>
+/// <param name="Axis">Which axis the guide is drawn on.</param>
+public readonly record struct FlowHelperLine(double Position, FlowHelperLineAxis Axis);
+
+/// <summary>Which axis a <see cref="FlowHelperLine"/> is drawn on.</summary>
+public enum FlowHelperLineAxis
+{
+    /// <summary>A vertical line at a given X — a left/centre/right alignment.</summary>
+    Vertical,
+    /// <summary>A horizontal line at a given Y — a top/middle/bottom alignment.</summary>
+    Horizontal,
+}
+
+/// <summary>The result of <c>FlowGeometry.ComputeHelperLines</c>: the guides to draw, and the position the moving rect should snap to.</summary>
+/// <param name="SnapX">The moving rect's suggested new left edge, or <c>null</c> when nothing aligned within the threshold on this axis.</param>
+/// <param name="SnapY">The moving rect's suggested new top edge, or <c>null</c> when nothing aligned within the threshold on this axis.</param>
+/// <param name="Lines">Every guide within the threshold (at most one per axis — the closest match).</param>
+public readonly record struct FlowHelperLineResult(double? SnapX, double? SnapY, IReadOnlyList<FlowHelperLine> Lines);
 
 /// <summary>One node's committed position after a drag or keyboard move.</summary>
 /// <param name="Id">The node's id.</param>
