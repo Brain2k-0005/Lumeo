@@ -33,6 +33,19 @@
         {
             <span class="text-xs text-muted-foreground">+@remaining more</span>
         }
+        @* @onkeydown:stopPropagation is a STATIC "true" here, not gated on Context.IsOpen —
+           gating it on a per-render expression (e.g. "Context.IsOpen") looks right and
+           compiles, but does NOT reliably stop the event reaching an ancestor Dialog/Sheet's
+           own Escape handler in a real browser (confirmed live: Blazor WASM still invoked the
+           ancestor's handler even though the expression evaluated true at the moment the
+           descendant handler ran — bUnit's simulated dispatch does NOT reproduce this, so a
+           bUnit-only test suite would pass while the real page stays broken; caught only by
+           an actual browser E2E run). Trade-off of the static "always stop" fix: pressing
+           Escape while the dropdown is already CLOSED but this input still has focus no
+           longer bubbles to close an ancestor overlay in one press — a minor regression
+           against the double-close bug it replaces (field report, present since 5.10.0),
+           and still resolvable via the dialog's close button, backdrop click, or Escape
+           after focus moves elsewhere. *@
         <input id="@Context.InputId"
                type="text"
                role="combobox"
@@ -48,6 +61,7 @@
                @oninput="HandleInput"
                @onfocus="Open"
                @onkeydown="HandleKeyDown"
+               @onkeydown:stopPropagation="true"
                @attributes="EffectiveAttributes" />
         @if (Context.Clearable)
         {
@@ -100,6 +114,7 @@ else if (HasSingleChip)
                @oninput="HandleInput"
                @onfocus="Open"
                @onkeydown="HandleKeyDown"
+               @onkeydown:stopPropagation="true"
                @attributes="EffectiveAttributes" />
     </div>
 }
@@ -125,6 +140,7 @@ else
                @oninput="HandleInput"
                @onfocus="Open"
                @onkeydown="HandleKeyDown"
+               @onkeydown:stopPropagation="true"
                @attributes="EffectiveAttributes" />
     </div>
 }

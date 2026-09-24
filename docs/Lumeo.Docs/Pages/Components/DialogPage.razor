@@ -180,10 +180,58 @@
         </Dialog>
     </ComponentDemo>
 
+    <ComponentDemo Title="Nested overlay Escape isolation" Code="@_nestedListboxCode">
+        <Dialog @bind-Open="_nestedListboxOpen">
+            <DialogTrigger data-testid="dialog-nested-listbox-trigger">
+                <Button Variant="Button.ButtonVariant.Outline">Open Dialog</Button>
+            </DialogTrigger>
+            <DialogContent>
+                <DialogHeader>
+                    <DialogTitle>Filters</DialogTitle>
+                    <DialogDescription>
+                        Open one of the controls below, then press Escape — it closes only that control.
+                        Press Escape again to close the dialog.
+                    </DialogDescription>
+                </DialogHeader>
+                <Stack Gap="4" Class="py-4">
+                    <Select @bind-Value="_nestedListboxSelectValue" Label="Status" data-testid="dialog-nested-select">
+                        <SelectTrigger />
+                        <SelectContent>
+                            <SelectItem Value="open">Open</SelectItem>
+                            <SelectItem Value="closed">Closed</SelectItem>
+                        </SelectContent>
+                    </Select>
+                    <DropdownMenu>
+                        <DropdownMenuTrigger data-testid="dialog-nested-dropdown">
+                            <Button Variant="Button.ButtonVariant.Outline">Actions</Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent>
+                            <DropdownMenuItem>Rename</DropdownMenuItem>
+                            <DropdownMenuItem>Duplicate</DropdownMenuItem>
+                        </DropdownMenuContent>
+                    </DropdownMenu>
+                    <Combobox @bind-Value="_nestedListboxComboboxValue">
+                        <ComboboxInput Placeholder="Search a label..." data-testid="dialog-nested-combobox" />
+                        <ComboboxContent>
+                            <ComboboxItem Value="alpha">Alpha</ComboboxItem>
+                            <ComboboxItem Value="beta">Beta</ComboboxItem>
+                        </ComboboxContent>
+                    </Combobox>
+                </Stack>
+            </DialogContent>
+        </Dialog>
+    </ComponentDemo>
+
     <Lumeo.Text Size="sm" Color="muted" Leading="relaxed">
         <strong>Nested dialogs.</strong> Stacking a Dialog on top of another Dialog (or AlertDialog, Sheet, Drawer) now
         works automatically — each overlay claims the next z-index slot and Escape closes only the top-most overlay.
         No API change; just open a second dialog from inside the first.
+    </Lumeo.Text>
+
+    <Lumeo.Text Size="sm" Color="muted" Leading="relaxed">
+        <strong>Nested Select / DropdownMenu / Combobox / Popover / Cascader / TreeSelect / DatePicker / TimePicker.</strong>
+        The same Escape isolation applies to a listbox, menu or popover opened from inside a Dialog (or Sheet/Drawer/
+        AlertDialog) — Escape closes only the innermost open control, never the whole dialog.
     </Lumeo.Text>
 
     <Lumeo.Text Size="sm" Color="muted" Leading="relaxed">
@@ -310,6 +358,10 @@
     private bool _guardDirty;
     private string? _guardName;
 
+    private bool _nestedListboxOpen;
+    private string? _nestedListboxSelectValue;
+    private string? _nestedListboxComboboxValue;
+
     private Dictionary<DialogContent.DialogSize, bool> _sizeOpen = new();
     private void OnSizeOpenChanged(DialogContent.DialogSize size, bool open)
     {
@@ -349,6 +401,51 @@
         return Task.CompletedTask;
     }
 }";
+
+    private string _nestedListboxCode = @"<Dialog @bind-Open=""_open"">
+    <DialogTrigger>
+        <Button Variant=""Button.ButtonVariant.Outline"">Open Dialog</Button>
+    </DialogTrigger>
+    <DialogContent>
+        <DialogHeader>
+            <DialogTitle>Filters</DialogTitle>
+        </DialogHeader>
+        <Select @bind-Value=""_status"" Label=""Status"">
+            <SelectTrigger />
+            <SelectContent>
+                <SelectItem Value=""open"">Open</SelectItem>
+                <SelectItem Value=""closed"">Closed</SelectItem>
+            </SelectContent>
+        </Select>
+        <DropdownMenu>
+            <DropdownMenuTrigger>
+                <Button Variant=""Button.ButtonVariant.Outline"">Actions</Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent>
+                <DropdownMenuItem>Rename</DropdownMenuItem>
+                <DropdownMenuItem>Duplicate</DropdownMenuItem>
+            </DropdownMenuContent>
+        </DropdownMenu>
+        <Combobox @bind-Value=""_label"">
+            <ComboboxInput Placeholder=""Search a label..."" />
+            <ComboboxContent>
+                <ComboboxItem Value=""alpha"">Alpha</ComboboxItem>
+                <ComboboxItem Value=""beta"">Beta</ComboboxItem>
+            </ComboboxContent>
+        </Combobox>
+    </DialogContent>
+</Dialog>
+
+@* Escape pressed while the Select/DropdownMenu/Combobox is open closes ONLY that
+   control — the Dialog owns its own Escape handler at its content root, and each
+   nested overlay now stops keydown propagation at its own root too, so the two
+   handlers never both fire for the same keystroke. For Select and DropdownMenu, a
+   second Escape then closes the Dialog (nothing left open inside). Combobox's
+   input keeps focus after its dropdown closes, so its own Escape handling stays
+   unconditional (not gated on whether the dropdown is open — a live browser check
+   showed a per-render gate does not reliably stop Blazor's own propagation to an
+   ancestor Escape handler); a second Escape there is absorbed instead of
+   reaching the Dialog — close it via the X button or a backdrop click instead. *@";
 
     private string _preventCloseCode = @"<Dialog @bind-Open=""_preventCloseOpen"">
     <DialogTrigger>
