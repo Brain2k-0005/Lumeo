@@ -217,4 +217,66 @@ public class FlowLayoutTests
         var b = result.Single(n => n.Id == "b");
         Assert.Equal(a.X + 150 + 200, b.X, 3);
     }
+
+    // ── LU-01: a duplicate node id must never crash the layout ────────────
+
+    [Fact]
+    public void Layered_Does_Not_Throw_On_A_Duplicate_Node_Id()
+    {
+        // SQL Analyst's report: a SQL Server deadlock XML repeats a resource id, so the node list
+        // handed to FlowLayout.Layered can contain the same id twice. LayeredCore used to build its
+        // in-degree map with ids.ToDictionary(id => id, ...), which throws ArgumentException on the
+        // second occurrence — crashing the whole Blazor Server circuit on real data.
+        var nodes = new List<L.FlowNode> { N("a"), N("a"), N("b") };
+        var edges = new List<L.FlowEdge> { new("e1", "a", "b") };
+
+        var result = L.FlowLayout.Layered(nodes, edges);
+
+        Assert.Equal(3, result.Count);
+        Assert.All(result.Where(n => n.Id == "a"), n => Assert.True(n.X < result.Single(n2 => n2.Id == "b").X));
+    }
+
+    [Fact]
+    public void Tree_Does_Not_Throw_On_A_Duplicate_Node_Id()
+    {
+        var nodes = new List<L.FlowNode> { N("root"), N("a"), N("a") };
+        var edges = new List<L.FlowEdge> { new("e1", "root", "a") };
+
+        var result = L.FlowLayout.Tree(nodes, edges);
+
+        Assert.Equal(3, result.Count);
+    }
+
+    // ── LU-10: a multi-parent node is placed under its DEEPEST parent ─────
+
+    [Fact]
+    public void Tree_Places_A_Multi_Parent_Node_Under_Its_Deepest_Parent()
+    {
+        // The reporter's A/B/C case: C has two parents, A (depth 0, via A->C) and B (depth 1, via
+        // A->B->C). C's own depth is the LONGEST path reaching it (2, through B) — that was already
+        // correct. The bug was PLACEMENT: C used to be centred under whichever parent's subtree walk
+        // reached it first (A, since A->B and A->C are both A's direct children and A is visited
+        // first), not under B, the parent that actually explains its depth. It must be placed under
+        // B, at the SAME column its depth already puts it in.
+        var nodes = new List<L.FlowNode> { N("a"), N("b"), N("c") };
+        var edges = new List<L.FlowEdge>
+        {
+            new("a-b", "a", "b"),
+            new("a-c", "a", "c"),
+            new("b-c", "b", "c"),
+        };
+
+        var result = L.FlowLayout.Tree(nodes, edges);
+        var a = result.Single(n => n.Id == "a");
+        var b = result.Single(n => n.Id == "b");
+        var c = result.Single(n => n.Id == "c");
+
+        // Column: A at depth 0, B at depth 1, C at depth 2 (the longer A->B->C path) — one full
+        // rank (150 width + 96 default RankSpacing) further right than B, not one rank right of A.
+        Assert.Equal(b.X + 150 + 96, c.X, 3);
+        // Placement: C is centred directly under B (same perpendicular/Y as B), not offset as a
+        // second, independent child of A alongside B.
+        Assert.Equal(b.Y, c.Y, 3);
+        AssertNoOverlaps(result);
+    }
 }

@@ -79,15 +79,23 @@ function getBounds(rects) {
     return any ? { x: minX, y: minY, width: maxX - minX, height: maxY - minY } : null;
 }
 
-function fitView(rects, paneWidth, paneHeight, padding, minZoom, maxZoom) {
+// LU-08: `anchor` (optional, a {x, y, width, height} rect) mirrors FlowGeometry.FitView's overload
+// — when the plain fit would need a zoom below minZoom, centre on the anchor at minZoom instead of
+// on the whole (still-clamped) bounds. Omitted/null keeps the plain behaviour.
+function fitView(rects, paneWidth, paneHeight, padding, minZoom, maxZoom, anchor) {
     const b = getBounds(rects);
     if (!b || !(paneWidth > 0) || !(paneHeight > 0)) return null;
     const pad = padding > 0 ? padding : 0;
     const bw = Math.max(b.width, 1);
     const bh = Math.max(b.height, 1);
-    const xZoom = paneWidth / (bw * (1 + pad));
-    const yZoom = paneHeight / (bh * (1 + pad));
-    const zoom = clampZoom(Math.min(xZoom, yZoom), minZoom, maxZoom);
+    const required = Math.min(paneWidth / (bw * (1 + pad)), paneHeight / (bh * (1 + pad)));
+    if (anchor && required < minZoom) {
+        const az = clampZoom(minZoom, minZoom, maxZoom);
+        const acx = anchor.x + anchor.width / 2;
+        const acy = anchor.y + anchor.height / 2;
+        return { x: paneWidth / 2 - acx * az, y: paneHeight / 2 - acy * az, zoom: az };
+    }
+    const zoom = clampZoom(required, minZoom, maxZoom);
     const cx = b.x + b.width / 2;
     const cy = b.y + b.height / 2;
     return { x: paneWidth / 2 - cx * zoom, y: paneHeight / 2 - cy * zoom, zoom };
@@ -410,8 +418,9 @@ function sameMeasurement(a, b) {
     return true;
 }
 
-// Mirrors FlowState.GetAnchor: the handle with the id (or the first handle of that type), else the
-// default side — right for a source, left for a target.
+// Mirrors FlowState.GetAnchor (LU-11): the handle with the EXPLICIT id, else the default side —
+// right for a source, left for a target. A node simply having a handle must not silently change
+// where an edge that never named a handle attaches.
 function anchorFor(reg, el, handleId, type, pos) {
     const id = el.getAttribute('data-flow-node');
     let m = reg.measured.get(id);
@@ -419,10 +428,12 @@ function anchorFor(reg, el, handleId, type, pos) {
         m = measureNode(reg, el);
         reg.measured.set(id, m);
     }
-    for (const h of m.handles) {
-        if (h.type !== type) continue;
-        if (handleId == null || h.id === handleId) {
-            return { x: pos.x + h.x, y: pos.y + h.y, position: h.position };
+    if (handleId != null) {
+        for (const h of m.handles) {
+            if (h.type !== type) continue;
+            if (h.id === handleId) {
+                return { x: pos.x + h.x, y: pos.y + h.y, position: h.position };
+            }
         }
     }
     const side = type === 'source' ? 'right' : 'left';
@@ -432,8 +443,10 @@ function anchorFor(reg, el, handleId, type, pos) {
 
 function edgeElements(reg) {
     // Includes each edge's invisible wide "hit" twin (data-flow-edge-hit) so it stays glued to
-    // the visible path while a connected node is dragged — see FlowEdgeLayer.razor.
-    return reg.pane.querySelectorAll('[data-flow-edge], [data-flow-edge-hit]');
+    // the visible path while a connected node is dragged, and (LU-04) a solid Animated edge's
+    // decorative "flow" overlay (data-flow-edge-flow) so its dash keeps travelling along the
+    // correct path during a drag too — see FlowEdgeLayer.razor.
+    return reg.pane.querySelectorAll('[data-flow-edge], [data-flow-edge-hit], [data-flow-edge-flow]');
 }
 
 // Recomputes one edge path from the given position resolver (live drag positions or the truth).
@@ -835,9 +848,11 @@ function anchorForResize(reg, g, el, handleId, type) {
     let m = reg.measured.get(id);
     if (!m) m = measureNode(reg, el);
     let position = type === 'source' ? 'right' : 'left';
-    for (const h of m.handles) {
-        if (h.type !== type) continue;
-        if (handleId == null || h.id === handleId) { position = h.position; break; }
+    if (handleId != null) {
+        for (const h of m.handles) {
+            if (h.type !== type) continue;
+            if (h.id === handleId) { position = h.position; break; }
+        }
     }
     const a = handleAnchor({ x: g.x, y: g.y, width: g.w, height: g.h }, position);
     return { x: a.x, y: a.y, position };
@@ -1103,11 +1118,26 @@ function domRects(reg) {
     return rects;
 }
 
-function fitFromDom(reg, padding, minZoom, maxZoom, source) {
-    const vp = fitView(domRects(reg), reg.pane.clientWidth, reg.pane.clientHeight, padding, minZoom, maxZoom);
+// LU-08: the anchor node's own rect, straight from the DOM, or null when it isn't mounted.
+function domRectById(reg, id) {
+    if (!id) return null;
+    const el = findNode(reg, id);
+    if (!el) return null;
+    const p = nodePos(reg, el);
+    const { width, height } = nodeSize(el);
+    return { x: p.x, y: p.y, width, height };
+}
+
+function fitFromDom(reg, padding, minZoom, maxZoom, source, anchorNodeId) {
+    const anchor = anchorNodeId ? domRectById(reg, anchorNodeId) : null;
+    const vp = fitView(domRects(reg), reg.pane.clientWidth, reg.pane.clientHeight, padding, minZoom, maxZoom, anchor);
     if (!vp) return false;
     applyViewport(reg, vp, source);
     reportFinal(reg);
+    // LU-08: OnFitView — additive to the ordinary OnViewportChanged(..., final: true) report above,
+    // fired for every DOM-measured fit (initial fit-on-load included) so app code can await "the
+    // fit actually happened" even when it did not call FitViewAsync itself.
+    call(reg, 'FitCompleted', vp.x, vp.y, vp.zoom).catch(() => { });
     return true;
 }
 
@@ -1782,6 +1812,15 @@ function makeHandlers(reg) {
             if (handleEl && e.target === handleEl) {
                 e.preventDefault();
                 handleConnectKey(reg, handleEl);
+                return;
+            }
+            // LU-06: Enter/Space on the node host itself raises OnNodeClick (FlowCanvas.razor's own
+            // keydown handler does that part); prevent the page from scrolling on Space here, the
+            // one thing a plain native listener does that Blazor's own preventDefault:@bind can't
+            // do race-free for a key that fires every repeat while held.
+            const nodeEl = e.target instanceof Element ? e.target.closest('[data-flow-node]') : null;
+            if (nodeEl && e.target === nodeEl) {
+                e.preventDefault();
             }
         }
     };
@@ -1983,15 +2022,32 @@ function setViewport(pane, x, y, zoom) {
     reportFinal(reg);
 }
 
-function fitViewExport(pane, padding, minZoom, maxZoom) {
+function fitViewExport(pane, padding, minZoom, maxZoom, anchorNodeId) {
     const reg = pane && registrations.get(pane);
     if (!reg) return;
-    if (fitFromDom(reg, padding, minZoom, maxZoom, 'fit')) reg.initialFitPending = false;
+    if (fitFromDom(reg, padding, minZoom, maxZoom, 'fit', anchorNodeId)) reg.initialFitPending = false;
 }
 
 function getViewport(pane) {
     const reg = pane && registrations.get(pane);
     return reg ? [reg.vp.x, reg.vp.y, reg.vp.zoom] : null;
+}
+
+// LU-07: a FRESH measured size (getBoundingClientRect-backed clientWidth/Height), not whatever the
+// ResizeObserver's own debounced PaneResized report happened to have delivered by the time this is
+// called — used by FlowCanvas.FitViewAsync right after a container resize, where that report can
+// still be in flight. Also refreshes reg.paneW/H and re-reports PaneResized when it changed, so the
+// next .NET-computed fit (AllSized nodes) sees the same fresh size without another round trip.
+function getPaneSize(pane) {
+    const reg = pane && registrations.get(pane);
+    if (!reg) return null;
+    const w = reg.pane.clientWidth, h = reg.pane.clientHeight;
+    if (w !== reg.paneW || h !== reg.paneH) {
+        reg.paneW = w;
+        reg.paneH = h;
+        call(reg, 'PaneResized', w, h).catch(() => { });
+    }
+    return [w, h];
 }
 
 // ── Export (phase 4) ─────────────────────────────────────────────────────
@@ -2098,6 +2154,7 @@ export const flow = {
     setViewport,
     fitView: fitViewExport,
     getViewport,
+    getPaneSize,
     isFocusedElementEditable,
     exportPng,
 };

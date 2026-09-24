@@ -168,28 +168,26 @@ internal sealed class FlowState
     }
 
     /// <summary>
-    /// Where an edge attaches: the handle with <paramref name="handleId"/> (or the node's first
-    /// handle of <paramref name="type"/> when the id is null), else the default side — right for a
-    /// source, left for a target. Mirrors <c>anchorFor</c> in flow.js.
+    /// Where an edge attaches: the handle with <paramref name="handleId"/> when one is given
+    /// (unmatched falls through to the default side below), else — LU-11 — the default side
+    /// straight away: right for a source, left for a target. Only an EXPLICIT
+    /// <c>SourceHandle</c>/<c>TargetHandle</c> opts an edge into handle-based anchoring; a node
+    /// simply having a <see cref="FlowHandle"/> must not silently change where an edge that never
+    /// named it attaches (adding one handle to a node used to jump every unrelated edge from that
+    /// node onto it). Mirrors <c>anchorFor</c> in flow.js.
     /// </summary>
     public (FlowPoint Point, FlowPosition Position) GetAnchor(FlowNode node, string? handleId, FlowHandleType type)
     {
         var rect = GetNodeRect(node);
-        if (_measured.TryGetValue(node.Id, out var m) && m.Handles.Count > 0)
+        if (handleId is not null && _measured.TryGetValue(node.Id, out var m) && m.Handles.Count > 0)
         {
-            HandleInfo? match = null;
             foreach (var h in m.Handles)
             {
                 if (h.Type != type) continue;
-                if (handleId is null || string.Equals(h.Id, handleId, StringComparison.Ordinal))
+                if (string.Equals(h.Id, handleId, StringComparison.Ordinal))
                 {
-                    match = h;
-                    break;
+                    return (new FlowPoint(rect.X + h.X, rect.Y + h.Y), h.Position);
                 }
-            }
-            if (match is not null)
-            {
-                return (new FlowPoint(rect.X + match.X, rect.Y + match.Y), match.Position);
             }
         }
         var side = type == FlowHandleType.Source ? FlowPosition.Right : FlowPosition.Left;
@@ -198,7 +196,19 @@ internal sealed class FlowState
 
     /// <summary>The viewport that fits <paramref name="nodes"/> into the pane, or null when not computable.</summary>
     public FlowViewport? ComputeFit(IReadOnlyList<FlowNode> nodes, double padding, double minZoom, double maxZoom)
-        => FlowGeometry.FitView(nodes.Select(GetNodeRect), PaneWidth, PaneHeight, padding, minZoom, maxZoom);
+        => ComputeFit(nodes, padding, minZoom, maxZoom, null);
+
+    /// <summary>LU-08: like the plain overload, but falls back to centring on <paramref name="anchorNodeId"/> (at <paramref name="minZoom"/>) instead of the whole bounds when the fit would need clamping. An unknown/null id behaves like the plain overload.</summary>
+    public FlowViewport? ComputeFit(IReadOnlyList<FlowNode> nodes, double padding, double minZoom, double maxZoom, string? anchorNodeId)
+    {
+        FlowRect? anchor = null;
+        if (!string.IsNullOrEmpty(anchorNodeId))
+        {
+            var n = nodes.FirstOrDefault(x => x is not null && x.Id == anchorNodeId);
+            if (n is not null) anchor = GetNodeRect(n);
+        }
+        return FlowGeometry.FitView(nodes.Select(GetNodeRect), PaneWidth, PaneHeight, padding, minZoom, maxZoom, anchor);
+    }
 
     /// <summary>True when every node has a fixed size or a measurement — a .NET-side fit is exact.</summary>
     public bool AllSized(IReadOnlyList<FlowNode> nodes)

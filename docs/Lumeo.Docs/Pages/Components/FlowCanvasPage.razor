@@ -72,9 +72,14 @@
     <ComponentDemo Title="Read-only, background variants & controls" Code="@_variantsCode">
         <Stack Gap="3" Class="w-full">
             <Lumeo.Text Size="sm" Color="muted">
-                <code>Readonly</code> keeps pan and zoom but turns every edit off. <code>FlowBackground</code> draws
+                <code>Readonly</code> keeps pan and zoom but turns every edit off — including the handles, which
+                drop out of the tab order and go <code>aria-hidden</code> while staying visible as ports (toggle it
+                below and tab through the canvas). <code>FlowBackground</code> draws
                 dots, lines or crosses that follow the viewport; <code>FlowControls</code> can sit in any corner.
                 <code>SnapToGrid</code> snaps drags to <code>SnapGrid</code> (here 20×20, matching the background).
+                The <code>a-c</code> edge below shows a per-edge colour (<code>Class</code> + a
+                <code>--lumeo-flow-edge-stroke</code> rule, no <code>!important</code>) and a solid animated edge
+                (<code>Animated="true" Dashed="false"</code> — a travelling dash overlay, the base line stays solid).
             </Lumeo.Text>
             <div class="flex flex-wrap items-center gap-4">
                 <Segmented @bind-Value="_variant" Options="_variantOptions" />
@@ -84,6 +89,13 @@
                     <span>Read-only</span>
                 </div>
             </div>
+            <style>
+                /* LU-02 demo: no !important needed — a plain class rule beats the library's own
+                   default because the default reads the SAME --lumeo-flow-edge-stroke custom
+                   property, just with a fallback. edge.Class merges "lumeo-docs-flow-critical-edge"
+                   onto this one edge's path element. */
+                .lumeo-docs-flow-critical-edge { --lumeo-flow-edge-stroke: var(--color-destructive); }
+            </style>
             <LazyRender Height="360px">
                 <FlowCanvas @bind-Nodes="_variantNodes" Edges="_variantEdges" Height="360px"
                             Readonly="_readonly" SnapToGrid="true" SnapGrid="(20, 20)">
@@ -200,7 +212,10 @@
                 <code>FlowLayout.Tree</code> and <code>FlowLayout.Layered</code> are pure functions: they take
                 the current nodes and edges and return a new node list with fresh positions — apply it with
                 <code>Nodes = FlowLayout.Tree(...)</code>, then <code>FitViewAsync()</code>. Both break cycles
-                deterministically, so an accidental loop still lays out instead of hanging.
+                deterministically, so an accidental loop still lays out instead of hanging, and both handle a
+                duplicate node id in the input without throwing. On a graph too large to fit above your minimum
+                zoom, <code>FitViewAsync(new FlowFitViewOptions(MinZoom: 0.6, AnchorNodeId: "start"))</code> centres
+                on that node at 60% instead of zooming out further to show everything.
             </Lumeo.Text>
             <div class="flex flex-wrap items-center gap-2">
                 <Button Variant="Button.ButtonVariant.Outline" Size="Button.ButtonSize.Sm" OnClick="ApplyTreeLayoutAsync">Tidy tree</Button>
@@ -537,7 +552,7 @@
                 </TableRow>
             </TableHeader>
             <TableBody>
-                <TableRow><TableCell Class="font-mono text-xs">Tree(nodes, edges, options?, measured?)</TableCell><TableCell>Rooted tree/forest: a root per node with no incoming edge, children centred under their parent. A node reachable from two roots is placed under whichever reaches it first.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">Tree(nodes, edges, options?, measured?)</TableCell><TableCell>Rooted tree/forest: a root per node with no incoming edge, children centred under their parent. A node's depth is the LONGEST path reaching it; it is placed under the single parent that explains that depth (the deepest of its parents, when it has more than one) — never under a shallower parent whose subtree happened to reach it first.</TableCell></TableRow>
                 <TableRow><TableCell Class="font-mono text-xs">Layered(nodes, edges, options?, measured?, sweeps = 4)</TableCell><TableCell>Longest-path ranking (a node's rank is one more than the deepest predecessor), then barycenter ordering within each rank to reduce crossings.</TableCell></TableRow>
                 <TableRow><TableCell Class="font-mono text-xs">FlowLayoutOptions</TableCell><TableCell><code>Direction</code> (<code>LeftToRight</code>/<code>TopToBottom</code>), <code>NodeSpacing</code>, <code>RankSpacing</code>, <code>GroupPadding</code> (20), <code>GroupHeaderHeight</code> (28).</TableCell></TableRow>
                 <TableRow><TableCell Class="font-mono text-xs">Groups</TableCell><TableCell>With nested nodes (<code>ParentId</code>) each group's children are laid out on their own, inside the group (relative, inset by <code>GroupPadding</code> plus <code>GroupHeaderHeight</code>), deepest groups first; a group grows (never shrinks) to fit them; then the top level is laid out with edges that cross a group border counted as edges of that group.</TableCell></TableRow>
@@ -597,13 +612,15 @@
                 <TableRow><TableCell Class="font-mono text-xs">FlowNode.ParentId</TableCell><TableCell Class="font-mono text-xs">string?</TableCell><TableCell>The group node this node sits in. Its <code>X</code>/<code>Y</code> are then relative to that group's top-left corner, it paints above the group and moves with it. A missing parent or a parent cycle counts as top-level.</TableCell></TableRow>
                 <TableRow><TableCell Class="font-mono text-xs">FlowNode.Extent</TableCell><TableCell Class="font-mono text-xs">FlowExtent</TableCell><TableCell><code>None</code> (default) or <code>Parent</code> — keeps the node inside its parent's rect while dragged or moved with the arrow keys.</TableCell></TableRow>
                 <TableRow><TableCell Class="font-mono text-xs">FlowEdge.Source / Target</TableCell><TableCell Class="font-mono text-xs">string</TableCell><TableCell>Node ids. An edge whose node is missing is skipped.</TableCell></TableRow>
-                <TableRow><TableCell Class="font-mono text-xs">FlowEdge.SourceHandle / TargetHandle</TableCell><TableCell Class="font-mono text-xs">string?</TableCell><TableCell>A <code>FlowHandle</code> id; null attaches to the node's first handle of that type, or its right/left edge.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">FlowEdge.SourceHandle / TargetHandle</TableCell><TableCell Class="font-mono text-xs">string?</TableCell><TableCell>An explicit <code>FlowHandle</code> id. Left <code>null</code> (the default), the edge anchors to the node's default side — right for a source, left for a target — even when the node renders handles; only naming a handle id opts that edge into handle-based anchoring.</TableCell></TableRow>
                 <TableRow><TableCell Class="font-mono text-xs">FlowEdge.Type</TableCell><TableCell Class="font-mono text-xs">FlowEdgeType</TableCell><TableCell><code>Bezier</code> (default), <code>SmoothStep</code>, <code>Step</code> or <code>Straight</code>.</TableCell></TableRow>
                 <TableRow><TableCell Class="font-mono text-xs">FlowNode.Connectable / Deletable</TableCell><TableCell Class="font-mono text-xs">bool</TableCell><TableCell>Per-node connect/delete switches (combined with the canvas' own switches).</TableCell></TableRow>
-                <TableRow><TableCell Class="font-mono text-xs">FlowEdge.Label</TableCell><TableCell Class="font-mono text-xs">string?</TableCell><TableCell>Renders as a small themed pill at the path midpoint; use <code>EdgeLabelTemplate</code> for custom content.</TableCell></TableRow>
-                <TableRow><TableCell Class="font-mono text-xs">FlowEdge.Animated / Dashed</TableCell><TableCell Class="font-mono text-xs">bool</TableCell><TableCell>A moving dash pattern (off under <code>prefers-reduced-motion</code>) or a static dashed stroke.</TableCell></TableRow>
-                <TableRow><TableCell Class="font-mono text-xs">FlowEdge.MarkerEnd</TableCell><TableCell Class="font-mono text-xs">string?</TableCell><TableCell>Any non-null value draws an arrowhead at the target; <code>null</code> draws none.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">FlowEdge.Label</TableCell><TableCell Class="font-mono text-xs">string?</TableCell><TableCell>Renders as a small themed pill at the path midpoint (nowrap, truncates with an ellipsis past <code>max-w-32</code>); use <code>EdgeLabelTemplate</code> for custom content.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">FlowEdge.Animated / Dashed</TableCell><TableCell Class="font-mono text-xs">bool</TableCell><TableCell><code>Dashed</code> is a static dashed stroke. <code>Animated</code> alone keeps the edge SOLID and adds a small travelling-dash overlay on top (off under <code>prefers-reduced-motion</code>); <code>Animated</code> + <code>Dashed</code> together animate the dash offset of the dashed stroke itself.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">FlowEdge.MarkerEnd</TableCell><TableCell Class="font-mono text-xs">string?</TableCell><TableCell>Any non-null value draws an arrowhead at the target, coloured to match the edge (a dedicated marker for the selected state; the default marker upgrades to <code>context-stroke</code> under <code>@@supports</code> in engines that implement it). <code>null</code> draws none.</TableCell></TableRow>
                 <TableRow><TableCell Class="font-mono text-xs">FlowEdge.Deletable</TableCell><TableCell Class="font-mono text-xs">bool</TableCell><TableCell>Per-edge delete switch.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">FlowEdge.Class</TableCell><TableCell Class="font-mono text-xs">string?</TableCell><TableCell>Merged onto the edge's <code>&lt;path&gt;</code>. Pair with a rule that sets <code>--lumeo-flow-edge-stroke</code> (e.g. <code>.critical { --lumeo-flow-edge-stroke: var(--color-destructive); }</code>) to recolour this edge — no <code>!important</code> needed, the default stroke reads that same custom property.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">FlowEdge.Style</TableCell><TableCell Class="font-mono text-xs">string?</TableCell><TableCell>Additional inline CSS appended after the library's own — a one-off escape hatch that always wins, including over the selected-state colour.</TableCell></TableRow>
             </TableBody>
         </Table>
     </div>
@@ -619,6 +636,8 @@
             </TableHeader>
             <TableBody>
                 <TableRow><TableCell Class="font-mono text-xs">FitViewAsync(double? padding)</TableCell><TableCell>Fits every node into view.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">FitViewAsync(FlowFitViewOptions)</TableCell><TableCell>Fits with per-call <code>Padding</code>/<code>MinZoom</code>/<code>MaxZoom</code> overrides and an optional <code>AnchorNodeId</code>: when the plain fit would need a zoom below <code>MinZoom</code>, centres on that node at <code>MinZoom</code> instead of zooming out further — "start readable" on a large graph. Raises <code>OnFitView</code> once applied.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">GetPaneSizeAsync()</TableCell><TableCell>The pane's size measured fresh from the DOM right now (not the last debounced resize report, which can still be in flight after a container resize in the same tick).</TableCell></TableRow>
                 <TableRow><TableCell Class="font-mono text-xs">ZoomInAsync() / ZoomOutAsync()</TableCell><TableCell>One ×1.2 step around the pane centre.</TableCell></TableRow>
                 <TableRow><TableCell Class="font-mono text-xs">ZoomToAsync(double zoom)</TableCell><TableCell>Zooms to a level (clamped to <code>MinZoom</code>/<code>MaxZoom</code>) around the pane centre.</TableCell></TableRow>
                 <TableRow><TableCell Class="font-mono text-xs">SetCenterAsync(x, y, zoom?)</TableCell><TableCell>Centres a flow point.</TableCell></TableRow>
@@ -655,6 +674,7 @@
                 <TableRow><TableCell Class="font-mono text-xs">CurrentNodes / CurrentEdges</TableCell><TableCell>The nodes/edges as currently rendered — the bound list, or the canvas' own copy.</TableCell></TableRow>
                 <TableRow><TableCell Class="font-mono text-xs">MeasuredSizes</TableCell><TableCell>Every node's measured (width, height) known so far — pass to <code>FlowLayout</code>'s <code>measured</code> parameter.</TableCell></TableRow>
                 <TableRow><TableCell Class="font-mono text-xs">CurrentViewport</TableCell><TableCell>The viewport as .NET last knows it.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">PaneSize</TableCell><TableCell>The pane's last KNOWN size (from the most recent resize report or engine registration) — <code>(0, 0)</code> before either has happened. For a size guaranteed fresh right now, await <code>GetPaneSizeAsync()</code> instead.</TableCell></TableRow>
             </TableBody>
         </Table>
     </div>
@@ -667,9 +687,9 @@
         <li><Kbd>←</Kbd> <Kbd>→</Kbd> <Kbd>↑</Kbd> <Kbd>↓</Kbd> move the focused node by 1px (by one grid step with <code>SnapToGrid</code>); <Kbd>Shift</Kbd> moves 10×. Each press commits like a drop.</li>
         <li><Kbd>Esc</Kbd> cancels a drag or a connection in progress (the node/line returns) and clears the selection.</li>
         <li>Hold <Kbd>Space</Kbd> to pan by dragging anywhere, including over nodes.</li>
-        <li>Click selects a node or edge; <Kbd>Shift</Kbd>/<Kbd>Ctrl</Kbd>-click toggles it into a multi-selection; shift-dragging the background draws a marquee.</li>
+        <li>Click, or <Kbd>Enter</Kbd>/<Kbd>Space</Kbd> on a focused node, selects it and raises <code>OnNodeClick</code> (<Kbd>Space</Kbd> does not also scroll the page); <Kbd>Shift</Kbd>/<Kbd>Ctrl</Kbd>-click toggles it into a multi-selection; shift-dragging the background draws a marquee. Edges are click-selectable the same way.</li>
         <li><Kbd>Delete</Kbd>/<Kbd>Backspace</Kbd> removes the current selection (configurable via <code>DeleteKey</code>).</li>
-        <li>Handles are tab stops. <Kbd>Enter</Kbd>/<Kbd>Space</Kbd> on a source handle enters "connecting" mode (announced to screen readers and marked on every compatible target handle with <code>data-flow-handle-valid</code>); <Kbd>Enter</Kbd>/<Kbd>Space</Kbd> on a target handle commits it, <Kbd>Esc</Kbd> cancels.</li>
+        <li>Handles are tab stops when connecting is actually possible (the canvas is not <code>Readonly</code>/locked, <code>NodesConnectable</code> is on, and the node's own <code>Connectable</code> is on) — otherwise they drop out of the tab order and are <code>aria-hidden</code> while staying visible as ports. <Kbd>Enter</Kbd>/<Kbd>Space</Kbd> on a source handle enters "connecting" mode (announced to screen readers and marked on every compatible target handle with <code>data-flow-handle-valid</code>); <Kbd>Enter</Kbd>/<Kbd>Space</Kbd> on a target handle commits it, <Kbd>Esc</Kbd> cancels.</li>
         <li>The controls are labelled buttons; the lock and snap-grid toggles report <code>aria-pressed</code>, undo/redo report <code>disabled</code> when there is nothing to undo/redo.</li>
         <li><Kbd>Ctrl</Kbd>+<Kbd>Z</Kbd> undoes, <Kbd>Ctrl</Kbd>+<Kbd>Y</Kbd> or <Kbd>Ctrl</Kbd>+<Kbd>Shift</Kbd>+<Kbd>Z</Kbd> redoes, while the canvas has focus and a <code>History</code> is set.</li>
         <li>Undo/redo, delete and the arrow-key nudge all skip a keystroke aimed at an editable field — an input, textarea, select, contenteditable region, or anything marked <code>data-flow-nodrag</code> (e.g. a node card's own inline-edit box, or an inspector panel rendered through <code>FlowPanel</code>) — so typing there never undoes a graph change or deletes the selected node; the field's own native undo/typing keeps working. <Kbd>Esc</Kbd> is not gated.</li>
@@ -806,9 +826,12 @@
 
     private readonly IReadOnlyList<FlowEdge> _variantEdges = new List<FlowEdge>
     {
+        // LU-02: Class + a --lumeo-flow-edge-stroke rule recolours this one edge (and its marker)
+        // without !important — see the <style> block in the markup above.
         new("a-b", "a", "b", Type: FlowEdgeType.Step),
-        new("a-c", "a", "c", Type: FlowEdgeType.Step),
-        new("b-d", "b", "d", Type: FlowEdgeType.Straight),
+        new("a-c", "a", "c", Type: FlowEdgeType.Step, Class: "lumeo-docs-flow-critical-edge"),
+        // LU-04: Animated alone keeps the line solid (a travelling dash overlay, not a dashed base stroke).
+        new("b-d", "b", "d", Type: FlowEdgeType.Straight, Animated: true),
         new("c-d", "c", "d", Type: FlowEdgeType.Straight),
     };
 

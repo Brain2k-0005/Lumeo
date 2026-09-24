@@ -68,14 +68,23 @@ public class FlowCanvasEdgeRenderingTests : FlowCanvasTestBase
     }
 
     [Fact]
-    public void Dashed_And_Animated_Edges_Get_A_Stroke_Dasharray()
+    public void Dashed_Edges_Get_A_Stroke_Dasharray_Animated_Alone_Stays_Solid()
     {
+        // LU-04: Animated no longer forces a dash on the edge itself — a solid animated edge
+        // (Animated=true, Dashed=false) must be possible. A dashed edge keeps its dasharray
+        // regardless of Animated (unchanged phase-2 behaviour); a solid animated edge instead
+        // gets a decorative "flow" overlay (data-flow-edge-flow) with its own sparse dash.
         var edges = new List<L.FlowEdge> { new("dashed", "a", "b", Dashed: true), new("animated", "a", "c", Animated: true) };
         var cut = Ctx.Render<L.FlowCanvas>(p => p.Add(c => c.Nodes, ThreeNodes()).Add(c => c.Edges, edges));
         Assert.Equal("5 4", cut.Find("[data-flow-edge][data-edge-id='dashed']").GetAttribute("stroke-dasharray"));
-        Assert.Equal("5 4", cut.Find("[data-flow-edge][data-edge-id='animated']").GetAttribute("stroke-dasharray"));
+        Assert.Null(cut.Find("[data-flow-edge][data-edge-id='animated']").GetAttribute("stroke-dasharray"));
         Assert.NotNull(cut.Find("[data-flow-edge][data-edge-id='animated']").GetAttribute("data-animated"));
         Assert.Null(cut.Find("[data-flow-edge][data-edge-id='dashed']").GetAttribute("data-animated"));
+
+        // The solid animated edge gets the travelling-dash overlay; the dashed one does not (its
+        // own dash-offset animation, via the data-animated attribute above, is enough).
+        Assert.NotNull(cut.Find("[data-flow-edge-flow][data-source='a'][data-target='c']"));
+        Assert.Empty(cut.FindAll("[data-flow-edge-flow][data-source='a'][data-target='b']"));
     }
 
     [Fact]
