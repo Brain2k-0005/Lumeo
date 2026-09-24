@@ -49,6 +49,10 @@ public static class SizeScaleAssert
     };
 
     private static readonly Regex ArbitraryPxRegex = new(@"^\[(?<n>[0-9.]+)px\]$", RegexOptions.Compiled);
+    // Switch's post-shadcn-v4-rescale track height is an arbitrary rem bracket
+    // (h-[1.15rem], matching shadcn's own literal class) — 1rem = 16px under the
+    // test environment's default root font size.
+    private static readonly Regex ArbitraryRemRegex = new(@"^\[(?<n>[0-9.]+)rem\]$", RegexOptions.Compiled);
     private static readonly Regex TextArbitraryPxRegex = new(@"^text-\[(?<n>[0-9.]+)px\]$", RegexOptions.Compiled);
     // A geometry token (#434): h-[var(--lumeo-control-h,calc(var(--spacing,0.25rem)*8))] is 8 spacing steps.
     private static readonly Regex GeometryTokenRegex = new(@"^\[var\(--lumeo-[a-z0-9-]+,calc\(var\(--spacing,0\.25rem\)\*(?<n>[0-9.]+)\)\)\]$", RegexOptions.Compiled);
@@ -70,6 +74,9 @@ public static class SizeScaleAssert
         var arbitrary = ArbitraryPxRegex.Match(suffix);
         if (arbitrary.Success)
             return double.Parse(arbitrary.Groups["n"].Value, NumberStyles.Float, CultureInfo.InvariantCulture);
+        var arbitraryRem = ArbitraryRemRegex.Match(suffix);
+        if (arbitraryRem.Success)
+            return double.Parse(arbitraryRem.Groups["n"].Value, NumberStyles.Float, CultureInfo.InvariantCulture) * 16.0;
         var geometry = GeometryTokenRegex.Match(suffix);
         if (geometry.Success)
             return double.Parse(geometry.Groups["n"].Value, NumberStyles.Float, CultureInfo.InvariantCulture) * 4.0;
