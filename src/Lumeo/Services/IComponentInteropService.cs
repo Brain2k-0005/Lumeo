@@ -392,6 +392,24 @@ public interface IComponentInteropService : IAsyncDisposable, IDisposable
     /// resize handle is registered for <paramref name="handleId"/>. Additive DIM.</summary>
     ValueTask<bool> AutoFitColumn(string handleId) => ValueTask.FromResult(false);
 
+    /// <summary>Measures a DataGrid column's natural content width (header + the currently
+    /// rendered body cells — under virtualization, just the rendered window) by column id,
+    /// looked up directly in the DOM rather than through a resize-handle registration. Backs
+    /// <c>DataGrid.AutoSizeColumnAsync</c>/<c>AutoSizeAllColumnsAsync</c> (issue #519). Returns
+    /// 0 when the column can't be measured (unknown id, grid not mounted, off-browser test
+    /// host). Additive DIM.</summary>
+    ValueTask<double> MeasureColumnContentWidth(string gridId, string columnId) => ValueTask.FromResult(0.0);
+
+    /// <summary>Hides the native scrollbar on <paramref name="viewportId"/> (DataGrid's own
+    /// scroll container) and draws JS-driven overlay thumbs (both axes, position:fixed,
+    /// synced to scroll/resize, draggable) on top — reserving no layout space. See
+    /// <c>DataGrid.OverlayScrollbar</c> (issue #517). Additive DIM.</summary>
+    ValueTask RegisterOverlayScrollbar(string viewportId) => ValueTask.CompletedTask;
+
+    /// <summary>Tears down the overlay scrollbar registered by <see cref="RegisterOverlayScrollbar"/>.
+    /// Additive DIM.</summary>
+    ValueTask UnregisterOverlayScrollbar(string viewportId) => ValueTask.CompletedTask;
+
     /// <summary>Registers pointer drag of Filters rows and groups within an advanced-builder panel.
     /// The panel's <c>[JSInvokable] OnFilterDrop(nodeId, parentId, index, copy)</c> receives each
     /// drop; Escape cancels a drag. Default no-op.</summary>

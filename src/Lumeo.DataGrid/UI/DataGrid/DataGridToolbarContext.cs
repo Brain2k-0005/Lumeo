@@ -19,6 +19,10 @@ public sealed class DataGridToolbarContext<TItem>
     public EventCallback<ColumnReorderEventArgs> OnColumnReorder { get; set; }
     public EventCallback<ColumnPinEventArgs> OnColumnPin { get; set; }
 
+    /// <summary>Fires when the "Autosize all columns" entry is picked — routes to
+    /// <see cref="DataGrid{TItem}.AutoSizeAllColumnsAsync"/> (issue #519).</summary>
+    public EventCallback OnAutoSizeAllColumns { get; set; }
+
     public DataGridExportFormat ExportFormats { get; set; } = DataGridExportFormat.All;
     public EventCallback<string> OnExport { get; set; }
 

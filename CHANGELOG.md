@@ -122,6 +122,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   there's room and never shrinks a column below its own `MinWidth` (falling back to `Width`);
   once the visible columns' combined floor exceeds the container, the grid scrolls horizontally
   instead of squeezing a column away (consumer report).
+- **DataGrid: bulk column auto-size, `ResetColumnWidthsAsync`, and `OverlayScrollbar`.**
+  `AutoSizeAllColumnsAsync()` fits every visible, resizable column to its content (header + the
+  currently rendered rows — under virtualization, just the rendered window) in one pass, clamped
+  to each column's `MinWidth`/`MaxWidth` and committed through the same width state a manual
+  resize uses (persisted with the layout when `LayoutStorageKey` is set); also reachable from a
+  new "Autosize all columns" button in the Columns panel. `AutoSizeColumnAsync(field)` does the
+  same for a single column — the public-API counterpart to the column menu's existing per-column
+  "Fit to content" entry. `ResetColumnWidthsAsync()` restores every column's declared width
+  without touching sort, filter, visibility, pin or order, narrower than the existing
+  `ResetLayoutAsync()` (consumer report). Separately, the new `OverlayScrollbar` parameter hides
+  DataGrid's native scrollbar and draws thin, theme-matched overlay scrollbars on both axes
+  instead (draggable thumbs, appear on hover/scroll, RTL-safe, `prefers-reduced-motion`-aware,
+  reserves no layout space) — off by default, so existing consumers see no change (consumer
+  report).
 
 ### Fixed
 - **DataGrid: `ApplyLayoutAsync` reloads exactly like a header click.** A layout applied with a

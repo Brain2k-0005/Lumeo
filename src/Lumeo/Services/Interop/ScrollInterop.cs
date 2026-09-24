@@ -140,6 +140,18 @@ internal sealed class ScrollInterop
         }
     }
 
+    // --- DataGrid Overlay Scrollbar (#517) ---
+
+    public async ValueTask RegisterOverlayScrollbar(IJSObjectReference module, string viewportId)
+    {
+        await module.InvokeVoidAsync("registerOverlayScrollbar", viewportId);
+    }
+
+    public async ValueTask UnregisterOverlayScrollbar(IJSObjectReference module, string viewportId)
+    {
+        await module.InvokeVoidAsync("unregisterOverlayScrollbar", viewportId);
+    }
+
     public void Clear()
     {
         _scrollspyHandlers.Clear();

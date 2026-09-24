@@ -2340,6 +2340,65 @@ input[type="range"]:focus-visible::-moz-range-thumb {
   background-color: var(--color-border);
 }
 
+/* DataGrid OverlayScrollbar (#517) — the native bar is hidden cross-browser (it
+   reserves layout space every browser lays out differently; hiding it and drawing
+   our own thumbs on top reserves none) while overflow:auto stays in force, so wheel/
+   trackpad/touch/keyboard scrolling is completely unaffected — only the paint changes. */
+[data-slot="datagrid"] .lumeo-dg-overlay-scroll {
+  scrollbar-width: none;      /* Firefox */
+  -ms-overflow-style: none;   /* legacy Edge */
+}
+[data-slot="datagrid"] .lumeo-dg-overlay-scroll::-webkit-scrollbar {
+  display: none;              /* Chrome / Safari / WebKit */
+}
+
+/* Tracks/thumbs are appended to <body> as position:fixed elements synced to the
+   viewport's live rect (see components.js registerOverlayScrollbar) — not part of
+   the grid's own DOM, so they can't interact with virtualization, the sticky
+   header, pinned-column offsets, the resize guideline or column reorder. Hidden
+   until scrolled/hovered (opacity), matching the "appear on hover/scroll" ask. */
+.lumeo-dg-scrollbar-track {
+  position: fixed;
+  z-index: 45; /* above grid content, below popovers (menus/filters sit at 50, guideline at 60) */
+  opacity: 0;
+  transition: opacity 150ms ease;
+  pointer-events: none;
+}
+.lumeo-dg-scrollbar-track.is-visible,
+.lumeo-dg-scrollbar-track:hover {
+  opacity: 1;
+  pointer-events: auto;
+}
+@media (prefers-reduced-motion: reduce) {
+  .lumeo-dg-scrollbar-track {
+    transition: none;
+  }
+}
+.lumeo-dg-scrollbar-track-y { width: 10px; }
+.lumeo-dg-scrollbar-track-x { height: 10px; }
+
+.lumeo-dg-scrollbar-thumb {
+  position: absolute;
+  background-color: color-mix(in oklab, var(--color-muted-foreground) 40%, transparent);
+  border-radius: 9999px;
+  cursor: grab;
+  pointer-events: auto;
+}
+.lumeo-dg-scrollbar-thumb:hover,
+.lumeo-dg-scrollbar-track:hover .lumeo-dg-scrollbar-thumb {
+  background-color: color-mix(in oklab, var(--color-muted-foreground) 60%, transparent);
+}
+.lumeo-dg-scrollbar-track-y .lumeo-dg-scrollbar-thumb {
+  top: 0;
+  left: 2px;
+  width: 6px;
+}
+.lumeo-dg-scrollbar-track-x .lumeo-dg-scrollbar-thumb {
+  left: 0;
+  top: 2px;
+  height: 6px;
+}
+
 /* Filters, advanced builder: the panel gutters follow --filter-panel-pad (0.75rem in a popover,
    0 inline) and the three content cells share ReUI's column widths, overridable per bar with
    --filter-field-width / --filter-operator-width / --filter-value-width. Kept as plain CSS: the

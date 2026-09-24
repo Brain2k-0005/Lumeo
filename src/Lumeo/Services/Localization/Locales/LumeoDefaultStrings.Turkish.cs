@@ -39,6 +39,7 @@ internal static partial class LumeoDefaultStrings
         ["DataGrid.SortAscending"] = "Artan sırala",
         ["DataGrid.SortDescending"] = "Azalan sırala",
         ["DataGrid.FitToContent"] = "İçeriğe sığdır",
+        ["DataGrid.AutoSizeAllColumns"] = "Tüm sütunları otomatik boyutlandır",
         ["DataGrid.MoveLeft"] = "Sola taşı",
         ["DataGrid.MoveRight"] = "Sağa taşı",
         ["DataGrid.ResizeColumn"] = "Sütun genişliğini ayarla (ok tuşlarını kullanın, otomatik sığdırmak için çift tıklayın)",

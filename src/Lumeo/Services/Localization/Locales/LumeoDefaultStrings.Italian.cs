@@ -39,6 +39,7 @@ internal static partial class LumeoDefaultStrings
         ["DataGrid.SortAscending"] = "Ordina crescente",
         ["DataGrid.SortDescending"] = "Ordina decrescente",
         ["DataGrid.FitToContent"] = "Adatta al contenuto",
+        ["DataGrid.AutoSizeAllColumns"] = "Adatta automaticamente tutte le colonne",
         ["DataGrid.MoveLeft"] = "Sposta a sinistra",
         ["DataGrid.MoveRight"] = "Sposta a destra",
         ["DataGrid.ResizeColumn"] = "Ridimensiona colonna (usa i tasti freccia, doppio clic per l'adattamento automatico)",

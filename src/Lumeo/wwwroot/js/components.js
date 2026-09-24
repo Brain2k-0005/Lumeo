@@ -3685,6 +3685,66 @@ let resizeGuideline = null;
 // far above the viewport once the user has scrolled, so a line spanning the table ran from
 // above the toolbar to below the window (field report §18.4). The scroller is resolved once per
 // table (getComputedStyle is off the per-move hot path); its rect is read per frame.
+// Measures a cell's truly intrinsic content width — off-DOM, so a full-width
+// table's auto-layout extra-space distribution (which inflates a live
+// width:auto cell to fill the remaining table width) can't skew the result.
+// A deep clone is appended to <body> as an isolated single-cell box (browsers
+// wrap an orphan table-cell in an anonymous 1x1 table), measured, then removed
+// — the real table's live cells/layout are never touched. Hoisted to module
+// scope (previously a per-drag closure inside registerColumnResize) so
+// measureColumnContentWidth (grid-level bulk auto-size, no live resize-handle
+// registration involved) can reuse it too.
+function measureIntrinsicWidth(cell) {
+    const probe = cell.cloneNode(true);
+    const ps = probe.style;
+    ps.position = 'absolute';
+    ps.visibility = 'hidden';
+    ps.left = '-9999px';
+    ps.top = '-9999px';
+    ps.width = 'auto';
+    ps.minWidth = '0';
+    ps.maxWidth = 'none';
+    ps.whiteSpace = 'nowrap';
+    document.body.appendChild(probe);
+    const w = probe.getBoundingClientRect().width;
+    probe.remove();
+    return w;
+}
+
+// Grid-level bulk auto-size (DataGrid.AutoSizeColumnAsync/AutoSizeAllColumnsAsync,
+// issue #519): measures a column's natural content width by COLUMN ID rather than
+// by resize-handle id, so it works without a live drag/handle registration and
+// without knowing a private per-header-cell handle id. gridId is the <table>'s own
+// id (DataGrid sets id="@_gridId" on the <table>, data-grid-id="@_gridId" on the
+// outer wrapper). colIndex/body-cell gathering mirrors registerColumnResize's own
+// gatherBodyCells so virtualized grids measure exactly the rendered window, and
+// grouped/detail rows (colSpan > 1) are skipped the same way. Returns 0 when the
+// column can't be found (unknown id, or the grid isn't mounted) — the C# caller
+// treats that as "nothing to commit".
+export function measureColumnContentWidth(gridId, colId) {
+    const table = document.getElementById(gridId);
+    if (!table) return 0;
+    const th = table.querySelector(`th[data-col-id="${colId}"]`);
+    if (!th) return 0;
+    const headerRow = th.parentElement;
+    if (!headerRow) return 0;
+    const colIndex = Array.prototype.indexOf.call(headerRow.children, th);
+    if (colIndex < 0) return 0;
+
+    const cells = [th];
+    const tbody = table.querySelector('tbody');
+    if (tbody) {
+        for (const row of tbody.rows) {
+            const cell = row.children[colIndex];
+            if (cell && !(cell.colSpan && cell.colSpan > 1)) cells.push(cell);
+        }
+    }
+
+    let natural = 0;
+    for (const c of cells) natural = Math.max(natural, measureIntrinsicWidth(c));
+    return natural > 0 ? Math.ceil(natural) + 2 : 0; // +2: same hairline breathing room as onDoubleClick's auto-fit
+}
+
 const resizeScrollerOf = new WeakMap();
 function resizeGuidelineFrame(th, table) {
     let scroller = table ? resizeScrollerOf.get(table) : null;
@@ -4010,28 +4070,8 @@ export function registerColumnResize(handleId, dotnetRef, minWidth, maxWidth) {
         }
         activePointerId = null;
     };
-    // Measures a cell's truly intrinsic content width — off-DOM, so a full-width
-    // table's auto-layout extra-space distribution (which inflates a live
-    // width:auto cell to fill the remaining table width) can't skew the result.
-    // A deep clone is appended to <body> as an isolated single-cell box (browsers
-    // wrap an orphan table-cell in an anonymous 1x1 table), measured, then removed
-    // — the real table's live cells/layout are never touched.
-    const measureIntrinsicWidth = (cell) => {
-        const probe = cell.cloneNode(true);
-        const ps = probe.style;
-        ps.position = 'absolute';
-        ps.visibility = 'hidden';
-        ps.left = '-9999px';
-        ps.top = '-9999px';
-        ps.width = 'auto';
-        ps.minWidth = '0';
-        ps.maxWidth = 'none';
-        ps.whiteSpace = 'nowrap';
-        document.body.appendChild(probe);
-        const w = probe.getBoundingClientRect().width;
-        probe.remove();
-        return w;
-    };
+    // measureIntrinsicWidth is now a module-level function (see above
+    // registerColumnResize) shared with measureColumnContentWidth.
     // Double-click → auto-fit the column to its widest content (header + body).
     const onDoubleClick = (e) => {
         e.preventDefault();
@@ -4148,6 +4188,191 @@ export function unregisterColumnResize(handleId) {
         }
         columnResizeHandlers.delete(handleId);
     }
+}
+
+// --- DataGrid Overlay Scrollbar (issue #517) ---
+//
+// A genuine overlay: the native scrollbar is hidden entirely via CSS
+// (lumeo-dg-overlay-scroll, see lumeo.css) so it reserves NO layout space,
+// and these two thumbs are drawn on top instead. Native scroll (wheel,
+// trackpad, touch, keyboard — Home/End/PageUp/PageDown/arrows via a
+// focused cell) is completely untouched; only the VISUAL bar is replaced.
+//
+// Thumbs are position:fixed elements appended to <body> and kept in sync
+// with the viewport's live getBoundingClientRect() + scrollTop/scrollLeft
+// on every scroll/resize — the same "float free of the grid's own DOM,
+// sync via rect + fixed positioning" idiom this file already uses for the
+// resize guideline (resizeGuidelineFrame) and the header popovers
+// (positionFixed). Deliberately NOT inserted into the grid's own DOM tree:
+// that would risk interacting with virtualization, the sticky header, and
+// pinned-column offsets, none of which this feature is allowed to disturb.
+const overlayScrollbars = new Map();
+const OVERLAY_SCROLLBAR_SIZE = 10; // px — track thickness, matches lumeo.css
+
+export function registerOverlayScrollbar(viewportId) {
+    const viewport = document.getElementById(viewportId);
+    if (!viewport || overlayScrollbars.has(viewportId)) return;
+
+    const makeTrack = (axis) => {
+        const track = document.createElement('div');
+        track.className = `lumeo-dg-scrollbar-track lumeo-dg-scrollbar-track-${axis}`;
+        track.setAttribute('data-axis', axis);
+        const thumb = document.createElement('div');
+        thumb.className = 'lumeo-dg-scrollbar-thumb';
+        track.appendChild(thumb);
+        document.body.appendChild(track);
+        return { track, thumb };
+    };
+    const y = makeTrack('y');
+    const x = makeTrack('x');
+
+    let visibleUntil = 0;
+    let hideTimer = 0;
+    const reveal = () => {
+        y.track.classList.add('is-visible');
+        x.track.classList.add('is-visible');
+        visibleUntil = Date.now() + 900;
+        if (!hideTimer) {
+            hideTimer = window.setTimeout(function tick() {
+                if (Date.now() >= visibleUntil && !state.dragging) {
+                    y.track.classList.remove('is-visible');
+                    x.track.classList.remove('is-visible');
+                    hideTimer = 0;
+                } else {
+                    hideTimer = window.setTimeout(tick, 150);
+                }
+            }, 150);
+        }
+    };
+
+    const state = { dragging: null }; // 'y' | 'x' | null
+
+    const update = () => {
+        const rect = viewport.getBoundingClientRect();
+        const rtl = getComputedStyle(viewport).direction === 'rtl';
+
+        const canY = viewport.scrollHeight > viewport.clientHeight + 1;
+        y.track.style.display = canY ? '' : 'none';
+        if (canY) {
+            const trackH = Math.max(rect.height - OVERLAY_SCROLLBAR_SIZE, 0);
+            y.track.style.top = rect.top + 'px';
+            y.track.style.height = rect.height + 'px';
+            y.track.style.left = (rtl ? rect.left : rect.right - OVERLAY_SCROLLBAR_SIZE) + 'px';
+            const thumbH = Math.max(24, (viewport.clientHeight / viewport.scrollHeight) * trackH);
+            const maxTop = viewport.scrollHeight - viewport.clientHeight;
+            const top = maxTop > 0 ? (viewport.scrollTop / maxTop) * (trackH - thumbH) : 0;
+            y.thumb.style.height = thumbH + 'px';
+            y.thumb.style.transform = `translateY(${top}px)`;
+        }
+
+        const canX = viewport.scrollWidth > viewport.clientWidth + 1;
+        x.track.style.display = canX ? '' : 'none';
+        if (canX) {
+            const trackW = Math.max(rect.width - OVERLAY_SCROLLBAR_SIZE, 0);
+            x.track.style.left = rect.left + 'px';
+            x.track.style.width = rect.width + 'px';
+            x.track.style.top = (rect.bottom - OVERLAY_SCROLLBAR_SIZE) + 'px';
+            const thumbW = Math.max(24, (viewport.clientWidth / viewport.scrollWidth) * trackW);
+            const maxLeft = viewport.scrollWidth - viewport.clientWidth;
+            // Firefox/WebKit report RTL scrollLeft differently (negative vs.
+            // 0..-max vs. reversed positive) — normalize to a 0..maxLeft
+            // "distance scrolled from the start edge" regardless of engine.
+            const raw = viewport.scrollLeft;
+            const distance = rtl ? (raw <= 0 ? -raw : maxLeft - raw) : raw;
+            const left = maxLeft > 0 ? (Math.min(Math.max(distance, 0), maxLeft) / maxLeft) * (trackW - thumbW) : 0;
+            x.thumb.style.width = thumbW + 'px';
+            x.thumb.style.transform = `translateX(${rtl ? trackW - thumbW - left : left}px)`;
+        }
+    };
+
+    const onScroll = () => { update(); reveal(); };
+    viewport.addEventListener('scroll', onScroll, { passive: true });
+    viewport.addEventListener('pointerenter', reveal);
+    y.track.addEventListener('pointerenter', reveal);
+    x.track.addEventListener('pointerenter', reveal);
+
+    // The thumbs are position:fixed and synced to the viewport's own
+    // getBoundingClientRect(), which only stays accurate while the PAGE
+    // itself doesn't scroll — the grid's own onScroll above only fires for
+    // the grid's OWN internal scroll. Scroll events don't bubble, but they
+    // DO reach ancestors (and the window) during the CAPTURE phase — the
+    // standard trick (also used by popper.js/floating-ui) for "reposition on
+    // scroll of ANY ancestor, including the outer page". Without this the
+    // thumbs freeze at their last-synced position the moment the page around
+    // the grid scrolls (e.g. a docs page with the demo below the fold).
+    const onWindowScroll = () => update();
+    window.addEventListener('scroll', onWindowScroll, { passive: true, capture: true });
+
+    const ro = new ResizeObserver(update);
+    ro.observe(viewport);
+    window.addEventListener('resize', update);
+
+    // Thumb drag: pointerdown on a thumb starts a drag that maps pointer
+    // delta to scrollTop/scrollLeft through the SAME ratio used to draw the
+    // thumb, so a full-track drag exactly spans min..max scroll.
+    const dragOf = (axis, thumb, track) => {
+        let startClient = 0, startScroll = 0;
+        const onMove = (e) => {
+            const rect = viewport.getBoundingClientRect();
+            const rtl = getComputedStyle(viewport).direction === 'rtl';
+            if (axis === 'y') {
+                const trackH = Math.max(rect.height - OVERLAY_SCROLLBAR_SIZE, 0);
+                const thumbH = thumb.getBoundingClientRect().height;
+                const maxTop = viewport.scrollHeight - viewport.clientHeight;
+                const ratio = maxTop > 0 && trackH - thumbH > 0 ? maxTop / (trackH - thumbH) : 0;
+                viewport.scrollTop = startScroll + (e.clientY - startClient) * ratio;
+            } else {
+                const trackW = Math.max(rect.width - OVERLAY_SCROLLBAR_SIZE, 0);
+                const thumbW = thumb.getBoundingClientRect().width;
+                const maxLeft = viewport.scrollWidth - viewport.clientWidth;
+                const ratio = maxLeft > 0 && trackW - thumbW > 0 ? maxLeft / (trackW - thumbW) : 0;
+                const delta = (e.clientX - startClient) * ratio;
+                viewport.scrollLeft = startScroll + (rtl ? -delta : delta);
+            }
+            update();
+            e.preventDefault();
+        };
+        const onUp = () => {
+            state.dragging = null;
+            document.removeEventListener('pointermove', onMove);
+            document.removeEventListener('pointerup', onUp);
+            document.body.style.userSelect = '';
+        };
+        thumb.addEventListener('pointerdown', (e) => {
+            if (e.pointerType === 'mouse' && e.button !== 0) return;
+            state.dragging = axis;
+            startClient = axis === 'y' ? e.clientY : e.clientX;
+            startScroll = axis === 'y' ? viewport.scrollTop : viewport.scrollLeft;
+            document.addEventListener('pointermove', onMove);
+            document.addEventListener('pointerup', onUp);
+            document.body.style.userSelect = 'none';
+            reveal();
+            e.preventDefault();
+            e.stopPropagation();
+        });
+    };
+    dragOf('y', y.thumb, y.track);
+    dragOf('x', x.thumb, x.track);
+
+    update();
+
+    overlayScrollbars.set(viewportId, {
+        viewport, yTrack: y.track, xTrack: x.track, update, ro, onScroll, onWindowScroll,
+        cleanupReveal: () => { if (hideTimer) { window.clearTimeout(hideTimer); hideTimer = 0; } },
+    });
+}
+
+export function unregisterOverlayScrollbar(viewportId) {
+    const entry = overlayScrollbars.get(viewportId);
+    if (!entry) return;
+    entry.ro.disconnect();
+    window.removeEventListener('resize', entry.update);
+    window.removeEventListener('scroll', entry.onWindowScroll, { capture: true });
+    entry.viewport.removeEventListener('scroll', entry.onScroll);
+    entry.cleanupReveal();
+    entry.yTrack.remove();
+    entry.xTrack.remove();
+    overlayScrollbars.delete(viewportId);
 }
 
 // --- DataGrid Viewport Width ---

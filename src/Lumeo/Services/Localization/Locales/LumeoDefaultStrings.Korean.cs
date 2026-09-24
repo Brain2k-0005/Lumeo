@@ -39,6 +39,7 @@ internal static partial class LumeoDefaultStrings
         ["DataGrid.SortAscending"] = "오름차순 정렬",
         ["DataGrid.SortDescending"] = "내림차순 정렬",
         ["DataGrid.FitToContent"] = "내용에 맞춤",
+        ["DataGrid.AutoSizeAllColumns"] = "모든 열 자동 맞춤",
         ["DataGrid.MoveLeft"] = "왼쪽으로 이동",
         ["DataGrid.MoveRight"] = "오른쪽으로 이동",
         ["DataGrid.ResizeColumn"] = "열 너비 조정(화살표 키 사용, 더블클릭으로 자동 맞춤)",

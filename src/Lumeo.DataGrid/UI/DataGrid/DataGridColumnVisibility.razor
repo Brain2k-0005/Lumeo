@@ -6,8 +6,30 @@
 
 <div class="@CssClass" @attributes="AdditionalAttributes">
     <div class="p-3 space-y-1">
-        <div class="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
-            @L["DataGrid.ToggleColumns"]
+        <div class="flex items-center justify-between gap-2 mb-2">
+            <div class="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                @L["DataGrid.ToggleColumns"]
+            </div>
+            @if (OnAutoSizeAllColumns.HasDelegate)
+            {
+                @* Bulk counterpart to the per-column header menu's "Fit to content"
+                   (issue #519 / field report DocFlow W1) — sized every visible,
+                   resizable column to its content in one pass. *@
+                <Tooltip>
+                    <TooltipTrigger AsChild>
+                        <ChildContentSlot Context="slot">
+                            <button type="button"
+                                    class="inline-flex items-center justify-center h-6 w-6 shrink-0 rounded text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-1"
+                                    aria-label="@L["DataGrid.AutoSizeAllColumns"]"
+                                    @onclick="@(() => OnAutoSizeAllColumns.InvokeAsync())"
+                                    @attributes="slot.Attributes">
+                                <SvgGlyph Svg="@(LumeoIcons.Maximize2)" class="h-3.5 w-3.5" />
+                            </button>
+                        </ChildContentSlot>
+                    </TooltipTrigger>
+                    <TooltipContent>@L["DataGrid.AutoSizeAllColumns"]</TooltipContent>
+                </Tooltip>
+            }
         </div>
         @{
             // Bind the SortableList to an in-place mutable buffer so its
@@ -120,6 +142,11 @@
     /// <summary>Fires when a column's pin state is changed via its pin menu
     /// (Left/Right/Unpin), carrying the column id and the new <see cref="PinDirection"/>.</summary>
     [Parameter] public EventCallback<ColumnPinEventArgs> OnColumnPin { get; set; }
+
+    /// <summary>Fires when the "Autosize all columns" entry is picked. The entry is only
+    /// rendered when this has a delegate, so a caller that doesn't wire it up (or an older
+    /// consumer using this component directly) sees no visual change.</summary>
+    [Parameter] public EventCallback OnAutoSizeAllColumns { get; set; }
 
     /// <summary>Additional CSS classes merged onto the popover's outer wrapper.</summary>
     [Parameter] public string? Class { get; set; }

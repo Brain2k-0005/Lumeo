@@ -861,6 +861,30 @@ public sealed class ComponentInteropService : IComponentInteropService
         return await _resize.AutoFitColumn(module, handleId);
     }
 
+    public async ValueTask<double> MeasureColumnContentWidth(string gridId, string columnId)
+    {
+        var module = await GetModuleAsync();
+        return await _resize.MeasureColumnContentWidth(module, gridId, columnId);
+    }
+
+    // --- DataGrid Overlay Scrollbar ---
+
+    public async ValueTask RegisterOverlayScrollbar(string viewportId)
+    {
+        var module = await GetModuleAsync();
+        await _scroll.RegisterOverlayScrollbar(module, viewportId);
+    }
+
+    public async ValueTask UnregisterOverlayScrollbar(string viewportId)
+    {
+        try
+        {
+            var module = await GetModuleAsync();
+            await _scroll.UnregisterOverlayScrollbar(module, viewportId);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
     public async ValueTask RegisterFilterDrag<[System.Diagnostics.CodeAnalysis.DynamicallyAccessedMembers(System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicMethods)] T>(Microsoft.AspNetCore.Components.ElementReference panel, DotNetObjectReference<T> dotNetRef) where T : class
     {
         try
