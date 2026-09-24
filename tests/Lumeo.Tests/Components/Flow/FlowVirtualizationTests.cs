@@ -231,7 +231,7 @@ public class FlowVirtualizationTests : FlowCanvasTestBase
     }
 
     [Fact]
-    public void A_Mounted_Child_Brings_Its_Parent_Group()
+    public async Task A_Mounted_Child_Brings_Its_Parent_Group()
     {
         var nodes = new List<L.FlowNode>
         {
@@ -239,7 +239,7 @@ public class FlowVirtualizationTests : FlowCanvasTestBase
             new("c", 5050, 20, Width: 100, Height: 40, ParentId: "g"), // Extent None, absolute (50, 20): visible
         };
         var (cut, _) = RenderBound(nodes, p => p.Add(c => c.OnlyRenderVisibleNodes, true));
-        cut.InvokeAsync(() => cut.Instance.PaneResized(800, 600)).GetAwaiter().GetResult();
+        await cut.InvokeAsync(() => cut.Instance.PaneResized(800, 600));
         Assert.Equal(new[] { "g", "c" }, cut.FindAll("[data-flow-node]").Select(e => e.GetAttribute("data-flow-node")));
     }
 
@@ -268,14 +268,14 @@ public class FlowVirtualizationTests : FlowCanvasTestBase
     }
 
     [Fact]
-    public void FitViewOnInit_On_A_Virtualized_Canvas_Fits_From_The_Model_Once_The_Pane_Has_A_Size()
+    public async Task FitViewOnInit_On_A_Virtualized_Canvas_Fits_From_The_Model_Once_The_Pane_Has_A_Size()
     {
         var cut = Ctx.Render<L.FlowCanvas>(p => p
             .Add(c => c.Nodes, Grid().Take(4).ToList())
             .Add(c => c.OnlyRenderVisibleNodes, true)
             .Add(c => c.FitViewOnInit, true));
         Assert.Empty(cut.FindAll("[data-flow-node]"));
-        cut.InvokeAsync(() => cut.Instance.PaneResized(800, 600)).GetAwaiter().GetResult();
+        await cut.InvokeAsync(() => cut.Instance.PaneResized(800, 600));
 
         Assert.NotEqual(new L.FlowViewport(0, 0, 1), cut.Instance.CurrentViewport);
         Assert.Equal(4, cut.FindAll("[data-flow-node]").Count);
