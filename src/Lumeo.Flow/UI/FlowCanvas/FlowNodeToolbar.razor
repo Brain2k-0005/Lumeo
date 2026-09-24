@@ -1,28 +1,31 @@
 @namespace Lumeo
 @inject Lumeo.Services.Localization.ILumeoLocalizer L
 
-@* FlowNodeToolbar — a small toolbar that floats above (or below) the single selected node. Place
-   it inside FlowCanvas' ChildContent, same as FlowControls/FlowMiniMap/FlowPanel.
+@* FlowNodeToolbar — a small toolbar that floats above (or below) the selected node(s). Place it
+   inside FlowCanvas' ChildContent, same as FlowControls/FlowMiniMap/FlowPanel.
 
-   Position: computed from the canvas' latest known viewport and the node's rect (flow coords *
+   Position: computed from the canvas' latest known viewport and the target rect (flow coords *
    zoom + viewport translation — the same transform the viewport layer applies), so it moves with
-   every Blazor render (selection change, pane resize, a settled pan/zoom/drag). While a POINTER
-   DRAG of its target node is in flight, flow.js additionally repositions the element live via
-   data-flow-toolbar-for (mirroring how it redraws edges) so it does not lag a full render behind
-   — it does not re-anchor on every frame of an in-progress pan/zoom the way edges do; the next
-   viewport report settles that within one frame. Only one node's toolbar renders at a time: with
-   zero or more than one node selected, it renders nothing. *@
+   every Blazor render (selection change, pane resize, a settled pan/zoom/drag). With exactly ONE
+   node selected the target is that node's own rect, and while a POINTER DRAG of it is in flight
+   flow.js additionally repositions the element live via data-flow-toolbar-for (mirroring how it
+   redraws edges), so it does not lag a full render behind. With TWO OR MORE nodes selected
+   (phase 4) the target is the union of every selected node's rect — ONE toolbar at the
+   selection's bounding box, not one per node — and it settles on the next render only (no
+   per-frame live tracking during a multi-node drag; the same "next viewport report settles it"
+   caveat this component has always documented for pan/zoom now also covers that case). With
+   zero nodes selected it renders nothing. *@
 
-@if (TargetNode is { } node)
+@if (TargetBounds is { } bounds)
 {
     <div data-slot="flow-toolbar"
-         data-flow-toolbar-for="@node.Id"
+         data-flow-toolbar-for="@SingleNodeId"
          data-flow-toolbar-position="@(Position == ToolbarPosition.Bottom ? "bottom" : "top")"
          data-flow-overlay
          role="toolbar"
          aria-label="@L["Flow.NodeToolbar"]"
          class="@RootClass"
-         style="@Style(node)"
+         style="@Style(bounds)"
          @attributes="AdditionalAttributes">
         @ChildContent
     </div>
@@ -49,15 +52,16 @@
     /// <summary>Captures unmatched attributes and applies them to the toolbar.</summary>
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
-    private FlowNode? TargetNode => Context?.Canvas.SingleSelectedNode();
+    /// <summary>The single selected node's own id, for flow.js's live drag tracking — null (and so absent from the DOM) with zero or several nodes selected.</summary>
+    private string? SingleNodeId => Context?.Canvas.SingleSelectedNode()?.Id;
+
+    private FlowRect? TargetBounds => Context?.Canvas.SelectedNodesBounds();
 
     private string? RootClass => Class;
 
-    private string Style(FlowNode node)
+    private string Style(FlowRect rect)
     {
-        var canvas = Context!.Canvas;
-        var v = Context.Viewport;
-        var rect = canvas.GetNodeRect(node);
+        var v = Context!.Viewport;
         var zoom = v.Zoom > 0 ? v.Zoom : 1;
         var cx = (rect.X + rect.Width / 2) * zoom + v.X;
         var edgeY = Position == ToolbarPosition.Bottom ? rect.Bottom : rect.Y;

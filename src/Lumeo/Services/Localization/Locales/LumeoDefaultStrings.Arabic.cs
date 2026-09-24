@@ -356,6 +356,8 @@ internal static partial class LumeoDefaultStrings
         ["Flow.ConnectionCancelled"] = "تم إلغاء الاتصال.",
         ["Flow.Reconnected"] = "تمت إعادة توصيل الحافة.",
         ["Flow.ReconnectRejected"] = "تم رفض إعادة التوصيل.",
+        ["Flow.EdgeLabelEdit"] = "تعديل تسمية الحافة",
+        ["Flow.EdgeLabelUpdated"] = "تم تحديث التسمية.",
         ["Gantt.ScrollToEarlierTask"] = "التمرير إلى {0} (سابقًا)",
         ["Gantt.ScrollToLaterTask"] = "التمرير إلى {0} (لاحقًا)",
         ["Gantt.Settings"] = "الإعدادات",

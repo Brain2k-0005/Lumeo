@@ -417,6 +417,8 @@ internal static partial class LumeoDefaultStrings
         ["Flow.ConnectionCancelled"] = "Połączenie anulowane.",
         ["Flow.Reconnected"] = "Krawędź połączona ponownie.",
         ["Flow.ReconnectRejected"] = "Ponowne połączenie odrzucone.",
+        ["Flow.EdgeLabelEdit"] = "Edytuj etykietę krawędzi",
+        ["Flow.EdgeLabelUpdated"] = "Etykieta zaktualizowana.",
         ["Gantt.ScrollToEarlierTask"] = "Przewiń do {0} (wcześniej)",
         ["Gantt.ScrollToLaterTask"] = "Przewiń do {0} (później)",
         ["Gantt.Settings"] = "Ustawienia",

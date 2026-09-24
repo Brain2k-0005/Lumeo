@@ -410,6 +410,8 @@ internal static partial class LumeoDefaultStrings
         ["Flow.ConnectionCancelled"] = "Verbinding geannuleerd.",
         ["Flow.Reconnected"] = "Rand opnieuw verbonden.",
         ["Flow.ReconnectRejected"] = "Herverbinden geweigerd.",
+        ["Flow.EdgeLabelEdit"] = "Randlabel bewerken",
+        ["Flow.EdgeLabelUpdated"] = "Label bijgewerkt.",
         ["Gantt.ScrollToEarlierTask"] = "Scrollen naar {0} (eerder)",
         ["Gantt.ScrollToLaterTask"] = "Scrollen naar {0} (later)",
         ["Gantt.Settings"] = "Instellingen",

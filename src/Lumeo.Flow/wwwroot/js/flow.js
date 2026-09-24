@@ -312,6 +312,11 @@ function normalizeOptions(o) {
         fitViewOnInit: o.fitViewOnInit === true,
         fitViewPadding: Number.isFinite(o.fitViewPadding) ? o.fitViewPadding : 0.1,
         reconnectable: o.reconnectable !== false,
+        // Phase 4:
+        connectionMode: o.connectionMode === 'loose' ? 'loose' : 'strict',
+        helperLines: o.helperLines === true,
+        helperLineThreshold: Number.isFinite(o.helperLineThreshold) && o.helperLineThreshold > 0 ? o.helperLineThreshold : 5,
+        validateOnHover: o.validateOnHover === true,
         strings: {
             connectingFrom: typeof s.connectingFrom === 'string' && s.connectingFrom ? s.connectingFrom : DEFAULT_STRINGS.connectingFrom,
             connected: typeof s.connected === 'string' && s.connected ? s.connected : DEFAULT_STRINGS.connected,
@@ -460,24 +465,29 @@ function oppositePosition(pos) {
     }
 }
 
-// Structural compatibility only (type=target, connectable, not the source's own handle) — the full
-// IsValidConnection predicate lives in .NET and is evaluated once, on drop/commit, by CommitConnect.
+// Structural compatibility only (Strict: type=target; Loose: any type; either way connectable and
+// not the source's own handle) — the full IsValidConnection predicate lives in .NET and is
+// evaluated once, on drop/commit, by CommitConnect (or per hover, when ValidateOnHover is on).
 function isValidTargetCandidate(reg, sourceHandleEl, candidateEl) {
     if (!candidateEl || candidateEl === sourceHandleEl) return false;
-    if (candidateEl.getAttribute('data-handle-type') !== 'target') return false;
+    if (reg.options.connectionMode !== 'loose' && candidateEl.getAttribute('data-handle-type') !== 'target') return false;
     const node = handleNode(candidateEl);
     if (!node || node.getAttribute('data-connectable') === 'false') return false;
     return true;
 }
 
 function markValidTargets(reg, sourceHandleEl) {
-    for (const h of reg.pane.querySelectorAll('[data-flow-handle][data-handle-type="target"]')) {
+    const selector = reg.options.connectionMode === 'loose' ? '[data-flow-handle]' : '[data-flow-handle][data-handle-type="target"]';
+    for (const h of reg.pane.querySelectorAll(selector)) {
         if (isValidTargetCandidate(reg, sourceHandleEl, h)) h.setAttribute('data-flow-handle-valid', '');
     }
 }
 
 function clearValidTargets(reg) {
     for (const h of reg.pane.querySelectorAll('[data-flow-handle-valid]')) h.removeAttribute('data-flow-handle-valid');
+    for (const h of reg.pane.querySelectorAll('[data-flow-handle-invalid]')) h.removeAttribute('data-flow-handle-invalid');
+    reg.hoverValidateId = null;
+    reg.lastHoverInvalidEl = null;
 }
 
 function ensureConnLine(reg) {
@@ -527,6 +537,32 @@ function beginConnectGesture(reg, handleEl, base) {
     ensureConnLine(reg);
     updateConnectionLine(reg, nodeEl, g.sourceHandleId, base.startX, base.startY);
     diag({ ev: 'connect-start', source: g.sourceId, handle: g.sourceHandleId });
+}
+
+// Phase 4, ValidateOnHover only: while a connect drag is in flight, on each hovered target
+// CHANGE (never redundantly — reg.hoverValidateId dedupes), ask .NET to run IsValidConnection
+// and mark the candidate data-flow-handle-invalid when it would be rejected. One round trip per
+// hover change, not per pointermove frame; a stale response (the hover moved on again before it
+// came back) is dropped by comparing reg.hoverValidateId.
+function updateHoverValidation(reg, g, clientX, clientY) {
+    if (!reg.options.validateOnHover) return;
+    const el = document.elementFromPoint(clientX, clientY);
+    const candidate = el ? el.closest('[data-flow-handle]') : null;
+    const ok = candidate && isValidTargetCandidate(reg, g.sourceHandleEl, candidate);
+    const key = ok ? candidate.getAttribute('data-handle-type') + '|' + (handleIdOf(candidate) || '') + '|' + handleNode(candidate).getAttribute('data-flow-node') : null;
+    if (key === reg.hoverValidateId) return;
+    if (reg.lastHoverInvalidEl) { reg.lastHoverInvalidEl.removeAttribute('data-flow-handle-invalid'); reg.lastHoverInvalidEl = null; }
+    reg.hoverValidateId = key;
+    if (!ok) return;
+    const targetNode = handleNode(candidate);
+    call(reg, 'ValidateHoveredConnection', g.sourceId, g.sourceHandleId, targetNode.getAttribute('data-flow-node'), handleIdOf(candidate))
+        .then(valid => {
+            if (reg.hoverValidateId !== key) return; // a newer hover already superseded this response
+            if (valid !== true) {
+                candidate.setAttribute('data-flow-handle-invalid', '');
+                reg.lastHoverInvalidEl = candidate;
+            }
+        }).catch(() => { });
 }
 
 function endConnectGesture(reg, g, clientX, clientY) {
@@ -660,7 +696,7 @@ function handleConnectKey(reg, handleEl) {
     const o = reg.options;
     if (o.readonly || !o.connectable) return;
     if (!reg.kbConnect) {
-        if (handleEl.getAttribute('data-handle-type') !== 'source') return;
+        if (o.connectionMode !== 'loose' && handleEl.getAttribute('data-handle-type') !== 'source') return;
         const node = handleNode(handleEl);
         if (!node || node.getAttribute('data-connectable') === 'false') return;
         reg.kbConnect = { sourceHandleEl: handleEl, sourceId: node.getAttribute('data-flow-node'), sourceHandleId: handleIdOf(handleEl) };
@@ -767,6 +803,207 @@ function redrawToolbars(reg, g) {
         el.style.left = cx + 'px';
         el.style.top = (edgeY * zoom + reg.vp.y) + 'px';
     }
+}
+
+// ── Resize (phase 4): pointer-drag grips from FlowNodeResizer ──────────────
+// Mirrors the node-drag gesture above (live transform, committed once on drop, restored from
+// truth on rejection/cancel) but changes WIDTH/HEIGHT (and, for a west/north-facing grip, X/Y)
+// instead of position, and Shift keeps a corner grip's base aspect ratio. Connected edges are
+// redrawn against the LIVE rect through anchorForResize/redrawEdgesForResize below rather than
+// the generic computeEdge/redrawEdges pair — a resizing node's handles sit at fixed physical
+// sides (FlowHandle's Position, never a free offset), so re-deriving their anchor from the live
+// (x, y, width, height) via the same handleAnchor() the default side anchor already uses is
+// exact, not an approximation, and needs no live re-measurement mid-gesture.
+function anchorForResize(reg, g, el, handleId, type) {
+    const id = el.getAttribute('data-flow-node');
+    if (id !== g.nodeEl.getAttribute('data-flow-node')) return anchorFor(reg, el, handleId, type, nodePos(reg, el));
+    let m = reg.measured.get(id);
+    if (!m) m = measureNode(reg, el);
+    let position = type === 'source' ? 'right' : 'left';
+    for (const h of m.handles) {
+        if (h.type !== type) continue;
+        if (handleId == null || h.id === handleId) { position = h.position; break; }
+    }
+    const a = handleAnchor({ x: g.x, y: g.y, width: g.w, height: g.h }, position);
+    return { x: a.x, y: a.y, position };
+}
+
+function redrawEdgesForResize(reg, g) {
+    for (const e of g.edges) {
+        const s = findNode(reg, e.getAttribute('data-source'));
+        const t = findNode(reg, e.getAttribute('data-target'));
+        if (!s || !t) continue;
+        const sa = anchorForResize(reg, g, s, e.getAttribute('data-source-handle'), 'source');
+        const ta = anchorForResize(reg, g, t, e.getAttribute('data-target-handle'), 'target');
+        const p = edgePath(e.getAttribute('data-edge-type') || 'bezier', sa.x, sa.y, sa.position, ta.x, ta.y, ta.position);
+        if (e.getAttribute('d') !== p.d) e.setAttribute('d', p.d);
+        const id = e.getAttribute('data-edge-id');
+        if (!id) continue;
+        const label = reg.pane.querySelector('[data-flow-edge-label][data-edge-id="' + escAttr(id) + '"]');
+        if (label) { label.style.left = p.labelX + 'px'; label.style.top = p.labelY + 'px'; }
+    }
+}
+
+function beginResizeGesture(reg, handleEl, base) {
+    const resizerEl = handleEl.closest('[data-flow-resizer]');
+    const nodeEl = handleNode(handleEl);
+    if (!resizerEl || !nodeEl) return;
+    const pos = nodePos(reg, nodeEl);
+    const { width, height } = nodeSize(nodeEl);
+    const maxWAttr = resizerEl.getAttribute('data-max-width');
+    const maxHAttr = resizerEl.getAttribute('data-max-height');
+    const g = Object.assign(base, {
+        kind: 'resize', nodeEl, dir: handleEl.getAttribute('data-resize-dir'),
+        baseX: pos.x, baseY: pos.y, baseW: width, baseH: height,
+        x: pos.x, y: pos.y, w: width, h: height,
+        minW: Number(resizerEl.getAttribute('data-min-width')) || 0,
+        minH: Number(resizerEl.getAttribute('data-min-height')) || 0,
+        maxW: maxWAttr ? Number(maxWAttr) : null,
+        maxH: maxHAttr ? Number(maxHAttr) : null,
+        hadWidthStyle: nodeEl.style.width,
+        hadHeightStyle: nodeEl.style.height,
+        generation: Number(reg.pane.getAttribute('data-flow-generation')) || 0,
+        edges: [],
+    });
+    const id = nodeEl.getAttribute('data-flow-node');
+    g.edges = Array.from(edgeElements(reg)).filter(e => e.getAttribute('data-source') === id || e.getAttribute('data-target') === id);
+    reg.gesture = g;
+    attachGestureListeners(reg);
+    capture(reg, g.pointerId);
+    nodeEl.setAttribute('data-resizing', '');
+    diag({ ev: 'resize-start', id, dir: g.dir });
+}
+
+function updateResize(reg, g, clientX, clientY, keepAspect) {
+    const zoom = reg.vp.zoom > 0 ? reg.vp.zoom : 1;
+    const dx = (clientX - g.startX) / zoom;
+    const dy = (clientY - g.startY) / zoom;
+    const dir = g.dir;
+    const growsRight = dir === 'ne' || dir === 'e' || dir === 'se';
+    const growsLeft = dir === 'nw' || dir === 'w' || dir === 'sw';
+    const growsDown = dir === 'sw' || dir === 's' || dir === 'se';
+    const growsUp = dir === 'nw' || dir === 'n' || dir === 'ne';
+
+    let w = g.baseW + (growsRight ? dx : growsLeft ? -dx : 0);
+    let h = g.baseH + (growsDown ? dy : growsUp ? -dy : 0);
+
+    if (keepAspect && g.baseW > 0 && g.baseH > 0 && (growsRight || growsLeft) && (growsUp || growsDown)) {
+        // A corner grip with Shift held: keep the base aspect ratio, driven by whichever axis moved further.
+        const ratio = g.baseW / g.baseH;
+        if (Math.abs(dx) > Math.abs(dy)) h = w / ratio; else w = h * ratio;
+    }
+
+    w = Math.max(g.minW || 0, w);
+    if (g.maxW != null) w = Math.min(g.maxW, w);
+    h = Math.max(g.minH || 0, h);
+    if (g.maxH != null) h = Math.min(g.maxH, h);
+
+    g.x = growsLeft ? g.baseX + (g.baseW - w) : g.baseX;
+    g.y = growsUp ? g.baseY + (g.baseH - h) : g.baseY;
+    g.w = w;
+    g.h = h;
+
+    g.nodeEl.style.width = w + 'px';
+    g.nodeEl.style.height = h + 'px';
+    g.nodeEl.style.transform = nodeTransform(g.x, g.y);
+    redrawEdgesForResize(reg, g);
+}
+
+function restoreResize(reg, g) {
+    g.nodeEl.style.width = g.hadWidthStyle;
+    g.nodeEl.style.height = g.hadHeightStyle;
+    if (g.nodeEl.isConnected) {
+        const p = truthPos(g.nodeEl);
+        g.nodeEl.style.transform = nodeTransform(p.x, p.y);
+    }
+    redrawEdges(reg, g.edges.filter(e => e.isConnected), el => nodePos(reg, el));
+}
+
+function commitResize(reg, g) {
+    g.nodeEl.removeAttribute('data-resizing');
+    const id = g.nodeEl.getAttribute('data-flow-node');
+    diag({ ev: 'resize-commit', id, x: g.x, y: g.y, w: g.w, h: g.h, generation: g.generation });
+    call(reg, 'CommitNodeResize', id, g.x, g.y, g.w, g.h, g.generation).then(accepted => {
+        diag({ ev: 'resize-result', accepted: accepted === true });
+        if (accepted !== true) restoreResize(reg, g);
+    }, () => restoreResize(reg, g));
+}
+
+// ── Helper lines (phase 4): live alignment guides while dragging ONE node ──
+// A pure-JS port of FlowGeometry.ComputeHelperLines, kept in lockstep by hand (no automated
+// JS/C# table for this one — see the Phase 4 DESIGN.md note). Multi-node drags never compute
+// helper lines (which node would be "the" moving one is ambiguous); SnapToGrid, when also on,
+// runs first in moveNodes() and this may then override it.
+function computeHelperLines(moving, others, threshold) {
+    let bestVLine = null, bestHLine = null, snapX = null, snapY = null;
+    let bestVDist = Infinity, bestHDist = Infinity;
+    const movingXs = [moving.x, moving.x + moving.width / 2, moving.x + moving.width];
+    const movingYs = [moving.y, moving.y + moving.height / 2, moving.y + moving.height];
+    for (const other of others) {
+        for (const ox of [other.x, other.x + other.width / 2, other.x + other.width]) {
+            for (const mx of movingXs) {
+                const d = Math.abs(mx - ox);
+                if (d > threshold || d >= bestVDist) continue;
+                bestVDist = d; bestVLine = ox; snapX = moving.x + (ox - mx);
+            }
+        }
+        for (const oy of [other.y, other.y + other.height / 2, other.y + other.height]) {
+            for (const my of movingYs) {
+                const d = Math.abs(my - oy);
+                if (d > threshold || d >= bestHDist) continue;
+                bestHDist = d; bestHLine = oy; snapY = moving.y + (oy - my);
+            }
+        }
+    }
+    return { snapX, snapY, lines: [bestVLine != null ? { position: bestVLine, axis: 'vertical' } : null, bestHLine != null ? { position: bestHLine, axis: 'horizontal' } : null].filter(Boolean) };
+}
+
+function ensureHelperLineEls(reg) {
+    const svg = reg.pane.querySelector('[data-slot="flow-edges"]');
+    if (!svg) return {};
+    let v = svg.querySelector('[data-flow-helper-line="vertical"]');
+    let h = svg.querySelector('[data-flow-helper-line="horizontal"]');
+    const make = (axis) => {
+        const el = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+        el.setAttribute('data-flow-helper-line', axis);
+        el.setAttribute('stroke', 'var(--color-primary)');
+        el.setAttribute('stroke-width', '1');
+        el.setAttribute('stroke-dasharray', '4 3');
+        el.setAttribute('pointer-events', 'none');
+        svg.appendChild(el);
+        return el;
+    };
+    if (!v) v = make('vertical');
+    if (!h) h = make('horizontal');
+    return { v, h };
+}
+
+// A span far larger than any realistic flow-coordinate canvas, so the line always crosses the
+// visible pane regardless of pan/zoom — the pane itself clips it (overflow: hidden).
+const HELPER_LINE_SPAN = 100000;
+
+function drawHelperLines(reg, result) {
+    const { v, h } = ensureHelperLineEls(reg);
+    const vLine = result.lines.find(l => l.axis === 'vertical');
+    const hLine = result.lines.find(l => l.axis === 'horizontal');
+    if (v) {
+        if (vLine) {
+            v.setAttribute('x1', String(vLine.position)); v.setAttribute('x2', String(vLine.position));
+            v.setAttribute('y1', String(-HELPER_LINE_SPAN)); v.setAttribute('y2', String(HELPER_LINE_SPAN));
+            v.style.display = '';
+        } else v.style.display = 'none';
+    }
+    if (h) {
+        if (hLine) {
+            h.setAttribute('y1', String(hLine.position)); h.setAttribute('y2', String(hLine.position));
+            h.setAttribute('x1', String(-HELPER_LINE_SPAN)); h.setAttribute('x2', String(HELPER_LINE_SPAN));
+            h.style.display = '';
+        } else h.style.display = 'none';
+    }
+}
+
+function clearHelperLines(reg) {
+    for (const el of reg.pane.querySelectorAll('[data-flow-helper-line]')) el.remove();
 }
 
 // ── Viewport ───────────────────────────────────────────────────────────────
@@ -1051,8 +1288,25 @@ function moveNodes(reg, g, clientX, clientY) {
         it.rawY += dy;
         it.x = snapGrid ? snap(it.rawX, snapGrid[0]) : it.rawX;
         it.y = snapGrid ? snap(it.rawY, snapGrid[1]) : it.rawY;
-        it.el.style.transform = nodeTransform(it.x, it.y);
     }
+    // Helper lines (phase 4): only for a single dragged node, against every OTHER (non-dragged)
+    // node's rect — which node is "the" moving one is ambiguous for a multi-selection drag.
+    if (reg.options.helperLines && g.items.length === 1) {
+        const it = g.items[0];
+        const size = nodeSize(it.el);
+        const others = [];
+        for (const el of nodeElements(reg)) {
+            if (g.ids.has(el.getAttribute('data-flow-node'))) continue;
+            const p = nodePos(reg, el);
+            const s = nodeSize(el);
+            others.push({ x: p.x, y: p.y, width: s.width, height: s.height });
+        }
+        const result = computeHelperLines({ x: it.x, y: it.y, width: size.width, height: size.height }, others, reg.options.helperLineThreshold);
+        if (result.snapX != null) it.x = result.snapX;
+        if (result.snapY != null) it.y = result.snapY;
+        drawHelperLines(reg, result);
+    }
+    for (const it of g.items) it.el.style.transform = nodeTransform(it.x, it.y);
     redrawEdges(reg, g.edges, el => livePos(g, el) || nodePos(reg, el));
     redrawToolbars(reg, g);
 }
@@ -1063,6 +1317,7 @@ function endNodeVisuals(reg, g) {
         it.el.style.zIndex = it.z0 || '';
     }
     reg.pane.removeAttribute('data-flow-dragging');
+    clearHelperLines(reg);
 }
 
 // Puts nodes and their edges back where the .NET truth (data-x/data-y) says they are.
@@ -1102,6 +1357,9 @@ function cancelGesture(reg, reason) {
         restoreFromTruth(reg, g.items, g.edges);
         diag({ ev: 'drag-cancel', reason });
         call(reg, 'NodeDragCancelled').catch(() => { });
+    } else if (g.kind === 'resize') {
+        restoreResize(reg, g);
+        diag({ ev: 'resize-cancel', reason });
     } else if (g.kind === 'pan' && g.moved) {
         reg.pane.removeAttribute('data-flow-panning');
         reportFinal(reg);
@@ -1180,10 +1438,18 @@ function makeHandlers(reg) {
             return;
         }
 
+        const resizeEl = !reg.spaceDown ? target.closest('[data-flow-resize-handle]') : null;
+        if (resizeEl) {
+            if (o.readonly) return;
+            e.preventDefault();
+            beginResizeGesture(reg, resizeEl, base);
+            return;
+        }
+
         const handleEl = !reg.spaceDown ? target.closest('[data-flow-handle]') : null;
         if (handleEl) {
             if (o.readonly || !o.connectable) return;
-            if (handleEl.getAttribute('data-handle-type') !== 'source') return;
+            if (o.connectionMode !== 'loose' && handleEl.getAttribute('data-handle-type') !== 'source') return;
             const hNode = handleNode(handleEl);
             if (!hNode || hNode.getAttribute('data-connectable') === 'false') return;
             e.preventDefault();
@@ -1262,8 +1528,15 @@ function makeHandlers(reg) {
             g.lastY = e.clientY;
             return;
         }
+        if (g.kind === 'resize') {
+            updateResize(reg, g, e.clientX, e.clientY, e.shiftKey);
+            g.lastX = e.clientX;
+            g.lastY = e.clientY;
+            return;
+        }
         if (g.kind === 'connect') {
             updateConnectionLine(reg, g.sourceNodeEl, g.sourceHandleId, e.clientX, e.clientY);
+            updateHoverValidation(reg, g, e.clientX, e.clientY);
             g.lastX = e.clientX;
             g.lastY = e.clientY;
             return;
@@ -1318,6 +1591,11 @@ function makeHandlers(reg) {
                 swallowNextClick();
                 commitNodeDrag(reg, g);
             }
+            return;
+        }
+        if (g.kind === 'resize') {
+            swallowNextClick();
+            commitResize(reg, g);
             return;
         }
         if (g.kind === 'connect') {
@@ -1521,6 +1799,8 @@ function registerCanvas(pane, dotNetRef, options) {
         connLine: null,
         liveEl: null,
         touchPoints: new Map(), // active touch pointerId -> {x, y}, for two-finger pinch
+        hoverValidateId: null, // phase 4 ValidateOnHover: the last hovered candidate's dedupe key
+        lastHoverInvalidEl: null,
         pending: new Map(),
         measured: new Map(),
         reportedMeasure: new Set(),
@@ -1618,6 +1898,103 @@ function getViewport(pane) {
     return reg ? [reg.vp.x, reg.vp.y, reg.vp.zoom] : null;
 }
 
+// ── Export (phase 4) ─────────────────────────────────────────────────────
+
+// Copies every COMPUTED style (not just the inline ones) from source onto target, recursively in
+// document order — the only way a cloned, detached node keeps looking like the live one once it's
+// re-parented into the export SVG's <foreignObject>, since it no longer matches any of the page's
+// real CSS selectors there.
+function inlineComputedStyles(source, target) {
+    const cs = getComputedStyle(source);
+    let text = '';
+    for (let i = 0; i < cs.length; i++) {
+        const prop = cs[i];
+        text += prop + ':' + cs.getPropertyValue(prop) + ';';
+    }
+    target.setAttribute('style', text);
+    const sKids = source.querySelectorAll('*');
+    const tKids = target.querySelectorAll('*');
+    for (let i = 0; i < sKids.length; i++) {
+        if (tKids[i]) inlineComputedStyles(sKids[i], tKids[i]);
+    }
+}
+
+// Best-effort raster export: every node's DOM, computed-style-inlined, inside an SVG
+// <foreignObject>, drawn to a <canvas>, read back as a PNG data URL. Never throws — a cross-origin
+// image/font anywhere in a node template taints the canvas and browsers refuse readback
+// (SecurityError on toDataURL); that, and every other failure mode here, resolves to null and is
+// journaled, exactly like every other engine failure path in this file.
+async function exportPng(pane, scale) {
+    const reg = pane && registrations.get(pane);
+    if (!reg) return null;
+    try {
+        const rects = domRects(reg);
+        const bounds = getBounds(rects);
+        if (!bounds) return null;
+        const s = scale > 0 ? scale : 1;
+        const pad = 20;
+        const logicalW = bounds.width + pad * 2;
+        const logicalH = bounds.height + pad * 2;
+        const w = Math.max(1, Math.ceil(logicalW * s));
+        const h = Math.max(1, Math.ceil(logicalH * s));
+
+        const svgNS = 'http://www.w3.org/2000/svg';
+        const svg = document.createElementNS(svgNS, 'svg');
+        svg.setAttribute('xmlns', svgNS);
+        svg.setAttribute('width', String(w));
+        svg.setAttribute('height', String(h));
+        const fo = document.createElementNS(svgNS, 'foreignObject');
+        fo.setAttribute('x', '0');
+        fo.setAttribute('y', '0');
+        fo.setAttribute('width', String(w));
+        fo.setAttribute('height', String(h));
+
+        const wrapper = document.createElement('div');
+        wrapper.setAttribute('xmlns', 'http://www.w3.org/1999/xhtml');
+        wrapper.style.position = 'relative';
+        wrapper.style.width = logicalW + 'px';
+        wrapper.style.height = logicalH + 'px';
+        wrapper.style.transform = 'scale(' + s + ')';
+        wrapper.style.transformOrigin = '0 0';
+        wrapper.style.background = getComputedStyle(reg.pane).backgroundColor || '#fff';
+
+        for (const el of nodeElements(reg)) {
+            const clone = el.cloneNode(true);
+            inlineComputedStyles(el, clone);
+            const p = nodePos(reg, el);
+            clone.style.position = 'absolute';
+            clone.style.left = '0';
+            clone.style.top = '0';
+            clone.style.transform = 'translate(' + (p.x - bounds.x + pad) + 'px, ' + (p.y - bounds.y + pad) + 'px)';
+            wrapper.appendChild(clone);
+        }
+        fo.appendChild(wrapper);
+        svg.appendChild(fo);
+
+        const xml = new XMLSerializer().serializeToString(svg);
+        const svgUrl = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(xml);
+        const img = new Image();
+        const loaded = new Promise((resolve, reject) => {
+            img.onload = () => resolve();
+            img.onerror = () => reject(new Error('export image failed to load'));
+        });
+        img.src = svgUrl;
+        await loaded;
+
+        const canvas = document.createElement('canvas');
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, w, h);
+        const dataUrl = canvas.toDataURL('image/png');
+        diag({ ev: 'export-png', w, h });
+        return dataUrl;
+    } catch (err) {
+        diag({ ev: 'export-png-error', message: String((err && err.message) || err) });
+        return null;
+    }
+}
+
 export const flow = {
     registerCanvas,
     unregisterCanvas,
@@ -1626,6 +2003,7 @@ export const flow = {
     fitView: fitViewExport,
     getViewport,
     isFocusedElementEditable,
+    exportPng,
 };
 
 // Test-only seam: the pure geometry, importable from Node without a DOM (tests/js/*.mjs).
@@ -1633,6 +2011,7 @@ export const __testing = {
     fmt, clampZoom, snap, screenToFlow, zoomAt, getBounds, fitView, handleAnchor,
     straightPath, bezierPath, smoothStepPath, stepPoints, edgePath,
     isEditable, isKeyboardExempt, isFocusedElementEditable,
+    computeHelperLines,
 };
 
 export default flow;

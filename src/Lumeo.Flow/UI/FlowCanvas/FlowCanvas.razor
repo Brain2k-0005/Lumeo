@@ -2,6 +2,7 @@
 @implements IAsyncDisposable
 @using System.ComponentModel
 @using System.Globalization
+@using System.Text
 @inject Lumeo.Services.IComponentInteropService Interop
 @inject Lumeo.Services.Localization.ILumeoLocalizer L
 
@@ -66,6 +67,9 @@
             @ChildContent
         </CascadingValue>
     </div>
+    @* Phase 4: a plain aria-live region for .NET-originated announcements (edge label commits) —
+       everything else the engine announces itself (flow.js's own liveEl, connect/reconnect). *@
+    <div aria-live="polite" class="sr-only">@_liveMessage</div>
 </div>
 
 @code {
@@ -169,6 +173,47 @@
     /// <summary>Lets an existing selected edge's end be re-dragged onto a different handle (a small grab handle at each end of a selected edge). See <see cref="OnReconnect"/>.</summary>
     [Parameter] public bool EdgesReconnectable { get; set; } = true;
 
+    // ── Phase 4 ──────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// What a connect gesture accepts. <see cref="FlowConnectionMode.Strict"/> (default) only lets a
+    /// drag start on a Source handle and land on a Target handle, like every earlier phase.
+    /// <see cref="FlowConnectionMode.Loose"/> lets a drag start on ANY handle and land on any OTHER
+    /// handle (source-to-source, target-to-target included) — the drag's start becomes
+    /// <see cref="FlowConnection.Source"/>, its end <see cref="FlowConnection.Target"/>, regardless of
+    /// either handle's declared <see cref="FlowHandleType"/>. <see cref="IsValidConnection"/> still
+    /// runs on top of either mode.
+    /// </summary>
+    [Parameter] public FlowConnectionMode ConnectionMode { get; set; } = FlowConnectionMode.Strict;
+
+    /// <summary>
+    /// While a single node is dragged (and <see cref="SnapToGrid"/> is off), snaps it to the nearest
+    /// other node's left/centre/right and top/middle/bottom within <see cref="HelperLineThreshold"/>
+    /// and draws the matching guide(s) in the edge SVG layer. Off by default. A multi-node drag
+    /// (several selected nodes moved together) does not compute helper lines.
+    /// </summary>
+    [Parameter] public bool HelperLines { get; set; }
+
+    /// <summary>How close (in flow units) a dragged node's edge must be to another node's for a helper line to appear.</summary>
+    [Parameter] public double HelperLineThreshold { get; set; } = 5;
+
+    /// <summary>
+    /// Names newly created nodes for <c>Ctrl+V</c> (paste) and <c>Ctrl+D</c> (duplicate). Defaults to a
+    /// short GUID-derived id (<c>"flow-node-" + Guid.NewGuid()</c>). Called once per copied node.
+    /// </summary>
+    [Parameter] public Func<FlowNode, string>? NewNodeId { get; set; }
+
+    /// <summary>
+    /// A hovered connection target is validated against <see cref="IsValidConnection"/> DURING the
+    /// drag (one interop round trip per hovered handle change) instead of only on drop, and marked
+    /// <c>data-flow-handle-invalid</c> when it would be rejected. Off by default — the structural
+    /// heuristic (<c>data-flow-handle-valid</c>) is free; this costs a round trip per hover.
+    /// </summary>
+    [Parameter] public bool ValidateOnHover { get; set; }
+
+    /// <summary>Double-clicking an edge's label opens an inline text box (Enter commits, Escape cancels). Off by default.</summary>
+    [Parameter] public bool EdgeLabelEditable { get; set; }
+
     // ── Events ───────────────────────────────────────────────────────────
 
     /// <summary>A node was clicked (not raised for the click that ends a drag).</summary>
@@ -214,6 +259,20 @@
     /// and the directly selected edges itself, raising <see cref="NodesChanged"/>/<see cref="EdgesChanged"/>.
     /// </summary>
     [Parameter] public EventCallback<FlowSelection> OnDelete { get; set; }
+
+    /// <summary>A node was resized by a <see cref="FlowNodeResizer"/> grip or Shift+arrow keys; one entry per resized node. Raised after <see cref="NodesChanged"/>.</summary>
+    [Parameter] public EventCallback<IReadOnlyList<FlowNodeResizeChange>> OnNodeResizeStop { get; set; }
+
+    /// <summary><c>Ctrl+V</c> pasted (or <c>Ctrl+D</c> duplicated) a selection. Raised after <see cref="NodesChanged"/>/<see cref="EdgesChanged"/>, with the NEW nodes/edges selected.</summary>
+    [Parameter] public EventCallback<FlowPasteEventArgs> OnPaste { get; set; }
+
+    /// <summary>
+    /// An edge's inline-edited label was committed (<see cref="EdgeLabelEditable"/>, Enter). Unlike
+    /// <see cref="OnConnect"/>/<see cref="OnDelete"/>/<see cref="OnReconnect"/> this is a plain
+    /// notification, not a veto point — there is nothing to validate — so the canvas ALWAYS updates
+    /// <see cref="FlowEdge.Label"/> itself and raises <see cref="EdgesChanged"/> first, then this.
+    /// </summary>
+    [Parameter] public EventCallback<FlowEdge> OnEdgeLabelChanged { get; set; }
 
     /// <summary>Additional CSS classes merged onto the root element.</summary>
     [Parameter] public string? Class { get; set; }
@@ -261,6 +320,16 @@
     private bool _registered;
     private bool _disposed;
     private FlowEngineOptions? _lastOptions;
+    private string? _liveMessage;
+
+    // Phase 4: nodes with a FlowNodeResizer in their template (registered by the resizer itself)
+    // and their resize limits — lets Shift+arrow keyboard resize know which focused node has one
+    // (and its Min/Max) without FlowCanvas knowing anything about node-template internals.
+    private readonly Dictionary<string, (double MinWidth, double MinHeight, double? MaxWidth, double? MaxHeight)> _resizers = new(StringComparer.Ordinal);
+
+    // Phase 4: Ctrl+C's snapshot for Ctrl+V. Ctrl+D duplicates the CURRENT selection directly and
+    // never touches this.
+    private (List<FlowNode> Nodes, List<FlowEdge> Edges)? _clipboard;
 
     /// <summary>The options bag pushed to flow.js. A record, so "changed?" is structural equality.</summary>
     internal sealed record FlowEngineOptions(
@@ -268,10 +337,14 @@
         bool NodesDraggable, bool PanOnDrag, bool ZoomOnScroll, bool Readonly,
         bool FitViewOnInit, double FitViewPadding,
         bool Connectable, bool ElementsSelectable, bool SelectionOnShiftDrag, bool Rtl,
-        bool Reconnectable, FlowEngineStrings Strings)
+        bool Reconnectable, FlowEngineStrings Strings,
+        bool Loose, bool HelperLines, double HelperLineThreshold, bool ValidateOnHover)
     {
         /// <summary>Serialised as <c>snap</c>: <c>[gx, gy]</c> or null.</summary>
         public double[]? Snap => SnapToGrid ? new[] { SnapX, SnapY } : null;
+
+        /// <summary>Serialised as <c>connectionMode</c>: <c>"loose"</c>/<c>"strict"</c> — flow.js's own vocabulary, not the C# enum's casing.</summary>
+        public string ConnectionMode => Loose ? "loose" : "strict";
     }
 
     /// <summary>
@@ -309,6 +382,26 @@
         ? _nodes.FirstOrDefault(n => n.Id == _state.SelectedNodeIds.First())
         : null;
     internal (double Width, double Height) PaneSize => (_state.PaneWidth, _state.PaneHeight);
+
+    /// <summary>The union of every selected node's rect, for <see cref="FlowNodeToolbar"/>'s multi-selection layout. Null with zero nodes selected.</summary>
+    internal FlowRect? SelectedNodesBounds()
+        => _state.SelectedNodeIds.Count == 0
+            ? null
+            : FlowGeometry.GetBounds(_nodes.Where(n => _state.SelectedNodeIds.Contains(n.Id)).Select(_state.GetNodeRect));
+
+    // Phase 4: FlowNodeResizer registers/unregisters itself here (its own OnParametersSet/Dispose) so
+    // Shift+arrow keyboard resize (HandleNodeKeyDownAsync) knows a focused node HAS a resizer, and
+    // its Min/Max, without FlowCanvas reaching into NodeTemplate content.
+    internal void RegisterResizer(string nodeId, double minWidth, double minHeight, double? maxWidth, double? maxHeight)
+        => _resizers[nodeId] = (minWidth, minHeight, maxWidth, maxHeight);
+
+    internal void UnregisterResizer(string nodeId) => _resizers.Remove(nodeId);
+
+    private void Announce(string message)
+    {
+        _liveMessage = message;
+        StateHasChanged();
+    }
 
     private string RootClass => Cx.Merge(
         "relative block w-full overflow-hidden rounded-lg border border-border bg-background text-foreground",
@@ -498,7 +591,8 @@
         CanMoveNodes, PanOnDrag, ZoomOnScroll, Readonly,
         FitViewOnInit, FitViewPadding,
         CanConnectGlobally, ElementsSelectable, SelectionOnShiftDrag, Direction == LayoutDirection.Rtl,
-        EdgesReconnectable && !Readonly, BuildStrings());
+        EdgesReconnectable && !Readonly, BuildStrings(),
+        ConnectionMode == FlowConnectionMode.Loose, HelperLines && !Readonly, HelperLineThreshold, ValidateOnHover);
 
     private FlowEngineStrings BuildStrings() => new(
         L["Flow.ConnectingFrom"], L["Flow.Connected"], L["Flow.ConnectionRejected"], L["Flow.ConnectionCancelled"],
@@ -655,6 +749,15 @@
                 // movement/text-selection keys alone — checked here, not just in flow.js, because
                 // KeyboardEventArgs carries no DOM target for a pure-.NET check to use directly.
                 if (await IsKeydownFromEditableTargetAsync()) return;
+                // Phase 4: Shift+arrow on a node that carries a FlowNodeResizer resizes it instead of
+                // the plain "move ×10" every other node's Shift+arrow still does — a resizer changes
+                // what Shift means for ITS node, the same way its pointer grips add a new gesture
+                // rather than repurposing the drag one.
+                if (e.ShiftKey && _resizers.ContainsKey(node.Id))
+                {
+                    await ResizeByKeyboardAsync(node, e.Key);
+                    return;
+                }
                 await MoveByKeyboardAsync(node, e.Key, e.ShiftKey);
                 return;
         }
@@ -672,19 +775,42 @@
         // inspector panel rendered through ChildContent/FlowPanel) — native browser undo and
         // text editing inside that field keep working since nothing here calls preventDefault.
         if (await IsKeydownFromEditableTargetAsync()) return;
-        if (History is not null && (e.CtrlKey || e.MetaKey) && !e.AltKey)
+        if ((e.CtrlKey || e.MetaKey) && !e.AltKey)
         {
-            // Ctrl+Z: undo. Ctrl+Shift+Z and Ctrl+Y: redo (both spellings — Windows/Linux apps split
-            // on this; supporting either costs nothing).
-            if (string.Equals(e.Key, "z", StringComparison.OrdinalIgnoreCase))
+            if (History is not null)
             {
-                await (e.ShiftKey ? RedoAsync() : UndoAsync());
-                return;
+                // Ctrl+Z: undo. Ctrl+Shift+Z and Ctrl+Y: redo (both spellings — Windows/Linux apps
+                // split on this; supporting either costs nothing).
+                if (string.Equals(e.Key, "z", StringComparison.OrdinalIgnoreCase))
+                {
+                    await (e.ShiftKey ? RedoAsync() : UndoAsync());
+                    return;
+                }
+                if (string.Equals(e.Key, "y", StringComparison.OrdinalIgnoreCase))
+                {
+                    await RedoAsync();
+                    return;
+                }
             }
-            if (string.Equals(e.Key, "y", StringComparison.OrdinalIgnoreCase))
+            // Phase 4 clipboard: Ctrl+C copies, Ctrl+V pastes, Ctrl+D duplicates — none take Shift,
+            // so they never collide with Ctrl+Shift+Z above.
+            if (!e.ShiftKey)
             {
-                await RedoAsync();
-                return;
+                if (string.Equals(e.Key, "c", StringComparison.OrdinalIgnoreCase))
+                {
+                    CopySelection();
+                    return;
+                }
+                if (string.Equals(e.Key, "v", StringComparison.OrdinalIgnoreCase))
+                {
+                    await PasteAsync();
+                    return;
+                }
+                if (string.Equals(e.Key, "d", StringComparison.OrdinalIgnoreCase))
+                {
+                    await DuplicateSelectionAsync();
+                    return;
+                }
             }
         }
         if (DeleteKey.Contains(e.Key)) await DeleteSelectionAsync();
@@ -800,6 +926,102 @@
         if (OnNodeDragStop.HasDelegate) await OnNodeDragStop.InvokeAsync(changes);
     }
 
+    // ── Phase 4: resize (keyboard) ───────────────────────────────────────
+
+    private async Task ResizeByKeyboardAsync(FlowNode node, string key)
+    {
+        if (Readonly || _locked) return;
+        var current = _nodes.FirstOrDefault(n => n.Id == node.Id);
+        if (current is null || !_resizers.TryGetValue(node.Id, out var limits)) return;
+
+        var rect = _state.GetNodeRect(current);
+        var step = EffectiveSnapToGrid && SnapGrid.X > 0 ? SnapGrid.X : 8;
+        var (dw, dh) = key switch
+        {
+            "ArrowLeft" => (-step, 0d),
+            "ArrowRight" => (step, 0d),
+            "ArrowUp" => (0d, -step),
+            _ => (0d, step),
+        };
+        var width = Math.Max(limits.MinWidth, rect.Width + dw);
+        if (limits.MaxWidth is { } maxW) width = Math.Min(maxW, width);
+        var height = Math.Max(limits.MinHeight, rect.Height + dh);
+        if (limits.MaxHeight is { } maxH) height = Math.Min(maxH, height);
+        if (width == rect.Width && height == rect.Height) return;
+
+        var updated = current with { X = rect.X, Y = rect.Y, Width = width, Height = height };
+        await EmitNodesAsync(_nodes.Select(n => n.Id == node.Id ? updated : n).ToList());
+        PushHistory();
+        if (OnNodeResizeStop.HasDelegate)
+            await OnNodeResizeStop.InvokeAsync(new[] { new FlowNodeResizeChange(node.Id, rect.X, rect.Y, width, height) });
+    }
+
+    // ── Phase 4: clipboard ───────────────────────────────────────────────
+
+    private void CopySelection()
+    {
+        if (_state.SelectedNodeIds.Count == 0) return;
+        var nodes = _nodes.Where(n => _state.SelectedNodeIds.Contains(n.Id)).ToList();
+        var ids = new HashSet<string>(nodes.Select(n => n.Id), StringComparer.Ordinal);
+        var edges = _edges.Where(e => ids.Contains(e.Source) && ids.Contains(e.Target)).ToList();
+        _clipboard = (nodes, edges);
+    }
+
+    private Task PasteAsync() => _clipboard is { } clip ? PasteNodesAsync(clip.Nodes, clip.Edges) : Task.CompletedTask;
+
+    private Task DuplicateSelectionAsync()
+    {
+        if (_state.SelectedNodeIds.Count == 0) return Task.CompletedTask;
+        var nodes = _nodes.Where(n => _state.SelectedNodeIds.Contains(n.Id)).ToList();
+        var ids = new HashSet<string>(nodes.Select(n => n.Id), StringComparer.Ordinal);
+        var edges = _edges.Where(e => ids.Contains(e.Source) && ids.Contains(e.Target)).ToList();
+        return PasteNodesAsync(nodes, edges);
+    }
+
+    // Shared by Ctrl+V and Ctrl+D: new ids (NewNodeId, default a short GUID), (20, 20) offset from
+    // the COPIED originals (not cumulative — a second Ctrl+V lands on top of the first paste, same
+    // as most desktop editors), internal edges remapped, the new nodes selected.
+    private async Task PasteNodesAsync(List<FlowNode> nodes, List<FlowEdge> edges)
+    {
+        if (Readonly || nodes.Count == 0) return;
+        var idMap = new Dictionary<string, string>(StringComparer.Ordinal);
+        var newNodes = new List<FlowNode>(nodes.Count);
+        foreach (var n in nodes)
+        {
+            var newId = NewNodeId?.Invoke(n) ?? "flow-node-" + Guid.NewGuid().ToString("N")[..10];
+            idMap[n.Id] = newId;
+            newNodes.Add(n with { Id = newId, X = n.X + 20, Y = n.Y + 20 });
+        }
+        var newEdges = edges
+            .Where(e => idMap.ContainsKey(e.Source) && idMap.ContainsKey(e.Target))
+            .Select(e => e with { Id = "flow-edge-" + Guid.NewGuid().ToString("N")[..10], Source = idMap[e.Source], Target = idMap[e.Target] })
+            .ToList();
+
+        await EmitNodesAsync(_nodes.Concat(newNodes).ToList());
+        if (newEdges.Count > 0) await EmitEdgesAsync(_edges.Concat(newEdges).ToList());
+        PushHistory();
+
+        _state.SelectedNodeIds.Clear();
+        _state.SelectedEdgeIds.Clear();
+        foreach (var n in newNodes) _state.SelectedNodeIds.Add(n.Id);
+        StateHasChanged();
+        await RaiseSelectionChangedAsync();
+        if (OnPaste.HasDelegate) await OnPaste.InvokeAsync(new FlowPasteEventArgs(newNodes, newEdges));
+    }
+
+    // ── Phase 4: edge label inline editing (called by FlowEdgeLayer) ─────
+
+    internal async Task CommitEdgeLabelAsync(FlowEdge edge, string? newLabel)
+    {
+        if (Readonly) return;
+        var trimmed = string.IsNullOrEmpty(newLabel) ? null : newLabel;
+        var updated = edge with { Label = trimmed };
+        await EmitEdgesAsync(_edges.Select(e => e.Id == edge.Id ? updated : e).ToList());
+        PushHistory();
+        if (OnEdgeLabelChanged.HasDelegate) await OnEdgeLabelChanged.InvokeAsync(updated);
+        Announce(L["Flow.EdgeLabelUpdated"]);
+    }
+
     private Task EmitNodesAsync(List<FlowNode> next)
     {
         // State first, synchronously — anything that arrives while NodesChanged is awaited (a
@@ -904,6 +1126,98 @@
         RefreshContext();
         await InvokeAsync(StateHasChanged);
         if (SnapToGridChanged.HasDelegate) await InvokeAsync(() => SnapToGridChanged.InvokeAsync(value));
+    }
+
+    // ── Phase 4: export / import ─────────────────────────────────────────
+
+    /// <summary>The canvas' current nodes, edges and viewport as one JSON-friendly value. See <see cref="LoadDocumentAsync"/>.</summary>
+    public FlowDocument ToDocument() => new(_nodes, _edges, _state.Viewport);
+
+    /// <summary>
+    /// Replaces the canvas' nodes, edges and viewport with <paramref name="document"/> (e.g. the
+    /// result of <see cref="ToDocument"/>, round-tripped through JSON). Clears the selection, pushes
+    /// one <see cref="History"/> snapshot, and raises <see cref="NodesChanged"/>/<see cref="EdgesChanged"/>/<see cref="ViewportChanged"/>.
+    /// </summary>
+    public async Task LoadDocumentAsync(FlowDocument document)
+    {
+        ArgumentNullException.ThrowIfNull(document);
+        // A drag/gesture in flight against the pre-load nodes must never land on top of this.
+        _state.BumpGeneration();
+        _state.SelectedNodeIds.Clear();
+        _state.SelectedEdgeIds.Clear();
+        await EmitNodesAsync((document.Nodes ?? Array.Empty<FlowNode>()).ToList());
+        await EmitEdgesAsync((document.Edges ?? Array.Empty<FlowEdge>()).ToList());
+        await SetViewportCoreAsync(Sanitize(document.Viewport));
+        PushHistory();
+        await RaiseSelectionChangedAsync();
+    }
+
+    /// <summary>
+    /// A self-contained, themeable-independent SVG (edges as paths, nodes as plain rounded boxes,
+    /// both with their label text) built purely from the canvas' own state — no DOM access, so it
+    /// never fails and needs no interop. For a closer visual copy of the live node templates use
+    /// <see cref="ExportPngAsync"/> instead.
+    /// </summary>
+    public Task<string> ExportSvgAsync()
+    {
+        var bounds = FlowGeometry.GetBounds(_nodes.Select(_state.GetNodeRect)) ?? new FlowRect(0, 0, 100, 100);
+        const double pad = 20;
+        var minX = bounds.X - pad;
+        var minY = bounds.Y - pad;
+        var width = Math.Max(1, bounds.Width + pad * 2);
+        var height = Math.Max(1, bounds.Height + pad * 2);
+
+        var sb = new StringBuilder();
+        sb.Append("<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"")
+          .Append(FlowGeometry.Fmt(minX)).Append(' ').Append(FlowGeometry.Fmt(minY)).Append(' ')
+          .Append(FlowGeometry.Fmt(width)).Append(' ').Append(FlowGeometry.Fmt(height))
+          .Append("\" width=\"").Append(FlowGeometry.Fmt(width)).Append("\" height=\"").Append(FlowGeometry.Fmt(height)).Append("\">");
+        sb.Append("<rect x=\"").Append(FlowGeometry.Fmt(minX)).Append("\" y=\"").Append(FlowGeometry.Fmt(minY))
+          .Append("\" width=\"").Append(FlowGeometry.Fmt(width)).Append("\" height=\"").Append(FlowGeometry.Fmt(height)).Append("\" fill=\"#ffffff\"/>");
+
+        // Colours here are intentionally hardcoded, not theme tokens: an exported SVG is a portable
+        // artifact meant to be opened outside the app (no CSS variables to resolve against once it
+        // leaves the page) — see DESIGN.md's Phase 4 section.
+        foreach (var (edge, path, _, _) in RenderableEdges())
+        {
+            sb.Append("<path d=\"").Append(System.Net.WebUtility.HtmlEncode(path.D)).Append("\" fill=\"none\" stroke=\"#94a3b8\" stroke-width=\"1.5\"/>");
+            if (!string.IsNullOrEmpty(edge.Label))
+            {
+                sb.Append("<text x=\"").Append(FlowGeometry.Fmt(path.LabelX)).Append("\" y=\"").Append(FlowGeometry.Fmt(path.LabelY))
+                  .Append("\" font-size=\"10\" text-anchor=\"middle\" font-family=\"sans-serif\" fill=\"#334155\">")
+                  .Append(System.Net.WebUtility.HtmlEncode(edge.Label)).Append("</text>");
+            }
+        }
+        foreach (var node in _nodes)
+        {
+            var rect = _state.GetNodeRect(node);
+            sb.Append("<rect x=\"").Append(FlowGeometry.Fmt(rect.X)).Append("\" y=\"").Append(FlowGeometry.Fmt(rect.Y))
+              .Append("\" width=\"").Append(FlowGeometry.Fmt(rect.Width)).Append("\" height=\"").Append(FlowGeometry.Fmt(rect.Height))
+              .Append("\" rx=\"6\" fill=\"#f8fafc\" stroke=\"#cbd5e1\"/>");
+            var label = node.Data?.ToString() ?? node.Id;
+            sb.Append("<text x=\"").Append(FlowGeometry.Fmt(rect.X + rect.Width / 2)).Append("\" y=\"").Append(FlowGeometry.Fmt(rect.Y + rect.Height / 2))
+              .Append("\" font-size=\"12\" text-anchor=\"middle\" dominant-baseline=\"middle\" font-family=\"sans-serif\" fill=\"#0f172a\">")
+              .Append(System.Net.WebUtility.HtmlEncode(label)).Append("</text>");
+        }
+        sb.Append("</svg>");
+        return Task.FromResult(sb.ToString());
+    }
+
+    /// <summary>
+    /// Best-effort raster export of the live node DOM (SVG <c>&lt;foreignObject&gt;</c> with each
+    /// node's computed styles inlined, drawn to a <c>&lt;canvas&gt;</c>) as a <c>data:image/png</c>
+    /// URL, at <paramref name="scale"/>× the canvas' flow units. Returns <c>null</c> — never throws —
+    /// when the canvas is not registered, has no nodes, or the browser refuses to read back the
+    /// canvas (a tainted canvas from a cross-origin image/font in a node template is the most likely
+    /// cause; nothing here can work around that). A failed attempt is still journaled
+    /// (<c>window.__lumeoFlowDiag</c>) for diagnosis. Prefer <see cref="ExportSvgAsync"/> when a
+    /// vector export is enough — it cannot fail this way.
+    /// </summary>
+    public async Task<string?> ExportPngAsync(double scale = 1)
+    {
+        if (!_registered || _disposed) return null;
+        try { return await Interop.FlowExportPngAsync(_paneRef, scale > 0 ? scale : 1); }
+        catch (JSDisconnectedException) { return null; }
     }
 
     private async Task<FlowViewport> LiveViewportAsync()
@@ -1110,6 +1424,42 @@
         if (nodeIds is not null) foreach (var id in nodeIds) if (live.Contains(id)) _state.SelectedNodeIds.Add(id);
         StateHasChanged();
         await RaiseSelectionChangedAsync();
+    }
+
+    /// <summary>Engine callback: a resize gesture ended. Mirrors <see cref="CommitNodeDrag"/>'s generation guard and acceptance rules. Not meant for application code.</summary>
+    [JSInvokable, EditorBrowsable(EditorBrowsableState.Never)]
+    public async Task<bool> CommitNodeResize(string id, double x, double y, double width, double height, int generation)
+    {
+        if (Readonly || _locked || generation != _state.Generation || string.IsNullOrEmpty(id)
+            || !double.IsFinite(x) || !double.IsFinite(y) || !(width > 0) || !(height > 0))
+        {
+            return false;
+        }
+        var current = _nodes.FirstOrDefault(n => n.Id == id);
+        if (current is null) return false;
+
+        var updated = current with { X = x, Y = y, Width = width, Height = height };
+        await EmitNodesAsync(_nodes.Select(n => n.Id == id ? updated : n).ToList());
+        PushHistory();
+        if (OnNodeResizeStop.HasDelegate)
+            await OnNodeResizeStop.InvokeAsync(new[] { new FlowNodeResizeChange(id, x, y, width, height) });
+        return true;
+    }
+
+    /// <summary>
+    /// Engine callback (<see cref="ValidateOnHover"/> only): the same acceptance check
+    /// <see cref="CommitConnect"/> runs, WITHOUT committing anything — called once per hovered
+    /// target-handle change while a connect gesture is in flight. Not meant for application code.
+    /// </summary>
+    [JSInvokable, EditorBrowsable(EditorBrowsableState.Never)]
+    public Task<bool> ValidateHoveredConnection(string source, string? sourceHandle, string target, string? targetHandle)
+    {
+        if (!CanConnectGlobally || string.IsNullOrEmpty(source) || string.IsNullOrEmpty(target)) return Task.FromResult(false);
+        var s = _nodes.FirstOrDefault(n => n.Id == source);
+        var t = _nodes.FirstOrDefault(n => n.Id == target);
+        if (s is null || t is null || !s.Connectable || !t.Connectable) return Task.FromResult(false);
+        var connection = new FlowConnection(source, sourceHandle, target, targetHandle);
+        return Task.FromResult(IsValidConnection is null || IsValidConnection(connection));
     }
 
     /// <inheritdoc />

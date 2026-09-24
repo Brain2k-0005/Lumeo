@@ -349,6 +349,8 @@ internal static partial class LumeoDefaultStrings
         ["Flow.ConnectionCancelled"] = "연결이 취소되었습니다.",
         ["Flow.Reconnected"] = "엣지가 다시 연결되었습니다.",
         ["Flow.ReconnectRejected"] = "재연결이 거부되었습니다.",
+        ["Flow.EdgeLabelEdit"] = "엣지 라벨 편집",
+        ["Flow.EdgeLabelUpdated"] = "라벨이 업데이트되었습니다.",
         ["Gantt.ScrollToEarlierTask"] = "{0}(으)로 스크롤 (이전)",
         ["Gantt.ScrollToLaterTask"] = "{0}(으)로 스크롤 (이후)",
         ["Gantt.Settings"] = "설정",

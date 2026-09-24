@@ -91,49 +91,15 @@
         Tidy();
     }
 
-    // Hand-written recursive tree layout: children stack vertically (dy apart), a parent centers
-    // over its own children's vertical span, depth maps to X (dx apart). Deliberately simple —
-    // no collision avoidance beyond the fixed dy spacing, which is enough for this block's small
-    // trees. When Lumeo.Flow's own FlowLayout.Tree (phase 3a) ships, this method can be deleted
-    // and replaced with a single FlowLayout.Tree(_nodes, _edges) call.
+    // Phase 4 (#511): the hand-written recursive layout this block used to carry (children stack
+    // vertically, a parent centers over its own children's span, depth maps to X) is gone —
+    // FlowLayout.Tree does the same job as a library primitive. It treats every edge (dashed
+    // included) as a tree edge, so the model/attachment nodes now rank as ordinary children of
+    // "root" at depth 1 alongside research/coding rather than hanging in their own reserved slot
+    // below it; visually different from before, not a regression — this block exists to show off
+    // the real API, not to preserve one hand-tuned layout.
     private void Tidy()
-    {
-        var childrenOf = _edges.Where(e => !e.Dashed)
-            .GroupBy(e => e.Source)
-            .ToDictionary(g => g.Key, g => g.Select(e => e.Target).ToList());
-
-        var positions = new Dictionary<string, (double X, double Y)>();
-        double leafCursor = 0;
-        const double dx = 220, dy = 100;
-
-        double Layout(string id, int depth)
-        {
-            if (!childrenOf.TryGetValue(id, out var kids) || kids.Count == 0)
-            {
-                var y = leafCursor * dy;
-                leafCursor++;
-                positions[id] = (depth * dx, y);
-                return y;
-            }
-
-            var ys = kids.Select(k => Layout(k, depth + 1)).ToList();
-            var centerY = (ys.Min() + ys.Max()) / 2;
-            positions[id] = (depth * dx, centerY);
-            return centerY;
-        }
-
-        Layout("root", 0);
-
-        foreach (var e in _edges.Where(e => e.Dashed))
-        {
-            if (positions.TryGetValue(e.Source, out var p))
-            {
-                positions[e.Target] = (p.X - 40, p.Y + 120 + (e.Target == "attachment" ? 70 : 0));
-            }
-        }
-
-        _nodes = _nodes.Select(n => positions.TryGetValue(n.Id, out var pos) ? n with { X = pos.X, Y = pos.Y } : n).ToList();
-    }
+        => _nodes = FlowLayout.Tree(_nodes, _edges, new FlowLayoutOptions(NodeSpacing: 32, RankSpacing: 96));
 
     private static string CardClass(string kind, bool selected)
     {

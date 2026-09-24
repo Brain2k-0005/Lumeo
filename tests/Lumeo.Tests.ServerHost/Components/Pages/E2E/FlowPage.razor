@@ -6,18 +6,22 @@
    fixture and this Server fixture stay interchangeable.
 
    Query params: ?fit=0 (no FitViewOnInit; the canvas starts at 0,0 / 100%), ?snap=1 (SnapToGrid,
-   16px), ?readonly=1.
+   16px), ?readonly=1, ?loose=1 (ConnectionMode.Loose), ?helper=1 (HelperLines).
 
-   Sinks (hidden <pre>s the specs read): flow-nodes-sink = "id:x,y;..." of the BOUND node list (what
-   the app received through @bind-Nodes), flow-viewport-sink = "x|y|zoom" of the bound viewport,
-   flow-commit-count = OnNodeDragStop calls, flow-last-click = the last OnNodeClick id,
-   flow-edges-sink = "id:source-target;..." of the BOUND edge list, flow-selection-sink =
-   "nodeId,...|edgeId,..." of the latest OnSelectionChanged, flow-history-count = FlowHistory.Count.
+   Sinks (hidden <pre>s the specs read): flow-nodes-sink = "id:x,y,w,h;..." of the BOUND node list
+   (w/h blank when unset) — (what the app received through @bind-Nodes), flow-viewport-sink =
+   "x|y|zoom" of the bound viewport, flow-commit-count = OnNodeDragStop calls, flow-last-click =
+   the last OnNodeClick id, flow-edges-sink = "id:source-target:label;..." of the BOUND edge list,
+   flow-selection-sink = "nodeId,...|edgeId,..." of the latest OnSelectionChanged,
+   flow-history-count = FlowHistory.Count, flow-resize-count = OnNodeResizeStop calls,
+   flow-paste-count = OnPaste calls, flow-export-svg-sink = the last ExportSvgAsync() result.
 
-   data-testid="flow-layout-btn" applies FlowLayout.Tree (phase 3 auto-layout E2E spec). *@
+   data-testid="flow-layout-btn" applies FlowLayout.Tree (phase 3 auto-layout E2E spec).
+   data-testid="flow-export-svg-btn" calls ExportSvgAsync() into flow-export-svg-sink (phase 4). *@
 
 <div class="p-4">
     <button type="button" data-testid="flow-layout-btn" @onclick="ApplyLayoutAsync" class="mb-2 rounded border border-border px-2 py-1 text-xs">Apply layout</button>
+    <button type="button" data-testid="flow-export-svg-btn" @onclick="ExportSvgAsync" class="mb-2 ms-2 rounded border border-border px-2 py-1 text-xs">Export SVG</button>
     <FlowCanvas @ref="_canvas" data-testid="flow-root"
                 Height="560px"
                 @bind-Nodes="_nodes"
@@ -26,14 +30,20 @@
                 FitViewOnInit="@(Fit != "0")"
                 SnapToGrid="@(Snap == "1")"
                 Readonly="@(Readonly == "1")"
+                ConnectionMode="@(Loose == "1" ? FlowConnectionMode.Loose : FlowConnectionMode.Strict)"
+                HelperLines="@(Helper == "1")"
+                EdgeLabelEditable="true"
                 History="_history"
                 EdgesReconnectable="true"
                 OnNodeDragStop="HandleDragStop"
+                OnNodeResizeStop="HandleResizeStop"
+                OnPaste="HandlePaste"
                 OnNodeClick="@(n => _lastClick = n.Id)"
                 OnSelectionChanged="HandleSelectionChanged"
                 IsValidConnection="RejectN1AsTarget">
         <NodeTemplate Context="ctx">
             <div class="w-40 rounded-lg border border-border bg-card px-3 py-2 text-sm text-card-foreground shadow-sm" data-testid="@("flow-card-" + ctx.Node.Id)">
+                <FlowNodeResizer MinWidth="80" MinHeight="40" />
                 <FlowHandle Type="FlowHandleType.Target" Position="FlowPosition.Left" />
                 <div class="font-medium">@ctx.Node.Data</div>
                 <div class="text-xs text-muted-foreground">@ctx.Node.Id</div>
@@ -55,11 +65,16 @@
 <pre data-testid="flow-edges-sink" hidden>@EdgesText</pre>
 <pre data-testid="flow-selection-sink" hidden>@_selectionText</pre>
 <pre data-testid="flow-history-count" hidden>@_history.Count</pre>
+<pre data-testid="flow-resize-count" hidden>@_resizes</pre>
+<pre data-testid="flow-paste-count" hidden>@_pastes</pre>
+<pre data-testid="flow-export-svg-sink" hidden>@_exportedSvg</pre>
 
 @code {
     [SupplyParameterFromQuery] public string? Fit { get; set; }
     [SupplyParameterFromQuery] public string? Snap { get; set; }
     [SupplyParameterFromQuery] public string? Readonly { get; set; }
+    [SupplyParameterFromQuery] public string? Loose { get; set; }
+    [SupplyParameterFromQuery] public string? Helper { get; set; }
 
     private FlowCanvas? _canvas;
     private readonly FlowHistory _history = new();
@@ -69,6 +84,13 @@
         _nodes = FlowLayout.Tree(_nodes, _edges, new FlowLayoutOptions(NodeSpacing: 24, RankSpacing: 64));
         StateHasChanged();
         if (_canvas is not null) await _canvas.FitViewAsync();
+    }
+
+    private async Task ExportSvgAsync()
+    {
+        if (_canvas is null) return;
+        _exportedSvg = await _canvas.ExportSvgAsync();
+        StateHasChanged();
     }
 
     private IReadOnlyList<FlowNode> _nodes = new List<FlowNode>
@@ -86,16 +108,23 @@
         new("e1", "n1", "n2"),
         new("e2", "n2", "n3", Type: FlowEdgeType.SmoothStep),
         new("e3", "n1", "n4", Type: FlowEdgeType.Step),
-        new("e4", "n4", "n5"),
+        // e4 (not e1 — e1's on-path click is exercised by other specs, and a label div sitting
+        // exactly at the path midpoint intercepts that click) carries the phase 4 label-edit fixture.
+        new("e4", "n4", "n5", Label: "next"),
         new("e5", "n3", "n6", Type: FlowEdgeType.Straight),
     };
 
     private FlowViewport _viewport = new(0, 0, 1);
     private int _commits;
+    private int _resizes;
+    private int _pastes;
     private string _lastClick = "";
     private string _selectionText = "|";
+    private string _exportedSvg = "";
 
     private void HandleDragStop(IReadOnlyList<FlowNodeChange> changes) => _commits++;
+    private void HandleResizeStop(IReadOnlyList<FlowNodeResizeChange> changes) => _resizes++;
+    private void HandlePaste(FlowPasteEventArgs args) => _pastes++;
 
     // Test-only rule so the "invalid connection is rejected" E2E spec has something to reject:
     // n1 may never be a connection TARGET (it already has two outgoing edges as a source).
@@ -107,9 +136,9 @@
 
     private static string R(double v) => v.ToString("R", CultureInfo.InvariantCulture);
 
-    private string NodesText => string.Join(";", _nodes.Select(n => n.Id + ":" + R(n.X) + "," + R(n.Y)));
+    private string NodesText => string.Join(";", _nodes.Select(n => n.Id + ":" + R(n.X) + "," + R(n.Y) + "," + (n.Width is { } w ? R(w) : "") + "," + (n.Height is { } h ? R(h) : "")));
 
     private string ViewportText => R(_viewport.X) + "|" + R(_viewport.Y) + "|" + R(_viewport.Zoom);
 
-    private string EdgesText => string.Join(";", _edges.Select(e => e.Id + ":" + e.Source + "-" + e.Target));
+    private string EdgesText => string.Join(";", _edges.Select(e => e.Id + ":" + e.Source + "-" + e.Target + ":" + (e.Label ?? "")));
 }

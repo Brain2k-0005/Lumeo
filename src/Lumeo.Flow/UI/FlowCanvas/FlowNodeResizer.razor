@@ -1,0 +1,108 @@
+@namespace Lumeo
+@implements IDisposable
+@inject Lumeo.Services.Localization.ILumeoLocalizer L
+
+@* FlowNodeResizer — corner + edge resize grips for a node template (phase 4). Place inside
+   NodeTemplate next to FlowHandle. Visible only while the node is selected, unless
+   AlwaysVisible. Pointer resize runs entirely in flow.js (live, connected edges follow, Shift
+   keeps the node's aspect ratio); Shift+arrow keys on the FOCUSED NODE resize it too, in .NET
+   (FlowCanvas.HandleNodeKeyDownAsync) — this component only REGISTERS the node's Min/Max so
+   FlowCanvas knows the focused node has a resizer at all (RegisterResizer/UnregisterResizer;
+   FlowCanvas has no other way to know what a node's own template rendered). *@
+
+@if (Node is not null && Canvas is not null && (AlwaysVisible || Selected))
+{
+    <div data-flow-resizer
+         data-flow-nodrag
+         data-min-width="@FlowCanvas.R(MinWidth)"
+         data-min-height="@FlowCanvas.R(MinHeight)"
+         data-max-width="@(MaxWidth is { } maxW ? FlowCanvas.R(maxW) : null)"
+         data-max-height="@(MaxHeight is { } maxH ? FlowCanvas.R(maxH) : null)"
+         class="@Cx.Merge("lumeo-flow-resizer", Class)"
+         @attributes="AdditionalAttributes">
+        @foreach (var dir in _directions)
+        {
+            <div @key="dir"
+                 data-flow-resize-handle
+                 data-resize-dir="@DirectionToken(dir)"
+                 aria-hidden="true"
+                 class="@("lumeo-flow-resize-handle lumeo-flow-resize-handle-" + DirectionToken(dir))"></div>
+        }
+    </div>
+}
+
+@code {
+    [CascadingParameter(Name = "LumeoFlowNode")] private FlowNode? Node { get; set; }
+    [CascadingParameter] private FlowCanvas.FlowCanvasContext? Context { get; set; }
+
+    /// <summary>Smallest width a resize (pointer or keyboard) may reach, in flow units.</summary>
+    [Parameter] public double MinWidth { get; set; } = 50;
+
+    /// <summary>Smallest height a resize (pointer or keyboard) may reach, in flow units.</summary>
+    [Parameter] public double MinHeight { get; set; } = 30;
+
+    /// <summary>Largest width a resize may reach; unbounded when null.</summary>
+    [Parameter] public double? MaxWidth { get; set; }
+
+    /// <summary>Largest height a resize may reach; unbounded when null.</summary>
+    [Parameter] public double? MaxHeight { get; set; }
+
+    /// <summary>Shows the grips even while the node is not selected. Off by default (React Flow's own convention).</summary>
+    [Parameter] public bool AlwaysVisible { get; set; }
+
+    /// <summary>Additional CSS classes merged onto the grip container.</summary>
+    [Parameter] public string? Class { get; set; }
+
+    /// <summary>Captures unmatched attributes and applies them to the grip container.</summary>
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private static readonly FlowResizeDirection[] _directions =
+    {
+        FlowResizeDirection.NorthWest, FlowResizeDirection.North, FlowResizeDirection.NorthEast,
+        FlowResizeDirection.East, FlowResizeDirection.SouthEast, FlowResizeDirection.South,
+        FlowResizeDirection.SouthWest, FlowResizeDirection.West,
+    };
+
+    private FlowCanvas? Canvas => Context?.Canvas;
+    private bool Selected => Node is not null && Canvas?.IsSelected(Node.Id) == true;
+    private string? _registeredFor;
+
+    // Registers/unregisters in lockstep with whether the grips actually RENDER (AlwaysVisible ||
+    // Selected) — not unconditionally on every parameter set. Placing a FlowNodeResizer in a
+    // template that only shows it once selected must not silently change what Shift+arrow does
+    // (FlowCanvas.HandleNodeKeyDownAsync's resize-vs-move branch) for every OTHER, unselected
+    // node too; it only takes over once the resizer itself is visible for that node.
+    protected override void OnParametersSet()
+    {
+        if (Node is null || Canvas is null) return;
+        var visible = AlwaysVisible || Selected;
+        if (visible)
+        {
+            Canvas.RegisterResizer(Node.Id, MinWidth, MinHeight, MaxWidth, MaxHeight);
+            _registeredFor = Node.Id;
+        }
+        else if (_registeredFor is { } id)
+        {
+            Canvas.UnregisterResizer(id);
+            _registeredFor = null;
+        }
+    }
+
+    /// <inheritdoc />
+    public void Dispose()
+    {
+        if (_registeredFor is { } id) Canvas?.UnregisterResizer(id);
+    }
+
+    private static string DirectionToken(FlowResizeDirection dir) => dir switch
+    {
+        FlowResizeDirection.NorthWest => "nw",
+        FlowResizeDirection.North => "n",
+        FlowResizeDirection.NorthEast => "ne",
+        FlowResizeDirection.East => "e",
+        FlowResizeDirection.SouthEast => "se",
+        FlowResizeDirection.South => "s",
+        FlowResizeDirection.SouthWest => "sw",
+        _ => "w",
+    };
+}

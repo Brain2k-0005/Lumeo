@@ -135,6 +135,60 @@ public static class FlowGeometry
         return CenterOn(cx, cy, zoom, paneWidth, paneHeight);
     }
 
+    // ── Helper lines (phase 4) ──────────────────────────────────────────────
+
+    /// <summary>
+    /// Candidate alignment guides for a node being dragged: compares <paramref name="moving"/>'s
+    /// left/centre/right and top/middle/bottom against every rect in <paramref name="others"/>
+    /// (typically every OTHER node), and returns the single closest match per axis that is within
+    /// <paramref name="threshold"/> flow units, plus the position <paramref name="moving"/> should
+    /// snap to on that axis. A pure function — <c>flow.js</c> ports it for the live drag; this is
+    /// what the bUnit tests exercise directly.
+    /// </summary>
+    public static FlowHelperLineResult ComputeHelperLines(FlowRect moving, IEnumerable<FlowRect> others, double threshold)
+    {
+        ArgumentNullException.ThrowIfNull(others);
+        if (!(threshold > 0)) return new FlowHelperLineResult(null, null, Array.Empty<FlowHelperLine>());
+
+        double? bestVLine = null, bestHLine = null, snapX = null, snapY = null;
+        var bestVDist = double.PositiveInfinity;
+        var bestHDist = double.PositiveInfinity;
+
+        var movingXs = new[] { moving.X, moving.X + moving.Width / 2, moving.Right };
+        var movingYs = new[] { moving.Y, moving.Y + moving.Height / 2, moving.Bottom };
+
+        foreach (var other in others)
+        {
+            foreach (var ox in new[] { other.X, other.X + other.Width / 2, other.Right })
+            {
+                foreach (var mx in movingXs)
+                {
+                    var d = Math.Abs(mx - ox);
+                    if (d > threshold || d >= bestVDist) continue;
+                    bestVDist = d;
+                    bestVLine = ox;
+                    snapX = moving.X + (ox - mx);
+                }
+            }
+            foreach (var oy in new[] { other.Y, other.Y + other.Height / 2, other.Bottom })
+            {
+                foreach (var my in movingYs)
+                {
+                    var d = Math.Abs(my - oy);
+                    if (d > threshold || d >= bestHDist) continue;
+                    bestHDist = d;
+                    bestHLine = oy;
+                    snapY = moving.Y + (oy - my);
+                }
+            }
+        }
+
+        var lines = new List<FlowHelperLine>(2);
+        if (bestVLine is { } vx) lines.Add(new FlowHelperLine(vx, FlowHelperLineAxis.Vertical));
+        if (bestHLine is { } hy) lines.Add(new FlowHelperLine(hy, FlowHelperLineAxis.Horizontal));
+        return new FlowHelperLineResult(snapX, snapY, lines);
+    }
+
     // ── Handles ──────────────────────────────────────────────────────────
 
     /// <summary>
