@@ -365,6 +365,12 @@ public class FlowCanvasTests : GanttParityTestBase
 
         await WaitOrDumpAsync("() => (window.__lumeoFlowDiag || []).some(e => e.ev === 'marquee-end')", null,
             "expected the marquee gesture to end", "n4", "n5");
+        // 'marquee-end' is logged by the engine the moment the hit-test finishes; the .NET
+        // selection (CommitMarquee -> OnSelectionChanged -> the bound sink) arrives one
+        // round trip later. Wait for the sink itself, not the journal, before asserting on it
+        // (CI run 36012813344: marquee-end count 2, sink still empty when read).
+        await WaitOrDumpAsync("() => { const t = document.querySelector('[data-testid=flow-selection-sink]').textContent; return t.includes('n4') && t.includes('n5'); }", null,
+            "expected the bound selection to receive the marquee result", "n4", "n5");
         var selection = await SelectionSinkAsync();
         await CheckAsync(selection.StartsWith("n4,n5|") || selection.StartsWith("n5,n4|") || selection == "n4,n5|" || selection == "n5,n4|",
             $"expected exactly n4 and n5 selected, got '{selection}'", "n4", "n5");
