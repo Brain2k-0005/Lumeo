@@ -5,6 +5,39 @@ All notable changes to Lumeo will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+- **DataGrid: `ColumnSizing="FitWithMinimum"` now actually caps growth and honours a
+  resized/restored width** (DocFlow consumer report against 5.11.0). Previously
+  `DataGridHeaderCell` emitted only a CSS `min-width` under `table-layout: auto`, which two
+  ways failed the mode's own contract: (1) a `white-space: nowrap` cell's content-driven
+  minimum width always won regardless of any width declared on the cell, so a 12-column
+  search grid could render 1512px wide in a 1310px container instead of filling it; (2)
+  `MinWidth ?? Width` unconditionally preferred the declared `MinWidth`, so a user-dragged or
+  `LayoutStorageKey`-restored column width was never reflected in any CSS property and
+  "jumped back" on reload. The grid now measures its horizontal scroll container (a
+  `ResizeObserver` reporting back to .NET) and computes an explicit pixel width per column,
+  then renders `table-layout: fixed` at those widths — a real ceiling, since fixed layout
+  uses only the widths it's given, never content. Columns fill the container exactly when
+  there's room, never shrink below their own `MinWidth`, and a resized/restored width always
+  wins (clamped to `MinWidth`/`MaxWidth`); cell content now truncates with an ellipsis
+  instead of forcing the column wider.
+- **DataGrid: `Virtualized` + `OnRangeRequest` with `IsLoading="true"` no longer unmounts the
+  scroll container** (SQL Analyst consumer report, LU-12). `IsLoading` used to replace the
+  ENTIRE body with a plain skeleton, tearing down Blazor's `<Virtualize ItemsProvider>` along
+  with it — and with it the only thing that ever calls `OnRangeRequest`, so a consumer whose
+  own loading flag flipped back to `false` from inside that same handler could never get
+  there and stayed stuck showing the skeleton forever. The skeleton now renders BESIDE a
+  still-mounted `<Virtualize>` for this mode instead of replacing it.
+- **DataGrid: a `LayoutStorageKey`-persisted sort now reaches the FIRST server-virtualization
+  range request**, not just a second one (SQL Analyst consumer report, LU-13). Blazor's
+  `<Virtualize ItemsProvider>` fires its first request from the child component's own
+  initialization — before the grid gets a chance to await the persisted-layout read — so the
+  very first request always carried the default sort/filters, with the restored ones only
+  arriving (and visibly reordering the rows) on a second request a moment later. The initial
+  fetch now waits for a pending restore to resolve.
+
 ## [5.11.0] - 2026-09-24
 
 ### Added

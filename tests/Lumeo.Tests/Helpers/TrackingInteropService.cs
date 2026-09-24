@@ -836,7 +836,11 @@ public class TrackingInteropService : IComponentInteropService
         return ValueTask.FromResult(TouchRippleCoordsResult);
     }
     public ValueTask SaveToLocalStorage(string key, string value) => ValueTask.CompletedTask;
-    public ValueTask<string?> LoadFromLocalStorage(string key) => ValueTask.FromResult<string?>(null);
+    // virtual: DataGridVirtualizedLoadingStateTests derives a variant that holds this open
+    // (a controllable TaskCompletionSource) to reproduce the initial-persisted-layout-vs-
+    // first-range-request race deterministically — same rationale as LockScroll/UnlockScroll
+    // above for OverlayExitAnimationRaceTests.
+    public virtual ValueTask<string?> LoadFromLocalStorage(string key) => ValueTask.FromResult<string?>(null);
     public ValueTask RemoveFromLocalStorage(string key) => ValueTask.CompletedTask;
     // Reduced-motion gate (#310/#327/#328) — tests set ReducedMotion to
     // exercise the no-op / instant-settle branch of JS-driven motion primitives.

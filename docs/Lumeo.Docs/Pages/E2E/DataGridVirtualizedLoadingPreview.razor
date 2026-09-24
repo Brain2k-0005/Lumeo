@@ -1,0 +1,83 @@
+@page "/e2e/datagrid-virtualized-loading"
+@using System.Threading
+
+@* E2E-only harness for the SQL Analyst field report LU-12 / LU-13 (Lumeo.Tests.E2E's
+   DataGridVirtualizedLoadingTests). Deliberately minimal, deterministic and NOT linked in
+   navigation — see docs/Lumeo.Docs/Pages/E2E/P0Harness.razor's remarks for the pattern.
+
+   Both findings are real-browser timing effects (IsLoading tearing down <Virtualize>'s
+   ItemsProvider mid-scroll-session; the initial persisted-layout restore racing
+   <Virtualize>'s own first automatic fetch) that bUnit's headless DOM can only partially
+   reach — see DataGridVirtualizedLoadingStateTests for the bUnit-side coverage (which
+   reaches the underlying mechanism directly) and this page for the real end-to-end path:
+   an actual ResizeObserver-free Virtualize mount, an actual localStorage round-trip, an
+   actual page reload. #request-log records every OnRangeRequest call
+   ("index:sortField:sortDirection", one per line) so the test can inspect ORDER, not just
+   final state. *@
+
+<PageTitle>DataGrid virtualized loading harness</PageTitle>
+<HeadContent>
+    <meta name="robots" content="noindex" />
+</HeadContent>
+
+<div class="p-6 space-y-4">
+    <h1 class="text-lg font-bold">DataGrid virtualized loading harness</h1>
+
+    <div class="flex items-center gap-2">
+        <button id="toggle-loading" type="button" class="border rounded px-2 py-1 text-sm" @onclick="ToggleLoading">
+            Toggle IsLoading (currently @(_isLoading ? "true" : "false"))
+        </button>
+        <span id="request-count" data-count="@_requestCount">@_requestCount requests</span>
+    </div>
+
+    <div id="grid-wrapper" style="height: 320px; width: 500px;">
+        <DataGrid TItem="Row" Virtualized="true" OnRangeRequest="HandleRangeRequest"
+                  IsLoading="@_isLoading" EnableLayoutPersistence="true" LayoutStorageKey="e2e-virtualized-loading"
+                  ShowToolbar="false">
+            <DataGridColumnDef TItem="Row" Title="Id" Field="Id" Sortable="true" Width="150" />
+            <DataGridColumnDef TItem="Row" Title="Name" Field="Name" Sortable="true" Width="150" />
+        </DataGrid>
+    </div>
+
+    <pre id="request-log" style="white-space: pre-wrap; font-size: 11px;">@_log.ToString()</pre>
+</div>
+
+@code {
+    public class Row
+    {
+        public int Id { get; set; }
+        public string Name { get; set; } = "";
+    }
+
+    private static readonly List<Row> AllRows = Enumerable.Range(1, 200)
+        .Select(i => new Row { Id = i, Name = $"Row {i:D3}" })
+        .ToList();
+
+    private bool _isLoading;
+    private int _requestCount;
+    private readonly System.Text.StringBuilder _log = new();
+
+    private void ToggleLoading() => _isLoading = !_isLoading;
+
+    private ValueTask<DataGridRangeResponse<Row>> HandleRangeRequest(DataGridRangeRequest req)
+    {
+        _requestCount++;
+        var sort = req.Sorts is { Count: > 0 } ? req.Sorts[0] : null;
+        _log.AppendLine($"{_requestCount}:{sort?.Field ?? "none"}:{sort?.Direction.ToString() ?? "none"}");
+        // This page's own _requestCount/_log fields, not DataGrid's — mutating them doesn't
+        // itself trigger a re-render of THIS component (only the child <Virtualize>'s own
+        // rows re-render automatically as part of the normal ItemsProvider flow).
+        StateHasChanged();
+
+        IEnumerable<Row> query = AllRows;
+        if (sort is not null)
+        {
+            query = sort.Field == "Id"
+                ? (sort.Direction == SortDirection.Descending ? query.OrderByDescending(r => r.Id) : query.OrderBy(r => r.Id))
+                : (sort.Direction == SortDirection.Descending ? query.OrderByDescending(r => r.Name) : query.OrderBy(r => r.Name));
+        }
+
+        var page = query.Skip(req.StartIndex).Take(req.Count).ToList();
+        return ValueTask.FromResult(new DataGridRangeResponse<Row>(page, AllRows.Count));
+    }
+}
