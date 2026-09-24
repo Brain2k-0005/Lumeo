@@ -226,12 +226,14 @@
     /// used automatically so screen readers announce the switch's purpose.
     /// </summary>
     [Parameter] public string? AriaLabel { get; set; }
-    /// <summary>Switch size. Supports all 7 <see cref="Lumeo.Size"/> values (Xxs–Xxl). Sm and Md
-    /// get an invisible touch-target extension up to the 24px minimum (the visible track is
-    /// pixel-identical to before — only the click/touch-catching zone around it grows).
-    /// <b>Xxs and Xs are a deliberate exception</b>: their 8px/12px track stays below the 24px
+    /// <summary>Switch size. Supports all 7 <see cref="Lumeo.Size"/> values (Xxs–Xxl); Md
+    /// (18.4×32px track, 1px border) matches shadcn new-york v4's default exactly, and the
+    /// other 6 rungs are rescaled proportionally around it. Sm, Md and Lg get an invisible
+    /// touch-target extension up to the 24px minimum (the visible track is pixel-identical
+    /// to before — only the click/touch-catching zone around it grows).
+    /// <b>Xxs and Xs are a deliberate exception</b>: their track stays below the 24px
     /// minimum on purpose — an app that opts into <c>Xxs</c>/<c>Xs</c> is explicitly asking for
-    /// a dense, non-touch-primary control, so no hit-area extension is added there. Lg/Xl/Xxl
+    /// a dense, non-touch-primary control, so no hit-area extension is added there. Xl/Xxl
     /// already clear 24px without any change. Default <see cref="Lumeo.Size.Md"/>.</summary>
     [Parameter] public Lumeo.Size Size { get; set; } = Lumeo.Size.Md;
 
@@ -263,18 +265,28 @@
     // so even consumers who don't set AriaLabel get a reasonable screen-reader announcement.
     private string? AriaLabelValue => AriaLabel ?? CurrentOnOffLabel ?? Label;
 
-    // Xl/Xxl track widths (52px/60px) have no named Tailwind step between w-12(48)
-    // and w-14(56) — arbitrary brackets, per spec §15b. Requires a CSS bundle
-    // rebuild before they render styled (not run in this batch — see report).
+    // Md rung matches verified shadcn new-york v4 `switch.tsx` (`data-[size=default]`)
+    // EXACTLY: h-[1.15rem] w-8 = 18.4×32px (previously h-5 w-9 = 20×36px, the OLD
+    // shadcn/Radix default). The other 6 rungs are NOT shadcn-defined (shadcn only ships
+    // "sm"/"default") — they are rescaled PROPORTIONALLY around the new Md so the whole
+    // Lumeo.Size ladder stays monotonic and keeps its prior density relationship, per
+    // rung: height × (18.4/20 = 0.92), width × (32/36 = 8/9). The old scale was a clean
+    // arithmetic progression (height step 4px = 0.25rem, width step 8px), so scaling it
+    // uniformly keeps a clean progression too: height step becomes 0.25rem×0.92=0.23rem,
+    // width rounds to a clean 7px step (8×8/9=7.11, rounds to 7 — max rounding error
+    // 0.33px). No named Tailwind step lands on these values (except Md's own w-8) —
+    // arbitrary brackets throughout, same pattern already used for the old Xl/Xxl widths.
+    //   height (rem): Xxs .46  Xs .69  Sm .92  Md 1.15  Lg 1.38  Xl 1.61  Xxl 1.84
+    //   width   (px): Xxs  11  Xs  18  Sm  25  Md   32  Lg   39  Xl   46  Xxl   53
     private string TrackSizeClasses => Size switch
     {
-        Lumeo.Size.Xxs => "h-2 w-3",
-        Lumeo.Size.Xs => "h-3 w-5",
-        Lumeo.Size.Sm => "h-4 w-7",
-        Lumeo.Size.Lg => "h-6 w-11",
-        Lumeo.Size.Xl => "h-7 w-[52px]",
-        Lumeo.Size.Xxl => "h-8 w-[60px]",
-        _ => "h-5 w-9"
+        Lumeo.Size.Xxs => "h-[0.46rem] w-[11px]",
+        Lumeo.Size.Xs => "h-[0.69rem] w-[18px]",
+        Lumeo.Size.Sm => "h-[0.92rem] w-[25px]",
+        Lumeo.Size.Lg => "h-[1.38rem] w-[39px]",
+        Lumeo.Size.Xl => "h-[1.61rem] w-[46px]",
+        Lumeo.Size.Xxl => "h-[1.84rem] w-[53px]",
+        _ => "h-[1.15rem] w-8"
     };
 
     private string ThumbSizeClasses => Size switch
@@ -288,19 +300,21 @@
         _ => "h-4 w-4"
     };
 
-    // Formula-derived (not linearly extrapolated), per methodology §0.8:
-    // translate = trackW − thumbW − 4px (2×2px border). Worked per rung:
-    // Xxs 12−4−4=4=translate-x-1; Xs 20−8−4=8=translate-x-2;
-    // Xl 52−24−4=24=translate-x-6; Xxl 60−28−4=28=translate-x-7.
+    // Formula-derived (not linearly extrapolated), per methodology §0.8, updated for the
+    // shadcn v4 border width (1px, was 2px — see CssClass):
+    // translate = trackW − thumbW − 2px (2×1px border). Md matches shadcn's own
+    // `translate-x-[calc(100%-2px)]` literally: 100% of the 16px thumb minus 2px = 14px.
+    // Worked per rung (trackW/thumbW in px): Xxs 11−4−2=5; Xs 18−8−2=8; Sm 25−12−2=11;
+    // Md 32−16−2=14; Lg 39−20−2=17; Xl 46−24−2=20; Xxl 53−28−2=23.
     private string ThumbTranslateClass => Size switch
     {
-        Lumeo.Size.Xxs => _checked ? "translate-x-1" : "translate-x-0",
+        Lumeo.Size.Xxs => _checked ? "translate-x-[5px]" : "translate-x-0",
         Lumeo.Size.Xs => _checked ? "translate-x-2" : "translate-x-0",
-        Lumeo.Size.Sm => _checked ? "translate-x-3" : "translate-x-0",
-        Lumeo.Size.Lg => _checked ? "translate-x-5" : "translate-x-0",
-        Lumeo.Size.Xl => _checked ? "translate-x-6" : "translate-x-0",
-        Lumeo.Size.Xxl => _checked ? "translate-x-7" : "translate-x-0",
-        _ => _checked ? "translate-x-4" : "translate-x-0"
+        Lumeo.Size.Sm => _checked ? "translate-x-[11px]" : "translate-x-0",
+        Lumeo.Size.Lg => _checked ? "translate-x-[17px]" : "translate-x-0",
+        Lumeo.Size.Xl => _checked ? "translate-x-5" : "translate-x-0",
+        Lumeo.Size.Xxl => _checked ? "translate-x-[23px]" : "translate-x-0",
+        _ => _checked ? "translate-x-3.5" : "translate-x-0"
     };
 
     // Codex PR #388 finding: the Loading spinner used to take a fixed
@@ -340,8 +354,10 @@
     // rounded-[calc(var(--radius)*2)] instead of a hardcoded full pill: the theme's
     // radius token now reaches the Switch. At every stock radius (0.75rem default → 24px,
     // even a 0.5rem theme → 16px) the computed radius exceeds half the track height of
-    // ALL sizes (Sm h-4/8px … Lg h-6/12px), so CSS corner-overlap reduction renders the
-    // exact same full pill as before — pixel-identical default. Only a deliberately sharp
+    // ALL sizes (post-rescale: Xxs .46rem/7.36px … Xxl 1.84rem/29.44px — the largest
+    // half-height, 14.72px, is still well under a 0.5rem-theme's 16px), so CSS
+    // corner-overlap reduction renders the exact same full pill as before — pixel-identical
+    // default. Only a deliberately sharp
     // theme (small/zero --radius) squares the Switch off along with everything else;
     // previously it stayed a pill in an otherwise square UI (user-reported inconsistency).
     // Note: stock shadcn keeps its Switch a hard pill regardless of radius — this is a
@@ -351,34 +367,40 @@
     // painted button — its background/border live on this same <button>, not a
     // separate inner element — so real padding here would visibly enlarge the
     // pill, not just its hit box (unlike Rating, where the icon is a child of
-    // an unstyled button). Measured track heights: Sm 16px, Md 20px both sit
-    // below the 24px touch-target minimum; Lg (24px)/Xl (28px)/Xxl (32px)
-    // already clear it (width already clears 24px at every rung, Sm's own
-    // w-7/28px included, so only height needs extending). Owner chose to patch
-    // ONLY Sm and Md — the two rungs reached without an explicit dense-size
-    // opt-in (Md is the default) — leaving Xxs/Xs deliberately tiny.
+    // an unstyled button). Re-measured after the shadcn v4 dimension rescale
+    // (see TrackSizeClasses): Sm 14.72px, Md 18.4px AND now Lg 22.08px all sit
+    // below the 24px touch-target minimum (Lg cleared it before the rescale at a
+    // flat 24px; the proportional scale-down of Md to shadcn's 18.4px pulled Lg
+    // under 24 too). Xl (25.76px)/Xxl (29.44px) still clear it on their own
+    // (width already clears 24px at every rung). Owner policy unchanged: patch
+    // every rung that needs it EXCEPT Xxs/Xs, which stay deliberately tiny (no
+    // hit-area extension) as a dense, non-touch-primary opt-in.
     //
     // Implemented as an invisible ::before hit-zone (mirrors Chip's close
     // button: `before:absolute before:-inset-2`) instead of padding, so the
     // rendered track is pixel-identical to before — only an invisible,
     // non-participating-in-layout click/touch-catcher grows around it.
     // -inset-y only (not -inset-x): width already clears 24px, so only
-    // vertical reach needs extending. Math: Sm 16px + 2×4px (-inset-y-1) =
-    // 24px exact. Md 20px + 2×2px (-inset-y-0.5) = 24px exact. Side effect:
-    // the invisible zone extends 4px (Sm) / 2px (Md) above and below the
-    // visible track and can overlap tightly-stacked neighboring content —
-    // see report.
+    // vertical reach needs extending. Math (each side = (24 − trackHeight) / 2):
+    // Sm (24−14.72)/2=4.64px exact. Md (24−18.4)/2=2.8px exact.
+    // Lg (24−22.08)/2=0.96px exact. Side effect: the invisible zone extends
+    // that far above and below the visible track and can overlap tightly-stacked
+    // neighboring content — see report.
     private string HitAreaClass => Size switch
     {
-        Lumeo.Size.Sm => "relative before:absolute before:content-[''] before:inset-x-0 before:-inset-y-1",
-        Lumeo.Size.Md => "relative before:absolute before:content-[''] before:inset-x-0 before:-inset-y-0.5",
+        Lumeo.Size.Sm => "relative before:absolute before:content-[''] before:inset-x-0 before:-inset-y-[4.64px]",
+        Lumeo.Size.Md => "relative before:absolute before:content-[''] before:inset-x-0 before:-inset-y-[2.8px]",
+        Lumeo.Size.Lg => "relative before:absolute before:content-[''] before:inset-x-0 before:-inset-y-[0.96px]",
         _ => ""
     };
 
+    // Border width matches verified shadcn v4 `switch.tsx` exactly: `border
+    // border-transparent` (1px, was `border-2`/2px). The translate math above
+    // already accounts for this — see ThumbTranslateClass.
     private string CssClass => Cx.Merge(
         "peer inline-flex",
         TrackSizeClasses,
-        "shrink-0 cursor-pointer items-center rounded-[calc(var(--radius)*2)] border-2 border-transparent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50",
+        "shrink-0 cursor-pointer items-center rounded-[calc(var(--radius)*2)] border border-transparent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50",
         HitAreaClass,
         _checked ? "bg-primary" : "bg-input",
         Cx.When(EffectiveInvalid, "ring-2 ring-destructive/20 focus-visible:ring-destructive"),

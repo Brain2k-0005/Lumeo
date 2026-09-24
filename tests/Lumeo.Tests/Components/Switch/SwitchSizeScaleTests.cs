@@ -32,14 +32,18 @@ public class SwitchSizeScaleTests : IAsyncLifetime
             Assert.Contains(token, actual);
     }
 
+    // Md matches verified shadcn new-york v4 switch.tsx exactly: h-[1.15rem] w-8
+    // (18.4x32px, was h-5 w-9 / 20x36px — the old, pre-v4 shadcn default). The other 6
+    // rungs are rescaled proportionally around the new Md (height x0.92, width x8/9 —
+    // see TrackSizeClasses for the full derivation) so the ladder stays monotonic.
     [Theory]
-    [InlineData(Lumeo.Size.Xxs, "h-2", "w-3")]
-    [InlineData(Lumeo.Size.Xs, "h-3", "w-5")]
-    [InlineData(Lumeo.Size.Sm, "h-4", "w-7")]
-    [InlineData(Lumeo.Size.Md, "h-5", "w-9")]
-    [InlineData(Lumeo.Size.Lg, "h-6", "w-11")]
-    [InlineData(Lumeo.Size.Xl, "h-7", "w-[52px]")]
-    [InlineData(Lumeo.Size.Xxl, "h-8", "w-[60px]")]
+    [InlineData(Lumeo.Size.Xxs, "h-[0.46rem]", "w-[11px]")]
+    [InlineData(Lumeo.Size.Xs, "h-[0.69rem]", "w-[18px]")]
+    [InlineData(Lumeo.Size.Sm, "h-[0.92rem]", "w-[25px]")]
+    [InlineData(Lumeo.Size.Md, "h-[1.15rem]", "w-8")]
+    [InlineData(Lumeo.Size.Lg, "h-[1.38rem]", "w-[39px]")]
+    [InlineData(Lumeo.Size.Xl, "h-[1.61rem]", "w-[46px]")]
+    [InlineData(Lumeo.Size.Xxl, "h-[1.84rem]", "w-[53px]")]
     public void Track_Renders_Correct_Size_Classes(Lumeo.Size size, string heightClass, string widthClass)
     {
         var cut = _ctx.Render<Lumeo.Switch>(p => p.Add(b => b.Size, size));
@@ -62,15 +66,17 @@ public class SwitchSizeScaleTests : IAsyncLifetime
         AssertHasClasses(cut.Find("span").GetAttribute("class"), heightClass, widthClass);
     }
 
-    // Formula-derived (spec §15b/§0.8): translate = trackW − thumbW − 4px border.
+    // Formula-derived (spec §15b/§0.8, updated for the shadcn v4 1px border):
+    // translate = trackW − thumbW − 2px border. Md (14px) matches shadcn's own
+    // `translate-x-[calc(100%-2px)]` literally (100% of the 16px thumb − 2px = 14px).
     [Theory]
-    [InlineData(Lumeo.Size.Xxs, "translate-x-1")]
+    [InlineData(Lumeo.Size.Xxs, "translate-x-[5px]")]
     [InlineData(Lumeo.Size.Xs, "translate-x-2")]
-    [InlineData(Lumeo.Size.Sm, "translate-x-3")]
-    [InlineData(Lumeo.Size.Md, "translate-x-4")]
-    [InlineData(Lumeo.Size.Lg, "translate-x-5")]
-    [InlineData(Lumeo.Size.Xl, "translate-x-6")]
-    [InlineData(Lumeo.Size.Xxl, "translate-x-7")]
+    [InlineData(Lumeo.Size.Sm, "translate-x-[11px]")]
+    [InlineData(Lumeo.Size.Md, "translate-x-3.5")]
+    [InlineData(Lumeo.Size.Lg, "translate-x-[17px]")]
+    [InlineData(Lumeo.Size.Xl, "translate-x-5")]
+    [InlineData(Lumeo.Size.Xxl, "translate-x-[23px]")]
     public void Checked_Thumb_Renders_Correct_Translate_Class(Lumeo.Size size, string translateClass)
     {
         var cut = _ctx.Render<Lumeo.Switch>(p => p
@@ -136,23 +142,24 @@ public class SwitchSizeScaleTests : IAsyncLifetime
     }
 
     // ============== Touch-target fix (owner decision, PR #388 follow-up) ==============
-    // Sm (16px track) and Md (20px track, the default) sit below the 24px touch-target
-    // minimum. The track IS the painted button (background lives on the <button> itself),
-    // so real padding would visibly enlarge the pill — instead an invisible ::before
-    // hit-zone (mirrors Chip's close button) extends the click/touch-catching area
-    // without touching the track's own box. These tests establish BOTH halves: the
-    // rendered TRACK size is unchanged (same h-N/w-N token as before) and the computed
-    // hit box (track height + 2 * -inset-y) now reaches >=24px at Sm/Md.
+    // Re-derived after the shadcn v4 dimension rescale (Md now 18.4x32px). The track IS
+    // the painted button (background lives on the <button> itself), so real padding would
+    // visibly enlarge the pill — instead an invisible ::before hit-zone (mirrors Chip's
+    // close button) extends the click/touch-catching area without touching the track's
+    // own box. These tests establish BOTH halves: the rendered TRACK size is exactly the
+    // new post-rescale h-[…]/w-[…] token, and the computed hit box (track height + 2 *
+    // -inset-y) now reaches >=24px at Sm/Md/Lg (Lg dipped under 24px only because of the
+    // rescale — it used to clear it at a flat 24px).
 
     [Theory]
-    [InlineData(Lumeo.Size.Xxs, "h-2", null)]      // 8px, deliberately below 24 — no hit-area extension
-    [InlineData(Lumeo.Size.Xs, "h-3", null)]       // 12px, deliberately below 24 — no hit-area extension
-    [InlineData(Lumeo.Size.Sm, "h-4", "before:-inset-y-1")]     // 16 + 2*4 = 24px exact
-    [InlineData(Lumeo.Size.Md, "h-5", "before:-inset-y-0.5")]   // 20 + 2*2 = 24px exact
-    [InlineData(Lumeo.Size.Lg, "h-6", null)]       // 24px already, untouched
-    [InlineData(Lumeo.Size.Xl, "h-7", null)]       // 28px already, untouched
-    [InlineData(Lumeo.Size.Xxl, "h-8", null)]      // 32px already, untouched
-    public void Track_Height_Unchanged_And_HitArea_Extension_Per_Rung(Lumeo.Size size, string trackHeightClass, string? hitAreaClass)
+    [InlineData(Lumeo.Size.Xxs, "h-[0.46rem]", null)]      // 7.36px, deliberately below 24 — no hit-area extension
+    [InlineData(Lumeo.Size.Xs, "h-[0.69rem]", null)]       // 11.04px, deliberately below 24 — no hit-area extension
+    [InlineData(Lumeo.Size.Sm, "h-[0.92rem]", "before:-inset-y-[4.64px]")]   // 14.72 + 2*4.64 = 24px exact
+    [InlineData(Lumeo.Size.Md, "h-[1.15rem]", "before:-inset-y-[2.8px]")]    // 18.4 + 2*2.8 = 24px exact
+    [InlineData(Lumeo.Size.Lg, "h-[1.38rem]", "before:-inset-y-[0.96px]")]   // 22.08 + 2*0.96 = 24px exact
+    [InlineData(Lumeo.Size.Xl, "h-[1.61rem]", null)]       // 25.76px, already clears 24 — untouched
+    [InlineData(Lumeo.Size.Xxl, "h-[1.84rem]", null)]      // 29.44px, already clears 24 — untouched
+    public void Track_Height_And_HitArea_Extension_Per_Rung(Lumeo.Size size, string trackHeightClass, string? hitAreaClass)
     {
         var cut = _ctx.Render<Lumeo.Switch>(p => p.Add(b => b.Size, size));
         var track = cut.Find("button");
@@ -175,29 +182,31 @@ public class SwitchSizeScaleTests : IAsyncLifetime
     }
 
     [Theory]
-    [InlineData(Lumeo.Size.Xxs, 8)]
-    [InlineData(Lumeo.Size.Xs, 12)]
+    [InlineData(Lumeo.Size.Xxs, 7.36)]
+    [InlineData(Lumeo.Size.Xs, 11.04)]
     [InlineData(Lumeo.Size.Sm, 24)]
     [InlineData(Lumeo.Size.Md, 24)]
     [InlineData(Lumeo.Size.Lg, 24)]
-    [InlineData(Lumeo.Size.Xl, 28)]
-    [InlineData(Lumeo.Size.Xxl, 32)]
+    [InlineData(Lumeo.Size.Xl, 25.76)]
+    [InlineData(Lumeo.Size.Xxl, 29.44)]
     public void Computed_Hit_Box_Height_Per_Rung(Lumeo.Size size, double expectedHitBoxPx)
     {
-        // Hit box height = track height (h-N) + 2 * the -inset-y extension (0 when absent).
+        // Hit box height = track height (h-[…rem]) + 2 * the -inset-y-[…px] extension
+        // (0 when absent). Track height is expressed in rem (matching shadcn's own
+        // h-[1.15rem] Md value); 1rem = 16px in the test environment's default root size.
         var cut = _ctx.Render<Lumeo.Switch>(p => p.Add(b => b.Size, size));
         var cls = cut.Find("button").GetAttribute("class")!;
 
-        var trackMatch = System.Text.RegularExpressions.Regex.Match(cls, @"(?<![\w-])h-(?<n>[0-9.]+)(?!\S)");
-        Assert.True(trackMatch.Success, $"no bare h-N token found in '{cls}'");
-        var trackPx = double.Parse(trackMatch.Groups["n"].Value, System.Globalization.CultureInfo.InvariantCulture) * 4.0;
+        var trackMatch = System.Text.RegularExpressions.Regex.Match(cls, @"h-\[(?<n>[0-9.]+)rem\]");
+        Assert.True(trackMatch.Success, $"no h-[…rem] token found in '{cls}'");
+        var trackPx = double.Parse(trackMatch.Groups["n"].Value, System.Globalization.CultureInfo.InvariantCulture) * 16.0;
 
-        var insetMatch = System.Text.RegularExpressions.Regex.Match(cls, @"before:-inset-y-(?<n>[0-9.]+)");
+        var insetMatch = System.Text.RegularExpressions.Regex.Match(cls, @"before:-inset-y-\[(?<n>[0-9.]+)px\]");
         var insetPx = insetMatch.Success
-            ? double.Parse(insetMatch.Groups["n"].Value, System.Globalization.CultureInfo.InvariantCulture) * 4.0
+            ? double.Parse(insetMatch.Groups["n"].Value, System.Globalization.CultureInfo.InvariantCulture)
             : 0.0;
 
-        Assert.Equal(expectedHitBoxPx, trackPx + 2 * insetPx);
+        Assert.Equal(expectedHitBoxPx, trackPx + 2 * insetPx, 2);
     }
 
     [Fact]
@@ -212,8 +221,8 @@ public class SwitchSizeScaleTests : IAsyncLifetime
         var smCls = sm.Find("button").GetAttribute("class")!.Split(' ', StringSplitOptions.RemoveEmptyEntries);
         var mdCls = md.Find("button").GetAttribute("class")!.Split(' ', StringSplitOptions.RemoveEmptyEntries);
 
-        Assert.Contains("w-7", smCls);   // unchanged track width
-        Assert.Contains("w-9", mdCls);   // unchanged track width
+        Assert.Contains("w-[25px]", smCls);   // track width, untouched by the hit-area fix
+        Assert.Contains("w-8", mdCls);        // track width, untouched by the hit-area fix
         Assert.DoesNotContain(smCls, t => t.Contains("-inset-x"));
         Assert.DoesNotContain(mdCls, t => t.Contains("-inset-x"));
         // inset-x-0 (no leading '-') pins the pseudo-element's horizontal edges to the

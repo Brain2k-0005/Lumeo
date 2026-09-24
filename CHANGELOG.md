@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **`Switch`'s default (Md, Comfortable density) track now matches shadcn new-york v4's
+  `switch.tsx` exactly: 18.4×32px (`h-[1.15rem] w-8`) with a 1px border, was 20×36px
+  (`h-5 w-9`) with a 2px border — the old, pre-v4 shadcn/Radix default. The thumb (16×16px)
+  and checked translate distance (14px, matching shadcn's own
+  `translate-x-[calc(100%-2px)]`) already lined up. The other 6 `Lumeo.Size` rungs
+  (Xxs–Xxl, excluding Md) are rescaled proportionally around the new Md so the full
+  7-rung scale stays monotonic; the invisible touch-target hit-area extension (PR #388)
+  is re-derived for the new geometry and now also covers `Lg`, which dipped under the
+  24px minimum as a side effect of the rescale.
+
 ### Fixed
 - **MCP: `lumeo_search` no longer requires the whole query to appear verbatim.** A
   multi-word query (e.g. `"flow diagram nodes edges"`) is now tokenized and scored per

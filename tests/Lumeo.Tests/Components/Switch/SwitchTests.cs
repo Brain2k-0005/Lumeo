@@ -64,13 +64,16 @@ public class SwitchTests : IAsyncLifetime
     }
 
     [Fact]
-    public void Checked_Thumb_Has_Translate_X_4()
+    public void Checked_Thumb_Has_Translate_X_3_5()
     {
+        // Md track/border now match shadcn v4 exactly (18.4x32px, 1px border), so the
+        // checked translate is 14px = Tailwind's translate-x-3.5 (was translate-x-4/16px
+        // under the old 20x36px track with a 2px border).
         var cut = _ctx.Render<Lumeo.Switch>(p => p
             .Add(b => b.Checked, true));
 
         var thumb = cut.Find("span");
-        Assert.Contains("translate-x-4", thumb.GetAttribute("class"));
+        Assert.Contains("translate-x-3.5", thumb.GetAttribute("class"));
     }
 
     [Fact]
