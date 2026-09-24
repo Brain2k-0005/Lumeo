@@ -424,4 +424,94 @@ public class FlowGeometryLockstepTests
             Assert.Equal(f.GetProperty("s").GetString(), L.FlowGeometry.Fmt(f.GetProperty("v").GetDouble()));
         }
     }
+
+    // ── Helper lines (phase 4) ──────────────────────────────────────────
+
+    [Fact]
+    public void ComputeHelperLines_Snaps_A_Left_Edge_To_Another_Nodes_Left_Edge()
+    {
+        var moving = new L.FlowRect(203, 0, 100, 50);
+        var others = new[] { new L.FlowRect(200, 300, 100, 50) };
+
+        var result = L.FlowGeometry.ComputeHelperLines(moving, others, 5);
+
+        Assert.Equal(200, result.SnapX);
+        Assert.Null(result.SnapY);
+        var line = Assert.Single(result.Lines);
+        Assert.Equal(200, line.Position);
+        Assert.Equal(L.FlowHelperLineAxis.Vertical, line.Axis);
+    }
+
+    [Fact]
+    public void ComputeHelperLines_Snaps_A_Centre_To_Another_Nodes_Centre()
+    {
+        // Different widths so left/right land far apart and only the CENTRES coincide (equal
+        // widths would move left/centre/right by the same offset and always tie with centre).
+        var moving = new L.FlowRect(90, 0, 20, 50); // centre X = 100
+        var others = new[] { new L.FlowRect(0, 300, 200, 50) }; // left 0, centre 100, right 200
+
+        var result = L.FlowGeometry.ComputeHelperLines(moving, others, 5);
+
+        Assert.Equal(90, result.SnapX); // already aligned — no shift needed
+        Assert.Contains(result.Lines, l => l.Axis == L.FlowHelperLineAxis.Vertical && l.Position == 100);
+    }
+
+    [Fact]
+    public void ComputeHelperLines_Finds_Both_A_Vertical_And_A_Horizontal_Guide_At_Once()
+    {
+        var moving = new L.FlowRect(202, 198, 100, 50);
+        var others = new[] { new L.FlowRect(200, 145, 100, 50) }; // left edge 2px off; bottom (195) 3px off moving's top (198)
+
+        var result = L.FlowGeometry.ComputeHelperLines(moving, others, 5);
+
+        Assert.Equal(2, result.Lines.Count);
+        Assert.NotNull(result.SnapX);
+    }
+
+    [Fact]
+    public void ComputeHelperLines_Ignores_Anything_Outside_The_Threshold()
+    {
+        var moving = new L.FlowRect(230, 0, 100, 50);
+        var others = new[] { new L.FlowRect(200, 300, 100, 50) }; // 30px away on every candidate axis
+
+        var result = L.FlowGeometry.ComputeHelperLines(moving, others, 5);
+
+        Assert.Null(result.SnapX);
+        Assert.Null(result.SnapY);
+        Assert.Empty(result.Lines);
+    }
+
+    [Fact]
+    public void ComputeHelperLines_Picks_The_Closest_Candidate_Even_When_A_Farther_One_Is_Checked_First()
+    {
+        var moving = new L.FlowRect(100, 0, 50, 50); // left edge at 100
+        // others[0]'s left edge is 3px away (checked FIRST, sets an initial best); others[1]'s is an
+        // EXACT match (0px), checked second — the closer one must win despite arriving later.
+        var others = new[] { new L.FlowRect(103, 300, 50, 50), new L.FlowRect(100, 300, 50, 50) };
+
+        var result = L.FlowGeometry.ComputeHelperLines(moving, others, 5);
+
+        Assert.Equal(100, result.SnapX);
+        Assert.Contains(result.Lines, l => l.Axis == L.FlowHelperLineAxis.Vertical && l.Position == 100);
+    }
+
+    [Fact]
+    public void ComputeHelperLines_With_No_Other_Rects_Finds_Nothing()
+    {
+        var result = L.FlowGeometry.ComputeHelperLines(new L.FlowRect(0, 0, 100, 50), Array.Empty<L.FlowRect>(), 5);
+        Assert.Null(result.SnapX);
+        Assert.Null(result.SnapY);
+        Assert.Empty(result.Lines);
+    }
+
+    [Fact]
+    public void ComputeHelperLines_With_A_Zero_Threshold_Finds_Nothing()
+    {
+        var moving = new L.FlowRect(200, 0, 100, 50);
+        var others = new[] { new L.FlowRect(200, 300, 100, 50) }; // exact alignment, but threshold is 0
+
+        var result = L.FlowGeometry.ComputeHelperLines(moving, others, 0);
+
+        Assert.Empty(result.Lines);
+    }
 }
