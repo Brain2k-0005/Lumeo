@@ -1,0 +1,80 @@
+@page "/e2e/flow-virtual"
+@using System.Globalization
+
+@* Lumeo.Flow phase 5 virtualization fixture (tests/Lumeo.Tests.E2E/Flow/FlowCanvasPhase5Tests.cs):
+   2000 nodes on a deterministic 50 x 40 grid (220 x 110 apart, fixed 160 x 44 boxes), each wired to
+   its right-hand neighbour (1960 edges), OnlyRenderVisibleNodes on, starting at (20, 20) / 100%.
+
+   Sinks: flow-viewport-count = ViewportChanged calls .NET received, flow-viewport-sink = "x|y|zoom"
+   of the bound viewport, flow-commit-count = OnNodeDragStop calls, flow-nodes-sink = "id:x,y" of the
+   node with id n0-0 only (the list is too long to dump). *@
+
+<div class="p-4">
+    <FlowCanvas data-testid="flow-root"
+                Height="600px"
+                @bind-Nodes="_nodes"
+                @bind-Edges="_edges"
+                Viewport="_viewport"
+                ViewportChanged="HandleViewportChanged"
+                FitViewOnInit="false"
+                OnlyRenderVisibleNodes="true"
+                OnNodeDragStop="@(_ => _commits++)">
+        <NodeTemplate Context="ctx">
+            <div class="h-full rounded-md border border-border bg-card px-2 py-1 text-xs text-card-foreground">
+                <FlowHandle Type="FlowHandleType.Target" Position="FlowPosition.Left" />
+                @ctx.Node.Id
+                <FlowHandle Type="FlowHandleType.Source" Position="FlowPosition.Right" />
+            </div>
+        </NodeTemplate>
+        <ChildContent>
+            <FlowBackground />
+            <FlowMiniMap />
+        </ChildContent>
+    </FlowCanvas>
+</div>
+
+<pre data-testid="flow-viewport-count" hidden>@_viewportReports</pre>
+<pre data-testid="flow-viewport-sink" hidden>@(R(_viewport.X) + "|" + R(_viewport.Y) + "|" + R(_viewport.Zoom))</pre>
+<pre data-testid="flow-commit-count" hidden>@_commits</pre>
+<pre data-testid="flow-nodes-sink" hidden>@FirstNodeText</pre>
+
+@code {
+    private const int Columns = 50;
+    private const int Rows = 40;
+
+    private IReadOnlyList<FlowNode> _nodes = BuildNodes();
+    private IReadOnlyList<FlowEdge> _edges = BuildEdges();
+    private FlowViewport _viewport = new(20, 20, 1);
+    private int _viewportReports;
+    private int _commits;
+
+    private static IReadOnlyList<FlowNode> BuildNodes()
+    {
+        var list = new List<FlowNode>(Columns * Rows);
+        for (var r = 0; r < Rows; r++)
+            for (var c = 0; c < Columns; c++)
+                list.Add(new FlowNode(Id(r, c), c * 220, r * 110, Width: 160, Height: 44));
+        return list;
+    }
+
+    private static IReadOnlyList<FlowEdge> BuildEdges()
+    {
+        var list = new List<FlowEdge>(Rows * (Columns - 1));
+        for (var r = 0; r < Rows; r++)
+            for (var c = 0; c < Columns - 1; c++)
+                list.Add(new FlowEdge("e" + Id(r, c), Id(r, c), Id(r, c + 1)));
+        return list;
+    }
+
+    private static string Id(int r, int c) => "n" + r.ToString(CultureInfo.InvariantCulture) + "-" + c.ToString(CultureInfo.InvariantCulture);
+
+    private void HandleViewportChanged(FlowViewport v)
+    {
+        _viewport = v;
+        _viewportReports++;
+    }
+
+    private static string R(double v) => v.ToString("R", CultureInfo.InvariantCulture);
+
+    private string FirstNodeText => _nodes.FirstOrDefault(n => n.Id == "n0-0") is { } n ? "n0-0:" + R(n.X) + "," + R(n.Y) : "";
+}

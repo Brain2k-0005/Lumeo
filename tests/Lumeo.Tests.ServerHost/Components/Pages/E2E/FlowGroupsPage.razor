@@ -1,0 +1,73 @@
+@page "/e2e/flow-groups"
+@using System.Globalization
+
+@* Lumeo.Flow phase 5 sub-flow fixture (tests/Lumeo.Tests.E2E/Flow/FlowCanvasPhase5Tests.cs).
+   Starts at viewport (0,0) / 100% (no FitViewOnInit) so flow coordinates are pane pixels.
+
+   g   — a group at (100, 60), 440 x 260 (FlowGroupNode chrome)
+   a   — child of g at (20, 48), Extent = Parent
+   b   — child of g at (240, 48), Extent = None
+   p,q — two free top-level nodes for the Ctrl+G spec, at (100, 400) and (360, 400)
+
+   Sinks: flow-nodes-sink = "id:x,y,w,h,parent;..." of the BOUND node list (w/h/parent blank when
+   unset), flow-commit-count = OnNodeDragStop calls. *@
+
+<div class="p-4">
+    <FlowCanvas data-testid="flow-root"
+                Height="620px"
+                @bind-Nodes="_nodes"
+                @bind-Edges="_edges"
+                FitViewOnInit="false"
+                NewNodeId="NextId"
+                OnNodeDragStop="@(_ => _commits++)">
+        <NodeTemplate Context="ctx">
+            @if (ctx.Node.Type == FlowGroupNode.GroupType)
+            {
+                <FlowGroupNode />
+            }
+            else
+            {
+                <div class="w-32 rounded-lg border border-border bg-card px-3 py-2 text-sm text-card-foreground shadow-sm">
+                    <FlowHandle Type="FlowHandleType.Target" Position="FlowPosition.Left" />
+                    <div class="font-medium">@ctx.Node.Data</div>
+                    <div class="text-xs text-muted-foreground">@ctx.Node.Id</div>
+                    <FlowHandle Type="FlowHandleType.Source" Position="FlowPosition.Right" />
+                </div>
+            }
+        </NodeTemplate>
+        <ChildContent>
+            <FlowBackground />
+            <FlowControls />
+        </ChildContent>
+    </FlowCanvas>
+</div>
+
+<pre data-testid="flow-nodes-sink" hidden>@NodesText</pre>
+<pre data-testid="flow-commit-count" hidden>@_commits</pre>
+
+@code {
+    private int _commits;
+    private int _ids;
+
+    private string NextId(FlowNode draft) => (draft.Type == FlowGroupNode.GroupType ? "grp" : "copy") + (++_ids).ToString(CultureInfo.InvariantCulture);
+
+    private IReadOnlyList<FlowNode> _nodes = new List<FlowNode>
+    {
+        new("g", 100, 60, Type: FlowGroupNode.GroupType, Data: "Billing", Width: 440, Height: 260),
+        new("a", 20, 48, Data: "Charge", ParentId: "g", Extent: FlowExtent.Parent),
+        new("b", 240, 48, Data: "Receipt", ParentId: "g"),
+        new("p", 100, 400, Data: "Notify"),
+        new("q", 360, 400, Data: "Archive"),
+    };
+
+    private IReadOnlyList<FlowEdge> _edges = new List<FlowEdge>
+    {
+        new("a-b", "a", "b"),
+        new("b-q", "b", "q", Type: FlowEdgeType.SmoothStep),
+    };
+
+    private static string R(double v) => v.ToString("R", CultureInfo.InvariantCulture);
+
+    private string NodesText => string.Join(";", _nodes.Select(n => n.Id + ":" + R(n.X) + "," + R(n.Y) + ","
+        + (n.Width is { } w ? R(w) : "") + "," + (n.Height is { } h ? R(h) : "") + "," + (n.ParentId ?? "")));
+}
