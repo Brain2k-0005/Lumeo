@@ -926,7 +926,7 @@
     {
         var cts = new CancellationTokenSource();
         _timers[id] = cts;
-        _timerStart[id] = DateTime.UtcNow;
+        _timerStart[id] = Clock.GetUtcNow().UtcDateTime;
         _timerRemaining[id] = duration;
         SafeAsyncDispatcher.FireAndForget(InvokeAsync, () => DismissAfterDelayAsync(id, duration, cts.Token), "ToastProvider.DismissAfterDelay");
     }
@@ -969,7 +969,7 @@
         if (!_timerStart.TryGetValue(id, out var start)) return;
         if (!_timerRemaining.TryGetValue(id, out var remaining)) return;
 
-        var elapsed = (int)(DateTime.UtcNow - start).TotalMilliseconds;
+        var elapsed = (int)(Clock.GetUtcNow().UtcDateTime - start).TotalMilliseconds;
         var left = Math.Max(0, remaining - elapsed);
 
         cts.Cancel();
@@ -1029,7 +1029,7 @@
     {
         try
         {
-            await Task.Delay(duration, token);
+            await Task.Delay(TimeSpan.FromMilliseconds(duration), Clock, token);
             // Use the async variant so the list removal is followed by StateHasChanged —
             // without it the toast was dropped from _toasts but never re-rendered away.
             await InvokeAsync(() => RemoveItemAsync(id));
@@ -1050,6 +1050,15 @@
     // deliberate mid-exit sequence cannot be erased by CI starvation. Production
     // code must never change it — the CSS keyframe stays 220ms.
     internal int ExitAnimationMs { get; set; } = 220;
+
+    // Issue #447: the clock every auto-dismiss timer and exit delay runs on (and that pause/resume
+    // measures elapsed time against). Internal-settable as a TEST SEAM ONLY, like ExitAnimationMs:
+    // a test that proves an ORDERING of those delays (evictions overlapping, a replacement staying
+    // paused past its duration) swaps in a clock it advances itself, so a starved CI runner can
+    // neither finish a delay early (relative to the test thread) nor hold one back past a
+    // wall-clock ceiling. Production always uses TimeProvider.System, which behaves exactly like
+    // the plain Task.Delay/DateTime.UtcNow this replaced.
+    internal TimeProvider Clock { get; set; } = TimeProvider.System;
 
     private void Remove(string id)
     {
@@ -1126,7 +1135,7 @@
             _exitTimers[id] = exitCts;
             try
             {
-                await Task.Delay(ExitAnimationMs, exitCts.Token);
+                await Task.Delay(TimeSpan.FromMilliseconds(ExitAnimationMs), Clock, exitCts.Token);
             }
             catch (OperationCanceledException) { }
             finally

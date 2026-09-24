@@ -512,7 +512,12 @@ public class ToastAdmissionInvariantTests : IAsyncLifetime
         const int maxToasts = 5;
         var toastService = GetToastService();
         var cut = _ctx.Render<L.ToastProvider>(p => p.Add(b => b.MaxToasts, maxToasts));
-        cut.Instance.ExitAnimationMs = 600;
+        // Issue #447: the exit delays run on a clock this test advances. On the real clock the
+        // "synchronous" proof below still raced them — CI run 34937242809 failed at the mounted-count
+        // assertion (5 expected, 4 actual) after a 693 ms run, i.e. one exit had already finished
+        // before the test thread got to it. See the stall variant below for the forced interleaving.
+        var clock = new ManualTimeProvider();
+        cut.Instance.Clock = clock;
 
         for (var i = 0; i < maxToasts; i++)
         {
@@ -542,20 +547,73 @@ public class ToastAdmissionInvariantTests : IAsyncLifetime
         Assert.Equal(0, cut.Instance.LiveNonPersistentMountedCount(L.ToastViewport.ToastPosition.BottomRight));
         Assert.Equal(maxToasts, cut.Instance.NonPersistentMountedCount(L.ToastViewport.ToastPosition.BottomRight));
 
-        // The group eventually settles back at the cap once the (now-overlapping) exit animations
-        // actually complete and the 5 new toasts get admitted — a monotonic latch (settles once and
-        // stays there; nothing else touches this group afterwards), so a generous ceiling is safe
-        // regardless of CI scheduling.
+        // ONE exit animation of clock time completes all five overlapping exits, and the 5 new
+        // toasts are admitted. The ceilings below only guard against a hang: no clock time passes
+        // while they wait, so a slow runner can delay this but not change its outcome.
+        clock.WaitForArmedTimers(maxToasts);
+        clock.Advance(TimeSpan.FromMilliseconds(cut.Instance.ExitAnimationMs));
         cut.WaitForAssertion(
             () => Assert.Equal(maxToasts,
                 cut.Instance.LiveNonPersistentMountedCount(L.ToastViewport.ToastPosition.BottomRight)),
-            TimeSpan.FromSeconds(10));
+            TimeSpan.FromSeconds(30));
 
         // The 5 newest survive; every "Old-*" toast is gone.
         cut.WaitForAssertion(() =>
             Assert.DoesNotContain(cut.FindAll("[role='alert'],[role='status']"),
                 el => el.TextContent.Contains("Old-")),
-            TimeSpan.FromSeconds(10));
+            TimeSpan.FromSeconds(30));
+    }
+
+    /// <summary>
+    /// Issue #447 — the forced interleaving behind CI run 34937242809 ("Expected: 5, Actual: 4" at
+    /// the mounted-count assertion above, in a 693 ms test). The "synchronous" marking proof raced a
+    /// REAL clock: the burst arms the evictions' exit delays, and a test thread descheduled for
+    /// longer than <c>ExitAnimationMs</c> between the burst and the assertions finds one exit
+    /// already finished. This stalls the test thread on purpose, well past the exit animation, and
+    /// the proof must still hold — which it only can when the provider's delays run on a clock
+    /// the test owns.
+    /// </summary>
+    [Fact]
+    public async Task Burst_Marking_Proof_Holds_When_The_Test_Thread_Stalls_Past_The_Exit_Animation()
+    {
+        const int maxToasts = 5;
+        var clock = new ManualTimeProvider();
+        var toastService = GetToastService();
+        var cut = _ctx.Render<L.ToastProvider>(p => p.Add(b => b.MaxToasts, maxToasts));
+        cut.Instance.Clock = clock;
+
+        for (var i = 0; i < maxToasts; i++)
+        {
+            toastService.Show(new ToastOptions { Title = $"Old-{i}", Duration = 60000 });
+        }
+        cut.WaitForAssertion(() => Assert.Equal(maxToasts,
+            cut.Instance.LiveNonPersistentMountedCount(L.ToastViewport.ToastPosition.BottomRight)));
+
+        for (var i = 0; i < maxToasts; i++)
+        {
+            toastService.Show(new ToastOptions { Title = $"New-{i}", Duration = 60000 });
+        }
+        await cut.InvokeAsync(() => Task.CompletedTask);
+
+        // The starved-runner stall: three full exit animations of real time pass here.
+        await Task.Delay(cut.Instance.ExitAnimationMs * 3);
+
+        await cut.InvokeAsync(() =>
+        {
+            Assert.Equal(0, cut.Instance.LiveNonPersistentMountedCount(L.ToastViewport.ToastPosition.BottomRight));
+            Assert.Equal(maxToasts, cut.Instance.NonPersistentMountedCount(L.ToastViewport.ToastPosition.BottomRight));
+        });
+
+        // One exit animation of CLOCK time finishes all five evictions at once — a serialized
+        // implementation would still be holding four of them.
+        clock.WaitForArmedTimers(maxToasts);
+        clock.Advance(TimeSpan.FromMilliseconds(cut.Instance.ExitAnimationMs));
+        cut.WaitForAssertion(() =>
+            Assert.DoesNotContain(cut.FindAll("[role='alert'],[role='status']"), el => el.TextContent.Contains("Old-")),
+            TimeSpan.FromSeconds(30));
+        cut.WaitForAssertion(() => Assert.Equal(maxToasts,
+            cut.Instance.LiveNonPersistentMountedCount(L.ToastViewport.ToastPosition.BottomRight)),
+            TimeSpan.FromSeconds(30));
     }
 
     /// <summary>
