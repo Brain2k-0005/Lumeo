@@ -46,7 +46,9 @@ dotnet add package Lumeo                       # core
 dotnet add package Lumeo.DataGrid              # + satellites as needed
 ```
 `_Imports.razor`: `@using Lumeo`
-`Program.cs`: `builder.Services.AddLumeo();` (`+ AddLumeoDataGrid()` etc. for satellites)
+`Program.cs`: `builder.Services.AddLumeo();` — the ONLY DI registration call; satellites
+(DataGrid, Charts, Editor, Scheduler, Gantt, Motion, Flow, …) add no `AddLumeoXxx()` of
+their own, they only add components/markup on top of the core registration.
 Host page: `<link href="_content/Lumeo/css/lumeo.css" rel="stylesheet" />` + `<script src="_content/Lumeo/js/components.js"></script>`
 
 The registry CLI is an alternative: `lumeo init` then `lumeo add <component>` copies a component's source into your project (shadcn-style). Use `lumeo_get_install` for the per-component specifics.

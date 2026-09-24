@@ -1,18 +1,29 @@
 <Project>
   <!-- Shared NuGet README. Any project that opts in by setting
-       <PackageReadmeFile>README.md</PackageReadmeFile> in its csproj
-       automatically packs the repo-root README.md at the package root.
+       <PackageReadmeFile>README.md</PackageReadmeFile> in its csproj packs a README.md
+       at the package root — ITS OWN if the project directory has one, otherwise the
+       repo-root README.md as a fallback (so tools/templates and any future satellite
+       that hasn't grown its own README yet still ship something rather than nothing).
 
-       This lives in Directory.Build.targets (imported AFTER the project
-       body) rather than Directory.Build.props (imported BEFORE) so that
-       $(PackageReadmeFile) is already populated when the condition runs.
+       LU-17 (field report against 5.11.0): this used to unconditionally pack the
+       REPO-ROOT README.md for every opted-in project, satellites included — so
+       Lumeo.Flow's nupkg (and every other satellite's) shipped the generic core-library
+       README with no mention of FlowCanvas, nuget.org showing zero satellite-specific
+       description. Each satellite now carries its own concise README.md next to its
+       .csproj (see src/Lumeo.Flow/README.md et al.); this rule prefers that file when
+       present via $(MSBuildProjectDirectory), the CONSUMING project's own directory
+       (not $(MSBuildThisFileDirectory), which is always the repo root).
 
-       $(MSBuildThisFileDirectory) resolves to the repo root (where this
-       file lives), not the consuming project — so satellites, tools and
-       templates all pack the same README without each csproj duplicating
-       the <None Include> line. -->
+       This lives in Directory.Build.targets (imported AFTER the project body) rather
+       than Directory.Build.props (imported BEFORE) so that $(PackageReadmeFile) is
+       already populated when the condition below runs. -->
+  <PropertyGroup Condition="'$(PackageReadmeFile)' == 'README.md'">
+    <_LumeoOwnReadme>$(MSBuildProjectDirectory)\README.md</_LumeoOwnReadme>
+    <_LumeoReadmeSource Condition="Exists('$(_LumeoOwnReadme)')">$(_LumeoOwnReadme)</_LumeoReadmeSource>
+    <_LumeoReadmeSource Condition="'$(_LumeoReadmeSource)' == ''">$(MSBuildThisFileDirectory)README.md</_LumeoReadmeSource>
+  </PropertyGroup>
   <ItemGroup Condition="'$(PackageReadmeFile)' == 'README.md'">
-    <None Include="$(MSBuildThisFileDirectory)README.md" Pack="true" PackagePath="\" Visible="false" />
+    <None Include="$(_LumeoReadmeSource)" Pack="true" PackagePath="\" Visible="false" />
   </ItemGroup>
 
   <!-- Shared NuGet icon. Satellites / tools / templates that pack the family

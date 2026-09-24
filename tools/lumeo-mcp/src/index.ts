@@ -52,6 +52,7 @@ import { components as curatedExamples } from "./components.js";
 import { loadRegistry, type TestCoverage } from "./registry.js";
 import { setupFor, PORTAL_COMPONENTS, NEEDS_OVERLAY_PROVIDER } from "./installInfo.js";
 import { createValidator } from "./validate.js";
+import { searchComponents } from "./search.js";
 import { readFileSync } from "node:fs";
 
 const DOCS_BASE = "https://lumeo.nativ.sh";
@@ -152,34 +153,11 @@ function findComponent(name: string): ApiComponent | undefined {
   return byName.get(name.toLowerCase()) ?? bySubName.get(name.toLowerCase());
 }
 
-function score(c: ApiComponent, q: string): number {
-  const needle = q.toLowerCase();
-  if (!needle) return 0;
-  let s = 0;
-  if (c.name.toLowerCase() === needle) s += 100;
-  if (c.name.toLowerCase().startsWith(needle)) s += 50;
-  if (c.name.toLowerCase().includes(needle)) s += 25;
-  if (c.category.toLowerCase().includes(needle)) s += 10;
-  if (c.description.toLowerCase().includes(needle)) s += 5;
-  // Sub-component name matches surface the parent — so searching a nested
-  // element ("SheetContent", "TabsTrigger") finds the component that owns it.
-  for (const sub of Object.values(c.subComponents)) {
-    const sn = sub.componentName.toLowerCase();
-    if (sn === needle) { s += 80; break; }
-    if (sn.includes(needle)) { s += 20; break; }
-  }
-  return s;
-}
-
+// Tokenized fuzzy search over the component catalog (LU-15) — see search.ts for the
+// scoring rules. Multi-word queries ("flow diagram nodes edges") match components that
+// hit ANY of the words, not just the whole phrase verbatim.
 function searchCatalog(query: string, category?: string): ApiComponent[] {
-  let pool = components;
-  if (category) pool = pool.filter((c) => c.category.toLowerCase() === category.toLowerCase());
-  if (!query) return pool;
-  return pool
-    .map((c) => ({ c, s: score(c, query) }))
-    .filter((x) => x.s > 0)
-    .sort((a, b) => b.s - a.s)
-    .map((x) => x.c);
+  return searchComponents(components, query, category);
 }
 
 function docsUrl(c: ApiComponent): string {
