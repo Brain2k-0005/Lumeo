@@ -2,49 +2,16 @@
 @typeparam TItem
 @inject Lumeo.Services.Localization.ILumeoLocalizer L
 
-@if (Context is not null && Context.IsLoading)
+@* ServerVirtualizationProvider is excluded here (falls through to that branch below
+   instead): tearing the WHOLE tbody down to skeleton rows would unmount <Virtualize>
+   along with it, and with it the ItemsProvider that's the only thing that can ever turn
+   Context.IsLoading back off for a consumer whose own loading flag is set from inside
+   its OnRangeRequest handler — a permanent skeleton deadlock. Field report LU-12. That
+   branch renders the same skeleton rows BESIDE <Virtualize> instead of replacing it. *@
+@if (Context is not null && Context.IsLoading && ServerVirtualizationProvider is null)
 {
     <tbody data-slot="datagrid-body" class="@CssClass" @attributes="AdditionalAttributes">
-        @{
-            // Context.VisibleColumns is already filtered + cached at the grid level.
-            var visibleColumns = Context.VisibleColumns;
-            var fallbackCellCount = visibleColumns.Count > 0 ? visibleColumns.Count : (SkeletonRowCount > 0 ? 4 : 4);
-        }
-        @for (var i = 0; i < SkeletonRowCount; i++)
-        {
-            <tr class="border-b border-border/40">
-                @if (Context.SelectionMode != DataGridSelectionMode.None)
-                {
-                    <td class="px-3 py-2 w-10">
-                        <Skeleton Class="h-4 w-4 rounded" />
-                    </td>
-                }
-                @if (HasDetailTemplate)
-                {
-                    <td class="px-1 py-2 w-8">
-                        <Skeleton Class="h-4 w-4 rounded" />
-                    </td>
-                }
-                @if (visibleColumns.Count > 0)
-                {
-                    @foreach (var column in visibleColumns)
-                    {
-                        <td class="px-3 py-2">
-                            <Skeleton Class="h-4 w-full rounded" />
-                        </td>
-                    }
-                }
-                else
-                {
-                    @for (var j = 0; j < fallbackCellCount; j++)
-                    {
-                        <td class="px-3 py-2">
-                            <Skeleton Class="h-4 w-full rounded" />
-                        </td>
-                    }
-                }
-            </tr>
-        }
+        @RenderSkeletonRows()
     </tbody>
 }
 else if (Context is not null && Context.IsTreeGrid)
@@ -198,7 +165,21 @@ else if (Context is not null && ServerVirtualizationProvider is not null)
        via ItemsProvider, so the in-memory list is empty until the user
        scrolls. SpacerElement="tr" is non-negotiable inside <tbody>. *@
     <tbody data-slot="datagrid-body" class="@CssClass" @attributes="AdditionalAttributes">
-        @if (_serverReportedEmpty)
+        @if (Context.IsLoading)
+        {
+            @* Rendered BESIDE <Virtualize> — same reasoning as the empty-state row just
+               below: replacing it (like the plain-skeleton branch above does for
+               non-virtualized modes) would unmount the ItemsProvider along with it. A
+               consumer whose IsLoading flips back to false FROM INSIDE that same
+               OnRangeRequest handler would then deadlock forever in the skeleton state
+               (field report LU-12). Virtualize's own <Placeholder> already covers
+               individual not-yet-fetched rows during normal scrolling; this covers the
+               "nothing has ever loaded yet" / externally-driven loading case those
+               placeholders don't reach (no rows are in flight to placeholder for until
+               the first ItemsProvider call actually happens). *@
+            @RenderSkeletonRows()
+        }
+        else if (_serverReportedEmpty)
         {
             @* Rendered BESIDE <Virtualize>, never instead of it. Replacing it would stop the
                provider running, so a later filter change that does have rows could never
@@ -381,6 +362,60 @@ else if (Context is not null)
             builder.CloseElement();
         }
         builder.CloseElement();
+    };
+
+    /// <summary>
+    /// <see cref="SkeletonRowCount"/> placeholder rows shown while <c>Context.IsLoading</c> is
+    /// true. Factored out (rather than inlined per call site, as it used to be) so the plain
+    /// non-virtualized branch (replaces the whole tbody) and the server-virtualization branch
+    /// (renders these BESIDE a still-mounted <c>&lt;Virtualize&gt;</c> — see that branch's
+    /// remarks, field report LU-12) render byte-identical markup.
+    /// </summary>
+    private RenderFragment RenderSkeletonRows() => builder =>
+    {
+        if (Context is null) return;
+        // Context.VisibleColumns is already filtered + cached at the grid level.
+        var visibleColumns = Context.VisibleColumns;
+        var fallbackCellCount = visibleColumns.Count > 0 ? visibleColumns.Count : 4;
+        var seq = 0;
+
+        for (var i = 0; i < SkeletonRowCount; i++)
+        {
+            builder.OpenElement(seq++, "tr");
+            builder.AddAttribute(seq++, "class", "border-b border-border/40");
+
+            if (Context.SelectionMode != DataGridSelectionMode.None)
+            {
+                builder.OpenElement(seq++, "td");
+                builder.AddAttribute(seq++, "class", "px-3 py-2 w-10");
+                builder.OpenComponent<Skeleton>(seq++);
+                builder.AddAttribute(seq++, "Class", "h-4 w-4 rounded");
+                builder.CloseComponent();
+                builder.CloseElement();
+            }
+            if (HasDetailTemplate)
+            {
+                builder.OpenElement(seq++, "td");
+                builder.AddAttribute(seq++, "class", "px-1 py-2 w-8");
+                builder.OpenComponent<Skeleton>(seq++);
+                builder.AddAttribute(seq++, "Class", "h-4 w-4 rounded");
+                builder.CloseComponent();
+                builder.CloseElement();
+            }
+
+            var cellCount = visibleColumns.Count > 0 ? visibleColumns.Count : fallbackCellCount;
+            for (var j = 0; j < cellCount; j++)
+            {
+                builder.OpenElement(seq++, "td");
+                builder.AddAttribute(seq++, "class", "px-3 py-2");
+                builder.OpenComponent<Skeleton>(seq++);
+                builder.AddAttribute(seq++, "Class", "h-4 w-full rounded");
+                builder.CloseComponent();
+                builder.CloseElement();
+            }
+
+            builder.CloseElement();
+        }
     };
 
     /// <summary>Renders rows through Blazor's <c>&lt;Virtualize&gt;</c> instead of a plain

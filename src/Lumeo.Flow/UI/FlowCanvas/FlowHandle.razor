@@ -11,20 +11,29 @@
    keyboard connect works: Enter on a Source handle enters "connecting" mode (flow.js marks every
    compatible target with data-flow-handle-valid and announces it), Enter on a Target handle
    commits, Escape cancels — all handled by flow.js's pane-level keydown listener, not a Blazor
-   event, so it works without a render round trip per keystroke. *@
+   event, so it works without a render round trip per keystroke.
+
+   LU-05: when connecting is impossible anyway (the canvas is Readonly/locked, NodesConnectable is
+   off, or this NODE's own Connectable is off) the handle drops out of the tab order
+   (tabindex="-1") and is hidden from assistive tech (aria-hidden) — it stays VISIBLE (still a
+   port, just not an affordance) rather than disappearing, so the diagram still reads the same.
+   Standalone (no cascaded FlowCanvasContext, e.g. a component test rendering FlowHandle on its
+   own) keeps the plain tab stop — there is no readonly/connectable state to check. *@
 
 <button type="button"
         data-flow-handle
         data-handle-type="@(Type == FlowHandleType.Source ? "source" : "target")"
         data-handle-id="@Id"
         data-position="@FlowGeometry.FormatPosition(Position)"
-        tabindex="0"
+        tabindex="@(Interactive ? "0" : "-1")"
+        aria-hidden="@(Interactive ? null : "true")"
         aria-label="@AriaLabel"
         class="@Cx.Merge("lumeo-flow-handle", Class)"
         style="@PositionStyle"
         @attributes="AdditionalAttributes"></button>
 
 @code {
+    [CascadingParameter] private FlowCanvas.FlowCanvasContext? Context { get; set; }
     [CascadingParameter(Name = "LumeoFlowNode")] private FlowNode? Node { get; set; }
 
     /// <summary>Source (edges start here) or target (edges end here).</summary>
@@ -41,6 +50,13 @@
 
     /// <summary>Captures unmatched attributes and applies them to the handle button.</summary>
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    // LU-05: no cascaded canvas (standalone render) => can't tell, stay interactive. Otherwise:
+    // canvas-level connect switch (NodesConnectable/Readonly/lock, via the internal
+    // CanConnectGlobally that already backs FlowNodeHost's own Connectable data attribute) AND
+    // this handle's own node's Connectable, when the node is known.
+    private bool Interactive
+        => Context is null || (Context.Canvas.CanConnectGlobally && (Node is null || Node.Connectable));
 
     private string AriaLabel
     {

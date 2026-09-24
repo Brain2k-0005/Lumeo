@@ -190,6 +190,19 @@ public record DataGridContext<TItem>(
     /// <summary>How the grid lays out column widths; see <c>DataGrid.ColumnSizing</c>.</summary>
     public DataGridColumnSizing ColumnSizing { get; init; } = DataGridColumnSizing.Auto;
 
+    /// <summary>
+    /// Under <see cref="DataGridColumnSizing.FitWithMinimum"/>, each visible column's negotiated
+    /// pixel width for the CURRENT measured container width (<c>DataGrid.ComputeFitColumnWidths</c> /
+    /// <see cref="DataGridColumnFit.Compute"/>) — empty until the grid's horizontal scroll wrapper
+    /// has been measured at least once (JS hasn't reported back yet: SSR, prerender, or a test host
+    /// with no ResizeObserver round-trip), and always empty outside FitWithMinimum. Read by
+    /// <see cref="DataGridHeaderCell{TItem}"/>'s StyleString to render <c>table-layout: fixed</c>
+    /// with an explicit width/min-width per column instead of leaving growth to the browser's
+    /// content-based auto layout, which never actually caps a nowrap cell (DocFlow field report,
+    /// 5.11.0).
+    /// </summary>
+    public IReadOnlyDictionary<string, double> FitColumnWidths { get; init; } = DataGridColumnFit.Empty;
+
     /// <summary>True when the grid has <c>Bordered="true"</c>; see <c>DataGrid.Bordered</c>.
     /// Read by <see cref="DataGridRow{TItem}"/> to pick its divider style — an inset
     /// box-shadow when unbordered (DocFlow D8; pairs with the table's border-separate in

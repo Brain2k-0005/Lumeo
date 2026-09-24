@@ -351,6 +351,23 @@ public interface IComponentInteropService : IAsyncDisposable, IDisposable
     /// <summary>Stops the observer started by <see cref="RegisterViewportWidth"/>.</summary>
     ValueTask UnregisterViewportWidth(string elementId) => ValueTask.CompletedTask;
 
+    /// <summary>
+    /// Observes <paramref name="elementId"/>'s own client width (a ResizeObserver, same shape as
+    /// <see cref="RegisterViewportWidth"/>) and reports it back to .NET via
+    /// <paramref name="dotNetRef"/>'s <c>OnFitContainerWidthChanged(double)</c> on first paint and
+    /// every resize thereafter. Backs <c>Lumeo.DataGrid</c>'s
+    /// <c>DataGridColumnSizing.FitWithMinimum</c>, which needs the measured width IN .NET to
+    /// recompute each column's negotiated pixel width (<c>DataGridColumnFit.Compute</c>) —
+    /// unlike <see cref="RegisterViewportWidth"/>, a JS-only CSS-var write is not enough here.
+    /// Generic in the .NET reference type so this core interop interface stays decoupled from the
+    /// UI component. Default no-op so existing implementers / test doubles keep compiling (they
+    /// can drive the callback directly instead of via real JS).
+    /// </summary>
+    ValueTask RegisterColumnFitObserver<[System.Diagnostics.CodeAnalysis.DynamicallyAccessedMembers(System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicMethods)] T>(string elementId, Microsoft.JSInterop.DotNetObjectReference<T> dotNetRef) where T : class
+        => ValueTask.CompletedTask;
+    /// <summary>Stops the observer started by <see cref="RegisterColumnFitObserver{T}"/>.</summary>
+    ValueTask UnregisterColumnFitObserver(string elementId) => ValueTask.CompletedTask;
+
     // OTP Paste
     ValueTask RegisterOtpPaste(string baseId, int length, Func<string, Task> handler);
     ValueTask UnregisterOtpPaste(string baseId, int length);
@@ -1024,8 +1041,26 @@ public interface IComponentInteropService : IAsyncDisposable, IDisposable
     /// </summary>
     Task FlowFitViewAsync(Microsoft.AspNetCore.Components.ElementReference paneEl, double padding, double minZoom, double maxZoom) => Task.CompletedTask;
 
+    /// <summary>
+    /// LU-08: like <see cref="FlowFitViewAsync(Microsoft.AspNetCore.Components.ElementReference, double, double, double)"/>,
+    /// but when the DOM-measured fit would need a zoom below <paramref name="minZoom"/>, centres on
+    /// the node <paramref name="anchorNodeId"/> at <paramref name="minZoom"/> instead of the whole
+    /// (still-clamped) bounds. A new overload rather than a new parameter on the existing member, so
+    /// nothing implementing the interface before this had to change. Default no-op.
+    /// </summary>
+    Task FlowFitViewAsync(Microsoft.AspNetCore.Components.ElementReference paneEl, double padding, double minZoom, double maxZoom, string? anchorNodeId) => Task.CompletedTask;
+
     /// <summary>The engine's live viewport as <c>[x, y, zoom]</c>, or null when the engine is unavailable. Default null.</summary>
     Task<double[]?> FlowGetViewportAsync(Microsoft.AspNetCore.Components.ElementReference paneEl) => Task.FromResult<double[]?>(null);
+
+    /// <summary>
+    /// LU-07: the pane's LIVE measured size (a fresh <c>clientWidth</c>/<c>clientHeight</c> read,
+    /// forcing layout), not whatever the ResizeObserver's own debounced report happened to have
+    /// delivered by the time this is called — used by <c>FlowCanvas.FitViewAsync</c> right after a
+    /// container resize, where that report can still be in flight. <c>[width, height]</c>, or
+    /// <c>null</c> when the engine is unavailable. Default null.
+    /// </summary>
+    Task<double[]?> FlowGetPaneSizeAsync(Microsoft.AspNetCore.Components.ElementReference paneEl) => Task.FromResult<double[]?>(null);
 
     /// <summary>
     /// Whether <c>document.activeElement</c>, scoped to this pane, is an editable field (input,

@@ -8,12 +8,18 @@
        so the zoom/fade-out keyframe plays — Radix-Presence parity via the shared B11
        attachOverlayExitEnd infra. data-state mirrors Radix so consumers can drive
        data-[state=closed]:… CSS; the existing animate-* class stays additive. *@
+    @* @onkeydown:stopPropagation — mirrors Dialog/Sheet/Drawer/AlertDialog's own content
+       root (see SelectContent for the full writeup): without it, Escape closing this menu
+       also bubbled to an ancestor Dialog/Sheet's own Escape handler and closed that too.
+       Static is safe — this div only mounts while _exit.Present(Context.IsOpen) is true,
+       and it's inert (below) once it's only kept around for the exit animation. *@
     <div data-slot="dropdown-menu-content" id="@Context.ContentId"
          role="menu"
          aria-orientation="vertical"
          data-state="@(Context.IsOpen ? "open" : "closed")"
          class="@CssClass"
          @onkeydown="HandleKeyDown"
+         @onkeydown:stopPropagation
          tabindex="-1"
          inert="@ExitInert"
          @attributes="AdditionalAttributes">

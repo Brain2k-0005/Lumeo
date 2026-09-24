@@ -121,15 +121,31 @@ public static class FlowGeometry
     /// </summary>
     public static FlowViewport? FitView(IEnumerable<FlowRect> rects, double paneWidth, double paneHeight,
         double padding, double minZoom, double maxZoom)
+        => FitView(rects, paneWidth, paneHeight, padding, minZoom, maxZoom, null);
+
+    /// <summary>
+    /// LU-08: like the plain <see cref="FitView(IEnumerable{FlowRect}, double, double, double, double, double)"/>,
+    /// but when the zoom needed to show every rect would fall below <paramref name="minZoom"/>,
+    /// centres on <paramref name="anchor"/> at <paramref name="minZoom"/> instead of centring on the
+    /// whole (still clamped, so still partly off-screen) bounds — "start readable" rather than "start
+    /// complete". Falls back to the plain fit when <paramref name="anchor"/> is <c>null</c> or the fit
+    /// does not need clamping. Returns <c>null</c> under the same conditions as the plain overload.
+    /// </summary>
+    public static FlowViewport? FitView(IEnumerable<FlowRect> rects, double paneWidth, double paneHeight,
+        double padding, double minZoom, double maxZoom, FlowRect? anchor)
     {
         var bounds = GetBounds(rects);
         if (bounds is not { } b || !(paneWidth > 0) || !(paneHeight > 0)) return null;
         var pad = padding > 0 ? padding : 0;
         var bw = Math.Max(b.Width, 1);
         var bh = Math.Max(b.Height, 1);
-        var xZoom = paneWidth / (bw * (1 + pad));
-        var yZoom = paneHeight / (bh * (1 + pad));
-        var zoom = ClampZoom(Math.Min(xZoom, yZoom), minZoom, maxZoom);
+        var required = Math.Min(paneWidth / (bw * (1 + pad)), paneHeight / (bh * (1 + pad)));
+        if (anchor is { } a && required < minZoom)
+        {
+            var anchorZoom = ClampZoom(minZoom, minZoom, maxZoom);
+            return CenterOn(a.X + a.Width / 2, a.Y + a.Height / 2, anchorZoom, paneWidth, paneHeight);
+        }
+        var zoom = ClampZoom(required, minZoom, maxZoom);
         var cx = b.X + b.Width / 2;
         var cy = b.Y + b.Height / 2;
         return CenterOn(cx, cy, zoom, paneWidth, paneHeight);

@@ -19,6 +19,92 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   24px minimum as a side effect of the rescale.
 
 ### Fixed
+- **DataGrid: `ColumnSizing="FitWithMinimum"` now actually caps growth and honours a
+  resized/restored width** (DocFlow consumer report against 5.11.0). Previously
+  `DataGridHeaderCell` emitted only a CSS `min-width` under `table-layout: auto`, which two
+  ways failed the mode's own contract: (1) a `white-space: nowrap` cell's content-driven
+  minimum width always won regardless of any width declared on the cell, so a 12-column
+  search grid could render 1512px wide in a 1310px container instead of filling it; (2)
+  `MinWidth ?? Width` unconditionally preferred the declared `MinWidth`, so a user-dragged or
+  `LayoutStorageKey`-restored column width was never reflected in any CSS property and
+  "jumped back" on reload. The grid now measures its horizontal scroll container (a
+  `ResizeObserver` reporting back to .NET) and computes an explicit pixel width per column,
+  then renders `table-layout: fixed` at those widths — a real ceiling, since fixed layout
+  uses only the widths it's given, never content. Columns fill the container exactly when
+  there's room, never shrink below their own `MinWidth`, and a resized/restored width always
+  wins (clamped to `MinWidth`/`MaxWidth`); cell content now truncates with an ellipsis
+  instead of forcing the column wider.
+- **DataGrid: `Virtualized` + `OnRangeRequest` with `IsLoading="true"` no longer unmounts the
+  scroll container** (SQL Analyst consumer report, LU-12). `IsLoading` used to replace the
+  ENTIRE body with a plain skeleton, tearing down Blazor's `<Virtualize ItemsProvider>` along
+  with it — and with it the only thing that ever calls `OnRangeRequest`, so a consumer whose
+  own loading flag flipped back to `false` from inside that same handler could never get
+  there and stayed stuck showing the skeleton forever. The skeleton now renders BESIDE a
+  still-mounted `<Virtualize>` for this mode instead of replacing it.
+- **DataGrid: a `LayoutStorageKey`-persisted sort now reaches the FIRST server-virtualization
+  range request**, not just a second one (SQL Analyst consumer report, LU-13). Blazor's
+  `<Virtualize ItemsProvider>` fires its first request from the child component's own
+  initialization — before the grid gets a chance to await the persisted-layout read — so the
+  very first request always carried the default sort/filters, with the restored ones only
+  arriving (and visibly reordering the rows) on a second request a moment later. The initial
+  fetch now waits for a pending restore to resolve.
+
+## [5.11.0] - 2026-09-24
+
+### Added
+- **`Lumeo.Flow`: `FlowEdge.Class`/`Style`, per-edge colouring without `!important`.** The default
+  edge stroke now reads a `--lumeo-flow-edge-stroke` CSS custom property (falls back to
+  `--color-muted-foreground`) instead of a literal inline colour, so an external rule — via the new
+  `FlowEdge.Class` merged onto the edge's path, or scoped to the whole canvas — wins in the cascade
+  with no `!important`; `FlowEdge.Style` remains a one-off inline escape hatch appended last. The
+  default arrowhead marker follows the same token (and upgrades to `context-stroke` under
+  `@supports` in engines that implement it, so a selected/recoloured edge's arrowhead tracks it
+  too). SQL Analyst field report (5.11.0), finding LU-02/LU-03.
+- **`Lumeo.Flow`: `FlowCanvas.FitViewAsync(FlowFitViewOptions)`, `PaneSize`, `GetPaneSizeAsync()`, `OnFitView`.**
+  Per-call `Padding`/`MinZoom`/`MaxZoom` overrides and an optional `AnchorNodeId` — when the plain
+  fit would need a zoom below `MinZoom`, the canvas centres on that node at `MinZoom` instead of
+  zooming out further ("start readable" on a large graph). `PaneSize` exposes the pane's last known
+  size; `GetPaneSizeAsync()` re-measures it fresh from the DOM. `OnFitView` fires once a fit
+  completes, including the engine's own initial `FitViewOnInit` fit. SQL Analyst field report,
+  finding LU-08.
+
+- **`Lumeo.Flow`: `FlowLayout.Layered` no longer throws on a duplicate node id.** It built its
+  in-degree map with `ids.ToDictionary(id => id, ...)`, which threw `ArgumentException` the second
+  time a node id repeated (real data — a SQL Server deadlock XML repeating a resource id — crashed
+  the whole Blazor Server circuit); `FlowLayout.Tree` and the internal back-edge removal already
+  handled duplicates and were audited for the same class of bug. SQL Analyst field report, finding
+  LU-01.
+- **`Lumeo.Flow`: `Animated` no longer forces a dashed stroke.** `Animated=true, Dashed=false` now
+  stays a solid line with a small travelling-dash overlay, instead of always rendering
+  `stroke-dasharray`; `Dashed` alone is unaffected, and the overlay respects
+  `prefers-reduced-motion`. SQL Analyst field report, finding LU-04.
+- **`Lumeo.Flow`: `FlowHandle` drops out of the tab order (and goes `aria-hidden`) when connecting is impossible.**
+  Previously it stayed a focusable, announced "Connect from/to" control even under `Readonly`,
+  `NodesConnectable="false"` or a node's own `Connectable="false"` — a dead-end tab stop with
+  misleading screen-reader text. It stays visually a port either way. SQL Analyst field report,
+  finding LU-05.
+- **`Lumeo.Flow`: `Enter`/`Space` on a focused node now raises `OnNodeClick`.** Matches a mouse
+  click (including the selection toggle), respects the editable-target guard the rest of the
+  canvas' shortcuts already use, and `Space` no longer scrolls the page. SQL Analyst field report,
+  finding LU-06.
+- **`Lumeo.Flow`: `FitViewAsync` after a container resize now fits the CURRENT pane size.**
+  It used to compute against the last debounced resize report, which can still be in flight right
+  after a container grows/shrinks in the same tick (fits against the previous size); it now
+  re-measures the pane fresh from the DOM first. SQL Analyst field report, finding LU-07.
+- **`Lumeo.Flow`: the default edge label pill no longer wraps.** Added `white-space: nowrap`
+  (truncating a very long label with an ellipsis past a small max-width) instead of letting a
+  short label like "owns · X" wrap into a two-line pill with background per line. SQL Analyst
+  field report, finding LU-09.
+- **`Lumeo.Flow`: `FlowLayout.Tree` places a multi-parent node under its DEEPEST parent.** A
+  node's depth was already the longest path reaching it; it is now centred under the single
+  parent that explains that depth, instead of under whichever parent's subtree walk happened to
+  reach it first (previously the column and the visual parent could disagree). SQL Analyst field
+  report, finding LU-10.
+- **`Lumeo.Flow`: an edge without an explicit `SourceHandle`/`TargetHandle` keeps the default side anchor.**
+  Adding any `FlowHandle` to a node used to silently re-anchor every edge from/to that node onto
+  the node's first handle of the matching type, even for edges that never named one; only an
+  explicit handle id now switches an edge into handle-based anchoring. SQL Analyst field report,
+  finding LU-11.
 - **MCP: `lumeo_search` no longer requires the whole query to appear verbatim.** A
   multi-word query (e.g. `"flow diagram nodes edges"`) is now tokenized and scored per
   word, so a component surfaces when it matches ANY of the query's words instead of only
@@ -44,9 +130,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   concise, install-and-usage README next to its `.csproj`; the packing rule prefers it
   when present. (Field report finding LU-17.)
 
-## [5.11.0] - 2026-09-24
 
-### Added
 - **New package `Lumeo.Flow`: `FlowCanvas`, a node/flow editor canvas.** Your own Razor
   node templates and SVG edges (bezier, smooth-step, step, straight) on a pannable, zoomable canvas
   — a first-party engine, no third-party runtime dependency. Drag nodes (the connected edges follow
@@ -192,7 +276,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   on the content element regardless of the flag, for a custom `Class` to derive its own width from.
   Default unchanged (#518).
 
-### Fixed
 - **DataGrid: `ApplyLayoutAsync` reloads exactly like a header click.** A layout applied with a
   new sort now raises `OnServerRequest` in `ServerMode` and re-sorts the bound list in client
   mode; a grid using server-side row virtualization (`Virtualized` + `OnRangeRequest`) now routes

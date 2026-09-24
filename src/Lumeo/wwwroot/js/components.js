@@ -4446,6 +4446,43 @@ export function unregisterViewportWidth(elementId) {
     }
 }
 
+// --- DataGrid Column Fit (ColumnSizing="FitWithMinimum") ---
+//
+// Same element as registerViewportWidth above (the grid's horizontal scroll wrapper) but,
+// unlike that JS-only CSS-var writer, round-trips the measured width to .NET on every
+// resize: DataGrid.OnFitContainerWidthChanged(width) recomputes each column's negotiated
+// pixel width (DataGridColumnFit.Compute, which needs the column model — MinWidth/MaxWidth/
+// FillWidth/the live resized Width — only C# has) and re-renders table-layout: fixed at
+// those widths. See DataGridColumnSizing.FitWithMinimum's remarks for why fixed layout with
+// explicit widths replaced the original table-layout: auto + min-width-only approach (it
+// never actually capped a nowrap cell's growth — DocFlow field report, 5.11.0).
+const columnFitObservers = new Map();
+
+export function registerColumnFitObserver(elementId, dotNetRef) {
+    unregisterColumnFitObserver(elementId); // idempotent re-register (e.g. Blazor re-render)
+    const el = document.getElementById(elementId);
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    let last = null;
+    const report = () => {
+        const width = el.clientWidth;
+        if (width === last) return; // no chatter for a no-op callback (e.g. sub-pixel jitter)
+        last = width;
+        try { dotNetRef.invokeMethodAsync('OnFitContainerWidthChanged', width); } catch { /* circuit gone */ }
+    };
+    const ro = new ResizeObserver(report);
+    ro.observe(el);
+    columnFitObservers.set(elementId, ro);
+    report(); // first paint — don't wait for the initial ResizeObserver callback
+}
+
+export function unregisterColumnFitObserver(elementId) {
+    const ro = columnFitObservers.get(elementId);
+    if (ro) {
+        ro.disconnect();
+        columnFitObservers.delete(elementId);
+    }
+}
+
 // --- DataGrid Column Reorder FLIP Animation ---
 //
 // FLIP (First-Last-Invert-Play): the technique for animating layout changes
