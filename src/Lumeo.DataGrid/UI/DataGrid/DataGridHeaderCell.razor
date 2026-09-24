@@ -676,7 +676,18 @@
         get
         {
             var parts = new List<string>();
-            if (Column.Width.HasValue)
+            if (Context?.ColumnSizing == DataGridColumnSizing.FitWithMinimum)
+            {
+                // Never a fixed pixel width here — table-layout: auto (set on <table> by
+                // DataGrid.TableStyle for this mode) only honours min-width as a floor,
+                // and a fixed width would defeat "fill when there's room". Prefer the
+                // column's own MinWidth; fall back to Width so a column that only ever set
+                // Width (the pre-existing, Auto-mode parameter) still gets a sane floor
+                // instead of none.
+                var floor = Column.MinWidth ?? Column.Width;
+                if (floor.HasValue) parts.Add($"min-width: {floor.Value}px");
+            }
+            else if (Column.Width.HasValue)
             {
                 // A fill column keeps only its floor: under the fixed layout the one column
                 // without a width takes the table's remainder, which is what makes it fill.
