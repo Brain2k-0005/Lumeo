@@ -115,6 +115,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     viewport report during a long pan.
   - Docs: sub-flow and 1,500-node demos; the small demos (three nodes or fewer) cap `MaxZoom` at
     1 so fit-view no longer blows two cards up to 200%.
+- **DataGrid: `ColumnSizing` parameter** (`DataGridColumnSizing.Auto`, the default, or
+  `FitWithMinimum`). `Auto` is the historic `table-layout: fixed` behavior, under which a
+  `FillWidth` column can be squeezed to 0px with enough other columns visible — fixed table
+  layout does not honor CSS `min-width` on cells. `FitWithMinimum` fills the available width when
+  there's room and never shrinks a column below its own `MinWidth` (falling back to `Width`);
+  once the visible columns' combined floor exceeds the container, the grid scrolls horizontally
+  instead of squeezing a column away (consumer report).
 
 ### Fixed
 - **DataGrid: `ApplyLayoutAsync` reloads exactly like a header click.** A layout applied with a
@@ -140,21 +147,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   table, so it isn't subject to a `border-collapse` merge landing on a sub-pixel boundary;
   `Bordered="true"` grids are unchanged (that variant relies on `border-collapse` merging cell
   borders into single-pixel grid lines) (consumer report).
-- **Sidebar: `SidebarMenuButton`'s icon-mode size/padding no longer ship `!important`.** A
-  consumer's own `Class="group-data-[collapsible=icon]:px-0"` (or similar) used to lose to the
-  library's `!important` regardless of being merged in last; default (uncustomized) visuals are
-  unchanged (consumer report).
-
-### Added
-- **DataGrid: `ColumnSizing` parameter** (`DataGridColumnSizing.Auto`, the default, or
-  `FitWithMinimum`). `Auto` is the historic `table-layout: fixed` behavior, under which a
-  `FillWidth` column can be squeezed to 0px with enough other columns visible — fixed table
-  layout does not honor CSS `min-width` on cells. `FitWithMinimum` fills the available width when
-  there's room and never shrinks a column below its own `MinWidth` (falling back to `Width`);
-  once the visible columns' combined floor exceeds the container, the grid scrolls horizontally
-  instead of squeezing a column away (consumer report).
-
-### Fixed
 - **Sidebar: `SidebarMenuButton`'s icon-mode size/padding no longer ship `!important`.** A
   consumer's own `Class="group-data-[collapsible=icon]:px-0"` (or similar) used to lose to the
   library's `!important` regardless of being merged in last — `Cx.Merge`/`TailwindMerge` only
