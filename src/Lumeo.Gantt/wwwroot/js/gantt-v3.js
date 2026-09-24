@@ -925,6 +925,7 @@ function registerDrag(el, dotNetRef, options) {
         // win without requiring a separate unregister/register round trip.
         existing.dotNetRef = dotNetRef;
         existing.options = options;
+        diagLog({ ev: 'registerDrag', swap: true });
         return;
     }
 
@@ -955,6 +956,14 @@ function registerDrag(el, dotNetRef, options) {
         const dragDotNet = reg.dotNetRef;
 
         const barEl = e.target.closest('[data-task-id]');
+        // Issue #506 journal: which element a drag's pointerdown actually hit, so a CI dump shows
+        // whether a "drag never committed" failure started on the bar at all.
+        diagLog({
+            ev: 'drag-pointerdown', clientX: e.clientX, clientY: e.clientY,
+            hit: barEl && el.contains(barEl) ? barEl.getAttribute('data-task-id') : null,
+            target: e.target.tagName + ':' + (e.target.getAttribute('class') || '').split(' ')[0],
+            scrollLeft: el.scrollLeft,
+        });
         if (!barEl || !el.contains(barEl)) {
             // Phase 2, T3 — no bar was hit. Only look for a create-track hit
             // when the caller opted in (dragOptions.allowCreate — see
@@ -1220,6 +1229,7 @@ function registerDrag(el, dotNetRef, options) {
             // commit THIS closure's drag (or fire its click fallback).
             if (up.pointerId !== pointerId) return;
             cleanup();
+            diagLog({ ev: 'drag-pointerup', taskId, mode, dx: up.clientX - startClientX, dragInitiated });
             if (!dragInitiated) {
                 // gantt-v2.js:617-622 — below the drag threshold, a 'move'-mode
                 // mousedown falls back to a click. Only 'move' has this fallback in
@@ -1279,6 +1289,7 @@ function registerDrag(el, dotNetRef, options) {
                 if (!valid) return; // invalid (or unconfirmable) drop position — revert silently, no commit, no events
             }
 
+            diagLog({ ev: 'drag-commit-invoke', taskId, mode, start: toLocalDateString(newStart), end: toLocalDateString(newEnd), hasRef: !!dragDotNet });
             if (dragDotNet) {
                 dragDotNet.invokeMethodAsync('CommitDrag', taskId, mode, toLocalDateString(newStart), toLocalDateString(newEnd))
                     .catch(() => {});
@@ -1290,6 +1301,7 @@ function registerDrag(el, dotNetRef, options) {
             // pointer"): same pointerId gate as onPointerMove/onPointerUp —
             // a different pointer's cancel must not tear THIS drag down.
             if (cn.pointerId !== pointerId) return;
+            diagLog({ ev: 'drag-pointercancel', taskId });
             cleanup();
         };
 
@@ -1324,6 +1336,7 @@ function registerDrag(el, dotNetRef, options) {
 
     el.addEventListener('pointerdown', reg.onPointerDown);
     dragRegistrations.set(el, reg);
+    diagLog({ ev: 'registerDrag', swap: false });
 }
 
 // Phase 2, T3 — drag-create on an empty row track (REUI parity addition, no v2
@@ -1499,6 +1512,7 @@ function unregisterDrag(el) {
     if (!el) return;
     const reg = dragRegistrations.get(el);
     if (!reg) return;
+    diagLog({ ev: 'unregisterDrag', activeSessions: reg.activeCleanups.size });
     el.removeEventListener('pointerdown', reg.onPointerDown);
     dragRegistrations.delete(el);
 
