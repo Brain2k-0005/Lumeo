@@ -38,6 +38,26 @@ internal sealed class FlowState
     public HashSet<string> SelectedEdgeIds { get; } = new(StringComparer.Ordinal);
     public HashSet<string> DraggingNodeIds { get; } = new(StringComparer.Ordinal);
 
+    /// <summary>
+    /// Phase 5: the parent/child structure of the current node list. Every rect/anchor this class
+    /// answers is ABSOLUTE (a child's own X/Y are relative to its parent) — edges, fit-view, the
+    /// minimap, marquee, helper lines and export all work on absolute rects through it.
+    /// </summary>
+    public FlowHierarchy Hierarchy { get; private set; } = FlowHierarchy.Empty;
+
+    private IReadOnlyList<FlowNode>? _hierarchyFor;
+
+    /// <summary>Rebuilds <see cref="Hierarchy"/> for a new node list (a no-op for the same list instance).</summary>
+    public void SetNodes(IReadOnlyList<FlowNode> nodes)
+    {
+        if (ReferenceEquals(nodes, _hierarchyFor)) return;
+        _hierarchyFor = nodes;
+        Hierarchy = new FlowHierarchy(nodes);
+    }
+
+    /// <summary>The node's top-left corner in absolute flow coordinates.</summary>
+    public FlowPoint AbsoluteOf(FlowNode node) => Hierarchy.AbsoluteOf(node);
+
     /// <summary>Clears both selection sets; returns whether anything was actually selected.</summary>
     public bool ClearSelection()
     {
@@ -132,13 +152,19 @@ internal sealed class FlowState
         return result;
     }
 
-    /// <summary>The node's rect: fixed size &gt; measured size &gt; <see cref="FlowGeometry.DefaultNodeWidth"/>.</summary>
+    /// <summary>The node's ABSOLUTE rect: fixed size &gt; measured size &gt; <see cref="FlowGeometry.DefaultNodeWidth"/>. The measurement survives the node being unmounted (virtualization) — only removing the node from the list forgets it.</summary>
     public FlowRect GetNodeRect(FlowNode node)
     {
+        var (w, h) = GetNodeSize(node);
+        var p = Hierarchy.AbsoluteOf(node);
+        return new FlowRect(p.X, p.Y, w, h);
+    }
+
+    /// <summary>The node's size: fixed size &gt; measured size &gt; the library default.</summary>
+    public (double Width, double Height) GetNodeSize(FlowNode node)
+    {
         _measured.TryGetValue(node.Id, out var m);
-        var w = node.Width ?? m?.Width ?? FlowGeometry.DefaultNodeWidth;
-        var h = node.Height ?? m?.Height ?? FlowGeometry.DefaultNodeHeight;
-        return new FlowRect(node.X, node.Y, w, h);
+        return (node.Width ?? m?.Width ?? FlowGeometry.DefaultNodeWidth, node.Height ?? m?.Height ?? FlowGeometry.DefaultNodeHeight);
     }
 
     /// <summary>
@@ -163,7 +189,7 @@ internal sealed class FlowState
             }
             if (match is not null)
             {
-                return (new FlowPoint(node.X + match.X, node.Y + match.Y), match.Position);
+                return (new FlowPoint(rect.X + match.X, rect.Y + match.Y), match.Position);
             }
         }
         var side = type == FlowHandleType.Source ? FlowPosition.Right : FlowPosition.Left;

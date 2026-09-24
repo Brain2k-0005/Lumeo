@@ -1,6 +1,7 @@
 @namespace Lumeo
 @using System.ComponentModel
 @using System.Globalization
+@using Microsoft.AspNetCore.Components.Rendering
 @inject Lumeo.Services.Localization.ILumeoLocalizer L
 @attribute [EditorBrowsable(EditorBrowsableState.Never)]
 
@@ -13,7 +14,14 @@
    of every connected path (and moves the matching label div) with its JS port of the same math,
    keyed by the data-source/data-target/data-*-handle/data-edge-type attributes below — keep those
    in sync with flow.js. A path's own pointer-events override the layer's "none" so it can be
-   clicked/selected without the (invisible, 1x1) layer intercepting the rest of the pane. *@
+   clicked/selected without the (invisible, 1x1) layer intercepting the rest of the pane.
+
+   Phase 5 sub-flows: an edge whose deeper end sits inside a group (nesting level N > 0) is drawn in
+   an extra, raised <svg data-slot="flow-edges-raised"> with z-index N — above its group (which
+   stacks at N - 1) and below the nested nodes (which stack at N and come later in the DOM). Without
+   that a group's tinted background would cover the edges between its own children.
+   data-sa/data-ta stamp each end's anchor ("x|y|position") so the engine can still redraw an edge
+   whose OTHER end is not mounted (virtualization) while its mounted end is dragged. *@
 
 <svg data-slot="flow-edges"
      aria-hidden="true"
@@ -27,56 +35,27 @@
     </defs>
     @if (Context is not null)
     {
-        @foreach (var (edge, path, _, _) in Context.Canvas.RenderableEdges())
-        {
-            var selected = Context.Canvas.IsEdgeSelected(edge.Id);
-            var selectable = Context.Canvas.CanSelectEdges;
-            if (selectable)
-            {
-                @* A wide, invisible "hit" twin of the visible path below — the 1.5px visible
-                   stroke is much too thin a click target on its own (real pointer/touch, and a
-                   fractional-pixel Playwright click, routinely miss it). Same d/data-* so
-                   flow.js's live redraw during a drag keeps both in lockstep; stroke="transparent"
-                   still registers pointer-events:stroke hits (painted-ness, not visible colour,
-                   is what the hit test cares about). *@
-                <path @key="@("hit-" + edge.Id)"
-                      data-flow-edge-hit
-                      data-edge-id="@edge.Id"
-                      data-source="@edge.Source"
-                      data-target="@edge.Target"
-                      data-source-handle="@edge.SourceHandle"
-                      data-target-handle="@edge.TargetHandle"
-                      data-edge-type="@FlowGeometry.FormatEdgeType(edge.Type)"
-                      d="@path.D"
-                      fill="none"
-                      stroke="transparent"
-                      stroke-width="14"
-                      style="pointer-events:stroke;cursor:pointer;"
-                      @onclick="e => Context.Canvas.HandleEdgeClickAsync(edge, e.ShiftKey, e.CtrlKey || e.MetaKey)" />
-            }
-            <path @key="edge.Id"
-                  data-flow-edge
-                  data-edge-id="@edge.Id"
-                  data-source="@edge.Source"
-                  data-target="@edge.Target"
-                  data-source-handle="@edge.SourceHandle"
-                  data-target-handle="@edge.TargetHandle"
-                  data-edge-type="@FlowGeometry.FormatEdgeType(edge.Type)"
-                  data-selected="@(selected ? "" : null)"
-                  data-animated="@(edge.Animated ? "" : null)"
-                  d="@path.D"
-                  fill="none"
-                  stroke-dasharray="@(edge.Dashed || edge.Animated ? "5 4" : null)"
-                  marker-end="@(string.IsNullOrEmpty(edge.MarkerEnd) ? null : "url(#" + _markerId + ")")"
-                  style="@EdgeStyle(selectable, selected)"
-                  @onclick="e => Context.Canvas.HandleEdgeClickAsync(edge, e.ShiftKey, e.CtrlKey || e.MetaKey)" />
-        }
+        RenderEdges(__builder, 0);
     }
 </svg>
+@if (Context is not null && Context.Canvas.MaxEdgeLevel > 0)
+{
+    @for (var level = 1; level <= Context.Canvas.MaxEdgeLevel; level++)
+    {
+        var lvl = level;
+        <svg @key="@("raised-" + lvl)"
+             data-slot="flow-edges-raised"
+             data-level="@lvl.ToString(CultureInfo.InvariantCulture)"
+             aria-hidden="true"
+             style="@("position:absolute;left:0;top:0;width:1px;height:1px;overflow:visible;pointer-events:none;z-index:" + lvl.ToString(CultureInfo.InvariantCulture) + ";")">
+            @{ RenderEdges(__builder, lvl); }
+        </svg>
+    }
+}
 @if (Context is not null)
 {
     <div data-slot="flow-edge-labels" style="position:absolute;left:0;top:0;">
-        @foreach (var (edge, path, _, _) in Context.Canvas.RenderableEdges())
+        @foreach (var (edge, path, _, _) in Edges)
         {
             var editable = Context.Canvas.EdgeLabelEditable;
             var editingThis = editable && _editingEdgeId == edge.Id;
@@ -89,7 +68,7 @@
                  data-flow-edge-label
                  data-flow-nodrag
                  data-edge-id="@edge.Id"
-                 style="@LabelStyle(path)"
+                 style="@LabelStyle(path, Context.Canvas.EdgeLevel(edge))"
                  @ondblclick="@(() => BeginEdit(edge))">
                 @if (editingThis)
                 {
@@ -127,6 +106,72 @@
     private string? _editingEdgeId;
     private string _editText = "";
 
+    // One pass over the canvas' edges per render (paths computed once, shared by every layer below).
+    private List<(FlowEdge Edge, FlowEdgePath Path, FlowPoint Source, FlowPoint Target)> _edges = new();
+    private List<(FlowEdge Edge, FlowEdgePath Path, FlowPoint Source, FlowPoint Target)> Edges => _edges;
+
+    protected override void OnParametersSet()
+        => _edges = Context is null ? new() : Context.Canvas.RenderableEdges().ToList();
+
+    private void RenderEdges(RenderTreeBuilder __builder, int level)
+    {
+        var canvas = Context!.Canvas;
+        var selectable = canvas.CanSelectEdges;
+        foreach (var (edge, path, sourcePt, targetPt) in _edges)
+        {
+            if (canvas.EdgeLevel(edge) != level) continue;
+            var selected = canvas.IsEdgeSelected(edge.Id);
+            var sa = Anchor(sourcePt, canvas.SourcePositionOf(edge));
+            var ta = Anchor(targetPt, canvas.TargetPositionOf(edge));
+            if (selectable)
+            {
+                @* A wide, invisible "hit" twin of the visible path below — the 1.5px visible
+                   stroke is much too thin a click target on its own (real pointer/touch, and a
+                   fractional-pixel Playwright click, routinely miss it). Same d/data-* so
+                   flow.js's live redraw during a drag keeps both in lockstep; stroke="transparent"
+                   still registers pointer-events:stroke hits (painted-ness, not visible colour,
+                   is what the hit test cares about). *@
+                <path @key="@("hit-" + edge.Id)"
+                      data-flow-edge-hit
+                      data-edge-id="@edge.Id"
+                      data-source="@edge.Source"
+                      data-target="@edge.Target"
+                      data-source-handle="@edge.SourceHandle"
+                      data-target-handle="@edge.TargetHandle"
+                      data-edge-type="@FlowGeometry.FormatEdgeType(edge.Type)"
+                      data-sa="@sa"
+                      data-ta="@ta"
+                      d="@path.D"
+                      fill="none"
+                      stroke="transparent"
+                      stroke-width="14"
+                      style="pointer-events:stroke;cursor:pointer;"
+                      @onclick="e => canvas.HandleEdgeClickAsync(edge, e.ShiftKey, e.CtrlKey || e.MetaKey)" />
+            }
+            <path @key="edge.Id"
+                  data-flow-edge
+                  data-edge-id="@edge.Id"
+                  data-source="@edge.Source"
+                  data-target="@edge.Target"
+                  data-source-handle="@edge.SourceHandle"
+                  data-target-handle="@edge.TargetHandle"
+                  data-edge-type="@FlowGeometry.FormatEdgeType(edge.Type)"
+                  data-sa="@sa"
+                  data-ta="@ta"
+                  data-selected="@(selected ? "" : null)"
+                  data-animated="@(edge.Animated ? "" : null)"
+                  d="@path.D"
+                  fill="none"
+                  stroke-dasharray="@(edge.Dashed || edge.Animated ? "5 4" : null)"
+                  marker-end="@(string.IsNullOrEmpty(edge.MarkerEnd) ? null : "url(#" + _markerId + ")")"
+                  style="@EdgeStyle(selectable, selected)"
+                  @onclick="e => canvas.HandleEdgeClickAsync(edge, e.ShiftKey, e.CtrlKey || e.MetaKey)" />
+        }
+    }
+
+    private static string Anchor(FlowPoint p, FlowPosition position)
+        => FlowGeometry.Fmt(p.X) + "|" + FlowGeometry.Fmt(p.Y) + "|" + FlowGeometry.FormatPosition(position);
+
     private void BeginEdit(FlowEdge edge)
     {
         if (Context is null || !Context.Canvas.EdgeLabelEditable || Context.Canvas.Readonly) return;
@@ -148,9 +193,10 @@
         }
     }
 
-    private static string LabelStyle(FlowEdgePath path)
+    private static string LabelStyle(FlowEdgePath path, int level)
         => "position:absolute;left:" + FlowGeometry.Fmt(path.LabelX) + "px;top:" + FlowGeometry.Fmt(path.LabelY)
-           + "px;transform:translate(-50%,-50%);pointer-events:auto;";
+           + "px;transform:translate(-50%,-50%);pointer-events:auto;"
+           + (level > 0 ? "z-index:" + level.ToString(CultureInfo.InvariantCulture) + ";" : "");
 
     // Inline (not just the lumeo-flow.css rule) so an edge is coloured correctly on the very first
     // paint, before flow.js has injected the stylesheet — same reasoning as the pane's own inline

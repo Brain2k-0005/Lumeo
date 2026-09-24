@@ -15,9 +15,12 @@
 
 <CascadingValue Value="Node" Name="LumeoFlowNode" IsFixed="false">
     <div data-flow-node="@Node.Id"
-         data-x="@FlowCanvas.R(Node.X)"
-         data-y="@FlowCanvas.R(Node.Y)"
+         data-x="@FlowCanvas.R(Absolute.X)"
+         data-y="@FlowCanvas.R(Absolute.Y)"
          data-type="@Node.Type"
+         data-parent-id="@ParentId"
+         data-extent="@(ParentId is not null && Node.Extent == FlowExtent.Parent ? "parent" : null)"
+         data-flow-group="@(ChildCount > 0 ? "" : null)"
          data-selected="@(Selected ? "" : null)"
          data-dragging="@(Dragging ? "" : null)"
          data-draggable="@(Draggable ? "true" : "false")"
@@ -25,7 +28,7 @@
          data-selectable="@(Node.Selectable ? "true" : "false")"
          tabindex="0"
          role="group"
-         aria-roledescription="@L["Flow.NodeRole"]"
+         aria-roledescription="@(ChildCount > 0 ? L["Flow.GroupRole"] : L["Flow.NodeRole"])"
          aria-label="@AriaLabel"
          aria-selected="@(Selected ? "true" : "false")"
          class="@HostClass"
@@ -60,7 +63,27 @@
     private bool Dragging => Canvas?.IsDragging(Node.Id) == true;
     private bool Draggable => Canvas?.CanDrag(Node) == true;
     private bool Connectable => Canvas?.CanConnect(Node) == true;
-    private string AriaLabel => Canvas?.AriaLabelFor(Node) ?? Node.Id;
+    private string AriaLabel
+    {
+        get
+        {
+            var name = Canvas?.AriaLabelFor(Node) ?? Node.Id;
+            // Phase 5: a group announces how many nodes it holds ("Billing, 3 nodes").
+            var count = ChildCount;
+            if (count == 0) return name;
+            return name + ", " + (count == 1 ? L["Flow.GroupChildCountOne"] : L["Flow.GroupChildCount", count]);
+        }
+    }
+
+    // Phase 5: the host sits at the node's ABSOLUTE flow position (the DOM is flat — a child's own
+    // X/Y are relative to its parent group); data-x/data-y carry the same absolute numbers for the
+    // engine. Parents render before their children (FlowCanvas' render order) and a nested node
+    // without an explicit ZIndex stacks at its depth, so a child always paints above its group — and
+    // above the raised edge layer FlowEdgeLayer draws edges between nested nodes in.
+    private FlowPoint Absolute => Canvas?.AbsoluteOf(Node) ?? new FlowPoint(Node.X, Node.Y);
+    private string? ParentId => Canvas?.ResolvedParentOf(Node.Id);
+    private int ChildCount => Canvas?.ChildCount(Node.Id) ?? 0;
+    private int Depth => Canvas?.DepthOf(Node.Id) ?? 0;
 
     private string HostClass => Cx.Merge("lumeo-flow-node", Class);
 
@@ -68,10 +91,12 @@
     {
         get
         {
-            var style = "position:absolute;left:0;top:0;transform:translate(" + FlowCanvas.R(Node.X) + "px, " + FlowCanvas.R(Node.Y) + "px);";
+            var p = Absolute;
+            var style = "position:absolute;left:0;top:0;transform:translate(" + FlowCanvas.R(p.X) + "px, " + FlowCanvas.R(p.Y) + "px);";
             if (Node.Width is { } w) style += "width:" + FlowCanvas.R(w) + "px;";
             if (Node.Height is { } h) style += "height:" + FlowCanvas.R(h) + "px;";
             if (Node.ZIndex is { } z) style += "z-index:" + z.ToString(System.Globalization.CultureInfo.InvariantCulture) + ";";
+            else if (Depth > 0) style += "z-index:" + Depth.ToString(System.Globalization.CultureInfo.InvariantCulture) + ";";
             return style;
         }
     }

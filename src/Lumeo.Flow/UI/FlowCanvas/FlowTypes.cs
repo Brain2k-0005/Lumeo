@@ -100,14 +100,49 @@ public enum FlowResizeDirection
 /// <param name="Selectable">Per-node selection switch.</param>
 /// <param name="Connectable">Per-node connect switch (phase 2).</param>
 /// <param name="Deletable">Per-node delete switch (phase 2).</param>
-/// <param name="ZIndex">Explicit stacking order; <c>null</c> = document order.</param>
+/// <param name="ZIndex">Explicit stacking order; <c>null</c> = by nesting depth (a child above its parent group), then document order.</param>
+/// <param name="ParentId">
+/// Phase 5 sub-flows: the <see cref="Id"/> of the group node this node belongs to, or <c>null</c> for a
+/// top-level node. A child's <see cref="X"/>/<see cref="Y"/> are RELATIVE to its parent's top-left
+/// corner (React Flow's convention), so moving the parent moves the whole subtree. A missing parent id
+/// or a parent cycle is treated as top-level.
+/// </param>
+/// <param name="Extent">
+/// Phase 5: <see cref="FlowExtent.Parent"/> keeps the node inside its parent's rect while it is dragged
+/// or moved with the arrow keys. Ignored for a top-level node.
+/// </param>
 public sealed record FlowNode(
     string Id, double X, double Y,
     string? Type = null,
     object? Data = null,
     double? Width = null, double? Height = null,
     bool Draggable = true, bool Selectable = true, bool Connectable = true,
-    bool Deletable = true, int? ZIndex = null);
+    bool Deletable = true, int? ZIndex = null,
+    string? ParentId = null, FlowExtent Extent = FlowExtent.None)
+{
+    /// <summary>
+    /// The phase 1–4 positional deconstruction (every member up to <see cref="ZIndex"/>), kept so
+    /// existing <c>var (id, x, y, ...) = node;</c> code with twelve variables still compiles after
+    /// <see cref="ParentId"/>/<see cref="Extent"/> were appended.
+    /// </summary>
+    public void Deconstruct(out string Id, out double X, out double Y, out string? Type, out object? Data,
+        out double? Width, out double? Height, out bool Draggable, out bool Selectable, out bool Connectable,
+        out bool Deletable, out int? ZIndex)
+    {
+        Id = this.Id; X = this.X; Y = this.Y; Type = this.Type; Data = this.Data;
+        Width = this.Width; Height = this.Height; Draggable = this.Draggable; Selectable = this.Selectable;
+        Connectable = this.Connectable; Deletable = this.Deletable; ZIndex = this.ZIndex;
+    }
+}
+
+/// <summary>Where a child node (<see cref="FlowNode.ParentId"/> set) may be moved (phase 5).</summary>
+public enum FlowExtent
+{
+    /// <summary>Anywhere — the child may be dragged outside its parent's rect (it still moves with the parent).</summary>
+    None,
+    /// <summary>Clamped inside the parent's rect while dragged or moved with the arrow keys.</summary>
+    Parent,
+}
 
 /// <summary>An edge between two nodes, drawn as one SVG path.</summary>
 /// <param name="Id">Stable identifier.</param>
