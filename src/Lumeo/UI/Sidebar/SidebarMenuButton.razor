@@ -74,7 +74,12 @@ else
     private string SizeClasses => Size switch
     {
         ButtonSize.Sm => "h-[var(--lumeo-sidebar-item-h-sm,calc(var(--spacing,0.25rem)*7))] text-xs",
-        ButtonSize.Lg => "h-[var(--lumeo-sidebar-item-h-lg,calc(var(--spacing,0.25rem)*12))] text-sm group-data-[collapsible=icon]:p-0!",
+        // No `!important` (DocFlow T1) — Cx.Merge/TailwindMerge already gives the LAST
+        // occurrence of a conflict group priority regardless of importance as long as
+        // both sides carry the same importance, and this sits after the icon-rail
+        // baseline below in the CssClass merge call, so p-0 still wins there. Dropping
+        // `!` here too keeps that internal ordering the only thing this relies on.
+        ButtonSize.Lg => "h-[var(--lumeo-sidebar-item-h-lg,calc(var(--spacing,0.25rem)*12))] text-sm group-data-[collapsible=icon]:p-0",
         _ => "h-[var(--lumeo-sidebar-item-h,calc(var(--spacing,0.25rem)*8))] text-sm"
     };
 
@@ -125,10 +130,20 @@ else
 
     private string CssClass => Cx.Merge(
         "peer/menu-button group/menu-button flex w-full items-center gap-2 rounded-md p-2 min-h-11 sm:min-h-0 text-start [&>svg]:size-[var(--lumeo-icon-size,calc(var(--spacing,0.25rem)*4))] [&>svg]:shrink-0 [&>span:last-child]:truncate text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
-        // The icon-rail override sits BEFORE SizeClasses so Lg's p-0! can win it: a 48px entry
+        // The icon-rail override sits BEFORE SizeClasses so Lg's p-0 can win it: a 48px entry
         // collapses to a 32px square with no padding, and its 32px logo box or avatar lands
         // where the 16px icons of the 32px entries sit, 8px from the edge.
-        "group-data-[collapsible=icon]:size-8! group-data-[collapsible=icon]:p-2!",
+        //
+        // No `!important` here (DocFlow T1): these used to be size-8!/p-2!, which won every
+        // CSS specificity fight against a consumer's own icon-mode override (e.g. Class=
+        // "group-data-[collapsible=icon]:px-0" for a wider brand mark) even though Class is
+        // merged in LAST — TailwindMerge only lets a plain token evict an `!important` owner
+        // by also being `!important` itself, which forced consumers into their own `!` (and
+        // then a raw CSS specificity fight Lumeo doesn't control). Plain tokens still resolve
+        // correctly last-wins, in source order, same as every other Cx.Merge conflict group —
+        // SizeClasses (below) and Class (always last) now override this cleanly without needing
+        // `!important` at all, and default (uncustomized) visuals are unchanged.
+        "group-data-[collapsible=icon]:size-8 group-data-[collapsible=icon]:p-2",
         SizeClasses,
         Cx.When(Variant == ButtonVariant.Outline, "bg-background shadow-[0_0_0_1px_var(--color-sidebar-border)] hover:shadow-[0_0_0_1px_var(--color-sidebar-accent)]"),
         "focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-2 w-full overflow-hidden",

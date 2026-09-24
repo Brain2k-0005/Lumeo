@@ -154,6 +154,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   once the visible columns' combined floor exceeds the container, the grid scrolls horizontally
   instead of squeezing a column away (consumer report).
 
+### Fixed
+- **Sidebar: `SidebarMenuButton`'s icon-mode size/padding no longer ship `!important`.** A
+  consumer's own `Class="group-data-[collapsible=icon]:px-0"` (or similar) used to lose to the
+  library's `!important` regardless of being merged in last — `Cx.Merge`/`TailwindMerge` only
+  lets a plain token evict an `!important` owner by also being `!important`, which forced
+  consumers into their own `!` and then a raw CSS-specificity fight Lumeo doesn't control.
+  Default (uncustomized) visuals are unchanged (consumer report).
+
 ## [5.10.5] - 2026-09-23
 
 ### Fixed
