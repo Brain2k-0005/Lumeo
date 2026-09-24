@@ -7,50 +7,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Changed
-- **`Switch`'s default (Md, Comfortable density) track now matches shadcn new-york v4's
-  `switch.tsx` exactly: 18.4×32px (`h-[1.15rem] w-8`) with a 1px border, was 20×36px
-  (`h-5 w-9`) with a 2px border — the old, pre-v4 shadcn/Radix default. The thumb (16×16px)
-  and checked translate distance (14px, matching shadcn's own
-  `translate-x-[calc(100%-2px)]`) already lined up. The other 6 `Lumeo.Size` rungs
-  (Xxs–Xxl, excluding Md) are rescaled proportionally around the new Md so the full
-  7-rung scale stays monotonic; the invisible touch-target hit-area extension (PR #388)
-  is re-derived for the new geometry and now also covers `Lg`, which dipped under the
-  24px minimum as a side effect of the rescale.
-
-### Fixed
-- **DataGrid: `ColumnSizing="FitWithMinimum"` now actually caps growth and honours a
-  resized/restored width** (DocFlow consumer report against 5.11.0). Previously
-  `DataGridHeaderCell` emitted only a CSS `min-width` under `table-layout: auto`, which two
-  ways failed the mode's own contract: (1) a `white-space: nowrap` cell's content-driven
-  minimum width always won regardless of any width declared on the cell, so a 12-column
-  search grid could render 1512px wide in a 1310px container instead of filling it; (2)
-  `MinWidth ?? Width` unconditionally preferred the declared `MinWidth`, so a user-dragged or
-  `LayoutStorageKey`-restored column width was never reflected in any CSS property and
-  "jumped back" on reload. The grid now measures its horizontal scroll container (a
-  `ResizeObserver` reporting back to .NET) and computes an explicit pixel width per column,
-  then renders `table-layout: fixed` at those widths — a real ceiling, since fixed layout
-  uses only the widths it's given, never content. Columns fill the container exactly when
-  there's room, never shrink below their own `MinWidth`, and a resized/restored width always
-  wins (clamped to `MinWidth`/`MaxWidth`); cell content now truncates with an ellipsis
-  instead of forcing the column wider.
-- **DataGrid: `Virtualized` + `OnRangeRequest` with `IsLoading="true"` no longer unmounts the
-  scroll container** (SQL Analyst consumer report, LU-12). `IsLoading` used to replace the
-  ENTIRE body with a plain skeleton, tearing down Blazor's `<Virtualize ItemsProvider>` along
-  with it — and with it the only thing that ever calls `OnRangeRequest`, so a consumer whose
-  own loading flag flipped back to `false` from inside that same handler could never get
-  there and stayed stuck showing the skeleton forever. The skeleton now renders BESIDE a
-  still-mounted `<Virtualize>` for this mode instead of replacing it.
-- **DataGrid: a `LayoutStorageKey`-persisted sort now reaches the FIRST server-virtualization
-  range request**, not just a second one (SQL Analyst consumer report, LU-13). Blazor's
-  `<Virtualize ItemsProvider>` fires its first request from the child component's own
-  initialization — before the grid gets a chance to await the persisted-layout read — so the
-  very first request always carried the default sort/filters, with the restored ones only
-  arriving (and visibly reordering the rows) on a second request a moment later. The initial
-  fetch now waits for a pending restore to resolve.
-
-## [5.11.0] - 2026-09-24
-
 ### Added
 - **`Lumeo.Flow`: `FlowEdge.Class`/`Style`, per-edge colouring without `!important`.** The default
   edge stroke now reads a `--lumeo-flow-edge-stroke` CSS custom property (falls back to
@@ -67,7 +23,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   size; `GetPaneSizeAsync()` re-measures it fresh from the DOM. `OnFitView` fires once a fit
   completes, including the engine's own initial `FitViewOnInit` fit. SQL Analyst field report,
   finding LU-08.
+- **Density tokens for the controls consumers override most.** `--lumeo-grid-header-h`,
+  `--lumeo-grid-row-h`, `--lumeo-menu-item-h`, `--lumeo-popover-p` and `--lumeo-button-radius` join
+  the existing control-height, icon-size and grid-cell-padding tokens; defaults are unchanged
+  (consumer report).
 
+### Changed
+- **`Switch`'s default (Md, Comfortable density) track now matches shadcn new-york v4's
+  `switch.tsx` exactly: 18.4×32px (`h-[1.15rem] w-8`) with a 1px border, was 20×36px
+  (`h-5 w-9`) with a 2px border — the old, pre-v4 shadcn/Radix default. The thumb (16×16px)
+  and checked translate distance (14px, matching shadcn's own
+  `translate-x-[calc(100%-2px)]`) already lined up. The other 6 `Lumeo.Size` rungs
+  (Xxs–Xxl, excluding Md) are rescaled proportionally around the new Md so the full
+  7-rung scale stays monotonic; the invisible touch-target hit-area extension (PR #388)
+  is re-derived for the new geometry and now also covers `Lg`, which dipped under the
+  24px minimum as a side effect of the rescale.
+
+### Fixed
 - **`Lumeo.Flow`: `FlowLayout.Layered` no longer throws on a duplicate node id.** It built its
   in-degree map with `ids.ToDictionary(id => id, ...)`, which threw `ArgumentException` the second
   time a node id repeated (real data — a SQL Server deadlock XML repeating a resource id — crashed
@@ -105,6 +77,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the node's first handle of the matching type, even for edges that never named one; only an
   explicit handle id now switches an edge into handle-based anchoring. SQL Analyst field report,
   finding LU-11.
+- **DataGrid: `ColumnSizing="FitWithMinimum"` now actually caps growth and honours a
+  resized/restored width** (DocFlow consumer report against 5.11.0). Previously
+  `DataGridHeaderCell` emitted only a CSS `min-width` under `table-layout: auto`, which two
+  ways failed the mode's own contract: (1) a `white-space: nowrap` cell's content-driven
+  minimum width always won regardless of any width declared on the cell, so a 12-column
+  search grid could render 1512px wide in a 1310px container instead of filling it; (2)
+  `MinWidth ?? Width` unconditionally preferred the declared `MinWidth`, so a user-dragged or
+  `LayoutStorageKey`-restored column width was never reflected in any CSS property and
+  "jumped back" on reload. The grid now measures its horizontal scroll container (a
+  `ResizeObserver` reporting back to .NET) and computes an explicit pixel width per column,
+  then renders `table-layout: fixed` at those widths — a real ceiling, since fixed layout
+  uses only the widths it's given, never content. Columns fill the container exactly when
+  there's room, never shrink below their own `MinWidth`, and a resized/restored width always
+  wins (clamped to `MinWidth`/`MaxWidth`); cell content now truncates with an ellipsis
+  instead of forcing the column wider.
+- **DataGrid: `Virtualized` + `OnRangeRequest` with `IsLoading="true"` no longer unmounts the
+  scroll container** (SQL Analyst consumer report, LU-12). `IsLoading` used to replace the
+  ENTIRE body with a plain skeleton, tearing down Blazor's `<Virtualize ItemsProvider>` along
+  with it — and with it the only thing that ever calls `OnRangeRequest`, so a consumer whose
+  own loading flag flipped back to `false` from inside that same handler could never get
+  there and stayed stuck showing the skeleton forever. The skeleton now renders BESIDE a
+  still-mounted `<Virtualize>` for this mode instead of replacing it.
+- **DataGrid: a `LayoutStorageKey`-persisted sort now reaches the FIRST server-virtualization
+  range request**, not just a second one (SQL Analyst consumer report, LU-13). Blazor's
+  `<Virtualize ItemsProvider>` fires its first request from the child component's own
+  initialization — before the grid gets a chance to await the persisted-layout read — so the
+  very first request always carried the default sort/filters, with the restored ones only
+  arriving (and visibly reordering the rows) on a second request a moment later. The initial
+  fetch now waits for a pending restore to resolve.
 - **MCP: `lumeo_search` no longer requires the whole query to appear verbatim.** A
   multi-word query (e.g. `"flow diagram nodes edges"`) is now tokenized and scored per
   word, so a component surfaces when it matches ANY of the query's words instead of only
@@ -129,8 +130,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   provides. `Lumeo.DataGrid.Export` had no README at all. Each satellite now carries a
   concise, install-and-usage README next to its `.csproj`; the packing rule prefers it
   when present. (Field report finding LU-17.)
+- **Escape inside an open Select, Combobox, DropdownMenu, ContextMenu, Popover, DatePicker,
+  TimePicker, Cascader or TreeSelect no longer also closes the surrounding Dialog, Sheet or
+  Drawer.** The inner overlay now stops the key event unconditionally; a propagation stop gated on
+  a per-render expression did not hold in a real browser (consumer report).
+- **Destructive Badge, Button, Chip, SpeedDial, Upload trigger and AlertDialog action use white
+  text, as in shadcn v4.** They no longer read `--destructive-foreground`, which themes from tweakcn
+  and others repoint to a dark red text colour, turning every destructive badge red on red
+  (consumer report).
 
+## [5.11.0] - 2026-09-24
 
+### Added
 - **New package `Lumeo.Flow`: `FlowCanvas`, a node/flow editor canvas.** Your own Razor
   node templates and SVG edges (bezier, smooth-step, step, straight) on a pannable, zoomable canvas
   — a first-party engine, no third-party runtime dependency. Drag nodes (the connected edges follow
@@ -276,6 +287,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   on the content element regardless of the flag, for a custom `Class` to derive its own width from.
   Default unchanged (#518).
 
+### Fixed
 - **DataGrid: `ApplyLayoutAsync` reloads exactly like a header click.** A layout applied with a
   new sort now raises `OnServerRequest` in `ServerMode` and re-sorts the bound list in client
   mode; a grid using server-side row virtualization (`Virtualized` + `OnRangeRequest`) now routes
