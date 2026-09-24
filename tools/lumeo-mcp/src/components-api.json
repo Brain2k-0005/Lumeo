@@ -1,11 +1,11 @@
 {
   "$schema": "https://lumeo.nativ.sh/components-api-schema.json",
   "version": "5.10.5",
-  "generated": "2026-09-24T08:11:39.8841658Z",
+  "generated": "2026-09-24T09:10:55.6170263Z",
   "stats": {
     "componentCount": 169,
-    "totalParameters": 4984,
-    "totalEnums": 111,
+    "totalParameters": 5002,
+    "totalEnums": 112,
     "totalRecords": 66,
     "serviceCount": 33,
     "thinFallbacks": []
@@ -1867,6 +1867,12 @@
           "summary": null
         },
         {
+          "name": "FlowExportPngAsync",
+          "returnType": "Task<string?>",
+          "signature": "FlowExportPngAsync(Microsoft.AspNetCore.Components.ElementReference paneEl, double scale)",
+          "summary": null
+        },
+        {
           "name": "SchedulerViewsGetLocalDateAsync",
           "returnType": "Task<string?>",
           "signature": "SchedulerViewsGetLocalDateAsync()",
@@ -3391,6 +3397,12 @@
           "returnType": "Task<bool>",
           "signature": "FlowIsFocusedElementEditableAsync(Microsoft.AspNetCore.Components.ElementReference paneEl)",
           "summary": "Whether document.activeElement, scoped to this pane, is an editable field (input, textarea, select, contenteditable) or inside a data-flow-nodrag region — what FlowCanvas's own keydown handlers (undo/redo, delete, arrow-nudge) check before acting, since KeyboardEventArgs carries no target of its own. Default false (assume not editable, so the shortcuts keep working without a registered engine)."
+        },
+        {
+          "name": "FlowExportPngAsync",
+          "returnType": "Task<string?>",
+          "signature": "FlowExportPngAsync(Microsoft.AspNetCore.Components.ElementReference paneEl, double scale)",
+          "summary": "Phase 4 best-effort raster export: rasterizes every [data-flow-node] element under paneEl (computed styles inlined, drawn through an SVG &lt;foreignObject&gt; onto a &lt;canvas&gt;) at scale× and returns a data:image/png URL, or null on any failure (no registered canvas, no nodes, a tainted canvas from a cross-origin image/font in a node template) — never throws. Default null."
         },
         {
           "name": "SchedulerViewsGetLocalDateAsync",
@@ -36419,6 +36431,7 @@
         "UI/FlowCanvas/FlowLayout.cs",
         "UI/FlowCanvas/FlowMiniMap.razor",
         "UI/FlowCanvas/FlowNodeHost.razor",
+        "UI/FlowCanvas/FlowNodeResizer.razor",
         "UI/FlowCanvas/FlowNodeToolbar.razor",
         "UI/FlowCanvas/FlowPanel.razor",
         "UI/FlowCanvas/FlowState.cs",
@@ -36683,6 +36696,60 @@
           "isEditorRequired": false
         },
         {
+          "name": "ConnectionMode",
+          "type": "FlowConnectionMode",
+          "default": "FlowConnectionMode.Strict",
+          "description": "What a connect gesture accepts. Strict (default) only lets a drag start on a Source handle and land on a Target handle, like every earlier phase. Loose lets a drag start on ANY handle and land on any OTHER handle (source-to-source, target-to-target included) — the drag's start becomes Source, its end Target, regardless of either handle's declared FlowHandleType. IsValidConnection still runs on top of either mode.",
+          "isCascading": false,
+          "captureUnmatched": false,
+          "isEditorRequired": false
+        },
+        {
+          "name": "HelperLines",
+          "type": "bool",
+          "default": "false",
+          "description": "While a single node is dragged (and SnapToGrid is off), snaps it to the nearest other node's left/centre/right and top/middle/bottom within HelperLineThreshold and draws the matching guide(s) in the edge SVG layer. Off by default. A multi-node drag (several selected nodes moved together) does not compute helper lines.",
+          "isCascading": false,
+          "captureUnmatched": false,
+          "isEditorRequired": false
+        },
+        {
+          "name": "HelperLineThreshold",
+          "type": "double",
+          "default": "5",
+          "description": "How close (in flow units) a dragged node's edge must be to another node's for a helper line to appear.",
+          "isCascading": false,
+          "captureUnmatched": false,
+          "isEditorRequired": false
+        },
+        {
+          "name": "NewNodeId",
+          "type": "Func<FlowNode, string>?",
+          "default": null,
+          "description": "Names newly created nodes for Ctrl+V (paste) and Ctrl+D (duplicate). Defaults to a short GUID-derived id (\"flow-node-\" + Guid.NewGuid()). Called once per copied node.",
+          "isCascading": false,
+          "captureUnmatched": false,
+          "isEditorRequired": false
+        },
+        {
+          "name": "ValidateOnHover",
+          "type": "bool",
+          "default": "false",
+          "description": "A hovered connection target is validated against IsValidConnection DURING the drag (one interop round trip per hovered handle change) instead of only on drop, and marked data-flow-handle-invalid when it would be rejected. Off by default — the structural heuristic (data-flow-handle-valid) is free; this costs a round trip per hover.",
+          "isCascading": false,
+          "captureUnmatched": false,
+          "isEditorRequired": false
+        },
+        {
+          "name": "EdgeLabelEditable",
+          "type": "bool",
+          "default": "false",
+          "description": "Double-clicking an edge's label opens an inline text box (Enter commits, Escape cancels). Off by default.",
+          "isCascading": false,
+          "captureUnmatched": false,
+          "isEditorRequired": false
+        },
+        {
           "name": "OnNodeClick",
           "type": "EventCallback<FlowNode>",
           "default": null,
@@ -36777,6 +36844,33 @@
           "type": "EventCallback<FlowSelection>",
           "default": null,
           "description": "DeleteKey was pressed with a non-empty, deletable selection. Without a handler the canvas removes the selected nodes (and every edge touching one of them) and the directly selected edges itself, raising NodesChanged/EdgesChanged.",
+          "isCascading": false,
+          "captureUnmatched": false,
+          "isEditorRequired": false
+        },
+        {
+          "name": "OnNodeResizeStop",
+          "type": "EventCallback<IReadOnlyList<FlowNodeResizeChange>>",
+          "default": null,
+          "description": "A node was resized by a FlowNodeResizer grip or Shift+arrow keys; one entry per resized node. Raised after NodesChanged.",
+          "isCascading": false,
+          "captureUnmatched": false,
+          "isEditorRequired": false
+        },
+        {
+          "name": "OnPaste",
+          "type": "EventCallback<FlowPasteEventArgs>",
+          "default": null,
+          "description": "Ctrl+V pasted (or Ctrl+D duplicated) a selection. Raised after NodesChanged/EdgesChanged, with the NEW nodes/edges selected.",
+          "isCascading": false,
+          "captureUnmatched": false,
+          "isEditorRequired": false
+        },
+        {
+          "name": "OnEdgeLabelChanged",
+          "type": "EventCallback<FlowEdge>",
+          "default": null,
+          "description": "An edge's inline-edited label was committed (EdgeLabelEditable, Enter). Unlike OnConnect/OnDelete/OnReconnect this is a plain notification, not a veto point — there is nothing to validate — so the canvas ALWAYS updates Label itself and raises EdgesChanged first, then this.",
           "isCascading": false,
           "captureUnmatched": false,
           "isEditorRequired": false
@@ -36879,6 +36973,21 @@
           "name": "OnDelete",
           "type": "EventCallback<FlowSelection>",
           "description": "DeleteKey was pressed with a non-empty, deletable selection. Without a handler the canvas removes the selected nodes (and every edge touching one of them) and the directly selected edges itself, raising NodesChanged/EdgesChanged."
+        },
+        {
+          "name": "OnNodeResizeStop",
+          "type": "EventCallback<IReadOnlyList<FlowNodeResizeChange>>",
+          "description": "A node was resized by a FlowNodeResizer grip or Shift+arrow keys; one entry per resized node. Raised after NodesChanged."
+        },
+        {
+          "name": "OnPaste",
+          "type": "EventCallback<FlowPasteEventArgs>",
+          "description": "Ctrl+V pasted (or Ctrl+D duplicated) a selection. Raised after NodesChanged/EdgesChanged, with the NEW nodes/edges selected."
+        },
+        {
+          "name": "OnEdgeLabelChanged",
+          "type": "EventCallback<FlowEdge>",
+          "description": "An edge's inline-edited label was committed (EdgeLabelEditable, Enter). Unlike OnConnect/OnDelete/OnReconnect this is a plain notification, not a veto point — there is nothing to validate — so the canvas ALWAYS updates Label itself and raises EdgesChanged first, then this."
         }
       ],
       "enums": [
@@ -36890,6 +36999,14 @@
             "Cross"
           ],
           "description": "The pattern FlowBackground draws."
+        },
+        {
+          "name": "FlowConnectionMode",
+          "values": [
+            "Strict",
+            "Loose"
+          ],
+          "description": "What a connection gesture (pointer drag or keyboard connect) accepts as a valid target (phase 4). Structural only — IsValidConnection still runs on top of either mode."
         },
         {
           "name": "FlowHandleType",
@@ -37375,6 +37492,104 @@
           "parseFailed": false,
           "parseError": null
         },
+        "FlowNodeResizer": {
+          "componentName": "FlowNodeResizer",
+          "fileName": "FlowNodeResizer.razor",
+          "namespace": "Lumeo",
+          "inheritsFrom": null,
+          "implements": [
+            "IDisposable"
+          ],
+          "parameters": [
+            {
+              "name": "Node",
+              "type": "FlowNode?",
+              "default": null,
+              "description": null,
+              "isCascading": true,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "Context",
+              "type": "FlowCanvas.FlowCanvasContext?",
+              "default": null,
+              "description": null,
+              "isCascading": true,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "MinWidth",
+              "type": "double",
+              "default": "50",
+              "description": "Smallest width a resize (pointer or keyboard) may reach, in flow units.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "MinHeight",
+              "type": "double",
+              "default": "30",
+              "description": "Smallest height a resize (pointer or keyboard) may reach, in flow units.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "MaxWidth",
+              "type": "double?",
+              "default": null,
+              "description": "Largest width a resize may reach; unbounded when null.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "MaxHeight",
+              "type": "double?",
+              "default": null,
+              "description": "Largest height a resize may reach; unbounded when null.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "AlwaysVisible",
+              "type": "bool",
+              "default": "false",
+              "description": "Shows the grips even while the node is not selected. Off by default (React Flow's own convention).",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "Class",
+              "type": "string?",
+              "default": null,
+              "description": "Additional CSS classes merged onto the grip container.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "AdditionalAttributes",
+              "type": "Dictionary<string, object>?",
+              "default": null,
+              "description": "Captures unmatched attributes and applies them to the grip container.",
+              "isCascading": false,
+              "captureUnmatched": true,
+              "isEditorRequired": false
+            }
+          ],
+          "events": [],
+          "enums": [],
+          "records": [],
+          "gotchas": [],
+          "parseFailed": false,
+          "parseError": null
+        },
         "FlowNodeToolbar": {
           "componentName": "FlowNodeToolbar",
           "fileName": "FlowNodeToolbar.razor",
@@ -37526,6 +37741,7 @@
         "ariaAttributes": [
           "aria-hidden",
           "aria-label",
+          "aria-live",
           "aria-orientation",
           "aria-pressed",
           "aria-roledescription",
@@ -37536,6 +37752,7 @@
           "ArrowLeft",
           "ArrowRight",
           "ArrowUp",
+          "Enter",
           "Escape"
         ],
         "keyboardInteractive": true,
