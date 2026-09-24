@@ -285,3 +285,87 @@ Shipped essentially as specified above, with these adaptations:
   a pointer drag is in flight — it only re-anchors on the next Blazor render (a settled drag,
   selection change, pan/zoom report). Extending live multi-node tracking to an aggregate rect
   (rather than one node's own) was judged not worth the added engine complexity for this phase.
+
+## Phase 5 — as built
+Shipped as specified above, with these decisions and adaptations:
+- **Model.** `FlowNode` gained `ParentId` and `Extent` as optional trailing primary-constructor parameters.
+  The old twelve-member `Deconstruct` is kept as an explicit overload (and `FlowLayoutOptions` keeps its
+  three-member one after gaining `GroupPadding`/`GroupHeaderHeight`), so existing source compiles
+  unchanged. Binary compatibility is not preserved (the constructors changed) — irrelevant for a package
+  that has not shipped yet, and recorded in `PublicAPI.Unshipped.txt`. A missing parent id, a self-parent
+  or a parent cycle is treated as top-level (every member of a cycle; a node hanging off a cycle member
+  stays its child). `FlowHierarchy` (internal, pure) resolves parents, depths, absolute positions and the
+  render order once per node list; `FlowGeometry.GetAbsolutePositions` and `FlowCanvas.GetAbsolutePosition`
+  expose the same math publicly.
+- **Flat DOM, absolute hosts.** Children are NOT nested DOM elements (React Flow does the same): every
+  host sits at its absolute flow position and `data-x`/`data-y` carry absolute numbers, so every existing
+  engine path (edges, marquee, helper lines, fit, export) kept working unchanged. `.NET` converts back:
+  `CommitNodeDrag`/`CommitNodeResize` receive absolute positions and store positions relative to the
+  parent's NEW absolute position (the parent may have moved in the same gesture).
+- **Subtree drag.** `flow.js` splits a drag into LEADERS (dragged nodes without a dragged ancestor) and
+  FOLLOWERS (every mounted descendant of a leader). Only leaders snap, clamp and use helper lines;
+  followers keep their exact offset to their leader, so .NET sees an unchanged relative position and
+  does not report them in `OnNodeDragStop`. This is the resizer's "derive from the live rect" idea
+  generalised to a set of nodes rather than a reuse of `anchorForResize` itself.
+- **Z-order.** Parents render before their children; a nested node without an explicit `ZIndex` gets
+  `z-index: depth`. Edges whose deeper end is nested at level N draw in an extra
+  `<svg data-slot="flow-edges-raised" data-level="N">` with `z-index: N` (labels too) — above their group,
+  below the nested nodes. Consequence: a nested node paints above every top-level node, including a
+  top-level node that comes later in the list and overlaps its group (React Flow's elevation rule too).
+- **Extent=Parent** clamps in the live drag (JS, against the parent element's rect), on commit and on
+  arrow keys (.NET). It does not clamp a resize of the child, and shrinking the group does not push its
+  children back in — they are clamped the next time they move. Documented rather than engineered: a
+  resize-time clamp needs the children's sizes inside the resize gesture.
+- **Resize of a group** from a west/north grip shifts its direct children by the opposite delta on
+  commit, so they stay where they are on screen (React Flow's `NodeResizer` behaviour).
+- **Ctrl+G** creates a node of `Type = FlowGroupNode.GroupType` ("group") sized to the selection's bounds
+  plus 20 padding and a 28 label row, in the selection's common parent (top level when they differ); the
+  id comes from `NewNodeId` (called with the draft group node) or `"flow-group-" + a short GUID`; the
+  members keep their `Extent`. A selected node whose ancestor is also selected comes along inside it.
+- **Ctrl+Shift+G** dissolves every selected group (children move one level up at unchanged absolute
+  positions, the group and any edge touching it are removed). With no group selected it takes the
+  selected nodes out of their group instead — the spec only said "ungroups"; this makes the shortcut
+  useful on a child too. Both are announced through the canvas' own live region.
+- **Delete** follows React Flow: deleting a group deletes its subtree (and `OnDelete` receives the
+  expanded selection). A descendant that is not `Deletable` survives, re-parented to its nearest
+  surviving ancestor (or the top level) at the same absolute position, so no node ever points at a
+  parent that is gone.
+- **Clipboard** copies a selected group's descendants too; a copied child of a copied group keeps its
+  relative position inside the new group, everything else lands (20, 20) away in its original parent.
+- **FlowLayout** lays out each sibling set separately, deepest groups first, with only the edges between
+  two members of that set (an edge crossing a group border counts at the level where both ends meet, as
+  an edge of the group). Children land at (`GroupPadding`, `GroupPadding + GroupHeaderHeight`) inside
+  their group; a group grows (never shrinks) its `Width`/`Height` to fit them. Without any `ParentId`
+  the result is exactly the flat algorithm's.
+- **Virtualization window.** The visible viewport inflated by one viewport on every side (3×3 viewports).
+  A node mounts when its absolute rect intersects the window, plus: its ancestors (z-order, clamping and
+  subtree drags read the parent element), any node being dragged, and an already-mounted selected node
+  (so a keyboard move out of the window never drops focus before the next re-window). Edges mount when
+  either end is mounted; the path elements carry `data-sa`/`data-ta` ("x|y|position") so the engine can
+  redraw an edge whose other end is not in the DOM while the mounted end is dragged or resized.
+- **Hysteresis + "debounce".** The window is rebuilt only when the visible rect leaves the window
+  deflated by half a viewport (a pan of more than half a viewport, or a zoom-out past roughly 2×), or
+  when a zoom-in shrinks it below half the size it was built for. The spec's "debounced" re-render is a
+  throttle with a trailing call (at most one rebuild per 80 ms while a gesture runs, always one on the
+  final report): a pure debounce would not mount anything new during a long continuous pan until the
+  pointer stopped, and the one-viewport margin only covers one viewport of travel.
+- **Fit.** The engine cannot fit what is not mounted, so a virtualized canvas fits from the MODEL: on
+  init once the engine reports the pane size (`PaneResized`; nothing mounts before that) and in
+  `FitViewAsync` (fixed sizes, measurements, else the 150 × 40 default). The engine is told
+  (`virtualized` option) and skips its own DOM fit. A fit that shows the whole graph mounts the whole
+  graph — virtualization only helps when the graph is larger than the screen.
+- **What stays DOM-bound** under virtualization, by design: helper-line candidates, marquee hit-testing,
+  connect/reconnect targets and handle measurements only see mounted nodes (everything within one
+  viewport of the visible area). Everything model-level — selection, delete, clipboard, keyboard moves,
+  a drag of the selection (unmounted selected nodes move by the same delta in the model), minimap,
+  export, `ToDocument` — sees every node. Measured sizes survive an unmount (`FlowState` forgets a size
+  only when the node leaves the list).
+- **RTL.** Group geometry is physical like the rest of the canvas (a child at `X = 20` sits 20 flow units
+  from its group's LEFT edge under `dir="rtl"` too); `FlowGroupNode`'s label row is ordinary flow content
+  and starts at the inline-start edge, so it reads right-to-left there.
+- **Engine perf fix found on the way:** `findNode` walked every node element per call (twice per
+  connected edge per frame) — quadratic on large graphs; it is now a native attribute selector lookup.
+- **Measured (2000-node E2E, Blazor Server, local):** first node mounted ~127–160 ms after navigation
+  start (budget 1.5 s); 132 of 2000 nodes mounted at 100%; a 60-step pan of (-800, -380) sent 61 viewport
+  reports and .NET received all 61; 210 nodes mounted afterwards; frame p95 16.7 ms, worst frame ~33–47 ms
+  (the frame a re-window render lands in).

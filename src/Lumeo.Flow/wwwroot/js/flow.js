@@ -317,6 +317,9 @@ function normalizeOptions(o) {
         helperLines: o.helperLines === true,
         helperLineThreshold: Number.isFinite(o.helperLineThreshold) && o.helperLineThreshold > 0 ? o.helperLineThreshold : 5,
         validateOnHover: o.validateOnHover === true,
+        // Phase 5: OnlyRenderVisibleNodes. The DOM holds only the mounted window, so the engine never
+        // fits from the DOM on init (.NET fits from the model instead).
+        virtualized: o.virtualized === true,
         strings: {
             connectingFrom: typeof s.connectingFrom === 'string' && s.connectingFrom ? s.connectingFrom : DEFAULT_STRINGS.connectingFrom,
             connected: typeof s.connected === 'string' && s.connected ? s.connected : DEFAULT_STRINGS.connected,
@@ -346,10 +349,10 @@ function nodeElements(reg) {
 }
 
 function findNode(reg, id) {
-    for (const el of nodeElements(reg)) {
-        if (el.getAttribute('data-flow-node') === id) return el;
-    }
-    return null;
+    if (id == null) return null;
+    // A native attribute lookup instead of a JS scan over every node: edge redraws call this twice
+    // per connected edge per frame, which went quadratic on large (phase 5) graphs.
+    return reg.pane.querySelector('[data-flow-node="' + escAttr(id) + '"]');
 }
 
 // The .NET truth for a node's position (data-x/data-y), unless a commit this file sent is still
@@ -437,10 +440,22 @@ function edgeElements(reg) {
 function computeEdge(reg, edgeEl, posOf) {
     const s = findNode(reg, edgeEl.getAttribute('data-source'));
     const t = findNode(reg, edgeEl.getAttribute('data-target'));
-    if (!s || !t) return null;
-    const sa = anchorFor(reg, s, edgeEl.getAttribute('data-source-handle'), 'source', posOf(s));
-    const ta = anchorFor(reg, t, edgeEl.getAttribute('data-target-handle'), 'target', posOf(t));
+    if (!s && !t) return null;
+    // Phase 5 virtualization: an end whose node is not mounted keeps the anchor .NET stamped on the
+    // path (data-sa / data-ta = "x|y|position") — it cannot move during this gesture anyway.
+    const sa = s ? anchorFor(reg, s, edgeEl.getAttribute('data-source-handle'), 'source', posOf(s)) : stampedAnchor(edgeEl, 'data-sa');
+    const ta = t ? anchorFor(reg, t, edgeEl.getAttribute('data-target-handle'), 'target', posOf(t)) : stampedAnchor(edgeEl, 'data-ta');
+    if (!sa || !ta) return null;
     return edgePath(edgeEl.getAttribute('data-edge-type') || 'bezier', sa.x, sa.y, sa.position, ta.x, ta.y, ta.position);
+}
+
+function stampedAnchor(edgeEl, attr) {
+    const raw = edgeEl.getAttribute(attr);
+    if (!raw) return null;
+    const parts = raw.split('|');
+    const x = Number(parts[0]), y = Number(parts[1]);
+    if (parts.length !== 3 || !Number.isFinite(x) || !Number.isFinite(y)) return null;
+    return { x, y, position: parts[2] };
 }
 
 function escAttr(v) {
@@ -832,9 +847,9 @@ function redrawEdgesForResize(reg, g) {
     for (const e of g.edges) {
         const s = findNode(reg, e.getAttribute('data-source'));
         const t = findNode(reg, e.getAttribute('data-target'));
-        if (!s || !t) continue;
-        const sa = anchorForResize(reg, g, s, e.getAttribute('data-source-handle'), 'source');
-        const ta = anchorForResize(reg, g, t, e.getAttribute('data-target-handle'), 'target');
+        const sa = s ? anchorForResize(reg, g, s, e.getAttribute('data-source-handle'), 'source') : stampedAnchor(e, 'data-sa');
+        const ta = t ? anchorForResize(reg, g, t, e.getAttribute('data-target-handle'), 'target') : stampedAnchor(e, 'data-ta');
+        if (!sa || !ta) continue;
         const p = edgePath(e.getAttribute('data-edge-type') || 'bezier', sa.x, sa.y, sa.position, ta.x, ta.y, ta.position);
         if (e.getAttribute('d') !== p.d) e.setAttribute('d', p.d);
         const id = e.getAttribute('data-edge-id');
@@ -1224,6 +1239,30 @@ function release(reg, pointerId) {
     } catch { /* ignore */ }
 }
 
+// Phase 5 sub-flows: the mounted node elements indexed by id, plus each one's parent id
+// (data-parent-id — already resolved by .NET: missing parents and cycles never appear here).
+function nodeTree(reg) {
+    const byId = new Map();
+    const parentOf = new Map();
+    for (const el of nodeElements(reg)) {
+        const id = el.getAttribute('data-flow-node');
+        byId.set(id, el);
+        const pid = el.getAttribute('data-parent-id');
+        if (pid) parentOf.set(id, pid);
+    }
+    return { byId, parentOf };
+}
+
+function hasAncestorIn(tree, id, set) {
+    let cursor = tree.parentOf.get(id);
+    let guard = 0;
+    while (cursor != null && guard++ < 10000) {
+        if (set.has(cursor)) return true;
+        cursor = tree.parentOf.get(cursor);
+    }
+    return false;
+}
+
 function beginNodeDrag(reg, g) {
     const pane = reg.pane;
     let els;
@@ -1234,13 +1273,43 @@ function beginNodeDrag(reg, g) {
     } else {
         els = [g.nodeEl];
     }
+    // Phase 5: LEADERS are the dragged nodes that are not inside another dragged node; every
+    // mounted descendant of a leader is a FOLLOWER that keeps its offset to that leader exactly
+    // (never snapped, clamped or helper-lined on its own — its X/Y are relative to its parent, so
+    // .NET sees an unchanged relative position on commit).
+    const tree = nodeTree(reg);
+    const selectedIds = new Set(els.map(el => el.getAttribute('data-flow-node')));
+    const leaders = els.filter(el => !hasAncestorIn(tree, el.getAttribute('data-flow-node'), selectedIds));
     const ids = new Set();
-    g.items = els.map(el => {
+    g.items = [];
+    const leaderItems = new Map();
+    for (const el of leaders) {
         const id = el.getAttribute('data-flow-node');
         ids.add(id);
         const p = nodePos(reg, el);
-        return { id, el, rawX: p.x, rawY: p.y, x: p.x, y: p.y, z0: el.style.zIndex };
-    });
+        const it = { id, el, rawX: p.x, rawY: p.y, x: p.x, y: p.y, x0: p.x, y0: p.y, z0: el.style.zIndex, leader: null };
+        g.items.push(it);
+        leaderItems.set(id, it);
+    }
+    if (tree.parentOf.size > 0) {
+        for (const [id, el] of tree.byId) {
+            if (ids.has(id)) continue;
+            // The nearest leader above this node, if any.
+            let cursor = tree.parentOf.get(id);
+            let leader = null;
+            let guard = 0;
+            while (cursor != null && guard++ < 10000) {
+                if (leaderItems.has(cursor)) { leader = leaderItems.get(cursor); break; }
+                cursor = tree.parentOf.get(cursor);
+            }
+            if (!leader) continue;
+            ids.add(id);
+            const p = nodePos(reg, el);
+            g.items.push({ id, el, rawX: p.x, rawY: p.y, x: p.x, y: p.y, x0: p.x, y0: p.y, z0: el.style.zIndex, leader });
+        }
+    }
+    g.leaders = g.items.filter(it => !it.leader);
+    g.tree = tree;
     g.ids = ids;
     g.edges = Array.from(edgeElements(reg)).filter(e => ids.has(e.getAttribute('data-source')) || ids.has(e.getAttribute('data-target')));
     for (const it of g.items) {
@@ -1283,16 +1352,19 @@ function moveNodes(reg, g, clientX, clientY) {
     const dx = (clientX - g.lastX) / zoom;
     const dy = (clientY - g.lastY) / zoom;
     const snapGrid = g.opts.snap;
-    for (const it of g.items) {
+    for (const it of g.leaders) {
         it.rawX += dx;
         it.rawY += dy;
         it.x = snapGrid ? snap(it.rawX, snapGrid[0]) : it.rawX;
         it.y = snapGrid ? snap(it.rawY, snapGrid[1]) : it.rawY;
     }
     // Helper lines (phase 4): only for a single dragged node, against every OTHER (non-dragged)
-    // node's rect — which node is "the" moving one is ambiguous for a multi-selection drag.
-    if (reg.options.helperLines && g.items.length === 1) {
-        const it = g.items[0];
+    // node's rect — which node is "the" moving one is ambiguous for a multi-selection drag. Phase 5:
+    // "single" means a single LEADER (a dragged group's children are followers, not candidates), and
+    // with OnlyRenderVisibleNodes the candidates are the mounted nodes — everything within one
+    // viewport of the visible area; a guide to a node further away would be drawn off-screen anyway.
+    if (reg.options.helperLines && g.leaders.length === 1) {
+        const it = g.leaders[0];
         const size = nodeSize(it.el);
         const others = [];
         for (const el of nodeElements(reg)) {
@@ -1306,7 +1378,24 @@ function moveNodes(reg, g, clientX, clientY) {
         if (result.snapY != null) it.y = result.snapY;
         drawHelperLines(reg, result);
     }
-    for (const it of g.items) it.el.style.transform = nodeTransform(it.x, it.y);
+    // Phase 5: Extent=Parent keeps a leader inside its (non-dragged) parent's rect.
+    for (const it of g.leaders) {
+        if (it.el.getAttribute('data-extent') !== 'parent') continue;
+        const parentEl = g.tree.byId.get(it.el.getAttribute('data-parent-id'));
+        if (!parentEl) continue;
+        const pp = nodePos(reg, parentEl);
+        const ps = nodeSize(parentEl);
+        const s = nodeSize(it.el);
+        it.x = Math.min(Math.max(it.x, pp.x), pp.x + Math.max(0, ps.width - s.width));
+        it.y = Math.min(Math.max(it.y, pp.y), pp.y + Math.max(0, ps.height - s.height));
+    }
+    for (const it of g.items) {
+        if (it.leader) {
+            it.x = it.leader.x + (it.x0 - it.leader.x0);
+            it.y = it.leader.y + (it.y0 - it.leader.y0);
+        }
+        it.el.style.transform = nodeTransform(it.x, it.y);
+    }
     redrawEdges(reg, g.edges, el => livePos(g, el) || nodePos(reg, el));
     redrawToolbars(reg, g);
 }
@@ -1669,6 +1758,13 @@ function makeHandlers(reg) {
         // this for the current two branches, but a new one added later might not — check explicitly.
         if (isKeyboardExempt(e.target)) return;
 
+        // Phase 5: Ctrl+G / Ctrl+Shift+G group/ungroup in .NET — keep the browser's own "find next"
+        // (Ctrl+G) from opening on top of that.
+        if ((e.ctrlKey || e.metaKey) && !e.altKey && (e.key === 'g' || e.key === 'G')) {
+            e.preventDefault();
+            return;
+        }
+
         // Arrow keys on a node move it (FlowCanvas handles the move in .NET); stop the page from
         // scrolling underneath. Only when the node can actually move.
         if (e.key && e.key.startsWith('Arrow')) {
@@ -1814,7 +1910,7 @@ function registerCanvas(pane, dotNetRef, options) {
         hover: false,
         spaceDown: false,
         ready: false,
-        initialFitPending: opts.fitViewOnInit,
+        initialFitPending: opts.fitViewOnInit && !opts.virtualized,
     };
     makeHandlers(reg);
     registrations.set(pane, reg);

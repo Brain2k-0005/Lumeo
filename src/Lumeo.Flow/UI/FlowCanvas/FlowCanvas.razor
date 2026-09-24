@@ -19,6 +19,9 @@
    applies the stamp in the same frame the render lands. Pan, wheel zoom and node drag run in JS
    without a render per frame; .NET hears about them through the JSInvokable members below. *@
 
+@{
+    var renderedNodes = RenderedNodes();
+}
 <div data-slot="flow-canvas"
      role="application"
      aria-label="@L["Flow.CanvasLabel"]"
@@ -26,6 +29,7 @@
      style="@RootStyle"
      data-flow-fit-pending="@(FitViewOnInit ? "" : null)"
      data-readonly="@(Readonly ? "" : null)"
+     data-flow-virtualized="@(OnlyRenderVisibleNodes ? "" : null)"
      @attributes="AdditionalAttributes">
     <div @ref="_paneRef"
          data-slot="flow-pane"
@@ -38,7 +42,11 @@
             <div data-slot="flow-viewport" style="@_viewportLayerStyle">
                 <FlowEdgeLayer />
                 <div data-slot="flow-nodes">
-                    @foreach (var node in _nodes)
+                    @* Phase 5: parents before their children (the hierarchy's render order), and with
+                       OnlyRenderVisibleNodes only the nodes inside the render window — computed ONCE
+                       per render, above, before the CascadingValue notifies FlowEdgeLayer (which
+                       filters edges by the same mounted set). *@
+                    @foreach (var node in renderedNodes)
                     {
                         <FlowNodeHost @key="node.Id" Node="node" />
                     }
@@ -214,6 +222,22 @@
     /// <summary>Double-clicking an edge's label opens an inline text box (Enter commits, Escape cancels). Off by default.</summary>
     [Parameter] public bool EdgeLabelEditable { get; set; }
 
+    // ── Phase 5 ──────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Virtualization for large graphs: only nodes whose rect intersects the visible viewport plus
+    /// one viewport of margin in every direction are mounted (plus their parent groups, and any node
+    /// being dragged), and only edges touching a mounted node are drawn. The window follows pans and
+    /// zooms with hysteresis — it is rebuilt only once the viewport has drifted half a viewport away
+    /// (or zoomed in past half its size) — at most every 80 ms while a gesture runs, plus once when it
+    /// ends. Selection, delete, clipboard, keyboard moves, <see cref="FitViewAsync"/>,
+    /// <see cref="FlowMiniMap"/> and export keep working on EVERY node (they read the model, not the
+    /// DOM); sizes measured while a node was mounted are remembered after it unmounts. Helper lines,
+    /// marquee and connect targets only see mounted nodes (everything within one viewport of the
+    /// visible area). Off by default.
+    /// </summary>
+    [Parameter] public bool OnlyRenderVisibleNodes { get; set; }
+
     // ── Events ───────────────────────────────────────────────────────────
 
     /// <summary>A node was clicked (not raised for the click that ends a drag).</summary>
@@ -301,7 +325,18 @@
     internal readonly FlowState _state = new();
     private ElementReference _paneRef;
     private DotNetObjectReference<FlowCanvas>? _selfRef;
-    private IReadOnlyList<FlowNode> _nodes = Array.Empty<FlowNode>();
+    private IReadOnlyList<FlowNode> _nodesField = Array.Empty<FlowNode>();
+    // Every assignment rebuilds the hierarchy (parents, depths, absolute positions, render order) —
+    // phase 5 sub-flows; a same-instance assignment is a no-op there.
+    private IReadOnlyList<FlowNode> _nodes
+    {
+        get => _nodesField;
+        set
+        {
+            _nodesField = value;
+            _state.SetNodes(value);
+        }
+    }
     private IReadOnlyList<FlowNode>? _lastNodesParam;
     private readonly List<IReadOnlyList<FlowNode>> _recentEmitted = new();
     private IReadOnlyList<FlowEdge> _edges = Array.Empty<FlowEdge>();
@@ -338,7 +373,8 @@
         bool FitViewOnInit, double FitViewPadding,
         bool Connectable, bool ElementsSelectable, bool SelectionOnShiftDrag, bool Rtl,
         bool Reconnectable, FlowEngineStrings Strings,
-        bool Loose, bool HelperLines, double HelperLineThreshold, bool ValidateOnHover)
+        bool Loose, bool HelperLines, double HelperLineThreshold, bool ValidateOnHover,
+        bool Virtualized)
     {
         /// <summary>Serialised as <c>snap</c>: <c>[gx, gy]</c> or null.</summary>
         public double[]? Snap => SnapToGrid ? new[] { SnapX, SnapY } : null;
@@ -504,7 +540,11 @@
         {
             _lastViewportParam = Viewport;
             var v = Sanitize(Viewport);
-            if (!_state.IsEcho(Viewport) && !_state.IsEcho(v)) _state.Stamp(v);
+            if (!_state.IsEcho(Viewport) && !_state.IsEcho(v))
+            {
+                _state.Stamp(v);
+                MaybeRewindow(final: true);
+            }
         }
 
         // SnapToGrid: the first value seeds the toggle; a later value different from what we last
@@ -592,7 +632,8 @@
         FitViewOnInit, FitViewPadding,
         CanConnectGlobally, ElementsSelectable, SelectionOnShiftDrag, Direction == LayoutDirection.Rtl,
         EdgesReconnectable && !Readonly, BuildStrings(),
-        ConnectionMode == FlowConnectionMode.Loose, HelperLines && !Readonly, HelperLineThreshold, ValidateOnHover);
+        ConnectionMode == FlowConnectionMode.Loose, HelperLines && !Readonly, HelperLineThreshold, ValidateOnHover,
+        OnlyRenderVisibleNodes);
 
     private FlowEngineStrings BuildStrings() => new(
         L["Flow.ConnectingFrom"], L["Flow.Connected"], L["Flow.ConnectionRejected"], L["Flow.ConnectionCancelled"],
@@ -648,7 +689,162 @@
     internal bool HasContextMenuHandler => OnNodeContextMenu.HasDelegate;
 
     internal RenderFragment RenderNodeContent(FlowNodeContext context)
-        => NodeTemplate is not null ? NodeTemplate(context) : DefaultNodeContent(context);
+        => NodeTemplate is not null
+            ? NodeTemplate(context)
+            : string.Equals(context.Node.Type, FlowGroupNode.GroupType, StringComparison.Ordinal) ? DefaultGroupContent : DefaultNodeContent(context);
+
+    // Phase 5: without a NodeTemplate a node of Type "group" renders the default group chrome.
+    private static readonly RenderFragment DefaultGroupContent = builder =>
+    {
+        builder.OpenComponent<FlowGroupNode>(0);
+        builder.CloseComponent();
+    };
+
+    // ── Phase 5: sub-flow helpers (FlowNodeHost / FlowEdgeLayer / FlowGroupNode) ──
+
+    /// <summary>The raised edge layer an edge draws in: the deeper nesting level of its two ends (0 = the base layer).</summary>
+    internal int EdgeLevel(FlowEdge edge)
+    {
+        var h = _state.Hierarchy;
+        return h.HasGroups ? Math.Max(h.DepthOf(edge.Source), h.DepthOf(edge.Target)) : 0;
+    }
+
+    /// <summary>The deepest raised edge layer FlowEdgeLayer has to render.</summary>
+    internal int MaxEdgeLevel => _state.Hierarchy.MaxDepth;
+
+    internal FlowPosition SourcePositionOf(FlowEdge edge)
+        => _state.Hierarchy.Get(edge.Source) is { } n ? _state.GetAnchor(n, edge.SourceHandle, FlowHandleType.Source).Position : FlowPosition.Right;
+
+    internal FlowPosition TargetPositionOf(FlowEdge edge)
+        => _state.Hierarchy.Get(edge.Target) is { } n ? _state.GetAnchor(n, edge.TargetHandle, FlowHandleType.Target).Position : FlowPosition.Left;
+
+    /// <summary>The node's nesting depth (0 = top-level).</summary>
+    internal int DepthOf(string id) => _state.Hierarchy.DepthOf(id);
+
+    /// <summary>How many direct children the node has.</summary>
+    internal int ChildCount(string id) => _state.Hierarchy.ChildrenOf(id).Count;
+
+    /// <summary>The node's resolved parent id (null for top-level, a missing parent, or a cycle).</summary>
+    internal string? ResolvedParentOf(string id) => _state.Hierarchy.ParentOf(id);
+
+    /// <summary>The node's top-left corner in absolute flow coordinates.</summary>
+    internal FlowPoint AbsoluteOf(FlowNode node) => _state.AbsoluteOf(node);
+
+    /// <summary>
+    /// The absolute top-left corner of the node with <paramref name="nodeId"/> (a child's own
+    /// <see cref="FlowNode.X"/>/<see cref="FlowNode.Y"/> are relative to its parent group), or null for
+    /// an unknown id.
+    /// </summary>
+    public FlowPoint? GetAbsolutePosition(string nodeId)
+    {
+        ArgumentNullException.ThrowIfNull(nodeId);
+        return _state.Hierarchy.Get(nodeId) is { } node ? _state.AbsoluteOf(node) : null;
+    }
+
+    // ── Phase 5: virtualization ──────────────────────────────────────────
+
+    // The visible rect (flow coordinates) the current render window was built for; null = not built
+    // yet (the pane has no size) — then nothing is mounted until the engine reports the pane size.
+    private FlowRect? _windowViewport;
+    private FlowRect? _window;
+    private readonly HashSet<string> _renderedIds = new(StringComparer.Ordinal);
+    private long _lastRewindowTicks;
+    private bool _rewindowScheduled;
+    private bool _virtualFitPending = true;
+
+    /// <summary>How many rebuilds of the render window have happened (diagnostics and tests).</summary>
+    internal int RewindowCount { get; private set; }
+
+    /// <summary>The ids mounted by the latest render (every node without virtualization).</summary>
+    internal IReadOnlyCollection<string> RenderedIds => _renderedIds;
+
+    internal FlowRect? RenderWindow => _window;
+
+    /// <summary>The nodes this render mounts, in paint order (parents before children).</summary>
+    internal IEnumerable<FlowNode> RenderedNodes()
+    {
+        var order = _state.Hierarchy.RenderOrder;
+        var previous = _renderedIds.Count > 0 ? new HashSet<string>(_renderedIds, StringComparer.Ordinal) : null;
+        _renderedIds.Clear();
+        if (!OnlyRenderVisibleNodes)
+        {
+            foreach (var n in order) _renderedIds.Add(n.Id);
+            return order;
+        }
+        if (_window is not { } window) return Array.Empty<FlowNode>();
+
+        var hierarchy = _state.Hierarchy;
+        var keep = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var n in order)
+        {
+            var visible = FlowVirtualization.Intersects(_state.GetNodeRect(n), window)
+                          || _state.DraggingNodeIds.Contains(n.Id)
+                          // A selected node that is already mounted stays mounted until the next
+                          // re-window, so a keyboard move out of the window never drops its focus.
+                          || (previous is not null && previous.Contains(n.Id) && _state.SelectedNodeIds.Contains(n.Id));
+            if (!visible) continue;
+            if (keep.Add(n.Id) && hierarchy.HasGroups)
+            {
+                // A mounted child needs its parent groups mounted too (z-order, Extent=Parent clamping
+                // and subtree drags all read the parent's element).
+                foreach (var a in hierarchy.AncestorsOf(n.Id)) keep.Add(a);
+            }
+        }
+        var result = new List<FlowNode>(keep.Count);
+        foreach (var n in order)
+        {
+            if (!keep.Contains(n.Id)) continue;
+            result.Add(n);
+            _renderedIds.Add(n.Id);
+        }
+        return result;
+    }
+
+    /// <summary>Rebuilds the render window for the latest known viewport; returns whether it was built.</summary>
+    private bool Rewindow()
+    {
+        if (FlowVirtualization.ViewportRect(_state.Viewport, _state.PaneWidth, _state.PaneHeight) is not { } visible) return false;
+        _windowViewport = visible;
+        _window = FlowVirtualization.ComputeWindow(visible);
+        _lastRewindowTicks = Environment.TickCount64;
+        RewindowCount++;
+        return true;
+    }
+
+    // Called after every engine viewport report (and pane resize): rebuilds the window when the
+    // hysteresis rule says so — immediately on a final report or when the last rebuild is older than
+    // RewindowIntervalMs, otherwise once, trailing, when that interval has passed.
+    private void MaybeRewindow(bool final)
+    {
+        if (!OnlyRenderVisibleNodes || _disposed) return;
+        if (FlowVirtualization.ViewportRect(_state.Viewport, _state.PaneWidth, _state.PaneHeight) is not { } visible) return;
+        if (!FlowVirtualization.NeedsRewindow(_windowViewport, visible)) return;
+        var elapsed = Environment.TickCount64 - _lastRewindowTicks;
+        if (final || elapsed >= FlowVirtualization.RewindowIntervalMs)
+        {
+            if (Rewindow()) StateHasChanged();
+            return;
+        }
+        if (_rewindowScheduled) return;
+        _rewindowScheduled = true;
+        _ = TrailingRewindowAsync(FlowVirtualization.RewindowIntervalMs - (int)elapsed);
+    }
+
+    private async Task TrailingRewindowAsync(int delayMs)
+    {
+        try { await Task.Delay(Math.Max(1, delayMs)); }
+        finally { _rewindowScheduled = false; }
+        if (_disposed) return;
+        await InvokeAsync(() =>
+        {
+            if (FlowVirtualization.ViewportRect(_state.Viewport, _state.PaneWidth, _state.PaneHeight) is { } visible
+                && FlowVirtualization.NeedsRewindow(_windowViewport, visible)
+                && Rewindow())
+            {
+                StateHasChanged();
+            }
+        });
+    }
 
     private static RenderFragment DefaultNodeContent(FlowNodeContext context) => builder =>
     {
@@ -658,15 +854,21 @@
         builder.CloseElement();
     };
 
-    internal IEnumerable<(FlowEdge Edge, FlowEdgePath Path, FlowPoint Source, FlowPoint Target)> RenderableEdges()
+    /// <summary>
+    /// Every edge whose two nodes exist, with its path in ABSOLUTE flow coordinates. With
+    /// <see cref="OnlyRenderVisibleNodes"/> only edges touching a mounted node, unless <paramref name="all"/>
+    /// (export).
+    /// </summary>
+    internal IEnumerable<(FlowEdge Edge, FlowEdgePath Path, FlowPoint Source, FlowPoint Target)> RenderableEdges(bool all = false)
     {
         if (_edges.Count == 0) yield break;
-        var byId = new Dictionary<string, FlowNode>(StringComparer.Ordinal);
-        foreach (var n in _nodes) byId[n.Id] = n;
+        var hierarchy = _state.Hierarchy;
+        var filter = OnlyRenderVisibleNodes && !all;
         foreach (var edge in _edges)
         {
             if (edge is null) continue;
-            if (!byId.TryGetValue(edge.Source, out var s) || !byId.TryGetValue(edge.Target, out var t)) continue;
+            if (hierarchy.Get(edge.Source) is not { } s || hierarchy.Get(edge.Target) is not { } t) continue;
+            if (filter && !_renderedIds.Contains(s.Id) && !_renderedIds.Contains(t.Id)) continue;
             var (sp, spos) = _state.GetAnchor(s, edge.SourceHandle, FlowHandleType.Source);
             var (tp, tpos) = _state.GetAnchor(t, edge.TargetHandle, FlowHandleType.Target);
             yield return (edge, FlowGeometry.GetEdgePath(edge.Type, sp.X, sp.Y, spos, tp.X, tp.Y, tpos), sp, tp);
@@ -792,6 +994,12 @@
                     return;
                 }
             }
+            // Phase 5: Ctrl+G groups the selection, Ctrl+Shift+G ungroups (Key is "G" with Shift).
+            if (string.Equals(e.Key, "g", StringComparison.OrdinalIgnoreCase))
+            {
+                await (e.ShiftKey ? UngroupSelectionAsync() : GroupSelectionAsync());
+                return;
+            }
             // Phase 4 clipboard: Ctrl+C copies, Ctrl+V pastes, Ctrl+D duplicates — none take Shift,
             // so they never collide with Ctrl+Shift+Z above.
             if (!e.ShiftKey)
@@ -855,6 +1063,21 @@
         }
         if (nodeIds.Count == 0 && edgeIds.Count == 0) return;
 
+        // Phase 5 (React Flow's behaviour): deleting a group deletes its whole subtree. A descendant
+        // that is not Deletable survives — re-parented to its nearest surviving ancestor (or made
+        // top-level) at the same absolute position, so it never points at a parent that is gone.
+        var hierarchy = _state.Hierarchy;
+        if (hierarchy.HasGroups && nodeIds.Count > 0)
+        {
+            foreach (var id in nodeIds.ToList())
+            {
+                foreach (var d in hierarchy.DescendantsOf(id))
+                {
+                    if (hierarchy.Get(d) is { Deletable: true }) nodeIds.Add(d);
+                }
+            }
+        }
+
         var selection = new FlowSelection(nodeIds, edgeIds);
         if (OnDelete.HasDelegate)
         {
@@ -864,7 +1087,18 @@
 
         if (nodeIds.Count > 0)
         {
-            var nextNodes = _nodes.Where(n => !nodeIds.Contains(n.Id)).ToList();
+            var nextNodes = new List<FlowNode>(_nodes.Count);
+            foreach (var n in _nodes)
+            {
+                if (nodeIds.Contains(n.Id)) continue;
+                if (hierarchy.ParentOf(n.Id) is { } pid && nodeIds.Contains(pid))
+                {
+                    var survivor = hierarchy.AncestorsOf(n.Id).FirstOrDefault(a => !nodeIds.Contains(a));
+                    nextNodes.Add(Reparent(n, survivor));
+                    continue;
+                }
+                nextNodes.Add(n);
+            }
             await EmitNodesAsync(nextNodes);
         }
         var nextEdges = _edges.Where(e => !edgeIds.Contains(e.Id) && !nodeIds.Contains(e.Source) && !nodeIds.Contains(e.Target)).ToList();
@@ -899,11 +1133,15 @@
             ? new HashSet<string>(_state.SelectedNodeIds, StringComparer.Ordinal)
             : new HashSet<string>(StringComparer.Ordinal) { current.Id };
 
+        var hierarchy = _state.Hierarchy;
         var changes = new List<FlowNodeChange>();
         var next = new List<FlowNode>(_nodes.Count);
         foreach (var n in _nodes)
         {
-            if (moving.Contains(n.Id) && n.Draggable)
+            // Phase 5: a node whose ancestor also moves travels with it already (its X/Y are
+            // relative) — moving it too would double the step.
+            if (moving.Contains(n.Id) && n.Draggable
+                && !(hierarchy.HasGroups && hierarchy.AncestorsOf(n.Id).Any(moving.Contains)))
             {
                 var x = n.X + dx;
                 var y = n.Y + dy;
@@ -911,6 +1149,13 @@
                 {
                     x = FlowGeometry.Snap(x, SnapGrid.X);
                     y = FlowGeometry.Snap(y, SnapGrid.Y);
+                }
+                if (n.Extent == FlowExtent.Parent && hierarchy.ParentOf(n.Id) is { } pid && hierarchy.Get(pid) is { } parent)
+                {
+                    var (pw, ph) = _state.GetNodeSize(parent);
+                    var (w, h) = _state.GetNodeSize(n);
+                    (x, y) = FlowGeometry.ClampToParent(x, y, w, h, pw, ph);
+                    if (x == n.X && y == n.Y) { next.Add(n); continue; } // pinned against the parent's edge
                 }
                 next.Add(n with { X = x, Y = y });
                 changes.Add(new FlowNodeChange(n.Id, x, y));
@@ -949,11 +1194,13 @@
         if (limits.MaxHeight is { } maxH) height = Math.Min(maxH, height);
         if (width == rect.Width && height == rect.Height) return;
 
-        var updated = current with { X = rect.X, Y = rect.Y, Width = width, Height = height };
+        // Keyboard resize grows/shrinks from the top-left corner: X/Y stay what they are (in the
+        // node's own — possibly parent-relative — space).
+        var updated = current with { Width = width, Height = height };
         await EmitNodesAsync(_nodes.Select(n => n.Id == node.Id ? updated : n).ToList());
         PushHistory();
         if (OnNodeResizeStop.HasDelegate)
-            await OnNodeResizeStop.InvokeAsync(new[] { new FlowNodeResizeChange(node.Id, rect.X, rect.Y, width, height) });
+            await OnNodeResizeStop.InvokeAsync(new[] { new FlowNodeResizeChange(node.Id, current.X, current.Y, width, height) });
     }
 
     // ── Phase 4: clipboard ───────────────────────────────────────────────
@@ -961,10 +1208,7 @@
     private void CopySelection()
     {
         if (_state.SelectedNodeIds.Count == 0) return;
-        var nodes = _nodes.Where(n => _state.SelectedNodeIds.Contains(n.Id)).ToList();
-        var ids = new HashSet<string>(nodes.Select(n => n.Id), StringComparer.Ordinal);
-        var edges = _edges.Where(e => ids.Contains(e.Source) && ids.Contains(e.Target)).ToList();
-        _clipboard = (nodes, edges);
+        _clipboard = CollectSelectionSubtrees();
     }
 
     private Task PasteAsync() => _clipboard is { } clip ? PasteNodesAsync(clip.Nodes, clip.Edges) : Task.CompletedTask;
@@ -972,10 +1216,152 @@
     private Task DuplicateSelectionAsync()
     {
         if (_state.SelectedNodeIds.Count == 0) return Task.CompletedTask;
-        var nodes = _nodes.Where(n => _state.SelectedNodeIds.Contains(n.Id)).ToList();
-        var ids = new HashSet<string>(nodes.Select(n => n.Id), StringComparer.Ordinal);
-        var edges = _edges.Where(e => ids.Contains(e.Source) && ids.Contains(e.Target)).ToList();
+        var (nodes, edges) = CollectSelectionSubtrees();
         return PasteNodesAsync(nodes, edges);
+    }
+
+    // The selected nodes plus (phase 5) every descendant of a selected group — copying a group copies
+    // what is inside it — in list order, and the edges with both ends in that set.
+    private (List<FlowNode> Nodes, List<FlowEdge> Edges) CollectSelectionSubtrees()
+    {
+        var ids = new HashSet<string>(_state.SelectedNodeIds, StringComparer.Ordinal);
+        var hierarchy = _state.Hierarchy;
+        if (hierarchy.HasGroups)
+        {
+            foreach (var id in _state.SelectedNodeIds) foreach (var d in hierarchy.DescendantsOf(id)) ids.Add(d);
+        }
+        var nodes = _nodes.Where(n => ids.Contains(n.Id)).ToList();
+        var edges = _edges.Where(e => ids.Contains(e.Source) && ids.Contains(e.Target)).ToList();
+        return (nodes, edges);
+    }
+
+    // ── Phase 5: group / ungroup (Ctrl+G / Ctrl+Shift+G) ─────────────────
+
+    /// <summary>Padding between a group's border and its children when <see cref="GroupSelectionAsync"/> creates it, in flow units.</summary>
+    internal const double GroupPadding = 20;
+
+    /// <summary>Room reserved above the children for <see cref="FlowGroupNode"/>'s label row, in flow units.</summary>
+    internal const double GroupHeaderHeight = 28;
+
+    /// <summary>
+    /// Wraps the selected nodes in a new group node (<c>Ctrl+G</c>): a node of
+    /// <see cref="FlowNode.Type"/> <c>"group"</c> sized to their bounds plus padding and a label row,
+    /// placed in their common parent (or at the top level when they have different parents), with
+    /// the selected nodes re-parented into it at unchanged absolute positions (their
+    /// <see cref="FlowNode.Extent"/> is kept). A selected node whose ancestor is also selected comes
+    /// along inside that ancestor. The new group's id comes from <see cref="NewNodeId"/> (called with
+    /// the draft group node) or defaults to <c>"flow-group-" + a short GUID</c>; it becomes the
+    /// selection. Raises <see cref="NodesChanged"/>; a no-op when <see cref="Readonly"/> or nothing is selected.
+    /// </summary>
+    public async Task GroupSelectionAsync()
+    {
+        if (Readonly || _state.SelectedNodeIds.Count == 0) return;
+        var hierarchy = _state.Hierarchy;
+        var selected = _state.SelectedNodeIds;
+        var members = _nodes.Where(n => selected.Contains(n.Id) && !hierarchy.AncestorsOf(n.Id).Any(selected.Contains)).ToList();
+        if (members.Count == 0) return;
+
+        var parents = members.Select(m => hierarchy.ParentOf(m.Id)).Distinct().ToList();
+        var commonParent = parents.Count == 1 ? parents[0] : null;
+        var bounds = FlowGeometry.GetBounds(members.Select(_state.GetNodeRect))!.Value;
+        var groupAbs = new FlowPoint(bounds.X - GroupPadding, bounds.Y - GroupPadding - GroupHeaderHeight);
+        var origin = commonParent is not null && hierarchy.Get(commonParent) is { } cp ? hierarchy.AbsoluteOf(cp) : new FlowPoint(0, 0);
+
+        var draft = new FlowNode("", groupAbs.X - origin.X, groupAbs.Y - origin.Y,
+            Type: FlowGroupNode.GroupType, Data: L["Flow.GroupDefaultLabel"],
+            Width: bounds.Width + GroupPadding * 2, Height: bounds.Height + GroupPadding * 2 + GroupHeaderHeight,
+            ParentId: commonParent);
+        var groupId = NewNodeId?.Invoke(draft) ?? "flow-group-" + Guid.NewGuid().ToString("N")[..10];
+        var group = draft with { Id = groupId };
+
+        var memberIds = new HashSet<string>(members.Select(m => m.Id), StringComparer.Ordinal);
+        var next = new List<FlowNode>(_nodes.Count + 1);
+        var inserted = false;
+        foreach (var n in _nodes)
+        {
+            if (memberIds.Contains(n.Id))
+            {
+                // The group goes in front of its first member: document order is paint order within
+                // the same depth, and a group should never paint over a sibling it now contains.
+                if (!inserted) { next.Add(group); inserted = true; }
+                var abs = hierarchy.AbsoluteOf(n);
+                next.Add(n with { ParentId = groupId, X = abs.X - groupAbs.X, Y = abs.Y - groupAbs.Y });
+            }
+            else
+            {
+                next.Add(n);
+            }
+        }
+
+        await EmitNodesAsync(next);
+        PushHistory();
+        _state.SelectedNodeIds.Clear();
+        _state.SelectedEdgeIds.Clear();
+        _state.SelectedNodeIds.Add(groupId);
+        Announce(L["Flow.Grouped", members.Count]);
+        await RaiseSelectionChangedAsync();
+    }
+
+    /// <summary>
+    /// <c>Ctrl+Shift+G</c>: dissolves every selected group — the group node (and any edge touching it)
+    /// is removed and its children move up to the group's own parent (or the top level) at unchanged
+    /// absolute positions. When no selected node is a group, the selected nodes that sit inside a group
+    /// are taken out of it instead (one level up, same absolute position). The former children (or the
+    /// detached nodes) become the selection. Raises <see cref="NodesChanged"/> (and
+    /// <see cref="EdgesChanged"/> when a group had edges); a no-op when <see cref="Readonly"/>.
+    /// </summary>
+    public async Task UngroupSelectionAsync()
+    {
+        if (Readonly || _state.SelectedNodeIds.Count == 0) return;
+        var hierarchy = _state.Hierarchy;
+        var dissolve = new HashSet<string>(_state.SelectedNodeIds.Where(hierarchy.HasChildren), StringComparer.Ordinal);
+        var nextSelection = new List<string>();
+        List<FlowNode> next;
+        if (dissolve.Count > 0)
+        {
+            next = new List<FlowNode>(_nodes.Count);
+            foreach (var n in _nodes)
+            {
+                if (dissolve.Contains(n.Id)) continue;
+                if (hierarchy.ParentOf(n.Id) is { } pid && dissolve.Contains(pid))
+                {
+                    var survivor = hierarchy.AncestorsOf(n.Id).FirstOrDefault(a => !dissolve.Contains(a));
+                    next.Add(Reparent(n, survivor));
+                    nextSelection.Add(n.Id);
+                    continue;
+                }
+                next.Add(n);
+            }
+        }
+        else
+        {
+            var detach = new HashSet<string>(_state.SelectedNodeIds.Where(id => hierarchy.ParentOf(id) is not null), StringComparer.Ordinal);
+            if (detach.Count == 0) return;
+            next = _nodes.Select(n => detach.Contains(n.Id) ? Reparent(n, hierarchy.ParentOf(hierarchy.ParentOf(n.Id)!)) : n).ToList();
+            nextSelection.AddRange(detach);
+        }
+
+        await EmitNodesAsync(next);
+        if (dissolve.Count > 0)
+        {
+            var nextEdges = _edges.Where(e => !dissolve.Contains(e.Source) && !dissolve.Contains(e.Target)).ToList();
+            if (nextEdges.Count != _edges.Count) await EmitEdgesAsync(nextEdges);
+        }
+        PushHistory();
+        _state.SelectedNodeIds.Clear();
+        _state.SelectedEdgeIds.Clear();
+        foreach (var id in nextSelection) _state.SelectedNodeIds.Add(id);
+        Announce(L["Flow.Ungrouped", nextSelection.Count]);
+        await RaiseSelectionChangedAsync();
+    }
+
+    // A node moved under a new parent (or to the top level with null), keeping its ABSOLUTE position.
+    private FlowNode Reparent(FlowNode node, string? newParentId)
+    {
+        var hierarchy = _state.Hierarchy;
+        var abs = hierarchy.AbsoluteOf(node);
+        var origin = newParentId is not null && hierarchy.Get(newParentId) is { } p ? hierarchy.AbsoluteOf(p) : new FlowPoint(0, 0);
+        return node with { ParentId = newParentId, X = abs.X - origin.X, Y = abs.Y - origin.Y };
     }
 
     // Shared by Ctrl+V and Ctrl+D: new ids (NewNodeId, default a short GUID), (20, 20) offset from
@@ -990,7 +1376,15 @@
         {
             var newId = NewNodeId?.Invoke(n) ?? "flow-node-" + Guid.NewGuid().ToString("N")[..10];
             idMap[n.Id] = newId;
-            newNodes.Add(n with { Id = newId, X = n.X + 20, Y = n.Y + 20 });
+        }
+        foreach (var n in nodes)
+        {
+            // Phase 5: a copied child of a copied group follows its (new) parent at its unchanged
+            // relative position; everything else lands (20, 20) from its original, in the same parent.
+            if (n.ParentId is { } pid && idMap.TryGetValue(pid, out var newParent))
+                newNodes.Add(n with { Id = idMap[n.Id], ParentId = newParent });
+            else
+                newNodes.Add(n with { Id = idMap[n.Id], X = n.X + 20, Y = n.Y + 20 });
         }
         var newEdges = edges
             .Where(e => idMap.ContainsKey(e.Source) && idMap.ContainsKey(e.Target))
@@ -1049,7 +1443,10 @@
     {
         var pad = padding ?? FitViewPadding;
         if (_nodes.Count == 0) return;
-        if (_state.PaneWidth > 0 && _state.PaneHeight > 0 && _state.AllSized(_nodes)
+        // Virtualized: the DOM only holds the mounted window, so the engine's DOM fit would fit that
+        // window, not the graph — fit from the model instead (unmeasured nodes count at their fixed
+        // size or the library default).
+        if (_state.PaneWidth > 0 && _state.PaneHeight > 0 && (OnlyRenderVisibleNodes || _state.AllSized(_nodes))
             && _state.ComputeFit(_nodes, pad, MinZoom, MaxZoom) is { } vp)
         {
             await SetViewportCoreAsync(vp);
@@ -1178,7 +1575,21 @@
         // Colours here are intentionally hardcoded, not theme tokens: an exported SVG is a portable
         // artifact meant to be opened outside the app (no CSS variables to resolve against once it
         // leaves the page) — see DESIGN.md's Phase 4 section.
-        foreach (var (edge, path, _, _) in RenderableEdges())
+        // Phase 5: groups (nodes with children) paint first, UNDER the edges, with their label in the
+        // top-left corner — the same layering the live canvas uses.
+        var hierarchy = _state.Hierarchy;
+        foreach (var node in hierarchy.RenderOrder)
+        {
+            if (!hierarchy.HasChildren(node.Id)) continue;
+            var rect = _state.GetNodeRect(node);
+            sb.Append("<rect x=\"").Append(FlowGeometry.Fmt(rect.X)).Append("\" y=\"").Append(FlowGeometry.Fmt(rect.Y))
+              .Append("\" width=\"").Append(FlowGeometry.Fmt(rect.Width)).Append("\" height=\"").Append(FlowGeometry.Fmt(rect.Height))
+              .Append("\" rx=\"8\" fill=\"#f1f5f9\" fill-opacity=\"0.6\" stroke=\"#cbd5e1\" stroke-dasharray=\"4 3\"/>");
+            sb.Append("<text x=\"").Append(FlowGeometry.Fmt(rect.X + 10)).Append("\" y=\"").Append(FlowGeometry.Fmt(rect.Y + 18))
+              .Append("\" font-size=\"11\" font-family=\"sans-serif\" fill=\"#475569\">")
+              .Append(System.Net.WebUtility.HtmlEncode(node.Data?.ToString() ?? node.Id)).Append("</text>");
+        }
+        foreach (var (edge, path, _, _) in RenderableEdges(all: true))
         {
             sb.Append("<path d=\"").Append(System.Net.WebUtility.HtmlEncode(path.D)).Append("\" fill=\"none\" stroke=\"#94a3b8\" stroke-width=\"1.5\"/>");
             if (!string.IsNullOrEmpty(edge.Label))
@@ -1188,8 +1599,9 @@
                   .Append(System.Net.WebUtility.HtmlEncode(edge.Label)).Append("</text>");
             }
         }
-        foreach (var node in _nodes)
+        foreach (var node in hierarchy.RenderOrder)
         {
+            if (hierarchy.HasChildren(node.Id)) continue; // drawn above, under the edges
             var rect = _state.GetNodeRect(node);
             sb.Append("<rect x=\"").Append(FlowGeometry.Fmt(rect.X)).Append("\" y=\"").Append(FlowGeometry.Fmt(rect.Y))
               .Append("\" width=\"").Append(FlowGeometry.Fmt(rect.Width)).Append("\" height=\"").Append(FlowGeometry.Fmt(rect.Height))
@@ -1238,6 +1650,7 @@
     {
         _state.Stamp(viewport);
         RefreshContext();
+        MaybeRewindow(final: true); // the engine applies a stamp without reporting it back
         await InvokeAsync(StateHasChanged);
         if (ViewportChanged.HasDelegate) await InvokeAsync(() => ViewportChanged.InvokeAsync(viewport));
     }
@@ -1263,14 +1676,71 @@
             map[c.Id] = c;
         }
 
+        // Phase 5: the engine reports ABSOLUTE positions (the DOM is flat — every host sits at its
+        // absolute flow position). Convert back to each node's model space: relative to its parent's
+        // NEW absolute position (the parent may have moved in the same drag), clamped for
+        // Extent=Parent. A child that moved along with its dragged parent keeps its relative
+        // position unchanged and is not reported as a change of its own.
+        var hierarchy = _state.Hierarchy;
+
+        // Virtualization: selected nodes that are not mounted cannot take part in the live drag, but
+        // a drag of the selection still moves them — by the same delta, in the model.
+        if (OnlyRenderVisibleNodes && _state.SelectedNodeIds.Count > map.Count && map.Keys.All(_state.SelectedNodeIds.Contains))
+        {
+            var sample = map.Values.First();
+            if (hierarchy.Get(sample.Id) is { } sampleNode)
+            {
+                var old = hierarchy.AbsoluteOf(sampleNode);
+                var (ddx, ddy) = (sample.X - old.X, sample.Y - old.Y);
+                foreach (var id in _state.SelectedNodeIds)
+                {
+                    if (map.ContainsKey(id) || _renderedIds.Contains(id) || hierarchy.Get(id) is not { } off || !off.Draggable) continue;
+                    if (hierarchy.AncestorsOf(id).Any(_state.SelectedNodeIds.Contains)) continue; // moves with its ancestor
+                    var abs = hierarchy.AbsoluteOf(off);
+                    map[id] = new FlowNodeChange(id, abs.X + ddx, abs.Y + ddy);
+                }
+            }
+        }
+
+        // A node's absolute position AFTER this commit: its reported position when it moved itself,
+        // else its unchanged relative position on top of its parent's new absolute position.
+        FlowPoint NewAbsolute(string id)
+        {
+            if (hierarchy.Get(id) is not { } node) return new FlowPoint(0, 0);
+            if (node.Draggable && map.TryGetValue(id, out var ch)) return new FlowPoint(ch.X, ch.Y);
+            if (hierarchy.ParentOf(id) is not { } pid) return new FlowPoint(node.X, node.Y);
+            var pa = NewAbsolute(pid);
+            return new FlowPoint(pa.X + node.X, pa.Y + node.Y);
+        }
+
         var applied = new List<FlowNodeChange>();
         var next = new List<FlowNode>(_nodes.Count);
         foreach (var n in _nodes)
         {
             if (n.Draggable && map.TryGetValue(n.Id, out var c))
             {
-                next.Add(n with { X = c.X, Y = c.Y });
-                applied.Add(new FlowNodeChange(n.Id, c.X, c.Y));
+                var parentId = hierarchy.ParentOf(n.Id);
+                double x = c.X, y = c.Y;
+                if (parentId is not null)
+                {
+                    var parentAbs = NewAbsolute(parentId);
+                    x -= parentAbs.X;
+                    y -= parentAbs.Y;
+                    if (n.Extent == FlowExtent.Parent && hierarchy.Get(parentId) is { } parent)
+                    {
+                        var (pw, ph) = _state.GetNodeSize(parent);
+                        var (w, h) = _state.GetNodeSize(n);
+                        (x, y) = FlowGeometry.ClampToParent(x, y, w, h, pw, ph);
+                    }
+                    // Moved along with a parent that moved in the same gesture: unchanged, not a change.
+                    if (map.ContainsKey(parentId) && Math.Abs(x - n.X) < 1e-6 && Math.Abs(y - n.Y) < 1e-6)
+                    {
+                        next.Add(n);
+                        continue;
+                    }
+                }
+                next.Add(n with { X = x, Y = y });
+                applied.Add(new FlowNodeChange(n.Id, x, y));
             }
             else
             {
@@ -1314,6 +1784,8 @@
         if (!double.IsFinite(x) || !double.IsFinite(y) || !(zoom > 0)) return;
         var viewport = new FlowViewport(x, y, zoom);
         _state.Report(viewport);
+        // Phase 5: the rAF report drives the virtualization window (hysteresis-guarded, throttled).
+        MaybeRewindow(final);
         if (ViewportChanged.HasDelegate) await ViewportChanged.InvokeAsync(viewport);
         if (final)
         {
@@ -1333,7 +1805,23 @@
 
     /// <summary>Engine callback: the pane was resized. Not meant for application code.</summary>
     [JSInvokable, EditorBrowsable(EditorBrowsableState.Never)]
-    public void PaneResized(double width, double height) => _state.SetPaneSize(width, height);
+    public void PaneResized(double width, double height)
+    {
+        _state.SetPaneSize(width, height);
+        if (!OnlyRenderVisibleNodes || !(_state.PaneWidth > 0) || !(_state.PaneHeight > 0)) return;
+        // Virtualization: the engine cannot fit what is not mounted, so a virtualized canvas fits
+        // itself here, from the model (fixed sizes, measurements, else the library default), the
+        // first time the pane has a size — then builds the first render window for that viewport.
+        if (_virtualFitPending && FitViewOnInit && _nodes.Count > 0
+            && _state.ComputeFit(_nodes, FitViewPadding, MinZoom, MaxZoom) is { } fit)
+        {
+            _state.Stamp(fit);
+            RefreshContext();
+            if (ViewportChanged.HasDelegate) _ = InvokeAsync(() => ViewportChanged.InvokeAsync(fit));
+        }
+        _virtualFitPending = false;
+        if (Rewindow()) StateHasChanged();
+    }
 
     /// <summary>Engine callback: the background was clicked at a flow point. Not meant for application code.</summary>
     [JSInvokable, EditorBrowsable(EditorBrowsableState.Never)]
@@ -1438,11 +1926,32 @@
         var current = _nodes.FirstOrDefault(n => n.Id == id);
         if (current is null) return false;
 
-        var updated = current with { X = x, Y = y, Width = width, Height = height };
-        await EmitNodesAsync(_nodes.Select(n => n.Id == id ? updated : n).ToList());
+        // Phase 5: the engine reports the ABSOLUTE rect. Convert X/Y back into the node's own space
+        // (relative to its parent), and when a west/north grip moved a GROUP's top-left corner, shift
+        // its direct children the other way so they stay where they are on screen (React Flow's
+        // NodeResizer does the same).
+        var hierarchy = _state.Hierarchy;
+        var oldAbs = hierarchy.AbsoluteOf(current);
+        var (rx, ry) = (x, y);
+        if (hierarchy.ParentOf(id) is { } pid && hierarchy.Get(pid) is { } parentNode)
+        {
+            var pa = hierarchy.AbsoluteOf(parentNode);
+            rx -= pa.X;
+            ry -= pa.Y;
+        }
+        var (dx, dy) = (x - oldAbs.X, y - oldAbs.Y);
+        var children = hierarchy.ChildrenOf(id);
+        var shiftChildren = children.Count > 0 && (Math.Abs(dx) > 1e-9 || Math.Abs(dy) > 1e-9);
+        var childSet = shiftChildren ? new HashSet<string>(children, StringComparer.Ordinal) : null;
+
+        var updated = current with { X = rx, Y = ry, Width = width, Height = height };
+        await EmitNodesAsync(_nodes.Select(n =>
+            n.Id == id ? updated
+            : childSet is not null && childSet.Contains(n.Id) ? n with { X = n.X - dx, Y = n.Y - dy }
+            : n).ToList());
         PushHistory();
         if (OnNodeResizeStop.HasDelegate)
-            await OnNodeResizeStop.InvokeAsync(new[] { new FlowNodeResizeChange(id, x, y, width, height) });
+            await OnNodeResizeStop.InvokeAsync(new[] { new FlowNodeResizeChange(id, rx, ry, width, height) });
         return true;
     }
 
