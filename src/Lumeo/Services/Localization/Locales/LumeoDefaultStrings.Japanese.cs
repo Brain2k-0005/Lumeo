@@ -39,6 +39,7 @@ internal static partial class LumeoDefaultStrings
         ["DataGrid.SortAscending"] = "昇順に並べ替え",
         ["DataGrid.SortDescending"] = "降順に並べ替え",
         ["DataGrid.FitToContent"] = "内容に合わせる",
+        ["DataGrid.AutoSizeAllColumns"] = "すべての列を自動調整",
         ["DataGrid.MoveLeft"] = "左へ移動",
         ["DataGrid.MoveRight"] = "右へ移動",
         ["DataGrid.ResizeColumn"] = "列幅を変更(矢印キーを使用、ダブルクリックで自動調整)",

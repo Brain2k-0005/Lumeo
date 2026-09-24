@@ -342,7 +342,7 @@
            pin menu / column menu (positioned in VIEWPORT coordinates by
            Interop.PositionFixed) — they mispositioned against this wrapper and got
            clipped by its own overflow-auto. See components.js's registerViewportWidth. *@
-        <div id="@_viewportId" class="overflow-auto flex-1" @onclick="CloseContextMenu">
+        <div id="@_viewportId" class="@ViewportCssClass" @onclick="CloseContextMenu">
             @* border-separate + border-spacing-0 (DocFlow D8), only when NOT Bordered:
                Tailwind preflight sets border-collapse: collapse on every <table>, which
                merges each row's border-b with the next row's own borders into one shared
@@ -489,6 +489,21 @@
 
     /// <summary>Renders visible borders around cells instead of just row dividers.</summary>
     [Parameter] public bool Bordered { get; set; }
+
+    /// <summary>
+    /// Hides the native scrollbar on the grid's own scroll container and draws thin,
+    /// JS-driven overlay scrollbars on top (both axes) instead — reserving no layout
+    /// space, matching Lumeo's theme, appearing on hover/scroll, with draggable
+    /// thumbs. Native scrolling (wheel, trackpad, touch, and keyboard via a focused
+    /// cell) is unaffected; only the visual bar changes. RTL-safe.
+    /// <c>prefers-reduced-motion</c> disables the show/hide fade. Default
+    /// <c>false</c> (unchanged native scrollbar) — field report DocFlow D4 / issue
+    /// #517. Does not interact with virtualization, the sticky header, pinned
+    /// columns, the resize guideline or column reorder: the thumbs are drawn
+    /// entirely outside the grid's own DOM, synced to its scroll container's live
+    /// rect (like the header popovers' PositionFixed).
+    /// </summary>
+    [Parameter] public bool OverlayScrollbar { get; set; }
     /// <summary>
     /// Dense layout: header and body cells drop from <c>px-3 py-2</c> to
     /// <c>px-2 py-1</c> (and the root text shrinks to <c>text-sm</c>), so the
@@ -1547,6 +1562,10 @@
     private bool _viewportWidthRegistered;
     private bool WantsViewportWidthObserver => DetailTemplate is not null && DetailStickyToViewport;
 
+    // Overlay scrollbar (#517) — see the register/unregister block in
+    // OnAfterRenderAsync and DisposeAsync, and _viewportId above.
+    private bool _overlayScrollbarRegistered;
+
     private List<DataGridGroupSection<TItem>> _groupedSections = new();
     private HashSet<string> _expandedGroups = new();
     private HashSet<string> _knownGroupKeys = new();
@@ -1683,6 +1702,12 @@
         && !_useServerVirtualization;
 
     private string? HeightStyle => Height is not null ? $"height: {Height};" : null;
+
+    // lumeo-dg-overlay-scroll (#517) hides the native scrollbar; only added when
+    // OverlayScrollbar is on, so a plain grid's viewport markup/CSS is unchanged.
+    private string ViewportCssClass => OverlayScrollbar
+        ? "overflow-auto flex-1 lumeo-dg-overlay-scroll"
+        : "overflow-auto flex-1";
 
     private string RootCssClass
     {
@@ -2074,6 +2099,7 @@
         _toolbarContext.OnColumnToggle = EventCallback.Factory.Create<DataGridColumn<TItem>>(this, HandleColumnVisibilityChanged);
         _toolbarContext.OnColumnReorder = EventCallback.Factory.Create<ColumnReorderEventArgs>(this, HandleColumnReorder);
         _toolbarContext.OnColumnPin = EventCallback.Factory.Create<ColumnPinEventArgs>(this, HandleColumnPin);
+        _toolbarContext.OnAutoSizeAllColumns = EventCallback.Factory.Create(this, AutoSizeAllColumnsAsync);
 
         _toolbarContext.ExportFormats = ExportFormats;
         _toolbarContext.OnExport = EventCallback.Factory.Create<string>(this, HandleExport);
@@ -2276,6 +2302,24 @@
             try { await Interop.UnregisterViewportWidth(_viewportId); }
             catch (JSDisconnectedException) { }
             _viewportWidthRegistered = false;
+        }
+
+        // Overlay scrollbar (#517): reactive to OverlayScrollbar flipping at runtime,
+        // not just first render — same shape as the viewport-width block above.
+        if (OverlayScrollbar && !_overlayScrollbarRegistered)
+        {
+            try
+            {
+                await Interop.RegisterOverlayScrollbar(_viewportId);
+                _overlayScrollbarRegistered = true;
+            }
+            catch (JSDisconnectedException) { }
+        }
+        else if (!OverlayScrollbar && _overlayScrollbarRegistered)
+        {
+            try { await Interop.UnregisterOverlayScrollbar(_viewportId); }
+            catch (JSDisconnectedException) { }
+            _overlayScrollbarRegistered = false;
         }
 
         if (_isExpanded && _fullscreenNeedsFocus)
@@ -4915,6 +4959,82 @@
         }
     }
 
+    // --- Auto-size columns (field report DocFlow W1 / issue #519) ---
+
+    /// <summary>
+    /// Auto-sizes a single column (looked up by <see cref="DataGridColumn{TItem}.Field"/>)
+    /// to fit its content — header + the currently rendered body cells (under
+    /// virtualization, just the rendered window) — clamped to the column's
+    /// <see cref="DataGridColumn{TItem}.MinWidth"/>/<see cref="DataGridColumn{TItem}.MaxWidth"/>.
+    /// Commits through the same column-width state a manual resize does, so it's
+    /// persisted with the layout when <see cref="LayoutStorageKey"/> is set. No-op when
+    /// the field is unknown, the column isn't <see cref="DataGridColumn{TItem}.Resizable"/>,
+    /// or its natural width can't be measured yet (not rendered / off-browser host).
+    /// </summary>
+    public async Task AutoSizeColumnAsync(string field)
+    {
+        var column = EffectiveColumns.FirstOrDefault(c => c.Field == field);
+        if (column is null) return;
+        await AutoSizeColumnCoreAsync(column);
+    }
+
+    /// <summary>
+    /// Auto-sizes every currently visible, resizable column to its content in one pass —
+    /// the bulk counterpart to <see cref="AutoSizeColumnAsync"/> and the column menu's
+    /// existing per-column "Fit to content" entry. Backs the "Autosize all columns"
+    /// toolbar entry (<see cref="DataGridToolbarContext{TItem}.OnAutoSizeAllColumns"/>).
+    /// </summary>
+    public async Task AutoSizeAllColumnsAsync()
+    {
+        // Snapshot to a list first: each column's commit re-renders the grid, which
+        // must not race a live enumeration of _visibleColumns.
+        foreach (var column in _visibleColumns.Where(c => c.Resizable).ToList())
+        {
+            await AutoSizeColumnCoreAsync(column);
+        }
+    }
+
+    private async Task AutoSizeColumnCoreAsync(DataGridColumn<TItem> column)
+    {
+        if (!column.Resizable) return;
+        double natural;
+        try
+        {
+            natural = await Interop.MeasureColumnContentWidth(_gridId, column.Id);
+        }
+        catch (JSDisconnectedException) { return; }
+        if (natural <= 0) return;
+        // CommitColumnWidthAsync clamps to MinWidth/MaxWidth (via ApplyColumnWidth) the
+        // exact same way a drag/keyboard/menu resize does, raises OnColumnResize with
+        // AutoFit=true, and schedules the layout auto-save.
+        await CommitColumnWidthAsync(column.Id, natural, autoFit: true);
+    }
+
+    /// <summary>
+    /// Resets every column's width back to what it was DECLARED as (the snapshot taken
+    /// once columns first registered — the same baseline <see cref="ResetLayoutAsync"/>
+    /// restores), without touching sort, filter, visibility, pin or column order — unlike
+    /// <see cref="ResetLayoutAsync"/>, which resets the WHOLE layout and clears any
+    /// persisted one. Persists via the normal auto-save path when
+    /// <see cref="LayoutStorageKey"/> is set. Issue #519 ("reset to declared widths" —
+    /// narrower than the already-shipped <see cref="ResetLayoutAsync"/>).
+    /// </summary>
+    public Task ResetColumnWidthsAsync()
+    {
+        var declaredByField = _defaultLayout?.Columns.ToDictionary(c => c.Field)
+            ?? new Dictionary<string, ColumnLayout>();
+
+        foreach (var column in EffectiveColumns)
+        {
+            var key = column.Field ?? column.Id;
+            column.Width = declaredByField.TryGetValue(key, out var declared) ? declared.Width : null;
+        }
+
+        ScheduleAutoSave();
+        StateHasChanged();
+        return Task.CompletedTask;
+    }
+
     private void ScheduleAutoSave()
     {
         if (!EnableLayoutPersistence && !OnLayoutSave.HasDelegate) return;
@@ -5250,6 +5370,15 @@
             catch (Microsoft.JSInterop.JSDisconnectedException) { /* circuit gone */ }
             catch { /* best-effort */ }
             _viewportWidthRegistered = false;
+        }
+
+        // Tear down the overlay scrollbar (#517) registered on the scroll wrapper.
+        if (_overlayScrollbarRegistered)
+        {
+            try { await Interop.UnregisterOverlayScrollbar(_viewportId); }
+            catch (Microsoft.JSInterop.JSDisconnectedException) { /* circuit gone */ }
+            catch { /* best-effort */ }
+            _overlayScrollbarRegistered = false;
         }
 
         // Defensive: if disposed while still in fullscreen, unlock scroll AND drop

@@ -1420,4 +1420,39 @@ public class TrackingInteropService : IComponentInteropService
         return ValueTask.CompletedTask;
     }
     public ValueTask SignaturePadDestroy(string elementId) => ValueTask.CompletedTask;
+
+    // DataGrid auto-size (#519) — records each (gridId, columnId) measurement call so
+    // tests can assert AutoSizeColumnAsync/AutoSizeAllColumnsAsync ask for the right
+    // columns. The value returned is configurable per column id (falls back to
+    // MeasureColumnContentWidthResult when no per-column override is staged) so a test
+    // can drive the "natural width" DataGrid then clamps/commits, without a real DOM.
+    private readonly List<(string GridId, string ColumnId)> _measureColumnContentWidthCalls = new();
+    public IReadOnlyList<(string GridId, string ColumnId)> MeasureColumnContentWidthCalls => _measureColumnContentWidthCalls;
+    /// <summary>Default value returned by <see cref="MeasureColumnContentWidth"/> when no
+    /// per-column override is staged in <see cref="MeasureColumnContentWidthByColumnId"/>.
+    /// 0 (the default) mirrors the real JS's "column not found / can't measure" return,
+    /// so AutoSizeColumnAsync/AutoSizeAllColumnsAsync no-op unless a test stages a width.</summary>
+    public double MeasureColumnContentWidthResult { get; set; }
+    public Dictionary<string, double> MeasureColumnContentWidthByColumnId { get; } = new();
+    public ValueTask<double> MeasureColumnContentWidth(string gridId, string columnId)
+    {
+        _measureColumnContentWidthCalls.Add((gridId, columnId));
+        return ValueTask.FromResult(MeasureColumnContentWidthByColumnId.TryGetValue(columnId, out var w) ? w : MeasureColumnContentWidthResult);
+    }
+
+    // DataGrid overlay scrollbar (#517) — registration lifecycle tracking.
+    private readonly List<string> _registerOverlayScrollbarCalls = new();
+    private readonly List<string> _unregisterOverlayScrollbarCalls = new();
+    public IReadOnlyList<string> RegisterOverlayScrollbarCalls => _registerOverlayScrollbarCalls;
+    public IReadOnlyList<string> UnregisterOverlayScrollbarCalls => _unregisterOverlayScrollbarCalls;
+    public ValueTask RegisterOverlayScrollbar(string viewportId)
+    {
+        _registerOverlayScrollbarCalls.Add(viewportId);
+        return ValueTask.CompletedTask;
+    }
+    public ValueTask UnregisterOverlayScrollbar(string viewportId)
+    {
+        _unregisterOverlayScrollbarCalls.Add(viewportId);
+        return ValueTask.CompletedTask;
+    }
 }

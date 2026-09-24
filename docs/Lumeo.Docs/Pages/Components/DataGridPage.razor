@@ -345,6 +345,31 @@
         </DataGrid>
     </ComponentDemo>
 
+    <ComponentDemo Title="Autosize Columns" Description="AutoSizeAllColumnsAsync() fits every visible, resizable column to its content (header + rendered rows) in one pass — the bulk counterpart to the column menu's per-column &quot;Fit to content&quot; entry, also reachable from the Columns panel's own &quot;Autosize all columns&quot; button. ResetColumnWidthsAsync() puts widths back the way they were declared, without touching sort/filter/pin/order." Code="@_autoSizeCode">
+        <Stack Direction="Orientation.Vertical" Gap="3" Class="w-full">
+            <Stack Direction="Orientation.Horizontal" Gap="2">
+                <Button Size="Button.ButtonSize.Sm" OnClick="@(() => _autoSizeGrid!.AutoSizeAllColumnsAsync())">Autosize all columns</Button>
+                <Button Size="Button.ButtonSize.Sm" Variant="Button.ButtonVariant.Outline" OnClick="@(() => _autoSizeGrid!.ResetColumnWidthsAsync())">Reset widths</Button>
+            </Stack>
+            <DataGrid @ref="_autoSizeGrid" TItem="Employee" Items="@_employees" PageSize="5" ShowPagination="true">
+                <DataGridColumnDef TItem="Employee" Title="Name" Field="Name" Width="80" MinWidth="60" />
+                <DataGridColumnDef TItem="Employee" Title="Department" Field="Department" Width="80" MinWidth="60" />
+                <DataGridColumnDef TItem="Employee" Title="Salary" Field="Salary" Format="$#,##0" Width="80" MinWidth="60" />
+                <DataGridColumnDef TItem="Employee" Title="Status" Field="Status" Width="80" MinWidth="60" />
+            </DataGrid>
+        </Stack>
+    </ComponentDemo>
+
+    <ComponentDemo Title="Overlay Scrollbar" Description="OverlayScrollbar=&quot;true&quot; hides the native scrollbar and draws thin, theme-matched overlay scrollbars on top instead — no layout space reserved, appears on hover/scroll, draggable thumbs, RTL-safe. Shrink the preview or scroll horizontally to see it." Code="@_overlayScrollbarCode">
+        <DataGrid TItem="Employee" Items="@_employees" Height="260px" OverlayScrollbar="true">
+            <DataGridColumnDef TItem="Employee" Title="Name" Field="Name" Width="180" />
+            <DataGridColumnDef TItem="Employee" Title="Department" Field="Department" Width="180" />
+            <DataGridColumnDef TItem="Employee" Title="Salary" Field="Salary" Format="$#,##0" Width="180" />
+            <DataGridColumnDef TItem="Employee" Title="Status" Field="Status" Width="180" />
+            <DataGridColumnDef TItem="Employee" Title="Email" Field="Name" Width="260" />
+        </DataGrid>
+    </ComponentDemo>
+
     <ComponentDemo Title="Inline Cell Editing" Description="Click a cell to edit it inline. Press Enter to commit, Escape to cancel." Code="@_editCode">
         <DataGrid TItem="Employee" Items="@_editableEmployees" PageSize="5" ShowPagination="true"
                   EditMode="DataGridEditMode.Cell" OnCellEdit="@HandleCellEdit">
@@ -987,6 +1012,7 @@
                         <tr><td class="px-4 py-2 font-mono text-xs text-primary">MaxVisibleColumns</td><td class="px-4 py-2 font-mono text-xs">int</td><td class="px-4 py-2 text-xs">30</td><td class="px-4 py-2 text-muted-foreground">Column cap used when <code>ColumnVirtualize=true</code>.</td></tr>
                         <tr><td class="px-4 py-2 font-mono text-xs text-primary">Striped</td><td class="px-4 py-2 font-mono text-xs">bool</td><td class="px-4 py-2 text-xs">false</td><td class="px-4 py-2 text-muted-foreground">Alternate row background colors.</td></tr>
                         <tr><td class="px-4 py-2 font-mono text-xs text-primary">Bordered</td><td class="px-4 py-2 font-mono text-xs">bool</td><td class="px-4 py-2 text-xs">false</td><td class="px-4 py-2 text-muted-foreground">Show cell borders.</td></tr>
+                        <tr><td class="px-4 py-2 font-mono text-xs text-primary">OverlayScrollbar</td><td class="px-4 py-2 font-mono text-xs">bool</td><td class="px-4 py-2 text-xs">false</td><td class="px-4 py-2 text-muted-foreground">Hides the native scrollbar and draws thin, theme-matched overlay scrollbars (both axes, draggable, appear on hover/scroll, RTL-safe, <code>prefers-reduced-motion</code>-aware) instead — reserving no layout space. Native wheel/trackpad/touch/keyboard scrolling is unaffected.</td></tr>
                         <tr><td class="px-4 py-2 font-mono text-xs text-primary">Compact</td><td class="px-4 py-2 font-mono text-xs">bool</td><td class="px-4 py-2 text-xs">false</td><td class="px-4 py-2 text-muted-foreground">Smaller row height and text.</td></tr>
                         <tr><td class="px-4 py-2 font-mono text-xs text-primary">Hoverable</td><td class="px-4 py-2 font-mono text-xs">bool</td><td class="px-4 py-2 text-xs">true</td><td class="px-4 py-2 text-muted-foreground">Highlight rows on hover.</td></tr>
                         <tr><td class="px-4 py-2 font-mono text-xs text-primary">Height</td><td class="px-4 py-2 font-mono text-xs">string?</td><td class="px-4 py-2 text-xs">--</td><td class="px-4 py-2 text-muted-foreground">Fixed height with scrollable body (e.g., "400px").</td></tr>
@@ -1048,6 +1074,9 @@
                         <tr><td class="px-4 py-2 font-mono text-xs text-primary">ApplyLayoutJsonAsync(json)</td><td class="px-4 py-2 font-mono text-xs">Task</td><td class="px-4 py-2 text-xs">method</td><td class="px-4 py-2 text-muted-foreground">Deserializes a JSON layout produced by <code>ExportLayout</code> and applies it. Throws <code>JsonException</code> on malformed input; silently ignores columns that no longer exist.</td></tr>
                         <tr><td class="px-4 py-2 font-mono text-xs text-primary">ApplyLayoutAsync(layout)</td><td class="px-4 py-2 font-mono text-xs">Task</td><td class="px-4 py-2 text-xs">method</td><td class="px-4 py-2 text-muted-foreground">Applies a <code>DataGridLayout</code> object directly (column order, widths, visibility, pin, sorts, filters, page size, global search, group-by), the strongly-typed counterpart to <code>ApplyLayoutJsonAsync</code>. Call via <code>@@ref</code>.</td></tr>
                         <tr><td class="px-4 py-2 font-mono text-xs text-primary">ResetLayoutAsync()</td><td class="px-4 py-2 font-mono text-xs">Task</td><td class="px-4 py-2 text-xs">method</td><td class="px-4 py-2 text-muted-foreground">Restores the layout captured at first render (or, absent a snapshot, default column order/visibility/width, cleared sorts/filters/search, page size 10), and clears any persisted layout when <code>EnableLayoutPersistence</code> is on.</td></tr>
+                        <tr><td class="px-4 py-2 font-mono text-xs text-primary">AutoSizeColumnAsync(field)</td><td class="px-4 py-2 font-mono text-xs">Task</td><td class="px-4 py-2 text-xs">method</td><td class="px-4 py-2 text-muted-foreground">Auto-sizes one column (by <code>Field</code>) to fit its content — header + the currently rendered body cells, so under virtualization just the rendered window — clamped to <code>MinWidth</code>/<code>MaxWidth</code>. Commits through the same width state a manual resize does. The column menu's "Fit to content" entry is the equivalent UI action for a single column.</td></tr>
+                        <tr><td class="px-4 py-2 font-mono text-xs text-primary">AutoSizeAllColumnsAsync()</td><td class="px-4 py-2 font-mono text-xs">Task</td><td class="px-4 py-2 text-xs">method</td><td class="px-4 py-2 text-muted-foreground">Auto-sizes every currently visible, resizable column in one pass — the bulk counterpart to <code>AutoSizeColumnAsync</code>. Also reachable from the Columns panel's "Autosize all columns" button.</td></tr>
+                        <tr><td class="px-4 py-2 font-mono text-xs text-primary">ResetColumnWidthsAsync()</td><td class="px-4 py-2 font-mono text-xs">Task</td><td class="px-4 py-2 text-xs">method</td><td class="px-4 py-2 text-muted-foreground">Resets every column's width back to its declared width (the same baseline <code>ResetLayoutAsync</code> restores), without touching sort, filter, visibility, pin or column order — narrower than <code>ResetLayoutAsync</code>, which resets the whole layout and clears any persisted one.</td></tr>
                         <tr><td class="px-4 py-2 font-mono text-xs text-primary">GetPersonalLayoutsAsync()</td><td class="px-4 py-2 font-mono text-xs">Task&lt;List&lt;DataGridNamedLayout&gt;&gt;</td><td class="px-4 py-2 text-xs">method</td><td class="px-4 py-2 text-muted-foreground">Returns the personal-scope named layouts persisted for this grid's storage key.</td></tr>
                         <tr><td class="px-4 py-2 font-mono text-xs text-primary">MoveRow(oldIndex, newIndex)</td><td class="px-4 py-2 font-mono text-xs">void</td><td class="px-4 py-2 text-xs">method</td><td class="px-4 py-2 text-muted-foreground">Programmatically moves a row from <code>oldIndex</code> to <code>newIndex</code>, the same commit path as a completed drag via <code>RowReorderable</code>; raises <code>OnRowReorder</code> when bound.</td></tr>
                         <tr><td class="px-4 py-2 font-mono text-xs text-primary">SetColumnVisibility(columnKey, visible)</td><td class="px-4 py-2 font-mono text-xs">void</td><td class="px-4 py-2 text-xs">method</td><td class="px-4 py-2 text-muted-foreground">Shows or hides a column identified by its Field (or Id when Field is unset) without going through the Columns panel. Refreshes the visible-columns cache and, in client mode, reprocesses data.</td></tr>
@@ -1510,6 +1539,8 @@
         }),
     };
 
+    private DataGrid<Employee>? _autoSizeGrid;
+
     private List<Employee> _employees = new()
     {
         new("Alice Johnson", "Engineering", 95000, "Active", new DateTime(2021, 3, 15)),
@@ -1878,6 +1909,27 @@
                        Format=""C0"" Width=""120"" MinWidth=""100"" />
     <DataGridColumnDef TItem=""Employee"" Title=""Status"" Field=""Status""
                        Width=""100"" MinWidth=""90"" FillWidth=""true"" />
+</DataGrid>";
+
+    private string _autoSizeCode = @"<Button OnClick=""@(() => grid.AutoSizeAllColumnsAsync())"">Autosize all columns</Button>
+<Button OnClick=""@(() => grid.ResetColumnWidthsAsync())"">Reset widths</Button>
+
+<DataGrid @ref=""grid"" TItem=""Employee"" Items=""@employees"" PageSize=""5"">
+    <DataGridColumnDef TItem=""Employee"" Title=""Name"" Field=""Name"" Width=""80"" MinWidth=""60"" />
+    <DataGridColumnDef TItem=""Employee"" Title=""Department"" Field=""Department"" Width=""80"" MinWidth=""60"" />
+</DataGrid>
+
+@code {
+    private DataGrid<Employee>? grid;
+
+    // Programmatic, by field — the public-API counterpart to the column
+    // menu's per-column ""Fit to content"" entry.
+    private async Task AutoSizeName() => await grid!.AutoSizeColumnAsync(""Name"");
+}";
+
+    private string _overlayScrollbarCode = @"<DataGrid TItem=""Employee"" Items=""@employees"" Height=""260px"" OverlayScrollbar=""true"">
+    <DataGridColumnDef TItem=""Employee"" Title=""Name"" Field=""Name"" Width=""180"" />
+    <DataGridColumnDef TItem=""Employee"" Title=""Department"" Field=""Department"" Width=""180"" />
 </DataGrid>";
 
     private string _editCode = @"<DataGrid TItem=""Employee"" Items=""@employees"" PageSize=""5""

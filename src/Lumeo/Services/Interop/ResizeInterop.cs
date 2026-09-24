@@ -86,6 +86,16 @@ internal sealed class ResizeInterop
         return await module.InvokeAsync<bool>("autoFitColumn", handleId);
     }
 
+    /// <summary>Measures a column's natural content width (header + rendered body cells —
+    /// under virtualization, the currently rendered window) by column id, independent of
+    /// any live resize-handle registration. Backs <c>DataGrid.AutoSizeColumnAsync</c>/
+    /// <c>AutoSizeAllColumnsAsync</c> (issue #519). Returns 0 when the column can't be
+    /// found (unknown id, grid not mounted, or off-browser in a test host).</summary>
+    public async ValueTask<double> MeasureColumnContentWidth(IJSObjectReference module, string gridId, string columnId)
+    {
+        return await module.InvokeAsync<double>("measureColumnContentWidth", gridId, columnId);
+    }
+
     public async Task OnColumnResize(string handleId, double delta)
     {
         if (_columnResizeHandlers.TryGetValue(handleId, out var handler))

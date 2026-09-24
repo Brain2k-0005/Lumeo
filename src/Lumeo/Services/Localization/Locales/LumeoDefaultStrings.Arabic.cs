@@ -39,6 +39,7 @@ internal static partial class LumeoDefaultStrings
         ["DataGrid.SortAscending"] = "ترتيب تصاعدي",
         ["DataGrid.SortDescending"] = "ترتيب تنازلي",
         ["DataGrid.FitToContent"] = "ملاءمة المحتوى",
+        ["DataGrid.AutoSizeAllColumns"] = "احتواء كل الأعمدة تلقائيًا",
         ["DataGrid.MoveLeft"] = "نقل إلى اليسار",
         ["DataGrid.MoveRight"] = "نقل إلى اليمين",
         ["DataGrid.ResizeColumn"] = "تغيير حجم العمود (استخدم مفاتيح الأسهم، انقر نقرًا مزدوجًا للملاءمة التلقائية)",

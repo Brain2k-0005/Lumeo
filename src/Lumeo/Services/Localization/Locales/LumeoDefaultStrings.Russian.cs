@@ -39,6 +39,7 @@ internal static partial class LumeoDefaultStrings
         ["DataGrid.SortAscending"] = "Сортировать по возрастанию",
         ["DataGrid.SortDescending"] = "Сортировать по убыванию",
         ["DataGrid.FitToContent"] = "По содержимому",
+        ["DataGrid.AutoSizeAllColumns"] = "Автоподбор ширины всех столбцов",
         ["DataGrid.MoveLeft"] = "Сдвинуть влево",
         ["DataGrid.MoveRight"] = "Сдвинуть вправо",
         ["DataGrid.ResizeColumn"] = "Изменить ширину столбца (используйте клавиши со стрелками, двойной щелчок для автоподбора)",
