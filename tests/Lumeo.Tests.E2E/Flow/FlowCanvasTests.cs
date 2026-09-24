@@ -39,6 +39,21 @@ public class FlowCanvasTests : GanttParityTestBase
     {
         await GotoHost("/e2e/flow" + query);
         await Assertions.Expect(Root).ToHaveAttributeAsync("data-flow-ready", "done", new() { Timeout = 20000 });
+
+        // Issue #512: data-flow-ready means the ENGINE has applied the initial fit (flow.js markReady
+        // runs right after fitFromDom's reportFinal). The fit only reaches the bound viewport one
+        // OnViewportChanged round trip later, so at the instant the stamp appears the sink still
+        // reads the pre-fit 0|0|1 (measured: 20 of 20 page loads). Specs that take the sink as their
+        // baseline must wait for it to hold the engine's last report, or a slow circuit hands them
+        // 0|0|1 and every expected value derived from it is off by the fit. With ?fit=0 there is no
+        // report yet and this returns at once.
+        await WaitOrDumpAsync(@"() => {
+            const reports = (window.__lumeoFlowDiag || []).filter(e => e.ev === 'report');
+            if (reports.length === 0) return true;
+            const last = reports[reports.length - 1];
+            const p = document.querySelector('[data-testid=flow-viewport-sink]').textContent.split('|').map(Number);
+            return Math.abs(p[0] - last.x) < 1e-6 && Math.abs(p[1] - last.y) < 1e-6 && Math.abs(p[2] - last.zoom) < 1e-9;
+        }", null, "the bound viewport never received the initial fit report");
     }
 
     private Task<string> SinkAsync(string id) => Page.Locator($"[data-testid='{id}']").TextContentAsync().ContinueWith(t => t.Result ?? "");
@@ -302,6 +317,12 @@ public class FlowCanvasTests : GanttParityTestBase
         await WaitOrDumpAsync("() => document.querySelector('[data-testid=flow-edges-sink]').textContent.includes('n5-n6')", null,
             "expected a new n5->n6 edge in the bound edge list", "n5", "n6");
         await CheckAsync(await JournalCountAsync("connect-start") == 1, "expected exactly one connect-start", "n5", "n6");
+        // connect-result is journaled in the CommitConnect promise's .then — i.e. after the
+        // invocation's completion message, which the circuit can deliver AFTER the render batch that
+        // already updated the edges sink above (seen once in a 20-loop run: sink had n5-n6, journal
+        // got connect-result 14ms later). Wait for the entry itself, then count.
+        await WaitOrDumpAsync("() => (window.__lumeoFlowDiag || []).some(e => e.ev === 'connect-result')", null,
+            "expected a connect-result event for the accepted connection", "n5", "n6");
         await CheckAsync(await JournalCountAsync("connect-result") == 1, "expected exactly one connect-result", "n5", "n6");
         Assert.NotNull(await Page.QuerySelectorAsync("[data-testid='flow-root'] [data-flow-edge][data-source='n5'][data-target='n6']"));
     }
