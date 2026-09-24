@@ -211,3 +211,77 @@ Gates for every phase PR: `dotnet build Lumeo.slnx -c Release -warnaserror` 0/0;
 complete; registry regen as last commit; root `npm run build:css` if new utility classes appear
 in src/**; docs `npm run css:build` if the docs page adds classes; CHANGELOG `## [Unreleased]`
 → Added. Version target: 5.11.0 (new package), bumped at release time by the owner.
+
+## Phase 4 (parity features, 2026-09-24)
+- `FlowNodeResizer` (inside a node template): corner + edge grips, `MinWidth/MinHeight/MaxWidth/MaxHeight`,
+  Shift keeps aspect; live resize in JS with connected edges following; commit `Width/Height` (and X/Y for
+  left/top grips) through `NodesChanged` + `OnNodeResizeStop`. Keyboard: Shift+arrows resize the focused node.
+- Helper lines: while dragging, snap to other nodes' left/centre/right and top/middle/bottom within `HelperLineThreshold`
+  (5px), draw guides in the edge SVG layer; `HelperLines` parameter (off by default), works with SnapToGrid off.
+- Clipboard: Ctrl+C / Ctrl+V / Ctrl+D on the focused canvas copy/paste/duplicate the selection including edges between
+  selected nodes, pasted with a (20,20) offset and new ids from `NewNodeId` (Func<FlowNode,string>, default GUID);
+  `OnPaste` hook; honours the editable-target guard.
+- `ConnectionMode` Strict (default, source→target) | Loose (any handle to any other handle, direction inferred).
+- Edge label inline editing: `EdgeLabelEditable`; double-click a label opens an inline Lumeo Input, Enter commits
+  (`EdgesChanged` + `OnEdgeLabelChanged`), Escape cancels; screen-reader announced.
+- Export/import: `FlowDocument(Nodes, Edges, Viewport)` record, `ToDocument()` / `LoadDocument(doc)` on the canvas,
+  JSON-round-trippable (System.Text.Json source-gen friendly); `ExportSvgAsync()` (edges + node boxes with labels,
+  vector) and `ExportPngAsync(scale)` best effort via SVG foreignObject of the node DOM with inlined computed styles
+  → canvas → data URL; documented limitations (cross-origin images, fonts).
+- From #511: touch/pinch E2E via CDP `Input.dispatchTouchEvent`; opt-in `ValidateOnHover` calling `IsValidConnection`
+  per hovered target; `FlowNodeToolbar` for multi-selection (one toolbar at the selection's bounding box top);
+  agent-tree block switched to `FlowLayout.Tree`.
+
+## Phase 5 (scale and structure)
+- Sub-flows/groups: `FlowNode.ParentId` + `FlowExtent` (None | Parent); child X/Y relative to the parent; dragging a
+  parent moves its subtree live in JS; `Extent=Parent` clamps children inside; `FlowGroupNode` default template
+  (label, tinted background, resizable); z-order parents under children; edges use absolute positions; marquee and
+  minimap use absolute rects; `FlowLayout` respects groups (lays out per group); keyboard: Ctrl+G groups the selection,
+  Ctrl+Shift+G ungroups (raising `NodesChanged`).
+- Virtualization: `OnlyRenderVisibleNodes` (default false): only nodes intersecting viewport+margin (one viewport in
+  each direction) and edges touching them are rendered; the engine's rAF viewport report drives a debounced,
+  hysteresis-guarded .NET re-render; measurement cache keeps sizes of unmounted nodes; drag/connect of visible nodes
+  unaffected; a 2000-node E2E measures first paint < 1.5 s and a pan without dropped commits; docs demo with 1500 nodes.
+- Both: a11y (groups announced with child count), RTL, docs demos, bUnit + E2E, showcase untouched.
+
+## Phase 4 — as built
+Shipped essentially as specified above, with these adaptations:
+- `LoadDocument(doc)` shipped as `LoadDocumentAsync(FlowDocument document)` — every other public
+  Task-returning method on `FlowCanvas` carries the `Async` suffix (`FitViewAsync`, `SetViewportAsync`,
+  ...); this keeps the new method consistent with that existing convention rather than the spec's
+  literal name.
+- `ExportSvgAsync()`'s node/edge colours are hardcoded (not theme tokens): the export is a portable
+  artifact meant to be opened OUTSIDE the running app (saved to disk, pasted elsewhere), where CSS
+  custom properties have nothing to resolve against. `ExportPngAsync` inlines each node's live
+  COMPUTED styles instead, which is theme-correct by construction (it reads whatever the browser
+  actually painted) — the two exports intentionally get their correctness from different mechanisms.
+- Helper lines only ever compute for a single dragged node (not a multi-node drag — there is no
+  single "the" moving node to align in that case) and have no automated JS/C# lockstep table the
+  way the four edge-path generators do; `FlowGeometry.ComputeHelperLines` is the source of truth,
+  `flow.js`'s `computeHelperLines` is a hand-kept port, exercised live but not table-tested.
+- `ConnectionMode` is enforced structurally in `flow.js` (which handle types a connect gesture may
+  start from and land on); `FlowCanvas.CommitConnect` itself never inspected handle types even in
+  Strict mode (only node-level `Connectable`/`Readonly`/`IsValidConnection`), so the C# commit path
+  is unchanged either way — only the *gesture* (pointer and keyboard) changes what it will propose.
+- `EdgesReconnectable`'s reconnect gesture (phase 3a) was left Strict-only — Loose reconnecting an
+  existing edge's end onto a source-typed handle raises the same "what does direction even mean now"
+  question `ConnectionMode` answers for a fresh connect, and extending it wasn't in this phase's
+  scope; flagged as a follow-up if an app asks for it.
+- `FlowNodeResizer`'s eight pointer grips are `aria-hidden` (no keyboard equivalent — matches the
+  precedent phase 3a already set for the reconnect edge-end handles, and for the same reason: an
+  unreachable screen-reader stop is worse than none). The keyboard path is Shift+arrow on the
+  FOCUSED NODE, gated on that node actually carrying a `FlowNodeResizer` in its template
+  (`FlowCanvas.RegisterResizer`/`UnregisterResizer`, called from the resizer's own lifecycle) —
+  a node without one keeps the existing "Shift = ×10 move" behaviour unchanged.
+- Agent-tree block (`docs/Lumeo.Docs/Pages/Patterns/FlowAgentTreePattern.razor`): its hand-written
+  `Tidy()` recursive layout is gone, replaced by a single `FlowLayout.Tree` call. Because
+  `FlowLayout.Tree` treats every edge — dashed ones included — as a tree edge, the "model" and
+  "attachment" nodes (connected to "root" by dashed, non-tree edges in the original design) now
+  rank as ordinary depth-1 children next to research/coding instead of hanging in their own
+  reserved slot below the root; a real layout difference, not a regression — this block exists to
+  demonstrate the library API, not to preserve one hand-tuned arrangement.
+- Multi-selection `FlowNodeToolbar` renders once at the selection's bounding box, but — unlike the
+  single-node case, which flow.js additionally repositions LIVE via `data-flow-toolbar-for` while
+  a pointer drag is in flight — it only re-anchors on the next Blazor render (a settled drag,
+  selection change, pan/zoom report). Extending live multi-node tracking to an aggregate rect
+  (rather than one node's own) was judged not worth the added engine complexity for this phase.

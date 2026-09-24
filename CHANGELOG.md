@@ -62,6 +62,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - The keyboard-connect aria-live announcements ("Connecting from…", "Connected.", "Connection
     rejected/cancelled.") are now localized (`ILumeoLocalizer`) instead of English-only, across all
     14 bundled locales.
+  - **`FlowNodeResizer`**: corner and edge grips on a node template (`MinWidth`/`MinHeight`/
+    `MaxWidth`/`MaxHeight`, Shift keeps aspect on a corner grip), live in `flow.js` with connected
+    edges following, committed once through `NodesChanged` + `OnNodeResizeStop`; a node carrying a
+    resizer also gets `Shift+Arrow` keyboard resize on its focused host (other nodes keep the
+    existing `Shift` = ×10 move).
+  - **Helper lines**: `HelperLines`/`HelperLineThreshold` snap a single dragged node to the nearest
+    other node's left/centre/right and top/middle/bottom, drawing the matching guide(s) live in the
+    edge SVG layer; works with `SnapToGrid` off.
+  - **Clipboard**: `Ctrl+C`/`Ctrl+V`/`Ctrl+D` on the focused canvas copy/paste/duplicate the
+    selection (internal edges between two selected nodes included), pasted at a `(20, 20)` offset
+    with new ids from `NewNodeId`; `OnPaste`; honours the same editable-target guard the other
+    shortcuts do.
+  - **`ConnectionMode`**: `Strict` (default, drag must start on a source handle and land on a
+    target) or `Loose` (any handle to any other handle, direction inferred from the drag).
+  - **Edge label inline editing**: `EdgeLabelEditable` — double-click a label opens an inline Lumeo
+    `Input`, `Enter` commits (`EdgesChanged` + `OnEdgeLabelChanged`), `Escape` cancels, the commit is
+    announced to a screen reader.
+  - **Export/import**: `FlowDocument` (`Nodes`, `Edges`, `Viewport`) plus `ToDocument()` /
+    `LoadDocumentAsync()` round-trip the whole canvas through JSON; `ExportSvgAsync()` builds a
+    self-contained vector SVG purely from canvas state (never fails); `ExportPngAsync(scale)` is a
+    best-effort raster export of the live node DOM (computed styles inlined through an SVG
+    `foreignObject` onto a `<canvas>`) — returns `null`, never throws, when the browser refuses
+    (a cross-origin image/font tainting the canvas is the usual cause).
+  - **`ValidateOnHover`** (opt in): runs `IsValidConnection` once per hovered target handle during a
+    connect drag instead of only on drop, marking a would-be-rejected target `data-flow-handle-invalid`.
+  - **Multi-selection `FlowNodeToolbar`**: with two or more nodes selected, one toolbar now renders
+    at the selection's bounding box (previously nothing rendered above two-plus selected nodes).
+  - The agent-tree block (`/blocks/flow-agent-tree`) now lays itself out with `FlowLayout.Tree`
+    instead of a hand-written recursive layout.
+  - Touch/pinch (shipped in phase 3a) now has real E2E coverage via CDP `Input.dispatchTouchEvent`.
 
 ## [5.10.5] - 2026-09-23
 
