@@ -1491,4 +1491,20 @@ public class TrackingInteropService : IComponentInteropService
         _unregisterScrollbarBelowHeaderCalls.Add(viewportId);
         return ValueTask.CompletedTask;
     }
+
+    // DataGrid native-header-band (default single-table layout) — registration lifecycle tracking.
+    private readonly List<string> _registerGridHeaderOffsetCalls = new();
+    private readonly List<string> _unregisterGridHeaderOffsetCalls = new();
+    public IReadOnlyList<string> RegisterGridHeaderOffsetCalls => _registerGridHeaderOffsetCalls;
+    public IReadOnlyList<string> UnregisterGridHeaderOffsetCalls => _unregisterGridHeaderOffsetCalls;
+    public ValueTask RegisterGridHeaderOffset(string viewportId)
+    {
+        _registerGridHeaderOffsetCalls.Add(viewportId);
+        return ValueTask.CompletedTask;
+    }
+    public ValueTask UnregisterGridHeaderOffset(string viewportId)
+    {
+        _unregisterGridHeaderOffsetCalls.Add(viewportId);
+        return ValueTask.CompletedTask;
+    }
 }

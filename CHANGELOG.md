@@ -8,6 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **`DataGrid.ScrollbarBelowHeader`**: keeps the browser's own scrollbar but starts its vertical
+  track below the header instead of running alongside it. Splits the header into its own
+  non-scrolling `<table>` above a second, independently-scrolling one for the body (kept aligned
+  via a JS horizontal-scroll mirror and identical `table-layout: fixed` column widths on both);
+  the header is padded by the body's own scrollbar-gutter width so its background/border still
+  span the full grid frame. Requires every column to resolve to a fixed pixel width, otherwise
+  falls back to the classic single-table layout. Default `false`; ignored when `OverlayScrollbar`
+  is also set. Owner field report.
 - **`ThemeService.CycleModeAsync()`: the three-way System → Dark → Light → System cycle**, split
   out of `ToggleModeAsync()` (see Changed below) for callers that deliberately want System as a
   stop — `ThemeToggle` now calls this when `IncludeSystem="true"` (its default). SQL Analyst field
@@ -23,6 +31,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Added). SQL Analyst field report (5.11.2), finding LU-22.
 
 ### Fixed
+- **`DataGrid`'s default (single-table) layout: the header's background/border now span the full
+  grid frame, including the native vertical scrollbar's gutter** — previously the header's
+  bg-card/border only ever painted across the `<thead>`'s own table width, leaving a "white notch"
+  above the scrollbar at the frame's rounded top-right corner. A live-measured
+  `--lumeo-grid-header-offset` custom property drives a background band on the scroll container
+  that repaints the same header colours across the gutter; in Chromium/Safari (`::-webkit-
+  scrollbar-track` recognised again since LU-21, above) the same property also starts the
+  scrollbar thumb's own travel range below the header via a track margin. No parameter — on by
+  default for the classic layout. Owner field report.
+- **`DataGrid.OverlayScrollbar`'s vertical track now starts below the header** instead of
+  overlapping it — the track/thumb live-measure the sticky header's height (handles density,
+  grouped headers, a hidden header). Owner field report.
 - **Consumers can once again style Lumeo's scrollbars with `::-webkit-scrollbar*` rules in
   Chromium/WebKit.** Since Chrome 121, any element with a standard `scrollbar-width`/
   `scrollbar-color` value set ignores every `::-webkit-scrollbar*` pseudo-element on that element —

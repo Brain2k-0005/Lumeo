@@ -164,6 +164,18 @@ internal sealed class ScrollInterop
         await module.InvokeVoidAsync("unregisterScrollbarBelowHeader", viewportId);
     }
 
+    // --- DataGrid native-header-band (default single-table layout scrollbar-below-header) ---
+
+    public async ValueTask RegisterGridHeaderOffset(IJSObjectReference module, string viewportId)
+    {
+        await module.InvokeVoidAsync("registerGridHeaderOffset", viewportId);
+    }
+
+    public async ValueTask UnregisterGridHeaderOffset(IJSObjectReference module, string viewportId)
+    {
+        await module.InvokeVoidAsync("unregisterGridHeaderOffset", viewportId);
+    }
+
     public void Clear()
     {
         _scrollspyHandlers.Clear();

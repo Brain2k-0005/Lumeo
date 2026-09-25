@@ -437,6 +437,18 @@ public interface IComponentInteropService : IAsyncDisposable, IDisposable
     /// Additive DIM.</summary>
     ValueTask UnregisterScrollbarBelowHeader(string viewportId) => ValueTask.CompletedTask;
 
+    /// <summary>Writes the grid's live sticky-header height as the <c>--lumeo-grid-header-offset</c>
+    /// CSS custom property on its scroll container — the classic single-table layout's default
+    /// "no scrollbar next to the header" fix (paired with the <c>lumeo-dg-native-header-band</c>
+    /// CSS class): a continuous header-coloured band across the scrollbar gutter, and — in
+    /// Chromium/Safari — the scrollbar thumb's own travel range starting below the header.
+    /// Additive DIM.</summary>
+    ValueTask RegisterGridHeaderOffset(string viewportId) => ValueTask.CompletedTask;
+
+    /// <summary>Tears down the observer registered by <see cref="RegisterGridHeaderOffset"/>.
+    /// Additive DIM.</summary>
+    ValueTask UnregisterGridHeaderOffset(string viewportId) => ValueTask.CompletedTask;
+
     /// <summary>Registers pointer drag of Filters rows and groups within an advanced-builder panel.
     /// The panel's <c>[JSInvokable] OnFilterDrop(nodeId, parentId, index, copy)</c> receives each
     /// drop; Escape cancels a drag. Default no-op.</summary>

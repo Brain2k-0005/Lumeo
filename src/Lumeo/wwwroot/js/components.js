@@ -4576,6 +4576,59 @@ export function unregisterScrollbarBelowHeader(viewportId) {
     scrollbarBelowHeaderEntries.delete(viewportId);
 }
 
+// --- DataGrid native scrollbar header band (default single-table layout) ---
+//
+// Writes the live sticky-header height as --lumeo-grid-header-offset onto the
+// grid's own scroll container (data-slot="datagrid-viewport") — CSS-only from
+// there: lumeo.css's [data-slot="datagrid"] .lumeo-dg-native-header-band rule
+// paints a continuous header-coloured band (with the header's own bottom-border
+// line) across the FULL scroll container width, including the native vertical
+// scrollbar's gutter where the table itself doesn't reach, so the header reads
+// as one continuous strip instead of stopping at the last column (the "white
+// notch" field report). In Chromium/Safari (::-webkit-scrollbar-track is
+// recognised again since LU-21 restored it — see the @supports gate in
+// lumeo.css's Custom Scrollbar block) the same rule also pushes the scrollbar
+// THUMB's own travel range below the header via a track margin; Firefox has no
+// per-track margin, so its thumb may still run beside the header there, but the
+// band itself paints the same regardless of engine.
+//
+// This is the DEFAULT for a plain grid (no OverlayScrollbar, no
+// ScrollbarBelowHeader) — see DataGrid.razor's OnAfterRenderAsync/DisposeAsync
+// and ViewportCssClass, which only adds the lumeo-dg-native-header-band class
+// (and this registration) in that classic single-table layout.
+const gridHeaderOffsetObservers = new Map();
+
+export function registerGridHeaderOffset(viewportId) {
+    unregisterGridHeaderOffset(viewportId); // idempotent re-register (e.g. Blazor re-render)
+    const el = document.getElementById(viewportId);
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const apply = () => {
+        const headerEl = el.querySelector('[data-slot="datagrid-header"]');
+        const h = headerEl ? headerEl.getBoundingClientRect().height : 0;
+        el.style.setProperty('--lumeo-grid-header-offset', (h > 0 ? Math.round(h) : 0) + 'px');
+    };
+    const ro = new ResizeObserver(apply);
+    ro.observe(el);
+    // The header's own height doesn't always change the VIEWPORT's box size (it's
+    // position:sticky content inside it) — e.g. Compact toggling at runtime, or a
+    // grouped-header row appearing/disappearing. Observed separately, same reasoning
+    // as registerOverlayScrollbar's headerElAtRegister.
+    const headerElAtRegister = el.querySelector('[data-slot="datagrid-header"]');
+    if (headerElAtRegister) ro.observe(headerElAtRegister);
+    gridHeaderOffsetObservers.set(viewportId, ro);
+    apply(); // first paint — don't wait for the initial ResizeObserver callback
+}
+
+export function unregisterGridHeaderOffset(viewportId) {
+    const ro = gridHeaderOffsetObservers.get(viewportId);
+    if (ro) {
+        ro.disconnect();
+        gridHeaderOffsetObservers.delete(viewportId);
+    }
+    const el = document.getElementById(viewportId);
+    if (el) el.style.removeProperty('--lumeo-grid-header-offset');
+}
+
 // --- DataGrid Viewport Width ---
 //
 // Writes the grid's horizontal scroll wrapper's own CLIENT width (the visible viewport,

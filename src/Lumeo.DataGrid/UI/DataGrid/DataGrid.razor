@@ -1711,6 +1711,16 @@
     // OnAfterRenderAsync and DisposeAsync, and _headerWrapperId above.
     private bool _scrollbarBelowHeaderRegistered;
 
+    // Native-header-band (default single-table layout) — see the register/unregister
+    // block in OnAfterRenderAsync and DisposeAsync, WantsGridHeaderOffset, and
+    // ViewportCssClass's lumeo-dg-native-header-band class above.
+    private bool _gridHeaderOffsetRegistered;
+
+    // The classic single-table layout's own default: neither OverlayScrollbar (no native
+    // scrollbar there to fix) nor the ScrollbarBelowHeader split (already solves this via
+    // its header-wrapper padding) need the band/offset observer.
+    private bool WantsGridHeaderOffset => !OverlayScrollbar && !UseScrollbarBelowHeader;
+
     // --- FitWithMinimum column-width distribution (DocFlow field report, 5.11.0) ---
     // Reuses _viewportId (the same horizontal scroll wrapper the two observers above watch)
     // for its own, separate ResizeObserver — see the register/unregister block in
@@ -1899,9 +1909,17 @@
 
     // lumeo-dg-overlay-scroll (#517) hides the native scrollbar; only added when
     // OverlayScrollbar is on, so a plain grid's viewport markup/CSS is unchanged.
+    // lumeo-dg-native-header-band is the classic single-table layout's OWN default
+    // fix (no parameter — see WantsGridHeaderOffset below): paints the header's
+    // colour/border across the native scrollbar's gutter and, in Chromium/Safari,
+    // starts the thumb's travel range below the header. Skipped for OverlayScrollbar
+    // (no native scrollbar there to fix) and for the ScrollbarBelowHeader split
+    // (which already solves this with its own header-wrapper padding).
     private string ViewportCssClass => OverlayScrollbar
         ? "overflow-auto flex-1 lumeo-dg-overlay-scroll"
-        : "overflow-auto flex-1";
+        : UseScrollbarBelowHeader
+            ? "overflow-auto flex-1"
+            : "overflow-auto flex-1 lumeo-dg-native-header-band";
 
     // ScrollbarBelowHeader (native scrollbar starts below the header): splits the header
     // and body into two independent <table>s, which only render pixel-identical column
@@ -2601,6 +2619,26 @@
             try { await Interop.UnregisterScrollbarBelowHeader(_viewportId); }
             catch (JSDisconnectedException) { }
             _scrollbarBelowHeaderRegistered = false;
+        }
+
+        // Native-header-band (default single-table layout): reactive to
+        // WantsGridHeaderOffset flipping at runtime — same shape as the two blocks
+        // above (and mutually exclusive with both: WantsGridHeaderOffset is false
+        // exactly when one of them is registered instead).
+        if (WantsGridHeaderOffset && !_gridHeaderOffsetRegistered)
+        {
+            try
+            {
+                await Interop.RegisterGridHeaderOffset(_viewportId);
+                _gridHeaderOffsetRegistered = true;
+            }
+            catch (JSDisconnectedException) { }
+        }
+        else if (!WantsGridHeaderOffset && _gridHeaderOffsetRegistered)
+        {
+            try { await Interop.UnregisterGridHeaderOffset(_viewportId); }
+            catch (JSDisconnectedException) { }
+            _gridHeaderOffsetRegistered = false;
         }
 
         if (_isExpanded && _fullscreenNeedsFocus)
@@ -5725,6 +5763,15 @@
             catch (Microsoft.JSInterop.JSDisconnectedException) { /* circuit gone */ }
             catch { /* best-effort */ }
             _scrollbarBelowHeaderRegistered = false;
+        }
+
+        // Tear down the native-header-band offset observer registered on the classic layout.
+        if (_gridHeaderOffsetRegistered)
+        {
+            try { await Interop.UnregisterGridHeaderOffset(_viewportId); }
+            catch (Microsoft.JSInterop.JSDisconnectedException) { /* circuit gone */ }
+            catch { /* best-effort */ }
+            _gridHeaderOffsetRegistered = false;
         }
 
         // Tear down the FitWithMinimum column-fit observer registered on the scroll wrapper.
