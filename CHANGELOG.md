@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **`ThemeService.CycleModeAsync()`: the three-way System → Dark → Light → System cycle**, split
+  out of `ToggleModeAsync()` (see Changed below) for callers that deliberately want System as a
+  stop — `ThemeToggle` now calls this when `IncludeSystem="true"` (its default). SQL Analyst field
+  report (5.11.2), finding LU-22.
 - **`Lumeo.Flow`: `FlowFitViewOptions.AnchorAlign` (`FlowAnchorAlign`: `Center` default, `Start`, `End`).**
   When `FitViewAsync`'s anchor-clamped branch fires (the anchor would otherwise need a zoom below
   `MinZoom`), `Center` keeps the anchor mid-pane (unchanged behaviour); `Start`/`End` instead pin the
@@ -16,7 +20,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   tree never grows into. RTL-aware horizontally. Implemented on both the .NET-computed and the
   engine-computed fit paths. SQL Analyst field report (5.11.1), finding LU-19.
 
+### Changed
+- **`ThemeService.ToggleModeAsync()` now flips between the two RESOLVED appearances instead of
+  cycling System → Dark → Light → System.** From System mode, the old cycle always stepped to
+  Dark next, which was a visual no-op when the OS already preferred dark — a light/dark switch
+  needed two clicks. It now toggles based on `IsDark` (Dark→Light, Light→Dark, and System resolves
+  to whichever is opposite of what's currently showing), so a single click always flips the visible
+  theme. The old three-way cycle behaviour is preserved under the new `CycleModeAsync()` (see
+  Added). SQL Analyst field report (5.11.2), finding LU-22.
+
 ### Fixed
+- **Consumers can once again style Lumeo's scrollbars with `::-webkit-scrollbar*` rules in
+  Chromium/WebKit.** Since Chrome 121, any element with a standard `scrollbar-width`/
+  `scrollbar-color` value set ignores every `::-webkit-scrollbar*` pseudo-element on that element —
+  including a consumer's own overrides — so Lumeo's blanket `* { scrollbar-width: thin; ... }` rule
+  silently killed all WebKit scrollbar styling (ours and consumers') in every Chromium/WebKit
+  browser. The standard properties now only apply inside
+  `@supports not selector(::-webkit-scrollbar)` (Firefox); Chromium/WebKit get the same thin look
+  from the (now live again) `::-webkit-scrollbar*` rules. SQL Analyst field report (5.11.2),
+  finding LU-21.
 - **`DropdownMenuContent`/`ContextMenuContent`/`MenubarContent`: a separator no longer forces a
   horizontal scrollbar.** The panel's padding lived on the outer element while the inner
   `overflow-y-auto` scroll viewport had no horizontal padding of its own, so a full-bleed `-mx-1`
