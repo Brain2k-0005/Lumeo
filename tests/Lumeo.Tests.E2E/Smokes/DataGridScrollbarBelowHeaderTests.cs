@@ -17,7 +17,7 @@ namespace Lumeo.Tests.E2E.Smokes;
 /// </summary>
 public class DataGridScrollbarBelowHeaderTests : PlaywrightTestBase
 {
-    private const string ScreenshotDir = @"C:\Users\mike\AppData\Local\Temp\claude\C--Users-mike-RiderProjects-Lumeo\a9a18b74-bb26-4de0-90fa-cd81c3ac7bb6\scratchpad\grid-scrollbar";
+    private static readonly string ScreenshotDir = Path.Combine(Path.GetTempPath(), "lumeo-e2e-grid-scrollbar");
 
     private async Task GotoDataGrid(string themeMode = "light")
     {
