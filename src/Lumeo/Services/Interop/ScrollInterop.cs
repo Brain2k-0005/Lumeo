@@ -152,6 +152,18 @@ internal sealed class ScrollInterop
         await module.InvokeVoidAsync("unregisterOverlayScrollbar", viewportId);
     }
 
+    // --- DataGrid native scrollbar below the header (ScrollbarBelowHeader) ---
+
+    public async ValueTask RegisterScrollbarBelowHeader(IJSObjectReference module, string viewportId, string headerWrapperId)
+    {
+        await module.InvokeVoidAsync("registerScrollbarBelowHeader", viewportId, headerWrapperId);
+    }
+
+    public async ValueTask UnregisterScrollbarBelowHeader(IJSObjectReference module, string viewportId)
+    {
+        await module.InvokeVoidAsync("unregisterScrollbarBelowHeader", viewportId);
+    }
+
     public void Clear()
     {
         _scrollspyHandlers.Clear();

@@ -3776,15 +3776,49 @@ export function measureColumnContentWidth(gridId, colId) {
     return natural > 0 ? Math.ceil(natural) + 2 : 0; // +2: same hairline breathing room as onDoubleClick's auto-fit
 }
 
+// --- Split header/body layout helpers (ScrollbarBelowHeader) ---
+// When DataGrid renders its native-scrollbar split layout (header table +
+// body table as SEPARATE <table> elements, so the body's native vertical
+// scrollbar can start below the header — see DataGrid.razor's
+// ScrollbarBelowHeader parameter), every piece of code below that used to
+// find "the tbody" or "the scroll container" via `th.closest('table')` or
+// `table.parentElement` stops working: a header <th> now lives in a table
+// that has no tbody, and that table's own parent is a non-scrolling wrapper,
+// not the body's scroll viewport. These helpers re-resolve the real tbody /
+// scrolling viewport from the shared `[data-grid-id]` root instead, so they
+// return the right element in BOTH the classic single-table layout (where
+// they degrade to the exact same lookups as before) and the split layout.
+function gridRootOf(el) {
+    return el.closest('[data-grid-id]');
+}
+function gridTbodyOf(el) {
+    const root = gridRootOf(el);
+    return root ? root.querySelector('tbody') : null;
+}
+function gridBodyTableOf(el) {
+    const tbody = gridTbodyOf(el);
+    return tbody ? tbody.closest('table') : null;
+}
+// The element the body actually scrolls (native scroll or the overlay-scrollbar
+// viewport) — data-slot="datagrid-viewport" is written onto it unconditionally
+// by DataGrid.razor. Falls back to an ancestor-overflow walk from `table` for
+// any older/composed markup that doesn't carry the slot.
+function gridViewportOf(table, th) {
+    const root = table ? gridRootOf(table) : (th ? gridRootOf(th) : null);
+    const bySlot = root ? root.querySelector('[data-slot="datagrid-viewport"]') : null;
+    if (bySlot) return bySlot;
+    for (let el = table ? table.parentElement : null; el && el !== document.body; el = el.parentElement) {
+        const oy = getComputedStyle(el).overflowY;
+        if (oy === 'auto' || oy === 'scroll' || oy === 'overlay') return el;
+    }
+    return null;
+}
+
 const resizeScrollerOf = new WeakMap();
 function resizeGuidelineFrame(th, table) {
     let scroller = table ? resizeScrollerOf.get(table) : null;
     if (scroller === undefined) {
-        scroller = null;
-        for (let el = table.parentElement; el && el !== document.body; el = el.parentElement) {
-            const oy = getComputedStyle(el).overflowY;
-            if (oy === 'auto' || oy === 'scroll' || oy === 'overlay') { scroller = el; break; }
-        }
+        scroller = gridViewportOf(table, th);
         resizeScrollerOf.set(table, scroller);
     }
     const rect = (scroller || table || th).getBoundingClientRect();
@@ -3873,6 +3907,7 @@ export function registerColumnResize(handleId, dotnetRef, minWidth, maxWidth) {
         if (frozenTable && frozenTotal > 0) {
             const headerRow = th.parentElement;
             const fillCell = headerRow ? headerRow.querySelector('th[data-fill-width]') : null;
+            let newTotal;
             if (fillCell) {
                 // With a fill column the table is the sum of the floors, and min-width: 100%
                 // keeps it at the container; the fill column shrinks as a neighbour grows
@@ -3882,9 +3917,17 @@ export function registerColumnResize(handleId, dotnetRef, minWidth, maxWidth) {
                     const v = parseFloat(c.hasAttribute('data-fill-width') ? c.style.minWidth : c.style.width);
                     total += isNaN(v) ? c.getBoundingClientRect().width : v;
                 }
-                frozenTable.style.width = total + 'px';
+                newTotal = total;
             } else {
-                frozenTable.style.width = (frozenTotal - startWidth + w) + 'px';
+                newTotal = frozenTotal - startWidth + w;
+            }
+            frozenTable.style.width = newTotal + 'px';
+            // Split header/body layout: the body's own <table> was frozen to the same
+            // total width in freezeColumnWidths — keep it following the header's as the
+            // drag proceeds, same as the per-cell width writes above already do for
+            // colBodyCells (which live IN that table).
+            if (frozenBodyTable && frozenBodyTable !== frozenTable) {
+                frozenBodyTable.style.width = newTotal + 'px';
             }
         }
     };
@@ -3935,23 +3978,53 @@ export function registerColumnResize(handleId, dotnetRef, minWidth, maxWidth) {
                 }
             });
 
+            const totalWidth = widths.reduce((a, b) => a + b, 0);
             table.style.tableLayout = 'fixed';
-            table.style.width = widths.reduce((a, b) => a + b, 0) + 'px';
+            table.style.width = totalWidth + 'px';
             table.style.minWidth = hasFill ? '100%' : '';
             table.dataset.lumeoWidthsFrozen = 'true';
+
+            // Split header/body layout (ScrollbarBelowHeader): the body renders in
+            // its OWN <table>, so table-layout:fixed there needs the SAME explicit
+            // per-column widths pinned onto its first row — otherwise a table-layout:
+            // fixed body table would size its columns from its own first data row's
+            // natural content width instead of the header's, and the two tables'
+            // columns would drift apart pixel by pixel. No-op when header and body
+            // still share one table (bodyTable === table).
+            const bodyTbody = gridTbodyOf(thEl);
+            const bodyTable = bodyTbody ? bodyTbody.closest('table') : null;
+            if (bodyTable && bodyTable !== table && bodyTable.dataset.lumeoWidthsFrozen !== 'true') {
+                const firstRow = bodyTbody.rows[0];
+                if (firstRow) {
+                    cells.forEach((c, i) => {
+                        const idx = Array.prototype.indexOf.call(headerRow.children, c);
+                        const bodyCell = firstRow.children[idx];
+                        if (!bodyCell || (bodyCell.colSpan && bodyCell.colSpan > 1)) return;
+                        const w = widths[i] + 'px';
+                        if (!c.hasAttribute('data-fill-width')) {
+                            bodyCell.style.width = w;
+                            bodyCell.style.minWidth = w;
+                        } else if (!bodyCell.style.minWidth) {
+                            bodyCell.style.minWidth = w;
+                        }
+                    });
+                }
+                bodyTable.style.tableLayout = 'fixed';
+                bodyTable.style.width = totalWidth + 'px';
+                bodyTable.style.minWidth = hasFill ? '100%' : '';
+                bodyTable.dataset.lumeoWidthsFrozen = 'true';
+            }
         }
 
         return table;
     };
 
     const gatherBodyCells = () => {
-        const table = th.closest('table');
-        if (!table) return [];
         const headerRow = th.parentElement;
         if (!headerRow) return [];
         const colIndex = Array.prototype.indexOf.call(headerRow.children, th);
         if (colIndex < 0) return [];
-        const tbody = table.querySelector('tbody');
+        const tbody = gridTbodyOf(th);
         if (!tbody) return [];
         const cells = [];
         for (const row of tbody.rows) {
@@ -3967,6 +4040,10 @@ export function registerColumnResize(handleId, dotnetRef, minWidth, maxWidth) {
     let activePointerId = null;
     // The table whose layout was frozen for this drag, and its width at freeze time.
     let frozenTable = null;
+    // The body's own <table> in a split header/body layout, when it differs from
+    // frozenTable (the header's) — kept following it width-for-width. Null in the
+    // classic single-table layout, where frozenTable already covers everything.
+    let frozenBodyTable = null;
     let frozenTotal = 0;
 
     // Migrated mouse* → pointer* (rc.43 mobile audit). Pointer events are a
@@ -3997,6 +4074,8 @@ export function registerColumnResize(handleId, dotnetRef, minWidth, maxWidth) {
         dirMultiplier = getComputedStyle(th).direction === 'rtl' ? -1 : 1;
         colBodyCells = gatherBodyCells();
         frozenTable = freezeColumnWidths(th);
+        frozenBodyTable = gridBodyTableOf(th);
+        if (frozenBodyTable === frozenTable) frozenBodyTable = null;
         // Read AFTER the freeze: another column may have frozen this table on an earlier
         // drag, in which case the measuring branch above did not run for this closure.
         frozenTotal = frozenTable ? frozenTable.getBoundingClientRect().width : 0;
@@ -4127,6 +4206,8 @@ export function registerColumnResize(handleId, dotnetRef, minWidth, maxWidth) {
         colBodyCells = gatherBodyCells();
         startWidth = th.getBoundingClientRect().width;
         frozenTable = freezeColumnWidths(th);
+        frozenBodyTable = gridBodyTableOf(th);
+        if (frozenBodyTable === frozenTable) frozenBodyTable = null;
         frozenTotal = frozenTable ? frozenTable.getBoundingClientRect().width : 0;
         applyWidth(w);
         currentWidth = w;
@@ -4278,16 +4359,38 @@ export function registerOverlayScrollbar(viewportId) {
 
     const state = { dragging: null }; // 'y' | 'x' | null
 
+    // The sticky <thead> (DataGridHeader's own `data-slot="datagrid-header"` root) —
+    // re-found on every update() rather than cached once, since a grid can swap
+    // between having a header and not (unlikely, but cheap either way) or grow a
+    // second grouped-header row. Its live rendered height (0 when absent, or when a
+    // consumer hides it via CSS) is what pushes the Y track/thumb down so it starts
+    // at the header's bottom edge instead of overlapping it — this covers density
+    // (Compact's shorter header), multi-row/grouped headers (taller thead), and a
+    // hidden header, all for free: none of them change how this height is measured,
+    // only what it measures to.
+    const measureHeaderHeight = () => {
+        const headerEl = viewport.querySelector('[data-slot="datagrid-header"]');
+        if (!headerEl) return 0;
+        const r = headerEl.getBoundingClientRect();
+        return r.height > 0 ? r.height : 0;
+    };
+
     const update = () => {
         const rect = viewport.getBoundingClientRect();
         const rtl = getComputedStyle(viewport).direction === 'rtl';
+        const headerH = measureHeaderHeight();
 
         const canY = viewport.scrollHeight > viewport.clientHeight + 1;
         y.track.style.display = canY ? '' : 'none';
         if (canY) {
-            const trackH = Math.max(rect.height - OVERLAY_SCROLLBAR_SIZE, 0);
-            y.track.style.top = rect.top + 'px';
-            y.track.style.height = rect.height + 'px';
+            // Track spans only the body — from the header's bottom edge to the
+            // viewport's own bottom edge — so BOTH the track's own extent and the
+            // thumb's size/position (derived from trackH below) are confined to the
+            // body's scroll range, never overlapping the header.
+            const bodyHeight = Math.max(rect.height - headerH, 0);
+            const trackH = Math.max(bodyHeight - OVERLAY_SCROLLBAR_SIZE, 0);
+            y.track.style.top = (rect.top + headerH) + 'px';
+            y.track.style.height = bodyHeight + 'px';
             y.track.style.left = (rtl ? rect.left : rect.right - OVERLAY_SCROLLBAR_SIZE) + 'px';
             const thumbH = Math.max(24, (viewport.clientHeight / viewport.scrollHeight) * trackH);
             const maxTop = viewport.scrollHeight - viewport.clientHeight;
@@ -4336,6 +4439,13 @@ export function registerOverlayScrollbar(viewportId) {
 
     const ro = new ResizeObserver(update);
     ro.observe(viewport);
+    // The header's own height doesn't always change the VIEWPORT's box size (it's
+    // position:sticky content inside it, not a sibling that pushes the viewport
+    // taller) — e.g. Compact toggling at runtime, or a grouped-header row
+    // appearing/disappearing. Observed separately so the Y track/thumb re-measure
+    // and shift immediately instead of only on the next scroll/resize.
+    const headerElAtRegister = viewport.querySelector('[data-slot="datagrid-header"]');
+    if (headerElAtRegister) ro.observe(headerElAtRegister);
     window.addEventListener('resize', update);
 
     // Thumb drag: pointerdown on a thumb starts a drag that maps pointer
@@ -4347,7 +4457,8 @@ export function registerOverlayScrollbar(viewportId) {
             const rect = viewport.getBoundingClientRect();
             const rtl = getComputedStyle(viewport).direction === 'rtl';
             if (axis === 'y') {
-                const trackH = Math.max(rect.height - OVERLAY_SCROLLBAR_SIZE, 0);
+                const bodyHeight = Math.max(rect.height - measureHeaderHeight(), 0);
+                const trackH = Math.max(bodyHeight - OVERLAY_SCROLLBAR_SIZE, 0);
                 const thumbH = thumb.getBoundingClientRect().height;
                 const maxTop = viewport.scrollHeight - viewport.clientHeight;
                 const ratio = maxTop > 0 && trackH - thumbH > 0 ? maxTop / (trackH - thumbH) : 0;
@@ -4404,6 +4515,65 @@ export function unregisterOverlayScrollbar(viewportId) {
     entry.yTrack.remove();
     entry.xTrack.remove();
     overlayScrollbars.delete(viewportId);
+}
+
+// --- DataGrid native scrollbar below the header (ScrollbarBelowHeader) ---
+//
+// DataGrid.razor's split layout renders the header in its own non-scrolling
+// <div> (headerWrapperId) and the body in the normal scrolling viewport
+// (viewportId) — two independent <table>s, kept visually in lock-step by this
+// registration: horizontal scroll mirrors from the body (the only element the
+// user/keyboard actually scrolls) onto the header, and the header gets a
+// right-padding (left, in RTL) equal to the body's own native scrollbar gutter
+// so its background/border keep running the full width of the grid frame —
+// no white notch above the scrollbar, no gap at the rounded top-right corner.
+// Column width sync for `table-layout: fixed` is handled entirely in
+// registerColumnResize/freezeColumnWidths above; this registration only owns
+// the scroll mirror and the gutter padding.
+const scrollbarBelowHeaderEntries = new Map();
+
+export function registerScrollbarBelowHeader(viewportId, headerWrapperId) {
+    const viewport = document.getElementById(viewportId);
+    const header = document.getElementById(headerWrapperId);
+    if (!viewport || !header || scrollbarBelowHeaderEntries.has(viewportId)) return;
+
+    let mirrorRaf = 0;
+    const mirror = () => {
+        mirrorRaf = 0;
+        // Same-direction elements: the browser's own scrollLeft convention (whichever
+        // it is for the current engine/RTL) already agrees between the two, so a
+        // straight copy is correct — unlike the overlay scrollbar's thumb, which maps
+        // scrollLeft into an unrelated 0..trackWidth space and has to normalize it.
+        header.scrollLeft = viewport.scrollLeft;
+    };
+    const onScroll = () => {
+        if (mirrorRaf) return;
+        mirrorRaf = requestAnimationFrame(mirror);
+    };
+    viewport.addEventListener('scroll', onScroll, { passive: true });
+    mirror();
+
+    const updateGutter = () => {
+        const gutter = Math.max(viewport.offsetWidth - viewport.clientWidth, 0);
+        const rtl = getComputedStyle(viewport).direction === 'rtl';
+        header.style.paddingLeft = rtl ? gutter + 'px' : '';
+        header.style.paddingRight = rtl ? '' : gutter + 'px';
+    };
+    updateGutter();
+    const ro = new ResizeObserver(updateGutter);
+    ro.observe(viewport);
+
+    scrollbarBelowHeaderEntries.set(viewportId, { viewport, header, onScroll, ro, mirrorRaf: () => mirrorRaf });
+}
+
+export function unregisterScrollbarBelowHeader(viewportId) {
+    const entry = scrollbarBelowHeaderEntries.get(viewportId);
+    if (!entry) return;
+    entry.viewport.removeEventListener('scroll', entry.onScroll);
+    entry.ro.disconnect();
+    entry.header.style.paddingLeft = '';
+    entry.header.style.paddingRight = '';
+    scrollbarBelowHeaderEntries.delete(viewportId);
 }
 
 // --- DataGrid Viewport Width ---
@@ -5669,7 +5839,7 @@ export function registerColumnReorder(gridId, dotnetRef) {
 
         const headerRow = th.parentElement;
         const table = th.closest('table');
-        const tbody = table ? table.querySelector('tbody') : null;
+        const tbody = gridTbodyOf(th);
         if (!headerRow || !table) return;
 
         // Same-pin partition candidates, with cached base rects AND cached cell
@@ -5723,13 +5893,16 @@ export function registerColumnReorder(gridId, dotnetRef) {
         // non-null, so a rejected claim never touches drag state.
         if (!claimGridDrag(gridId, 'column-reorder')) return;
 
-        // The horizontal scroll container is the table's own parent (see the
-        // `.overflow-auto` wrapper in DataGrid.razor) — derived from `table` rather
-        // than a class-name lookup so it stays correct even if that wrapper's
-        // class ever changes. Used only for auto-scroll-near-edge (redesign point
-        // 8); startScrollLeft anchors applyLiveTranslate's scroll-compensation math
-        // so the non-autoscrolling path (scrollDelta always 0) is untouched.
-        const scrollContainer = table.parentElement;
+        // The horizontal scroll container is normally the table's own parent (the
+        // `.overflow-auto` wrapper in DataGrid.razor) — but in the split header/body
+        // layout (ScrollbarBelowHeader) the header table's parent is a non-scrolling
+        // wrapper instead, so gridViewportOf resolves the BODY's own scroll viewport
+        // via data-slot="datagrid-viewport" (falling back to the old parent-walk,
+        // which is `table.parentElement` itself, for the classic single-table case).
+        // Used only for auto-scroll-near-edge (redesign point 8); startScrollLeft
+        // anchors applyLiveTranslate's scroll-compensation math so the
+        // non-autoscrolling path (scrollDelta always 0) is untouched.
+        const scrollContainer = gridViewportOf(table, th);
 
         // Unified drag-to-group (rc.42): the group panel lives as a sibling of the
         // table inside this same grid root, present in the DOM only when

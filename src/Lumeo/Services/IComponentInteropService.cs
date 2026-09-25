@@ -427,6 +427,16 @@ public interface IComponentInteropService : IAsyncDisposable, IDisposable
     /// Additive DIM.</summary>
     ValueTask UnregisterOverlayScrollbar(string viewportId) => ValueTask.CompletedTask;
 
+    /// <summary>Mirrors the body viewport's horizontal scroll onto the header wrapper and pads the
+    /// header by the body's own native scrollbar gutter, for DataGrid's split header/body layout
+    /// (<c>DataGrid.ScrollbarBelowHeader</c>) — the native vertical scrollbar then starts below the
+    /// header instead of running alongside it. Additive DIM.</summary>
+    ValueTask RegisterScrollbarBelowHeader(string viewportId, string headerWrapperId) => ValueTask.CompletedTask;
+
+    /// <summary>Tears down the mirror registered by <see cref="RegisterScrollbarBelowHeader"/>.
+    /// Additive DIM.</summary>
+    ValueTask UnregisterScrollbarBelowHeader(string viewportId) => ValueTask.CompletedTask;
+
     /// <summary>Registers pointer drag of Filters rows and groups within an advanced-builder panel.
     /// The panel's <c>[JSInvokable] OnFilterDrop(nodeId, parentId, index, copy)</c> receives each
     /// drop; Escape cancels a drag. Default no-op.</summary>
