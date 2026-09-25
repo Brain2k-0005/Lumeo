@@ -2381,6 +2381,44 @@ input[type="range"]:focus-visible::-moz-range-thumb {
   background-color: var(--color-border);
 }
 
+/* DataGrid: continuous header band + (Chromium/Safari) scrollbar starts below the
+   header, DEFAULT for the classic single-table layout (no OverlayScrollbar, no
+   ScrollbarBelowHeader — see DataGrid.razor's ViewportCssClass). Field report: the
+   header's bg-card/border-b only ever painted across the <thead>'s own TABLE width,
+   so the native vertical scrollbar's gutter — the strip to the right of the last
+   column, alongside the header row — showed whatever sat behind the scroll
+   container instead, a visible "white notch" at the frame's rounded top-right
+   corner. --lumeo-grid-header-offset is the header's live measured height (JS,
+   ResizeObserver — ComponentInteropService.RegisterGridHeaderOffset), written onto
+   this same scroll container; 0px until measured, so an unmeasured/loading grid
+   paints nothing extra (a 0-height band is invisible).
+   The gradient repaints the SAME two colours the header row itself already uses
+   (bg-card, then a border-border/40 hairline) across the container's FULL width —
+   table width included, where it just sits under the opaque header/table and never
+   shows — so the header band and the header row are indistinguishable where they
+   overlap and the band alone is what's visible in the gutter.
+   `*::-webkit-scrollbar-track { background: transparent }` (this file's Custom
+   Scrollbar block) is what lets the band show through the scrollbar's own gutter at
+   all in Chromium/Safari; margin-top on the vertical track then also starts the
+   THUMB's own travel range below the header there (LU-21 restored ::-webkit-
+   scrollbar* recognition, see the @supports gate above). Firefox has no per-track
+   margin: the band still paints continuously, but the thumb may run beside the
+   header there — scrollbar-width:thin still applies since Firefox falls through
+   the @supports-not-selector(::-webkit-scrollbar) branch. */
+[data-slot="datagrid"] .lumeo-dg-native-header-band {
+  background: linear-gradient(
+    to bottom,
+    var(--color-card) 0,
+    var(--color-card) var(--lumeo-grid-header-offset, 0px),
+    color-mix(in oklab, var(--color-border) 40%, transparent) var(--lumeo-grid-header-offset, 0px),
+    color-mix(in oklab, var(--color-border) 40%, transparent) calc(var(--lumeo-grid-header-offset, 0px) + 1px),
+    transparent calc(var(--lumeo-grid-header-offset, 0px) + 1px)
+  );
+}
+[data-slot="datagrid"] .lumeo-dg-native-header-band::-webkit-scrollbar-track:vertical {
+  margin-top: var(--lumeo-grid-header-offset, 0px);
+}
+
 /* DataGrid OverlayScrollbar (#517) — the native bar is hidden cross-browser (it
    reserves layout space every browser lays out differently; hiding it and drawing
    our own thumbs on top reserves none) while overflow:auto stays in force, so wheel/

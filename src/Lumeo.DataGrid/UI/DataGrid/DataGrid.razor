@@ -351,63 +351,136 @@
            pin menu / column menu (positioned in VIEWPORT coordinates by
            Interop.PositionFixed) — they mispositioned against this wrapper and got
            clipped by its own overflow-auto. See components.js's registerViewportWidth. *@
-        <div id="@_viewportId" class="@ViewportCssClass" @onclick="CloseContextMenu">
-            @* border-separate + border-spacing-0 (DocFlow D8), only when NOT Bordered:
-               Tailwind preflight sets border-collapse: collapse on every <table>, which
-               merges each row's border-b with the next row's own borders into one shared
-               line — at fractional device pixel ratios (or fractional row heights from
-               Compact/density tokens) that shared line can land on a half-pixel and render
-               blurry. Rows draw their own divider as an inset box-shadow (DataGridRow.CssClass)
-               instead of border-b in this mode, which isn't affected by border-collapse and
-               (being an inset shadow, not a border) adds no extra box height — no layout
-               shift switching between the two. Left untouched when Bordered="true": that
-               variant relies on border-collapse to merge adjacent [&_td]:border/[&_th]:border
-               rules into single-pixel grid lines — border-separate would double them up.  *@
-            <table class="@($"w-full caption-bottom text-sm{(Bordered ? "" : " border-separate border-spacing-0")}")"
-                   style="@TableStyle"
-                   id="@_gridId"
-                   role="@(IsTreeGridMode ? "treegrid" : "grid")"
-                   aria-rowcount="@(context.HeaderRowOffset - 1 + context.CountBodyRows(DetailTemplate is not null, !UseVirtualization && !_useServerVirtualization))"
-                   aria-colcount="@_visibleColumns.Count"
-                   aria-readonly="@(EditMode == DataGridEditMode.None ? "true" : null)"
-                   aria-multiselectable="@(SelectionMode == DataGridSelectionMode.Multiple ? "true" : null)">
-                <DataGridHeader TItem="TItem"
-                                HasDetailTemplate="@(DetailTemplate is not null)"
-                                ActiveFilterColumn="@_activeFilterColumn"
-                                OnFilterToggle="HandleFilterToggle"
-                                OnFilterApply="HandleFilterApply"
-                                Reorderable="Reorderable"
-                                ColumnMenu="ColumnMenu"
-                                OnHeaderClick="OnHeaderClick"
-                                OnColumnReorder="HandleColumnReorder" />
-
-                <DataGridBody TItem="TItem"
-                              @ref="_bodyRef"
-                              DetailTemplate="DetailTemplate"
-                              EmptyContent="EmptyContent"
-                              EmptyTemplate="EmptyTemplate"
-                              UseVirtualization="@UseVirtualization"
-                              VirtualItemSize="@EffectiveVirtualItemSize"
-                              VirtualOverscanCount="@VirtualOverscanCount"
-                              ServerVirtualizationProvider="@(_useServerVirtualization ? ServerVirtualizationProviderImpl : null)"
-                              HasDetailTemplate="@(DetailTemplate is not null)"
-                              SkeletonRowCount="@EffectiveSkeletonRowCount"
-                              OnContextMenu="@(args => HandleContextMenu(args.Item1, args.Item2, args.Item3))" />
-            </table>
-            @if (EditMode == DataGridEditMode.Batch && ShowAddRow && NewItemFactory is not null)
-            {
-                <div data-slot="datagrid-add-row"
-                     class="flex items-center border-t border-border/40 bg-muted/20 px-3 py-1.5">
-                    <button type="button"
-                            data-slot="datagrid-add-row-button"
-                            class="inline-flex h-7 items-center gap-1 rounded-md border border-dashed border-border/60 bg-card px-2 text-xs text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-2"
-                            @onclick="AddBatchRow">
-                        <SvgGlyph Svg="@(LumeoIcons.Plus)" class="h-3.5 w-3.5" />
-                        <span>@BatchAddRowText</span>
-                    </button>
+        @{
+            // Shared between both layouts below, so the split (ScrollbarBelowHeader)
+            // and classic single-table branches stay identical everywhere except
+            // where the DOM genuinely has to differ.
+            var ariaRowCount = context.HeaderRowOffset - 1 + context.CountBodyRows(DetailTemplate is not null, !UseVirtualization && !_useServerVirtualization);
+            var tableClass = $"w-full caption-bottom text-sm{(Bordered ? "" : " border-separate border-spacing-0")}";
+        }
+        @if (UseScrollbarBelowHeader)
+        {
+            @* Split layout: header and body are two INDEPENDENT tables so the body's
+               native vertical scrollbar's track belongs only to the body's own
+               (shorter) scroll container and starts at the header's bottom edge —
+               see the ScrollbarBelowHeader parameter's remarks and
+               Interop.RegisterScrollbarBelowHeader (horizontal scroll mirror +
+               scrollbar-gutter padding on the header). role="grid"/aria-rowcount/
+               aria-colcount move here, onto the element that actually wraps BOTH
+               tables, with role="none" on each inner <table> so screen readers see
+               one grid (rowgroup/row/columnheader/gridcell, already explicit on
+               DataGridHeader/DataGridBody's own elements) instead of two nested
+               tables. *@
+            <div id="@_gridId" data-slot="datagrid-table" class="flex flex-col flex-1 min-h-0"
+                 role="@(IsTreeGridMode ? "treegrid" : "grid")"
+                 aria-rowcount="@ariaRowCount"
+                 aria-colcount="@_visibleColumns.Count"
+                 aria-readonly="@(EditMode == DataGridEditMode.None ? "true" : null)"
+                 aria-multiselectable="@(SelectionMode == DataGridSelectionMode.Multiple ? "true" : null)">
+                <div id="@_headerWrapperId" class="@HeaderWrapperCssClass">
+                    <table class="@tableClass" style="@TableStyle" role="none">
+                        <DataGridHeader TItem="TItem"
+                                        HasDetailTemplate="@(DetailTemplate is not null)"
+                                        ActiveFilterColumn="@_activeFilterColumn"
+                                        OnFilterToggle="HandleFilterToggle"
+                                        OnFilterApply="HandleFilterApply"
+                                        Reorderable="Reorderable"
+                                        ColumnMenu="ColumnMenu"
+                                        OnHeaderClick="OnHeaderClick"
+                                        OnColumnReorder="HandleColumnReorder" />
+                    </table>
                 </div>
-            }
-        </div>
+                <div id="@_viewportId" data-slot="datagrid-viewport" class="@ViewportCssClass" @onclick="CloseContextMenu">
+                    <table class="@tableClass" style="@TableStyle" role="none">
+                        <DataGridBody TItem="TItem"
+                                      @ref="_bodyRef"
+                                      DetailTemplate="DetailTemplate"
+                                      EmptyContent="EmptyContent"
+                                      EmptyTemplate="EmptyTemplate"
+                                      UseVirtualization="@UseVirtualization"
+                                      VirtualItemSize="@EffectiveVirtualItemSize"
+                                      VirtualOverscanCount="@VirtualOverscanCount"
+                                      ServerVirtualizationProvider="@(_useServerVirtualization ? ServerVirtualizationProviderImpl : null)"
+                                      HasDetailTemplate="@(DetailTemplate is not null)"
+                                      SkeletonRowCount="@EffectiveSkeletonRowCount"
+                                      OnContextMenu="@(args => HandleContextMenu(args.Item1, args.Item2, args.Item3))" />
+                    </table>
+                    @if (EditMode == DataGridEditMode.Batch && ShowAddRow && NewItemFactory is not null)
+                    {
+                        <div data-slot="datagrid-add-row"
+                             class="flex items-center border-t border-border/40 bg-muted/20 px-3 py-1.5">
+                            <button type="button"
+                                    data-slot="datagrid-add-row-button"
+                                    class="inline-flex h-7 items-center gap-1 rounded-md border border-dashed border-border/60 bg-card px-2 text-xs text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-2"
+                                    @onclick="AddBatchRow">
+                                <SvgGlyph Svg="@(LumeoIcons.Plus)" class="h-3.5 w-3.5" />
+                                <span>@BatchAddRowText</span>
+                            </button>
+                        </div>
+                    }
+                </div>
+            </div>
+        }
+        else
+        {
+            <div id="@_viewportId" data-slot="datagrid-viewport" class="@ViewportCssClass" @onclick="CloseContextMenu">
+                @* border-separate + border-spacing-0 (DocFlow D8), only when NOT Bordered:
+                   Tailwind preflight sets border-collapse: collapse on every <table>, which
+                   merges each row's border-b with the next row's own borders into one shared
+                   line — at fractional device pixel ratios (or fractional row heights from
+                   Compact/density tokens) that shared line can land on a half-pixel and render
+                   blurry. Rows draw their own divider as an inset box-shadow (DataGridRow.CssClass)
+                   instead of border-b in this mode, which isn't affected by border-collapse and
+                   (being an inset shadow, not a border) adds no extra box height — no layout
+                   shift switching between the two. Left untouched when Bordered="true": that
+                   variant relies on border-collapse to merge adjacent [&_td]:border/[&_th]:border
+                   rules into single-pixel grid lines — border-separate would double them up.  *@
+                <table class="@tableClass"
+                       style="@TableStyle"
+                       id="@_gridId"
+                       role="@(IsTreeGridMode ? "treegrid" : "grid")"
+                       aria-rowcount="@ariaRowCount"
+                       aria-colcount="@_visibleColumns.Count"
+                       aria-readonly="@(EditMode == DataGridEditMode.None ? "true" : null)"
+                       aria-multiselectable="@(SelectionMode == DataGridSelectionMode.Multiple ? "true" : null)">
+                    <DataGridHeader TItem="TItem"
+                                    HasDetailTemplate="@(DetailTemplate is not null)"
+                                    ActiveFilterColumn="@_activeFilterColumn"
+                                    OnFilterToggle="HandleFilterToggle"
+                                    OnFilterApply="HandleFilterApply"
+                                    Reorderable="Reorderable"
+                                    ColumnMenu="ColumnMenu"
+                                    OnHeaderClick="OnHeaderClick"
+                                    OnColumnReorder="HandleColumnReorder" />
+
+                    <DataGridBody TItem="TItem"
+                                  @ref="_bodyRef"
+                                  DetailTemplate="DetailTemplate"
+                                  EmptyContent="EmptyContent"
+                                  EmptyTemplate="EmptyTemplate"
+                                  UseVirtualization="@UseVirtualization"
+                                  VirtualItemSize="@EffectiveVirtualItemSize"
+                                  VirtualOverscanCount="@VirtualOverscanCount"
+                                  ServerVirtualizationProvider="@(_useServerVirtualization ? ServerVirtualizationProviderImpl : null)"
+                                  HasDetailTemplate="@(DetailTemplate is not null)"
+                                  SkeletonRowCount="@EffectiveSkeletonRowCount"
+                                  OnContextMenu="@(args => HandleContextMenu(args.Item1, args.Item2, args.Item3))" />
+                </table>
+                @if (EditMode == DataGridEditMode.Batch && ShowAddRow && NewItemFactory is not null)
+                {
+                    <div data-slot="datagrid-add-row"
+                         class="flex items-center border-t border-border/40 bg-muted/20 px-3 py-1.5">
+                        <button type="button"
+                                data-slot="datagrid-add-row-button"
+                                class="inline-flex h-7 items-center gap-1 rounded-md border border-dashed border-border/60 bg-card px-2 text-xs text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-2"
+                                @onclick="AddBatchRow">
+                            <SvgGlyph Svg="@(LumeoIcons.Plus)" class="h-3.5 w-3.5" />
+                            <span>@BatchAddRowText</span>
+                        </button>
+                    </div>
+                }
+            </div>
+        }
 
         @* Aggregate strip — rendered OUTSIDE the scrolling table wrapper so the
            AVG/SUM/COUNT row always sits at the bottom of the card, flush above
@@ -513,6 +586,34 @@
     /// rect (like the header popovers' PositionFixed).
     /// </summary>
     [Parameter] public bool OverlayScrollbar { get; set; }
+
+    /// <summary>
+    /// Makes the grid's NATIVE vertical scrollbar start below the header instead of
+    /// running alongside it — the same "no scrollbar next to the header" fix as
+    /// <see cref="OverlayScrollbar"/>, for grids that keep the browser's own
+    /// scrollbar. Splits the header into its own non-scrolling table, sitting above
+    /// a second, independently-scrolling table for the body; horizontal scroll is
+    /// mirrored from the body onto the header (JS, passive listener), and the
+    /// header is padded by the body's own scrollbar gutter so its background/
+    /// border keep running the full width of the grid frame (no notch above the
+    /// scrollbar). Column resize, reorder, pinned columns, virtualization,
+    /// keyboard navigation and screen-reader grid semantics (a single
+    /// <c>role="grid"</c> wrapping both tables) all keep working across the split.
+    /// <para>
+    /// Requires <c>table-layout: fixed</c> — i.e. every visible column already
+    /// resolves to a pixel width (an explicit <c>Width</c> on every column,
+    /// <see cref="DataGridColumnSizing.FitWithMinimum"/>, or autosize). Two
+    /// independent tables under <c>table-layout: auto</c> size their columns from
+    /// their OWN content, with no guarantee the header and body agree — so when
+    /// that condition isn't met, the grid quietly renders the classic single-table
+    /// layout instead (same as leaving this off), rather than risk misaligned
+    /// columns. Ignored when <see cref="OverlayScrollbar"/> is also set — that mode
+    /// already has no native scrollbar to reposition. Default <c>false</c>: opt in
+    /// per grid.
+    /// </para>
+    /// </summary>
+    [Parameter] public bool ScrollbarBelowHeader { get; set; }
+
     /// <summary>
     /// Dense layout: header and body cells drop from <c>px-3 py-2</c> to
     /// <c>px-2 py-1</c> (and the root text shrinks to <c>text-sm</c>), so the
@@ -1108,6 +1209,10 @@
     // _gridId) — Interop.RegisterViewportWidth observes THIS element's client width. See
     // its render site above and the register/unregister calls in OnAfterRenderAsync/DisposeAsync.
     private string _viewportId => $"{_gridId}-viewport";
+    // Split header/body layout only (ScrollbarBelowHeader) — the non-scrolling header
+    // wrapper JS mirrors the body viewport's horizontal scroll onto. See
+    // Interop.RegisterScrollbarBelowHeader and UseScrollbarBelowHeader below.
+    private string _headerWrapperId => $"{_gridId}-header-viewport";
     // Roving-focus cell coordinates. _focusedRow == -1 → header row.
     private int _focusedRow = -1;
     private int _focusedCol = 0;
@@ -1602,6 +1707,20 @@
     // OnAfterRenderAsync and DisposeAsync, and _viewportId above.
     private bool _overlayScrollbarRegistered;
 
+    // Scrollbar-below-header split layout — see the register/unregister block in
+    // OnAfterRenderAsync and DisposeAsync, and _headerWrapperId above.
+    private bool _scrollbarBelowHeaderRegistered;
+
+    // Native-header-band (default single-table layout) — see the register/unregister
+    // block in OnAfterRenderAsync and DisposeAsync, WantsGridHeaderOffset, and
+    // ViewportCssClass's lumeo-dg-native-header-band class above.
+    private bool _gridHeaderOffsetRegistered;
+
+    // The classic single-table layout's own default: neither OverlayScrollbar (no native
+    // scrollbar there to fix) nor the ScrollbarBelowHeader split (already solves this via
+    // its header-wrapper padding) need the band/offset observer.
+    private bool WantsGridHeaderOffset => !OverlayScrollbar && !UseScrollbarBelowHeader;
+
     // --- FitWithMinimum column-width distribution (DocFlow field report, 5.11.0) ---
     // Reuses _viewportId (the same horizontal scroll wrapper the two observers above watch)
     // for its own, separate ResizeObserver — see the register/unregister block in
@@ -1790,9 +1909,40 @@
 
     // lumeo-dg-overlay-scroll (#517) hides the native scrollbar; only added when
     // OverlayScrollbar is on, so a plain grid's viewport markup/CSS is unchanged.
+    // lumeo-dg-native-header-band is the classic single-table layout's OWN default
+    // fix (no parameter — see WantsGridHeaderOffset below): paints the header's
+    // colour/border across the native scrollbar's gutter and, in Chromium/Safari,
+    // starts the thumb's travel range below the header. Skipped for OverlayScrollbar
+    // (no native scrollbar there to fix) and for the ScrollbarBelowHeader split
+    // (which already solves this with its own header-wrapper padding).
     private string ViewportCssClass => OverlayScrollbar
         ? "overflow-auto flex-1 lumeo-dg-overlay-scroll"
-        : "overflow-auto flex-1";
+        : UseScrollbarBelowHeader
+            ? "overflow-auto flex-1"
+            : "overflow-auto flex-1 lumeo-dg-native-header-band";
+
+    // ScrollbarBelowHeader (native scrollbar starts below the header): splits the header
+    // and body into two independent <table>s, which only render pixel-identical column
+    // widths when EVERY column already resolves to a fixed px width — i.e. TableStyle has
+    // already committed to table-layout: fixed (an explicit Width on every column,
+    // FitWithMinimum once measured, or autosize). Under table-layout: auto the two tables
+    // would size columns from their own content with no guarantee they agree, so this
+    // quietly falls back to the classic single-table layout (same render as the parameter
+    // being off) instead of risking misaligned columns — see the parameter's remarks.
+    private bool UseScrollbarBelowHeader =>
+        ScrollbarBelowHeader
+        && !OverlayScrollbar
+        && TableStyle is { } tableStyle
+        && tableStyle.StartsWith("table-layout: fixed", StringComparison.Ordinal);
+
+    // Non-scrolling wrapper for the header-only table. bg-card + border-b match
+    // DataGridHeader's own <thead> (sticky top-0 z-20 bg-card, [&_tr]:border-b
+    // [&_tr]:border-border/40) exactly, so the wrapper's own edge — which extends
+    // past the table into the scrollbar gutter (see Interop.RegisterScrollbarBelowHeader's
+    // updateGutter) — reads as ONE continuous band/border rather than a second one
+    // drawn a pixel off from the header row's own. overflow-hidden: this wrapper never
+    // scrolls on its own; JS mirrors the body's scrollLeft onto it instead.
+    private const string HeaderWrapperCssClass = "overflow-hidden shrink-0 bg-card border-b border-border/40";
 
     private string RootCssClass
     {
@@ -2449,6 +2599,46 @@
             try { await Interop.UnregisterOverlayScrollbar(_viewportId); }
             catch (JSDisconnectedException) { }
             _overlayScrollbarRegistered = false;
+        }
+
+        // Scrollbar-below-header split layout: reactive to UseScrollbarBelowHeader
+        // flipping at runtime (ScrollbarBelowHeader toggled, or its table-layout:fixed
+        // eligibility changing — e.g. FitWithMinimum's first measurement landing) —
+        // same shape as the overlay-scrollbar block above.
+        if (UseScrollbarBelowHeader && !_scrollbarBelowHeaderRegistered)
+        {
+            try
+            {
+                await Interop.RegisterScrollbarBelowHeader(_viewportId, _headerWrapperId);
+                _scrollbarBelowHeaderRegistered = true;
+            }
+            catch (JSDisconnectedException) { }
+        }
+        else if (!UseScrollbarBelowHeader && _scrollbarBelowHeaderRegistered)
+        {
+            try { await Interop.UnregisterScrollbarBelowHeader(_viewportId); }
+            catch (JSDisconnectedException) { }
+            _scrollbarBelowHeaderRegistered = false;
+        }
+
+        // Native-header-band (default single-table layout): reactive to
+        // WantsGridHeaderOffset flipping at runtime — same shape as the two blocks
+        // above (and mutually exclusive with both: WantsGridHeaderOffset is false
+        // exactly when one of them is registered instead).
+        if (WantsGridHeaderOffset && !_gridHeaderOffsetRegistered)
+        {
+            try
+            {
+                await Interop.RegisterGridHeaderOffset(_viewportId);
+                _gridHeaderOffsetRegistered = true;
+            }
+            catch (JSDisconnectedException) { }
+        }
+        else if (!WantsGridHeaderOffset && _gridHeaderOffsetRegistered)
+        {
+            try { await Interop.UnregisterGridHeaderOffset(_viewportId); }
+            catch (JSDisconnectedException) { }
+            _gridHeaderOffsetRegistered = false;
         }
 
         if (_isExpanded && _fullscreenNeedsFocus)
@@ -5564,6 +5754,24 @@
             catch (Microsoft.JSInterop.JSDisconnectedException) { /* circuit gone */ }
             catch { /* best-effort */ }
             _overlayScrollbarRegistered = false;
+        }
+
+        // Tear down the scrollbar-below-header scroll mirror registered on the split layout.
+        if (_scrollbarBelowHeaderRegistered)
+        {
+            try { await Interop.UnregisterScrollbarBelowHeader(_viewportId); }
+            catch (Microsoft.JSInterop.JSDisconnectedException) { /* circuit gone */ }
+            catch { /* best-effort */ }
+            _scrollbarBelowHeaderRegistered = false;
+        }
+
+        // Tear down the native-header-band offset observer registered on the classic layout.
+        if (_gridHeaderOffsetRegistered)
+        {
+            try { await Interop.UnregisterGridHeaderOffset(_viewportId); }
+            catch (Microsoft.JSInterop.JSDisconnectedException) { /* circuit gone */ }
+            catch { /* best-effort */ }
+            _gridHeaderOffsetRegistered = false;
         }
 
         // Tear down the FitWithMinimum column-fit observer registered on the scroll wrapper.

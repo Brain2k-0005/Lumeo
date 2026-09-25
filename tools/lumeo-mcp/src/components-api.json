@@ -1,10 +1,10 @@
 {
   "$schema": "https://lumeo.nativ.sh/components-api-schema.json",
   "version": "5.11.3",
-  "generated": "2026-09-25T09:03:58.0349546Z",
+  "generated": "2026-09-25T09:25:39.0702027Z",
   "stats": {
     "componentCount": 169,
-    "totalParameters": 5017,
+    "totalParameters": 5018,
     "totalEnums": 113,
     "totalRecords": 66,
     "serviceCount": 33,
@@ -1264,6 +1264,30 @@
           "name": "UnregisterOverlayScrollbar",
           "returnType": "ValueTask",
           "signature": "UnregisterOverlayScrollbar(string viewportId)",
+          "summary": null
+        },
+        {
+          "name": "RegisterScrollbarBelowHeader",
+          "returnType": "ValueTask",
+          "signature": "RegisterScrollbarBelowHeader(string viewportId, string headerWrapperId)",
+          "summary": null
+        },
+        {
+          "name": "UnregisterScrollbarBelowHeader",
+          "returnType": "ValueTask",
+          "signature": "UnregisterScrollbarBelowHeader(string viewportId)",
+          "summary": null
+        },
+        {
+          "name": "RegisterGridHeaderOffset",
+          "returnType": "ValueTask",
+          "signature": "RegisterGridHeaderOffset(string viewportId)",
+          "summary": null
+        },
+        {
+          "name": "UnregisterGridHeaderOffset",
+          "returnType": "ValueTask",
+          "signature": "UnregisterGridHeaderOffset(string viewportId)",
           "summary": null
         },
         {
@@ -2893,6 +2917,30 @@
           "returnType": "ValueTask",
           "signature": "UnregisterOverlayScrollbar(string viewportId)",
           "summary": "Tears down the overlay scrollbar registered by RegisterOverlayScrollbar. Additive DIM."
+        },
+        {
+          "name": "RegisterScrollbarBelowHeader",
+          "returnType": "ValueTask",
+          "signature": "RegisterScrollbarBelowHeader(string viewportId, string headerWrapperId)",
+          "summary": "Mirrors the body viewport's horizontal scroll onto the header wrapper and pads the header by the body's own native scrollbar gutter, for DataGrid's split header/body layout (DataGrid.ScrollbarBelowHeader) — the native vertical scrollbar then starts below the header instead of running alongside it. Additive DIM."
+        },
+        {
+          "name": "UnregisterScrollbarBelowHeader",
+          "returnType": "ValueTask",
+          "signature": "UnregisterScrollbarBelowHeader(string viewportId)",
+          "summary": "Tears down the mirror registered by RegisterScrollbarBelowHeader. Additive DIM."
+        },
+        {
+          "name": "RegisterGridHeaderOffset",
+          "returnType": "ValueTask",
+          "signature": "RegisterGridHeaderOffset(string viewportId)",
+          "summary": "Writes the grid's live sticky-header height as the --lumeo-grid-header-offset CSS custom property on its scroll container — the classic single-table layout's default \"no scrollbar next to the header\" fix (paired with the lumeo-dg-native-header-band CSS class): a continuous header-coloured band across the scrollbar gutter, and — in Chromium/Safari — the scrollbar thumb's own travel range starting below the header. Additive DIM."
+        },
+        {
+          "name": "UnregisterGridHeaderOffset",
+          "returnType": "ValueTask",
+          "signature": "UnregisterGridHeaderOffset(string viewportId)",
+          "summary": "Tears down the observer registered by RegisterGridHeaderOffset. Additive DIM."
         },
         {
           "name": "RegisterFilterDrag",
@@ -24752,6 +24800,15 @@
           "isEditorRequired": false
         },
         {
+          "name": "ScrollbarBelowHeader",
+          "type": "bool",
+          "default": "false",
+          "description": "Makes the grid's NATIVE vertical scrollbar start below the header instead of running alongside it — the same \"no scrollbar next to the header\" fix as OverlayScrollbar, for grids that keep the browser's own scrollbar. Splits the header into its own non-scrolling table, sitting above a second, independently-scrolling table for the body; horizontal scroll is mirrored from the body onto the header (JS, passive listener), and the header is padded by the body's own scrollbar gutter so its background/ border keep running the full width of the grid frame (no notch above the scrollbar). Column resize, reorder, pinned columns, virtualization, keyboard navigation and screen-reader grid semantics (a single role=\"grid\" wrapping both tables) all keep working across the split. Requires table-layout: fixed — i.e. every visible column already resolves to a pixel width (an explicit Width on every column, FitWithMinimum, or autosize). Two independent tables under table-layout: auto size their columns from their OWN content, with no guarantee the header and body agree — so when that condition isn't met, the grid quietly renders the classic single-table layout instead (same as leaving this off), rather than risk misaligned columns. Ignored when OverlayScrollbar is also set — that mode already has no native scrollbar to reposition. Default false: opt in per grid.",
+          "isCascading": false,
+          "captureUnmatched": false,
+          "isEditorRequired": false
+        },
+        {
           "name": "Compact",
           "type": "bool",
           "default": "false",
@@ -25725,8 +25782,8 @@
           "code": "<DataGrid TItem=\"Employee\" Items=\"@employees\" PageSize=\"5\"\n          ShowToolbar=\"true\" ShowPagination=\"true\">\n    <DataGridColumnDef TItem=\"Employee\" Title=\"Name\" Field=\"Name\"\n                       Sortable=\"true\" Filterable=\"true\" />\n    <DataGridColumnDef TItem=\"Employee\" Title=\"Salary\" Field=\"Salary\"\n                       Filterable=\"true\" FilterType=\"DataGridFilterType.Number\" Format=\"C0\" />\n    <DataGridColumnDef TItem=\"Employee\" Title=\"Status\" Field=\"Status\"\n                       Filterable=\"true\" />\n</DataGrid>"
         },
         {
-          "title": "Minimal toolbar (search only)",
-          "code": "<DataGrid TItem=\"Employee\" Items=\"@employees\" PageSize=\"5\"\n          ShowToolbar=\"true\"\n          ShowColumnChooser=\"false\"\n          ShowExport=\"false\">\n    <DataGridColumnDef TItem=\"Employee\" Title=\"Name\" Field=\"Name\" Sortable=\"true\" Filterable=\"true\" />\n    <DataGridColumnDef TItem=\"Employee\" Title=\"Department\" Field=\"Department\" Sortable=\"true\" Filterable=\"true\" />\n    <DataGridColumnDef TItem=\"Employee\" Title=\"Salary\" Field=\"Salary\" Sortable=\"true\" Format=\"C0\" />\n</DataGrid>"
+          "title": "Toolbar with Internal Scroll",
+          "code": "<DataGrid TItem=\"Employee\" Items=\"@employees\" ShowToolbar=\"true\" Height=\"240px\">\n    <DataGridColumnDef TItem=\"Employee\" Title=\"Name\" Field=\"Name\" Width=\"180\" />\n    <DataGridColumnDef TItem=\"Employee\" Title=\"Department\" Field=\"Department\" Width=\"180\" />\n</DataGrid>"
         }
       ],
       "subComponents": {
@@ -27903,6 +27960,7 @@
           "menu",
           "menuitem",
           "menuitemradio",
+          "none",
           "row",
           "separator",
           "status",

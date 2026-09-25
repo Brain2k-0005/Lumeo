@@ -1475,4 +1475,36 @@ public class TrackingInteropService : IComponentInteropService
         _unregisterOverlayScrollbarCalls.Add(viewportId);
         return ValueTask.CompletedTask;
     }
+
+    // DataGrid scrollbar-below-header split layout — registration lifecycle tracking.
+    private readonly List<(string ViewportId, string HeaderWrapperId)> _registerScrollbarBelowHeaderCalls = new();
+    private readonly List<string> _unregisterScrollbarBelowHeaderCalls = new();
+    public IReadOnlyList<(string ViewportId, string HeaderWrapperId)> RegisterScrollbarBelowHeaderCalls => _registerScrollbarBelowHeaderCalls;
+    public IReadOnlyList<string> UnregisterScrollbarBelowHeaderCalls => _unregisterScrollbarBelowHeaderCalls;
+    public ValueTask RegisterScrollbarBelowHeader(string viewportId, string headerWrapperId)
+    {
+        _registerScrollbarBelowHeaderCalls.Add((viewportId, headerWrapperId));
+        return ValueTask.CompletedTask;
+    }
+    public ValueTask UnregisterScrollbarBelowHeader(string viewportId)
+    {
+        _unregisterScrollbarBelowHeaderCalls.Add(viewportId);
+        return ValueTask.CompletedTask;
+    }
+
+    // DataGrid native-header-band (default single-table layout) — registration lifecycle tracking.
+    private readonly List<string> _registerGridHeaderOffsetCalls = new();
+    private readonly List<string> _unregisterGridHeaderOffsetCalls = new();
+    public IReadOnlyList<string> RegisterGridHeaderOffsetCalls => _registerGridHeaderOffsetCalls;
+    public IReadOnlyList<string> UnregisterGridHeaderOffsetCalls => _unregisterGridHeaderOffsetCalls;
+    public ValueTask RegisterGridHeaderOffset(string viewportId)
+    {
+        _registerGridHeaderOffsetCalls.Add(viewportId);
+        return ValueTask.CompletedTask;
+    }
+    public ValueTask UnregisterGridHeaderOffset(string viewportId)
+    {
+        _unregisterGridHeaderOffsetCalls.Add(viewportId);
+        return ValueTask.CompletedTask;
+    }
 }
