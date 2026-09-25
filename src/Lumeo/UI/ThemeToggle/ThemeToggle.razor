@@ -89,12 +89,16 @@
         // No optimistic `_isDark = !_isDark` flip: the mode cycle is three-way
         // (System -> Dark -> Light -> System), so a binary negation shows the
         // wrong icon for a System->Dark step until the async correction lands.
-        // OnThemeChanged (raised synchronously at the end of ToggleModeAsync once
+        // OnThemeChanged (raised synchronously at the end of CycleModeAsync once
         // IsDark is re-read) is the single source of truth and updates the icon
         // exactly once to the resolved state.
         if (IncludeSystem)
         {
-            await Theme.ToggleModeAsync();
+            // CycleModeAsync, not ToggleModeAsync: this button's whole point with
+            // IncludeSystem="true" is to walk the three-way System -> Dark -> Light
+            // cycle (see the parameter doc above) - ToggleModeAsync only flips
+            // between the two resolved appearances and would never land on System.
+            await Theme.CycleModeAsync();
         }
         else
         {
