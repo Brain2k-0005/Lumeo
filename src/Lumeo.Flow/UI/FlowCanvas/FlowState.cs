@@ -200,6 +200,10 @@ internal sealed class FlowState
 
     /// <summary>LU-08: like the plain overload, but falls back to centring on <paramref name="anchorNodeId"/> (at <paramref name="minZoom"/>) instead of the whole bounds when the fit would need clamping. An unknown/null id behaves like the plain overload.</summary>
     public FlowViewport? ComputeFit(IReadOnlyList<FlowNode> nodes, double padding, double minZoom, double maxZoom, string? anchorNodeId)
+        => ComputeFit(nodes, padding, minZoom, maxZoom, anchorNodeId, FlowAnchorAlign.Center, false);
+
+    /// <summary>LU-19: like the anchor overload above, with <paramref name="anchorAlign"/>/<paramref name="rtl"/> forwarded to <see cref="FlowGeometry.AnchorAlignedViewport"/> when the fit clamps against the anchor.</summary>
+    public FlowViewport? ComputeFit(IReadOnlyList<FlowNode> nodes, double padding, double minZoom, double maxZoom, string? anchorNodeId, FlowAnchorAlign anchorAlign, bool rtl)
     {
         FlowRect? anchor = null;
         if (!string.IsNullOrEmpty(anchorNodeId))
@@ -207,7 +211,7 @@ internal sealed class FlowState
             var n = nodes.FirstOrDefault(x => x is not null && x.Id == anchorNodeId);
             if (n is not null) anchor = GetNodeRect(n);
         }
-        return FlowGeometry.FitView(nodes.Select(GetNodeRect), PaneWidth, PaneHeight, padding, minZoom, maxZoom, anchor);
+        return FlowGeometry.FitView(nodes.Select(GetNodeRect), PaneWidth, PaneHeight, padding, minZoom, maxZoom, anchor, anchorAlign, rtl);
     }
 
     /// <summary>True when every node has a fixed size or a measurement — a .NET-side fit is exact.</summary>

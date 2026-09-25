@@ -28,6 +28,29 @@ public enum FlowPosition
     Bottom,
 }
 
+/// <summary>
+/// LU-19: where <see cref="FlowFitViewOptions.AnchorNodeId"/> lands in the pane once it no longer
+/// fits alongside the whole graph at <c>MinZoom</c> (<c>FitView</c>'s anchor-clamped branch — see
+/// <see cref="FlowGeometry.FitView(IEnumerable{FlowRect}, double, double, double, double, double, FlowRect?, FlowAnchorAlign, bool)"/>).
+/// Unlike <see cref="FlowPosition"/> (a PHYSICAL side, deliberately RTL-invariant for handles), this
+/// is LOGICAL — <see cref="Start"/> follows reading direction horizontally, because it describes
+/// where the anchor should sit relative to the reader, not a fixed geometric side.
+/// </summary>
+public enum FlowAnchorAlign
+{
+    /// <summary>The anchor centred in the pane — the pre-LU-19 behaviour, still the default.</summary>
+    Center,
+    /// <summary>
+    /// The anchor's leading edge (left in LTR, right in RTL; always the top vertically) sits at the
+    /// fit padding in from the pane's own leading edge on both axes — for a LeftToRight/TopToBottom
+    /// tree, this keeps the root pinned to the pane's edge instead of centred with half the pane
+    /// empty on the side the tree never grows into.
+    /// </summary>
+    Start,
+    /// <summary>The mirror of <see cref="Start"/>: the anchor's trailing edge at the fit padding in from the pane's trailing edge on both axes.</summary>
+    End,
+}
+
 /// <summary>How an edge's path is routed between its two anchors.</summary>
 public enum FlowEdgeType
 {
@@ -215,7 +238,12 @@ public readonly record struct FlowPoint(double X, double Y);
 /// than "start complete". Ignored — the ordinary fit runs instead — when the id is null, unknown, or
 /// the plain fit does not need clamping.
 /// </param>
-public sealed record FlowFitViewOptions(double? Padding = null, double? MinZoom = null, double? MaxZoom = null, string? AnchorNodeId = null);
+/// <param name="AnchorAlign">
+/// LU-19: where <paramref name="AnchorNodeId"/> lands once it triggers the anchor-clamped fit above.
+/// <see cref="FlowAnchorAlign.Center"/> (default) keeps the pre-LU-19 behaviour. Ignored — same as
+/// <paramref name="AnchorNodeId"/> — when the plain fit does not need clamping.
+/// </param>
+public sealed record FlowFitViewOptions(double? Padding = null, double? MinZoom = null, double? MaxZoom = null, string? AnchorNodeId = null, FlowAnchorAlign AnchorAlign = FlowAnchorAlign.Center);
 
 /// <summary>An axis-aligned rectangle in flow coordinates.</summary>
 public readonly record struct FlowRect(double X, double Y, double Width, double Height)

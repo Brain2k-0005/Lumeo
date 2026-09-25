@@ -133,6 +133,17 @@ public static class FlowGeometry
     /// </summary>
     public static FlowViewport? FitView(IEnumerable<FlowRect> rects, double paneWidth, double paneHeight,
         double padding, double minZoom, double maxZoom, FlowRect? anchor)
+        => FitView(rects, paneWidth, paneHeight, padding, minZoom, maxZoom, anchor, FlowAnchorAlign.Center);
+
+    /// <summary>
+    /// LU-19: like the anchor overload above, with control over WHERE <paramref name="anchor"/> lands
+    /// once it triggers the clamp. <see cref="FlowAnchorAlign.Center"/> keeps the exact prior
+    /// behaviour (delegates to <see cref="CenterOn"/>); <see cref="FlowAnchorAlign.Start"/>/
+    /// <see cref="FlowAnchorAlign.End"/> instead call <see cref="AnchorAlignedViewport"/> — see there
+    /// for the placement rule and the <paramref name="rtl"/> flip.
+    /// </summary>
+    public static FlowViewport? FitView(IEnumerable<FlowRect> rects, double paneWidth, double paneHeight,
+        double padding, double minZoom, double maxZoom, FlowRect? anchor, FlowAnchorAlign anchorAlign, bool rtl = false)
     {
         var bounds = GetBounds(rects);
         if (bounds is not { } b || !(paneWidth > 0) || !(paneHeight > 0)) return null;
@@ -143,12 +154,53 @@ public static class FlowGeometry
         if (anchor is { } a && required < minZoom)
         {
             var anchorZoom = ClampZoom(minZoom, minZoom, maxZoom);
-            return CenterOn(a.X + a.Width / 2, a.Y + a.Height / 2, anchorZoom, paneWidth, paneHeight);
+            return AnchorAlignedViewport(a, anchorZoom, paneWidth, paneHeight, pad, anchorAlign, rtl);
         }
         var zoom = ClampZoom(required, minZoom, maxZoom);
         var cx = b.X + b.Width / 2;
         var cy = b.Y + b.Height / 2;
         return CenterOn(cx, cy, zoom, paneWidth, paneHeight);
+    }
+
+    /// <summary>
+    /// LU-19: the viewport that shows <paramref name="anchor"/> at <paramref name="zoom"/> aligned per
+    /// <paramref name="align"/> instead of centred. <see cref="FlowAnchorAlign.Center"/> is exactly
+    /// <see cref="CenterOn"/> on the anchor's own centre. <see cref="FlowAnchorAlign.Start"/>/
+    /// <see cref="FlowAnchorAlign.End"/> put the anchor's leading/trailing edge <paramref name="padding"/>
+    /// (the SAME fraction <c>FitView</c> uses for its zoom margin, here read as a fraction of the pane's
+    /// own width/height) in from the pane's matching edge, on BOTH axes — the smallest API that reads
+    /// right for a LeftToRight tree (only the horizontal edge matters) and a TopToBottom one (only the
+    /// vertical edge does); the axis that does not matter for a given tree shape just lands at the same
+    /// padding, which is inert for a tree already close to centred on it. <paramref name="rtl"/> flips
+    /// which physical horizontal edge "leading" means (right in RTL) — vertical is unaffected, there is
+    /// no RTL concept top-to-bottom.
+    /// </summary>
+    public static FlowViewport AnchorAlignedViewport(FlowRect anchor, double zoom, double paneWidth, double paneHeight,
+        double padding, FlowAnchorAlign align, bool rtl = false)
+    {
+        if (align == FlowAnchorAlign.Center)
+            return CenterOn(anchor.X + anchor.Width / 2, anchor.Y + anchor.Height / 2, zoom, paneWidth, paneHeight);
+
+        var padX = padding * paneWidth;
+        var padY = padding * paneHeight;
+        var startIsRight = rtl; // in RTL, the LOGICAL leading edge is the physical right edge.
+
+        double edgeX, targetX;
+        if (align == FlowAnchorAlign.Start)
+        {
+            edgeX = startIsRight ? anchor.Right : anchor.X;
+            targetX = startIsRight ? paneWidth - padX : padX;
+        }
+        else
+        {
+            edgeX = startIsRight ? anchor.X : anchor.Right;
+            targetX = startIsRight ? padX : paneWidth - padX;
+        }
+
+        var edgeY = align == FlowAnchorAlign.Start ? anchor.Y : anchor.Bottom;
+        var targetY = align == FlowAnchorAlign.Start ? padY : paneHeight - padY;
+
+        return new FlowViewport(targetX - edgeX * zoom, targetY - edgeY * zoom, zoom);
     }
 
     // ── Helper lines (phase 4) ──────────────────────────────────────────────

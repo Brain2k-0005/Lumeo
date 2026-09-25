@@ -209,7 +209,8 @@
                       aria-hidden="true"
                       d="@path.D"
                       fill="none"
-                      style="@FlowStyle(selected)" />
+                      class="@Cx.Merge(edge.Class)"
+                      style="@FlowStyle(selected, edge)" />
             }
         }
     }
@@ -262,8 +263,13 @@
     // gap) read as "flow" rather than "outline", at the same opacity/colour rule as the base edge
     // (minus pointer handling — aria-hidden, decorative only) so a selected animated edge still
     // shows the primary highlight colour travelling along it.
-    private static string FlowStyle(bool selected)
+    // LU-18: edge.Style is appended last, same as EdgeStyle above, so a recoloured edge
+    // (edge.Class setting --lumeo-flow-edge-stroke, or a literal edge.Style stroke) also
+    // recolours this overlay path — previously the travelling marker stayed default-coloured
+    // because neither edge.Class nor edge.Style ever reached it.
+    private static string FlowStyle(bool selected, FlowEdge edge)
         => "stroke:" + (selected ? "var(--color-primary)" : "var(--lumeo-flow-edge-stroke, var(--color-muted-foreground))")
            + ";opacity:" + (selected ? "1" : "0.6")
-           + ";stroke-width:1.5;stroke-dasharray:2 10;pointer-events:none;";
+           + ";stroke-width:1.5;stroke-dasharray:2 10;pointer-events:none;"
+           + edge.Style;
 }
