@@ -30,6 +30,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   recoloured edge's travelling marker stayed the library's default colour. SQL Analyst field report
   (5.11.1), finding LU-18.
 
+## [5.11.2] - 2026-09-25
+
+### Fixed
+- **The grid row/header and menu item height tokens added in 5.11.1 now take effect.**
+  `--lumeo-grid-header-h` and `--lumeo-grid-row-h` set the minimum height of the DataGrid header
+  and data rows, and `--lumeo-menu-item-h` sets the minimum height of DropdownMenu, ContextMenu and
+  Menubar items (including checkbox, radio and sub-trigger items). In 5.11.1 they were declared but
+  no component read them. Defaults are unchanged; Compact density keeps its own tighter heights.
+- **Docs site: desktop dropdown and context menu items are 32px again.** The docs site's own
+  stylesheet had not been rebuilt, so the items kept the 44px touch floor at every width. A test
+  now fails when that stylesheet is stale.
+
 ## [5.11.1] - 2026-09-25
 
 ### Added
