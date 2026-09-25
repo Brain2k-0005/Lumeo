@@ -46,6 +46,9 @@ public class GeometryTokenGuardTests
             "--lumeo-sidebar-item-h-sm", "--lumeo-sidebar-item-h", "--lumeo-sidebar-item-h-lg",
             "--lumeo-table-head-h", "--lumeo-table-cell-p", "--lumeo-grid-cell-px", "--lumeo-grid-cell-py",
             "--lumeo-calendar-cell-size", "--lumeo-calendar-p",
+            // DocFlow T2 density follow-up (#523): wired as `min-height` on DataGrid's header
+            // and body <tr> and on every DropdownMenu/ContextMenu/Menubar item.
+            "--lumeo-grid-header-h", "--lumeo-grid-row-h", "--lumeo-menu-item-h",
         };
         foreach (var token in geometry)
         {

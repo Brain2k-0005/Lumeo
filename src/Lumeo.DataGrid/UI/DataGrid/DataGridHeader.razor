@@ -31,7 +31,7 @@
             @if (Context.EditMode == DataGridEditMode.Row) { <th class="bg-muted/30"></th> }
         </tr>
     }
-    <tr role="row" aria-rowindex="@(HasColumnGroups ? 2 : 1)">
+    <tr role="row" aria-rowindex="@(HasColumnGroups ? 2 : 1)" class="@HeaderRowMinHeightClass">
         @* Row reorder handle column *@
         @if (Context?.RowReorderable == true)
         {
@@ -143,6 +143,18 @@
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     private string CssClass => $"sticky top-0 z-20 bg-card [&_tr]:border-b [&_tr]:border-border/40 {Class}".Trim();
+
+    // DocFlow T2 density follow-up (#523): a `min-height` floor for the header row, read
+    // from --lumeo-grid-header-h. The fallback (32px) equals the row's own natural
+    // content-driven height at Comfortable (--lumeo-grid-cell-py padding + the text-xs line
+    // box) — see DataGridHeaderCell's padding — so wiring this in is a no-op unless a
+    // consumer redefines the token. Compact tightens padding to px-2 py-1 (a real height
+    // drop to 24px) with no token of its own yet, so applying the Comfortable floor there
+    // would regress the tighter density; the class is empty under Compact instead.
+    private string HeaderRowMinHeightClass =>
+        Context?.Compact == true
+            ? string.Empty
+            : "min-h-[var(--lumeo-grid-header-h,calc(var(--spacing,0.25rem)*8))]";
 
     /// <summary>Number of non-data leading columns (reorder handle, selection,
     /// detail toggle) rendered before the first data column. Used to offset
