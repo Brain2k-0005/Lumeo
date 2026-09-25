@@ -149,18 +149,28 @@
   --lumeo-calendar-cell-size: calc(var(--spacing, 0.25rem) * 8); /* Calendar day cell: 32px */
   --lumeo-calendar-p: calc(var(--spacing, 0.25rem) * 3);       /* Calendar frame padding: 12px */
 
-  /* DocFlow T2 density follow-up (#523 field report): DataGrid row/header height have no
-     token today — both are purely content/padding-driven (--lumeo-grid-cell-px/py above).
-     Declared here, matching the consumer's own measured reference (32px header / 36px row),
-     for DataGrid to read once its own sizing pass wires them in — CSS-only, not consumed by
-     any component yet, so declaring it here cannot regress anything. */
+  /* DocFlow T2 density follow-up (#523 field report): DataGrid header/row height, as
+     `min-height` on the header and body <tr> (DataGridHeader.razor / DataGridRow.razor).
+     min-height (not height) so a wrapped/tall cell still grows past the floor. The
+     Comfortable/default value below is the grid's own natural content-driven height
+     (--lumeo-grid-cell-px/py padding + the line box), so wiring it in is a no-op by
+     default — only redefining the token changes anything. Compact does NOT read these
+     tokens (DataGridHeader/DataGridRow skip the min-height class when Context.Compact is
+     true), so Compact's tighter, hardcoded padding-driven height is unaffected; there is
+     no Compact-scoped override of these tokens today. */
   --lumeo-grid-header-h: calc(var(--spacing, 0.25rem) * 8);    /* DataGrid header row: 32px */
   --lumeo-grid-row-h: calc(var(--spacing, 0.25rem) * 9);       /* DataGrid data row: 36px */
-  /* Same follow-up: DropdownMenu/ContextMenu/Menubar item height is padding-driven
-     (PadYClass + text-sm line-height), not a literal height — this documents the
-     Comfortable-density effective value (6px + 6px padding + a 20px text-sm line) for a
-     consumer who wants to read it (e.g. sizing a virtualized menu), without forcing every
-     item onto a fixed height when content wraps. Not consumed by any component yet. */
+  /* Same follow-up: wired as `min-height` (Tailwind `min-h-[var(...)]`) on
+     DropdownMenuItem/DropdownMenuCheckboxItem/DropdownMenuRadioItem/DropdownMenuSubTrigger,
+     ContextMenuItem/ContextMenuCheckboxItem/ContextMenuRadioItem/ContextMenuSubTrigger, and
+     MenubarItem/MenubarCheckboxItem/MenubarRadioItem/MenubarSubTrigger. min-height (not
+     height) so a wrapped label still grows past the floor. The value below is the
+     Comfortable-density effective height (6px + 6px padding + a 20px text-sm line) — the
+     item's own natural content height at that density, so wiring it in is a no-op by
+     default. DropdownMenu's Compact/Spacious PadYClass rungs (28px / 40px) are NOT driven
+     by this token — only the Comfortable/default rung reads it — so redefining
+     --lumeo-menu-item-h changes Comfortable-density items only; ContextMenu/Menubar are not
+     density-aware at all and always read this same Comfortable value. */
   --lumeo-menu-item-h: calc(var(--spacing, 0.25rem) * 8);      /* DropdownMenuItem effective height: 32px */
   /* Popover's own inner padding, previously a bare p-2.5 with no override knob short of
      Class="!p-*". Fallback is PopoverContent's existing value (10px), unchanged. */

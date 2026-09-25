@@ -50,7 +50,22 @@
         _ => "py-1.5"
     };
 
-    private string CssClass => Cx.Merge("relative flex w-full cursor-pointer select-none items-center gap-2 rounded-sm px-2 text-start [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-']):not([class*='h-'])]:size-[var(--lumeo-icon-size,calc(var(--spacing,0.25rem)*4))]", PadYClass, "min-h-11 sm:min-h-0 text-sm outline-none transition-colors hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground disabled:pointer-events-none disabled:opacity-50 disabled:cursor-not-allowed", Cx.When(Inset, "ps-8"), Cx.When(Variant == MenuItemVariant.Destructive, DestructiveClass), Class);
+    // DocFlow T2 density follow-up (#523): a `min-height` floor for the Comfortable/default
+    // rung only, read from --lumeo-menu-item-h. The fallback (32px) equals PadYClass's own
+    // Comfortable value (6px + 6px padding + a 20px text-sm line), so this is a no-op unless
+    // a consumer redefines the token. Compact (28px) and Spacious (40px) are not driven by
+    // any token today — overriding them would need a fixed value change, not just a CSS
+    // custom property, so they're left as literal Tailwind classes matching their current
+    // (unchanged) natural height. sm: prefixed to layer over "sm:min-h-0" above the mobile
+    // min-h-11 touch floor, same breakpoint that already governs it.
+    private string MinHClass => Density switch
+    {
+        Lumeo.Density.Compact => "sm:min-h-7",
+        Lumeo.Density.Spacious => "sm:min-h-10",
+        _ => "sm:min-h-[var(--lumeo-menu-item-h,calc(var(--spacing,0.25rem)*8))]"
+    };
+
+    private string CssClass => Cx.Merge("relative flex w-full cursor-pointer select-none items-center gap-2 rounded-sm px-2 text-start [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-']):not([class*='h-'])]:size-[var(--lumeo-icon-size,calc(var(--spacing,0.25rem)*4))]", PadYClass, "min-h-11 sm:min-h-0 text-sm outline-none transition-colors hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground disabled:pointer-events-none disabled:opacity-50 disabled:cursor-not-allowed", MinHClass, Cx.When(Inset, "ps-8"), Cx.When(Variant == MenuItemVariant.Destructive, DestructiveClass), Class);
 
     private async Task HandleClick()
     {
