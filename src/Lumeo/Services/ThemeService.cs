@@ -115,11 +115,33 @@ public sealed class ThemeService : IThemeService, IAsyncDisposable, IDisposable
         OnThemeChanged?.Invoke();
     }
 
+    /// <summary>
+    /// Toggles between the two RESOLVED appearances: if the theme is currently showing dark
+    /// (whether because <see cref="CurrentMode"/> is <see cref="ThemeMode.Dark"/>, or
+    /// <see cref="ThemeMode.System"/> resolved to dark via the OS preference) this switches to
+    /// <see cref="ThemeMode.Light"/>; otherwise it switches to <see cref="ThemeMode.Dark"/>.
+    /// A single click always flips the visible appearance — previously (rc.43) this cycled
+    /// System → Dark → Light → System off <see cref="CurrentMode"/> alone, so a System→Dark
+    /// click on a dark OS was visually a no-op and a light/dark switch needed two clicks
+    /// (LU-22). Use <see cref="CycleModeAsync"/> for a control that intends to walk the full
+    /// three-way cycle and offer System as one of its stops.
+    /// </summary>
     public async Task ToggleModeAsync()
     {
-        // Bug G — the old toggle called themeManager.toggle() (a JS boolean flip) and mapped the result
-        // back to Dark|Light only, permanently losing System mode. The fix cycles System→Dark→Light→System
-        // in C# so the caller never escapes the three-way cycle, and calls SetModeAsync to keep JS in sync.
+        var next = IsDark ? ThemeMode.Light : ThemeMode.Dark;
+        await SetModeAsync(next);
+    }
+
+    /// <summary>
+    /// Cycles through all three modes in a fixed order: System → Dark → Light → System, based
+    /// on <see cref="CurrentMode"/> (not the resolved appearance). Unlike
+    /// <see cref="ToggleModeAsync"/>, which only flips between the two resolved appearances,
+    /// this always visits System mode, so a control that lets the user get back to "follow the
+    /// OS" through repeated clicks (e.g. <c>ThemeToggle</c> with <c>IncludeSystem="true"</c>)
+    /// should call this instead of <see cref="ToggleModeAsync"/>.
+    /// </summary>
+    public async Task CycleModeAsync()
+    {
         var next = CurrentMode switch
         {
             ThemeMode.System => ThemeMode.Dark,

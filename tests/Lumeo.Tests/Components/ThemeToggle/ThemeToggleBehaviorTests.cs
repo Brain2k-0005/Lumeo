@@ -57,8 +57,10 @@ public class ThemeToggleBehaviorTests : IAsyncLifetime
     [Fact]
     public void First_Click_From_System_Cycles_To_Dark()
     {
-        // getMode returns "system" at init, so ToggleModeAsync cycles System→Dark
-        // and pushes "dark" to JS via setMode.
+        // getMode returns "system" at init; ThemeToggle defaults to IncludeSystem="true"
+        // so it calls CycleModeAsync, which cycles System→Dark and pushes "dark" to JS
+        // via setMode (LU-22: ToggleModeAsync itself is now a resolved-state binary flip
+        // and is used only when IncludeSystem="false").
         var cut = _ctx.Render<L.ThemeToggle>();
 
         cut.Find("button").Click();
