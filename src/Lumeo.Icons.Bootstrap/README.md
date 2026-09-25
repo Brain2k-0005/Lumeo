@@ -5,8 +5,8 @@ Bootstrap Icons pack for Lumeo — 2,078 fill-based 16x16 icons exposed as tree-
 ## Install
 
 ```bash
-dotnet add package Lumeo --prerelease
-dotnet add package Lumeo.Icons.Bootstrap --prerelease
+dotnet add package Lumeo
+dotnet add package Lumeo.Icons.Bootstrap
 ```
 
 No DI registration needed — icon packs are pure static data, referenced directly from

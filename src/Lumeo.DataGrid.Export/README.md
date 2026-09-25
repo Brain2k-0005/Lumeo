@@ -9,9 +9,9 @@ WebAssembly) — no `Program.cs` wiring required beyond the core `AddLumeo()` ca
 ## Install
 
 ```bash
-dotnet add package Lumeo --prerelease
-dotnet add package Lumeo.DataGrid --prerelease
-dotnet add package Lumeo.DataGrid.Export --prerelease
+dotnet add package Lumeo
+dotnet add package Lumeo.DataGrid
+dotnet add package Lumeo.DataGrid.Export
 ```
 
 ```csharp

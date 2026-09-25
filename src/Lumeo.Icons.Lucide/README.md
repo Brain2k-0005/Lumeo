@@ -5,8 +5,8 @@ Lucide icon pack for Lumeo — 1,746 tree-shakeable Lucide outline icons exposed
 ## Install
 
 ```bash
-dotnet add package Lumeo --prerelease
-dotnet add package Lumeo.Icons.Lucide --prerelease
+dotnet add package Lumeo
+dotnet add package Lumeo.Icons.Lucide
 ```
 
 No DI registration needed — icon packs are pure static data, referenced directly from

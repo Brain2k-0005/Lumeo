@@ -5,8 +5,8 @@ Fluent UI System Icons pack for Lumeo — the 24px standard cut: 2,449 regular i
 ## Install
 
 ```bash
-dotnet add package Lumeo --prerelease
-dotnet add package Lumeo.Icons.Fluent --prerelease
+dotnet add package Lumeo
+dotnet add package Lumeo.Icons.Fluent
 ```
 
 No DI registration needed — icon packs are pure static data, referenced directly from

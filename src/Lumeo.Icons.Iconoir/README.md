@@ -5,8 +5,8 @@ Iconoir pack for Lumeo — 1,383 stroke-based 24px icons (stroke width 1.5) expo
 ## Install
 
 ```bash
-dotnet add package Lumeo --prerelease
-dotnet add package Lumeo.Icons.Iconoir --prerelease
+dotnet add package Lumeo
+dotnet add package Lumeo.Icons.Iconoir
 ```
 
 No DI registration needed — icon packs are pure static data, referenced directly from

@@ -1,11 +1,11 @@
 ---
 name: lumeo
-description: Use when building or editing a Blazor UI that uses the Lumeo component library (the `Lumeo` NuGet package and its satellites Lumeo.Charts / Lumeo.DataGrid / Lumeo.Editor / Lumeo.Scheduler / Lumeo.Gantt / Lumeo.Motion), or when the user mentions Lumeo components (Button, DataGrid, Sheet, Dialog, Tabs, DatePicker, Toast, …). Establishes how to look components up via the lumeo-mcp server and the non-negotiable conventions for writing correct Lumeo Razor.
+description: Use when building or editing a Blazor UI that uses the Lumeo component library (the `Lumeo` NuGet package and its satellites Lumeo.Charts / Lumeo.DataGrid / Lumeo.Editor / Lumeo.Scheduler / Lumeo.Gantt / Lumeo.Motion / Lumeo.Flow), or when the user mentions Lumeo components (Button, DataGrid, Sheet, Dialog, Tabs, DatePicker, Toast, FlowCanvas, …). Establishes how to look components up via the lumeo-mcp server and the non-negotiable conventions for writing correct Lumeo Razor.
 ---
 
 # Lumeo
 
-Lumeo is a Blazor component library for .NET 10 on Tailwind CSS v4 — 168 components (forms, data display, overlays, charts, DataGrid, AI primitives, motion) plus 17 full-page "block" patterns. shadcn-style API: composable sub-components, `CascadingValue` context, theme tokens.
+Lumeo is a Blazor component library for .NET 10 on Tailwind CSS v4 — 169 components (forms, data display, overlays, charts, DataGrid, AI primitives, motion, the Flow node/edge canvas) plus 29 full-page "block" patterns. shadcn-style API: composable sub-components, `CascadingValue` context, theme tokens.
 
 ## First move: use the lumeo-mcp server
 
@@ -16,10 +16,12 @@ If a `lumeo-mcp` MCP server is connected, **use it — don't guess at the API**.
 | `lumeo_search` / `lumeo_list_components` | Find the right component for a need ("modal" → Dialog/Sheet, "date" → DatePicker/Calendar). |
 | `lumeo_get_component` | Get the COMPLETE schema: every `[Parameter]` (name, type, default, doc), enums, records, events, sub-components, CSS vars, and example snippets. **Always do this before writing markup for a component you don't have memorised.** |
 | `lumeo_get_example` | Working Razor snippet(s) — the exact code behind the docs-site demos. |
-| `lumeo_get_install` | NuGet package + `dotnet add`, `@using` imports, `AddLumeo…()` DI registration, host-page `<script>/<link>` includes, sub-components, and gotchas (portal components needing theme classes on `<body>`, OverlayProvider, required params). |
+| `lumeo_get_install` | NuGet package + `dotnet add`, `@using` imports, `AddLumeo()` DI registration (the only DI method — no per-satellite `AddLumeoXxx()`), host-page `<script>/<link>` includes, sub-components, and gotchas (portal components needing theme classes on `<body>`, OverlayProvider, required params). |
 | `lumeo_validate_markup` | **Pre-flight every Razor snippet you write.** Catches: components that don't exist, hallucinated parameter names, illegal enum values, sub-components not nested in their required parent. Run it before showing the user. |
+| `lumeo_get_a11y` | Roles, ARIA attributes, keyboard keys, and whether that a11y/keyboard behaviour is actually covered by tests — use it to verify a component meets an accessibility requirement before shipping. |
 | `lumeo_get_theme_tokens` | The 58 colour/radius tokens — the only legal colours. |
-| `lumeo_list_patterns` / `lumeo_get_pattern` | Full-page composed examples (dashboard, auth, chat, kanban, mail, settings, …) — great starting skeletons. |
+| `lumeo_list_services` / `lumeo_get_service` | The app-level services (`ToastService`, `ThemeService`, `OverlayService`, `KeyboardShortcutService`, …) — their methods and how to inject/register them. |
+| `lumeo_list_patterns` / `lumeo_get_pattern` | Full-page composed examples (dashboard, auth, chat, kanban, mail, settings, the Flow blocks, …) — great starting skeletons. |
 | `lumeo_changelog` | Which version's API this reflects. |
 
 **Workflow:** `search` → `get_component` (+ `get_example`) → write Razor → `validate_markup` → fix any issues → done. For a new page, start from `get_pattern`. For setup questions, `get_install`.
@@ -56,5 +58,5 @@ The registry CLI is an alternative: `lumeo init` then `lumeo add <component>` co
 ## References
 
 - [references/conventions.md](references/conventions.md) — the full coding-conventions checklist
-- [references/catalog.md](references/catalog.md) — all 168 components by category (offline fallback for when the MCP isn't connected)
+- [references/catalog.md](references/catalog.md) — all 169 components by category (offline fallback for when the MCP isn't connected)
 - [references/mcp.md](references/mcp.md) — detailed lumeo-mcp tool reference + example calls

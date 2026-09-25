@@ -11,8 +11,8 @@ by the core `AddLumeo()` call — no extra DI wiring for this package.
 ## Install
 
 ```bash
-dotnet add package Lumeo --prerelease
-dotnet add package Lumeo.DataGrid --prerelease
+dotnet add package Lumeo
+dotnet add package Lumeo.DataGrid
 ```
 
 ```csharp
