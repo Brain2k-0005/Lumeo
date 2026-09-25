@@ -910,6 +910,42 @@ public sealed class ComponentInteropService : IComponentInteropService
         catch (JSDisconnectedException) { }
     }
 
+    // --- DataGrid native scrollbar below the header (ScrollbarBelowHeader) ---
+
+    public async ValueTask RegisterScrollbarBelowHeader(string viewportId, string headerWrapperId)
+    {
+        var module = await GetModuleAsync();
+        await _scroll.RegisterScrollbarBelowHeader(module, viewportId, headerWrapperId);
+    }
+
+    public async ValueTask UnregisterScrollbarBelowHeader(string viewportId)
+    {
+        try
+        {
+            var module = await GetModuleAsync();
+            await _scroll.UnregisterScrollbarBelowHeader(module, viewportId);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
+    // --- DataGrid native-header-band (default single-table layout scrollbar-below-header) ---
+
+    public async ValueTask RegisterGridHeaderOffset(string viewportId)
+    {
+        var module = await GetModuleAsync();
+        await _scroll.RegisterGridHeaderOffset(module, viewportId);
+    }
+
+    public async ValueTask UnregisterGridHeaderOffset(string viewportId)
+    {
+        try
+        {
+            var module = await GetModuleAsync();
+            await _scroll.UnregisterGridHeaderOffset(module, viewportId);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
     public async ValueTask RegisterFilterDrag<[System.Diagnostics.CodeAnalysis.DynamicallyAccessedMembers(System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicMethods)] T>(Microsoft.AspNetCore.Components.ElementReference panel, DotNetObjectReference<T> dotNetRef) where T : class
     {
         try
