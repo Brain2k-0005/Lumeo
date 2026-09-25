@@ -5,8 +5,8 @@ Material Symbols (Sharp) icon pack for Lumeo — the weight-400 standard cut: 3,
 ## Install
 
 ```bash
-dotnet add package Lumeo --prerelease
-dotnet add package Lumeo.Icons.MaterialSymbols.Sharp --prerelease
+dotnet add package Lumeo
+dotnet add package Lumeo.Icons.MaterialSymbols.Sharp
 ```
 
 No DI registration needed — icon packs are pure static data, referenced directly from

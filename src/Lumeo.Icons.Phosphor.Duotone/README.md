@@ -5,8 +5,8 @@ Phosphor icon pack (Duotone weight) for Lumeo — 1,248 two-tone fill icons expo
 ## Install
 
 ```bash
-dotnet add package Lumeo --prerelease
-dotnet add package Lumeo.Icons.Phosphor.Duotone --prerelease
+dotnet add package Lumeo
+dotnet add package Lumeo.Icons.Phosphor.Duotone
 ```
 
 No DI registration needed — icon packs are pure static data, referenced directly from

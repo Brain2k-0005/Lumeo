@@ -5,8 +5,8 @@ Tabler icon pack for Lumeo — 5,093 outline icons (flat `Tabler` class, stroke)
 ## Install
 
 ```bash
-dotnet add package Lumeo --prerelease
-dotnet add package Lumeo.Icons.Tabler --prerelease
+dotnet add package Lumeo
+dotnet add package Lumeo.Icons.Tabler
 ```
 
 No DI registration needed — icon packs are pure static data, referenced directly from

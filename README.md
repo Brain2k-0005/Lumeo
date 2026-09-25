@@ -1,8 +1,8 @@
 # Lumeo
 
-**166 accessible Blazor components, AI-ready, motion-integrated, shadcn-inspired.**
+**169 accessible Blazor components, AI-ready, motion-integrated, shadcn-inspired.**
 
-**166 components · 8,800+ tests** · 14 locales · mobile-first · MIT · .NET 8+
+**169 components · 9,100+ tests** · 14 locales · mobile-first · MIT · .NET 8+
 
 [![NuGet](https://img.shields.io/nuget/v/Lumeo?logo=nuget&label=Lumeo)](https://www.nuget.org/packages/Lumeo)
 [![NuGet Downloads](https://img.shields.io/nuget/dt/Lumeo?logo=nuget&label=downloads)](https://www.nuget.org/packages/Lumeo)
@@ -29,11 +29,12 @@
 
 ## Feature overview
 
-- **166 components** — accessible UI primitives, Blazor WASM & Server
+- **169 components** — accessible UI primitives, Blazor WASM & Server
+- **Flow** — `FlowCanvas`, a first-party node/edge canvas (pan/zoom, drag, connect, minimap, auto-layout, undo/redo, virtualization) in `Lumeo.Flow`
 - **AI primitives** — `PromptInput`, `StreamingText`, `AgentMessageList`, `ToolCallCard`, `ReasoningDisplay`
 - **Motion primitives** — `Marquee`, `NumberTicker`, `TextReveal`, `BlurFade`, `BorderBeam`, `ShimmerButton`, `Sparkles`, `Sparkline`
 - **Dashboard tiles** — `KpiCard`, `SparkCard`, `Delta`, `Bento`, `BentoTile`, `PickList<T>`
-- **Scheduler** — a first-party Blazor calendar, no third-party JS. **Gantt + RichTextEditor** — Frappe Gantt + TipTap wrappers, lazy-loaded
+- **Scheduler + Gantt** — first-party Blazor calendar and Gantt chart, no third-party JS. **RichTextEditor** — TipTap wrapper, lazy-loaded
 - **14 locales + RTL** — EN/DE/ES/FR/IT/PT/NL/PL/JA/ZH-CN/KO/AR/RU/TR via `ILumeoLocalizer`; `IThemeService.SetDirectionAsync()` for RTL
 - **Excel / PDF / CSV export** — `IDataGridExportService` (ClosedXML + QuestPDF)
 - **`[LumeoForm]` source generator** — annotate a POCO, get a fully-bound Form for free
@@ -48,7 +49,7 @@
 - **Form validation** — DataAnnotations + custom validators with styled error states
 - **Accessible** — ARIA roles, keyboard navigation, focus trapping, screen-reader support
 - **Mobile-first** — touch gestures (swipe, pinch, long-press, pull-to-refresh, swipe-actions), 44×44 px hit targets per WCAG 2.5.5, iOS-style wheel pickers, haptic feedback service, safe-area helpers — try it at `/docs/mobile`
-- **8,800+ tests** — CI-enforced on every PR
+- **9,100+ tests** — CI-enforced on every PR
 
 ## Component Categories
 
@@ -65,6 +66,7 @@
 | **Motion** | *via Lumeo.Motion satellite* — BlurFade, BorderBeam, Marquee, NumberTicker, ShimmerButton, Sparkles, TextReveal, AnimatedBeam, Meteors, Globe, Dock, Spotlight, TypingAnimation, Confetti, MagneticButton, AnimatedGradientText, Ripple, OrbitingCircles, and 12 more |
 | **Dashboard** | Bento, BentoTile, KpiCard, SparkCard, Delta |
 | **Drag & Drop** | Kanban, SortableList, Transfer |
+| **Flow** | *via Lumeo.Flow satellite* — FlowCanvas (nodes, edges, minimap, auto-layout, undo/redo) |
 | **Charts** | 30+ ECharts types — Bar (smart labels), Line, Area, Pie, Donut, Radar, Scatter, Heatmap, Treemap, Sankey, Funnel, Gauge, Candlestick, Boxplot, Calendar, Sunburst, Graph, Parallel, ThemeRiver, WordCloud, GeoMap |
 
 ## Installation
@@ -82,6 +84,7 @@ dotnet add package Lumeo.Editor      # RichTextEditor
 dotnet add package Lumeo.Scheduler   # Scheduler
 dotnet add package Lumeo.Gantt       # Gantt
 dotnet add package Lumeo.Motion      # 30 motion primitives
+dotnet add package Lumeo.Flow        # FlowCanvas
 dotnet add package Lumeo.Maps        # Map
 dotnet add package Lumeo.PdfViewer   # PdfViewer
 dotnet add package Lumeo.FileViewer  # FileViewer
@@ -101,6 +104,7 @@ Or reference them in your `.csproj`. All packages share one version (lockstep) �
   <PackageReference Include="Lumeo.Scheduler" Version="5.11.3" />
   <PackageReference Include="Lumeo.Gantt"     Version="5.11.3" />
   <PackageReference Include="Lumeo.Motion"    Version="5.11.3" />
+  <PackageReference Include="Lumeo.Flow"      Version="5.11.3" />
   <PackageReference Include="Lumeo.PdfViewer" Version="5.11.3" />
   <PackageReference Include="Lumeo.Maps"      Version="5.11.3" />
   <PackageReference Include="Lumeo.CodeEditor" Version="5.11.3" />
@@ -127,7 +131,7 @@ lumeo diff button         # diff vendored copy vs registry
 lumeo eject               # go 100% NuGet-free (vendor the runtime too)
 ```
 
-`lumeo eject` (or `lumeo init --standalone`) vendors the components **and** the runtime they need, so the project builds with no `Lumeo` package reference at all — proven across all 166 components.
+`lumeo eject` (or `lumeo init --standalone`) vendors the components **and** the runtime they need, so the project builds with no `Lumeo` package reference at all — proven across all 169 components by the weekly Eject Gate CI workflow.
 
 ### `Lumeo.Templates` — `dotnet new` scaffolders
 
@@ -378,7 +382,7 @@ await Theme.ToggleModeAsync();              // Toggle current
   (`lumeo-page`/`lumeo-form`/`lumeo-component` are item templates and inherit
   your project's own TFM).
 - Tailwind CSS v4
-- ECharts for charts, Frappe Gantt for Gantt, TipTap for RichTextEditor
+- ECharts for charts, TipTap for RichTextEditor; Gantt and Scheduler render through first-party engines (no Frappe Gantt/FullCalendar at runtime)
 - ClosedXML + QuestPDF for DataGrid export
 - First-party `Lumeo.Icons.*` packs (Lucide, Tabler, Phosphor, …) for icons
 

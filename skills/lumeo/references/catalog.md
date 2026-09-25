@@ -4,7 +4,7 @@ All 169 components by category, plus 21 full-page patterns and the 58 theme toke
 
 > This is the **offline fallback**. When the `lumeo-mcp` server is connected, prefer `lumeo_search` / `lumeo_get_component` / `lumeo_get_example` — they give the live, complete per-parameter API.
 
-Satellite packages: a component tagged **[Charts]** needs `Lumeo.Charts`, **[DataGrid]** `Lumeo.DataGrid`, **[Editor]** `Lumeo.Editor`, **[Scheduler]** `Lumeo.Scheduler`, **[Gantt]** `Lumeo.Gantt`, **[Motion]** `Lumeo.Motion`. Everything else is in core `Lumeo`.
+Satellite packages: a component tagged **[Charts]** needs `Lumeo.Charts`, **[DataGrid]** `Lumeo.DataGrid`, **[Editor]** `Lumeo.Editor`, **[Scheduler]** `Lumeo.Scheduler`, **[Gantt]** `Lumeo.Gantt`, **[Motion]** `Lumeo.Motion`, **[Flow]** `Lumeo.Flow`. Everything else is in core `Lumeo`.
 
 ## AI
 

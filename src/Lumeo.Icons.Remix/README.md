@@ -5,8 +5,8 @@ RemixIcon pack for Lumeo — 1,539 line icons (flat `Remix` class) plus 1,539 fi
 ## Install
 
 ```bash
-dotnet add package Lumeo --prerelease
-dotnet add package Lumeo.Icons.Remix --prerelease
+dotnet add package Lumeo
+dotnet add package Lumeo.Icons.Remix
 ```
 
 No DI registration needed — icon packs are pure static data, referenced directly from

@@ -5,8 +5,8 @@ Phosphor icon pack (Regular weight) for Lumeo — 1,248 fill-style icons exposed
 ## Install
 
 ```bash
-dotnet add package Lumeo --prerelease
-dotnet add package Lumeo.Icons.Phosphor --prerelease
+dotnet add package Lumeo
+dotnet add package Lumeo.Icons.Phosphor
 ```
 
 No DI registration needed — icon packs are pure static data, referenced directly from

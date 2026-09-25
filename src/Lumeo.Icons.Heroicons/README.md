@@ -5,8 +5,8 @@ Heroicons pack for Lumeo — all four variants as tree-shakeable Lumeo.IconSourc
 ## Install
 
 ```bash
-dotnet add package Lumeo --prerelease
-dotnet add package Lumeo.Icons.Heroicons --prerelease
+dotnet add package Lumeo
+dotnet add package Lumeo.Icons.Heroicons
 ```
 
 No DI registration needed — icon packs are pure static data, referenced directly from

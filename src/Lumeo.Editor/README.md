@@ -9,8 +9,8 @@ Install alongside the Lumeo core package — it registers no services of its own
 ## Install
 
 ```bash
-dotnet add package Lumeo --prerelease
-dotnet add package Lumeo.Editor --prerelease
+dotnet add package Lumeo
+dotnet add package Lumeo.Editor
 ```
 
 ```csharp
