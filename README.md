@@ -12,7 +12,7 @@
 [![GitHub stars](https://img.shields.io/github/stars/Brain2k-0005/Lumeo?style=flat&logo=github)](https://github.com/Brain2k-0005/Lumeo/stargazers)
 [![Sponsor](https://img.shields.io/github/sponsors/Brain2k-0005?logo=github-sponsors&color=ea4aaa)](https://github.com/sponsors/Brain2k-0005)
 
-> **Lumeo 5.11.3 is on NuGet** — Gantt bar labels stay readable across the progress fill in both renderers, DataGrid exposes `FilteredRowCount`/`TotalRowCount`/`OnRowCountChanged` and pins the expanded detail panel to the visible viewport; in 5.10.2 the customizer's Menu Color follows the active theme and stays out of embedded previews (`SidebarProvider.IsolateMenuColor`); in 5.10.1 every composite uses Lumeo controls with sizing (no native select/input/date elements), the IconPicker popover scales with Size, DropdownButton/SplitButton chevrons render at 16px after hydration; in 5.10.0 a production field report is worked through end to end (Select search over composed items, OtpInput focus, Sheet swipe exit, DataGrid filtered-empty state and cell-edit commit/cancel, chart palettes, Scheduler culture titles), `IconPicker` joins the library, the date and time pickers gain `Size`, the Drawer gets vaul's modal/dismissible split, close button and background scaling, and service-opened overlays can skip their exit animation; the 5.x line measures against shadcn's live docs: control scale, radius scale, sidebar geometry, icon sizing, shadows and card spacing all land on shadcn's numbers, Excel/PDF export lives in `Lumeo.DataGrid.Export`, and `lumeo-classes.txt` ships for consumers who run their own Tailwind build. See the [changelog](CHANGELOG.md).
+> **Lumeo 5.12.0 is on NuGet** — Gantt bar labels stay readable across the progress fill in both renderers, DataGrid exposes `FilteredRowCount`/`TotalRowCount`/`OnRowCountChanged` and pins the expanded detail panel to the visible viewport; in 5.10.2 the customizer's Menu Color follows the active theme and stays out of embedded previews (`SidebarProvider.IsolateMenuColor`); in 5.10.1 every composite uses Lumeo controls with sizing (no native select/input/date elements), the IconPicker popover scales with Size, DropdownButton/SplitButton chevrons render at 16px after hydration; in 5.10.0 a production field report is worked through end to end (Select search over composed items, OtpInput focus, Sheet swipe exit, DataGrid filtered-empty state and cell-edit commit/cancel, chart palettes, Scheduler culture titles), `IconPicker` joins the library, the date and time pickers gain `Size`, the Drawer gets vaul's modal/dismissible split, close button and background scaling, and service-opened overlays can skip their exit animation; the 5.x line measures against shadcn's live docs: control scale, radius scale, sidebar geometry, icon sizing, shadows and card spacing all land on shadcn's numbers, Excel/PDF export lives in `Lumeo.DataGrid.Export`, and `lumeo-classes.txt` ships for consumers who run their own Tailwind build. See the [changelog](CHANGELOG.md).
 
 ## What's new in 4.0
 
@@ -95,20 +95,20 @@ Or reference them in your `.csproj`. All packages share one version (lockstep) �
 
 ```xml
 <ItemGroup>
-  <PackageReference Include="Lumeo"            Version="5.11.3" />
+  <PackageReference Include="Lumeo"            Version="5.12.0" />
   <!-- add only the satellites you need: -->
-  <PackageReference Include="Lumeo.Charts"    Version="5.11.3" />
-  <PackageReference Include="Lumeo.DataGrid"  Version="5.11.3" />
-  <PackageReference Include="Lumeo.DataGrid.Export" Version="5.11.3" /> <!-- Excel / PDF export; CSV is built in -->
-  <PackageReference Include="Lumeo.Editor"    Version="5.11.3" />
-  <PackageReference Include="Lumeo.Scheduler" Version="5.11.3" />
-  <PackageReference Include="Lumeo.Gantt"     Version="5.11.3" />
-  <PackageReference Include="Lumeo.Motion"    Version="5.11.3" />
-  <PackageReference Include="Lumeo.Flow"      Version="5.11.3" />
-  <PackageReference Include="Lumeo.PdfViewer" Version="5.11.3" />
-  <PackageReference Include="Lumeo.Maps"      Version="5.11.3" />
-  <PackageReference Include="Lumeo.CodeEditor" Version="5.11.3" />
-  <PackageReference Include="Lumeo.FileViewer" Version="5.11.3" />
+  <PackageReference Include="Lumeo.Charts"    Version="5.12.0" />
+  <PackageReference Include="Lumeo.DataGrid"  Version="5.12.0" />
+  <PackageReference Include="Lumeo.DataGrid.Export" Version="5.12.0" /> <!-- Excel / PDF export; CSV is built in -->
+  <PackageReference Include="Lumeo.Editor"    Version="5.12.0" />
+  <PackageReference Include="Lumeo.Scheduler" Version="5.12.0" />
+  <PackageReference Include="Lumeo.Gantt"     Version="5.12.0" />
+  <PackageReference Include="Lumeo.Motion"    Version="5.12.0" />
+  <PackageReference Include="Lumeo.Flow"      Version="5.12.0" />
+  <PackageReference Include="Lumeo.PdfViewer" Version="5.12.0" />
+  <PackageReference Include="Lumeo.Maps"      Version="5.12.0" />
+  <PackageReference Include="Lumeo.CodeEditor" Version="5.12.0" />
+  <PackageReference Include="Lumeo.FileViewer" Version="5.12.0" />
 </ItemGroup>
 ```
 
