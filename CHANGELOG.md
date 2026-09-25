@@ -12,13 +12,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   out of `ToggleModeAsync()` (see Changed below) for callers that deliberately want System as a
   stop — `ThemeToggle` now calls this when `IncludeSystem="true"` (its default). SQL Analyst field
   report (5.11.2), finding LU-22.
-- **`Lumeo.Flow`: `FlowFitViewOptions.AnchorAlign` (`FlowAnchorAlign`: `Center` default, `Start`, `End`).**
-  When `FitViewAsync`'s anchor-clamped branch fires (the anchor would otherwise need a zoom below
-  `MinZoom`), `Center` keeps the anchor mid-pane (unchanged behaviour); `Start`/`End` instead pin the
-  anchor's leading/trailing edge at the fit padding from the pane's matching edge on both axes — for
-  a `LeftToRight`/`TopToBottom` tree, centring the anchor used to waste half the pane on the side the
-  tree never grows into. RTL-aware horizontally. Implemented on both the .NET-computed and the
-  engine-computed fit paths. SQL Analyst field report (5.11.1), finding LU-19.
 
 ### Changed
 - **`ThemeService.ToggleModeAsync()` now flips between the two RESOLVED appearances instead of
@@ -39,6 +32,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `@supports not selector(::-webkit-scrollbar)` (Firefox); Chromium/WebKit get the same thin look
   from the (now live again) `::-webkit-scrollbar*` rules. SQL Analyst field report (5.11.2),
   finding LU-21.
+
+## [5.11.3] - 2026-09-25
+
+### Added
+- **`Lumeo.Flow`: `FlowFitViewOptions.AnchorAlign` (`FlowAnchorAlign`: `Center` default, `Start`, `End`).**
+  When `FitViewAsync`'s anchor-clamped branch fires (the anchor would otherwise need a zoom below
+  `MinZoom`), `Center` keeps the anchor mid-pane (unchanged behaviour); `Start`/`End` instead pin the
+  anchor's leading/trailing edge at the fit padding from the pane's matching edge on both axes — for
+  a `LeftToRight`/`TopToBottom` tree, centring the anchor used to waste half the pane on the side the
+  tree never grows into. RTL-aware horizontally. Implemented on both the .NET-computed and the
+  engine-computed fit paths. SQL Analyst field report (5.11.1), finding LU-19.
+
+### Fixed
 - **`DropdownMenuContent`/`ContextMenuContent`/`MenubarContent`: a separator no longer forces a
   horizontal scrollbar.** The panel's padding lived on the outer element while the inner
   `overflow-y-auto` scroll viewport had no horizontal padding of its own, so a full-bleed `-mx-1`
@@ -51,6 +57,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `FlowEdge.Class`/`Style`.** The overlay path never received the edge's class or style, so a
   recoloured edge's travelling marker stayed the library's default colour. SQL Analyst field report
   (5.11.1), finding LU-18.
+
+## [5.11.2] - 2026-09-25
+
+### Fixed
+- **The grid row/header and menu item height tokens added in 5.11.1 now take effect.**
+  `--lumeo-grid-header-h` and `--lumeo-grid-row-h` set the minimum height of the DataGrid header
+  and data rows, and `--lumeo-menu-item-h` sets the minimum height of DropdownMenu, ContextMenu and
+  Menubar items (including checkbox, radio and sub-trigger items). In 5.11.1 they were declared but
+  no component read them. Defaults are unchanged; Compact density keeps its own tighter heights.
+- **Docs site: desktop dropdown and context menu items are 32px again.** The docs site's own
+  stylesheet had not been rebuilt, so the items kept the 44px touch floor at every width. A test
+  now fails when that stylesheet is stale.
 
 ## [5.11.1] - 2026-09-25
 
