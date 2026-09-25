@@ -38,7 +38,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `--lumeo-grid-header-offset` custom property drives a background band on the scroll container
   that repaints the same header colours across the gutter; in Chromium/Safari (`::-webkit-
   scrollbar-track` recognised again since LU-21, above) the same property also starts the
-  scrollbar thumb's own travel range below the header via a track margin. No parameter — on by
+  scrollbar thumb's own travel range below the header via a track margin. The band carries the
+  header cells' own muted tint, so a grid whose columns are narrower than the frame shows one
+  continuous header instead of a lighter strip past the last column. No parameter — on by
   default for the classic layout. Owner field report.
 - **`DataGrid.OverlayScrollbar`'s vertical track now starts below the header** instead of
   overlapping it — the track/thumb live-measure the sticky header's height (handles density,
