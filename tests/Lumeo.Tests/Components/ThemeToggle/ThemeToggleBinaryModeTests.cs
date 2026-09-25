@@ -49,7 +49,38 @@ public class ThemeToggleBinaryModeTests : IAsyncLifetime
         var cut = _ctx.Render<L.ThemeToggle>();
         await cut.Find("button").ClickAsync(new Microsoft.AspNetCore.Components.Web.MouseEventArgs());
 
-        // System -> Dark is the documented first step of the cycle.
+        // System -> Dark is the documented first step of the cycle (CycleModeAsync,
+        // which ThemeToggle now calls for IncludeSystem="true" — see the
+        // ThemeToggleBehaviorTests.First_Click_From_System_Cycles_To_Dark comment).
         cut.WaitForAssertion(() => Assert.Equal(ThemeMode.Dark, theme.CurrentMode), TimeSpan.FromSeconds(5));
+    }
+
+    // LU-22: ThemeService.ToggleModeAsync() itself (not routed through a component)
+    // must resolve System mode against the live OS preference rather than always
+    // stepping to Dark, so a single "switch light/dark" click always works regardless
+    // of which way the OS leans while in System mode.
+
+    [Fact]
+    public async Task ToggleModeAsync_From_System_On_Dark_OS_Switches_To_Light()
+    {
+        _ctx.JSInterop.Setup<bool>("themeManager.isDark").SetResult(true);
+        var theme = _ctx.Services.GetRequiredService<ThemeService>();
+        await theme.SetModeAsync(ThemeMode.System);
+
+        await theme.ToggleModeAsync();
+
+        Assert.Equal(ThemeMode.Light, theme.CurrentMode);
+    }
+
+    [Fact]
+    public async Task ToggleModeAsync_From_System_On_Light_OS_Switches_To_Dark()
+    {
+        _ctx.JSInterop.Setup<bool>("themeManager.isDark").SetResult(false);
+        var theme = _ctx.Services.GetRequiredService<ThemeService>();
+        await theme.SetModeAsync(ThemeMode.System);
+
+        await theme.ToggleModeAsync();
+
+        Assert.Equal(ThemeMode.Dark, theme.CurrentMode);
     }
 }

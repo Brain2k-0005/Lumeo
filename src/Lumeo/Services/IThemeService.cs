@@ -27,7 +27,14 @@ public interface IThemeService
     Task InitializeAsync();
     Task SetModeAsync(ThemeMode mode);
     Task SetSchemeAsync(string scheme);
+
+    /// <summary>Toggles between the two RESOLVED appearances (dark/light) — see
+    /// <see cref="ThemeService.ToggleModeAsync"/> for the full contract.</summary>
     Task ToggleModeAsync();
+
+    /// <summary>Cycles System → Dark → Light → System — see
+    /// <see cref="ThemeService.CycleModeAsync"/> for the full contract.</summary>
+    Task CycleModeAsync();
 
     /// <summary>Set the page layout direction (LTR / RTL). Persisted to localStorage.</summary>
     Task SetDirectionAsync(LayoutDirection direction);

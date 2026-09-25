@@ -202,7 +202,15 @@ public class ThemeServiceTests
         Assert.True(changed);
     }
 
-    // --- ToggleModeAsync ---
+    // --- ToggleModeAsync (LU-22: two-state toggle between RESOLVED appearances) ---
+
+    // LU-22: ToggleModeAsync used to cycle System → Dark → Light → System off
+    // CurrentMode alone (see CycleModeAsync below, which keeps that behaviour under
+    // its new name). That meant a System→Dark step on a dark-OS machine was visually
+    // a no-op, so a light/dark switch needed two clicks. ToggleModeAsync now flips
+    // between the two RESOLVED appearances (IsDark), so it always lands on the
+    // opposite of what's currently showing — including straight out of System mode,
+    // on either a dark or a light OS preference.
 
     [Fact]
     public async Task ToggleModeAsync_Updates_IsDark()
@@ -214,15 +222,24 @@ public class ThemeServiceTests
         Assert.True(_service.IsDark);
     }
 
-    // rc.43: ToggleModeAsync was changed from a binary JS-driven flip to a
-    // pure C# three-way cycle System → Dark → Light → System, so System mode
-    // is no longer permanently lost on first toggle. The tests below assert
-    // the new cycle contract: starting CurrentMode is set explicitly before
-    // each call, and the result is the next step in the cycle.
+    [Fact]
+    public async Task ToggleModeAsync_From_System_With_Dark_OS_Preference_Goes_To_Light()
+    {
+        // OS prefers dark: System resolves IsDark=true, so the single click must
+        // switch straight to Light (previously landed on Dark — a visual no-op).
+        _js.SetResult("themeManager.isDark", true);
+        await _service.SetModeAsync(ThemeMode.System);
+
+        await _service.ToggleModeAsync();
+
+        Assert.Equal(ThemeMode.Light, _service.CurrentMode);
+    }
 
     [Fact]
-    public async Task ToggleModeAsync_From_System_Goes_To_Dark()
+    public async Task ToggleModeAsync_From_System_With_Light_OS_Preference_Goes_To_Dark()
     {
+        // OS prefers light: System resolves IsDark=false, so the single click
+        // switches to Dark — a visible change either way.
         _js.SetResult("themeManager.isDark", false);
         await _service.SetModeAsync(ThemeMode.System);
 
@@ -243,14 +260,14 @@ public class ThemeServiceTests
     }
 
     [Fact]
-    public async Task ToggleModeAsync_From_Light_Goes_To_System()
+    public async Task ToggleModeAsync_From_Light_Goes_To_Dark()
     {
         _js.SetResult("themeManager.isDark", false);
         await _service.SetModeAsync(ThemeMode.Light);
 
         await _service.ToggleModeAsync();
 
-        Assert.Equal(ThemeMode.System, _service.CurrentMode);
+        Assert.Equal(ThemeMode.Dark, _service.CurrentMode);
     }
 
     [Fact]
@@ -262,6 +279,60 @@ public class ThemeServiceTests
         _service.OnThemeChanged += () => changed = true;
 
         await _service.ToggleModeAsync();
+
+        Assert.True(changed);
+    }
+
+    // --- CycleModeAsync (the old ToggleModeAsync three-way cycle, kept under its own name) ---
+
+    // rc.43: this is the three-way cycle System → Dark → Light → System that used to
+    // live in ToggleModeAsync. It moved to CycleModeAsync under LU-22 so callers that
+    // deliberately want to offer System as a stop (e.g. ThemeToggle with
+    // IncludeSystem="true") keep that behaviour, while ToggleModeAsync itself becomes
+    // a plain resolved-state binary flip (see above).
+
+    [Fact]
+    public async Task CycleModeAsync_From_System_Goes_To_Dark()
+    {
+        _js.SetResult("themeManager.isDark", false);
+        await _service.SetModeAsync(ThemeMode.System);
+
+        await _service.CycleModeAsync();
+
+        Assert.Equal(ThemeMode.Dark, _service.CurrentMode);
+    }
+
+    [Fact]
+    public async Task CycleModeAsync_From_Dark_Goes_To_Light()
+    {
+        _js.SetResult("themeManager.isDark", true);
+        await _service.SetModeAsync(ThemeMode.Dark);
+
+        await _service.CycleModeAsync();
+
+        Assert.Equal(ThemeMode.Light, _service.CurrentMode);
+    }
+
+    [Fact]
+    public async Task CycleModeAsync_From_Light_Goes_To_System()
+    {
+        _js.SetResult("themeManager.isDark", false);
+        await _service.SetModeAsync(ThemeMode.Light);
+
+        await _service.CycleModeAsync();
+
+        Assert.Equal(ThemeMode.System, _service.CurrentMode);
+    }
+
+    [Fact]
+    public async Task CycleModeAsync_Fires_OnThemeChanged()
+    {
+        _js.SetResult("themeManager.isDark", false);
+
+        var changed = false;
+        _service.OnThemeChanged += () => changed = true;
+
+        await _service.CycleModeAsync();
 
         Assert.True(changed);
     }
