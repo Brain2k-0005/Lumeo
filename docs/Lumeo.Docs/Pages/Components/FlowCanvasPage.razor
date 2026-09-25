@@ -215,7 +215,11 @@
                 deterministically, so an accidental loop still lays out instead of hanging, and both handle a
                 duplicate node id in the input without throwing. On a graph too large to fit above your minimum
                 zoom, <code>FitViewAsync(new FlowFitViewOptions(MinZoom: 0.6, AnchorNodeId: "start"))</code> centres
-                on that node at 60% instead of zooming out further to show everything.
+                on that node at 60% instead of zooming out further to show everything. For a
+                <code>LeftToRight</code>/<code>TopToBottom</code> tree, centring the anchor wastes half the pane on
+                the side the tree never grows into — add <code>AnchorAlign: FlowAnchorAlign.Start</code> to pin the
+                anchor's leading edge (left in LTR, right in RTL; always the top vertically) at the fit padding from
+                the pane's own edge instead; <code>FlowAnchorAlign.End</code> mirrors it against the trailing edge.
             </Lumeo.Text>
             <div class="flex flex-wrap items-center gap-2">
                 <Button Variant="Button.ButtonVariant.Outline" Size="Button.ButtonSize.Sm" OnClick="ApplyTreeLayoutAsync">Tidy tree</Button>
@@ -236,6 +240,31 @@
                     </ChildContent>
                 </FlowCanvas>
             </LazyRender>
+        </Stack>
+    </ComponentDemo>
+
+    <ComponentDemo Title="Anchored fit — AnchorAlign (LU-19)" Code="@_anchorFitCode" Description="FlowFitViewOptions.AnchorAlign controls WHERE a clamped anchor lands. Center (default) keeps it mid-pane — on this left-to-right tree that wastes half the pane on the side it never grows into. Start pins the anchor's leading edge (left in LTR) at the fit padding instead.">
+        <Stack Gap="3" Class="w-full">
+            <div class="flex flex-wrap items-center gap-2">
+                <Button Variant="Button.ButtonVariant.Outline" Size="Button.ButtonSize.Sm" OnClick="FitAnchorCenterAsync">Fit — Anchor Center</Button>
+                <Button Variant="Button.ButtonVariant.Outline" Size="Button.ButtonSize.Sm" OnClick="FitAnchorStartAsync" data-testid="anchor-fit-start">Fit — Anchor Start</Button>
+            </div>
+            <div data-testid="anchor-fit-demo">
+                <LazyRender Height="280px">
+                    <FlowCanvas @ref="_anchorFitCanvas" Nodes="_anchorFitNodes" Edges="_anchorFitEdges" Height="280px" FitViewOnInit="false">
+                        <NodeTemplate Context="ctx">
+                            <div class="w-32 rounded-md border border-border bg-card px-2 py-1.5 text-xs font-medium text-card-foreground shadow-sm">
+                                <FlowHandle Type="FlowHandleType.Target" Position="FlowPosition.Left" />
+                                @ctx.Node.Data
+                                <FlowHandle Type="FlowHandleType.Source" Position="FlowPosition.Right" />
+                            </div>
+                        </NodeTemplate>
+                        <ChildContent>
+                            <FlowBackground Variant="FlowBackgroundVariant.Dots" />
+                        </ChildContent>
+                    </FlowCanvas>
+                </LazyRender>
+            </div>
         </Stack>
     </ComponentDemo>
 
@@ -636,7 +665,7 @@
             </TableHeader>
             <TableBody>
                 <TableRow><TableCell Class="font-mono text-xs">FitViewAsync(double? padding)</TableCell><TableCell>Fits every node into view.</TableCell></TableRow>
-                <TableRow><TableCell Class="font-mono text-xs">FitViewAsync(FlowFitViewOptions)</TableCell><TableCell>Fits with per-call <code>Padding</code>/<code>MinZoom</code>/<code>MaxZoom</code> overrides and an optional <code>AnchorNodeId</code>: when the plain fit would need a zoom below <code>MinZoom</code>, centres on that node at <code>MinZoom</code> instead of zooming out further — "start readable" on a large graph. Raises <code>OnFitView</code> once applied.</TableCell></TableRow>
+                <TableRow><TableCell Class="font-mono text-xs">FitViewAsync(FlowFitViewOptions)</TableCell><TableCell>Fits with per-call <code>Padding</code>/<code>MinZoom</code>/<code>MaxZoom</code> overrides and an optional <code>AnchorNodeId</code>: when the plain fit would need a zoom below <code>MinZoom</code>, places that node at <code>MinZoom</code> instead of zooming out further — "start readable" on a large graph. <code>AnchorAlign</code> (<code>Center</code> default, <code>Start</code>, <code>End</code>) controls WHERE it lands: <code>Center</code> keeps the node mid-pane; <code>Start</code>/<code>End</code> instead pin its leading/trailing edge at the fit padding from the pane's matching edge on both axes — RTL-aware horizontally. Raises <code>OnFitView</code> once applied.</TableCell></TableRow>
                 <TableRow><TableCell Class="font-mono text-xs">GetPaneSizeAsync()</TableCell><TableCell>The pane's size measured fresh from the DOM right now (not the last debounced resize report, which can still be in flight after a container resize in the same tick).</TableCell></TableRow>
                 <TableRow><TableCell Class="font-mono text-xs">ZoomInAsync() / ZoomOutAsync()</TableCell><TableCell>One ×1.2 step around the pane centre.</TableCell></TableRow>
                 <TableRow><TableCell Class="font-mono text-xs">ZoomToAsync(double zoom)</TableCell><TableCell>Zooms to a level (clamped to <code>MinZoom</code>/<code>MaxZoom</code>) around the pane centre.</TableCell></TableRow>
@@ -1022,6 +1051,57 @@
 
     private async Task ApplyLayeredLayoutAsync()
         => /* same shape, FlowLayout.Layered — longest-path ranks + barycenter crossing reduction */;
+}";
+
+    // ── Demo 6b — anchored fit, AnchorAlign (LU-19) ─────────────────────────
+    // A wide left-to-right tree, big enough that fitting it all needs a zoom well below a
+    // readable minimum — exactly the case FitViewOptions.AnchorNodeId exists for. Every node
+    // carries an explicit Width/Height so the .NET-computed fit path (FlowState.AllSized) is
+    // deterministic from the very first fit — no waiting on the engine's own DOM measurement.
+    private FlowCanvas? _anchorFitCanvas;
+    private readonly IReadOnlyList<FlowNode> _anchorFitNodes = BuildAnchorFitNodes();
+    private readonly IReadOnlyList<FlowEdge> _anchorFitEdges = BuildAnchorFitEdges();
+
+    private static IReadOnlyList<FlowNode> BuildAnchorFitNodes()
+    {
+        var nodes = new List<FlowNode> { new("root", 0, 0, Width: 128, Height: 32, Data: "root") };
+        for (var i = 1; i < 36; i++) nodes.Add(new FlowNode($"n{i}", 0, 0, Width: 128, Height: 32, Data: $"n{i}"));
+        return FlowLayout.Tree(nodes, BuildAnchorFitEdges(), new FlowLayoutOptions(NodeSpacing: 16, RankSpacing: 48));
+    }
+
+    // A ternary tree truncated at 36 nodes (node i's parent is (i-1)/3, "root" for i in 1..3).
+    private static IReadOnlyList<FlowEdge> BuildAnchorFitEdges()
+    {
+        var edges = new List<FlowEdge>();
+        for (var i = 1; i < 36; i++)
+        {
+            var parentIndex = (i - 1) / 3;
+            var parentId = parentIndex == 0 ? "root" : $"n{parentIndex}";
+            edges.Add(new FlowEdge($"e-{parentId}-n{i}", parentId, $"n{i}"));
+        }
+        return edges;
+    }
+
+    private Task FitAnchorCenterAsync() => _anchorFitCanvas is null ? Task.CompletedTask
+        : _anchorFitCanvas.FitViewAsync(new FlowFitViewOptions(MinZoom: 0.92, AnchorNodeId: "root"));
+
+    private Task FitAnchorStartAsync() => _anchorFitCanvas is null ? Task.CompletedTask
+        : _anchorFitCanvas.FitViewAsync(new FlowFitViewOptions(MinZoom: 0.92, AnchorNodeId: "root", AnchorAlign: FlowAnchorAlign.Start));
+
+    private const string _anchorFitCode = @"<FlowCanvas @ref=""_canvas"" Nodes=""_nodes"" Edges=""_edges"" Height=""280px"" FitViewOnInit=""false"">
+    ...
+</FlowCanvas>
+
+@code {
+    private FlowCanvas? _canvas;
+
+    // Center (default): the anchor sits mid-pane once clamped to MinZoom.
+    private Task FitCenterAsync() => _canvas!.FitViewAsync(new FlowFitViewOptions(MinZoom: 0.92, AnchorNodeId: ""root""));
+
+    // Start: the anchor's leading edge (left in LTR) sits at the fit padding instead —
+    // no more empty pane on the side a left-to-right tree never grows into.
+    private Task FitStartAsync() => _canvas!.FitViewAsync(
+        new FlowFitViewOptions(MinZoom: 0.92, AnchorNodeId: ""root"", AnchorAlign: FlowAnchorAlign.Start));
 }";
 
     // ── Demo 7 — undo/redo ────────────────────────────────────────────────

@@ -1050,6 +1050,15 @@ public interface IComponentInteropService : IAsyncDisposable, IDisposable
     /// </summary>
     Task FlowFitViewAsync(Microsoft.AspNetCore.Components.ElementReference paneEl, double padding, double minZoom, double maxZoom, string? anchorNodeId) => Task.CompletedTask;
 
+    /// <summary>
+    /// LU-19: like <see cref="FlowFitViewAsync(Microsoft.AspNetCore.Components.ElementReference, double, double, double, string?)"/>,
+    /// with <paramref name="anchorAlign"/> (<c>"start"</c>/<c>"end"</c>/<c>"center"</c>, lower-cased —
+    /// flow.js's own vocabulary, matching <c>connectionMode</c>'s <c>"loose"</c>/<c>"strict"</c>)
+    /// forwarded to the engine's anchor placement. Another new overload for the same reason as the
+    /// one above. Default no-op.
+    /// </summary>
+    Task FlowFitViewAsync(Microsoft.AspNetCore.Components.ElementReference paneEl, double padding, double minZoom, double maxZoom, string? anchorNodeId, string? anchorAlign) => Task.CompletedTask;
+
     /// <summary>The engine's live viewport as <c>[x, y, zoom]</c>, or null when the engine is unavailable. Default null.</summary>
     Task<double[]?> FlowGetViewportAsync(Microsoft.AspNetCore.Components.ElementReference paneEl) => Task.FromResult<double[]?>(null);
 

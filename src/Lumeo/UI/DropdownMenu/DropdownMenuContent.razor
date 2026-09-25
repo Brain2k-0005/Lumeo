@@ -23,7 +23,7 @@
          tabindex="-1"
          inert="@ExitInert"
          @attributes="AdditionalAttributes">
-        <div data-slot="dropdown-menu-viewport" class="overflow-y-auto overscroll-contain" style="@ViewportStyle">
+        <div data-slot="dropdown-menu-viewport" class="overflow-y-auto overflow-x-hidden overscroll-contain p-1" style="@ViewportStyle">
             @ChildContent
         </div>
         @if (ShowArrow)
@@ -98,7 +98,12 @@
     private string? ExitInert => _exit.Exiting ? "true" : null;
 
     private string CssClass => Cx.Merge(
-        "fixed z-50 min-w-[8rem] rounded-lg border border-border/60 bg-popover p-1 text-popover-foreground shadow-md",
+        // p-1 lives on the inner viewport (below), not here: it used to sit on this panel
+        // while the viewport had overflow-y-auto with no horizontal padding of its own, so a
+        // full-bleed -mx-1 separator overhung the viewport's zero-padding edge by 4px and
+        // forced a horizontal scrollbar (overflow-y-auto implies overflow-x:auto when
+        // overflow-x is left at its visible default) in every menu with a separator (LU-20).
+        "fixed z-50 min-w-[8rem] rounded-lg border border-border/60 bg-popover text-popover-foreground shadow-md",
         AnimationClass,
         // overflow-visible: the content has no scroll height of its own, and a sub-menu is a
         // DOM child of it. overflow-hidden clipped that sub-menu whenever a host's CSS gave

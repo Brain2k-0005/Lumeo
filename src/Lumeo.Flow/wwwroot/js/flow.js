@@ -79,10 +79,38 @@ function getBounds(rects) {
     return any ? { x: minX, y: minY, width: maxX - minX, height: maxY - minY } : null;
 }
 
+// LU-19: the viewport that shows `anchor` (a {x, y, width, height} rect) at `zoom`, aligned per
+// `align` ('start'/'end'/'center', flow.js's own lower-cased vocabulary) instead of centred —
+// port of FlowGeometry.AnchorAlignedViewport, must stay in lockstep with it. 'center' (or anything
+// else, including omitted) is the pre-LU-19 CenterOn behaviour. `rtl` flips which physical
+// horizontal edge "start" means (right in RTL); vertical has no RTL concept.
+function anchorAlignedViewport(anchor, zoom, paneWidth, paneHeight, padding, align, rtl) {
+    if (align !== 'start' && align !== 'end') {
+        const acx = anchor.x + anchor.width / 2;
+        const acy = anchor.y + anchor.height / 2;
+        return { x: paneWidth / 2 - acx * zoom, y: paneHeight / 2 - acy * zoom, zoom };
+    }
+    const padX = padding * paneWidth;
+    const padY = padding * paneHeight;
+    const startIsRight = !!rtl;
+    let edgeX, targetX;
+    if (align === 'start') {
+        edgeX = startIsRight ? anchor.x + anchor.width : anchor.x;
+        targetX = startIsRight ? paneWidth - padX : padX;
+    } else {
+        edgeX = startIsRight ? anchor.x : anchor.x + anchor.width;
+        targetX = startIsRight ? padX : paneWidth - padX;
+    }
+    const edgeY = align === 'start' ? anchor.y : anchor.y + anchor.height;
+    const targetY = align === 'start' ? padY : paneHeight - padY;
+    return { x: targetX - edgeX * zoom, y: targetY - edgeY * zoom, zoom };
+}
+
 // LU-08: `anchor` (optional, a {x, y, width, height} rect) mirrors FlowGeometry.FitView's overload
-// — when the plain fit would need a zoom below minZoom, centre on the anchor at minZoom instead of
-// on the whole (still-clamped) bounds. Omitted/null keeps the plain behaviour.
-function fitView(rects, paneWidth, paneHeight, padding, minZoom, maxZoom, anchor) {
+// — when the plain fit would need a zoom below minZoom, place the anchor at minZoom instead of
+// centring the whole (still-clamped) bounds. Omitted/null keeps the plain behaviour. LU-19: `align`/
+// `rtl` control WHERE the anchor lands — see anchorAlignedViewport.
+function fitView(rects, paneWidth, paneHeight, padding, minZoom, maxZoom, anchor, align, rtl) {
     const b = getBounds(rects);
     if (!b || !(paneWidth > 0) || !(paneHeight > 0)) return null;
     const pad = padding > 0 ? padding : 0;
@@ -91,9 +119,7 @@ function fitView(rects, paneWidth, paneHeight, padding, minZoom, maxZoom, anchor
     const required = Math.min(paneWidth / (bw * (1 + pad)), paneHeight / (bh * (1 + pad)));
     if (anchor && required < minZoom) {
         const az = clampZoom(minZoom, minZoom, maxZoom);
-        const acx = anchor.x + anchor.width / 2;
-        const acy = anchor.y + anchor.height / 2;
-        return { x: paneWidth / 2 - acx * az, y: paneHeight / 2 - acy * az, zoom: az };
+        return anchorAlignedViewport(anchor, az, paneWidth, paneHeight, pad, align, rtl);
     }
     const zoom = clampZoom(required, minZoom, maxZoom);
     const cx = b.x + b.width / 2;
@@ -1128,9 +1154,9 @@ function domRectById(reg, id) {
     return { x: p.x, y: p.y, width, height };
 }
 
-function fitFromDom(reg, padding, minZoom, maxZoom, source, anchorNodeId) {
+function fitFromDom(reg, padding, minZoom, maxZoom, source, anchorNodeId, anchorAlign) {
     const anchor = anchorNodeId ? domRectById(reg, anchorNodeId) : null;
-    const vp = fitView(domRects(reg), reg.pane.clientWidth, reg.pane.clientHeight, padding, minZoom, maxZoom, anchor);
+    const vp = fitView(domRects(reg), reg.pane.clientWidth, reg.pane.clientHeight, padding, minZoom, maxZoom, anchor, anchorAlign, reg.options.rtl);
     if (!vp) return false;
     applyViewport(reg, vp, source);
     reportFinal(reg);
@@ -2022,10 +2048,10 @@ function setViewport(pane, x, y, zoom) {
     reportFinal(reg);
 }
 
-function fitViewExport(pane, padding, minZoom, maxZoom, anchorNodeId) {
+function fitViewExport(pane, padding, minZoom, maxZoom, anchorNodeId, anchorAlign) {
     const reg = pane && registrations.get(pane);
     if (!reg) return;
-    if (fitFromDom(reg, padding, minZoom, maxZoom, 'fit', anchorNodeId)) reg.initialFitPending = false;
+    if (fitFromDom(reg, padding, minZoom, maxZoom, 'fit', anchorNodeId, anchorAlign)) reg.initialFitPending = false;
 }
 
 function getViewport(pane) {
@@ -2161,7 +2187,7 @@ export const flow = {
 
 // Test-only seam: the pure geometry, importable from Node without a DOM (tests/js/*.mjs).
 export const __testing = {
-    fmt, clampZoom, snap, screenToFlow, zoomAt, getBounds, fitView, handleAnchor,
+    fmt, clampZoom, snap, screenToFlow, zoomAt, getBounds, fitView, anchorAlignedViewport, handleAnchor,
     straightPath, bezierPath, smoothStepPath, stepPoints, edgePath,
     isEditable, isKeyboardExempt, isFocusedElementEditable,
     computeHelperLines,

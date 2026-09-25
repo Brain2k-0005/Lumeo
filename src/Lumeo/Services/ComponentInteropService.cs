@@ -1937,6 +1937,16 @@ public sealed class ComponentInteropService : IComponentInteropService
         catch (JSDisconnectedException) { }
     }
 
+    public async Task FlowFitViewAsync(Microsoft.AspNetCore.Components.ElementReference paneEl, double padding, double minZoom, double maxZoom, string? anchorNodeId, string? anchorAlign)
+    {
+        try
+        {
+            var module = await GetFlowModuleAsync();
+            await module.InvokeVoidAsync("flow.fitView", paneEl, padding, minZoom, maxZoom, anchorNodeId, anchorAlign);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
     public async Task<double[]?> FlowGetViewportAsync(Microsoft.AspNetCore.Components.ElementReference paneEl)
     {
         try

@@ -23,7 +23,7 @@
          tabindex="-1"
          inert="@ExitInert"
          @attributes="AdditionalAttributes">
-        <div data-slot="context-menu-viewport" class="overflow-y-auto overscroll-contain" style="@ViewportStyle">
+        <div data-slot="context-menu-viewport" class="overflow-y-auto overflow-x-hidden overscroll-contain p-1" style="@ViewportStyle">
             @ChildContent
         </div>
     </div>
@@ -72,7 +72,10 @@
     // (Cleanup → RestoreFocus), so inert never traps focus inside the surface. (P2 r2)
     private string? ExitInert => _exit.Exiting ? "true" : null;
 
-    private string CssClass => Cx.Merge("fixed z-50 min-w-[8rem] overflow-visible rounded-md border border-border/40 bg-popover p-1 text-popover-foreground shadow-lg", AnimationClass, Class);
+    // p-1 lives on the inner viewport, not here — see DropdownMenuContent.CssClass for why
+    // (LU-20: a full-bleed -mx-1 separator overhung a zero-padding overflow-y-auto viewport
+    // by 4px and forced a horizontal scrollbar in every menu with a separator).
+    private string CssClass => Cx.Merge("fixed z-50 min-w-[8rem] overflow-visible rounded-md border border-border/40 bg-popover text-popover-foreground shadow-lg", AnimationClass, Class);
 
     // Initial inline placement at the raw click point; OnAfterRenderAsync then
     // clamps the menu inside the viewport. The root menu previously rendered
