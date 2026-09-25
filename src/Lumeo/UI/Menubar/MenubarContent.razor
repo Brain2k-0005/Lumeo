@@ -6,7 +6,7 @@
 {
     <div data-slot="menubar-content" id="@_contentId" role="menu" aria-orientation="vertical" data-state="@(IsOpen ? "open" : "closed")" class="@CssClass" @onkeydown="HandleKeyDown" tabindex="-1" inert="@ExitInert" @attributes="AdditionalAttributes">
         <CascadingValue Value="_keyNavGuard" IsFixed="true">
-            <div data-slot="menubar-viewport" class="overflow-y-auto overscroll-contain" style="@ViewportStyle">
+            <div data-slot="menubar-viewport" class="overflow-y-auto overflow-x-hidden overscroll-contain p-1" style="@ViewportStyle">
                 @ChildContent
             </div>
         </CascadingValue>
@@ -53,7 +53,10 @@
     // order so keyboard users can't Tab into the visually-closed menu mid-exit (round-2 P2).
     private string? ExitInert => _exit.Exiting ? "true" : null;
 
-    private string CssClass => Cx.Merge("fixed z-50 min-w-[12rem] overflow-visible rounded-md border border-border/40 bg-popover p-1 text-popover-foreground shadow-lg", AnimationClass, Class);
+    // p-1 lives on the inner viewport, not here — see DropdownMenuContent.CssClass for why
+    // (LU-20: a full-bleed -mx-1 separator overhung a zero-padding overflow-y-auto viewport
+    // by 4px and forced a horizontal scrollbar in every menu with a separator).
+    private string CssClass => Cx.Merge("fixed z-50 min-w-[12rem] overflow-visible rounded-md border border-border/40 bg-popover text-popover-foreground shadow-lg", AnimationClass, Class);
 
     // Same fallback (24rem) as DropdownMenuContent's inner viewport — see there for the
     // inline-style rationale.
