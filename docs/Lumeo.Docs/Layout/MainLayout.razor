@@ -386,7 +386,7 @@
             var p = CurrentPath;
             if (p == "") return "none";
             if (p.Equals("components", StringComparison.OrdinalIgnoreCase)) return "none"; // bare catalog → full width
-            if (p.EndsWith("/playground", StringComparison.OrdinalIgnoreCase)) return "none"; // playground pages own the full canvas
+            if (IsFullCanvasPath(p)) return "none"; // full-canvas playground pages own the whole viewport
             if (p.StartsWith("components/", StringComparison.OrdinalIgnoreCase)) return "components";
             if (p.StartsWith("docs", StringComparison.OrdinalIgnoreCase)) return "docs";
             if (p.StartsWith("blocks", StringComparison.OrdinalIgnoreCase)) return "blocks";
@@ -394,7 +394,13 @@
         }
     }
 
-    private bool IsPlaygroundRoute => CurrentPath.EndsWith("/playground", StringComparison.OrdinalIgnoreCase);
+    private bool IsPlaygroundRoute => IsFullCanvasPath(CurrentPath);
+
+    // Only the tool pages that fill the whole viewport. A plain EndsWith("/playground") also
+    // caught the /blocks/playground block page (shadcn's Playground example), which then lost
+    // its sidebar and padding and was clipped by the fixed-height, overflow-hidden main.
+    private static bool IsFullCanvasPath(string path)
+        => path.Trim('/').Equals("components/datagrid/playground", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>The flat /components/{slug} the user is on (null elsewhere, and for chart
     /// sub-paths like components/charts/bar which have no 1:1 registry entry). Drives the
