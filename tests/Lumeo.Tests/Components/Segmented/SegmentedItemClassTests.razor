@@ -1,0 +1,108 @@
+@inherits Bunit.BunitContext
+@using Lumeo.Services
+@using Lumeo.Tests.Helpers
+@using Microsoft.Extensions.DependencyInjection
+
+@code {
+    // Compound (ChildContent) mode coverage for SegmentedItem.Class and
+    // Segmented.ItemClass (#segmented-item-class): a consumer previously could not
+    // customize an individual segment's look at all — SegmentedItem had no [Parameter]
+    // Class, and its button's `class` attribute was set BEFORE @attributes splatted
+    // AdditionalAttributes, so a plain `class="..."` passthrough REPLACED the base
+    // classes instead of merging. These tests assert the merge order end to end:
+    // base item classes -> Segmented.ItemClass -> SegmentedItem.Class (last wins any
+    // Tailwind conflict), using a .razor host because compound mode needs the
+    // CascadingValue<Segmented.SegmentedContext> that only real child markup sets up.
+
+    public SegmentedItemClassTests() => this.AddLumeoServices();
+
+    private RenderFragment TwoItems(string? itemClass, string? firstItemOwnClass) => @<text>
+        <SegmentedItem Value="a" Class="@firstItemOwnClass">A</SegmentedItem>
+        <SegmentedItem Value="b">B</SegmentedItem>
+    </text>;
+
+    [Fact]
+    public void SegmentedItem_Class_Is_Merged_With_Base_Classes()
+    {
+        var cut = Render<Segmented>(p => p
+            .Add(s => s.Value, "a")
+            .Add(s => s.ChildContent, TwoItems(null, "my-custom-item")));
+
+        var a = cut.FindAll("button[role='radio']")[0];
+        var cls = a.GetAttribute("class") ?? "";
+
+        Assert.Contains("my-custom-item", cls);
+        // Base classes (shared shape) survive alongside the custom one.
+        Assert.Contains("inline-flex", cls);
+        Assert.Contains("rounded-md", cls);
+    }
+
+    [Fact]
+    public void SegmentedItem_Class_Resolves_Tailwind_Conflicts_Last_Wins()
+    {
+        // rounded-none must REPLACE the base rounded-md, not sit alongside it.
+        var cut = Render<Segmented>(p => p
+            .Add(s => s.Value, "a")
+            .Add(s => s.ChildContent, TwoItems(null, "rounded-none")));
+
+        var a = cut.FindAll("button[role='radio']")[0];
+        var cls = a.GetAttribute("class") ?? "";
+
+        Assert.Contains("rounded-none", cls);
+        Assert.DoesNotContain("rounded-md", cls);
+    }
+
+    [Fact]
+    public void Segmented_ItemClass_Applied_To_Every_SegmentedItem_Child()
+    {
+        var cut = Render<Segmented>(p => p
+            .Add(s => s.Value, "a")
+            .Add(s => s.ItemClass, "control-wide-accent")
+            .Add(s => s.ChildContent, TwoItems(null, null)));
+
+        foreach (var button in cut.FindAll("button[role='radio']"))
+            Assert.Contains("control-wide-accent", button.GetAttribute("class"));
+    }
+
+    [Fact]
+    public void SegmentedItem_Class_Wins_Over_Segmented_ItemClass_On_Conflict()
+    {
+        // ItemClass sets rounded-none control-wide; this item's own Class overrides
+        // back to rounded-full — order is base -> ItemClass -> Class, last wins.
+        var cut = Render<Segmented>(p => p
+            .Add(s => s.Value, "a")
+            .Add(s => s.ItemClass, "rounded-none")
+            .Add(s => s.ChildContent, TwoItems(null, "rounded-full")));
+
+        var a = cut.FindAll("button[role='radio']")[0];
+        var b = cut.FindAll("button[role='radio']")[1];
+
+        Assert.Contains("rounded-full", a.GetAttribute("class"));
+        Assert.DoesNotContain("rounded-none", a.GetAttribute("class"));
+        // The sibling without its own Class keeps ItemClass's rounded-none.
+        Assert.Contains("rounded-none", b.GetAttribute("class"));
+    }
+
+    [Fact]
+    public void AriaChecked_Variant_Classes_Land_On_Active_And_Inactive_Buttons_Alike()
+    {
+        // The active/inactive DECISION stays the variant's job (aria-checked
+        // true/false on the element); the class merge just needs to deliver these
+        // utility classes onto every segment's button regardless of active state.
+        var cut = Render<Segmented>(p => p
+            .Add(s => s.Value, "a")
+            .Add(s => s.ItemClass, "aria-checked:bg-primary aria-checked:text-primary-foreground")
+            .Add(s => s.ChildContent, TwoItems(null, null)));
+
+        var active = cut.FindAll("button[role='radio']").First(b => b.TextContent.Contains("A"));
+        var inactive = cut.FindAll("button[role='radio']").First(b => b.TextContent.Contains("B"));
+
+        Assert.Equal("true", active.GetAttribute("aria-checked"));
+        Assert.Contains("aria-checked:bg-primary", active.GetAttribute("class"));
+        Assert.Contains("aria-checked:text-primary-foreground", active.GetAttribute("class"));
+
+        Assert.Equal("false", inactive.GetAttribute("aria-checked"));
+        Assert.Contains("aria-checked:bg-primary", inactive.GetAttribute("class"));
+        Assert.Contains("aria-checked:text-primary-foreground", inactive.GetAttribute("class"));
+    }
+}
