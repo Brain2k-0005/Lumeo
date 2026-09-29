@@ -18,8 +18,9 @@
               rows="1"
               disabled="@IsLoading"
               maxlength="@MaxLengthAttr"
-              value="@Value"
-              @oninput="HandleInput"
+              @bind:get="Value"
+              @bind:set="HandleBoundInput"
+              @bind:event="oninput"
               @onkeydown="HandleKeyDown"></textarea>
 
     <div class="mt-1 flex items-center justify-between gap-2">
@@ -228,6 +229,13 @@
     // prerendering (where OnAfterRenderAsync never ran) doesn't import the
     // JS module just to unregister a handler that never existed (Codex P2).
     private bool _pdRegistered;
+
+    // Bound like Razor's @bind (@bind:get/@bind:set on oninput) instead of value="..." plus
+    // @oninput, so the compiler emits SetUpdatesAttributeName("value"): Blazor then updates
+    // its last-rendered value to the text each input event carried, and a render answering
+    // an older keystroke no longer rewrites the field while the user has typed further
+    // (lost keystrokes under network latency). See Input.razor.
+    private Task HandleBoundInput(string? value) => HandleInput(new ChangeEventArgs { Value = value });
 
     private async Task HandleInput(ChangeEventArgs e)
     {

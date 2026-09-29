@@ -23,7 +23,7 @@
               aria-required="@Required.ToString().ToLowerInvariant()"
               aria-invalid="@((EffectiveInvalid || IsOverLimit).ToString().ToLowerInvariant())"
               aria-describedby="@FormFieldDescribedBy"
-              class="@CssClass" value="@_current" @oninput="HandleInput" disabled="@Disabled"
+              class="@CssClass" @bind:get="_current" @bind:set="HandleBoundInput" @bind:event="oninput" disabled="@Disabled"
               maxlength="@EffectiveMaxLength" @attributes="EffectiveAttributes"></textarea>
     @if (ShowCount)
     {
@@ -285,6 +285,14 @@
         try { await Interop.UnregisterAutoResize(EffectiveId); }
         catch (Microsoft.JSInterop.JSDisconnectedException) { }
     }
+
+    // The textarea binds its value like Razor's @bind (@bind:get/@bind:set on oninput)
+    // rather than value="..." plus @oninput: only the bind form emits
+    // SetUpdatesAttributeName("value"), which makes Blazor update its last-rendered value
+    // to the text each input event carried, so a render answering an older keystroke no
+    // longer rewrites the DOM while the user has typed further (lost keystrokes under
+    // network latency). OnInput still receives a ChangeEventArgs with the typed text.
+    private Task HandleBoundInput(string? value) => HandleInput(new ChangeEventArgs { Value = value });
 
     private async Task HandleInput(ChangeEventArgs e)
     {

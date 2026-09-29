@@ -2,7 +2,8 @@
 
 Drives `tests/Lumeo.Tests.ServerHost` — a minimal **interactive-SERVER**
 Blazor host (real SignalR circuit, not WASM/bUnit) — with artificial
-round-trip latency injected via CDP network throttling, and exercises the
+round-trip latency injected by delaying every WebSocket frame the page
+sends, and exercises the
 interaction-heavy components (DataGrid drag/resize, Toast, DatePicker,
 Dialog) under it.
 
@@ -24,16 +25,23 @@ a specific target architecture instead of the host's native one; leave it
 unset on ARM64 hosts (Apple Silicon, ARM Linux CI) since forcing x64 there
 requires an x64 runtime/emulation layer to be installed.
 
-## Why CDP throttling, not a server-side delay middleware
+## Why a WebSocket.send delay, not CDP throttling or a server-side middleware
 
-Both are wired (see `Program.cs`'s `LUMEO_SERVERLEG_DELAY_MS`), but this
-harness uses CDP's `Network.emulateNetworkConditions` because it delays
-every individual frame on the WebSocket the circuit uses, in both
-directions. A delay middleware only slows the initial HTTP negotiate/upgrade
-— once the socket is open, render-batch and event-dispatch frames flow
-through with zero added latency, so it can't reproduce "a drag commit's
-round-trip takes 200ms", which is exactly the bug class (stuck transforms,
-settle-timer/round-trip races) this leg exists to catch.
+An init script wraps `WebSocket.prototype.send`, so every frame the page
+sends over the circuit's socket leaves `--rtt` ms late and every
+browser -> .NET -> browser round trip takes that much longer, while the page
+keeps running in between. CDP's `Network.emulateNetworkConditions`, which
+this leg used before, does not delay the frames of an already-open WebSocket
+that way: a Lumeo Input that lost keystrokes on a real slow connection typed
+perfectly under it, while the send delay reproduced the loss exactly. Do not
+use CDP throttling as evidence of latency behavior.
+
+The server-side delay middleware (`Program.cs`'s `LUMEO_SERVERLEG_DELAY_MS`)
+only slows the initial HTTP negotiate/upgrade — once the socket is open,
+render-batch and event-dispatch frames flow through with zero added latency,
+so it can't reproduce "a drag commit's round-trip takes 200ms", which is
+exactly the bug class (stuck transforms, settle-timer/round-trip races) this
+leg exists to catch.
 
 ## Scenarios
 

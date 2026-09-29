@@ -8,6 +8,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- **Keystrokes lost under network latency with a plain `@bind-Value`** in `Input`, `Textarea`,
+  `InputMask`, `PasswordInput`, `PromptInput`, `Mention`, `TagInput`, the `Combobox`, `Command`
+  and `Select` search inputs, `DatePicker`'s typed entry, `InplaceEditor` and `FileManager`'s
+  rename field. The inner `<input>`/`<textarea>` rendered `value="@x"` next to `@oninput`; only
+  Razor's `@bind` makes the compiler emit `SetUpdatesAttributeName("value")`, which tells Blazor
+  to update its last-rendered value to the text each input event carried. Without it, the render
+  batch answering keystroke n set the field back to keystroke n's text while the user had already
+  typed further. The inner elements are now bound with `@bind:get`/`@bind:set`/
+  `@bind:event="oninput"`, exactly like a native `@bind`; the public API is unchanged (`OnInput`
+  still receives a `ChangeEventArgs`, file inputs still get no value) and the 5.12.1 handling of
+  async `ValueChanged` handlers is kept. Measured on Blazor Server with every browser-sent frame
+  delayed 150 ms and typing at 80 ms/key: before, "Realistic typing speed check" ended as
+  "Relsi yigsedcek" in `Input`, `Textarea`, `PasswordInput` and `PromptInput`, and as
+  "Rekcegyial" in `InputMask`; after, all of them keep the whole sentence (10 of 10 runs), like
+  the native `@bind` baseline. `InputMask` additionally reads and restores the caret only when the
+  masked text differs from what was typed, since a restore computed for an older keystroke moved
+  the caret back into the middle of newer typing.
 - **Overlays no longer terminate the Blazor Server circuit when disposed while their
   exit animation is being wired up.** Overlay content that awaits JS in
   `OnAfterRenderAsync` (positioning, or its close-time cleanup) and gets disposed

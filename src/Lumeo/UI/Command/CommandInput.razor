@@ -19,8 +19,9 @@
                aria-activedescendant="@Context.HighlightedItemId"
                class="@CssClass"
                placeholder="@(Placeholder ?? L["Command.Placeholder"])"
-               value="@Context.SearchText"
-               @oninput="HandleInput"
+               @bind:get="Context.SearchText"
+               @bind:set="HandleBoundInput"
+               @bind:event="oninput"
                @onkeydown="HandleKeyDown"
                @attributes="AdditionalAttributes" />
     </div>
@@ -85,6 +86,13 @@
     }
 
     private bool _pdRegistered;
+
+    // Bound like Razor's @bind (@bind:get/@bind:set on oninput) instead of value="..." plus
+    // @oninput, so the compiler emits SetUpdatesAttributeName("value"): Blazor then updates
+    // its last-rendered value to the text each input event carried, and a render answering
+    // an older keystroke no longer rewrites the field while the user has typed further
+    // (lost keystrokes under network latency). See Input.razor.
+    private Task HandleBoundInput(string? value) => HandleInput(new ChangeEventArgs { Value = value });
 
     private async Task HandleInput(ChangeEventArgs e)
     {
