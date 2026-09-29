@@ -1,0 +1,163 @@
+@inherits Bunit.BunitContext
+
+@code {
+    // Coverage for the shadcn-named Value/ValueChanged/DefaultValue aliases added
+    // to Tabs (fully additive — ActiveValue/ActiveValueChanged keep working exactly
+    // as before). Precedence when several are set: a non-empty ActiveValue wins,
+    // then a non-empty Value, then DefaultValue (one-shot seed for uncontrolled use).
+
+    public TabsValueAliasTests() { this.AddLumeoServices(); }
+
+    // --- Value ---
+
+    [Fact]
+    public void Value_Shows_Matching_Content_On_First_Render()
+    {
+        var cut = Render(@<Tabs Value="tab2">
+            <TabsList>
+                <TabsTrigger Value="tab1">Tab 1</TabsTrigger>
+                <TabsTrigger Value="tab2">Tab 2</TabsTrigger>
+            </TabsList>
+            <TabsContent Value="tab1">Content 1</TabsContent>
+            <TabsContent Value="tab2">Content 2</TabsContent>
+        </Tabs>);
+
+        var panel = cut.Find("[role='tabpanel']");
+        Assert.Contains("Content 2", panel.TextContent);
+
+        var tabs = cut.FindAll("[role='tab']");
+        Assert.Equal("false", tabs[0].GetAttribute("aria-selected"));
+        Assert.Equal("true", tabs[1].GetAttribute("aria-selected"));
+    }
+
+    [Fact]
+    public void BindValue_TwoWay_Click_Trigger_Fires_ValueChanged_And_Switches_Content()
+    {
+        var cut = Render<TabsValueAliasHost>(p => p.Add(h => h.InitialValue, "a"));
+
+        Assert.Contains("Panel A", cut.Find("[role='tabpanel']").TextContent);
+
+        cut.FindAll("[role='tab']")[1].Click();
+
+        // The host's @bind-Value field was updated via ValueChanged...
+        Assert.Equal("b", cut.Instance.CurrentValue);
+        // ...and the re-render shows the newly active panel.
+        Assert.Contains("Panel B", cut.Find("[role='tabpanel']").TextContent);
+    }
+
+    // --- DefaultValue ---
+
+    [Fact]
+    public void DefaultValue_Shows_Initial_Content_On_First_Render()
+    {
+        var cut = Render(@<Tabs DefaultValue="tab2">
+            <TabsList>
+                <TabsTrigger Value="tab1">Tab 1</TabsTrigger>
+                <TabsTrigger Value="tab2">Tab 2</TabsTrigger>
+            </TabsList>
+            <TabsContent Value="tab1">Content 1</TabsContent>
+            <TabsContent Value="tab2">Content 2</TabsContent>
+        </Tabs>);
+
+        Assert.Contains("Content 2", cut.Find("[role='tabpanel']").TextContent);
+    }
+
+    [Fact]
+    public void DefaultValue_Uncontrolled_Clicks_Still_Switch_Tabs()
+    {
+        var cut = Render(@<Tabs DefaultValue="tab1">
+            <TabsList>
+                <TabsTrigger Value="tab1">Tab 1</TabsTrigger>
+                <TabsTrigger Value="tab2">Tab 2</TabsTrigger>
+            </TabsList>
+            <TabsContent Value="tab1">Content 1</TabsContent>
+            <TabsContent Value="tab2">Content 2</TabsContent>
+        </Tabs>);
+
+        Assert.Contains("Content 1", cut.Find("[role='tabpanel']").TextContent);
+
+        cut.FindAll("[role='tab']")[1].Click();
+
+        Assert.Contains("Content 2", cut.Find("[role='tabpanel']").TextContent);
+    }
+
+    // --- Precedence ---
+
+    [Fact]
+    public void Precedence_NonEmpty_ActiveValue_Wins_Over_Value_And_DefaultValue()
+    {
+        var cut = Render(@<Tabs ActiveValue="tab1" Value="tab2" DefaultValue="tab3">
+            <TabsList>
+                <TabsTrigger Value="tab1">Tab 1</TabsTrigger>
+                <TabsTrigger Value="tab2">Tab 2</TabsTrigger>
+                <TabsTrigger Value="tab3">Tab 3</TabsTrigger>
+            </TabsList>
+            <TabsContent Value="tab1">Content 1</TabsContent>
+            <TabsContent Value="tab2">Content 2</TabsContent>
+            <TabsContent Value="tab3">Content 3</TabsContent>
+        </Tabs>);
+
+        Assert.Contains("Content 1", cut.Find("[role='tabpanel']").TextContent);
+    }
+
+    [Fact]
+    public void Precedence_Value_Wins_Over_DefaultValue_When_ActiveValue_Empty()
+    {
+        var cut = Render(@<Tabs Value="tab2" DefaultValue="tab3">
+            <TabsList>
+                <TabsTrigger Value="tab2">Tab 2</TabsTrigger>
+                <TabsTrigger Value="tab3">Tab 3</TabsTrigger>
+            </TabsList>
+            <TabsContent Value="tab2">Content 2</TabsContent>
+            <TabsContent Value="tab3">Content 3</TabsContent>
+        </Tabs>);
+
+        Assert.Contains("Content 2", cut.Find("[role='tabpanel']").TextContent);
+    }
+
+    // --- Both callbacks ---
+
+    [Fact]
+    public void Clicking_Trigger_Fires_Both_ActiveValueChanged_And_ValueChanged()
+    {
+        string? fromActiveValueChanged = null;
+        string? fromValueChanged = null;
+
+        var cut = Render(@<Tabs ActiveValue="tab1"
+                                 ActiveValueChanged="@((string v) => fromActiveValueChanged = v)"
+                                 ValueChanged="@((string v) => fromValueChanged = v)">
+            <TabsList>
+                <TabsTrigger Value="tab1">Tab 1</TabsTrigger>
+                <TabsTrigger Value="tab2">Tab 2</TabsTrigger>
+            </TabsList>
+        </Tabs>);
+
+        cut.FindAll("[role='tab']")[1].Click();
+
+        Assert.Equal("tab2", fromActiveValueChanged);
+        Assert.Equal("tab2", fromValueChanged);
+    }
+
+    // --- Existing ActiveValue behaviour unchanged ---
+
+    [Fact]
+    public void ActiveValue_Only_Still_Works_Without_Value_Or_DefaultValue()
+    {
+        string? selected = null;
+        var cut = Render(@<Tabs ActiveValue="tab1" ActiveValueChanged="@((string v) => selected = v)">
+            <TabsList>
+                <TabsTrigger Value="tab1">Tab 1</TabsTrigger>
+                <TabsTrigger Value="tab2">Tab 2</TabsTrigger>
+            </TabsList>
+            <TabsContent Value="tab1">Content 1</TabsContent>
+            <TabsContent Value="tab2">Content 2</TabsContent>
+        </Tabs>);
+
+        Assert.Contains("Content 1", cut.Find("[role='tabpanel']").TextContent);
+
+        cut.FindAll("[role='tab']")[1].Click();
+
+        Assert.Equal("tab2", selected);
+        Assert.Contains("Content 2", cut.Find("[role='tabpanel']").TextContent);
+    }
+}

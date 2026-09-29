@@ -1,7 +1,7 @@
 @namespace Lumeo
 
 @{
-    var context = new TabsContext(ActiveValue, EventCallback.Factory.Create<string>(this, SetValue), Orientation, Variant, _tabIds, AnimatedIndicator, RenderMode, _activatedValues, SwipeEnabled, SwipeWrap, RegisterContent, UnregisterContent, NavigateBySwipe, _reorderState, Activation)
+    var context = new TabsContext(_resolvedValue, EventCallback.Factory.Create<string>(this, SetValue), Orientation, Variant, _tabIds, AnimatedIndicator, RenderMode, _activatedValues, SwipeEnabled, SwipeWrap, RegisterContent, UnregisterContent, NavigateBySwipe, _reorderState, Activation)
     {
         IconReveal = IconReveal,
     };
@@ -17,11 +17,42 @@
     /// <summary>The tab set's <c>TabsList</c> (with its <c>TabsTrigger</c>s) and <c>TabsContent</c> panels.</summary>
     [Parameter] public RenderFragment? ChildContent { get; set; }
 
-    /// <summary>The currently active tab's value. Controlled together with <see cref="ActiveValueChanged"/>; must match a <c>TabsTrigger</c>/<c>TabsContent</c> pair's <c>Value</c>.</summary>
+    /// <summary>
+    /// The currently active tab's value. Controlled together with <see cref="ActiveValueChanged"/>;
+    /// must match a <c>TabsTrigger</c>/<c>TabsContent</c> pair's <c>Value</c>.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="Value"/> is a shadcn-named alias of this same concept (so
+    /// <c>@@bind-Value</c> from shadcn-flavoured code works as expected). When
+    /// several of <see cref="ActiveValue"/>, <see cref="Value"/> and
+    /// <see cref="DefaultValue"/> are set at once, precedence is: a non-empty
+    /// <see cref="ActiveValue"/> wins, then a non-empty <see cref="Value"/>,
+    /// then <see cref="DefaultValue"/> (applied once, for uncontrolled use).
+    /// </remarks>
     [Parameter] public string ActiveValue { get; set; } = "";
 
     /// <summary>Fires when the active tab changes (click, arrow-key activation, or swipe navigation).</summary>
     [Parameter] public EventCallback<string> ActiveValueChanged { get; set; }
+
+    /// <summary>
+    /// shadcn-named alias of <see cref="ActiveValue"/> — lets <c>&lt;Tabs @@bind-Value="x"&gt;</c>
+    /// work the way it does in shadcn/ui. Fully additive: reads/writes the same active tab as
+    /// <see cref="ActiveValue"/>. See <see cref="ActiveValue"/> for the precedence rule when both
+    /// are set.
+    /// </summary>
+    [Parameter] public string? Value { get; set; }
+
+    /// <summary>Fires when the active tab changes, alongside <see cref="ActiveValueChanged"/>. shadcn-named alias — pairs with <see cref="Value"/> for <c>@@bind-Value</c>.</summary>
+    [Parameter] public EventCallback<string> ValueChanged { get; set; }
+
+    /// <summary>
+    /// The initial active tab for uncontrolled use (shadcn naming). Applied once, on the
+    /// first parameter set, only when neither <see cref="ActiveValue"/> nor <see cref="Value"/>
+    /// is set; after that, clicking a trigger changes the active tab internally and
+    /// <see cref="DefaultValue"/> is ignored on subsequent renders. Has no effect once
+    /// <see cref="ActiveValue"/> or <see cref="Value"/> is used to control the tab set.
+    /// </summary>
+    [Parameter] public string? DefaultValue { get; set; }
 
     /// <summary>Layout axis for the tab list: <see cref="Lumeo.Orientation.Horizontal"/> (default) or <see cref="Lumeo.Orientation.Vertical"/> (list and panel sit side by side).</summary>
     [Parameter] public Lumeo.Orientation Orientation { get; set; } = Lumeo.Orientation.Horizontal;
@@ -98,6 +129,16 @@
     /// <summary>Captures any unmatched attributes and applies them to the root container.</summary>
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
+    // The resolved active tab value, used everywhere internally (context, swipe,
+    // Lazy-mode tracking) instead of the raw ActiveValue parameter. Resolved each
+    // OnParametersSet from ActiveValue > Value > DefaultValue (see OnParametersSet),
+    // then kept up to date by SetValue between parameter pushes so uncontrolled use
+    // (no ActiveValue/Value bound by the caller) free-runs off user interaction.
+    private string _resolvedValue = "";
+    // DefaultValue is a one-shot seed — applied only before the first real
+    // resolution, never again, so later renders don't stomp user interaction.
+    private bool _defaultApplied;
+
     // Registry: value -> (tabId, panelId, disabled) — maintained by TabsTrigger
     // (registered in OnParametersSet so Disabled changes stay current, removed
     // on dispose so closable/conditional tabs don't leave keyboard ghosts).
@@ -119,9 +160,21 @@
 
     protected override void OnParametersSet()
     {
-        // Track activations so Lazy mode knows which panels to keep mounted.
+        // Precedence: a non-empty ActiveValue wins, then a non-empty Value, then
+        // DefaultValue (one-shot seed for uncontrolled use). If none apply (already
+        // seeded, or no DefaultValue given), keep whatever _resolvedValue currently
+        // is — the internally-tracked value from the user's own clicks.
         if (!string.IsNullOrEmpty(ActiveValue))
-            _activatedValues.Add(ActiveValue);
+            _resolvedValue = ActiveValue;
+        else if (!string.IsNullOrEmpty(Value))
+            _resolvedValue = Value;
+        else if (!_defaultApplied && !string.IsNullOrEmpty(DefaultValue))
+            _resolvedValue = DefaultValue;
+        _defaultApplied = true;
+
+        // Track activations so Lazy mode knows which panels to keep mounted.
+        if (!string.IsNullOrEmpty(_resolvedValue))
+            _activatedValues.Add(_resolvedValue);
     }
 
     internal void RegisterContent(string value)
@@ -145,7 +198,7 @@
     internal async Task NavigateBySwipe(string direction)
     {
         if (_contentOrder.Count == 0) return;
-        var idx = _contentOrder.IndexOf(ActiveValue);
+        var idx = _contentOrder.IndexOf(_resolvedValue);
         if (idx < 0) return;
 
         var step = direction == "next" ? 1 : -1;
@@ -181,10 +234,14 @@
 
     private async Task SetValue(string value)
     {
-        ActiveValue = value;
+        _resolvedValue = value;
         if (!string.IsNullOrEmpty(value))
             _activatedValues.Add(value);
-        await ActiveValueChanged.InvokeAsync(value);
+
+        if (ActiveValueChanged.HasDelegate)
+            await ActiveValueChanged.InvokeAsync(value);
+        if (ValueChanged.HasDelegate)
+            await ValueChanged.InvokeAsync(value);
     }
 
     public record TabsContext(
