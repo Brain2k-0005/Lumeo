@@ -32,6 +32,11 @@ internal sealed class OverlayExitAnimator : IDisposable
     private bool _shownOpen;
     // Guards single JS-wiring per exit; reset on every new exit and on re-open.
     private bool _wired;
+    // Set by Dispose(). Belt-and-suspenders alongside each component's own
+    // _disposed field: even if a caller's OnAfterRenderAsync reaches WireExitAsync
+    // right after its component was disposed, this stops it from invoking `wire`
+    // (and therefore from touching a disposed DotNetObjectReference) at all.
+    private bool _disposed;
 
     /// <summary>True while the panel is mounted purely to play its exit animation.</summary>
     public bool Exiting { get; private set; }
@@ -75,12 +80,33 @@ internal sealed class OverlayExitAnimator : IDisposable
     /// class. Invokes <paramref name="wire"/> (the <c>attachOverlayExitEnd</c>
     /// interop that awaits the panel's exit animation and calls back
     /// <see cref="IOverlayExitCallback.OnExitAnimationEnd"/>) exactly once per exit.
+    ///
+    /// <para>Production circuit-kill fix: the caller's component can be disposed
+    /// WHILE it was awaiting an EARLIER interop call in the same OnAfterRenderAsync
+    /// (PositionFixed / UnpositionFixed / RegisterClickOutside, ...) and only
+    /// reaches this call afterwards, with its DotNetObjectReference already
+    /// disposed. <c>wire</c> handing that disposed reference to JS threw
+    /// <see cref="ObjectDisposedException"/> straight out of OnAfterRenderAsync and
+    /// killed the whole Blazor Server circuit (production report: a menu button
+    /// navigates away while its tooltip/submenu is still closing).
+    /// <see cref="OperationCanceledException"/> covers the analogous race on a
+    /// circuit that is mid-teardown. Neither is actionable once the panel is gone,
+    /// so both are swallowed here alongside the pre-existing
+    /// <see cref="Microsoft.JSInterop.JSDisconnectedException"/> handling — one guard for every one of
+    /// the ten components that call through this animator, regardless of which
+    /// <see cref="IComponentInteropService"/> implementation they were given.</para>
     /// </summary>
     public async Task WireExitAsync(Func<Task> wire)
     {
-        if (!Exiting || _wired) return;
+        if (!Exiting || _wired || _disposed) return;
         _wired = true;
-        await wire();
+        try
+        {
+            await wire();
+        }
+        catch (Microsoft.JSInterop.JSDisconnectedException) { }
+        catch (ObjectDisposedException) { }
+        catch (OperationCanceledException) { }
     }
 
     /// <summary>
@@ -98,5 +124,9 @@ internal sealed class OverlayExitAnimator : IDisposable
         return true;
     }
 
-    public void Dispose() => _fallback.Dispose();
+    public void Dispose()
+    {
+        _disposed = true;
+        _fallback.Dispose();
+    }
 }

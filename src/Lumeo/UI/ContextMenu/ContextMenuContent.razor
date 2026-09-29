@@ -61,6 +61,10 @@
     private DotNetObjectReference<ContextMenuContent>? _selfRef;
     private const int ExitDurationMs = 250;
 
+    // Set as the FIRST statement of DisposeAsync — see TooltipContent for the
+    // full writeup of the disposal-during-await race this guards against.
+    private bool _disposed;
+
     // pointer-events-none during the exit window makes the fading surface inert so a
     // double-click / second tap can't re-invoke a menu item while it animates out (P2).
     private string AnimationClass => _exit.Exiting ? "animate-zoom-out pointer-events-none" : "animate-fade-in";
@@ -102,10 +106,12 @@
                 await Context.SetOpen.InvokeAsync(false);
                 await InvokeAsync(StateHasChanged);
             });
+            if (_disposed) return;
             _registered = true;
             _focusedIndex = -1;
 
             await ClampToViewport();
+            if (_disposed) return;
 
             // Save where focus was before opening so it returns there on close
             // (WCAG 2.4.3), then move focus to the menu container so Escape/Arrow
@@ -123,14 +129,15 @@
             await Cleanup();
         }
 
+        if (_disposed) return;
+
         // Once the exit render has committed the zoom-out class, hand the unmount
         // to the panel's own animationend (attachOverlayExitEnd); the fallback
         // timer covers the JS-dead case. Wires once per exit.
         await _exit.WireExitAsync(async () =>
         {
             _selfRef ??= DotNetObjectReference.Create(this);
-            try { await Interop.AttachOverlayExitEnd(_contentId, _selfRef); }
-            catch (JSDisconnectedException) { }
+            await Interop.AttachOverlayExitEnd(_contentId, _selfRef);
         });
     }
 
@@ -229,6 +236,7 @@
 
     public async ValueTask DisposeAsync()
     {
+        _disposed = true;
         _exit.Dispose();
         _selfRef?.Dispose();
         if (_registered) await Cleanup();

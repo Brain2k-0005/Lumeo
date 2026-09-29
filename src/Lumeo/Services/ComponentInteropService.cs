@@ -160,6 +160,20 @@ public sealed class ComponentInteropService : IComponentInteropService
             await module.InvokeVoidAsync("attachOverlayExitEnd", elementId, dotNetRef);
         }
         catch (Microsoft.JSInterop.JSDisconnectedException) { }
+        // The caller's component can be disposed WHILE this call is marshalling
+        // dotNetRef (JSRuntime.TrackObjectReference runs as part of InvokeVoidAsync,
+        // before the JS round-trip): a menu/tooltip/etc. content that awaits an
+        // earlier JS call in OnAfterRenderAsync (PositionFixed, UnpositionFixed, ...)
+        // and gets disposed mid-await reaches this call with an already-disposed
+        // dotNetRef. That threw ObjectDisposedException straight out of
+        // OnAfterRenderAsync and killed the whole Blazor Server circuit (production
+        // report: menu button navigates away while its tooltip/submenu is still
+        // closing). OperationCanceledException covers the analogous race on a
+        // circuit that is mid-teardown rather than mid-dispose. Neither is
+        // actionable once the panel is gone, so both are swallowed here — the one
+        // shared entry point every OverlayExitAnimator user calls through.
+        catch (ObjectDisposedException) { }
+        catch (OperationCanceledException) { }
     }
 
     public async ValueTask UnlockScroll()

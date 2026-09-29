@@ -36,6 +36,10 @@
     private DotNetObjectReference<NavigationMenuContent>? _selfRef;
     private const int ExitDurationMs = 250;
 
+    // Set as the FIRST statement of DisposeAsync — see TooltipContent for the
+    // full writeup of the disposal-during-await race this guards against.
+    private bool _disposed;
+
     private bool IsOpen => Context.ActiveItemId == ItemContext.ItemId;
 
     // pointer-events-none blocks the pointer on the fading panel; `inert` (rendered
@@ -58,11 +62,13 @@
         if (Context.ActiveItemId == ItemContext.ItemId && !_registered)
         {
             await Interop.PositionFixed(_contentId, ItemContext.TriggerId, "start");
+            if (_disposed) return;
             await Interop.RegisterClickOutside(_contentId, ItemContext.TriggerId, async () =>
             {
                 await Context.SetActiveItemId.InvokeAsync(null);
                 await InvokeAsync(StateHasChanged);
             });
+            if (_disposed) return;
             _registered = true;
 
             // If this submenu was opened from the keyboard (ArrowDown on the
@@ -82,11 +88,11 @@
             await Cleanup();
         }
 
+        if (_disposed) return;
         await _exit.WireExitAsync(async () =>
         {
             _selfRef ??= DotNetObjectReference.Create(this);
-            try { await Interop.AttachOverlayExitEnd(_contentId, _selfRef); }
-            catch (JSDisconnectedException) { }
+            await Interop.AttachOverlayExitEnd(_contentId, _selfRef);
         });
     }
 
@@ -117,6 +123,7 @@
 
     public async ValueTask DisposeAsync()
     {
+        _disposed = true;
         _exit.Dispose();
         _selfRef?.Dispose();
         if (_registered) await Cleanup();

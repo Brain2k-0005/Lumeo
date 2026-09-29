@@ -5,6 +5,20 @@ All notable changes to Lumeo will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+- **Overlays no longer terminate the Blazor Server circuit when disposed while their
+  exit animation is being wired up.** Overlay content that awaits JS in
+  `OnAfterRenderAsync` (positioning, or its close-time cleanup) and gets disposed
+  mid-await could resume with an already-disposed `DotNetObjectReference` and hand it
+  to `attachOverlayExitEnd`; the JS interop layer then threw `ObjectDisposedException`
+  straight out of the render pipeline and killed the circuit — hit in production when a
+  menu button navigated away while its own tooltip or submenu was still closing.
+  Affected components: `Tooltip`, `DropdownMenu`/`DropdownMenuSub`, `HoverCard`,
+  `Menubar`/`MenubarSub`, `NavigationMenu` (content and viewport), `ContextMenu`/
+  `ContextMenuSub`, `Dialog`, `Sheet`, `Drawer`, and `AlertDialog`.
+
 ## [5.12.1] - 2026-09-29
 
 ### Added

@@ -132,6 +132,11 @@ else if (Context.IsOpen || _exiting)
     // never arrives — circuit gone / event lost). _exitWired guards single wiring
     // per exit; reset whenever a new exit starts or the panel re-opens.
     private DotNetObjectReference<SheetContent>? _selfRef;
+    // Set as the FIRST statement of DisposeAsync — see TooltipContent (the shared
+    // OverlayExitAnimator write-up) for the disposal-during-await race this
+    // guards against; this fixed overlay predates that animator and wires its
+    // exit callback inline, but hits the exact same race.
+    private bool _disposed;
     private bool _exitWired;
 
     // Whether the swipe-to-dismiss gesture is currently wired in JS, plus the
@@ -478,6 +483,7 @@ else if (Context.IsOpen || _exiting)
                 }
             }
             catch (JSDisconnectedException) { }
+            if (_disposed) return;
 
             // Dismissed while the open interop was still in flight (the Server
             // round-trip window that used to swallow the slide-out): tear the
@@ -501,6 +507,8 @@ else if (Context.IsOpen || _exiting)
             _interopReady = false;
         }
 
+        if (_disposed) return;
+
         // Radix-Presence parity: hand the unmount to the panel's OWN exit
         // animationend. attachOverlayExitEnd first strips the open-time inline
         // animation:none/transform:none guard (otherwise it OVERRIDES the
@@ -512,8 +520,16 @@ else if (Context.IsOpen || _exiting)
         {
             _exitWired = true;
             _selfRef ??= DotNetObjectReference.Create(this);
+            // See TooltipContent / OverlayExitAnimator.WireExitAsync for the
+            // disposal-during-await race this guards against (ObjectDisposedException
+            // from a stale DotNetObjectReference, OperationCanceledException from a
+            // mid-teardown circuit) — this component predates the shared animator and
+            // wires its own exit callback, so the same three-exception guard is inlined
+            // here instead of being centralised.
             try { await Interop.AttachOverlayExitEnd(_contentId, _selfRef); }
             catch (JSDisconnectedException) { }
+            catch (ObjectDisposedException) { }
+            catch (OperationCanceledException) { }
         }
     }
 
@@ -581,6 +597,7 @@ else if (Context.IsOpen || _exiting)
 
     public async ValueTask DisposeAsync()
     {
+        _disposed = true;
         _exitDispatch.Dispose();
         _selfRef?.Dispose();
         if (_interopReady) await Cleanup();

@@ -85,6 +85,10 @@
     private DotNetObjectReference<DropdownMenuContent>? _selfRef;
     private const int ExitDurationMs = 250;
 
+    // Set as the FIRST statement of DisposeAsync — see TooltipContent for the
+    // full writeup of the disposal-during-await race this guards against.
+    private bool _disposed;
+
     // Enter keeps the existing fade-in; exit uses zoom-out (scale-down + fade) —
     // the shadcn/Radix menu dismiss (data-[state=closed]:zoom-out-95 + fade-out).
     // pointer-events-none during the exit window (data-state=closed but still
@@ -157,6 +161,7 @@
         if (Context.IsOpen && !_registered)
         {
             await Interop.PositionFixed(Context.ContentId, Context.WrapperId, AlignStr, false, SideStr, SideOffset, AlignOffset);
+            if (_disposed) return;
             // Exclude the wrapper (the trigger lives inside it) from the
             // click-outside check. With a null exclusion, mousedown on the open
             // trigger fired this close handler first and the trigger's own click
@@ -166,6 +171,7 @@
                 await Context.SetOpen.InvokeAsync(false);
                 await InvokeAsync(StateHasChanged);
             });
+            if (_disposed) return;
             _registered = true;
             _focusedIndex = -1;
 
@@ -181,14 +187,15 @@
             await Cleanup();
         }
 
+        if (_disposed) return;
+
         // Once the exit render has committed the zoom-out class, hand the unmount to
         // the panel's own animationend (attachOverlayExitEnd). The fallback timer
         // stays armed for the JS-dead case. Wires once per exit.
         await _exit.WireExitAsync(async () =>
         {
             _selfRef ??= DotNetObjectReference.Create(this);
-            try { await Interop.AttachOverlayExitEnd(Context.ContentId, _selfRef); }
-            catch (JSDisconnectedException) { }
+            await Interop.AttachOverlayExitEnd(Context.ContentId, _selfRef);
         });
     }
 
@@ -276,6 +283,7 @@
 
     public async ValueTask DisposeAsync()
     {
+        _disposed = true;
         _exit.Dispose();
         _selfRef?.Dispose();
         if (_registered) await Cleanup();

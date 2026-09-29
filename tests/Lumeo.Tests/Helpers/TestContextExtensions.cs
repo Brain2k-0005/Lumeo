@@ -1,9 +1,11 @@
+using System.Reflection;
 using System.Runtime.CompilerServices;
 using Bunit;
 using Lumeo.Services;
 using Lumeo.Services.Localization;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
+using Microsoft.JSInterop;
 
 namespace Lumeo.Tests.Helpers;
 
@@ -69,5 +71,31 @@ public static class TestContextExtensions
         ctx.Services.AddScoped<ILumeoLocalizer, LumeoLocalizer>();
 
         return ctx;
+    }
+
+    /// <summary>
+    /// Registers (or re-fetches) the bUnit JS module mock for the EXACT versioned
+    /// import path <see cref="ComponentInteropService.GetModuleAsync"/> actually
+    /// requests (<c>./_content/Lumeo/js/components.js?v=&lt;AssemblyInformationalVersion&gt;</c>).
+    ///
+    /// <see cref="AddLumeoServices"/> registers the bare (unversioned) path, which is
+    /// enough for every test that just needs Loose-mode auto-completion — but does NOT
+    /// intercept the real "import" call bUnit's fake <c>IJSRuntime</c> resolves it to
+    /// (a distinct mock keyed by the exact string), so configuring a specific call's
+    /// result/exception on that bare-path handle silently never fires. Call this
+    /// instead whenever a test needs to plan a specific invocation (e.g.
+    /// <c>.SetException(...)</c> on <c>attachOverlayExitEnd</c>, or a deferred
+    /// <c>.SetVoidResult()</c> to model a JS call parked mid-await).
+    /// </summary>
+    public static BunitJSModuleInterop SetupComponentsModule(this BunitContext ctx)
+    {
+        var v = typeof(ComponentInteropService).Assembly
+            .GetCustomAttribute<System.Reflection.AssemblyInformationalVersionAttribute>()
+            ?.InformationalVersion
+            ?? typeof(ComponentInteropService).Assembly.GetName().Version?.ToString()
+            ?? "0";
+        var module = ctx.JSInterop.SetupModule($"./_content/Lumeo/js/components.js?v={v}");
+        module.Mode = JSRuntimeMode.Loose;
+        return module;
     }
 }

@@ -44,6 +44,10 @@
     private DotNetObjectReference<MenubarContent>? _selfRef;
     private const int ExitDurationMs = 250;
 
+    // Set as the FIRST statement of DisposeAsync — see TooltipContent for the
+    // full writeup of the disposal-during-await race this guards against.
+    private bool _disposed;
+
     private bool IsOpen => Context.OpenMenuId == MenuContext.MenuId;
     // pointer-events-none during the exit window makes the fading surface inert so a
     // double-click / second tap can't re-invoke a menu item while it animates out (P2).
@@ -71,6 +75,7 @@
         if (Context.OpenMenuId == MenuContext.MenuId && !_registered)
         {
             await Interop.PositionFixed(_contentId, MenuContext.WrapperId, "start");
+            if (_disposed) return;
             // Exclude the menu wrapper (the trigger lives inside it) from the
             // click-outside check. With a null exclusion, mousedown on the open
             // trigger fired this close handler first and the trigger's own click
@@ -80,6 +85,7 @@
                 await Context.SetOpenMenuId.InvokeAsync(null);
                 await InvokeAsync(StateHasChanged);
             });
+            if (_disposed) return;
             _registered = true;
             _focusedIndex = -1;
 
@@ -128,11 +134,11 @@
             await Cleanup();
         }
 
+        if (_disposed) return;
         await _exit.WireExitAsync(async () =>
         {
             _selfRef ??= DotNetObjectReference.Create(this);
-            try { await Interop.AttachOverlayExitEnd(_contentId, _selfRef); }
-            catch (JSDisconnectedException) { }
+            await Interop.AttachOverlayExitEnd(_contentId, _selfRef);
         });
     }
 
@@ -239,6 +245,7 @@
 
     public async ValueTask DisposeAsync()
     {
+        _disposed = true;
         _exit.Dispose();
         _selfRef?.Dispose();
         if (_registered) await Cleanup();
