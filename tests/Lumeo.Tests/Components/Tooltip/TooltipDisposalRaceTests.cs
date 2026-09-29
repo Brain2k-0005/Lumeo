@@ -84,8 +84,9 @@ public class TooltipDisposalRaceTests : IAsyncLifetime
         // attachOverlayExitEnd with a disposed _selfRef; make that call throw the
         // exact exception the real TrackObjectReference call throws, so a missing
         // guard fails this test too (not just silently "gets lucky").
-        module.SetupVoid("attachOverlayExitEnd", _ => true)
-            .SetException(new ObjectDisposedException("DotNetObjectReference`1[[Lumeo.TooltipContent]]"));
+        // Plain void result: this test asserts attachOverlayExitEnd is never called at all. A
+        // pre-faulted setup here would never be observed and resurface via UnobservedTaskException.
+        module.SetupVoid("attachOverlayExitEnd", _ => true).SetVoidResult();
         // No .SetResult() yet: stays pending until we call it — this is the "Cleanup
         // -> UnpositionFixed on close" await the bug report names, hit while the exit
         // (Exiting=true, latched by the close render) is already armed. Only the FIRST

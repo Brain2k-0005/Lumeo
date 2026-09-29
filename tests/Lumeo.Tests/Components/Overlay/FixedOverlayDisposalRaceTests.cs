@@ -41,7 +41,11 @@ public class FixedOverlayDisposalRaceTests : IAsyncLifetime
     {
         OverlayInstance? shown = null;
         overlay.OnShow += i => shown = i;
-        _ = open();
+        // Observe a fault from the discarded result task: the overlay is cancelled and the
+        // context disposed, and an unobserved faulted task would later surface through
+        // TaskScheduler.UnobservedTaskException in whichever test runs during that GC
+        // (AlertAutoDismissTests listens process-wide and failed on CI because of it).
+        _ = open().ContinueWith(t => _ = t.Exception, TaskContinuationOptions.OnlyOnFaulted);
         return shown!.Id;
     }
 
