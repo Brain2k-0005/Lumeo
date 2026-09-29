@@ -187,12 +187,14 @@
             EventCallback.Factory.Create<string>(this, SelectOption),
             GetItemClasses,
             GetTabIndex,
-            ItemClass,
             _items,
             RegisterItem,
             ReplaceItem,
             UnregisterItem,
-            _id);
+            _id)
+        {
+            ItemClass = ItemClass,
+        };
     }
 
     // --- Compound-mode registry mutations, all keyed by the STABLE ItemId ---
@@ -457,10 +459,6 @@
         EventCallback<string> Select,
         Func<bool, string> GetItemClasses,
         Func<string, bool, string> GetTabIndex,
-        // Control-wide per-item classes (Segmented.ItemClass), merged onto every
-        // SegmentedItem's button between the base item classes and the item's own
-        // Class — see SegmentedItem.razor's class attribute.
-        string? ItemClass,
         IReadOnlyList<SegmentedItemEntry> Items,
         Action<string, string, bool> RegisterItem,
         Action<string, string, string, bool> ReplaceItem,
@@ -468,5 +466,13 @@
         // The role=radiogroup element id — the anchor for the DOM-order roving-nav
         // probe (Interop.GetOrderedDescendantIds) so arrow-key order tracks the live
         // DOM after a keyed reorder / middle-insert of SegmentedItem children.
-        string ContainerId);
+        string ContainerId)
+    {
+        // Control-wide per-item classes (Segmented.ItemClass), merged onto every
+        // SegmentedItem's button between the base item classes and the item's own
+        // Class — see SegmentedItem.razor's class attribute. An init property rather
+        // than a positional parameter so the shipped constructor and Deconstruct
+        // signatures stay unchanged in a patch release.
+        public string? ItemClass { get; init; }
+    }
 }
