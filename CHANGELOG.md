@@ -16,6 +16,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `DefaultValue`. Previously, code written against the shadcn names compiled silently (caught
   by `AdditionalAttributes`) but left `ActiveValue` at `""`, hiding every `TabsContent` until
   the user clicked a trigger — reported as "Tabs shows no content inside a Sheet".
+- **`SegmentedItem.Class`, `Segmented.ItemClass`, `Segmented.SegmentedOption.Class`**: `SegmentedItem`
+  had no `Class` parameter, so a consumer's `class="..."` replaced the base button classes instead
+  of merging — a consumer wanted the selected segment green and had to build their own control from
+  scratch. `SegmentedItem.Class` now merges last (after the parent's base item classes and its new
+  `ItemClass`); `Segmented.ItemClass` applies a class to every segment in both `Options` and
+  `SegmentedItem`-children modes, and `SegmentedOption.Class` does the same per-option for `Options`
+  mode. Since the selected button already carries `aria-checked="true"`, e.g.
+  `ItemClass="aria-checked:bg-primary aria-checked:text-primary-foreground"` recolors just the
+  selected segment with theme tokens. Owner field report.
 
 ### Fixed
 - Docs examples that used the non-existent `Tabs.Value`/`Tabs.DefaultValue` names (now valid
