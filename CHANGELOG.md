@@ -5,6 +5,19 @@ All notable changes to Lumeo will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **`SegmentedItem.Class`, `Segmented.ItemClass`, `Segmented.SegmentedOption.Class`**: `SegmentedItem`
+  had no `Class` parameter, so a consumer's `class="..."` replaced the base button classes instead
+  of merging — a consumer wanted the selected segment green and had to build their own control from
+  scratch. `SegmentedItem.Class` now merges last (after the parent's base item classes and its new
+  `ItemClass`); `Segmented.ItemClass` applies a class to every segment in both `Options` and
+  `SegmentedItem`-children modes, and `SegmentedOption.Class` does the same per-option for `Options`
+  mode. Since the selected button already carries `aria-checked="true"`, e.g.
+  `ItemClass="aria-checked:bg-primary aria-checked:text-primary-foreground"` recolors just the
+  selected segment with theme tokens. Owner field report.
+
 ## [5.12.0] - 2026-09-25
 
 ### Added

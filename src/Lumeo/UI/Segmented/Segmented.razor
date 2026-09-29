@@ -15,7 +15,7 @@
                     role="radio"
                     aria-checked="@isActive.ToString().ToLower()"
                     tabindex="@GetTabIndex(option.Value, option.Disabled)"
-                    class="@GetItemClasses(isActive)"
+                    class="@Cx.Merge(GetItemClasses(isActive), ItemClass, option.Class)"
                     disabled="@option.Disabled"
                     @onclick="() => SelectOption(option.Value)">
                 @if (option.IconContent is not null)
@@ -52,6 +52,14 @@
     /// <summary>Compound-mode content — one or more <see cref="SegmentedItem"/>.
     /// Ignored when <see cref="Options"/> is set.</summary>
     [Parameter] public RenderFragment? ChildContent { get; set; }
+    /// <summary>Additional CSS classes merged onto every segment's <c>button</c>, in both
+    /// <see cref="Options"/> mode and compound (<see cref="ChildContent"/>) mode — applied
+    /// after the base item classes and before each item's own <c>Class</c>
+    /// (<see cref="SegmentedOption.Class"/> or <see cref="SegmentedItem.Class"/>), which wins
+    /// any Tailwind conflict. Useful for a control-wide accent, e.g.
+    /// <c>aria-checked:bg-primary aria-checked:text-primary-foreground</c> to recolor the
+    /// selected segment.</summary>
+    [Parameter] public string? ItemClass { get; set; }
     /// <summary>When true, the track and every segment stretch to fill the available
     /// width instead of sizing to their content.</summary>
     [Parameter] public bool Block { get; set; }
@@ -179,6 +187,7 @@
             EventCallback.Factory.Create<string>(this, SelectOption),
             GetItemClasses,
             GetTabIndex,
+            ItemClass,
             _items,
             RegisterItem,
             ReplaceItem,
@@ -424,6 +433,11 @@
         public RenderFragment? IconContent { get; set; }
 
         public bool Disabled { get; set; }
+
+        /// <summary>Additional CSS classes merged onto this option's <c>button</c>, after the
+        /// parent <see cref="Segmented"/>'s base item classes and its <c>ItemClass</c> — this
+        /// wins any Tailwind conflict.</summary>
+        public string? Class { get; set; }
     }
 
     /// <summary>One entry in the ordered segment registry: the segment's current
@@ -443,6 +457,10 @@
         EventCallback<string> Select,
         Func<bool, string> GetItemClasses,
         Func<string, bool, string> GetTabIndex,
+        // Control-wide per-item classes (Segmented.ItemClass), merged onto every
+        // SegmentedItem's button between the base item classes and the item's own
+        // Class — see SegmentedItem.razor's class attribute.
+        string? ItemClass,
         IReadOnlyList<SegmentedItemEntry> Items,
         Action<string, string, bool> RegisterItem,
         Action<string, string, string, bool> ReplaceItem,
