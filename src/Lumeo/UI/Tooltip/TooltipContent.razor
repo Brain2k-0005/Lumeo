@@ -66,6 +66,12 @@
     private DotNetObjectReference<TooltipContent>? _selfRef;
     private const int ExitDurationMs = 250;
 
+    // Set as the FIRST statement of DisposeAsync. OnAfterRenderAsync can be
+    // mid-await (PositionFixed / UnpositionFixed) when disposal happens — without
+    // this, resuming would keep registering JS state for a component that's
+    // already gone and could reach WireExitAsync with a disposed _selfRef.
+    private bool _disposed;
+
     // Last placement values actually handed to PositionFixed. A live Side/Offset/Align
     // change while the tooltip is open must re-run PositionFixed so the box moves;
     // storing the applied values stops a same-value re-render from thrashing JS.
@@ -172,6 +178,7 @@
             // not re-enter this branch — no render loop, no re-registering positionFixed.
             var anchor = Context.AnchorId ?? Context.WrapperId;
             var resolved = await Interop.PositionFixed(_contentId, anchor, AlignStr, false, SideStr, Offset, AlignOffset, OnLiveSideChanged);
+            if (_disposed) return;
 
             // Empty means the anchor was not in the DOM, so nothing was placed and nothing
             // registered. Latching the applied state here would record an element the box never
@@ -204,13 +211,14 @@
             // place while the zoom-out plays. The element stays mounted for the exit
             // via the _exit.Present gate.
             await Cleanup();
+            if (_disposed) return;
         }
 
+        if (_disposed) return;
         await _exit.WireExitAsync(async () =>
         {
             _selfRef ??= DotNetObjectReference.Create(this);
-            try { await Interop.AttachOverlayExitEnd(_contentId, _selfRef); }
-            catch (Microsoft.JSInterop.JSDisconnectedException) { }
+            await Interop.AttachOverlayExitEnd(_contentId, _selfRef);
         });
     }
 
@@ -257,6 +265,7 @@
 
     public async ValueTask DisposeAsync()
     {
+        _disposed = true;
         _exit.Dispose();
         _selfRef?.Dispose();
         if (_registered) await Cleanup();

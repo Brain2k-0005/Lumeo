@@ -249,6 +249,11 @@ else if (Context.IsOpen || _exiting)
     // animation:none guard so the slide-out can run. _exitDispatch is the fallback.
     private DotNetObjectReference<DrawerContent>? _selfRef;
     private bool _exitWired;
+    // Set as the FIRST statement of DisposeAsync — see TooltipContent (the shared
+    // OverlayExitAnimator write-up) for the disposal-during-await race this
+    // guards against; this fixed overlay predates that animator and wires its
+    // exit callback inline, but hits the exact same race.
+    private bool _disposed;
 
     // FALLBACK window only — the real unmount is the panel's animationend
     // (OnExitAnimationEnd). Sits above the CSS duration (slide 300ms, fade 150ms)
@@ -636,6 +641,7 @@ else if (Context.IsOpen || _exiting)
                 _initialGestureSetupComplete = true;
             }
             catch (JSDisconnectedException) { }
+            if (_disposed) return;
 
             // Dismissed while the open interop was still in flight (the Server
             // round-trip window that used to swallow the slide-out): tear the
@@ -678,6 +684,8 @@ else if (Context.IsOpen || _exiting)
             catch (JSDisconnectedException) { }
         }
 
+        if (_disposed) return;
+
         // Radix-Presence parity: hand the unmount to the panel's OWN exit
         // animationend. attachOverlayExitEnd first strips the open-time inline
         // animation:none/transform:none guard (otherwise it overrides the
@@ -688,8 +696,16 @@ else if (Context.IsOpen || _exiting)
         {
             _exitWired = true;
             _selfRef ??= DotNetObjectReference.Create(this);
+            // See TooltipContent / OverlayExitAnimator.WireExitAsync for the
+            // disposal-during-await race this guards against (ObjectDisposedException
+            // from a stale DotNetObjectReference, OperationCanceledException from a
+            // mid-teardown circuit) — this component predates the shared animator and
+            // wires its own exit callback, so the same three-exception guard is inlined
+            // here instead of being centralised.
             try { await Interop.AttachOverlayExitEnd(_contentId, _selfRef); }
             catch (JSDisconnectedException) { }
+            catch (ObjectDisposedException) { }
+            catch (OperationCanceledException) { }
         }
     }
 
@@ -971,6 +987,7 @@ else if (Context.IsOpen || _exiting)
 
     public async ValueTask DisposeAsync()
     {
+        _disposed = true;
         _exitDispatch.Dispose();
         _selfRef?.Dispose();
         if (_interopReady) await Cleanup();

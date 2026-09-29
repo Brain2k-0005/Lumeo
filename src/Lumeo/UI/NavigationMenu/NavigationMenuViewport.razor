@@ -31,6 +31,10 @@
     private DotNetObjectReference<NavigationMenuViewport>? _selfRef;
     private const int ExitDurationMs = 250;
 
+    // Set as the FIRST statement of DisposeAsync — see TooltipContent for the
+    // full writeup of the disposal-during-await race this guards against.
+    private bool _disposed;
+
     private bool IsOpen => Context.ActiveItemId is not null;
 
     private string CssClass => Cx.Merge("absolute start-0 top-full flex justify-center", Class);
@@ -58,11 +62,11 @@
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
+        if (_disposed) return;
         await _exit.WireExitAsync(async () =>
         {
             _selfRef ??= DotNetObjectReference.Create(this);
-            try { await Interop.AttachOverlayExitEnd(_viewportId, _selfRef); }
-            catch (JSDisconnectedException) { }
+            await Interop.AttachOverlayExitEnd(_viewportId, _selfRef);
         });
     }
 
@@ -76,6 +80,7 @@
 
     public ValueTask DisposeAsync()
     {
+        _disposed = true;
         _exit.Dispose();
         _selfRef?.Dispose();
         return ValueTask.CompletedTask;

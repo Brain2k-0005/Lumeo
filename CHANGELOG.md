@@ -25,6 +25,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the native `@bind` baseline. `InputMask` additionally reads and restores the caret only when the
   masked text differs from what was typed, since a restore computed for an older keystroke moved
   the caret back into the middle of newer typing.
+- **Overlays no longer terminate the Blazor Server circuit when disposed while their
+  exit animation is being wired up.** Overlay content that awaits JS in
+  `OnAfterRenderAsync` (positioning, or its close-time cleanup) and gets disposed
+  mid-await could resume with an already-disposed `DotNetObjectReference` and hand it
+  to `attachOverlayExitEnd`; the JS interop layer then threw `ObjectDisposedException`
+  straight out of the render pipeline and killed the circuit — hit in production when a
+  menu button navigated away while its own tooltip or submenu was still closing.
+  Affected components: `Tooltip`, `DropdownMenu`/`DropdownMenuSub`, `HoverCard`,
+  `Menubar`/`MenubarSub`, `NavigationMenu` (content and viewport), `ContextMenu`/
+  `ContextMenuSub`, `Dialog`, `Sheet`, `Drawer`, and `AlertDialog`.
 
 ## [5.12.1] - 2026-09-29
 
