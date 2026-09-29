@@ -41,14 +41,7 @@
         {
             <div class="@($"flex items-center {AccessoryPad} text-muted-foreground")">@Prefix</div>
         }
-        <input data-slot="input-control" @ref="_inputRef"
-               name="@Name"
-               id="@FormFieldControlId"
-               type="@(Variant == InputVariant.Search ? "search" : null)"
-               aria-required="@Required.ToString().ToLowerInvariant()"
-               aria-invalid="@((EffectiveInvalid || IsOverLimit).ToString().ToLowerInvariant())"
-               aria-describedby="@FormFieldDescribedBy"
-               maxlength="@EffectiveMaxLength" class="@WrappedInputClass" value="@SafeValue" @oninput="HandleInput" disabled="@Disabled" @attributes="EffectiveAttributes" />
+        @{ RenderControl(__builder, WrappedInputClass, Variant == InputVariant.Search ? "search" : null); }
         @if (Clearable && !string.IsNullOrEmpty(_current))
         {
             <button type="button" class="@($"flex items-center {AccessoryClearPad} text-muted-foreground hover:text-foreground transition-colors")" @onclick="HandleClear" tabindex="-1" aria-label="@L["Common.Clear"]">
@@ -93,13 +86,7 @@
 }
 else
 {
-    <input data-slot="input-control" @ref="_inputRef"
-           name="@Name"
-           id="@FormFieldControlId"
-           aria-required="@Required.ToString().ToLowerInvariant()"
-           aria-invalid="@((EffectiveInvalid || IsOverLimit).ToString().ToLowerInvariant())"
-           aria-describedby="@FormFieldDescribedBy"
-           maxlength="@EffectiveMaxLength" class="@CssClass" value="@SafeValue" @oninput="HandleInput" disabled="@Disabled" @attributes="EffectiveAttributes" />
+    RenderControl(__builder, CssClass, null);
 }
 
 @if (ShowCount)
@@ -256,8 +243,51 @@ else
             string.Equals(kv.Key, "type", StringComparison.OrdinalIgnoreCase)
             && string.Equals(kv.Value?.ToString(), "number", StringComparison.OrdinalIgnoreCase));
 
-    // null => Blazor omits the `value` attribute entirely, the only legal state for a file input.
-    private string? SafeValue => IsFileInput ? null : _current;
+    // The <input> itself, shared by the wrapped and the plain layout.
+    //
+    // The text input binds its value the way Razor's @bind does (@bind:get/@bind:set,
+    // oninput), NOT as a plain value="..." attribute next to @oninput. Only the bind form
+    // makes the compiler emit SetUpdatesAttributeName("value") on the handler: when an
+    // input event arrives, Blazor then first updates the value attribute it last rendered
+    // to the text the event carried. A render produced for an older keystroke therefore
+    // matches what the browser had at that point and does not rewrite the DOM, while the
+    // user has already typed further. Without it, every render batch set input.value back
+    // to the text of the keystroke it answered, and under real network latency the newer
+    // keystrokes typed in between were lost (150 ms latency at 80 ms/key typed
+    // "Realistic typing speed check" as "Relsi yigsedcek").
+    //
+    // A file input keeps the plain handler and gets no value at all: its value may only be
+    // set to the empty string (Blazor throws InvalidStateError once a file is picked), and
+    // the bind form would record the picked file's path as the rendered value.
+    private void RenderControl(Microsoft.AspNetCore.Components.Rendering.RenderTreeBuilder __builder, string cssClass, string? type)
+    {
+        if (IsFileInput)
+        {
+            <input data-slot="input-control" @ref="_inputRef"
+                   name="@Name"
+                   id="@FormFieldControlId"
+                   type="@type"
+                   aria-required="@Required.ToString().ToLowerInvariant()"
+                   aria-invalid="@((EffectiveInvalid || IsOverLimit).ToString().ToLowerInvariant())"
+                   aria-describedby="@FormFieldDescribedBy"
+                   maxlength="@EffectiveMaxLength" class="@cssClass" @oninput="HandleInput" disabled="@Disabled" @attributes="EffectiveAttributes" />
+        }
+        else
+        {
+            <input data-slot="input-control" @ref="_inputRef"
+                   name="@Name"
+                   id="@FormFieldControlId"
+                   type="@type"
+                   aria-required="@Required.ToString().ToLowerInvariant()"
+                   aria-invalid="@((EffectiveInvalid || IsOverLimit).ToString().ToLowerInvariant())"
+                   aria-describedby="@FormFieldDescribedBy"
+                   maxlength="@EffectiveMaxLength" class="@cssClass" @bind:get="_current" @bind:set="HandleBoundInput" @bind:event="oninput" disabled="@Disabled" @attributes="EffectiveAttributes" />
+        }
+    }
+
+    // The bound setter hands the typed text over as a ChangeEventArgs, so OnInput keeps
+    // receiving exactly what it did before.
+    private Task HandleBoundInput(string? value) => HandleInput(new ChangeEventArgs { Value = value });
 
     public enum InputVariant { Default, Search }
 

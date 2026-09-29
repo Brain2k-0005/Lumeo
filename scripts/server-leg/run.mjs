@@ -1,25 +1,29 @@
 #!/usr/bin/env node
 // Blazor Server latency leg — drives tests/Lumeo.Tests.ServerHost (a real
 // interactive-SERVER host, genuine SignalR circuit) with artificial
-// round-trip latency injected via CDP network throttling.
+// round-trip latency injected by delaying every WebSocket frame the page sends.
 //
-// WHY CDP THROTTLING, NOT A SERVER-SIDE DELAY MIDDLEWARE:
+// WHY A WebSocket.send DELAY, NOT CDP THROTTLING OR A SERVER-SIDE MIDDLEWARE:
+//   An init script wraps WebSocket.prototype.send so every frame the browser
+//   sends over the circuit's socket (event dispatches, JS-interop replies,
+//   render acks) leaves RTT ms late. Server-to-client frames are not delayed,
+//   so every browser -> .NET -> browser round trip takes RTT ms longer, while
+//   the page keeps running (and the user keeps typing) in between. That is
+//   what a slow network does to a circuit.
+//   CDP's Network.emulateNetworkConditions, which this leg used before, does
+//   NOT do that for an already-open WebSocket: under it, a Lumeo Input that
+//   lost keystrokes on a real slow connection (every render batch reset the
+//   field to the keystroke it answered) typed perfectly, while the send delay
+//   reproduced the loss exactly ("Realistic typing speed check" ->
+//   "Relsi yigsedcek" at 150 ms / 80 ms per key). Measurements made under CDP
+//   throttling are therefore not evidence of latency behavior.
 //   The host also wires an opt-in server-side delay middleware
-//   (LUMEO_SERVERLEG_DELAY_MS, see Program.cs) for anyone who wants to
-//   reproduce a scenario without a Chromium/CDP dependency. This harness
-//   uses CDP's Network.emulateNetworkConditions instead, applied to the
-//   WHOLE page (including the persistent WebSocket the circuit uses),
-//   because it delays the actual bytes-on-the-wire for every individual
-//   SignalR frame in both directions — a live simulation of a slow client,
-//   not just "the first HTTP response is slower". A delay middleware only
-//   adds latency to the initial negotiate/upgrade HTTP request; once the
-//   WebSocket is open, Blazor's render-batch and event-dispatch frames
-//   flow straight through it with zero added delay, so it can't reproduce
-//   "a drag commit's round-trip takes 200ms" — exactly the class of bug
-//   (stuck transforms, races between a settle timer and a slow .NET
-//   round-trip) this leg exists to catch. CDP throttling is Chromium-only,
-//   which is fine here — this leg's job is circuit-latency behavior, not
-//   cross-engine coverage (scripts/pointer-harness/ covers that).
+//   (LUMEO_SERVERLEG_DELAY_MS, see Program.cs), but it only slows the initial
+//   negotiate/upgrade HTTP request; once the socket is open, frames flow
+//   through it with zero added delay. The send delay is plain JS and works in
+//   any engine; this leg still runs Chromium only, since its job is
+//   circuit-latency behavior, not cross-engine coverage
+//   (scripts/pointer-harness/ covers that).
 //
 // Usage: node run.mjs [--rtt=200]
 
@@ -170,8 +174,8 @@ async function main() {
   console.log('Server host is up.');
 
   // browser is declared OUTSIDE the try (started null) and the try wraps
-  // chromium.launch()/CDP setup too, not just the scenarios: if Chromium is
-  // missing or launch()/CDP setup throws, control used to skip straight past
+  // chromium.launch()/page setup too, not just the scenarios: if Chromium is
+  // missing or launch()/page setup throws, control used to skip straight past
   // the try/finally below without ever reaching serverProc.kill(), leaving
   // the spawned `dotnet run` alive and SERVERLEG_PORT bound — poisoning the
   // next run with a port collision. The finally's `if (browser)` guard
@@ -180,17 +184,15 @@ async function main() {
   try {
     browser = await chromium.launch();
     const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
-    const cdp = await page.context().newCDPSession(page);
-    await cdp.send('Network.enable');
-    // downloadThroughput/uploadThroughput: -1 means "unlimited" — only latency
-    // is injected, isolating the RTT variable from bandwidth effects.
-    await cdp.send('Network.emulateNetworkConditions', {
-      offline: false,
-      latency: RTT_MS,
-      downloadThroughput: -1,
-      uploadThroughput: -1,
-    });
-    console.log(`CDP network throttling active: ${RTT_MS}ms latency on the whole page (incl. the SignalR WebSocket).`);
+    // Registered before page.goto so the circuit's socket is created with the
+    // wrapped send (see the header for why this and not CDP throttling).
+    await page.addInitScript((delayMs) => {
+      const send = WebSocket.prototype.send;
+      WebSocket.prototype.send = function (data) {
+        setTimeout(() => send.call(this, data), delayMs);
+      };
+    }, RTT_MS);
+    console.log(`WebSocket send delay active: every frame the page sends leaves ${RTT_MS}ms late (one extra RTT per round trip).`);
 
     await page.goto(BASE_URL);
     await page.waitForFunction(() => window.Blazor !== undefined, { timeout: 20_000 });

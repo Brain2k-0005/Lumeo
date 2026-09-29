@@ -257,7 +257,9 @@ else
                     <input id="@EffectiveTriggerId"
                            type="text"
                            name="@Name"
-                           value="@_inputBuffer"
+                           @bind:get="_inputBuffer"
+                           @bind:set="HandleBoundInputChanged"
+                           @bind:event="oninput"
                            placeholder="@EffectivePlaceholder"
                            aria-required="@Required.ToString().ToLower()"
                            aria-invalid="@EffectiveInvalid.ToString().ToLower()"
@@ -265,7 +267,6 @@ else
                            disabled="@Disabled"
                            readonly="@(!AllowKeyboardInput)"
                            class="@($"flex-1 min-w-0 bg-transparent outline-none border-0 p-0 {TextSizeClasses} placeholder:text-muted-foreground disabled:cursor-not-allowed")"
-                           @oninput="HandleInputChanged"
                            @onblur="HandleInputBlur"
                            @onkeydown="HandleInputKeyDown"
                            @onkeydown:stopPropagation="true"
@@ -787,6 +788,13 @@ else
         if (Mode == DatePickerMode.Year) return value.Value.Year.ToString(EffectiveCulture);
         return value.Value.ToString(EffectiveFormat, EffectiveCulture);
     }
+
+    // Bound like Razor's @bind (@bind:get/@bind:set on oninput) instead of value="..." plus
+    // @oninput, so the compiler emits SetUpdatesAttributeName("value"): Blazor then updates
+    // its last-rendered value to the text each input event carried, and a render answering
+    // an older keystroke no longer rewrites the field while the user has typed further
+    // (lost keystrokes under network latency). See Input.razor.
+    private void HandleBoundInputChanged(string? value) => HandleInputChanged(new ChangeEventArgs { Value = value });
 
     private void HandleInputChanged(ChangeEventArgs e)
     {

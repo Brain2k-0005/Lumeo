@@ -29,12 +29,13 @@
                               id="@FormFieldControlId"
                               class="@EditInputClass"
                               rows="3"
-                              value="@_editValue"
+                              @bind:get="_editValue"
+                              @bind:set="HandleBoundInput"
+                              @bind:event="oninput"
                               name="@(Name ?? FormField?.Name)"
                               aria-required="@(Required ? "true" : "false")"
                               aria-invalid="@(EffectiveInvalid ? "true" : "false")"
                               aria-describedby="@FormFieldDescribedBy"
-                              @oninput="OnInput"
                               @onkeydown="OnKeyDown"
                               @onblur="OnBlur" />
                 }
@@ -63,12 +64,13 @@
                            id="@FormFieldControlId"
                            type="text"
                            class="@EditInputClass"
-                           value="@_editValue"
+                           @bind:get="_editValue"
+                           @bind:set="HandleBoundInput"
+                           @bind:event="oninput"
                            name="@(Name ?? FormField?.Name)"
                            aria-required="@(Required ? "true" : "false")"
                            aria-invalid="@(EffectiveInvalid ? "true" : "false")"
                            aria-describedby="@FormFieldDescribedBy"
-                           @oninput="OnInput"
                            @onkeydown="OnKeyDown"
                            @onblur="OnBlur" />
                 }
@@ -341,6 +343,13 @@
         if (Disabled) return;
         if (e.Key is "Enter" or " ") StartEditing();
     }
+
+    // Bound like Razor's @bind (@bind:get/@bind:set on oninput) instead of value="..." plus
+    // @oninput, so the compiler emits SetUpdatesAttributeName("value"): Blazor then updates
+    // its last-rendered value to the text each input event carried, and a render answering
+    // an older keystroke no longer rewrites the field while the user has typed further
+    // (lost keystrokes under network latency). See Input.razor.
+    private void HandleBoundInput(string? value) => OnInput(new ChangeEventArgs { Value = value });
 
     private void OnInput(ChangeEventArgs e)
     {

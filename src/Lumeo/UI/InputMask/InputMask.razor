@@ -18,14 +18,15 @@
 
 <input id="@EffectiveId"
        class="@CssClass"
-       value="@_displayValue"
+       @bind:get="_displayValue"
+       @bind:set="HandleBoundInput"
+       @bind:event="oninput"
        placeholder="@EffectivePlaceholder"
        disabled="@Disabled"
        name="@(Name ?? FormField?.Name)"
        aria-required="@(Required ? "true" : "false")"
        aria-invalid="@(EffectiveInvalid ? "true" : "false")"
        aria-describedby="@FormFieldDescribedBy"
-       @oninput="HandleInput"
        @attributes="EffectiveAttributes" />
 
 @if (!InsideFormField)
@@ -287,18 +288,46 @@
     // (_rawValue[..^1]) regardless of the caret. Deleting via the native input
     // event is inherently caret-correct: the browser removes the char under the
     // caret and we re-derive the raw value from the resulting display (#177).
+    // The input binds its value like Razor's @bind (@bind:get/@bind:set on oninput) rather
+    // than value="..." plus @oninput: only the bind form emits
+    // SetUpdatesAttributeName("value"), which makes Blazor update its last-rendered value to
+    // the text each input event carried. A render whose masked display equals what the
+    // browser already shows then leaves the DOM alone (so a render answering an older
+    // keystroke cannot rewrite newer typing under network latency), and one whose display
+    // differs (a rejected char, an inserted literal) is written by the diff itself.
+    private Task HandleBoundInput(string? value) => HandleInput(new ChangeEventArgs { Value = value });
+
     private async Task HandleInput(ChangeEventArgs e)
     {
         var inputVal = e.Value?.ToString() ?? "";
+        var raw = ExtractRaw(inputVal);
+        var display = ApplyMask(raw);
 
-        // Read the caret BEFORE we rewrite the value — the DOM still holds the
-        // post-edit string the browser produced, so selectionStart is meaningful.
-        int browserCaret;
-        try { browserCaret = await Interop.GetInputCaret(EffectiveId); }
-        catch (JSDisconnectedException) { browserCaret = inputVal.Length; }
+        // Only a display that differs from what the browser produced is written back to the
+        // DOM, and only that write moves the caret. When the masked text equals the typed
+        // text nothing is rewritten and the browser's caret is already right, so neither
+        // read nor restore it: under latency both calls land after the user typed further,
+        // and restoring a caret measured for an older keystroke inserts the next characters
+        // in the middle of the text.
+        var rewrites = !string.Equals(display, inputVal, StringComparison.Ordinal);
 
-        _rawValue = ExtractRaw(inputVal);
-        _displayValue = ApplyMask(_rawValue);
+        int browserCaret = inputVal.Length;
+        if (rewrites)
+        {
+            // Take the new display BEFORE awaiting the caret read. The await lets Blazor
+            // render, and the bound value attribute now holds what the browser typed, so a
+            // render with the previous display would write that older text into the field
+            // for a whole round trip (and drop what is typed meanwhile). The caret call is
+            // sent before this await yields, so it still reaches the browser ahead of the
+            // render batch and reads the caret in the string the browser produced.
+            _rawValue = raw;
+            _displayValue = display;
+            try { browserCaret = await Interop.GetInputCaret(EffectiveId); }
+            catch (JSDisconnectedException) { browserCaret = inputVal.Length; }
+        }
+
+        _rawValue = raw;
+        _displayValue = display;
         // Record the push BEFORE raising ValueChanged: a controlled parent can re-render
         // synchronously inside InvokeAsync, so OnParametersSet must already see this as
         // "the value we pushed" to recognise the echo and keep the caret (and, on a
@@ -333,8 +362,11 @@
         // count the significant chars before the caret, then land just after that
         // many filled slots (skipping any literals in between) so the next
         // keystroke fills the next slot rather than snapping to the end (#177).
-        var rawBeforeCaret = CountRawBefore(inputVal, browserCaret);
-        _pendingCaret = DisplayCaretForRawCount(rawBeforeCaret);
+        if (rewrites)
+        {
+            var rawBeforeCaret = CountRawBefore(inputVal, browserCaret);
+            _pendingCaret = DisplayCaretForRawCount(rawBeforeCaret);
+        }
     }
 
     // How many mask-significant characters sit at or before the caret in the raw
