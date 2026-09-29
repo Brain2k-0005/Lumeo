@@ -1,5 +1,6 @@
 using Bunit;
 using Microsoft.AspNetCore.Components;
+using Microsoft.AspNetCore.Components.Web;
 using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 using Lumeo.Services;
@@ -9,12 +10,10 @@ using L = Lumeo;
 namespace Lumeo.Tests.Components.InputMask;
 
 /// <summary>
-/// InputMask counterpart to <c>Input.InputAsyncEchoTests</c>: InputMask shadows its
-/// bound <c>Value</c> with its own live pair (<c>_rawValue</c>/<c>_displayValue</c>)
-/// plus a <c>_lastPushed</c>/<c>_lastValueParam</c> controlled/uncontrolled guard —
-/// the exact same pattern Input had, so it carries the exact same lost-keystroke bug
-/// when its ValueChanged handler stores the value only after an await, and gets the
-/// same fix (a bounded <c>_pushHistory</c> plus a <c>_dispatching</c> flag).
+/// InputMask counterpart to <c>Input.InputAsyncEchoTests</c>: InputMask shadows its bound
+/// <c>Value</c> with its own live pair (<c>_rawValue</c>/<c>_displayValue</c>), so it had
+/// the same lost-keystroke bug with a ValueChanged handler that stores the value only
+/// after an await, and uses the same <c>ControlledValueEcho</c> rules.
 /// </summary>
 public class InputMaskAsyncEchoTests : IAsyncLifetime
 {
@@ -184,5 +183,98 @@ public class InputMaskAsyncEchoTests : IAsyncLifetime
         Assert.Equal("v", cut.Find("input").GetAttribute("value"));
 
         neverCompletes.TrySetResult();
+    }
+
+    [Fact]
+    public async Task OlderEcho_ArrivingAfterTheNewerEcho_IsIgnored()
+    {
+        var gates = new Dictionary<string, TaskCompletionSource> { ["a"] = new(), ["ab"] = new() };
+        var done = new Dictionary<string, TaskCompletionSource> { ["a"] = new(), ["ab"] = new() };
+        IRenderedComponent<L.InputMask>? cut = null;
+        EventCallback<string?> callback = default;
+        callback = EventCallback.Factory.Create<string?>(_ctx, async (string? v) =>
+        {
+            await gates[v!].Task;
+            cut!.Render(p => p.Add(i => i.Mask, Mask).Add(i => i.Value, v).Add(i => i.ValueChanged, callback));
+            done[v!].SetResult();
+        });
+
+        cut = _ctx.Render<L.InputMask>(p => p
+            .Add(i => i.Mask, Mask)
+            .Add(i => i.Value, (string?)null)
+            .Add(i => i.ValueChanged, callback));
+
+        var input = cut.Find("input");
+        _ = input.TriggerEventAsync("oninput", new ChangeEventArgs { Value = "a" });
+        _ = input.TriggerEventAsync("oninput", new ChangeEventArgs { Value = "ab" });
+
+        gates["ab"].SetResult();
+        await done["ab"].Task;
+        gates["a"].SetResult();
+        await done["a"].Task;
+
+        Assert.Equal("ab", cut.Find("input").GetAttribute("value"));
+    }
+
+    [Fact]
+    public async Task ParentRerender_WithItsOldValue_WhileHandlerPending_KeepsTypedText()
+    {
+        var gate = new TaskCompletionSource();
+        var done = new TaskCompletionSource();
+        IRenderedComponent<L.InputMask>? cut = null;
+        EventCallback<string?> callback = default;
+        callback = EventCallback.Factory.Create<string?>(_ctx, async (string? v) =>
+        {
+            // InputMask pushes after its caret interop call, so a parent's pre-await
+            // re-render lands inside the ValueChanged call.
+            cut!.Render(p => p.Add(i => i.Mask, Mask).Add(i => i.Value, "a").Add(i => i.ValueChanged, callback));
+            await gate.Task;
+            cut!.Render(p => p.Add(i => i.Mask, Mask).Add(i => i.Value, v).Add(i => i.ValueChanged, callback));
+            done.SetResult();
+        });
+
+        cut = _ctx.Render<L.InputMask>(p => p
+            .Add(i => i.Mask, Mask)
+            .Add(i => i.Value, "a")
+            .Add(i => i.ValueChanged, callback));
+
+        _ = cut.Find("input").TriggerEventAsync("oninput", new ChangeEventArgs { Value = "ab" });
+        cut.Render(p => p.Add(i => i.Mask, Mask).Add(i => i.Value, "a").Add(i => i.ValueChanged, callback));
+        Assert.Equal("ab", cut.Find("input").GetAttribute("value"));
+
+        gate.SetResult();
+        await done.Task;
+        Assert.Equal("ab", cut.Find("input").GetAttribute("value"));
+    }
+
+    [Fact]
+    public async Task AsyncHandlerException_ReachesTheEnclosingErrorBoundary()
+    {
+        var gate = new TaskCompletionSource();
+        var handler = EventCallback.Factory.Create<string?>(_ctx, async (string? _) =>
+        {
+            await gate.Task;
+            throw new InvalidOperationException("boom from ValueChanged");
+        });
+
+        var cut = _ctx.Render<ErrorBoundary>(p => p
+            .Add(b => b.ChildContent, (RenderFragment)(builder =>
+            {
+                builder.OpenComponent<L.InputMask>(0);
+                builder.AddComponentParameter(1, nameof(L.InputMask.Mask), Mask);
+                builder.AddComponentParameter(2, nameof(L.InputMask.Value), (string?)null);
+                builder.AddComponentParameter(3, nameof(L.InputMask.ValueChanged), handler);
+                builder.CloseComponent();
+            }))
+            .Add(b => b.ErrorContent, (Exception ex) => $"<p id=\"err\">{ex.Message}</p>"));
+
+        // The event must not wait for the async handler (and must not hang if it did).
+        var dispatch = cut.Find("input").TriggerEventAsync("oninput", new ChangeEventArgs { Value = "a" });
+        Assert.True(dispatch.IsCompleted);
+        await dispatch;
+        Assert.Empty(cut.FindAll("#err"));
+
+        gate.SetResult();
+        await cut.WaitForAssertionAsync(() => Assert.Equal("boom from ValueChanged", cut.Find("#err").TextContent));
     }
 }

@@ -1,32 +1,28 @@
 @page "/e2e/input-async-echo"
 
-@* Real-browser repro for the lost-keystroke bug fixed on Input.razor: a controlled
-   component (Value + ValueChanged bound) whose ValueChanged handler stores the value only
-   AFTER an await can have that late storage arrive out of order relative to a
-   faster/newer keystroke's own push, since each keystroke's handler invocation is
-   independent and they can complete in a different order than they started in. Neither
-   bUnit (no real SignalR round trip / no real timer scheduling under real browser load)
-   nor a synthetic TaskCompletionSource-based unit test fully proves this against ACTUAL
-   circuit timing, so this page + the matching Playwright spec (InputAsyncEchoTests) types
-   a real sentence, at a real interval, against a real Blazor Server circuit.
+@* Real-browser repro for lost keystrokes in a controlled text control whose ValueChanged
+   handler stores the value only AFTER an await (`await Task.Delay(30)`, the consumer's
+   report), typed at 15 ms/key by InputAsyncEchoTests against a real Blazor Server circuit.
 
-   `await Task.Delay(30)` before storing mirrors the bug report's repro exactly (a 30ms-
-   delayed ValueChanged handler, sentence typed at 15ms/key). The stored value is rendered
-   into a plain <span> (not fed back into Value) so this page also proves the FIX doesn't
-   depend on the parent ever echoing the value back — Input must keep every keystroke on
-   its own, from _current alone, even though the async handler is still catching up.
+   Each controlled case records three things per handler:
+   - received: the value the handler was called with, set before its await. The last one
+     is what Lumeo pushed for the final keystroke.
+   - stored: the value the handler stores after its await, i.e. the Value fed back in.
+     Two handlers whose delays finish in the same timer tick run their continuations in
+     either order, so this can end on the second-to-last value. That race lives in this
+     page's handler, not in the component, and the test does not assert on it.
+   - in-flight: handlers still awaiting. The test waits for 0 so every late (and possibly
+     out-of-order) re-render has reached the component before it reads the DOM.
 
-   InputMask got the identical C# fix (see Input.razor / InputMask.razor's AwaitOrObserve
-   remarks) and has deterministic bUnit coverage for it (InputMaskAsyncEchoTests), but is
-   deliberately NOT reproduced here: InputMask's HandleInput makes an extra JS interop
-   round trip (Interop.GetInputCaret) on every keystroke, on top of the render round trip
-   this page already exercises for Input, which pushes its per-keystroke processing time
-   close enough to the 15ms typing interval that even on an otherwise idle machine it can
-   occasionally lose a single character to Blazor's own client-side event
-   coalescing/backpressure — a real, but orthogonal, architectural cost of caret-preserving
-   masked input, not a defect in the stale-echo fix (which the bUnit suite verifies
-   deterministically). Reproducing it here would commit a genuinely flaky real-browser
-   test for a cost this task's scope doesn't call for changing. *@
+   The Prefix case matters because a RenderFragment parameter makes Blazor hand the
+   component its parameters on EVERY parent render, including the one the parent makes
+   before its handler's first await (with its old Value). Without it, Blazor skips those
+   renders because every parameter is unchanged.
+
+   The last three controls are baselines for manual comparison with the probe numbers in
+   the PR: Lumeo @bind-Value, a native @bind:event="oninput" input, and a native input
+   with the same async handler (which loses characters by Blazor's own design, since
+   nothing on it keeps a live value). *@
 
 <PageTitle>E2E - Input async echo</PageTitle>
 
@@ -34,18 +30,93 @@
     <h1 data-testid="input-async-echo-e2e-title">Input async echo (lost-keystroke fix)</h1>
 
     <div class="flex flex-col gap-1.5">
-        <label for="input-under-test">Input</label>
-        <Lumeo.Input id="input-under-test" data-testid="input-under-test" Value="@_inputValue" ValueChanged="OnInputSlowChanged" />
-        <span data-testid="input-stored-value">@_inputValue</span>
+        <label for="input-under-test">Input (async ValueChanged)</label>
+        <Lumeo.Input id="input-under-test" data-testid="input-under-test" Value="@_input.Stored" ValueChanged="_input.Handle" />
+        @Readout(_input, "input-under-test")
+    </div>
+
+    <div class="flex flex-col gap-1.5">
+        <label for="input-prefix-under-test">Input with a Prefix (async ValueChanged)</label>
+        <Lumeo.Input id="input-prefix-under-test" data-testid="input-prefix-under-test" Value="@_prefix.Stored" ValueChanged="_prefix.Handle">
+            <Prefix>@@</Prefix>
+        </Lumeo.Input>
+        @Readout(_prefix, "input-prefix-under-test")
+    </div>
+
+    <div class="flex flex-col gap-1.5">
+        <label for="textarea-under-test">Textarea (async ValueChanged)</label>
+        <Lumeo.Textarea id="textarea-under-test" data-testid="textarea-under-test" Value="@_textarea.Stored" ValueChanged="_textarea.Handle" />
+        @Readout(_textarea, "textarea-under-test")
+    </div>
+
+    <div class="flex flex-col gap-1.5">
+        <label for="mask-under-test">InputMask, accept-anything mask (async ValueChanged)</label>
+        <Lumeo.InputMask id="mask-under-test" data-testid="mask-under-test" Mask="@AnyCharMask" Value="@_mask.Stored" ValueChanged="_mask.Handle" />
+        @Readout(_mask, "mask-under-test")
+    </div>
+
+    <div class="flex flex-col gap-1.5">
+        <label for="input-bind">Baseline: Input @@bind-Value</label>
+        <Lumeo.Input id="input-bind" data-testid="input-bind" @bind-Value="_bindValue" />
+    </div>
+
+    <div class="flex flex-col gap-1.5">
+        <label for="native-bind">Baseline: native input, @@bind:event="oninput"</label>
+        <input id="native-bind" data-testid="native-bind" @bind="_nativeBindValue" @bind:event="oninput" />
+    </div>
+
+    <div class="flex flex-col gap-1.5">
+        <label for="native-async">Baseline: native input, same async handler</label>
+        <input id="native-async" data-testid="native-async" value="@_nativeAsyncValue" @oninput="OnNativeSlowInput" />
     </div>
 </div>
 
 @code {
-    private string? _inputValue;
+    // '*' accepts any character, so the masked display equals what was typed.
+    private static readonly string AnyCharMask = new('*', 80);
 
-    private async Task OnInputSlowChanged(string? v)
+    private readonly SlowSink _input = new();
+    private readonly SlowSink _prefix = new();
+    private readonly SlowSink _textarea = new();
+    private readonly SlowSink _mask = new();
+    private string? _bindValue;
+    private string? _nativeBindValue;
+    private string? _nativeAsyncValue;
+
+    private async Task OnNativeSlowInput(ChangeEventArgs e)
     {
+        var v = e.Value?.ToString();
         await Task.Delay(30);
-        _inputValue = v;
+        _nativeAsyncValue = v;
+    }
+
+    private static RenderFragment Readout(SlowSink sink, string testId) =>
+        @<div class="text-xs flex flex-col gap-0.5">
+            <span>received: <span data-testid="@(testId + "-received")">@sink.Received</span></span>
+            <span>stored: <span data-testid="@(testId + "-stored")">@sink.Stored</span></span>
+            <span>in flight: <span data-testid="@(testId + "-inflight")">@sink.InFlight</span></span>
+        </div>;
+
+    public sealed class SlowSink
+    {
+        public string? Received { get; private set; }
+        public string? Stored { get; private set; }
+        public int InFlight { get; private set; }
+
+        // The consumer's handler shape from the report: store only after an await.
+        public async Task Handle(string? v)
+        {
+            Received = v;
+            InFlight++;
+            try
+            {
+                await Task.Delay(30);
+                Stored = v;
+            }
+            finally
+            {
+                InFlight--;
+            }
+        }
     }
 }

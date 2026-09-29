@@ -1,5 +1,6 @@
 using Bunit;
 using Microsoft.AspNetCore.Components;
+using Microsoft.AspNetCore.Components.Web;
 using Xunit;
 using Lumeo.Tests.Helpers;
 using L = Lumeo;
@@ -8,27 +9,17 @@ namespace Lumeo.Tests.Components.Input;
 
 /// <summary>
 /// Regression coverage for the lost-keystroke bug: a controlled <see cref="L.Input"/>
-/// whose <c>ValueChanged</c> handler stores the value only AFTER an <c>await</c> can
-/// have its late re-render arrive carrying an OLDER value than one the user has since
-/// typed (a faster/later keystroke's own push already went out and was accepted).
-/// Before the fix, OnParametersSet only compared the incoming Value against the
-/// SINGLE latest <c>_lastPushed</c>, so that stale echo looked like a genuine
-/// external change and was adopted — silently reverting (and re-displaying) an
-/// older value, clobbering what the user had already typed.
+/// whose <c>ValueChanged</c> handler stores the value only AFTER an <c>await</c> gets
+/// re-rendered late, and possibly out of order, with values it has already moved past.
+/// Adopting such a stale echo overwrote what the user had typed since.
 ///
-/// Measured before the fix: typing a 54-char sentence at 15ms/key against a
-/// ValueChanged handler that does <c>await Task.Delay(30)</c> before storing kept
-/// only 34-39 of the 54 characters, in a real Blazor Server circuit at both 0ms and
-/// 150ms simulated RTT.
-///
-/// The fix tracks an ordered <c>_pushHistory</c> of every value this component has
-/// pushed since the parent last caught up, plus a <c>_dispatching</c> flag that is
-/// true only for the synchronous portion of a push. A parameter set while
-/// dispatching is the parent's synchronous, authoritative reaction (today's exact
-/// accept/reject/transform semantics apply). A parameter set while NOT dispatching
-/// is checked against the push history: an OLDER entry is a stale async echo
-/// (ignored), the newest entry means caught up, and anything else is a genuine
-/// external change (adopted).
+/// Measured in a real Blazor Server circuit (54-char sentence, 15 ms/key, handler doing
+/// <c>await Task.Delay(30)</c>): origin/master kept 34-39 characters. The first fix
+/// (history cleared on catch-up) kept 51-54 and 0/20 exact once the parent also passed a
+/// RenderFragment. The rules now live in <c>ControlledValueEcho</c>: a pushed value is an
+/// echo for as long as the handler that received it is still running; an unchanged Value
+/// while a push is pending is not a verdict; a synchronous handler's verdict applies as
+/// before.
 /// </summary>
 public class InputAsyncEchoTests : IAsyncLifetime
 {
@@ -243,5 +234,210 @@ public class InputAsyncEchoTests : IAsyncLifetime
         Assert.Equal("v0", cut.Find("input").GetAttribute("value"));
 
         neverCompletes.TrySetResult();
+    }
+
+    [Fact]
+    public async Task OlderEcho_ArrivingAfterTheNewerEcho_IsIgnored()
+    {
+        // The residual loss seen in the E2E probe: two handlers whose awaits finish in the
+        // same timer tick run their continuations newest-first. The newer echo lands (and
+        // looks like "caught up"), then the older one follows. It must not be adopted.
+        var gates = new Dictionary<string, TaskCompletionSource> { ["a"] = new(), ["ab"] = new() };
+        var done = new Dictionary<string, TaskCompletionSource> { ["a"] = new(), ["ab"] = new() };
+        string? stored = null;
+        IRenderedComponent<L.Input>? cut = null;
+        EventCallback<string?> callback = default;
+        callback = EventCallback.Factory.Create<string?>(_ctx, async (string? v) =>
+        {
+            await gates[v!].Task;
+            stored = v;
+            cut!.Render(p => p.Add(i => i.Value, stored).Add(i => i.ValueChanged, callback));
+            done[v!].SetResult();
+        });
+
+        cut = _ctx.Render<L.Input>(p => p
+            .Add(i => i.Value, (string?)null)
+            .Add(i => i.ValueChanged, callback));
+
+        var input = cut.Find("input");
+        _ = input.TriggerEventAsync("oninput", new ChangeEventArgs { Value = "a" });
+        _ = input.TriggerEventAsync("oninput", new ChangeEventArgs { Value = "ab" });
+
+        gates["ab"].SetResult();
+        await done["ab"].Task;
+        Assert.Equal("ab", cut.Find("input").GetAttribute("value"));
+
+        gates["a"].SetResult();
+        await done["a"].Task;
+        Assert.Equal("ab", cut.Find("input").GetAttribute("value"));
+    }
+
+    [Fact]
+    public async Task ParentRerender_WithItsOldValue_WhileHandlerPending_KeepsTypedText()
+    {
+        // A parent passing a RenderFragment (or any parameter Blazor can't prove unchanged)
+        // hands Input its parameters on every render, including the one it makes right
+        // after the handler's first await, still carrying its OLD Value. That render is
+        // not a rejection.
+        var gate = new TaskCompletionSource();
+        var done = new TaskCompletionSource();
+        string? stored = "start";
+        IRenderedComponent<L.Input>? cut = null;
+        EventCallback<string?> callback = default;
+        callback = EventCallback.Factory.Create<string?>(_ctx, async (string? v) =>
+        {
+            await gate.Task;
+            stored = v;
+            cut!.Render(p => p.Add(i => i.Value, stored).Add(i => i.ValueChanged, callback));
+            done.SetResult();
+        });
+
+        cut = _ctx.Render<L.Input>(p => p
+            .Add(i => i.Value, stored)
+            .Add(i => i.ValueChanged, callback));
+
+        _ = cut.Find("input").TriggerEventAsync("oninput", new ChangeEventArgs { Value = "startX" });
+        cut.Render(p => p.Add(i => i.Value, "start").Add(i => i.ValueChanged, callback));
+        Assert.Equal("startX", cut.Find("input").GetAttribute("value"));
+
+        gate.SetResult();
+        await done.Task;
+        Assert.Equal("startX", cut.Find("input").GetAttribute("value"));
+    }
+
+    [Fact]
+    public async Task ParentRerender_InsideDispatch_BeforeItsFirstAwait_KeepsTypedText()
+    {
+        // Same as above, but the old-Value render happens synchronously inside the
+        // ValueChanged call (as it does when the push itself runs after an await, e.g. with
+        // an async OnInput). Only once InvokeAsync returns a pending task is it known not
+        // to be a synchronous rejection.
+        var gate = new TaskCompletionSource();
+        var done = new TaskCompletionSource();
+        IRenderedComponent<L.Input>? cut = null;
+        EventCallback<string?> callback = default;
+        callback = EventCallback.Factory.Create<string?>(_ctx, async (string? v) =>
+        {
+            cut!.Render(p => p.Add(i => i.Value, "start").Add(i => i.ValueChanged, callback));
+            await gate.Task;
+            cut!.Render(p => p.Add(i => i.Value, v).Add(i => i.ValueChanged, callback));
+            done.SetResult();
+        });
+
+        cut = _ctx.Render<L.Input>(p => p
+            .Add(i => i.Value, "start")
+            .Add(i => i.ValueChanged, callback));
+
+        _ = cut.Find("input").TriggerEventAsync("oninput", new ChangeEventArgs { Value = "startX" });
+        Assert.Equal("startX", cut.Find("input").GetAttribute("value"));
+
+        gate.SetResult();
+        await done.Task;
+        Assert.Equal("startX", cut.Find("input").GetAttribute("value"));
+    }
+
+    [Fact]
+    public async Task OnceTheHandlerFinished_AnOlderPushedValue_IsAdopted()
+    {
+        // A pushed value only counts as an echo while its handler runs. Afterwards the
+        // parent re-supplying it is its real state (e.g. an async rejection back to it).
+        var gate = new TaskCompletionSource();
+        var done = new TaskCompletionSource();
+        IRenderedComponent<L.Input>? cut = null;
+        EventCallback<string?> callback = default;
+        callback = EventCallback.Factory.Create<string?>(_ctx, async (string? v) =>
+        {
+            if (v == "ab") await gate.Task;
+            cut!.Render(p => p.Add(i => i.Value, v).Add(i => i.ValueChanged, callback));
+            if (v == "ab") done.SetResult();
+        });
+
+        cut = _ctx.Render<L.Input>(p => p
+            .Add(i => i.Value, (string?)null)
+            .Add(i => i.ValueChanged, callback));
+
+        var input = cut.Find("input");
+        await input.TriggerEventAsync("oninput", new ChangeEventArgs { Value = "a" });
+        _ = input.TriggerEventAsync("oninput", new ChangeEventArgs { Value = "ab" });
+        gate.SetResult();
+        await done.Task;
+        Assert.Equal("ab", cut.Find("input").GetAttribute("value"));
+
+        cut.Render(p => p.Add(i => i.Value, "a").Add(i => i.ValueChanged, callback));
+        Assert.Equal("a", cut.Find("input").GetAttribute("value"));
+    }
+
+    [Fact]
+    public async Task AsyncHandlerException_ReachesTheEnclosingErrorBoundary()
+    {
+        // HandleInput does not await a pending ValueChanged task, so an exception the
+        // handler throws after its await must still reach Blazor's error handling (here an
+        // ErrorBoundary), not disappear into a background task.
+        var gate = new TaskCompletionSource();
+        var handler = EventCallback.Factory.Create<string?>(_ctx, async (string? _) =>
+        {
+            await gate.Task;
+            throw new InvalidOperationException("boom from ValueChanged");
+        });
+
+        var cut = _ctx.Render<ErrorBoundary>(p => p
+            .Add(b => b.ChildContent, (RenderFragment)(builder =>
+            {
+                builder.OpenComponent<L.Input>(0);
+                builder.AddComponentParameter(1, nameof(L.Input.Value), (string?)null);
+                builder.AddComponentParameter(2, nameof(L.Input.ValueChanged), handler);
+                builder.CloseComponent();
+            }))
+            .Add(b => b.ErrorContent, (Exception ex) => $"<p id=\"err\">{ex.Message}</p>"));
+
+        // The event must not wait for the async handler (and must not hang if it did).
+        var dispatch = cut.Find("input").TriggerEventAsync("oninput", new ChangeEventArgs { Value = "x" });
+        Assert.True(dispatch.IsCompleted);
+        await dispatch;
+        Assert.Empty(cut.FindAll("#err"));
+
+        gate.SetResult();
+        await cut.WaitForAssertionAsync(() => Assert.Equal("boom from ValueChanged", cut.Find("#err").TextContent));
+    }
+
+    [Fact]
+    public async Task AsyncHandlerCancellation_IsNotReportedAsAnError()
+    {
+        // Blazor ignores a cancelled event-handler task; the background observer does too.
+        var gate = new TaskCompletionSource();
+        var finished = new TaskCompletionSource();
+        var handler = EventCallback.Factory.Create<string?>(_ctx, async (string? _) =>
+        {
+            try
+            {
+                await gate.Task;
+                throw new OperationCanceledException();
+            }
+            finally
+            {
+                finished.SetResult();
+            }
+        });
+
+        var cut = _ctx.Render<ErrorBoundary>(p => p
+            .Add(b => b.ChildContent, (RenderFragment)(builder =>
+            {
+                builder.OpenComponent<L.Input>(0);
+                builder.AddComponentParameter(1, nameof(L.Input.Value), (string?)null);
+                builder.AddComponentParameter(2, nameof(L.Input.ValueChanged), handler);
+                builder.CloseComponent();
+            }))
+            .Add(b => b.ErrorContent, (Exception ex) => $"<p id=\"err\">{ex.Message}</p>"));
+
+        // The event must not wait for the async handler (and must not hang if it did).
+        var dispatch = cut.Find("input").TriggerEventAsync("oninput", new ChangeEventArgs { Value = "x" });
+        Assert.True(dispatch.IsCompleted);
+        await dispatch;
+        gate.SetResult();
+        await finished.Task;
+        await cut.InvokeAsync(() => { });
+
+        Assert.Empty(cut.FindAll("#err"));
+        Assert.Equal("x", cut.Find("input").GetAttribute("value"));
     }
 }

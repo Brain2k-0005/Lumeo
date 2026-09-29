@@ -135,39 +135,12 @@
     // adopt the parameter only when it genuinely CHANGES from this — an unrelated
     // re-render that re-supplies the same/stale Value must not clobber typed text.
     private string? _lastValueParam;
-    // CONTROLLED discriminator: the last value we pushed UP to the parent via
-    // ValueChanged (also re-synced whenever we adopt an authoritative Value). A
-    // controlled parent re-render that echoes back this exact value is safe to
-    // ignore (keep in-flight state); any other value — a normalization, reset, or
-    // a REJECTION that kept the OLD value — is authoritative and must win.
-    private string? _lastPushed;
-
-    // Ordered history of every raw value pushed via ValueChanged since the parent
-    // last caught up (oldest first, newest == _lastPushed). Mirrors Input's fix for
-    // the same bug: a ValueChanged handler that stores the value only after an await
-    // can have its eventual re-render carry an OLDER value than the one we've since
-    // pushed (a newer keystroke raced ahead of it). Without this history that stale
-    // echo is indistinguishable from a genuine external change and gets adopted,
-    // clobbering the newer keystroke. Bounded so a long-lived controlled input can't
-    // grow this unboundedly.
-    private readonly List<string?> _pushHistory = new();
-    private const int PushHistoryCap = 64;
-
-    // True only for the duration of dispatching a push to ValueChanged (see Input's
-    // HandleInput for the full rationale). A synchronous parent handler reacts, and
-    // re-renders this component, entirely inside that InvokeAsync call, so
-    // OnParametersSet sees _dispatching == true for that case and keeps today's
-    // exact synchronous accept/reject/transform semantics. An async handler's late
-    // continuation lands after _dispatching is already false — that's what the
-    // push-history above disambiguates.
-    private bool _dispatching;
-
-    private void RecordPush(string? value)
-    {
-        _pushHistory.Add(value);
-        if (_pushHistory.Count > PushHistoryCap) _pushHistory.RemoveAt(0);
-        _lastPushed = value;
-    }
+    // CONTROLLED discriminator: tells an echo of a raw value we pushed through
+    // ValueChanged (keep in-flight state and the caret) apart from the parent's verdict —
+    // a normalization, reset, or a REJECTION that kept the OLD value — which must win.
+    // Also covers a ValueChanged handler that stores the value only after an await: its
+    // late, possibly out-of-order re-renders are echoes too. See ControlledValueEcho.
+    private readonly Lumeo.Internal.ControlledValueEcho _echo = new();
 
     private bool _paramSeeded;
 
@@ -177,14 +150,14 @@
 
     protected override void OnParametersSet()
     {
-        // Seed the working value from the parameter on the first set. _lastPushed and
+        // Seed the working value from the parameter on the first set. _echo and
         // _lastValueParam both start at the seed so neither discriminator misfires.
         if (!_paramSeeded)
         {
             _rawValue = Value ?? "";
             _displayValue = ApplyMask(_rawValue);
             _lastValueParam = Value;
-            _lastPushed = Value;
+            _echo.Seed(Value);
             _lastMask = Mask;
             _lastPromptChar = PromptChar;
             _paramSeeded = true;
@@ -193,54 +166,14 @@
 
         // The two usages need opposite defaults, distinguished by whether the consumer
         // bound ValueChanged (the established controlled/uncontrolled signal used across
-        // the library). HandleInput mutates _rawValue (not Value) and records _lastPushed,
-        // so in BOTH branches our own in-flight typing is never clobbered.
+        // the library). HandleInput mutates _rawValue (not Value) and records the push in
+        // _echo, so in BOTH branches our own in-flight typing is never clobbered.
         bool adoptValue;
         if (ValueChanged.HasDelegate)
         {
-            if (_dispatching)
-            {
-                // Parameter set happening WHILE we're dispatching the current push: a
-                // synchronous ValueChanged handler's reaction (and re-render) runs
-                // entirely inside InvokeAsync in Blazor, so this is that handler's
-                // authoritative synchronous reaction — keep today's exact semantics.
-                // Echo (Value == the push in flight) is a redundant write and is
-                // ignored; any other Value — normalization, reassignment, or a
-                // REJECTION that kept the OLD value — wins and is adopted.
-                adoptValue = !string.Equals(Value, _lastPushed, StringComparison.Ordinal);
-                if (adoptValue) _pushHistory.Clear();
-            }
-            else if (string.Equals(Value, _lastPushed, StringComparison.Ordinal))
-            {
-                // Caught up: this render reflects the last value we pushed, whether it
-                // arrived synchronously or (now) after an await.
-                adoptValue = false;
-                _pushHistory.Clear();
-            }
-            else
-            {
-                var staleIndex = _pushHistory.FindLastIndex(v => string.Equals(v, Value, StringComparison.Ordinal));
-                if (staleIndex >= 0)
-                {
-                    // A STALE async echo of a value we pushed and have since moved past
-                    // (a newer keystroke already went out ahead of this handler's
-                    // continuation) — ignore it, keep the live raw/display value.
-                    // Known limitation: a parent that asynchronously REJECTS an edit by
-                    // re-sending an OLDER value it previously accepted (rather than its
-                    // very latest one) is indistinguishable from this case and will be
-                    // (incorrectly) ignored instead of rolled back.
-                    adoptValue = false;
-                    _pushHistory.RemoveRange(0, staleIndex + 1);
-                }
-                else
-                {
-                    // Genuine external change: a normalization, a programmatic
-                    // (re)assignment, or a rejection that kept a value we never pushed
-                    // (or pushed so long ago it fell out of the bounded history).
-                    adoptValue = true;
-                    _pushHistory.Clear();
-                }
-            }
+            // CONTROLLED: the parent owns Value; echoes of our own pushes are kept, any
+            // other Value wins (ControlledValueEcho has the rules).
+            adoptValue = _echo.ShouldAdopt(Value, _lastValueParam);
         }
         else
         {
@@ -249,7 +182,7 @@
             // re-render that re-supplies the same (or a stale) Value must NOT clobber the
             // user's typed text.
             adoptValue = !string.Equals(Value, _lastValueParam, StringComparison.Ordinal);
-            if (adoptValue) _pushHistory.Clear();
+            if (adoptValue) _echo.Adopt(Value);
         }
 
         // Re-derive the masked display when adopting Value OR when the mask
@@ -260,7 +193,6 @@
             if (adoptValue)
             {
                 _rawValue = Value ?? "";
-                _lastPushed = Value;
             }
             _displayValue = ApplyMask(_rawValue);
             _lastMask = Mask;
@@ -367,31 +299,28 @@
 
         _rawValue = ExtractRaw(inputVal);
         _displayValue = ApplyMask(_rawValue);
-        // Record _lastPushed BEFORE raising ValueChanged: a controlled parent
-        // re-renders synchronously inside InvokeAsync, so OnParametersSet must
-        // already see this as "the value we pushed" to recognise the echo and
-        // keep the caret (and, on a rejection, roll back to the parent's
-        // authoritative value).
-        RecordPush(_rawValue);
-        // _dispatching brackets only the synchronous portion of the dispatch — see
-        // the field's doc comment for why that's what lets OnParametersSet tell a
-        // synchronous parent reaction apart from a later, out-of-order async echo.
-        _dispatching = true;
-        var t = ValueChanged.InvokeAsync(_rawValue);
-        _dispatching = false;
-        // Do NOT block on a still-pending (genuinely async) ValueChanged task --
-        // see Input.razor's AwaitOrObserve remarks: Blazor Server processes each
-        // UI event to full completion (including any tail the handler itself
-        // awaits) before starting the next queued one, so blocking here at real
-        // typing speed backlogs the circuit's event queue until the framework's
-        // OWN client-side dispatch coalesces/drops keystrokes -- upstream of (and
-        // unfixable by) any state tracking in this component. Measured on a real
-        // circuit: with the tail awaited, characters were still lost even with
-        // the _pushHistory fix applied; observing it in the background instead
-        // recovers all of them while keeping today's synchronous semantics
-        // (an already-completed task is still awaited directly, so a synchronous
-        // handler's exception still propagates exactly as before).
-        await AwaitOrObserve(t);
+        // Record the push BEFORE raising ValueChanged: a controlled parent can re-render
+        // synchronously inside InvokeAsync, so OnParametersSet must already see this as
+        // "the value we pushed" to recognise the echo and keep the caret (and, on a
+        // rejection, roll back to the parent's authoritative value).
+        _echo.Push(_rawValue);
+        _echo.BeginDispatch();
+        Task pushed;
+        try { pushed = ValueChanged.InvokeAsync(_rawValue); }
+        catch (Exception ex) { pushed = Task.FromException(ex); }
+        if (_echo.EndDispatch(pushed))
+        {
+            // The parent answered synchronously by keeping its previous Value: a rejection.
+            _rawValue = Value ?? "";
+            _displayValue = ApplyMask(_rawValue);
+            _echo.Adopt(Value);
+        }
+        // A still-pending (async) handler is not awaited: Blazor Server dispatches a
+        // circuit's UI events one at a time, so awaiting the parent's async tail here would
+        // queue every later keystroke behind it. Its eventual exception goes through
+        // DispatchExceptionAsync, to the nearest ErrorBoundary or the circuit's error
+        // handling, where the event pipeline would have sent it.
+        await Lumeo.Internal.ControlledValueEcho.AwaitOrObserve(pushed, DispatchExceptionAsync);
 
         // When the masked display differs from what the browser produced (a char
         // was rejected, or a literal/separator was auto-inserted), the new
@@ -475,30 +404,5 @@
         catch (JSDisconnectedException) { }
         catch (ObjectDisposedException) { }
         catch (InvalidOperationException) { } // JS interop unavailable during prerender
-    }
-
-    // See Input.razor's identical helper for the full rationale: an already-complete
-    // task (the common, synchronous case) is awaited directly so its exception still
-    // propagates as before; a still-pending one is observed in the background instead
-    // of blocking HandleInput, so a slow ValueChanged handler can't backlog Blazor
-    // Server's per-circuit event queue and cause the framework itself to coalesce or
-    // drop keystrokes before they ever reach this component.
-    private static Task AwaitOrObserve(Task t)
-    {
-        if (t.IsCompleted) return t;
-        _ = ObserveInBackgroundAsync(t);
-        return Task.CompletedTask;
-    }
-
-    private static async Task ObserveInBackgroundAsync(Task t)
-    {
-        try { await t; }
-        catch (JSDisconnectedException) { /* circuit closed mid-await */ }
-        catch (ObjectDisposedException) { /* renderer disposed mid-await */ }
-        catch (OperationCanceledException) { /* superseded/cancelled */ }
-        catch (Exception ex)
-        {
-            Console.Error.WriteLine($"[Lumeo.InputMask] ValueChanged handler threw asynchronously: {ex}");
-        }
     }
 }
