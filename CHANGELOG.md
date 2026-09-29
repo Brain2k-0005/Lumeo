@@ -5,6 +5,26 @@ All notable changes to Lumeo will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+- **`Input` (and `InputMask`) no longer lose typed characters when a controlled parent's
+  `ValueChanged` handler stores the value only AFTER an `await`.** The handler's eventual,
+  out-of-order re-render used to be indistinguishable from a genuine external change, so a
+  STALE echo of an older keystroke could silently overwrite a newer one the component had
+  already accepted. Fixed by tracking a bounded history of every value the component has
+  pushed since the parent last caught up, plus a flag marking the synchronous portion of a
+  push, so a late/out-of-order echo of an already-superseded value is recognised and ignored
+  instead of adopted. Also stopped blocking the input event's own completion on a still-
+  pending async `ValueChanged` — blocking there backlogs Blazor Server's per-circuit event
+  queue at real typing speed, which drops keystrokes at the framework level regardless of any
+  component-side state tracking. Measured (real Blazor Server circuit, 54-char sentence typed
+  at 15ms/key against a `ValueChanged` handler doing `await Task.Delay(30)` before storing):
+  before the fix, 36-39 of 54 characters survived; after, 53-54 of 54 survive per run (the
+  residual ~1-character variance traces to Blazor Server's own render round-trip time at this
+  aggressive typing cadence, not to stale-echo corruption — the fixed component never regresses
+  to the old bug's large, contiguous character loss).
+
 ## [5.12.0] - 2026-09-25
 
 ### Added

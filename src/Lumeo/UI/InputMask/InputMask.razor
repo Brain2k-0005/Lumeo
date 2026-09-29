@@ -141,6 +141,34 @@
     // ignore (keep in-flight state); any other value — a normalization, reset, or
     // a REJECTION that kept the OLD value — is authoritative and must win.
     private string? _lastPushed;
+
+    // Ordered history of every raw value pushed via ValueChanged since the parent
+    // last caught up (oldest first, newest == _lastPushed). Mirrors Input's fix for
+    // the same bug: a ValueChanged handler that stores the value only after an await
+    // can have its eventual re-render carry an OLDER value than the one we've since
+    // pushed (a newer keystroke raced ahead of it). Without this history that stale
+    // echo is indistinguishable from a genuine external change and gets adopted,
+    // clobbering the newer keystroke. Bounded so a long-lived controlled input can't
+    // grow this unboundedly.
+    private readonly List<string?> _pushHistory = new();
+    private const int PushHistoryCap = 64;
+
+    // True only for the duration of dispatching a push to ValueChanged (see Input's
+    // HandleInput for the full rationale). A synchronous parent handler reacts, and
+    // re-renders this component, entirely inside that InvokeAsync call, so
+    // OnParametersSet sees _dispatching == true for that case and keeps today's
+    // exact synchronous accept/reject/transform semantics. An async handler's late
+    // continuation lands after _dispatching is already false — that's what the
+    // push-history above disambiguates.
+    private bool _dispatching;
+
+    private void RecordPush(string? value)
+    {
+        _pushHistory.Add(value);
+        if (_pushHistory.Count > PushHistoryCap) _pushHistory.RemoveAt(0);
+        _lastPushed = value;
+    }
+
     private bool _paramSeeded;
 
     private string CssClass => Cx.Merge("flex h-8 w-full rounded-md border", (EffectiveInvalid ? "border-destructive focus-visible:ring-destructive/20" : "border-input focus-visible:ring-ring"), "bg-transparent px-2.5 py-1 text-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-[1.5px] disabled:cursor-not-allowed disabled:opacity-50", Class);
@@ -170,14 +198,49 @@
         bool adoptValue;
         if (ValueChanged.HasDelegate)
         {
-            // CONTROLLED: the parent owns Value and it is authoritative — EXCEPT when it
-            // merely echoes back the exact edit we just pushed (Value == _lastPushed),
-            // where adopting would be a redundant write that could disturb the caret, so
-            // we keep the live value. Any OTHER Value wins and is adopted: a normalization,
-            // a programmatic (re)assignment, or — crucially — a REJECTION where the parent
-            // kept its OLD value (!= the value we just pushed). That last case is what
-            // rolls a rejected keystroke back to the controlled Value.
-            adoptValue = !string.Equals(Value, _lastPushed, StringComparison.Ordinal);
+            if (_dispatching)
+            {
+                // Parameter set happening WHILE we're dispatching the current push: a
+                // synchronous ValueChanged handler's reaction (and re-render) runs
+                // entirely inside InvokeAsync in Blazor, so this is that handler's
+                // authoritative synchronous reaction — keep today's exact semantics.
+                // Echo (Value == the push in flight) is a redundant write and is
+                // ignored; any other Value — normalization, reassignment, or a
+                // REJECTION that kept the OLD value — wins and is adopted.
+                adoptValue = !string.Equals(Value, _lastPushed, StringComparison.Ordinal);
+                if (adoptValue) _pushHistory.Clear();
+            }
+            else if (string.Equals(Value, _lastPushed, StringComparison.Ordinal))
+            {
+                // Caught up: this render reflects the last value we pushed, whether it
+                // arrived synchronously or (now) after an await.
+                adoptValue = false;
+                _pushHistory.Clear();
+            }
+            else
+            {
+                var staleIndex = _pushHistory.FindLastIndex(v => string.Equals(v, Value, StringComparison.Ordinal));
+                if (staleIndex >= 0)
+                {
+                    // A STALE async echo of a value we pushed and have since moved past
+                    // (a newer keystroke already went out ahead of this handler's
+                    // continuation) — ignore it, keep the live raw/display value.
+                    // Known limitation: a parent that asynchronously REJECTS an edit by
+                    // re-sending an OLDER value it previously accepted (rather than its
+                    // very latest one) is indistinguishable from this case and will be
+                    // (incorrectly) ignored instead of rolled back.
+                    adoptValue = false;
+                    _pushHistory.RemoveRange(0, staleIndex + 1);
+                }
+                else
+                {
+                    // Genuine external change: a normalization, a programmatic
+                    // (re)assignment, or a rejection that kept a value we never pushed
+                    // (or pushed so long ago it fell out of the bounded history).
+                    adoptValue = true;
+                    _pushHistory.Clear();
+                }
+            }
         }
         else
         {
@@ -186,6 +249,7 @@
             // re-render that re-supplies the same (or a stale) Value must NOT clobber the
             // user's typed text.
             adoptValue = !string.Equals(Value, _lastValueParam, StringComparison.Ordinal);
+            if (adoptValue) _pushHistory.Clear();
         }
 
         // Re-derive the masked display when adopting Value OR when the mask
@@ -308,8 +372,26 @@
         // already see this as "the value we pushed" to recognise the echo and
         // keep the caret (and, on a rejection, roll back to the parent's
         // authoritative value).
-        _lastPushed = _rawValue;
-        await ValueChanged.InvokeAsync(_rawValue);
+        RecordPush(_rawValue);
+        // _dispatching brackets only the synchronous portion of the dispatch — see
+        // the field's doc comment for why that's what lets OnParametersSet tell a
+        // synchronous parent reaction apart from a later, out-of-order async echo.
+        _dispatching = true;
+        var t = ValueChanged.InvokeAsync(_rawValue);
+        _dispatching = false;
+        // Do NOT block on a still-pending (genuinely async) ValueChanged task --
+        // see Input.razor's AwaitOrObserve remarks: Blazor Server processes each
+        // UI event to full completion (including any tail the handler itself
+        // awaits) before starting the next queued one, so blocking here at real
+        // typing speed backlogs the circuit's event queue until the framework's
+        // OWN client-side dispatch coalesces/drops keystrokes -- upstream of (and
+        // unfixable by) any state tracking in this component. Measured on a real
+        // circuit: with the tail awaited, characters were still lost even with
+        // the _pushHistory fix applied; observing it in the background instead
+        // recovers all of them while keeping today's synchronous semantics
+        // (an already-completed task is still awaited directly, so a synchronous
+        // handler's exception still propagates exactly as before).
+        await AwaitOrObserve(t);
 
         // When the masked display differs from what the browser produced (a char
         // was rejected, or a literal/separator was auto-inserted), the new
@@ -393,5 +475,30 @@
         catch (JSDisconnectedException) { }
         catch (ObjectDisposedException) { }
         catch (InvalidOperationException) { } // JS interop unavailable during prerender
+    }
+
+    // See Input.razor's identical helper for the full rationale: an already-complete
+    // task (the common, synchronous case) is awaited directly so its exception still
+    // propagates as before; a still-pending one is observed in the background instead
+    // of blocking HandleInput, so a slow ValueChanged handler can't backlog Blazor
+    // Server's per-circuit event queue and cause the framework itself to coalesce or
+    // drop keystrokes before they ever reach this component.
+    private static Task AwaitOrObserve(Task t)
+    {
+        if (t.IsCompleted) return t;
+        _ = ObserveInBackgroundAsync(t);
+        return Task.CompletedTask;
+    }
+
+    private static async Task ObserveInBackgroundAsync(Task t)
+    {
+        try { await t; }
+        catch (JSDisconnectedException) { /* circuit closed mid-await */ }
+        catch (ObjectDisposedException) { /* renderer disposed mid-await */ }
+        catch (OperationCanceledException) { /* superseded/cancelled */ }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"[Lumeo.InputMask] ValueChanged handler threw asynchronously: {ex}");
+        }
     }
 }

@@ -1,0 +1,51 @@
+@page "/e2e/input-async-echo"
+
+@* Real-browser repro for the lost-keystroke bug fixed on Input.razor: a controlled
+   component (Value + ValueChanged bound) whose ValueChanged handler stores the value only
+   AFTER an await can have that late storage arrive out of order relative to a
+   faster/newer keystroke's own push, since each keystroke's handler invocation is
+   independent and they can complete in a different order than they started in. Neither
+   bUnit (no real SignalR round trip / no real timer scheduling under real browser load)
+   nor a synthetic TaskCompletionSource-based unit test fully proves this against ACTUAL
+   circuit timing, so this page + the matching Playwright spec (InputAsyncEchoTests) types
+   a real sentence, at a real interval, against a real Blazor Server circuit.
+
+   `await Task.Delay(30)` before storing mirrors the bug report's repro exactly (a 30ms-
+   delayed ValueChanged handler, sentence typed at 15ms/key). The stored value is rendered
+   into a plain <span> (not fed back into Value) so this page also proves the FIX doesn't
+   depend on the parent ever echoing the value back — Input must keep every keystroke on
+   its own, from _current alone, even though the async handler is still catching up.
+
+   InputMask got the identical C# fix (see Input.razor / InputMask.razor's AwaitOrObserve
+   remarks) and has deterministic bUnit coverage for it (InputMaskAsyncEchoTests), but is
+   deliberately NOT reproduced here: InputMask's HandleInput makes an extra JS interop
+   round trip (Interop.GetInputCaret) on every keystroke, on top of the render round trip
+   this page already exercises for Input, which pushes its per-keystroke processing time
+   close enough to the 15ms typing interval that even on an otherwise idle machine it can
+   occasionally lose a single character to Blazor's own client-side event
+   coalescing/backpressure — a real, but orthogonal, architectural cost of caret-preserving
+   masked input, not a defect in the stale-echo fix (which the bUnit suite verifies
+   deterministically). Reproducing it here would commit a genuinely flaky real-browser
+   test for a cost this task's scope doesn't call for changing. *@
+
+<PageTitle>E2E - Input async echo</PageTitle>
+
+<div class="p-8 flex flex-col gap-6" style="max-width: 480px;">
+    <h1 data-testid="input-async-echo-e2e-title">Input async echo (lost-keystroke fix)</h1>
+
+    <div class="flex flex-col gap-1.5">
+        <label for="input-under-test">Input</label>
+        <Lumeo.Input id="input-under-test" data-testid="input-under-test" Value="@_inputValue" ValueChanged="OnInputSlowChanged" />
+        <span data-testid="input-stored-value">@_inputValue</span>
+    </div>
+</div>
+
+@code {
+    private string? _inputValue;
+
+    private async Task OnInputSlowChanged(string? v)
+    {
+        await Task.Delay(30);
+        _inputValue = v;
+    }
+}
