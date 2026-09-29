@@ -8,6 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **`Tabs.Value` / `Tabs.ValueChanged` / `Tabs.DefaultValue`**: shadcn-named aliases of
+  `ActiveValue` / `ActiveValueChanged`, fully additive. `Value`/`ValueChanged` let
+  `<Tabs @bind-Value="x">` work exactly like shadcn/ui; `DefaultValue` sets the initial tab
+  for fully uncontrolled use (applied once, no `ValueChanged` handler required). Precedence
+  when several are set: a non-empty `ActiveValue` wins, then a non-empty `Value`, then
+  `DefaultValue`. Previously, code written against the shadcn names compiled silently (caught
+  by `AdditionalAttributes`) but left `ActiveValue` at `""`, hiding every `TabsContent` until
+  the user clicked a trigger — reported as "Tabs shows no content inside a Sheet".
 - **`SegmentedItem.Class`, `Segmented.ItemClass`, `Segmented.SegmentedOption.Class`**: `SegmentedItem`
   had no `Class` parameter, so a consumer's `class="..."` replaced the base button classes instead
   of merging — a consumer wanted the selected segment green and had to build their own control from
@@ -17,6 +25,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   mode. Since the selected button already carries `aria-checked="true"`, e.g.
   `ItemClass="aria-checked:bg-primary aria-checked:text-primary-foreground"` recolors just the
   selected segment with theme tokens. Owner field report.
+
+### Fixed
+- Docs examples that used the non-existent `Tabs.Value`/`Tabs.DefaultValue` names (now valid
+  parameters, see Added) — `TabsPage`'s reorder demo, `IconPage`'s usage tabs, and
+  `SettingsPageBlock`'s code sample.
 
 ## [5.12.0] - 2026-09-25
 
