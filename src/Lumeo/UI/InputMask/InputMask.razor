@@ -135,12 +135,13 @@
     // adopt the parameter only when it genuinely CHANGES from this — an unrelated
     // re-render that re-supplies the same/stale Value must not clobber typed text.
     private string? _lastValueParam;
-    // CONTROLLED discriminator: the last value we pushed UP to the parent via
-    // ValueChanged (also re-synced whenever we adopt an authoritative Value). A
-    // controlled parent re-render that echoes back this exact value is safe to
-    // ignore (keep in-flight state); any other value — a normalization, reset, or
-    // a REJECTION that kept the OLD value — is authoritative and must win.
-    private string? _lastPushed;
+    // CONTROLLED discriminator: tells an echo of a raw value we pushed through
+    // ValueChanged (keep in-flight state and the caret) apart from the parent's verdict —
+    // a normalization, reset, or a REJECTION that kept the OLD value — which must win.
+    // Also covers a ValueChanged handler that stores the value only after an await: its
+    // late, possibly out-of-order re-renders are echoes too. See ControlledValueEcho.
+    private readonly Lumeo.Internal.ControlledValueEcho _echo = new();
+
     private bool _paramSeeded;
 
     private string CssClass => Cx.Merge("flex h-8 w-full rounded-md border", (EffectiveInvalid ? "border-destructive focus-visible:ring-destructive/20" : "border-input focus-visible:ring-ring"), "bg-transparent px-2.5 py-1 text-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-[1.5px] disabled:cursor-not-allowed disabled:opacity-50", Class);
@@ -149,14 +150,14 @@
 
     protected override void OnParametersSet()
     {
-        // Seed the working value from the parameter on the first set. _lastPushed and
+        // Seed the working value from the parameter on the first set. _echo and
         // _lastValueParam both start at the seed so neither discriminator misfires.
         if (!_paramSeeded)
         {
             _rawValue = Value ?? "";
             _displayValue = ApplyMask(_rawValue);
             _lastValueParam = Value;
-            _lastPushed = Value;
+            _echo.Seed(Value);
             _lastMask = Mask;
             _lastPromptChar = PromptChar;
             _paramSeeded = true;
@@ -165,19 +166,14 @@
 
         // The two usages need opposite defaults, distinguished by whether the consumer
         // bound ValueChanged (the established controlled/uncontrolled signal used across
-        // the library). HandleInput mutates _rawValue (not Value) and records _lastPushed,
-        // so in BOTH branches our own in-flight typing is never clobbered.
+        // the library). HandleInput mutates _rawValue (not Value) and records the push in
+        // _echo, so in BOTH branches our own in-flight typing is never clobbered.
         bool adoptValue;
         if (ValueChanged.HasDelegate)
         {
-            // CONTROLLED: the parent owns Value and it is authoritative — EXCEPT when it
-            // merely echoes back the exact edit we just pushed (Value == _lastPushed),
-            // where adopting would be a redundant write that could disturb the caret, so
-            // we keep the live value. Any OTHER Value wins and is adopted: a normalization,
-            // a programmatic (re)assignment, or — crucially — a REJECTION where the parent
-            // kept its OLD value (!= the value we just pushed). That last case is what
-            // rolls a rejected keystroke back to the controlled Value.
-            adoptValue = !string.Equals(Value, _lastPushed, StringComparison.Ordinal);
+            // CONTROLLED: the parent owns Value; echoes of our own pushes are kept, any
+            // other Value wins (ControlledValueEcho has the rules).
+            adoptValue = _echo.ShouldAdopt(Value, _lastValueParam);
         }
         else
         {
@@ -186,6 +182,7 @@
             // re-render that re-supplies the same (or a stale) Value must NOT clobber the
             // user's typed text.
             adoptValue = !string.Equals(Value, _lastValueParam, StringComparison.Ordinal);
+            if (adoptValue) _echo.Adopt(Value);
         }
 
         // Re-derive the masked display when adopting Value OR when the mask
@@ -196,7 +193,6 @@
             if (adoptValue)
             {
                 _rawValue = Value ?? "";
-                _lastPushed = Value;
             }
             _displayValue = ApplyMask(_rawValue);
             _lastMask = Mask;
@@ -303,13 +299,28 @@
 
         _rawValue = ExtractRaw(inputVal);
         _displayValue = ApplyMask(_rawValue);
-        // Record _lastPushed BEFORE raising ValueChanged: a controlled parent
-        // re-renders synchronously inside InvokeAsync, so OnParametersSet must
-        // already see this as "the value we pushed" to recognise the echo and
-        // keep the caret (and, on a rejection, roll back to the parent's
-        // authoritative value).
-        _lastPushed = _rawValue;
-        await ValueChanged.InvokeAsync(_rawValue);
+        // Record the push BEFORE raising ValueChanged: a controlled parent can re-render
+        // synchronously inside InvokeAsync, so OnParametersSet must already see this as
+        // "the value we pushed" to recognise the echo and keep the caret (and, on a
+        // rejection, roll back to the parent's authoritative value).
+        _echo.Push(_rawValue);
+        _echo.BeginDispatch();
+        Task pushed;
+        try { pushed = ValueChanged.InvokeAsync(_rawValue); }
+        catch (Exception ex) { pushed = Task.FromException(ex); }
+        if (_echo.EndDispatch(pushed))
+        {
+            // The parent answered synchronously by keeping its previous Value: a rejection.
+            _rawValue = Value ?? "";
+            _displayValue = ApplyMask(_rawValue);
+            _echo.Adopt(Value);
+        }
+        // A still-pending (async) handler is not awaited: Blazor Server dispatches a
+        // circuit's UI events one at a time, so awaiting the parent's async tail here would
+        // queue every later keystroke behind it. Its eventual exception goes through
+        // DispatchExceptionAsync, to the nearest ErrorBoundary or the circuit's error
+        // handling, where the event pipeline would have sent it.
+        await Lumeo.Internal.ControlledValueEcho.AwaitOrObserve(pushed, DispatchExceptionAsync);
 
         // When the masked display differs from what the browser produced (a char
         // was rejected, or a literal/separator was auto-inserted), the new

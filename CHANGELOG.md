@@ -30,6 +30,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Docs examples that used the non-existent `Tabs.Value`/`Tabs.DefaultValue` names (now valid
   parameters, see Added) — `TabsPage`'s reorder demo, `IconPage`'s usage tabs, and
   `SettingsPageBlock`'s code sample.
+- **`Input`, `InputMask` and `Textarea` no longer lose typed characters when a controlled
+  parent's `ValueChanged` handler stores the value only after an `await`.** Such a parent
+  re-renders late, and two handlers whose awaits finish in the same timer tick re-render in
+  reverse order, so the component was handed values the user had already typed past and
+  adopted them as if the parent had changed its value, overwriting newer keystrokes in the
+  field. A pushed value is now treated as an echo for as long as the handler that received it
+  is still running, and a re-render that leaves the parent's `Value` unchanged while a push is
+  still being handled no longer counts as a rejection. Synchronous handlers keep the exact
+  accept / reject / transform behaviour they had. The input event also no longer waits for an
+  async `ValueChanged` handler to finish (Blazor Server dispatches a circuit's events one at a
+  time, so waiting queued every later keystroke behind it); an exception that handler throws
+  later is passed to `DispatchExceptionAsync`, so it still reaches an `ErrorBoundary` or the
+  circuit's error handling. `Textarea` now keeps its own live value like `Input` did (it used
+  to write each keystroke into its `Value` parameter), including `Input`'s rule that an
+  uncontrolled `Textarea` only adopts `Value` when the parent actually changes it. Measured in
+  a real Blazor Server circuit, 54-character sentence typed at 15 ms per key against a handler
+  doing `await Task.Delay(30)`, 20 runs each: `Input` kept 34-39 characters before, `Textarea`
+  31-36; both, plus `InputMask` and an `Input` with a `Prefix`, now keep all 54 in 20 of 20
+  runs.
 
 ## [5.12.0] - 2026-09-25
 
