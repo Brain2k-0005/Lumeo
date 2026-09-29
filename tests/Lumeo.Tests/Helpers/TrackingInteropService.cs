@@ -744,7 +744,13 @@ public class TrackingInteropService : IComponentInteropService
     public IReadOnlyList<(string ElementId, int Position)> SetInputCaretCalls => _setInputCaretCalls;
     /// <summary>Caret position returned by <see cref="GetInputCaret"/>; defaults to 0.</summary>
     public int InputCaret { get; set; }
-    public ValueTask<int> GetInputCaret(string elementId) => ValueTask.FromResult(InputCaret);
+    /// <summary>Number of <see cref="GetInputCaret"/> calls.</summary>
+    public int GetInputCaretCallCount { get; private set; }
+    public ValueTask<int> GetInputCaret(string elementId)
+    {
+        GetInputCaretCallCount++;
+        return ValueTask.FromResult(InputCaret);
+    }
     public ValueTask SetInputCaret(string elementId, int position)
     {
         _setInputCaretCalls.Add((elementId, position));

@@ -1,0 +1,74 @@
+@page "/e2e/input-latency"
+
+@* Real-browser repro for keystrokes lost under network latency with a plain, synchronous
+   @bind-Value. InputLatencyTests delays every frame the browser sends over the circuit's
+   WebSocket and types at a realistic speed. Before the fix, each render batch set the
+   field's value back to the text of the keystroke it answered, while the user had already
+   typed further. The native @bind control is the baseline: Razor's @bind makes Blazor
+   update its last-rendered value to the typed text (SetUpdatesAttributeName), so an older
+   render never rewrites the field.
+
+   Every control is wrapped in a [data-testid] element; the test types into the first
+   input/textarea inside it and compares the field's text with the server-side bound value
+   shown in the matching "-bound" readout. *@
+
+<PageTitle>E2E - Input latency</PageTitle>
+
+<div class="p-8 flex flex-col gap-6" style="max-width: 480px;">
+    <h1 data-testid="input-latency-e2e-title">Input under latency (synchronous @@bind-Value)</h1>
+
+    <div class="flex flex-col gap-1.5" data-testid="lumeo-input">
+        <span>Input</span>
+        <Lumeo.Input @bind-Value="_input" />
+        <span class="text-xs">bound: <span data-testid="lumeo-input-bound">@_input</span></span>
+    </div>
+
+    <div class="flex flex-col gap-1.5" data-testid="lumeo-textarea">
+        <span>Textarea</span>
+        <Lumeo.Textarea @bind-Value="_textarea" />
+        <span class="text-xs">bound: <span data-testid="lumeo-textarea-bound">@_textarea</span></span>
+    </div>
+
+    <div class="flex flex-col gap-1.5" data-testid="lumeo-mask">
+        <span>InputMask, accept-anything mask</span>
+        <Lumeo.InputMask Mask="@AnyCharMask" @bind-Value="_mask" />
+        <span class="text-xs">bound: <span data-testid="lumeo-mask-bound">@_mask</span></span>
+    </div>
+
+    <div class="flex flex-col gap-1.5" data-testid="lumeo-phone">
+        <span>InputMask, phone mask (inserts literals)</span>
+        <Lumeo.InputMask Mask="(###) ###-####" @bind-Value="_phone" />
+        <span class="text-xs">bound: <span data-testid="lumeo-phone-bound">@_phone</span></span>
+    </div>
+
+    <div class="flex flex-col gap-1.5" data-testid="lumeo-password">
+        <span>PasswordInput</span>
+        <Lumeo.PasswordInput @bind-Value="_password" ShowToggle="false" />
+        <span class="text-xs">bound: <span data-testid="lumeo-password-bound">@_password</span></span>
+    </div>
+
+    <div class="flex flex-col gap-1.5" data-testid="lumeo-prompt">
+        <span>PromptInput</span>
+        <Lumeo.PromptInput @bind-Value="_prompt" />
+        <span class="text-xs">bound: <span data-testid="lumeo-prompt-bound">@_prompt</span></span>
+    </div>
+
+    <div class="flex flex-col gap-1.5" data-testid="native-bind">
+        <span>Baseline: native input, @@bind:event="oninput"</span>
+        <input @bind="_native" @bind:event="oninput" />
+        <span class="text-xs">bound: <span data-testid="native-bind-bound">@_native</span></span>
+    </div>
+</div>
+
+@code {
+    // '*' accepts any character, so the masked display equals what was typed.
+    private static readonly string AnyCharMask = new('*', 80);
+
+    private string? _input;
+    private string? _textarea;
+    private string? _mask;
+    private string? _phone;
+    private string? _password;
+    private string? _prompt;
+    private string? _native;
+}

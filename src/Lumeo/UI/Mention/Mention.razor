@@ -19,7 +19,9 @@
 <div class="relative" @attributes="AdditionalAttributes">
     <textarea id="@EffectiveTextareaId"
               class="@TextareaCssClass"
-              value="@Value"
+              @bind:get="Value"
+              @bind:set="HandleBoundInput"
+              @bind:event="oninput"
               rows="@Rows"
               placeholder="@Placeholder"
               disabled="@Disabled"
@@ -34,7 +36,6 @@
               aria-activedescendant="@((_showDropdown && FilteredOptions.Any()) ? OptionElementId(_activeIndex) : null)"
               aria-describedby="@FormFieldDescribedBy"
               @ref="_textareaRef"
-              @oninput="HandleInput"
               @onkeydown="HandleKeyDown"
               @onfocus="HandleFocus"
               @onblur="HandleBlur" />
@@ -181,6 +182,13 @@
             ? Options
             : Options.Where(o => o.Label.Contains(_searchTerm, StringComparison.OrdinalIgnoreCase) ||
                                  o.Value.Contains(_searchTerm, StringComparison.OrdinalIgnoreCase)).ToList();
+
+    // Bound like Razor's @bind (@bind:get/@bind:set on oninput) instead of value="..." plus
+    // @oninput, so the compiler emits SetUpdatesAttributeName("value"): Blazor then updates
+    // its last-rendered value to the text each input event carried, and a render answering
+    // an older keystroke no longer rewrites the field while the user has typed further
+    // (lost keystrokes under network latency). See Input.razor.
+    private Task HandleBoundInput(string? value) => HandleInput(new ChangeEventArgs { Value = value });
 
     private async Task HandleInput(ChangeEventArgs e)
     {

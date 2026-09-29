@@ -13,6 +13,13 @@ namespace Lumeo.Tests.Components.InputMask;
 /// twice (keydown + input), and the caret was never restored after re-masking.
 /// Deletion now flows through the single native input handler (caret-correct),
 /// fires ValueChanged once, and the caret is repositioned via SetInputCaret.
+///
+/// The caret is read and restored only when the masked display differs from what the
+/// browser produced (a rejected char, an inserted literal): only then is the field
+/// rewritten, and only a rewrite moves the caret. When the display equals the typed text
+/// the browser's caret is already right, and a restore computed for an older keystroke
+/// would land after the user typed further under network latency, inserting the next
+/// characters mid-text (InputLatencyTests, E2E).
 /// </summary>
 public class InputMaskCaretTests : IAsyncLifetime
 {
@@ -77,28 +84,44 @@ public class InputMaskCaretTests : IAsyncLifetime
     [Fact]
     public void Input_Restores_The_Caret()
     {
-        _interop.InputCaret = 3; // browser caret after typing "123"
+        _interop.InputCaret = 4; // browser caret after typing "1234"
         var cut = _ctx.Render<L.InputMask>(p => p
             .Add(c => c.Mask, "###-###"));
 
+        cut.Find("input").Input("1234");
+
+        // The masked display is "123-4": the separator is inserted, so the field is
+        // rewritten and the caret lands after the fourth digit, index 5.
+        Assert.NotEmpty(_interop.SetInputCaretCalls);
+        Assert.Equal(5, _interop.SetInputCaretCalls[^1].Position);
+    }
+
+    [Fact]
+    public void Display_Equal_To_Typed_Text_Neither_Reads_Nor_Restores_The_Caret()
+    {
+        _interop.InputCaret = 1; // anywhere: it must not be used
+        var cut = _ctx.Render<L.InputMask>(p => p
+            .Add(c => c.Mask, "###-###"));
+
+        // "123" masks to "123" (no dangling separator until the next slot is entered):
+        // nothing is rewritten, so the browser's caret stays where the user put it.
         cut.Find("input").Input("123");
 
-        // The masked display is "123" (no dangling separator until the next field
-        // starts), so the caret rests at the end of the three digits, index 3.
-        Assert.NotEmpty(_interop.SetInputCaretCalls);
-        Assert.Equal(3, _interop.SetInputCaretCalls[^1].Position);
+        Assert.Equal(0, _interop.GetInputCaretCallCount);
+        Assert.Empty(_interop.SetInputCaretCalls);
+        Assert.Equal("123", cut.Find("input").GetAttribute("value"));
     }
 
     [Fact]
     public void Caret_Maps_To_End_Of_Filled_Significant_Slots()
     {
-        // Two significant chars typed; the display is "12" (the separator only
-        // appears once the third slot is entered), so the caret lands at index 2.
-        _interop.InputCaret = 2;
+        // Two digits and a rejected letter typed; the display is "12" (the separator
+        // only appears once the third slot is entered), so the caret lands at index 2.
+        _interop.InputCaret = 3;
         var cut = _ctx.Render<L.InputMask>(p => p
             .Add(c => c.Mask, "##/##"));
 
-        cut.Find("input").Input("12");
+        cut.Find("input").Input("12x");
 
         Assert.Equal(2, _interop.SetInputCaretCalls[^1].Position);
     }
@@ -114,9 +137,9 @@ public class InputMaskCaretTests : IAsyncLifetime
             .Add(c => c.Mask, "##-###")
             .Add(c => c.Value, "12345"));
 
-        // Browser string with the caret implied after "12"; full value present so
-        // ApplyMask renders the trailing separator + remaining digits.
-        cut.Find("input").Input("12-345");
+        // Browser string without the separator (e.g. pasted) and the caret after "12";
+        // ApplyMask re-inserts the separator, so the field is rewritten.
+        cut.Find("input").Input("12345");
 
         // Display "12-345": after 2 filled slots the '-' literal is skipped → 3.
         Assert.Equal(3, _interop.SetInputCaretCalls[^1].Position);

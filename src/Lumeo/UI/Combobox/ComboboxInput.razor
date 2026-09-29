@@ -57,8 +57,9 @@
                aria-describedby="@Context.DescribedBy"
                class="flex-1 min-w-[80px] bg-transparent text-sm placeholder:text-muted-foreground focus:outline-none"
                placeholder="@EffectivePlaceholder"
-               value="@Context.SearchText"
-               @oninput="HandleInput"
+               @bind:get="Context.SearchText"
+               @bind:set="HandleBoundInput"
+               @bind:event="oninput"
                @onfocus="Open"
                @onkeydown="HandleKeyDown"
                @onkeydown:stopPropagation="true"
@@ -110,8 +111,9 @@ else if (HasSingleChip)
                aria-describedby="@Context.DescribedBy"
                class="flex-1 min-w-[80px] bg-transparent text-sm placeholder:text-muted-foreground focus:outline-none"
                placeholder="@EffectivePlaceholder"
-               value="@Context.SearchText"
-               @oninput="HandleInput"
+               @bind:get="Context.SearchText"
+               @bind:set="HandleBoundInput"
+               @bind:event="oninput"
                @onfocus="Open"
                @onkeydown="HandleKeyDown"
                @onkeydown:stopPropagation="true"
@@ -136,8 +138,9 @@ else
                aria-describedby="@Context.DescribedBy"
                class="@CssClass"
                placeholder="@EffectivePlaceholder"
-               value="@Context.SearchText"
-               @oninput="HandleInput"
+               @bind:get="Context.SearchText"
+               @bind:set="HandleBoundInput"
+               @bind:event="oninput"
                @onfocus="Open"
                @onkeydown="HandleKeyDown"
                @onkeydown:stopPropagation="true"
@@ -197,6 +200,13 @@ else
     private string CssClass => Cx.Merge("flex", SizeClasses, "w-full rounded-md border", (Context.Invalid ? "border-destructive" : "border-input"), "bg-transparent ps-8 text-sm placeholder:text-muted-foreground focus-visible:outline-none", (Context.Invalid ? "focus-visible:ring-[1.5px] focus-visible:ring-destructive/20" : ""), Class);
 
     private string WrapperCssClass => Cx.Merge("flex flex-wrap items-center gap-1", ChipWrapperSizeClasses, "w-full rounded-md border", (Context.Invalid ? "border-destructive" : "border-input"), "bg-transparent text-sm focus-within:outline-none", (Context.Invalid ? "focus-within:ring-[1.5px] focus-within:ring-destructive/20" : ""), Class);
+
+    // Bound like Razor's @bind (@bind:get/@bind:set on oninput) instead of value="..." plus
+    // @oninput, so the compiler emits SetUpdatesAttributeName("value"): Blazor then updates
+    // its last-rendered value to the text each input event carried, and a render answering
+    // an older keystroke no longer rewrites the field while the user has typed further
+    // (lost keystrokes under network latency). See Input.razor.
+    private Task HandleBoundInput(string? value) => HandleInput(new ChangeEventArgs { Value = value });
 
     private async Task HandleInput(ChangeEventArgs e)
     {
