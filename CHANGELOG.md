@@ -5,6 +5,15 @@ All notable changes to Lumeo will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+- **`DataGrid`'s select-all checkbox lines up with the row checkboxes.** Both were placed by
+  their cell's padding, so they drifted apart whenever header and body cells were padded
+  differently: by 4 px with `Compact` (rows use `px-2`, the header kept `px-3`), and by more in
+  apps whose own CSS pads `th` and `td` differently. The selection checkboxes, the single-select
+  marker and the loading placeholder are now centred in their cells. Owner field report.
+
 ## [5.12.2] - 2026-09-29
 
 ### Fixed
