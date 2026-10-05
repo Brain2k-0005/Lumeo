@@ -13,6 +13,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   differently: by 4 px with `Compact` (rows use `px-2`, the header kept `px-3`), and by more in
   apps whose own CSS pads `th` and `td` differently. The selection checkboxes, the single-select
   marker and the loading placeholder are now centred in their cells. Owner field report.
+- **`DataGrid`'s sticky header cells match the rest of the header.** The selection column's
+  header and pinned column headers used an opaque `bg-muted`, a visibly lighter box next to the
+  other header cells (`bg-muted/30` over `bg-card`), most of all in dark mode. They now paint that
+  same two-layer colour while staying opaque, so scrolled columns still don't show through. Dark
+  mode before: rgb(39, 39, 42) next to rgb(18, 18, 21); now rgb(18, 18, 20). Owner field report.
 
 ## [5.12.2] - 2026-09-29
 
