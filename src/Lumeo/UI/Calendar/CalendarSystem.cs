@@ -271,9 +271,23 @@ internal static class CalendarSystemMath
         result = default;
         if (string.IsNullOrWhiteSpace(text)) return false;
 
-        var order = TokenOrder(pattern); // e.g. "yMd"
+        var order = TokenOrder(pattern, out var widths); // e.g. "yMd", widths {4,2,2}
         var ascii = ToAsciiDigits(text.Trim());
         var numbers = ExtractNumbers(ascii);
+
+        // Separator-less patterns such as "yyyyMMdd" format to one digit run
+        // ("14030712"): split it back by the pattern's token widths.
+        if (numbers.Count <= 1 && order.Length == 3 && widths.Sum() == DigitCount(ascii))
+        {
+            var digits = new string(ascii.Where(c => c is >= '0' and <= '9').ToArray());
+            numbers = new List<int>(3);
+            var pos = 0;
+            foreach (var w in widths)
+            {
+                numbers.Add(int.Parse(digits.AsSpan(pos, w), NumberStyles.None, CultureInfo.InvariantCulture));
+                pos += w;
+            }
+        }
 
         int year, month, day;
         var textualMonth = FindMonthName(ascii);
@@ -298,7 +312,9 @@ internal static class CalendarSystemMath
             return false;
         }
 
-        if (year is >= 0 and < 100) year += 1400;
+        // Two-digit years resolve through the calendar's TwoDigitYearMax window
+        // (99 → 1399, 03 → 1403) so a "yy" value round-trips unchanged.
+        if (year is >= 0 and < 100) year = Persian.ToFourDigitYear(year);
         return TryCreate(year, month, day, out result);
     }
 
@@ -355,8 +371,13 @@ internal static class CalendarSystemMath
         }
     }
 
-    private static string TokenOrder(string pattern)
+    private static int DigitCount(string text) => text.Count(c => c is >= '0' and <= '9');
+
+    /// <summary>The order of the numeric y/M/d tokens in <paramref name="pattern"/> and the
+    /// digit width each takes when the parts are written without separators.</summary>
+    private static string TokenOrder(string pattern, out List<int> widths)
     {
+        widths = new List<int>(3);
         var sb = new StringBuilder(3);
         var inQuote = '\0';
         for (var i = 0; i < pattern.Length; i++)
@@ -372,7 +393,11 @@ internal static class CalendarSystemMath
                 i += run - 1;
                 // ddd/dddd are weekday names, not the day number.
                 if (ch == 'd' && run >= 3) continue;
-                if (sb.ToString().IndexOf(ch) < 0) sb.Append(ch);
+                if (sb.ToString().IndexOf(ch) < 0)
+                {
+                    sb.Append(ch);
+                    widths.Add(ch == 'y' ? (run <= 2 ? 2 : 4) : 2);
+                }
             }
         }
         return sb.ToString();

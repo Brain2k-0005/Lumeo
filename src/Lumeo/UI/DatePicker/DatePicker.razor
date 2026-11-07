@@ -552,7 +552,7 @@ else
     [Parameter] public System.Globalization.CultureInfo? Culture { get; set; }
 
     private System.Globalization.CultureInfo EffectiveCulture => Culture ?? System.Globalization.CultureInfo.CurrentCulture;
-    private string EffectiveFormat => Format ?? (CalendarSystem == CalendarSystem.Jalali
+    private string EffectiveFormat => Format ?? (ActiveCalendarSystem == CalendarSystem.Jalali
         ? CalendarSystemMath.JalaliDefaultFormat
         : EffectiveCulture.DateTimeFormat.ShortDatePattern);
 
@@ -568,12 +568,18 @@ else
     /// </summary>
     [Parameter] public CalendarSystem CalendarSystem { get; set; } = CalendarSystem.Gregorian;
 
+    // The Wheel variant's DateWheelPicker is Gregorian-only, so its trigger text and typed
+    // input stay Gregorian too — otherwise the trigger and the opened wheel would disagree.
+    private CalendarSystem ActiveCalendarSystem =>
+        Variant == DatePickerVariant.Wheel ? CalendarSystem.Gregorian : CalendarSystem;
+    private CalendarSystem? _lastCalendarSystem;
+
     private string FormatDate(DateOnly date) =>
-        CalendarSystemMath.Format(CalendarSystem, date, EffectiveFormat, EffectiveCulture);
+        CalendarSystemMath.Format(ActiveCalendarSystem, date, EffectiveFormat, EffectiveCulture);
     private string FormatMonth(DateOnly date) =>
-        CalendarSystemMath.MonthTitle(CalendarSystem, date, EffectiveCulture);
-    private string FormatYear(DateOnly date) => CalendarSystem == CalendarSystem.Jalali
-        ? CalendarSystemMath.FormatNumber(CalendarSystem, CalendarSystemMath.GetYear(CalendarSystem, date), EffectiveCulture)
+        CalendarSystemMath.MonthTitle(ActiveCalendarSystem, date, EffectiveCulture);
+    private string FormatYear(DateOnly date) => ActiveCalendarSystem == CalendarSystem.Jalali
+        ? CalendarSystemMath.FormatNumber(ActiveCalendarSystem, CalendarSystemMath.GetYear(ActiveCalendarSystem, date), EffectiveCulture)
         : date.Year.ToString(EffectiveCulture);
     [Parameter] public DateOnly? MinDate { get; set; }
     [Parameter] public DateOnly? MaxDate { get; set; }
@@ -801,6 +807,15 @@ else
             _lastPushed = Value;
             _inputBuffer = FormatBuffer(Value);
         }
+
+        // Switching the calendar system (or into/out of Wheel) changes how the buffer is
+        // both displayed and parsed: re-render it in the new system so stale text from the
+        // old one is never re-read as a different date on the next blur.
+        if (_lastCalendarSystem != ActiveCalendarSystem)
+        {
+            if (_lastCalendarSystem.HasValue) _inputBuffer = FormatBuffer(Value);
+            _lastCalendarSystem = ActiveCalendarSystem;
+        }
     }
 
     private string FormatBuffer(DateOnly? value)
@@ -914,7 +929,7 @@ else
         var culture = EffectiveCulture;
         var styles = System.Globalization.DateTimeStyles.None;
 
-        if (CalendarSystem == CalendarSystem.Jalali)
+        if (ActiveCalendarSystem == CalendarSystem.Jalali)
         {
             return Mode switch
             {
@@ -1079,7 +1094,7 @@ else
     {
         if (Mode == DatePickerMode.Month && date.HasValue)
         {
-            Value = CalendarSystemMath.MonthStart(CalendarSystem, date.Value);
+            Value = CalendarSystemMath.MonthStart(ActiveCalendarSystem, date.Value);
             _lastPushed = Value;
             // Refresh the typed buffer to the picked value. Without this, a controlled
             // parent that echoes Value back hits the _lastPushed echo-skip in
@@ -1091,7 +1106,7 @@ else
         }
         else if (Mode == DatePickerMode.Year && date.HasValue)
         {
-            Value = CalendarSystemMath.MonthStart(CalendarSystem, CalendarSystemMath.GetYear(CalendarSystem, date.Value), 1);
+            Value = CalendarSystemMath.MonthStart(ActiveCalendarSystem, CalendarSystemMath.GetYear(ActiveCalendarSystem, date.Value), 1);
             _lastPushed = Value;
             _inputBuffer = FormatBuffer(Value);
             await ValueChanged.InvokeAsync(Value);

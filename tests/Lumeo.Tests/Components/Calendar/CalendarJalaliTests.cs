@@ -212,6 +212,20 @@ public class CalendarSystemMathTests
     public void Rejects_Invalid_Dates(string text)
         => Assert.False(CalendarSystemMath.TryParseJalali(text, "yyyy/MM/dd", out _));
 
+    [Theory]
+    [InlineData("yy/MM/dd", 2020, 6, 1)]   // 1399/03/12 — before 1400
+    [InlineData("yy/MM/dd", 2024, 10, 3)]  // 1403/07/12
+    [InlineData("yyyyMMdd", 2024, 10, 3)]  // no separators
+    [InlineData("ddMMyyyy", 2020, 6, 1)]
+    [InlineData("yyMMdd", 2024, 10, 3)]
+    public void Format_Parse_Round_Trips(string pattern, int y, int m, int d)
+    {
+        var date = new DateOnly(y, m, d);
+        var text = CalendarSystemMath.Format(L.CalendarSystem.Jalali, date, pattern, En);
+        Assert.True(CalendarSystemMath.TryParseJalali(text, pattern, out var parsed), text);
+        Assert.Equal(date, parsed);
+    }
+
     [Fact]
     public void Accepts_Leap_Day()
         => Assert.True(CalendarSystemMath.TryParseJalali("1403/12/30", "yyyy/MM/dd", out _));

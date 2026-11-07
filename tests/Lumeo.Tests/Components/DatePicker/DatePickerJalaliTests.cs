@@ -91,6 +91,41 @@ public class DatePickerJalaliTests : IAsyncLifetime
     }
 
     [Fact]
+    public void Switching_CalendarSystem_Reformats_The_Buffer()
+    {
+        var calls = 0;
+        var value = new DateOnly(2024, 10, 3);
+        var cut = _ctx.Render<L.DatePicker>(p => p
+            .Add(c => c.Culture, CultureInfo.InvariantCulture)
+            .Add(c => c.Format, "yyyy/MM/dd")
+            .Add(c => c.Value, value)
+            .Add(c => c.ValueChanged, EventCallback.Factory.Create<DateOnly?>(this, _ => calls++)));
+        Assert.Equal("2024/10/03", cut.Find("input").GetAttribute("value"));
+
+        cut.Render(p => p.Add(c => c.CalendarSystem, L.CalendarSystem.Jalali));
+        Assert.Equal("1403/07/12", cut.Find("input").GetAttribute("value"));
+
+        // Blurring the re-rendered text must not move the date.
+        cut.Find("input").Blur();
+        Assert.Equal(0, calls);
+    }
+
+    [Fact]
+    public void Wheel_Variant_Stays_Gregorian()
+    {
+        var cut = _ctx.Render<L.DatePicker>(p => p
+            .Add(c => c.CalendarSystem, L.CalendarSystem.Jalali)
+            .Add(c => c.Variant, L.DatePicker.DatePickerVariant.Wheel)
+            .Add(c => c.Culture, CultureInfo.InvariantCulture)
+            .Add(c => c.Format, "yyyy-MM-dd")
+            .Add(c => c.Value, new DateOnly(2024, 10, 3)));
+        // The trigger text matches the (Gregorian-only) wheel, not a Jalali rendering.
+        var texts = cut.FindAll("span").Select(e => e.TextContent.Trim()).ToList();
+        Assert.Contains("2024-10-03", texts);
+        Assert.DoesNotContain(texts, t => t.Contains("1403-07-12") || t.Contains("1403/07/12"));
+    }
+
+    [Fact]
     public void Month_Mode_Displays_And_Parses_Jalali_Month()
     {
         DateOnly? committed = null;
