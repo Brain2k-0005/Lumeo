@@ -166,7 +166,9 @@ public class CalendarJalaliTests : IAsyncLifetime
             .Add(c => c.CalendarSystem, L.CalendarSystem.Jalali)
             .Add(c => c.ShowWeekNumbers, true)
             .Add(c => c.Value, new DateOnly(2024, 10, 3)));
-        Assert.All(cut.FindAll("[role=rowheader]"), h => Assert.DoesNotMatch("[0-9]", h.TextContent));
+        var headers = cut.FindAll("[role=rowheader]");
+        Assert.Equal(6, headers.Count);
+        Assert.All(headers, h => Assert.Matches("^[۰-۹]+$", h.TextContent.Trim()));
     }
 
     [Fact]
@@ -253,6 +255,11 @@ public class CalendarSystemMathTests
     [InlineData("yyyyMMdd", 2024, 10, 3)]  // no separators
     [InlineData("ddMMyyyy", 2020, 6, 1)]
     [InlineData("yyMMdd", 2024, 10, 3)]
+    [InlineData("yyyyMd", 2024, 10, 3)]          // 1403712: variable-width M/d, unique split
+    [InlineData("yyyyMM/dd", 2024, 10, 3)]       // partially separated
+    [InlineData("yyyy/MM/dd '14'", 2024, 10, 3)] // digit literal after the date
+    [InlineData("dddd d MMMM yyyy", 2024, 10, 3)]
+    [InlineData("Y", 2024, 9, 22)]               // MMMM yyyy: first of the month
     public void Format_Parse_Round_Trips(string pattern, int y, int m, int d)
     {
         var date = new DateOnly(y, m, d);
@@ -288,6 +295,23 @@ public class CalendarSystemMathTests
         Assert.True(CalendarSystemMath.TryParseJalaliMonth("0001/07", out var m));
         Assert.Equal(1, CalendarSystemMath.GetYear(L.CalendarSystem.Jalali, m));
         Assert.Equal(7, CalendarSystemMath.GetMonth(L.CalendarSystem.Jalali, m));
+    }
+
+    [Fact]
+    public void Ambiguous_Compact_Input_Is_Rejected()
+    {
+        // yyyyMd "1403111": 1/11 or 11/1, both valid, so the parse must not guess.
+        Assert.False(CalendarSystemMath.TryParseJalali("1403111", "yyyyMd", out _));
+    }
+
+    [Fact]
+    public void Month_Day_Format_Defaults_To_The_Current_Jalali_Year()
+    {
+        Assert.True(CalendarSystemMath.TryParseJalali("12 Mehr", "M", out var d));
+        Assert.Equal(7, CalendarSystemMath.GetMonth(L.CalendarSystem.Jalali, d));
+        Assert.Equal(12, CalendarSystemMath.GetDay(L.CalendarSystem.Jalali, d));
+        Assert.Equal(CalendarSystemMath.GetYear(L.CalendarSystem.Jalali, DateOnly.FromDateTime(DateTime.Today)),
+            CalendarSystemMath.GetYear(L.CalendarSystem.Jalali, d));
     }
 
     [Fact]

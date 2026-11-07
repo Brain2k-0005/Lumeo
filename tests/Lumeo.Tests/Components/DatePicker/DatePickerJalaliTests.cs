@@ -140,9 +140,10 @@ public class DatePickerJalaliTests : IAsyncLifetime
 
         cut.FindAll("button").First(b => b.TextContent.Trim() == "1403").Click();
         cut.FindAll("button").First(b => b.TextContent.Trim() == "Far").Click();
-        cut.FindAll("[role=gridcell] button").First(b => b.TextContent.Trim() == "1").Click();
+        // Pick a day well inside the month (12 Far) so normalization to the year start is observable.
+        cut.FindAll("[role=gridcell] button").First(b => b.TextContent.Trim() == "12").Click();
 
-        // Farvardin 1, 1403 — not Gregorian January 1.
+        // Farvardin 1, 1403: not Gregorian January 1, and not the picked day.
         Assert.Equal(new DateOnly(2024, 3, 20), committed);
     }
 

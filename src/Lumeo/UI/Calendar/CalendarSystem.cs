@@ -284,6 +284,12 @@ internal static class CalendarSystemMath
         if (string.IsNullOrWhiteSpace(text)) return false;
 
         pattern = ExpandStandardFormat(pattern);
+
+        // First pass: walk the pattern token by token, so the picker's own output
+        // ("yyyyMd", "yyyyMM/dd", "yyyy/MM/dd '14'", "MMMM yyyy", ...) always parses back.
+        if (TryParsePositional(ToAsciiDigits(text.Trim()), pattern, out result)) return true;
+
+        // Second pass: lenient extraction for hand-typed variations ("1403-7-12", "۱۴۰۳/۷/۱۲").
         var order = TokenOrder(pattern, out var widths, out var literals); // e.g. "yMd", widths {4,2,2}
         var ascii = ToAsciiDigits(text.Trim());
         // Quoted pattern literals ("'v2' yyyy/MM/dd") may contain digits: drop them first.
@@ -341,6 +347,162 @@ internal static class CalendarSystemMath
         // calendar's TwoDigitYearMax window (99 → 1399, 03 → 1403). "0001" stays year 1.
         if (yearLength <= 2) year = Persian.ToFourDigitYear(year);
         return TryCreate(year, month, day, out result);
+    }
+
+    private enum PatternTokenKind { Literal, Year, Month, MonthName, Day, DayName }
+
+    private readonly record struct PatternToken(PatternTokenKind Kind, int Width, string Text);
+
+    private static List<PatternToken> Tokenize(string pattern)
+    {
+        var tokens = new List<PatternToken>();
+        for (var i = 0; i < pattern.Length; i++)
+        {
+            var ch = pattern[i];
+            if (ch is '\'' or '"')
+            {
+                var close = pattern.IndexOf(ch, i + 1);
+                if (close < 0) close = pattern.Length;
+                tokens.Add(new(PatternTokenKind.Literal, 0, pattern.Substring(i + 1, close - i - 1)));
+                i = close;
+                continue;
+            }
+            if (ch == '\\' && i + 1 < pattern.Length)
+            {
+                tokens.Add(new(PatternTokenKind.Literal, 0, pattern[++i].ToString()));
+                continue;
+            }
+            if (ch is not ('y' or 'M' or 'd'))
+            {
+                tokens.Add(new(PatternTokenKind.Literal, 0, ch.ToString()));
+                continue;
+            }
+            var run = 1;
+            while (i + run < pattern.Length && pattern[i + run] == ch) run++;
+            i += run - 1;
+            tokens.Add(ch switch
+            {
+                'y' => new(PatternTokenKind.Year, run, ""),
+                'M' => new(run >= 3 ? PatternTokenKind.MonthName : PatternTokenKind.Month, run, ""),
+                _ => new(run >= 3 ? PatternTokenKind.DayName : PatternTokenKind.Day, run, ""),
+            });
+        }
+        return tokens;
+    }
+
+    private static bool IsNumeric(PatternTokenKind kind) =>
+        kind is PatternTokenKind.Year or PatternTokenKind.Month or PatternTokenKind.Day;
+
+    /// <summary>
+    /// Matches <paramref name="ascii"/> against the pattern position by position. Literals
+    /// must appear where the pattern puts them; a numeric field directly followed by another
+    /// numeric field takes its pattern width (1–2 digits for single-letter <c>M</c>/<c>d</c>),
+    /// otherwise the whole digit run. Every valid split is tried and the parse succeeds only
+    /// when exactly one distinct date results, so an ambiguous split fails instead of
+    /// guessing. Fields the pattern omits default to day 1 / the current Jalali year.
+    /// </summary>
+    private static bool TryParsePositional(string ascii, string pattern, out DateOnly result)
+    {
+        result = default;
+        var tokens = Tokenize(pattern);
+        if (!tokens.Any(t => t.Kind is PatternTokenKind.Year or PatternTokenKind.Month
+                or PatternTokenKind.MonthName or PatternTokenKind.Day))
+            return false;
+
+        var found = new HashSet<DateOnly>();
+        Walk(0, 0, null, 0, null, null);
+        if (found.Count != 1) return false;
+        result = found.First();
+        return true;
+
+        void Walk(int ti, int pos, int? year, int yearLen, int? month, int? day)
+        {
+            if (found.Count > 1) return;
+            if (ti == tokens.Count)
+            {
+                if (!ascii.AsSpan(pos).IsWhiteSpace()) return;
+                var y = year ?? GetYear(CalendarSystem.Jalali, DateOnly.FromDateTime(DateTime.Today));
+                if (year.HasValue && yearLen <= 2) y = Persian.ToFourDigitYear(y);
+                if (TryCreate(y, month ?? 1, day ?? 1, out var d)) found.Add(d);
+                return;
+            }
+
+            var t = tokens[ti];
+            switch (t.Kind)
+            {
+                case PatternTokenKind.Literal:
+                {
+                    var lit = ToAsciiDigits(t.Text);
+                    if (string.IsNullOrWhiteSpace(lit))
+                    {
+                        // Whitespace in the pattern: accept any amount, including none.
+                        var p = pos;
+                        while (p < ascii.Length && char.IsWhiteSpace(ascii[p])) p++;
+                        Walk(ti + 1, p, year, yearLen, month, day);
+                    }
+                    else if (pos + lit.Length <= ascii.Length
+                             && string.Compare(ascii, pos, lit, 0, lit.Length, StringComparison.OrdinalIgnoreCase) == 0)
+                    {
+                        Walk(ti + 1, pos + lit.Length, year, yearLen, month, day);
+                    }
+                    return;
+                }
+                case PatternTokenKind.MonthName:
+                {
+                    foreach (var m in MonthsByNameLength)
+                    {
+                        foreach (var name in new[] { JalaliMonthNamesFa[m - 1], JalaliMonthNamesLatin[m - 1], JalaliMonthNamesLatinAbbr[m - 1] })
+                        {
+                            if (pos + name.Length <= ascii.Length
+                                && string.Compare(ascii, pos, name, 0, name.Length, StringComparison.OrdinalIgnoreCase) == 0)
+                                Walk(ti + 1, pos + name.Length, year, yearLen, m, day);
+                        }
+                    }
+                    return;
+                }
+                case PatternTokenKind.DayName:
+                {
+                    // Weekday names carry no date information: skip the word.
+                    var p = pos;
+                    while (p < ascii.Length && char.IsLetter(ascii[p])) p++;
+                    if (p > pos) Walk(ti + 1, p, year, yearLen, month, day);
+                    return;
+                }
+                default:
+                {
+                    var runEnd = pos;
+                    while (runEnd < ascii.Length && ascii[runEnd] is >= '0' and <= '9') runEnd++;
+                    var available = runEnd - pos;
+                    if (available == 0) return;
+
+                    var adjacentNumeric = ti + 1 < tokens.Count && IsNumeric(tokens[ti + 1].Kind);
+                    int[] widths = !adjacentNumeric
+                        ? [available]
+                        : t.Kind == PatternTokenKind.Year
+                            ? [t.Width <= 2 ? 2 : 4]
+                            : t.Width == 1 ? [1, 2] : [t.Width];
+
+                    foreach (var w in widths)
+                    {
+                        if (w > available || w > 6) continue;
+                        var value = int.Parse(ascii.AsSpan(pos, w), NumberStyles.None, CultureInfo.InvariantCulture);
+                        switch (t.Kind)
+                        {
+                            case PatternTokenKind.Year:
+                                Walk(ti + 1, pos + w, value, w, month, day);
+                                break;
+                            case PatternTokenKind.Month:
+                                if (value is >= 1 and <= 12) Walk(ti + 1, pos + w, year, yearLen, value, day);
+                                break;
+                            default:
+                                if (value is >= 1 and <= 31) Walk(ti + 1, pos + w, year, yearLen, month, value);
+                                break;
+                        }
+                    }
+                    return;
+                }
+            }
+        }
     }
 
     /// <summary>Parses "Mehr 1403", "مهر ۱۴۰۳", "1403/07" or "07/1403" to the first of that Jalali month.</summary>
