@@ -112,6 +112,17 @@ public class CalendarJalaliTests : IAsyncLifetime
     }
 
     [Fact]
+    public void Next_Month_Steps_Past_A_31_Day_Jalali_Month()
+    {
+        // 2024-04-20 is 1 Ordibehesht 1403 (31 days). Gregorian month addition would stall here.
+        var cut = RenderJalali(new DateOnly(2024, 4, 20));
+        Assert.Equal("Ordibehesht 1403", cut.Find("[role=grid]").GetAttribute("aria-label"));
+
+        cut.Find("button[aria-label='Next month']").Click();
+        Assert.Equal("Khordad 1403", cut.Find("[role=grid]").GetAttribute("aria-label"));
+    }
+
+    [Fact]
     public void MinDate_Disables_Previous_At_The_Jalali_Month_Boundary()
     {
         var cut = _ctx.Render<L.Calendar>(p => p

@@ -67,6 +67,7 @@ public class DatePickerJalaliTests : IAsyncLifetime
     [Theory]
     [InlineData("1403/07/12")]
     [InlineData("۱۴۰۳/۰۷/۱۲")]
+    [InlineData("١٤٠٣/٠٧/١٢")]
     public void Typed_Jalali_Date_Commits_Gregorian_Value(string text)
     {
         DateOnly? committed = null;
@@ -123,6 +124,45 @@ public class DatePickerJalaliTests : IAsyncLifetime
         var texts = cut.FindAll("span").Select(e => e.TextContent.Trim()).ToList();
         Assert.Contains("2024-10-03", texts);
         Assert.DoesNotContain(texts, t => t.Contains("1403-07-12") || t.Contains("1403/07/12"));
+    }
+
+    [Fact]
+    public void Year_Mode_Commits_The_First_Day_Of_The_Jalali_Year()
+    {
+        DateOnly? committed = null;
+        var cut = _ctx.Render<L.DatePicker>(p => p
+            .Add(c => c.CalendarSystem, L.CalendarSystem.Jalali)
+            .Add(c => c.Culture, new CultureInfo("en-US"))
+            .Add(c => c.Mode, L.DatePicker.DatePickerMode.Year)
+            .Add(c => c.Inline, true)
+            .Add(c => c.Value, new DateOnly(2024, 10, 3))
+            .Add(c => c.ValueChanged, EventCallback.Factory.Create<DateOnly?>(this, v => committed = v)));
+
+        cut.FindAll("button").First(b => b.TextContent.Trim() == "1403").Click();
+        cut.FindAll("button").First(b => b.TextContent.Trim() == "Far").Click();
+        cut.FindAll("[role=gridcell] button").First(b => b.TextContent.Trim() == "1").Click();
+
+        // Farvardin 1, 1403 — not Gregorian January 1.
+        Assert.Equal(new DateOnly(2024, 3, 20), committed);
+    }
+
+    [Fact]
+    public void DateRangePicker_Forwards_CalendarSystem()
+    {
+        var prev = CultureInfo.CurrentCulture;
+        CultureInfo.CurrentCulture = new CultureInfo("en-US");
+        try
+        {
+            var cut = _ctx.Render<L.DateRangePicker>(p => p
+                .Add(c => c.CalendarSystem, L.CalendarSystem.Jalali)
+                .Add(c => c.StartDate, new DateOnly(2024, 10, 3))
+                .Add(c => c.EndDate, new DateOnly(2024, 10, 5)));
+            Assert.Contains("1403/07/12 - 1403/07/14", cut.Markup);
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = prev;
+        }
     }
 
     [Fact]
