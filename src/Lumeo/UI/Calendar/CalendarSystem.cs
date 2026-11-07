@@ -196,6 +196,7 @@ internal static class CalendarSystemMath
         if (system != CalendarSystem.Jalali)
             return date.ToString(pattern, culture);
 
+        pattern = ExpandStandardFormat(pattern);
         var year = GetYear(system, date);
         var month = GetMonth(system, date);
         var day = GetDay(system, date);
@@ -259,6 +260,17 @@ internal static class CalendarSystemMath
         return sb.ToString();
     }
 
+    /// <summary>Maps the single-letter .NET standard date formats (<c>d D M m Y y</c>) to
+    /// equivalent custom patterns for the Jalali formatter; anything else passes through.</summary>
+    private static string ExpandStandardFormat(string pattern) => pattern switch
+    {
+        "d" => JalaliDefaultFormat,
+        "D" => "dddd, d MMMM yyyy",
+        "M" or "m" => "d MMMM",
+        "Y" or "y" => "MMMM yyyy",
+        _ => pattern,
+    };
+
     /// <summary>
     /// Parses user-typed Jalali text against <paramref name="pattern"/>. Accepts ASCII,
     /// Persian and Arabic-Indic digits and any separators; the order of the numeric
@@ -271,9 +283,19 @@ internal static class CalendarSystemMath
         result = default;
         if (string.IsNullOrWhiteSpace(text)) return false;
 
-        var order = TokenOrder(pattern, out var widths); // e.g. "yMd", widths {4,2,2}
+        pattern = ExpandStandardFormat(pattern);
+        var order = TokenOrder(pattern, out var widths, out var literals); // e.g. "yMd", widths {4,2,2}
         var ascii = ToAsciiDigits(text.Trim());
-        var numbers = ExtractNumbers(ascii);
+        // Quoted pattern literals ("'v2' yyyy/MM/dd") may contain digits: drop them first.
+        foreach (var literal in literals)
+        {
+            var lit = ToAsciiDigits(literal);
+            var at = lit.Length > 0 ? ascii.IndexOf(lit, StringComparison.OrdinalIgnoreCase) : -1;
+            if (at >= 0) ascii = ascii.Remove(at, lit.Length).Insert(at, " ");
+        }
+        var runs = ExtractNumberRuns(ascii);
+        var numbers = runs.Select(x => x.Value).ToList();
+        var lengths = runs.Select(x => x.Length).ToList();
 
         // Separator-less patterns such as "yyyyMMdd" format to one digit run
         // ("14030712"): split it back by the pattern's token widths.
@@ -281,6 +303,7 @@ internal static class CalendarSystemMath
         {
             var digits = new string(ascii.Where(c => c is >= '0' and <= '9').ToArray());
             numbers = new List<int>(3);
+            lengths = new List<int>(widths);
             var pos = 0;
             foreach (var w in widths)
             {
@@ -289,7 +312,7 @@ internal static class CalendarSystemMath
             }
         }
 
-        int year, month, day;
+        int year, month, day, yearLength;
         var textualMonth = FindMonthName(ascii);
 
         if (textualMonth > 0 && numbers.Count == 2)
@@ -297,6 +320,7 @@ internal static class CalendarSystemMath
             var numericOrder = order.Replace("M", "");
             if (numericOrder.Length != 2) numericOrder = "dy";
             year = numbers[numericOrder.IndexOf('y')];
+            yearLength = lengths[numericOrder.IndexOf('y')];
             day = numbers[numericOrder.IndexOf('d')];
             month = textualMonth;
         }
@@ -304,6 +328,7 @@ internal static class CalendarSystemMath
         {
             if (order.Length != 3) order = "yMd";
             year = numbers[order.IndexOf('y')];
+            yearLength = lengths[order.IndexOf('y')];
             month = numbers[order.IndexOf('M')];
             day = numbers[order.IndexOf('d')];
         }
@@ -312,9 +337,9 @@ internal static class CalendarSystemMath
             return false;
         }
 
-        // Two-digit years resolve through the calendar's TwoDigitYearMax window
-        // (99 → 1399, 03 → 1403) so a "yy" value round-trips unchanged.
-        if (year is >= 0 and < 100) year = Persian.ToFourDigitYear(year);
+        // Only a year typed with at most two digits is abbreviated: it resolves through the
+        // calendar's TwoDigitYearMax window (99 → 1399, 03 → 1403). "0001" stays year 1.
+        if (yearLength <= 2) year = Persian.ToFourDigitYear(year);
         return TryCreate(year, month, day, out result);
     }
 
@@ -325,7 +350,8 @@ internal static class CalendarSystemMath
         if (string.IsNullOrWhiteSpace(text)) return false;
 
         var ascii = ToAsciiDigits(text.Trim());
-        var numbers = ExtractNumbers(ascii);
+        var runs = ExtractNumberRuns(ascii);
+        var numbers = runs.Select(x => x.Value).ToList();
         var textualMonth = FindMonthName(ascii);
 
         int year, month;
@@ -336,8 +362,11 @@ internal static class CalendarSystemMath
         }
         else if (numbers.Count == 2)
         {
-            // The year is the wider part (1403/07 or 07/1403).
-            (year, month) = numbers[0] > 12 ? (numbers[0], numbers[1]) : (numbers[1], numbers[0]);
+            // The year is the wider part (1403/07, 07/1403, 0001/07).
+            var firstIsYear = runs[0].Length != runs[1].Length
+                ? runs[0].Length > runs[1].Length
+                : numbers[0] > 12;
+            (year, month) = firstIsYear ? (numbers[0], numbers[1]) : (numbers[1], numbers[0]);
         }
         else
         {
@@ -375,16 +404,22 @@ internal static class CalendarSystemMath
 
     /// <summary>The order of the numeric y/M/d tokens in <paramref name="pattern"/> and the
     /// digit width each takes when the parts are written without separators.</summary>
-    private static string TokenOrder(string pattern, out List<int> widths)
+    private static string TokenOrder(string pattern, out List<int> widths, out List<string> literals)
     {
         widths = new List<int>(3);
+        literals = new List<string>();
         var sb = new StringBuilder(3);
-        var inQuote = '\0';
         for (var i = 0; i < pattern.Length; i++)
         {
             var ch = pattern[i];
-            if (inQuote != '\0') { if (ch == inQuote) inQuote = '\0'; continue; }
-            if (ch is '\'' or '"') { inQuote = ch; continue; }
+            if (ch is '\'' or '"')
+            {
+                var close = pattern.IndexOf(ch, i + 1);
+                if (close < 0) close = pattern.Length;
+                literals.Add(pattern.Substring(i + 1, close - i - 1));
+                i = close;
+                continue;
+            }
             if (ch == '\\') { i++; continue; }
             if (ch is 'y' or 'M' or 'd')
             {
@@ -422,9 +457,13 @@ internal static class CalendarSystemMath
         return 0;
     }
 
-    private static List<int> ExtractNumbers(string ascii)
+    private static List<int> ExtractNumbers(string ascii) =>
+        ExtractNumberRuns(ascii).Select(x => x.Value).ToList();
+
+    /// <summary>Each run of ASCII digits with its value and its digit count.</summary>
+    private static List<(int Value, int Length)> ExtractNumberRuns(string ascii)
     {
-        var result = new List<int>(3);
+        var result = new List<(int Value, int Length)>(3);
         var i = 0;
         while (i < ascii.Length)
         {
@@ -433,7 +472,7 @@ internal static class CalendarSystemMath
                 var start = i;
                 while (i < ascii.Length && ascii[i] is >= '0' and <= '9') i++;
                 if (i - start > 6) return [];
-                result.Add(int.Parse(ascii.AsSpan(start, i - start), NumberStyles.None, CultureInfo.InvariantCulture));
+                result.Add((int.Parse(ascii.AsSpan(start, i - start), NumberStyles.None, CultureInfo.InvariantCulture), i - start));
             }
             else
             {

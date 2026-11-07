@@ -135,6 +135,30 @@ public class CalendarJalaliTests : IAsyncLifetime
     }
 
     [Fact]
+    public void Switching_CalendarSystem_Re_Anchors_The_Displayed_Month()
+    {
+        var cut = _ctx.Render<L.Calendar>(p => p.Add(c => c.Value, new DateOnly(2024, 10, 3)));
+        Assert.Equal("October 2024", cut.Find("[role=grid]").GetAttribute("aria-label"));
+
+        cut.Render(p => p.Add(c => c.CalendarSystem, L.CalendarSystem.Jalali));
+
+        // 1 Oct 2024 is 10 Mehr 1403 → the grid now shows Mehr, starting on 1 Mehr.
+        Assert.Equal("Mehr 1403", cut.Find("[role=grid]").GetAttribute("aria-label"));
+        Assert.Equal("Sunday, 1 Mehr 1403", cut.FindAll("[role=gridcell] button")[1].GetAttribute("aria-label"));
+    }
+
+    [Fact]
+    public void Week_Numbers_Use_Persian_Digits_Under_Fa()
+    {
+        CultureInfo.CurrentCulture = new CultureInfo("fa-IR");
+        var cut = _ctx.Render<L.Calendar>(p => p
+            .Add(c => c.CalendarSystem, L.CalendarSystem.Jalali)
+            .Add(c => c.ShowWeekNumbers, true)
+            .Add(c => c.Value, new DateOnly(2024, 10, 3)));
+        Assert.All(cut.FindAll("[role=rowheader]"), h => Assert.DoesNotMatch("[0-9]", h.TextContent));
+    }
+
+    [Fact]
     public void Gregorian_Default_Is_Unchanged()
     {
         var cut = _ctx.Render<L.Calendar>(p => p.Add(c => c.Value, new DateOnly(2024, 10, 3)));
@@ -224,6 +248,35 @@ public class CalendarSystemMathTests
         var text = CalendarSystemMath.Format(L.CalendarSystem.Jalali, date, pattern, En);
         Assert.True(CalendarSystemMath.TryParseJalali(text, pattern, out var parsed), text);
         Assert.Equal(date, parsed);
+    }
+
+    [Theory]
+    [InlineData("D", "Thursday, 12 Mehr 1403")]
+    [InlineData("d", "1403/07/12")]
+    [InlineData("Y", "Mehr 1403")]
+    public void Expands_Standard_Formats(string pattern, string expected)
+        => Assert.Equal(expected, CalendarSystemMath.Format(L.CalendarSystem.Jalali, new DateOnly(2024, 10, 3), pattern, En));
+
+    [Fact]
+    public void Quoted_Literals_With_Digits_Round_Trip()
+    {
+        var date = new DateOnly(2024, 10, 3);
+        var text = CalendarSystemMath.Format(L.CalendarSystem.Jalali, date, "'v2' yyyy/MM/dd", En);
+        Assert.Equal("v2 1403/07/12", text);
+        Assert.True(CalendarSystemMath.TryParseJalali(text, "'v2' yyyy/MM/dd", out var parsed));
+        Assert.Equal(date, parsed);
+    }
+
+    [Fact]
+    public void Four_Digit_Years_Are_Not_Expanded()
+    {
+        Assert.True(CalendarSystemMath.TryParseJalali("0001/01/01", "yyyy/MM/dd", out var y1));
+        Assert.Equal(1, CalendarSystemMath.GetYear(L.CalendarSystem.Jalali, y1));
+        Assert.False(CalendarSystemMath.TryParseJalali("0000/01/01", "yyyy/MM/dd", out _));
+
+        Assert.True(CalendarSystemMath.TryParseJalaliMonth("0001/07", out var m));
+        Assert.Equal(1, CalendarSystemMath.GetYear(L.CalendarSystem.Jalali, m));
+        Assert.Equal(7, CalendarSystemMath.GetMonth(L.CalendarSystem.Jalali, m));
     }
 
     [Fact]

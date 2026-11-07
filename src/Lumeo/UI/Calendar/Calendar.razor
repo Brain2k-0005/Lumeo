@@ -94,7 +94,9 @@
     /// When <c>null</c> (default), uses
     /// <c>CultureInfo.CurrentCulture.DateTimeFormat.FirstDayOfWeek</c> —
     /// so de-DE / fr-FR / etc. start on Monday automatically, en-US on
-    /// Sunday. Pass an explicit <see cref="DayOfWeek"/> to override.</summary>
+    /// Sunday. With <see cref="CalendarSystem"/> set to
+    /// <see cref="Lumeo.CalendarSystem.Jalali"/> the default is Saturday instead.
+    /// Pass an explicit <see cref="DayOfWeek"/> to override.</summary>
     [Parameter] public DayOfWeek? FirstDayOfWeek { get; set; }
     /// <summary>When <c>true</c> (default), users can swipe left/right on the
     /// day grid to navigate to the next or previous month on touch devices.
@@ -162,8 +164,18 @@
         DisplayDate = MonthStart(_lastSeenAnchor ?? DateOnly.FromDateTime(DateTime.Today));
     }
 
+    private CalendarSystem? _lastCalendarSystem;
+
     protected override void OnParametersSet()
     {
+        // A CalendarSystem switch on a live calendar re-anchors the displayed month to
+        // the first day of a month in the NEW system; otherwise the panels would render
+        // from a mid-month date and keyboard focus could target a panel id that no
+        // longer exists.
+        if (_lastCalendarSystem.HasValue && _lastCalendarSystem != CalendarSystem)
+            DisplayDate = MonthStart(DisplayDate);
+        _lastCalendarSystem = CalendarSystem;
+
         // When the bound anchor (Value, RangeStart, or the first selected day in
         // multiple mode) changes from outside — e.g. the parent sets it
         // programmatically on an inline calendar — navigate the visible month to
@@ -894,7 +906,7 @@
                         @if (ShowWeekNumbers)
                         {
                             var weekDate = calDays[weekRow * 7];
-                            <div role="rowheader" class="inline-flex items-center justify-center h-[var(--lumeo-calendar-cell-size,calc(var(--spacing,0.25rem)*8))] w-[var(--lumeo-calendar-cell-size,calc(var(--spacing,0.25rem)*8))] text-xs text-muted-foreground">@GetIsoWeekNumber(weekDate)</div>
+                            <div role="rowheader" class="inline-flex items-center justify-center h-[var(--lumeo-calendar-cell-size,calc(var(--spacing,0.25rem)*8))] w-[var(--lumeo-calendar-cell-size,calc(var(--spacing,0.25rem)*8))] text-xs text-muted-foreground">@Num(GetIsoWeekNumber(weekDate))</div>
                         }
                         @for (var col = 0; col < 7; col++)
                         {
