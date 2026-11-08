@@ -5,6 +5,18 @@ All notable changes to Lumeo will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **Jalali (Persian / Solar Hijri) calendar support** for `Calendar`, `DatePicker` and
+  `DateRangePicker` via the new `CalendarSystem` parameter (`CalendarSystem.Gregorian` default,
+  `CalendarSystem.Jalali`). The month grid, headers, month/year pickers, navigation and
+  Min/Max month boundaries follow the Persian calendar, and the week starts on Saturday unless
+  `FirstDayOfWeek` is set. `DatePicker` displays Jalali dates (default pattern `yyyy/MM/dd`; the
+  `y`/`M`/`d` tokens of a custom `Format` resolve against the Persian calendar) and parses typed
+  Jalali input with ASCII, Persian and Arabic-Indic digits. Under a `fa` culture month names
+  and digits render in Persian. Bound values stay Gregorian `DateOnly`. Requested in #545.
+
 ## [5.12.3] - 2026-10-05
 
 ### Fixed

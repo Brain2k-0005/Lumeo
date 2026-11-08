@@ -14,7 +14,7 @@
         <div class="flex gap-4">
             @for (var i = 0; i < NumberOfMonths; i++)
             {
-                var monthDate = DisplayDate.AddMonths(i);
+                var monthDate = AddMonths(DisplayDate, i);
                 <div>
                     @RenderMonth(monthDate, showPrev: i == 0, showNext: i == NumberOfMonths - 1)
                 </div>
@@ -94,18 +94,38 @@
     /// When <c>null</c> (default), uses
     /// <c>CultureInfo.CurrentCulture.DateTimeFormat.FirstDayOfWeek</c> —
     /// so de-DE / fr-FR / etc. start on Monday automatically, en-US on
-    /// Sunday. Pass an explicit <see cref="DayOfWeek"/> to override.</summary>
+    /// Sunday. With <see cref="CalendarSystem"/> set to
+    /// <see cref="Lumeo.CalendarSystem.Jalali"/> the default is Saturday instead.
+    /// Pass an explicit <see cref="DayOfWeek"/> to override.</summary>
     [Parameter] public DayOfWeek? FirstDayOfWeek { get; set; }
     /// <summary>When <c>true</c> (default), users can swipe left/right on the
     /// day grid to navigate to the next or previous month on touch devices.
     /// Vertical page scroll is unaffected (<c>touch-action: pan-y</c>).
     /// Set to <c>false</c> to disable swipe navigation.</summary>
     [Parameter] public bool SwipeEnabled { get; set; } = true;
+    /// <summary>The calendar system the month grid, headers and navigation follow.
+    /// <see cref="Lumeo.CalendarSystem.Jalali"/> renders Solar Hijri (Persian) months
+    /// — and starts the week on Saturday unless <see cref="FirstDayOfWeek"/> is set —
+    /// while <see cref="Value"/>, <see cref="MinDate"/> etc. stay plain Gregorian
+    /// <see cref="DateOnly"/> values. Under a <c>fa</c> culture Jalali month names and
+    /// numbers render in Persian; otherwise Latin transliterations and ASCII digits are
+    /// used. Default <see cref="Lumeo.CalendarSystem.Gregorian"/>.</summary>
+    [Parameter] public CalendarSystem CalendarSystem { get; set; } = CalendarSystem.Gregorian;
 
     private readonly string _elementId = LumeoIds.New("cal-grid");
 
     private DayOfWeek EffectiveFirstDayOfWeek =>
-        FirstDayOfWeek ?? System.Globalization.CultureInfo.CurrentCulture.DateTimeFormat.FirstDayOfWeek;
+        FirstDayOfWeek ?? CalendarSystemMath.DefaultFirstDayOfWeek(CalendarSystem, System.Globalization.CultureInfo.CurrentCulture);
+
+    // Calendar-system aware helpers. Gregorian maps straight onto DateOnly.
+    private DateOnly MonthStart(DateOnly date) => CalendarSystemMath.MonthStart(CalendarSystem, date);
+    private DateOnly MonthStart(int year, int month) => CalendarSystemMath.MonthStart(CalendarSystem, year, month);
+    private DateOnly AddMonths(DateOnly date, int months) => CalendarSystemMath.AddMonths(CalendarSystem, date, months);
+    private bool SameMonth(DateOnly a, DateOnly b) => CalendarSystemMath.SameMonth(CalendarSystem, a, b);
+    private int YearOf(DateOnly date) => CalendarSystemMath.GetYear(CalendarSystem, date);
+    private int MonthOf(DateOnly date) => CalendarSystemMath.GetMonth(CalendarSystem, date);
+    private string Num(int value) => CalendarSystemMath.FormatNumber(CalendarSystem, value, System.Globalization.CultureInfo.CurrentCulture);
+    private string MonthTitle(DateOnly monthDate) => CalendarSystemMath.MonthTitle(CalendarSystem, monthDate, System.Globalization.CultureInfo.CurrentCulture);
     /// <summary>Additional CSS classes merged onto the root element.</summary>
     [Parameter] public string? Class { get; set; }
 
@@ -141,11 +161,21 @@
         // CurrentAnchor folds in multiple/range/single precedence so the
         // displayed month seeds correctly regardless of selection mode.
         _lastSeenAnchor = CurrentAnchor;
-        DisplayDate = _lastSeenAnchor ?? DateOnly.FromDateTime(DateTime.Today);
+        DisplayDate = MonthStart(_lastSeenAnchor ?? DateOnly.FromDateTime(DateTime.Today));
     }
+
+    private CalendarSystem? _lastCalendarSystem;
 
     protected override void OnParametersSet()
     {
+        // A CalendarSystem switch on a live calendar re-anchors the displayed month to
+        // the first day of a month in the NEW system; otherwise the panels would render
+        // from a mid-month date and keyboard focus could target a panel id that no
+        // longer exists.
+        if (_lastCalendarSystem.HasValue && _lastCalendarSystem != CalendarSystem)
+            DisplayDate = MonthStart(DisplayDate);
+        _lastCalendarSystem = CalendarSystem;
+
         // When the bound anchor (Value, RangeStart, or the first selected day in
         // multiple mode) changes from outside — e.g. the parent sets it
         // programmatically on an inline calendar — navigate the visible month to
@@ -162,7 +192,7 @@
         if (anchor.HasValue && anchor != _lastSeenAnchor)
         {
             _lastSeenAnchor = anchor;
-            DisplayDate = new DateOnly(anchor.Value.Year, anchor.Value.Month, 1);
+            DisplayDate = MonthStart(anchor.Value);
             // Realign the roving-tabindex target to the new anchor. Without this,
             // an external Value change *within the displayed month* (June15 →
             // June20) leaves DisplayDate untouched, so EnsureFocusedDate — which
@@ -262,14 +292,14 @@
     }
 
     private bool IsPrevMonthDisabled =>
-        MinDate.HasValue && new DateOnly(DisplayDate.Year, DisplayDate.Month, 1) <= new DateOnly(MinDate.Value.Year, MinDate.Value.Month, 1);
+        MinDate.HasValue && MonthStart(DisplayDate) <= MonthStart(MinDate.Value);
 
     private bool IsNextMonthDisabled
     {
         get
         {
-            var lastPanel = DisplayDate.AddMonths(NumberOfMonths - 1);
-            return MaxDate.HasValue && new DateOnly(lastPanel.Year, lastPanel.Month, 1) >= new DateOnly(MaxDate.Value.Year, MaxDate.Value.Month, 1);
+            var lastPanel = AddMonths(DisplayDate, NumberOfMonths - 1);
+            return MaxDate.HasValue && MonthStart(lastPanel) >= MonthStart(MaxDate.Value);
         }
     }
 
@@ -302,7 +332,7 @@
     private List<DateOnly> GetCalendarDays(DateOnly monthDate)
     {
         var days = new List<DateOnly>();
-        var firstOfMonth = new DateOnly(monthDate.Year, monthDate.Month, 1);
+        var firstOfMonth = MonthStart(monthDate);
         var startOffset = ((int)firstOfMonth.DayOfWeek - (int)EffectiveFirstDayOfWeek + 7) % 7;
         var start = firstOfMonth.AddDays(-startOffset);
 
@@ -381,7 +411,7 @@
                  @onclick="() => SelectDay(d)" @onmouseenter="() => OnDayHover(d)"
                  @onfocus="() => OnDayFocus(d)"
                  @onkeydown="e => HandleDayKeyDownAsync(e, monthDate, d)">
-            @d.Day
+            @Num(CalendarSystemMath.GetDay(CalendarSystem, d))
             @if (badge is not null)
             {
                 <span class="absolute -bottom-0.5 -end-0.5 pointer-events-none flex">@badge</span>
@@ -390,7 +420,7 @@
 
     private string DayClasses(DateOnly day, DateOnly monthDate)
     {
-        var isCurrentMonth = day.Month == monthDate.Month;
+        var isCurrentMonth = SameMonth(day, monthDate);
         var isDisabled = IsDisabled(day);
         var isSelected = IsMultiple
             ? (Values?.Contains(day) ?? false)
@@ -455,7 +485,7 @@
             if (!next.Remove(day)) next.Add(day);
             next.Sort();
             Values = next;
-            DisplayDate = new DateOnly(day.Year, day.Month, 1);
+            DisplayDate = MonthStart(day);
             // Keep the external-change tracker aligned with this internal mutation,
             // exactly like the single-Value branch below. CurrentAnchor in multiple
             // mode is the earliest selected day (Values.Min()); without this, toggling
@@ -498,12 +528,12 @@
                 }
                 _hoverDate = null;
             }
-            DisplayDate = new DateOnly(day.Year, day.Month, 1);
+            DisplayDate = MonthStart(day);
             _lastSeenAnchor = newRangeStart;
         }
         else
         {
-            DisplayDate = new DateOnly(day.Year, day.Month, 1);
+            DisplayDate = MonthStart(day);
             Value = day;
             // Keep the external-change tracker aligned with this internal
             // mutation so an unrelated parent re-render later (uncontrolled
@@ -544,19 +574,13 @@
     /// <c>aria-label</c> (e.g. "Saturday, June 14, 2025"). Uses the same
     /// CurrentCulture the month/day headers are formatted with.</summary>
     private string DayAriaLabel(DateOnly day)
-        => day.ToDateTime(TimeOnly.MinValue).ToString("D", System.Globalization.CultureInfo.CurrentCulture);
+        => CalendarSystemMath.LongDate(CalendarSystem, day, System.Globalization.CultureInfo.CurrentCulture);
 
     /// <summary>The window of months currently on screen. Keyboard focus must
     /// land on a day that belongs to one of these months' own days.</summary>
-    private DateOnly FirstDisplayedMonth => new(DisplayDate.Year, DisplayDate.Month, 1);
-    private DateOnly LastDisplayedMonthEnd
-    {
-        get
-        {
-            var last = DisplayDate.AddMonths(NumberOfMonths - 1);
-            return new DateOnly(last.Year, last.Month, DateTime.DaysInMonth(last.Year, last.Month));
-        }
-    }
+    private DateOnly FirstDisplayedMonth => MonthStart(DisplayDate);
+    private DateOnly LastDisplayedMonthEnd =>
+        CalendarSystemMath.MonthEnd(CalendarSystem, AddMonths(DisplayDate, NumberOfMonths - 1));
 
     /// <summary>Lazily seeds the roving-tabindex target and keeps it inside the
     /// displayed month window. Preference order: the selected day, then today,
@@ -590,7 +614,7 @@
     private string DayTabIndex(DateOnly day, DateOnly monthDate)
     {
         EnsureFocusedDate();
-        return day == _focusedDate && day.Month == monthDate.Month ? "0" : "-1";
+        return day == _focusedDate && SameMonth(day, monthDate) ? "0" : "-1";
     }
 
     /// <summary>Keeps the roving tabindex aligned when a day receives DOM focus
@@ -610,7 +634,7 @@
     {
         // Only the tabbable (current-month) cell drives navigation, so repeated
         // leading/trailing copies of the same date don't double-handle the key.
-        if (day != _focusedDate || day.Month != monthDate.Month) return;
+        if (day != _focusedDate || !SameMonth(day, monthDate)) return;
 
         switch (e.Key)
         {
@@ -624,8 +648,8 @@
             case "ArrowDown":  await MoveFocusToAsync(SkipDisabled(day.AddDays(7), 1)); break;
             case "Home":       await MoveFocusToAsync(SkipDisabled(StartOfWeek(day), 1)); break;
             case "End":        await MoveFocusToAsync(SkipDisabled(StartOfWeek(day).AddDays(6), -1)); break;
-            case "PageUp":     await MoveFocusToAsync(SkipDisabled(day.AddMonths(-1), 1)); break;
-            case "PageDown":   await MoveFocusToAsync(SkipDisabled(day.AddMonths(1), -1)); break;
+            case "PageUp":     await MoveFocusToAsync(SkipDisabled(AddMonths(day, -1), 1)); break;
+            case "PageDown":   await MoveFocusToAsync(SkipDisabled(AddMonths(day, 1), -1)); break;
             // Enter/Space are intentionally NOT handled here: the day cell is a
             // native <button> whose @onclick already calls SelectDay, so handling
             // the key here too fired SelectDay twice — in range mode that set
@@ -675,7 +699,7 @@
         // Pull the displayed month onto the target so the day actually renders
         // as a current-month cell (the tabbable one) in some visible panel.
         if (target < FirstDisplayedMonth || target > LastDisplayedMonthEnd)
-            DisplayDate = new DateOnly(target.Year, target.Month, 1);
+            DisplayDate = MonthStart(target);
 
         StateHasChanged();
 
@@ -683,49 +707,49 @@
         // that's DisplayDate; with several it's the panel whose month matches.
         var ownerMonth = NumberOfMonths == 1
             ? DisplayDate
-            : new DateOnly(target.Year, target.Month, 1);
+            : MonthStart(target);
         try { await Interop.FocusElement(DayId(ownerMonth, target)); }
         catch (JSDisconnectedException) { }
     }
 
-    private void PreviousMonth() => DisplayDate = DisplayDate.AddMonths(-1);
-    private void NextMonth() => DisplayDate = DisplayDate.AddMonths(1);
+    private void PreviousMonth() => DisplayDate = MonthStart(AddMonths(DisplayDate, -1));
+    private void NextMonth() => DisplayDate = MonthStart(AddMonths(DisplayDate, 1));
 
     private void SwitchToMonthView() => _currentView = CalendarView.Months;
     private void SwitchToYearView() => _currentView = CalendarView.Years;
 
     private void SelectMonth(int month)
     {
-        DisplayDate = new DateOnly(DisplayDate.Year, month, 1);
+        DisplayDate = MonthStart(YearOf(DisplayDate), month);
         _currentView = CalendarView.Days;
     }
 
     private void SelectYear(int year)
     {
-        DisplayDate = new DateOnly(year, DisplayDate.Month, 1);
+        DisplayDate = MonthStart(year, MonthOf(DisplayDate));
         _currentView = CalendarView.Months;
     }
 
     private void PreviousDecade()
     {
-        var decadeStart = GetDecadeStart(DisplayDate.Year);
-        DisplayDate = new DateOnly(Math.Max(1, decadeStart - 10), DisplayDate.Month, 1);
+        var decadeStart = GetDecadeStart(YearOf(DisplayDate));
+        DisplayDate = MonthStart(Math.Max(CalendarSystemMath.MinYear(CalendarSystem), decadeStart - 10), MonthOf(DisplayDate));
     }
 
     private void NextDecade()
     {
-        var decadeStart = GetDecadeStart(DisplayDate.Year);
-        DisplayDate = new DateOnly(Math.Min(9999, decadeStart + 10), DisplayDate.Month, 1);
+        var decadeStart = GetDecadeStart(YearOf(DisplayDate));
+        DisplayDate = MonthStart(Math.Min(CalendarSystemMath.MaxYear(CalendarSystem), decadeStart + 10), MonthOf(DisplayDate));
     }
 
     private void PreviousYear()
     {
-        DisplayDate = new DateOnly(Math.Max(1, DisplayDate.Year - 1), DisplayDate.Month, 1);
+        DisplayDate = MonthStart(Math.Max(CalendarSystemMath.MinYear(CalendarSystem), YearOf(DisplayDate) - 1), MonthOf(DisplayDate));
     }
 
     private void NextYear()
     {
-        DisplayDate = new DateOnly(Math.Min(9999, DisplayDate.Year + 1), DisplayDate.Month, 1);
+        DisplayDate = MonthStart(Math.Min(CalendarSystemMath.MaxYear(CalendarSystem), YearOf(DisplayDate) + 1), MonthOf(DisplayDate));
     }
 
     private RenderFragment RenderMonth(DateOnly monthDate, bool showPrev = true, bool showNext = true) => __builder =>
@@ -765,13 +789,13 @@
 
             @if (_currentView == CalendarView.Years)
             {
-                var decadeStart = GetDecadeStart(monthDate.Year);
-                <span class="text-sm font-medium">@decadeStart - @(decadeStart + 9)</span>
+                var decadeStart = GetDecadeStart(YearOf(monthDate));
+                <span class="text-sm font-medium">@Num(decadeStart) - @Num(decadeStart + 9)</span>
             }
             else if (_currentView == CalendarView.Months)
             {
                 <button type="button" class="text-sm font-medium hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-1 rounded-md px-2 py-1" @onclick="SwitchToYearView">
-                    @monthDate.Year
+                    @Num(YearOf(monthDate))
                 </button>
             }
             else
@@ -781,7 +805,7 @@
                    than two adjacent buttons that look identical but route to
                    different pickers. *@
                 <button type="button" class="text-sm font-medium hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-1 rounded-md px-2 py-1" @onclick="SwitchToMonthView">
-                    @monthDate.ToString("MMMM") @monthDate.Year
+                    @MonthTitle(monthDate)
                 </button>
             }
 
@@ -814,37 +838,38 @@
 
         @if (_currentView == CalendarView.Years)
         {
-            var decadeStart = GetDecadeStart(monthDate.Year);
+            var decadeStart = GetDecadeStart(YearOf(monthDate));
+            var todayYear = YearOf(DateOnly.FromDateTime(DateTime.Today));
             <div class="grid grid-cols-3 gap-2 p-1">
                 @for (var y = decadeStart; y < decadeStart + 12; y++)
                 {
                     var year = y;
-                    var isCurrentYear = year == DateTime.Today.Year;
-                    var isSelectedYear = year == monthDate.Year;
+                    var isCurrentYear = year == todayYear;
+                    var isSelectedYear = year == YearOf(monthDate);
                     var yearClass = isSelectedYear
                         ? "inline-flex items-center justify-center rounded-md h-9 w-full text-sm font-medium bg-primary text-primary-foreground"
                         : isCurrentYear
                             ? "inline-flex items-center justify-center rounded-md h-9 w-full text-sm font-medium bg-accent text-accent-foreground"
                             : "inline-flex items-center justify-center rounded-md h-9 w-full text-sm hover:bg-accent hover:text-accent-foreground cursor-pointer focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-1";
-                    <button type="button" class="@yearClass" @onclick="() => SelectYear(year)">@year</button>
+                    <button type="button" class="@yearClass" @onclick="() => SelectYear(year)">@Num(year)</button>
                 }
             </div>
         }
         else if (_currentView == CalendarView.Months)
         {
-            var monthNames = System.Globalization.CultureInfo.CurrentCulture.DateTimeFormat.AbbreviatedMonthNames;
+            var today = DateOnly.FromDateTime(DateTime.Today);
             <div class="grid grid-cols-3 gap-2 p-1">
                 @for (var m = 1; m <= 12; m++)
                 {
                     var month = m;
-                    var isCurrentMonth = month == DateTime.Today.Month && monthDate.Year == DateTime.Today.Year;
-                    var isSelectedMonth = month == monthDate.Month;
+                    var isCurrentMonth = month == MonthOf(today) && YearOf(monthDate) == YearOf(today);
+                    var isSelectedMonth = month == MonthOf(monthDate);
                     var monthClass = isSelectedMonth
                         ? "inline-flex items-center justify-center rounded-md h-9 w-full text-sm font-medium bg-primary text-primary-foreground"
                         : isCurrentMonth
                             ? "inline-flex items-center justify-center rounded-md h-9 w-full text-sm font-medium bg-accent text-accent-foreground"
                             : "inline-flex items-center justify-center rounded-md h-9 w-full text-sm hover:bg-accent hover:text-accent-foreground cursor-pointer focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-1";
-                    <button type="button" class="@monthClass" @onclick="() => SelectMonth(month)">@monthNames[month - 1]</button>
+                    <button type="button" class="@monthClass" @onclick="() => SelectMonth(month)">@CalendarSystemMath.MonthName(CalendarSystem, month, System.Globalization.CultureInfo.CurrentCulture, abbreviated: true)</button>
                 }
             </div>
         }
@@ -861,7 +886,7 @@
                table semantics for assistive tech. The week rows use the `contents`
                display so the flat CSS grid layout (and ShowWeekNumbers column) is
                unchanged — the row wrappers add no box, only ARIA structure. *@
-            <div id="@gridId" role="grid" aria-label="@monthDate.ToString("MMMM yyyy")" class="grid @gridCols gap-0 text-center">
+            <div id="@gridId" role="grid" aria-label="@MonthTitle(monthDate)" class="grid @gridCols gap-0 text-center">
                 <div role="row" class="contents">
                     @if (ShowWeekNumbers)
                     {
@@ -881,7 +906,7 @@
                         @if (ShowWeekNumbers)
                         {
                             var weekDate = calDays[weekRow * 7];
-                            <div role="rowheader" class="inline-flex items-center justify-center h-[var(--lumeo-calendar-cell-size,calc(var(--spacing,0.25rem)*8))] w-[var(--lumeo-calendar-cell-size,calc(var(--spacing,0.25rem)*8))] text-xs text-muted-foreground">@GetIsoWeekNumber(weekDate)</div>
+                            <div role="rowheader" class="inline-flex items-center justify-center h-[var(--lumeo-calendar-cell-size,calc(var(--spacing,0.25rem)*8))] w-[var(--lumeo-calendar-cell-size,calc(var(--spacing,0.25rem)*8))] text-xs text-muted-foreground">@Num(GetIsoWeekNumber(weekDate))</div>
                         }
                         @for (var col = 0; col < 7; col++)
                         {

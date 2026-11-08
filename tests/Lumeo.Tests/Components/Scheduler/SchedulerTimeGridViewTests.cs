@@ -714,6 +714,12 @@ public class SchedulerTimeGridViewTests : IAsyncLifetime
         try
         {
             var arabic = new CultureInfo("ar-SA");
+            // Pin the culture's calendar: newer ICU/CLDR data (e.g. the ubuntu-26.04 runner
+            // image) makes Gregorian ar-SA's DEFAULT calendar, which would leave this test
+            // with nothing to distinguish. Um al-Qura is one of ar-SA's optional calendars
+            // in every ICU version, so the component still has to honour a non-Gregorian
+            // culture calendar.
+            arabic.DateTimeFormat.Calendar = new UmAlQuraCalendar();
             CultureInfo.CurrentUICulture = arabic;
 
             var day = D(2026, 4, 15);
