@@ -1,5 +1,8 @@
 # Required secrets (set in GitHub repo settings):
-#   NUGET_API_KEY - existing, used by Lumeo / Lumeo.Cli / Lumeo.Templates / all satellites
+#   (none for NuGet) - Lumeo / Lumeo.Cli / Lumeo.Templates / all satellites push via NuGet
+#                      Trusted Publishing: the nuget.org policy (owner Brain2k, repo
+#                      Brain2k-0005/Lumeo, workflow publish.yml, pattern Lumeo*) trades the
+#                      job's OIDC token for a short-lived API key, so there is no key to expire.
 #   NPM_TOKEN     - new, required for @lumeo-ui/mcp-server (https://www.npmjs.com/ -> Access Tokens -> Automation)
 
 name: Publish 2.0 packages
@@ -15,6 +18,11 @@ on:
   # events that would normally trigger this workflow. Version is read from
   # Directory.Build.props as in the automatic paths.
   workflow_dispatch:
+
+# id-token: write lets NuGet/login request the OIDC token for Trusted Publishing.
+permissions:
+  contents: read
+  id-token: write
 
 jobs:
   publish-lumeo:
@@ -157,8 +165,14 @@ jobs:
           dotnet pack src/Lumeo.Icons.MaterialSymbols.Sharp/Lumeo.Icons.MaterialSymbols.Sharp.csproj -c Release --no-build -o ./nupkg /p:Version=${{ steps.ver.outputs.version }}
           dotnet pack src/Lumeo.Icons.Fluent/Lumeo.Icons.Fluent.csproj -c Release --no-build -o ./nupkg /p:Version=${{ steps.ver.outputs.version }}
 
+      - name: NuGet login (Trusted Publishing)
+        uses: NuGet/login@v1
+        id: nuget
+        with:
+          user: Brain2k
+
       - name: Push all to NuGet
-        run: dotnet nuget push "./nupkg/*.nupkg" --api-key ${{ secrets.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json --skip-duplicate
+        run: dotnet nuget push "./nupkg/*.nupkg" --api-key ${{ steps.nuget.outputs.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json --skip-duplicate
 
   publish-cli:
     runs-on: ubuntu-latest
@@ -185,8 +199,14 @@ jobs:
       - name: Pack
         run: dotnet pack tools/Lumeo.Cli/Lumeo.Cli.csproj -c Release -o ./nupkg /p:Version=${{ steps.ver.outputs.version }}
 
+      - name: NuGet login (Trusted Publishing)
+        uses: NuGet/login@v1
+        id: nuget
+        with:
+          user: Brain2k
+
       - name: Push to NuGet
-        run: dotnet nuget push ./nupkg/*.nupkg --api-key ${{ secrets.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json --skip-duplicate
+        run: dotnet nuget push ./nupkg/*.nupkg --api-key ${{ steps.nuget.outputs.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json --skip-duplicate
 
   publish-templates:
     runs-on: ubuntu-latest
@@ -214,8 +234,14 @@ jobs:
       - name: Pack
         run: dotnet pack templates/Lumeo.Templates/Lumeo.Templates.csproj -c Release -o ./nupkg /p:Version=${{ steps.ver.outputs.version }} /p:LumeoTemplatePackageVersion=${{ steps.ver.outputs.version }}
 
+      - name: NuGet login (Trusted Publishing)
+        uses: NuGet/login@v1
+        id: nuget
+        with:
+          user: Brain2k
+
       - name: Push to NuGet
-        run: dotnet nuget push ./nupkg/*.nupkg --api-key ${{ secrets.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json --skip-duplicate
+        run: dotnet nuget push ./nupkg/*.nupkg --api-key ${{ steps.nuget.outputs.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json --skip-duplicate
 
   publish-mcp:
     runs-on: ubuntu-latest
