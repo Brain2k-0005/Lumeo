@@ -1,6 +1,6 @@
 @namespace Lumeo
 
-<Sheet @bind-Open="Open">
+<Sheet Open="Open" OpenChanged="HandleOpenChanged">
     <SheetContent Side="Lumeo.Side.Left" Class="@(Cx.Merge("w-72 p-0", Class))">
         <div data-slot="navigation-menu-mobile" class="flex flex-col gap-2 p-4" @attributes="AdditionalAttributes">
             @ChildContent
@@ -31,4 +31,15 @@
 
     /// <summary>Unmatched attributes are splatted onto the inner content wrapper.</summary>
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    // Not `@bind-Open="Open"` on the Sheet: that generates a callback which only
+    // assigns this component's own Open and never raises OpenChanged. A close from
+    // inside the Sheet (X, Escape, backdrop) then left the parent's bound flag
+    // true, and the next parent re-render pushed Open=true back, reopening the
+    // menu out of nowhere (#549). Forward every change to the owner.
+    private async Task HandleOpenChanged(bool value)
+    {
+        Open = value;
+        await OpenChanged.InvokeAsync(value);
+    }
 }
