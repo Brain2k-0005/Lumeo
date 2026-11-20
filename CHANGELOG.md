@@ -5,6 +5,15 @@ All notable changes to Lumeo will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **`DateTimePicker` supports the Jalali (Persian) calendar** via the new `CalendarSystem`
+  parameter. The embedded calendar follows the Solar Hijri calendar, the trigger text defaults to
+  `yyyy/MM/dd` plus the time (a custom `DateFormat` resolves its `y`/`M`/`d` tokens against the
+  Persian calendar), and under a `fa` culture digits and the AM/PM labels render in Persian.
+  `Value` stays a Gregorian `DateTime`. (#547)
+
 ## [5.13.0] - 2026-11-08
 
 ### Added
