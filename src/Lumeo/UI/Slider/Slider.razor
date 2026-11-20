@@ -1,6 +1,8 @@
 @namespace Lumeo
 @using System.Globalization
 @inject Lumeo.Services.Localization.ILumeoLocalizer L
+@inject Lumeo.Services.IComponentInteropService Interop
+@implements IAsyncDisposable
 
 @* Render the label, control and helper/error as ONE self-contained vertical block so the
    field never splays into a row when dropped in a flex / centered container. Standalone
@@ -65,29 +67,32 @@ else if (IsRange)
                 <div class="h-1.5 w-full rounded-full @(EffectiveInvalid ? "bg-destructive/20" : "bg-muted")" data-orientation="@OrientationData" data-disabled="@DisabledData"></div>
             </div>
             <div class="absolute inset-0 flex items-center" style="pointer-events: none;">
-                <div class="h-1.5 rounded-full @(EffectiveInvalid ? "bg-destructive" : "bg-primary")" style="margin-left: @(StartPercent)%; width: @(RangePercent)%;" data-orientation="@OrientationData" data-disabled="@DisabledData"></div>
+                <div id="@_barId" class="h-1.5 rounded-full @(EffectiveInvalid ? "bg-destructive" : "bg-primary")" style="@RangeBarStyle" data-orientation="@OrientationData" data-disabled="@DisabledData"></div>
             </div>
             <div class="relative flex items-center" style="pointer-events: none;">
                 @* Both inputs overlay the full track, so hit-testing must live on
                    the THUMBS (pseudo-elements), not the inputs: with the whole
                    end input set to pointer-events:auto it sat on top across the
                    entire width and the start thumb could never be grabbed. *@
-                <input data-slot="slider-control" type="range" min="@Min" max="@StartThumbMax" step="@Step" value="@Value" disabled="@Disabled"
+                <input data-slot="slider-control" type="range" min="@Min" max="@Max" step="@Step" value="@Value" disabled="@Disabled"
                        name="@Name"
                        aria-label="@AriaLabel" aria-valuemin="@Min" aria-valuemax="@StartThumbMax" aria-valuenow="@Value" aria-valuetext="@ValueText(Value)"
                        aria-required="@Required.ToString().ToLower()"
                        aria-invalid="@EffectiveInvalid.ToString().ToLower()"
-                       id="@FormFieldControlId" aria-describedby="@FormFieldDescribedBy"
+                       id="@StartInputId" aria-describedby="@FormFieldDescribedBy"
                        data-orientation="@OrientationData" data-disabled="@DisabledData"
                        class="@RangeInputClasses"
+                       data-min-gap="@MinGapAttr"
                        @oninput="OnStartInput" />
-                <input data-slot="slider-control" type="range" min="@EndThumbMin" max="@Max" step="@Step" value="@ValueEnd" disabled="@Disabled"
+                <input data-slot="slider-control" type="range" min="@Min" max="@Max" step="@Step" value="@ValueEnd" disabled="@Disabled"
                        aria-label="@EndAriaLabel" aria-valuemin="@EndThumbMin" aria-valuemax="@Max" aria-valuenow="@ValueEnd" aria-valuetext="@ValueText(ValueEnd)"
                        aria-required="@Required.ToString().ToLower()"
                        aria-invalid="@EffectiveInvalid.ToString().ToLower()"
                        aria-describedby="@FormFieldDescribedBy"
+                       id="@_endId"
                        data-orientation="@OrientationData" data-disabled="@DisabledData"
                        class="@RangeInputClasses"
+                       data-min-gap="@MinGapAttr"
                        style="position: absolute; left: 0; width: 100%;"
                        @oninput="OnEndInput" />
             </div>
@@ -97,7 +102,7 @@ else if (IsRange)
                     @foreach (var mark in GetTickValues())
                     {
                         var pos = GetPercent(mark);
-                        <div class="absolute flex flex-col items-center" style="left: @(pos)%; transform: translateX(-50%);">
+                        <div class="absolute flex flex-col items-center" style="left: @ThumbOffset(pos); transform: translateX(-50%);">
                             @if (ShowTicks)
                             {
                                 <div class="h-1 w-px bg-muted-foreground/50"></div>
@@ -284,6 +289,13 @@ else
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     private bool _showTooltipThumb;
+    private readonly string _startId = LumeoIds.New("slider-start");
+    private readonly string _endId = LumeoIds.New("slider-end");
+    private readonly string _barId = LumeoIds.New("slider-range");
+    private string MinGapAttr => Inv(MinGap);
+    private bool _rangeRegistered;
+    private bool _disposed;
+    private string StartInputId => FormFieldControlId ?? _startId;
 
     // A zero / negative / NaN / Infinite Step is meaningless for a slider: the
     // native control renders inert (step="0" snaps to no value), and it poisons
@@ -317,6 +329,14 @@ else
     private string VerticalInputClasses => $"absolute inset-0 h-full w-full cursor-pointer appearance-none rounded-full bg-transparent {(EffectiveInvalid ? "accent-destructive" : "accent-primary")} {FocusRing} disabled:cursor-not-allowed disabled:opacity-50 [writing-mode:vertical-lr] [direction:rtl]";
 
     private static readonly string RangeInputClasses = $"w-full h-1.5 cursor-pointer appearance-none rounded-full bg-transparent accent-primary {FocusRing} disabled:cursor-not-allowed disabled:opacity-50 pointer-events-none [&::-webkit-slider-thumb]:pointer-events-auto [&::-moz-range-thumb]:pointer-events-auto";
+
+    // The native thumb is 16px wide and its CENTRE travels from 8px to (width - 8px), not
+    // 0..100%. The fill bar must use the same inset mapping or it overshoots the thumbs.
+    private const double ThumbPx = 16;
+    private static string ThumbOffset(double percent) =>
+        $"calc({(ThumbPx / 2).ToString("0.##", CultureInfo.InvariantCulture)}px + (100% - {ThumbPx.ToString("0.##", CultureInfo.InvariantCulture)}px) * {(percent / 100).ToString("0.#####", CultureInfo.InvariantCulture)})";
+    private string RangeBarStyle =>
+        $"margin-left: {ThumbOffset(StartPercent)}; width: calc((100% - {ThumbPx.ToString("0.##", CultureInfo.InvariantCulture)}px) * {(RangePercent / 100).ToString("0.#####", CultureInfo.InvariantCulture)});";
 
     private double StartPercent => Max > Min ? ((Math.Min(Value, ValueEnd) - Min) / (Max - Min)) * 100 : 0;
     private double RangePercent => Max > Min ? ((Math.Abs(ValueEnd - Value)) / (Max - Min)) * 100 : 0;
@@ -359,42 +379,81 @@ else
     private double StartThumbMax => Math.Max(Min, ValueEnd - MinGap);
     private double EndThumbMin => Math.Min(Max, Value + MinGap);
 
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        // The elements persist across renders while in range mode, so (re)register only when the
+        // mode flips (switching branches creates fresh elements under the same ids).
+        var wantRange = IsRange && !string.Equals(Orientation, "Vertical", StringComparison.Ordinal);
+        if (wantRange == _rangeRegistered || _disposed) return;
+        _rangeRegistered = wantRange;
+        try
+        {
+            if (wantRange) await Interop.RegisterRangeSlider(StartInputId, _endId, _barId);
+            else await Interop.UnregisterRangeSlider(StartInputId);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        _disposed = true;
+        if (!_rangeRegistered) return;
+        try { await Interop.UnregisterRangeSlider(StartInputId); }
+        catch (JSDisconnectedException) { }
+    }
+
+    private static string Inv(double v) => v.ToString("R", CultureInfo.InvariantCulture);
+
+    // Blazor only writes value="@Value" back to the DOM when the rendered attribute
+    // CHANGED. When a drag lands in the forbidden zone and we clamp back to the value
+    // the model already holds, nothing changes in the render tree, so the native thumb
+    // would stay where the pointer dropped it (crossing the other thumb). Write the
+    // clamped value straight onto the element instead.
+    private async Task SyncDom(string id, double value)
+    {
+        try { await Interop.SetInputValue(id, Inv(value)); }
+        catch (JSDisconnectedException) { }
+    }
+
     private async Task OnStartInput(ChangeEventArgs e)
     {
-        if (double.TryParse(e.Value?.ToString(), System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var newValue))
+        if (double.TryParse(e.Value?.ToString(), NumberStyles.Any, CultureInfo.InvariantCulture, out var raw))
         {
-            // Clamp so the start thumb can't cross (or come within MinGap of) the
-            // end thumb — previously the two inputs moved independently and could
-            // swap order, which scrambled the filled range.
-            var ceiling = ValueEnd - MinGap;
-            if (newValue > ceiling) newValue = ceiling;
-            if (newValue < Min) newValue = Min;
+            // Clamp so the start thumb can't cross (or come within MinGap of) the end thumb.
+            var newValue = Math.Max(Min, Math.Min(raw, ValueEnd - MinGap));
+            var clamped = newValue != raw;
 
-            // The clamped value equals the model: the user dragged into the
-            // forbidden zone but the result snaps back to where we already are.
-            // The native <input>'s own value HAS moved to the raw dragged spot,
-            // so a bare return would leave the thumb desynced in the forbidden
-            // zone. Force a re-render so Blazor re-writes value="@Value" onto the
-            // DOM input and the thumb snaps back. (Single-thumb OnInput never
-            // early-returns, so it isn't affected.)
-            if (newValue == Value) { StateHasChanged(); return; }
-            Value = newValue;
-            await ValueChanged.InvokeAsync(Value);
+            if (newValue != Value)
+            {
+                Value = newValue;
+                await ValueChanged.InvokeAsync(Value);
+            }
+            else
+            {
+                StateHasChanged();
+            }
+            if (clamped) await SyncDom(StartInputId, newValue);
         }
     }
 
     private async Task OnEndInput(ChangeEventArgs e)
     {
-        if (double.TryParse(e.Value?.ToString(), System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var newValue))
+        if (double.TryParse(e.Value?.ToString(), NumberStyles.Any, CultureInfo.InvariantCulture, out var raw))
         {
             // Symmetric clamp: the end thumb can't drop below start + MinGap.
-            var floor = Value + MinGap;
-            if (newValue < floor) newValue = floor;
-            if (newValue > Max) newValue = Max;
+            var newValue = Math.Min(Max, Math.Max(raw, Value + MinGap));
+            var clamped = newValue != raw;
 
-            if (newValue == ValueEnd) return;
-            ValueEnd = newValue;
-            await ValueEndChanged.InvokeAsync(ValueEnd);
+            if (newValue != ValueEnd)
+            {
+                ValueEnd = newValue;
+                await ValueEndChanged.InvokeAsync(ValueEnd);
+            }
+            else
+            {
+                StateHasChanged();
+            }
+            if (clamped) await SyncDom(_endId, newValue);
         }
     }
 }

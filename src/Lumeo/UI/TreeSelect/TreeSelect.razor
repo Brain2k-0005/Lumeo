@@ -290,7 +290,7 @@
 
     private async Task SelectItem(TreeSelectItem item)
     {
-        if (item.Disabled) return;
+        if (IsEffectivelyDisabled(item)) return;
 
         if (Multiple)
         {
@@ -470,6 +470,8 @@
         var isExpanded = _expandedNodes.Contains(item.Value);
         var isSelected = IsSelected(item.Value);
         var isLeaf = !hasChildren;
+        // A disabled node disables its whole subtree, not just itself.
+        var isDisabled = IsEffectivelyDisabled(item);
         var paddingLeft = depth * 16 + 8;
         // In Multiple mode every node (leaf OR parent) is selectable, so the
         // selected highlight + check mark apply to parents too.
@@ -481,8 +483,9 @@
              aria-selected="@(Multiple ? null : isSelected.ToString().ToLowerInvariant())"
              aria-checked="@GetAriaCheckedString(item, hasChildren)"
              aria-expanded="@(hasChildren ? isExpanded.ToString().ToLowerInvariant() : null)"
+             aria-disabled="@(isDisabled ? "true" : null)"
              aria-level="@(depth + 1)">
-            <div class="@GetItemClass(showSelected, item.Disabled)"
+            <div class="@GetItemClass(showSelected, isDisabled)"
                  style="padding-left: @(paddingLeft)px"
                  @onclick="() => HandleItemClick(item, hasChildren)"
                  @onclick:stopPropagation="true">
@@ -634,6 +637,14 @@
             if (item.Children is { Count: > 0 } && _expandedNodes.Contains(item.Value))
                 AppendVisible(item.Children, result);
         }
+    }
+
+    // An item is effectively disabled when it, or any ancestor, is Disabled.
+    private bool IsEffectivelyDisabled(TreeSelectItem item)
+    {
+        for (TreeSelectItem? n = item; n is not null; n = FindParent(Items, n))
+            if (n.Disabled) return true;
+        return false;
     }
 
     private static TreeSelectItem? FindParent(List<TreeSelectItem> items, TreeSelectItem child)
