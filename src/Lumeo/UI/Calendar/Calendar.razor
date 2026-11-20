@@ -98,6 +98,15 @@
     /// <see cref="Lumeo.CalendarSystem.Jalali"/> the default is Saturday instead.
     /// Pass an explicit <see cref="DayOfWeek"/> to override.</summary>
     [Parameter] public DayOfWeek? FirstDayOfWeek { get; set; }
+    /// <summary>
+    /// Overrides <see cref="System.Globalization.CultureInfo.CurrentCulture"/> for month and
+    /// weekday names, digits (Persian digits with <see cref="Lumeo.CalendarSystem.Jalali"/> under a
+    /// <c>fa</c> culture) and the default first day of the week. Leave null to honour ASP.NET
+    /// request localization.
+    /// </summary>
+    [Parameter] public System.Globalization.CultureInfo? Culture { get; set; }
+
+    private System.Globalization.CultureInfo EffectiveCulture => Culture ?? System.Globalization.CultureInfo.CurrentCulture;
     /// <summary>When <c>true</c> (default), users can swipe left/right on the
     /// day grid to navigate to the next or previous month on touch devices.
     /// Vertical page scroll is unaffected (<c>touch-action: pan-y</c>).
@@ -115,7 +124,7 @@
     private readonly string _elementId = LumeoIds.New("cal-grid");
 
     private DayOfWeek EffectiveFirstDayOfWeek =>
-        FirstDayOfWeek ?? CalendarSystemMath.DefaultFirstDayOfWeek(CalendarSystem, System.Globalization.CultureInfo.CurrentCulture);
+        FirstDayOfWeek ?? CalendarSystemMath.DefaultFirstDayOfWeek(CalendarSystem, EffectiveCulture);
 
     // Calendar-system aware helpers. Gregorian maps straight onto DateOnly.
     private DateOnly MonthStart(DateOnly date) => CalendarSystemMath.MonthStart(CalendarSystem, date);
@@ -124,8 +133,8 @@
     private bool SameMonth(DateOnly a, DateOnly b) => CalendarSystemMath.SameMonth(CalendarSystem, a, b);
     private int YearOf(DateOnly date) => CalendarSystemMath.GetYear(CalendarSystem, date);
     private int MonthOf(DateOnly date) => CalendarSystemMath.GetMonth(CalendarSystem, date);
-    private string Num(int value) => CalendarSystemMath.FormatNumber(CalendarSystem, value, System.Globalization.CultureInfo.CurrentCulture);
-    private string MonthTitle(DateOnly monthDate) => CalendarSystemMath.MonthTitle(CalendarSystem, monthDate, System.Globalization.CultureInfo.CurrentCulture);
+    private string Num(int value) => CalendarSystemMath.FormatNumber(CalendarSystem, value, EffectiveCulture);
+    private string MonthTitle(DateOnly monthDate) => CalendarSystemMath.MonthTitle(CalendarSystem, monthDate, EffectiveCulture);
     /// <summary>Additional CSS classes merged onto the root element.</summary>
     [Parameter] public string? Class { get; set; }
 
@@ -316,7 +325,7 @@
         //   en-US → Su/Mo/Tu/We/Th/Fr/Sa
         //   de-DE → So/Mo/Di/Mi/Do/Fr/Sa
         //   fr-FR → di/lu/ma/me/je/ve/sa
-        var abbr = System.Globalization.CultureInfo.CurrentCulture.DateTimeFormat.AbbreviatedDayNames;
+        var abbr = EffectiveCulture.DateTimeFormat.AbbreviatedDayNames;
         var startIndex = (int)EffectiveFirstDayOfWeek;
         var result = new string[7];
         for (var i = 0; i < 7; i++)
@@ -574,7 +583,7 @@
     /// <c>aria-label</c> (e.g. "Saturday, June 14, 2025"). Uses the same
     /// CurrentCulture the month/day headers are formatted with.</summary>
     private string DayAriaLabel(DateOnly day)
-        => CalendarSystemMath.LongDate(CalendarSystem, day, System.Globalization.CultureInfo.CurrentCulture);
+        => CalendarSystemMath.LongDate(CalendarSystem, day, EffectiveCulture);
 
     /// <summary>The window of months currently on screen. Keyboard focus must
     /// land on a day that belongs to one of these months' own days.</summary>
@@ -869,7 +878,7 @@
                         : isCurrentMonth
                             ? "inline-flex items-center justify-center rounded-md h-9 w-full text-sm font-medium bg-accent text-accent-foreground"
                             : "inline-flex items-center justify-center rounded-md h-9 w-full text-sm hover:bg-accent hover:text-accent-foreground cursor-pointer focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-1";
-                    <button type="button" class="@monthClass" @onclick="() => SelectMonth(month)">@CalendarSystemMath.MonthName(CalendarSystem, month, System.Globalization.CultureInfo.CurrentCulture, abbreviated: true)</button>
+                    <button type="button" class="@monthClass" @onclick="() => SelectMonth(month)">@CalendarSystemMath.MonthName(CalendarSystem, month, EffectiveCulture, abbreviated: true)</button>
                 }
             </div>
         }

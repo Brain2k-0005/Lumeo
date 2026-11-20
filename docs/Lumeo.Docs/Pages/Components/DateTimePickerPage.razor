@@ -69,6 +69,13 @@
             <DateTimePicker Size="_dtSizeEnum" Placeholder="@($"Size = {_previewSize}")" />
         </Stack>
     </ComponentDemo>
+
+    <ComponentDemo Title="Jalali (Persian) calendar" Description="The calendar grid and trigger text follow the Solar Hijri calendar (default date format yyyy/MM/dd). With a fa-IR Culture, month names, digits and the AM/PM labels render in Persian. Value stays a Gregorian DateTime." Code="@_jalaliCode">
+        <Stack Gap="3" Class="max-w-sm">
+            <DateTimePicker @bind-Value="_jalaliDateTime" CalendarSystem="CalendarSystem.Jalali" Culture="_faIr" Use24Hour="false" />
+            <Lumeo.Text Size="sm" Color="muted">Selected: @(_jalaliDateTime?.ToString("g") ?? "None")</Lumeo.Text>
+        </Stack>
+    </ComponentDemo>
 </Stack>
 
 <div class="mt-12 space-y-4">
@@ -128,6 +135,22 @@
     private DateTime? _dateTime1 = DateTime.Now;
     private DateTime? _dateTime2 = DateTime.Today.AddHours(10).AddMinutes(30);
     private DateTime? _dateTime3;
+    private DateTime? _jalaliDateTime = new DateTime(2024, 10, 3, 14, 30, 0);
+    // The docs run with InvariantGlobalization (no ICU), so fa-IR carries no Persian day names or
+    // AM/PM; set them explicitly. A real app with ICU gets all of this from new CultureInfo("fa-IR").
+    private static readonly System.Globalization.CultureInfo _faIr = CreateFaIr();
+
+    private static System.Globalization.CultureInfo CreateFaIr()
+    {
+        var c = new System.Globalization.CultureInfo("fa-IR");
+        var f = c.DateTimeFormat;
+        f.DayNames = new[] { "یکشنبه", "دوشنبه", "سه‌شنبه", "چهارشنبه", "پنجشنبه", "جمعه", "شنبه" };
+        f.AbbreviatedDayNames = new[] { "ی", "د", "س", "چ", "پ", "ج", "ش" };
+        f.AMDesignator = "ق.ظ";
+        f.PMDesignator = "ب.ظ";
+        return c;
+    }
+    private string _jalaliCode = @"<DateTimePicker @bind-Value=""_value"" CalendarSystem=""CalendarSystem.Jalali"" Culture=""_faIr"" Use24Hour=""false"" />";
     private TimeZoneInfo _berlin = ResolveBerlin();
     private DateTimeOffset? _meeting;
 
