@@ -5,6 +5,11 @@ All notable changes to Lumeo will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+- **`Carousel` autoplay no longer scrolls the page.** Slide advances used `Element.scrollIntoView()`, which also scrolls every scrollable ancestor, so each autoplay tick snapped the window back to the carousel while the user was reading elsewhere. The slide track is now scrolled directly (`scrollTo` on the track only), in horizontal, vertical, loop and RTL modes (#548).
+
 ## [5.13.0] - 2026-11-08
 
 ### Added
