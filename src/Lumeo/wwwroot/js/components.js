@@ -2645,7 +2645,19 @@ export function carouselScrollTo(elementId, index, behavior) {
     // the child count only exists on this side of the interop boundary.
     if (index >= children.length) index = children.length - 1;
     if (index >= 0) {
-        children[index].scrollIntoView({ behavior: behavior || 'smooth', block: 'nearest', inline: 'start' });
+        // Scroll ONLY the carousel track. Element.scrollIntoView() also scrolls
+        // every scrollable ancestor (the window included), which made autoplay
+        // ticks yank the page back to the carousel (#548).
+        const child = children[index];
+        const er = el.getBoundingClientRect();
+        const cr = child.getBoundingClientRect();
+        const cs = getComputedStyle(el);
+        const vertical = cs.flexDirection === 'column';
+        const rtl = cs.direction === 'rtl';
+        const opts = { behavior: behavior || 'smooth' };
+        if (vertical) opts.top = el.scrollTop + (cr.top - er.top);
+        else opts.left = el.scrollLeft + (rtl ? cr.right - er.right : cr.left - er.left);
+        el.scrollTo(opts);
     }
 }
 
