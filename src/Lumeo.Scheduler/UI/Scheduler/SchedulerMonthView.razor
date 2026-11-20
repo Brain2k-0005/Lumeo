@@ -70,7 +70,7 @@
                     <div role="gridcell"
                          @ref="_cellRefs[cellIndex]"
                          tabindex="@(isFocused ? "0" : "-1")"
-                         data-cell-date="@cell.Date.ToString("yyyy-MM-dd")"
+                         data-cell-date="@cell.Date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)"
                          data-cell-index="@cellIndex"
                          data-off="@(cell.IsOffDay ? "true" : null)"
                          aria-label="@CellAriaLabel(cell)"
@@ -79,7 +79,7 @@
                          @onclick="() => OnCellClickAsync(cellIndex)"
                          @ondblclick="() => OnCellDoubleClickAsync(cell.Date)"
                          @onkeydown="e => OnGridKeyDownAsync(e, cellIndex)">
-                        <span class="@DayNumberClasses(cell)">@cell.Date.Day</span>
+                        <span class="@DayNumberClasses(cell)">@DayNumber(cell.Date)</span>
                         @for (var l = 0; l < cell.Lanes.Count; l++)
                         {
                             @* Copied out of the loop before anything defers on it - the same
@@ -217,6 +217,18 @@
 
     /// <summary>First day of the week for grid layout. Default Monday.</summary>
     [Parameter] public DayOfWeek FirstDayOfWeek { get; set; } = DayOfWeek.Monday;
+
+    /// <summary>
+    /// The calendar system the grid is laid out in. <see cref="Lumeo.CalendarSystem.Jalali"/> covers the
+    /// Jalali month (leading/trailing days come from the adjacent Jalali months) and numbers the day
+    /// cells in that calendar; event data stays Gregorian. Default Gregorian.
+    /// </summary>
+    [Parameter] public CalendarSystem CalendarSystem { get; set; } = CalendarSystem.Gregorian;
+
+    private string DayNumber(DateTime date) =>
+        CalendarSystem == CalendarSystem.Gregorian
+            ? date.Day.ToString()
+            : CalendarSystemMath.FormatNumber(CalendarSystem, SchedulerCalendarMath.DayOfMonth(CalendarSystem, date), CultureInfo.CurrentUICulture);
 
     /// <summary>
     /// Renders an extra leading column with each row's ISO-8601 week number
@@ -398,7 +410,7 @@
 
     protected override void OnParametersSet()
     {
-        _cells = SchedulerDateMath.BuildMonthGrid(AnchorDate, FirstDayOfWeek).ToArray();
+        _cells = SchedulerDateMath.BuildMonthGrid(AnchorDate, FirstDayOfWeek, CalendarSystem).ToArray();
         BuildWeekdayHeaders();
         BuildCellModels();
 
@@ -504,7 +516,7 @@
 
                 models[row * 7 + col] = new MonthCellModel(
                     date,
-                    date.Month == AnchorDate.Month && date.Year == AnchorDate.Year,
+                    SchedulerCalendarMath.SameMonth(CalendarSystem, date, AnchorDate),
                     date.Date == DateTime.Today,
                     slots,
                     hidden.TryGetValue(date, out var h) ? h : 0,
@@ -597,7 +609,7 @@
     /// </summary>
     internal string TooltipLabel(SchedulerEvent ev, SchedulerEventInstance inst)
     {
-        var time = ev.AllDay ? null : $"{inst.Start:t}–{inst.End:t}";
+        var time = ev.AllDay ? null : $"{TimeLabel(inst.Start)}–{TimeLabel(inst.End)}";
         var parts = new List<string> { ev.Title };
         if (time is not null) parts.Add(time);
         if (!string.IsNullOrEmpty(ev.ResourceId))
@@ -683,14 +695,18 @@
 
     private string CellAriaLabel(MonthCellModel cell)
     {
-        var dateLabel = cell.Date.ToString("D", CultureInfo.CurrentUICulture);
+        var dateLabel = SchedulerCalendarMath.LongDate(CalendarSystem, cell.Date, CultureInfo.CurrentUICulture);
         var countLabel = L[LumeoPlurals.PluralKey(cell.TotalCount, "Scheduler.EventCount", CultureInfo.CurrentUICulture), cell.TotalCount];
         return $"{dateLabel}, {countLabel}";
     }
 
-    private static string PillAriaLabel(PillSlot slot) => slot.Source.AllDay
+    private string PillAriaLabel(PillSlot slot) => slot.Source.AllDay
         ? slot.Source.Title
-        : $"{slot.Source.Title}, {slot.Instance.Start:t}";
+        : $"{slot.Source.Title}, {TimeLabel(slot.Instance.Start)}";
+
+    /// <summary>A time of day in the culture's own pattern and AM/PM designators.</summary>
+    private string TimeLabel(DateTime value) =>
+        SchedulerCalendarMath.Time(CalendarSystem, value, SchedulerCalendarMath.TimeCulture(CalendarSystem));
 
     // ── Interaction ──────────────────────────────────────────────────────
 
@@ -1097,8 +1113,8 @@
     /// Long-date format for announcements — deliberately NOT the terse cell
     /// label: read aloud out of context, "14" says nothing, "14 March 2026" does.
     /// </summary>
-    private static string FormatAnnounceDate(DateTime value) =>
-        value.ToString("D", CultureInfo.CurrentUICulture);
+    private string FormatAnnounceDate(DateTime value) =>
+        SchedulerCalendarMath.LongDate(CalendarSystem, value, CultureInfo.CurrentUICulture);
 
     /// <summary>
     /// [JSInvokable] commits a drag-across-cells date-range selection (spec §3.4's Month row —

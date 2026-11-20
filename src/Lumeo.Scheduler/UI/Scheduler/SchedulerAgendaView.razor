@@ -19,7 +19,7 @@
             {
                 <div class="p-3">
                     <div class="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1.5">
-                        @day.Date.ToString("D", CultureInfo.CurrentUICulture)
+                        @SchedulerCalendarMath.LongDate(CalendarSystem, day.Date, CultureInfo.CurrentUICulture)
                     </div>
                     @foreach (var row in day.Rows)
                     {
@@ -50,6 +50,9 @@
 
     /// <summary>How many days from <see cref="AnchorDate"/> to list. Default 30, matching the uploaded demo's "next 30 days" agenda.</summary>
     [Parameter] public int DaysToShow { get; set; } = 30;
+
+    /// <summary>Calendar system for the day headings and time labels. Event data stays Gregorian. Default Gregorian.</summary>
+    [Parameter] public CalendarSystem CalendarSystem { get; set; } = CalendarSystem.Gregorian;
 
     [Parameter] public EventCallback<SchedulerEvent> OnEventClick { get; set; }
     [Parameter] public Func<SchedulerEvent, string?>? ResolveEventColor { get; set; }
@@ -90,13 +93,13 @@
             .ToList();
     }
 
-    private static string TimeLabel(AgendaRow row) => row.Source.AllDay
+    private string TimeLabel(AgendaRow row) => row.Source.AllDay
         ? "—"
-        : row.Instance.Start.ToString("t", CultureInfo.CurrentUICulture);
+        : SchedulerCalendarMath.Time(CalendarSystem, row.Instance.Start, CultureInfo.CurrentUICulture);
 
-    private static string RowAriaLabel(AgendaRow row) => row.Source.AllDay
+    private string RowAriaLabel(AgendaRow row) => row.Source.AllDay
         ? row.Source.Title
-        : $"{row.Source.Title}, {row.Instance.Start:t}";
+        : $"{row.Source.Title}, {SchedulerCalendarMath.Time(CalendarSystem, row.Instance.Start, SchedulerCalendarMath.TimeCulture(CalendarSystem))}";
 
     private async Task OnEventClickAsync(SchedulerEvent ev)
     {

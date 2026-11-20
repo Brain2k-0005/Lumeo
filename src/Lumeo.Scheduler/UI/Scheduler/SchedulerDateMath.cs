@@ -65,9 +65,12 @@ internal static class SchedulerDateMath
     /// logic — anchoring on day-1 of the month before doing any date walk — is what avoids the
     /// classic "Jan 31 + 1 month" overflow trap; see <see cref="StartOfMonth"/>).
     /// </summary>
-    internal static IReadOnlyList<DateTime> BuildMonthGrid(DateTime monthAnchor, DayOfWeek firstDayOfWeek)
+    internal static IReadOnlyList<DateTime> BuildMonthGrid(DateTime monthAnchor, DayOfWeek firstDayOfWeek,
+        CalendarSystem calendarSystem = CalendarSystem.Gregorian)
     {
-        var gridStart = StartOfWeek(StartOfMonth(monthAnchor), firstDayOfWeek);
+        // Under Jalali the grid covers the Jalali month (a 29/30/31-day month always fits the 42
+        // cells); event data stays Gregorian, only the month boundary moves.
+        var gridStart = StartOfWeek(SchedulerCalendarMath.StartOfMonth(calendarSystem, monthAnchor), firstDayOfWeek);
         var cells = new DateTime[MonthGridCellCount];
         for (var i = 0; i < MonthGridCellCount; i++)
             cells[i] = gridStart.AddDays(i);

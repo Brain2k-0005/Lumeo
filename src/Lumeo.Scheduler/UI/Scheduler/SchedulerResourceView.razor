@@ -146,6 +146,9 @@
     /// <summary>The single day this view lays out. Only the date part is read.</summary>
     [Parameter] public DateTime Date { get; set; } = DateTime.Today;
 
+    /// <summary>Calendar system for the spelled-out date and Persian-digit time labels. Event data stays Gregorian. Default Gregorian.</summary>
+    [Parameter] public CalendarSystem CalendarSystem { get; set; } = CalendarSystem.Gregorian;
+
     /// <summary>First minute shown on the time axis. Default 00:00.</summary>
     [Parameter] public TimeOnly? SlotMinTime { get; set; }
 
@@ -333,7 +336,7 @@
     }
 
     private string GridAriaLabel() =>
-        L["Scheduler.ResourceGridLabel", Date.ToString("D", CultureInfo.CurrentUICulture)];
+        L["Scheduler.ResourceGridLabel", SchedulerCalendarMath.LongDate(CalendarSystem, Date, CultureInfo.CurrentUICulture)];
 
     private static string TimedListLabel(SchedulerResource resource) => resource.Title;
 
@@ -341,18 +344,18 @@
         $"{resource.Title}, {L["Scheduler.AllDay"]}";
 
     /// <summary>Names the resource AND the full span: chip height is the only visual cue for duration, and a screen reader cannot see it (Codex review, P2).</summary>
-    private static string TimedAriaLabel(SchedulerResource resource, Block block) =>
+    private string TimedAriaLabel(SchedulerResource resource, Block block) =>
         $"{block.Source.Title}, {resource.Title}, {FormatTime(block.Start)} – {FormatTime(block.End)}";
 
     private string AllDayAriaLabel(SchedulerResource resource, Block block) =>
         $"{block.Source.Title}, {resource.Title}, {L["Scheduler.AllDay"]}";
 
-    private static string FormatTime(DateTime value) =>
-        value.ToString("t", CultureInfo.CurrentUICulture);
+    private string FormatTime(DateTime value) =>
+        SchedulerCalendarMath.Time(CalendarSystem, value, CultureInfo.CurrentUICulture);
 
     /// <summary>Hour 24 marks the end of the axis, not a wall-clock hour — rendered as midnight rather than throwing.</summary>
-    private static string FormatHour(int hour) =>
-        new DateTime(2000, 1, 1, Math.Clamp(hour, 0, 23), 0, 0).ToString("t", CultureInfo.CurrentUICulture);
+    private string FormatHour(int hour) =>
+        SchedulerCalendarMath.Time(CalendarSystem, new DateTime(2000, 1, 1, Math.Clamp(hour, 0, 23), 0, 0), CultureInfo.CurrentUICulture);
 
     private sealed record Block(SchedulerEvent Source, DateTime Start, DateTime End, int Column, int ColumnsInCluster);
 }

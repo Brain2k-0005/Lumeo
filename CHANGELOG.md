@@ -54,6 +54,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   digits and the default first day of the week previously always followed
   `CultureInfo.CurrentCulture`, so `Culture="fa-IR"` on a picker translated the trigger text but not
   the grid. Unset, behaviour is unchanged. (#547)
+### Added
+- **`Scheduler` supports the Jalali calendar** via the new `CalendarSystem` parameter (#547): the month grid,
+  toolbar title, week/day column headers and timeline month columns follow Solar Hijri months, the week
+  starts on Saturday unless `FirstDayOfWeek` is set, and month navigation steps by Jalali month. Event data
+  and recurrence rules stay Gregorian. Weekday names, digits and AM/PM designators come from the UI culture.
+
+### Fixed
+- `Scheduler` day/column `data-*` date keys are now formatted with the invariant culture; under a `fa-IR`
+  culture they were emitted in the Persian calendar and broke drag/drop and selection (#547).
 
 ## [5.13.0] - 2026-11-08
 

@@ -1,4 +1,5 @@
 using System.Globalization;
+using Lumeo.SchedulerKernel;
 
 namespace Lumeo;
 
@@ -48,16 +49,28 @@ public static class SchedulerTimelineScale
     /// The first instant of the column containing <paramref name="date"/>. Columns must start on
     /// a real boundary or every bar on the axis is offset by the remainder.
     /// </summary>
-    public static DateTime AlignOrigin(SchedulerTimelineUnit unit, DateTime date, DayOfWeek firstDayOfWeek) => unit switch
+    public static DateTime AlignOrigin(SchedulerTimelineUnit unit, DateTime date, DayOfWeek firstDayOfWeek) =>
+        AlignOrigin(unit, date, firstDayOfWeek, CalendarSystem.Gregorian);
+
+    /// <summary>
+    /// <see cref="AlignOrigin(SchedulerTimelineUnit, DateTime, DayOfWeek)"/> under a
+    /// <see cref="CalendarSystem"/>: a month column starts on the first day of the Jalali month
+    /// under <see cref="CalendarSystem.Jalali"/>. Day and week columns are calendar-independent.
+    /// </summary>
+    public static DateTime AlignOrigin(SchedulerTimelineUnit unit, DateTime date, DayOfWeek firstDayOfWeek, CalendarSystem calendarSystem) => unit switch
     {
         SchedulerTimelineUnit.Day => date.Date,
         SchedulerTimelineUnit.Week => StartOfWeek(date, firstDayOfWeek),
-        SchedulerTimelineUnit.Month => new DateTime(date.Year, date.Month, 1),
+        SchedulerTimelineUnit.Month => SchedulerCalendarMath.StartOfMonth(calendarSystem, date),
         _ => date.Date,
     };
 
     /// <summary>The column start dates covering <paramref name="count"/> units from <paramref name="origin"/>.</summary>
-    public static IReadOnlyList<DateTime> BuildColumns(SchedulerTimelineUnit unit, DateTime origin, int count)
+    public static IReadOnlyList<DateTime> BuildColumns(SchedulerTimelineUnit unit, DateTime origin, int count) =>
+        BuildColumns(unit, origin, count, CalendarSystem.Gregorian);
+
+    /// <summary><see cref="BuildColumns(SchedulerTimelineUnit, DateTime, int)"/> under a <see cref="CalendarSystem"/>.</summary>
+    public static IReadOnlyList<DateTime> BuildColumns(SchedulerTimelineUnit unit, DateTime origin, int count, CalendarSystem calendarSystem)
     {
         var n = Math.Max(1, count);
         var cols = new List<DateTime>(n);
@@ -72,7 +85,7 @@ public static class SchedulerTimelineScale
             // Stepping from the PREVIOUS column rather than recomputing from the origin is what
             // makes the saturation visible: Advance returns DateTime.MaxValue itself, which is
             // a later instant on the same final day and so compares as genuine progress.
-            var next = Advance(unit, cols[^1], 1);
+            var next = Advance(unit, cols[^1], 1, calendarSystem);
             if (next == DateTime.MaxValue || next <= cols[^1]) break;
             cols.Add(next);
         }
@@ -84,7 +97,11 @@ public static class SchedulerTimelineScale
     /// Fractional within a column, so a bar starting mid-day lands mid-column rather than
     /// snapping to the boundary.
     /// </summary>
-    public static double DateToPixel(SchedulerTimelineUnit unit, DateTime origin, DateTime date, int columnWidth) => unit switch
+    public static double DateToPixel(SchedulerTimelineUnit unit, DateTime origin, DateTime date, int columnWidth) =>
+        DateToPixel(unit, origin, date, columnWidth, CalendarSystem.Gregorian);
+
+    /// <summary><see cref="DateToPixel(SchedulerTimelineUnit, DateTime, DateTime, int)"/> under a <see cref="CalendarSystem"/>.</summary>
+    public static double DateToPixel(SchedulerTimelineUnit unit, DateTime origin, DateTime date, int columnWidth, CalendarSystem calendarSystem) => unit switch
     {
         SchedulerTimelineUnit.Day => (date - origin).TotalDays * columnWidth,
         SchedulerTimelineUnit.Week => (date - origin).TotalDays / 7.0 * columnWidth,
@@ -92,14 +109,18 @@ public static class SchedulerTimelineScale
         // Months are unequal, so a day fraction has to be taken against the LENGTH OF THE
         // MONTH the date falls in — a flat /30 would drift by up to a day inside February and
         // by half a day in every 31-day month.
-        SchedulerTimelineUnit.Month => MonthsBetween(origin, date) * columnWidth
-                                        + (date.Day - 1 + date.TimeOfDay.TotalDays)
-                                          / DateTime.DaysInMonth(date.Year, date.Month) * columnWidth,
+        SchedulerTimelineUnit.Month => SchedulerCalendarMath.MonthsBetween(calendarSystem, origin, date) * columnWidth
+                                        + (SchedulerCalendarMath.DayOfMonth(calendarSystem, date) - 1 + date.TimeOfDay.TotalDays)
+                                          / SchedulerCalendarMath.DaysInMonth(calendarSystem, date) * columnWidth,
         _ => 0,
     };
 
     /// <summary>Total width in pixels of the columns actually drawn from <paramref name="origin"/>.</summary>
-    public static double TotalWidth(SchedulerTimelineUnit unit, DateTime origin, int count, int columnWidth)
+    public static double TotalWidth(SchedulerTimelineUnit unit, DateTime origin, int count, int columnWidth) =>
+        TotalWidth(unit, origin, count, columnWidth, CalendarSystem.Gregorian);
+
+    /// <summary><see cref="TotalWidth(SchedulerTimelineUnit, DateTime, int, int)"/> under a <see cref="CalendarSystem"/>.</summary>
+    public static double TotalWidth(SchedulerTimelineUnit unit, DateTime origin, int count, int columnWidth, CalendarSystem calendarSystem)
     {
         // Whole columns, because that is what the headers and grid rules paint. Measuring the
         // pixel position of the exclusive end instead disagreed with them wherever that end was
@@ -107,7 +128,7 @@ public static class SchedulerTimelineScale
         // its header still occupies a full one, and the surplus showed as phantom days past the
         // end of the range (Codex review round 7). Dropping the column is not the answer — the
         // first one is the caller's own anchor, and removing it would leave nothing on screen.
-        return BuildColumns(unit, origin, count).Count * (double)columnWidth;
+        return BuildColumns(unit, origin, count, calendarSystem).Count * (double)columnWidth;
     }
 
     /// <summary>
@@ -116,7 +137,10 @@ public static class SchedulerTimelineScale
     /// timeline in the last representable column — <c>RangeStart</c> is public — and the
     /// exclusive end of that column does not exist (Codex review of PR #424).
     /// </summary>
-    internal static DateTime Advance(SchedulerTimelineUnit unit, DateTime from, int units)
+    internal static DateTime Advance(SchedulerTimelineUnit unit, DateTime from, int units) =>
+        Advance(unit, from, units, CalendarSystem.Gregorian);
+
+    internal static DateTime Advance(SchedulerTimelineUnit unit, DateTime from, int units, CalendarSystem calendarSystem)
     {
         if (units <= 0) return from;
 
@@ -129,6 +153,13 @@ public static class SchedulerTimelineScale
             }
             case SchedulerTimelineUnit.Month:
             {
+                // Jalali: the Persian calendar's supported range ends before DateTime.MaxValue, so a
+                // step that cannot be taken inside it saturates to the same sentinel.
+                if (calendarSystem != CalendarSystem.Gregorian)
+                {
+                    var advanced = SchedulerCalendarMath.AddMonths(calendarSystem, from, units);
+                    return advanced <= from ? DateTime.MaxValue : advanced;
+                }
                 var monthsLeft = (DateTime.MaxValue.Year - from.Year) * 12L + (DateTime.MaxValue.Month - from.Month);
                 return units > monthsLeft ? DateTime.MaxValue : from.AddMonths(units);
             }
@@ -143,7 +174,10 @@ public static class SchedulerTimelineScale
     /// lower boundary, and a view that renders must not be crashable by its own Previous button
     /// (Codex review of PR #424).
     /// </summary>
-    internal static DateTime Retreat(SchedulerTimelineUnit unit, DateTime from, int units)
+    internal static DateTime Retreat(SchedulerTimelineUnit unit, DateTime from, int units) =>
+        Retreat(unit, from, units, CalendarSystem.Gregorian);
+
+    internal static DateTime Retreat(SchedulerTimelineUnit unit, DateTime from, int units, CalendarSystem calendarSystem)
     {
         if (units <= 0) return from;
 
@@ -156,6 +190,11 @@ public static class SchedulerTimelineScale
             }
             case SchedulerTimelineUnit.Month:
             {
+                if (calendarSystem != CalendarSystem.Gregorian)
+                {
+                    var retreated = SchedulerCalendarMath.AddMonths(calendarSystem, from, -units);
+                    return retreated >= from ? DateTime.MinValue : retreated;
+                }
                 var monthsBack = (from.Year - DateTime.MinValue.Year) * 12L + (from.Month - DateTime.MinValue.Month);
                 return units > monthsBack ? DateTime.MinValue : from.AddMonths(-units);
             }
@@ -167,10 +206,29 @@ public static class SchedulerTimelineScale
     /// <summary>Steps <paramref name="from"/> by <paramref name="units"/> columns in either
     /// direction, clamped to the representable range.</summary>
     internal static DateTime Step(SchedulerTimelineUnit unit, DateTime from, int units) =>
-        units >= 0 ? Advance(unit, from, units) : Retreat(unit, from, -units);
+        Step(unit, from, units, CalendarSystem.Gregorian);
+
+    internal static DateTime Step(SchedulerTimelineUnit unit, DateTime from, int units, CalendarSystem calendarSystem) =>
+        units >= 0 ? Advance(unit, from, units, calendarSystem) : Retreat(unit, from, -units, calendarSystem);
 
     /// <summary>Header label for a column, at the granularity that column represents.</summary>
-    public static string ColumnLabel(SchedulerTimelineUnit unit, DateTime column, CultureInfo culture) => unit switch
+    public static string ColumnLabel(SchedulerTimelineUnit unit, DateTime column, CultureInfo culture) =>
+        ColumnLabel(unit, column, culture, CalendarSystem.Gregorian);
+
+    /// <summary>
+    /// <see cref="ColumnLabel(SchedulerTimelineUnit, DateTime, CultureInfo)"/> under a
+    /// <see cref="CalendarSystem"/> (Jalali month/day names and, under a <c>fa</c> culture, Persian digits).
+    /// </summary>
+    public static string ColumnLabel(SchedulerTimelineUnit unit, DateTime column, CultureInfo culture, CalendarSystem calendarSystem) =>
+        calendarSystem == CalendarSystem.Gregorian ? ColumnLabelGregorian(unit, column, culture) : unit switch
+    {
+        SchedulerTimelineUnit.Day => SchedulerCalendarMath.Format(calendarSystem, column, "ddd d", culture),
+        SchedulerTimelineUnit.Week => SchedulerCalendarMath.Format(calendarSystem, column, "MMM d", culture),
+        SchedulerTimelineUnit.Month => SchedulerCalendarMath.Format(calendarSystem, column, "MMM yyyy", culture),
+        _ => SchedulerCalendarMath.Format(calendarSystem, column, "d", culture),
+    };
+
+    private static string ColumnLabelGregorian(SchedulerTimelineUnit unit, DateTime column, CultureInfo culture) => unit switch
     {
         SchedulerTimelineUnit.Day => column.ToString("ddd d", culture),
         SchedulerTimelineUnit.Week => column.ToString("MMM d", culture),
@@ -179,17 +237,18 @@ public static class SchedulerTimelineScale
     };
 
     /// <summary>Whether <paramref name="column"/> is the column containing <paramref name="today"/>.</summary>
-    public static bool IsCurrentColumn(SchedulerTimelineUnit unit, DateTime column, DateTime today) => unit switch
+    public static bool IsCurrentColumn(SchedulerTimelineUnit unit, DateTime column, DateTime today) =>
+        IsCurrentColumn(unit, column, today, CalendarSystem.Gregorian);
+
+    /// <summary><see cref="IsCurrentColumn(SchedulerTimelineUnit, DateTime, DateTime)"/> under a <see cref="CalendarSystem"/>.</summary>
+    public static bool IsCurrentColumn(SchedulerTimelineUnit unit, DateTime column, DateTime today, CalendarSystem calendarSystem) => unit switch
     {
         SchedulerTimelineUnit.Day => column.Date == today.Date,
         SchedulerTimelineUnit.Week => today.Date >= column.Date
                                       && today.Date < Advance(SchedulerTimelineUnit.Week, column.Date, 1),
-        SchedulerTimelineUnit.Month => column.Year == today.Year && column.Month == today.Month,
+        SchedulerTimelineUnit.Month => SchedulerCalendarMath.SameMonth(calendarSystem, column, today),
         _ => false,
     };
-
-    private static int MonthsBetween(DateTime origin, DateTime date) =>
-        (date.Year - origin.Year) * 12 + (date.Month - origin.Month);
 
     private static DateTime StartOfWeek(DateTime date, DayOfWeek firstDayOfWeek)
     {
