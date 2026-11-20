@@ -138,8 +138,12 @@ internal static class CalendarSystemMath
     public static DayOfWeek DefaultFirstDayOfWeek(CalendarSystem system, CultureInfo culture) =>
         system == CalendarSystem.Jalali ? DayOfWeek.Saturday : culture.DateTimeFormat.FirstDayOfWeek;
 
+    // Under InvariantGlobalization (+ PredefinedCulturesOnly=false) a "fa-IR" culture carries no ICU
+    // data, so TwoLetterISOLanguageName is not "fa"; the culture name still is.
     private static bool IsPersianCulture(CultureInfo culture) =>
-        culture.TwoLetterISOLanguageName is "fa";
+        culture.TwoLetterISOLanguageName is "fa"
+        || culture.Name.Equals("fa", StringComparison.OrdinalIgnoreCase)
+        || culture.Name.StartsWith("fa-", StringComparison.OrdinalIgnoreCase);
 
     public static string MonthName(CalendarSystem system, int month, CultureInfo culture, bool abbreviated = false)
     {

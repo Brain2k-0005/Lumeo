@@ -5,6 +5,69 @@ All notable changes to Lumeo will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **`GanttChart` supports the Jalali (Persian) calendar** via the new `CalendarSystem` parameter
+  (plus a `Culture` parameter for names and digits). Month, quarter and year columns start on
+  Solar Hijri boundaries, bars are positioned by the real 29/30/31-day month lengths, Week zoom
+  starts on Saturday unless `FirstDayOfWeek` is set, week bands are numbered by Jalali
+  week-of-year (week 1 contains 1 Farvardin), and header labels, the period label, tooltips and
+  the tree's date text use Jalali month names (Persian digits under a `fa` culture). Task dates
+  and drag snapping stay Gregorian days. The legacy `Gantt` component is unchanged. (#547)
+- **`Scheduler` supports the Jalali calendar** via the new `CalendarSystem` parameter (#547): the month grid,
+  toolbar title, week/day column headers and timeline month columns follow Solar Hijri months, the week
+  starts on Saturday unless `FirstDayOfWeek` is set, and month navigation steps by Jalali month. Event data
+  and recurrence rules stay Gregorian. Weekday names, digits and AM/PM designators come from the UI culture.
+- **`DateTimePicker` supports the Jalali (Persian) calendar** via the new `CalendarSystem`
+  parameter. The embedded calendar follows the Solar Hijri calendar, the trigger text defaults to
+  `yyyy/MM/dd` plus the time (a custom `DateFormat` resolves its `y`/`M`/`d` tokens against the
+  Persian calendar), and under a `fa` culture digits and the AM/PM labels render in Persian.
+  `Value` stays a Gregorian `DateTime`. (#547)
+- **`Calendar` and `DateRangePicker` get a `Culture` parameter**, and `DatePicker`, `DateRangePicker`
+  and `DateTimePicker` now pass their culture to the inner calendar. Month and weekday names,
+  digits and the default first day of the week previously always followed
+  `CultureInfo.CurrentCulture`, so `Culture="fa-IR"` on a picker translated the trigger text but not
+  the grid. Unset, behaviour is unchanged. (#547)
+- **`SortableList` cross-list transfer.** Lists that share a non-empty `Group` now actually
+  exchange rows (#551): drag a row into any position of a sibling list (including an empty one,
+  which gets a drop zone), or on touch, or with ArrowLeft / ArrowRight on a drag handle. The source
+  list raises `ItemsChanged` without the row, the target list with the row inserted at the drop
+  index, and the new `OnTransfer` callback (`SortableList<TItem>.SortableTransfer`: item, group,
+  source/target list id, old/new index) fires on both. Lists with a different or empty `Group`
+  still reject each other's rows. Previously `Group` only emitted `data-sortable-group` and the
+  "Shared Group" demo could not move anything between lists.
+
+### Fixed
+- **`Carousel` autoplay no longer scrolls the page.** Slide advances used `Element.scrollIntoView()`, which also scrolls every scrollable ancestor, so each autoplay tick snapped the window back to the carousel while the user was reading elsewhere. The slide track is now scrolled directly (`scrollTo` on the track only), in horizontal, vertical, loop and RTL modes (#548).
+- **`NavigationMenuMobile` reopened by itself after being closed.** Dismissing the sheet from
+  inside (X button, Escape, backdrop) updated only the component's own `Open` and never raised
+  `OpenChanged`, so an owner bound with `@bind-Open` kept `true`; the next owner re-render (for
+  example clicking another navigation trigger) pushed `true` back and the hamburger menu opened
+  instead of the clicked trigger's menu. Every close now flows back to the owner. (#549)
+- **`MegaMenu` panel position in vertical orientation.** In a vertical menubar the panel was still
+  anchored below the whole menu, covering the other items and spanning the full width. It now opens
+  at the inline-end edge of its own trigger, top-aligned with it, and re-places itself when the
+  orientation changes while open. `MegaMenuPanel.FullWidth` has no effect in vertical orientation.
+  Horizontal placement is unchanged. (#550)
+- **`TreeSelect`: the children of a disabled item are disabled too.** Only the item's own
+  `Disabled` flag was consulted, so everything under a disabled header stayed selectable. A node
+  is now disabled when it or any ancestor is, in single and multiple mode alike: it is not
+  selectable, renders dimmed, and carries `aria-disabled="true"`. A disabled parent can still be
+  expanded to look at its children. (#556)
+- **`Slider` range mode: the thumbs no longer cross and the filled bar ends at the thumbs.** The
+  two native inputs had been given different `min`/`max` (each thumb's reachable bound), so a
+  native range drew them on different scales: the thumbs sat in the wrong place, overlapped, and
+  the bar (computed on the full scale) spanned neither. Both inputs now share the full `Min..Max`
+  scale, the reachable bound is enforced in the input handlers (and still announced through
+  `aria-valuemin`/`aria-valuemax`), a clamped drag is written back onto the element even when the
+  model value did not change, and the bar is inset by half a thumb so it spans exactly the thumb
+  centres. A synchronous client-side clamp (through `ComponentInteropService`) keeps the thumbs
+  from crossing and the bar glued to them even while a Blazor Server round-trip is in flight; the
+  server-side clamp stays authoritative. Range tick marks use the same half-thumb inset. (#555)
+- `Scheduler` day/column `data-*` date keys are now formatted with the invariant culture; under a `fa-IR`
+  culture they were emitted in the Persian calendar and broke drag/drop and selection (#547).
+
 ## [5.13.0] - 2026-11-08
 
 ### Added

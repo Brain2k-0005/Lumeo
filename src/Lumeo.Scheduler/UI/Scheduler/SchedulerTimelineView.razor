@@ -56,8 +56,8 @@
                     {
                         <div class="@ColumnHeaderClasses(col)"
                              style="@ColumnStyle()"
-                             data-timeline-column="@col.ToString("yyyy-MM-dd")">
-                            @SchedulerTimelineScale.ColumnLabel(Unit, col, CultureInfo.CurrentUICulture)
+                             data-timeline-column="@col.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)">
+                            @SchedulerTimelineScale.ColumnLabel(Unit, col, CultureInfo.CurrentUICulture, CalendarSystem)
                         </div>
                     }
                 </div>
@@ -154,6 +154,9 @@
     /// <summary>Which day a week column starts on. Only read when <see cref="Unit"/> is Week.</summary>
     [Parameter] public DayOfWeek FirstDayOfWeek { get; set; } = DayOfWeek.Monday;
 
+    /// <summary>Calendar system of the month columns, their labels and boundaries. Event data stays Gregorian. Default Gregorian.</summary>
+    [Parameter] public CalendarSystem CalendarSystem { get; set; } = CalendarSystem.Gregorian;
+
     /// <summary>
     /// Marks the column containing this date. Defaults to today; a caller can pin it so a
     /// test or a screenshot renders deterministically.
@@ -202,13 +205,13 @@
 
     protected override void OnParametersSet()
     {
-        _origin = SchedulerTimelineScale.AlignOrigin(Unit, RangeStart, FirstDayOfWeek);
-        _columns = SchedulerTimelineScale.BuildColumns(Unit, _origin, EffectiveColumns);
-        _totalWidth = SchedulerTimelineScale.TotalWidth(Unit, _origin, EffectiveColumns, ColumnWidthPx);
+        _origin = SchedulerTimelineScale.AlignOrigin(Unit, RangeStart, FirstDayOfWeek, CalendarSystem);
+        _columns = SchedulerTimelineScale.BuildColumns(Unit, _origin, EffectiveColumns, CalendarSystem);
+        _totalWidth = SchedulerTimelineScale.TotalWidth(Unit, _origin, EffectiveColumns, ColumnWidthPx, CalendarSystem);
 
         var today = Today ?? DateTime.Today;
-        _todayLeft = _columns.Any(c => SchedulerTimelineScale.IsCurrentColumn(Unit, c, today))
-            ? SchedulerTimelineScale.DateToPixel(Unit, _origin, today, ColumnWidthPx)
+        _todayLeft = _columns.Any(c => SchedulerTimelineScale.IsCurrentColumn(Unit, c, today, CalendarSystem))
+            ? SchedulerTimelineScale.DateToPixel(Unit, _origin, today, ColumnWidthPx, CalendarSystem)
             : null;
 
         BuildRows();
@@ -286,8 +289,8 @@
             {
                 var from = i.Start < axisStart ? axisStart : i.Start;
                 var to = i.End > axisEnd ? axisEnd : i.End;
-                var left = SchedulerTimelineScale.DateToPixel(Unit, _origin, from, ColumnWidthPx);
-                var width = Math.Max(MinBarWidthPx, SchedulerTimelineScale.DateToPixel(Unit, _origin, to, ColumnWidthPx) - left);
+                var left = SchedulerTimelineScale.DateToPixel(Unit, _origin, from, ColumnWidthPx, CalendarSystem);
+                var width = Math.Max(MinBarWidthPx, SchedulerTimelineScale.DateToPixel(Unit, _origin, to, ColumnWidthPx, CalendarSystem) - left);
 
                 // The minimum width must not push the bar past the end of the track. A short
                 // booking finishing at midnight on the last column was floored to six pixels and
@@ -312,7 +315,7 @@
     // calendar the axis truncates, and an end computed from the request would claim range the
     // view never draws (Codex review rounds 4 and 6).
     private DateTime AxisEnd() =>
-        _columns.Count > 0 ? SchedulerTimelineScale.Advance(Unit, _columns[^1], 1) : _origin;
+        _columns.Count > 0 ? SchedulerTimelineScale.Advance(Unit, _columns[^1], 1, CalendarSystem) : _origin;
 
     private string TrackStyle() =>
         string.Create(Inv, $"width:{_totalWidth.ToString("0.##", Inv)}px;");
@@ -322,7 +325,7 @@
 
     private string ColumnRuleStyle(DateTime column)
     {
-        var left = SchedulerTimelineScale.DateToPixel(Unit, _origin, column, ColumnWidthPx);
+        var left = SchedulerTimelineScale.DateToPixel(Unit, _origin, column, ColumnWidthPx, CalendarSystem);
         return string.Create(Inv, $"position:absolute; top:0; bottom:0; left:{left.ToString("0.##", Inv)}px; width:{ColumnWidthPx}px;");
     }
 
@@ -338,7 +341,7 @@
     private string ColumnHeaderClasses(DateTime col)
     {
         var classes = "flex items-center justify-center border-e border-border/40 text-[11px] text-muted-foreground";
-        if (SchedulerTimelineScale.IsCurrentColumn(Unit, col, Today ?? DateTime.Today))
+        if (SchedulerTimelineScale.IsCurrentColumn(Unit, col, Today ?? DateTime.Today, CalendarSystem))
             classes += " font-semibold text-foreground";
         return classes;
     }
@@ -346,7 +349,7 @@
     private string GridLineClasses(DateTime col)
     {
         var classes = "border-e border-border/25";
-        if (SchedulerTimelineScale.IsCurrentColumn(Unit, col, Today ?? DateTime.Today)) classes += " bg-accent/20";
+        if (SchedulerTimelineScale.IsCurrentColumn(Unit, col, Today ?? DateTime.Today, CalendarSystem)) classes += " bg-accent/20";
         return classes;
     }
 

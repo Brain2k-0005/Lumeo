@@ -8,24 +8,31 @@ using L = Lumeo;
 namespace Lumeo.Tests.Components.Slider;
 
 /// <summary>
-/// Battle-wave2 #163 (low, keyboard-a11y) — on a range slider the two native
-/// range <input>s used the FULL Min..Max as their native min/max while their
-/// aria-valuemin/max already announced only the reachable bound (StartThumbMax /
-/// EndThumbMin). The disagreement let a keyboard/pointer user drag a thumb into
-/// the forbidden zone (past the other thumb / inside MinStepsBetweenThumbs)
-/// before the C# clamp snapped it back, and reported a native range the user
-/// could not actually reach. The fix sets the native max/min on each range input
-/// to the reachable bound so the native control itself stops there, matching ARIA.
+/// Issue #555 — range slider thumbs crossed over and the filled bar overshot them.
 ///
-/// bUnit cannot move real DOM focus, so these tests assert the OBSERVABLE
-/// mechanism: the rendered native min/max attributes on the two range inputs and
-/// that they agree with the already-correct aria-valuemax/aria-valuemin.
+/// Root cause 1: each native range input was given its own reachable min/max
+/// (start: Min..ValueEnd, end: Value..Max). A native range maps value to pixel
+/// through ITS OWN min/max, so the two thumbs were drawn on different scales (and the
+/// bar, computed on Min..Max, matched neither). Both inputs must share the full
+/// Min..Max scale; the reachable bound lives in the clamp and in aria-valuemin/max.
+///
+/// Root cause 2: a clamped drag that lands back on the model value produced no
+/// render-tree diff, so Blazor never wrote the value to the DOM and the thumb stayed
+/// past its neighbour. The handler now writes the clamped value onto the element.
+///
+/// Root cause 3: the bar used 0..100% of the track but a native thumb centre travels
+/// from half a thumb to (width - half a thumb).
 /// </summary>
 public class SliderRangeNativeBoundsTests : IAsyncLifetime
 {
     private readonly BunitContext _ctx = new();
+    private readonly BunitJSModuleInterop _module;
 
-    public SliderRangeNativeBoundsTests() => _ctx.AddLumeoServices();
+    public SliderRangeNativeBoundsTests()
+    {
+        _ctx.AddLumeoServices();
+        _module = _ctx.SetupComponentsModule();
+    }
 
     public Task InitializeAsync() => Task.CompletedTask;
     public async Task DisposeAsync() => await _ctx.DisposeAsync();
@@ -33,80 +40,143 @@ public class SliderRangeNativeBoundsTests : IAsyncLifetime
     private static double Attr(IElement el, string name)
         => double.Parse(el.GetAttribute(name)!, NumberStyles.Any, CultureInfo.InvariantCulture);
 
-    [Fact]
-    public void StartInput_NativeMax_StopsAtReachableBound_NotFullMax()
-    {
-        var cut = _ctx.Render<L.Slider>(p => p
+    private IRenderedComponent<L.Slider> Range(double value, double end, int minSteps = 0, double step = 1,
+        Action<double>? onStart = null, Action<double>? onEnd = null)
+        => _ctx.Render<L.Slider>(p => p
             .Add(s => s.IsRange, true)
             .Add(s => s.Min, 0d)
             .Add(s => s.Max, 100d)
-            .Add(s => s.Value, 20d)
-            .Add(s => s.ValueEnd, 40d));
-
-        var start = cut.FindAll("input[type=range]")[0];
-
-        // Without the fix native max was 100 (the full Max), letting the start
-        // thumb drag past the end thumb (40) before the C# clamp snapped it back.
-        Assert.Equal(40d, Attr(start, "max"));
-        // ...and it must agree with the aria value that was already correct.
-        Assert.Equal(Attr(start, "aria-valuemax"), Attr(start, "max"));
-    }
+            .Add(s => s.Step, step)
+            .Add(s => s.MinStepsBetweenThumbs, minSteps)
+            .Add(s => s.Value, value)
+            .Add(s => s.ValueEnd, end)
+            .Add(s => s.ValueChanged, v => onStart?.Invoke(v))
+            .Add(s => s.ValueEndChanged, v => onEnd?.Invoke(v)));
 
     [Fact]
-    public void EndInput_NativeMin_StopsAtReachableBound_NotFullMin()
+    public void Both_native_inputs_share_the_full_scale()
     {
-        var cut = _ctx.Render<L.Slider>(p => p
-            .Add(s => s.IsRange, true)
-            .Add(s => s.Min, 0d)
-            .Add(s => s.Max, 100d)
-            .Add(s => s.Value, 30d)
-            .Add(s => s.ValueEnd, 80d));
-
-        var end = cut.FindAll("input[type=range]")[1];
-
-        // Without the fix native min was 0 (the full Min), letting the end thumb
-        // drag below the start thumb (30) before the C# clamp snapped it back.
-        Assert.Equal(30d, Attr(end, "min"));
-        Assert.Equal(Attr(end, "aria-valuemin"), Attr(end, "min"));
-    }
-
-    [Fact]
-    public void NativeBounds_RespectMinStepsBetweenThumbs()
-    {
-        // MinGap = MinStepsBetweenThumbs * Step = 2 * 5 = 10. The start thumb may
-        // only reach ValueEnd-10 and the end thumb only Value+10.
-        var cut = _ctx.Render<L.Slider>(p => p
-            .Add(s => s.IsRange, true)
-            .Add(s => s.Min, 0d)
-            .Add(s => s.Max, 100d)
-            .Add(s => s.Step, 5d)
-            .Add(s => s.MinStepsBetweenThumbs, 2)
-            .Add(s => s.Value, 30d)
-            .Add(s => s.ValueEnd, 60d));
-
+        var cut = Range(20, 40);
         var inputs = cut.FindAll("input[type=range]");
-        var start = inputs[0];
-        var end = inputs[1];
 
-        Assert.Equal(50d, Attr(start, "max")); // 60 - 10
-        Assert.Equal(40d, Attr(end, "min"));   // 30 + 10
+        foreach (var i in inputs)
+        {
+            Assert.Equal(0d, Attr(i, "min"));
+            Assert.Equal(100d, Attr(i, "max"));
+        }
     }
 
     [Fact]
-    public void StartNativeMax_Tracks_ValueEnd_Change()
+    public void Aria_bounds_still_announce_only_the_reachable_range()
+    {
+        var cut = Range(30, 60, minSteps: 2, step: 5);
+        var inputs = cut.FindAll("input[type=range]");
+
+        Assert.Equal(50d, Attr(inputs[0], "aria-valuemax")); // 60 - 10
+        Assert.Equal(40d, Attr(inputs[1], "aria-valuemin")); // 30 + 10
+    }
+
+    [Fact]
+    public async Task Start_thumb_dragged_past_end_is_clamped_to_end()
+    {
+        double? start = null;
+        var cut = Range(25, 75, onStart: v => start = v);
+
+        await cut.InvokeAsync(() => cut.FindAll("input[type=range]")[0].Input("100"));
+
+        Assert.Equal(75d, start);
+        _module.VerifyInvoke("setInputValue");
+    }
+
+    [Fact]
+    public async Task Start_thumb_clamps_at_end_minus_MinGap()
+    {
+        double? start = null;
+        var cut = Range(20, 60, minSteps: 2, step: 5, onStart: v => start = v);
+
+        await cut.InvokeAsync(() => cut.FindAll("input[type=range]")[0].Input("90"));
+
+        Assert.Equal(50d, start); // 60 - 2*5
+    }
+
+    [Fact]
+    public async Task End_thumb_dragged_below_start_is_clamped_to_start()
+    {
+        double? end = null;
+        var cut = Range(25, 75, onEnd: v => end = v);
+
+        await cut.InvokeAsync(() => cut.FindAll("input[type=range]")[1].Input("3"));
+
+        Assert.Equal(25d, end);
+        _module.VerifyInvoke("setInputValue");
+    }
+
+    [Fact]
+    public async Task End_thumb_clamps_at_start_plus_MinGap()
+    {
+        double? end = null;
+        var cut = Range(30, 80, minSteps: 3, step: 2, onEnd: v => end = v);
+
+        await cut.InvokeAsync(() => cut.FindAll("input[type=range]")[1].Input("0"));
+
+        Assert.Equal(36d, end); // 30 + 3*2
+    }
+
+    [Fact]
+    public async Task Clamped_input_to_unchanged_model_value_still_resyncs_the_dom()
+    {
+        // Model already at the bound: no value change, so without an explicit DOM write the
+        // native thumb would remain at the raw dragged position.
+        var cut = Range(75, 75);
+
+        await cut.InvokeAsync(() => cut.FindAll("input[type=range]")[0].Input("90"));
+
+        _module.VerifyInvoke("setInputValue");
+    }
+
+    [Fact]
+    public void Range_bar_is_inset_by_half_a_thumb_so_it_ends_at_the_thumb_centres()
+    {
+        var cut = Range(25, 75);
+        var bar = cut.FindAll("div.rounded-full").First(d => d.GetAttribute("style")?.Contains("margin-left") == true);
+        var style = bar.GetAttribute("style")!;
+
+        // centre of a native thumb: 8px + (100% - 16px) * fraction
+        Assert.Contains("margin-left: calc(8px + (100% - 16px) * 0.25)", style);
+        Assert.Contains("width: calc((100% - 16px) * 0.5)", style);
+    }
+
+    [Fact]
+    public void Range_inputs_carry_the_min_gap_for_the_client_side_clamp_and_register_it()
+    {
+        var cut = Range(20, 60, minSteps: 2, step: 5);
+        var inputs = cut.FindAll("input[type=range]");
+
+        Assert.Equal("10", inputs[0].GetAttribute("data-min-gap"));
+        Assert.Equal("10", inputs[1].GetAttribute("data-min-gap"));
+        var call = _module.VerifyInvoke("registerRangeSlider");
+        Assert.Equal(inputs[0].Id, call.Arguments[0]);
+        Assert.Equal(inputs[1].Id, call.Arguments[1]);
+        Assert.Equal(cut.Find("div[id^='slider-range'][style*='margin-left']").Id, call.Arguments[2]);
+    }
+
+    [Fact]
+    public async Task Disposing_unregisters_the_client_side_clamp()
+    {
+        var cut = Range(20, 60);
+        await cut.Instance.DisposeAsync();
+        _module.VerifyInvoke("unregisterRangeSlider");
+    }
+
+    [Fact]
+    public void Range_ticks_use_the_same_half_thumb_inset_as_the_bar()
     {
         var cut = _ctx.Render<L.Slider>(p => p
-            .Add(s => s.IsRange, true)
-            .Add(s => s.Min, 0d)
-            .Add(s => s.Max, 100d)
-            .Add(s => s.Value, 20d)
-            .Add(s => s.ValueEnd, 40d));
+            .Add(s => s.IsRange, true).Add(s => s.Value, 20d).Add(s => s.ValueEnd, 60d)
+            .Add(s => s.ShowTicks, true).Add(s => s.Marks, new List<double> { 0, 50, 100 }));
 
-        Assert.Equal(40d, Attr(cut.FindAll("input[type=range]")[0], "max"));
-
-        // Moving the end thumb out should free the start thumb's reachable bound.
-        cut.Render(p => p.Add(s => s.ValueEnd, 70d));
-
-        Assert.Equal(70d, Attr(cut.FindAll("input[type=range]")[0], "max"));
+        var styles = cut.FindAll("div.absolute.flex-col").Select(d => d.GetAttribute("style")!).ToList();
+        Assert.Contains(styles, st => st.Contains("left: calc(8px + (100% - 16px) * 0.5)"));
+        Assert.Contains(styles, st => st.Contains("left: calc(8px + (100% - 16px) * 0)"));
     }
 }

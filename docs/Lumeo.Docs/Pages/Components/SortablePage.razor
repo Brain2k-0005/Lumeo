@@ -57,11 +57,12 @@
         </Stack>
     </ComponentDemo>
 
-    <ComponentDemo Title="Shared Group (drag between lists)">
+    <ComponentDemo Title="Shared Group (drag between lists)" Code="@_groupCode">
         <Flex Gap="6" Wrap="true">
             <Stack Class="max-w-xs flex-1">
                 <Lumeo.Text Size="sm" Weight="medium" Class="mb-2">To Do</Lumeo.Text>
-                <SortableList TItem="string" Items="@_todoItems" ItemsChanged="@(v => _todoItems = v)" Group="tasks">
+                <SortableList TItem="string" Items="@_todoItems" ItemsChanged="@(v => _todoItems = v)" Group="tasks"
+                              OnTransfer="@(t => _lastTransfer = $"{t.Item}: {t.OldIndex} -> {t.NewIndex}")">
                     <ItemTemplate Context="item">
                         <Lumeo.Text Class="text-sm">@item</Lumeo.Text>
                     </ItemTemplate>
@@ -76,6 +77,10 @@
                 </SortableList>
             </Stack>
         </Flex>
+        @if (_lastTransfer is not null)
+        {
+            <Lumeo.Text Size="sm" Class="mt-3 text-muted-foreground">Last transfer: @_lastTransfer</Lumeo.Text>
+        }
     </ComponentDemo>
 
     <ComponentDemo Title="Disabled" Code="@_disabledCode">
@@ -113,6 +118,7 @@
     private List<string> _tasks = new() { "Design mockups", "Write tests", "Review PR", "Deploy to staging", "Update docs" };
     private List<string> _items2 = new() { "Item Alpha", "Item Beta", "Item Gamma", "Item Delta" };
     private List<string> _disabledItems = new() { "Cannot drag this", "Or this one", "Locked order" };
+    private string? _lastTransfer;
     private List<string> _todoItems = new() { "Draft proposal", "Schedule review", "Collect feedback" };
     private List<string> _doneItems = new() { "Kickoff meeting", "Set up repo" };
 
@@ -149,6 +155,14 @@
             <Badge Variant=""Badge.BadgeVariant.Secondary"">@task.Priority</Badge>
         </Flex>
     </ItemTemplate>
+</SortableList>";
+
+    private string _groupCode = @"<SortableList TItem=""string"" Items=""@_todo"" ItemsChanged=""@(v => _todo = v)"" Group=""tasks""
+              OnTransfer=""@(t => Log(t.Item, t.OldIndex, t.NewIndex))"">
+    <ItemTemplate Context=""item"">@item</ItemTemplate>
+</SortableList>
+<SortableList TItem=""string"" Items=""@_done"" ItemsChanged=""@(v => _done = v)"" Group=""tasks"">
+    <ItemTemplate Context=""item"">@item</ItemTemplate>
 </SortableList>";
 
     private string _disabledCode = @"<SortableList TItem=""string"" Items=""@_tasks"" Disabled=""true"">

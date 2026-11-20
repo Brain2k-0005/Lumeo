@@ -1428,6 +1428,9 @@ function startCreateDrag(dragOptions, dragDotNet, reg, trackEl, e) {
         if (unit === 'Month' || unit === 'Year' || unit === 'Quarter') {
             const colW = dragOptions && dragOptions.columnWidth > 0 ? dragOptions.columnWidth : 1;
             const idx = Math.floor(localX / colW);
+            // Non-Gregorian scales (Jalali) ship the exact column start dates.
+            const starts = dragOptions && dragOptions.unitStarts;
+            if (starts && idx >= 0 && idx < starts.length) return parseIsoDate(starts[idx]);
             if (unit === 'Month') return new Date(origin.getFullYear(), origin.getMonth() + idx, 1);
             if (unit === 'Quarter') return new Date(origin.getFullYear(), origin.getMonth() + idx * 3, 1);
             return new Date(origin.getFullYear() + idx, 0, 1);

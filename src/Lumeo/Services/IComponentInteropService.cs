@@ -538,6 +538,11 @@ public interface IComponentInteropService : IAsyncDisposable, IDisposable
     // unless we push the value ourselves (#41).
     ValueTask SetInputValue(string elementId, string value) => ValueTask.CompletedTask;
 
+    // Range Slider: synchronous client-side clamp so the two native thumbs can never cross
+    // (even while a server round-trip is in flight) and the fill bar tracks them live.
+    ValueTask RegisterRangeSlider(string startId, string endId, string barId) => ValueTask.CompletedTask;
+    ValueTask UnregisterRangeSlider(string startId) => ValueTask.CompletedTask;
+
     // Tabs (active indicator measurement for animated underline)
     ValueTask<ComponentInteropService.TabMeasurement?> TabsMeasure(string elementId);
 

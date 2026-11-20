@@ -2645,7 +2645,19 @@ export function carouselScrollTo(elementId, index, behavior) {
     // the child count only exists on this side of the interop boundary.
     if (index >= children.length) index = children.length - 1;
     if (index >= 0) {
-        children[index].scrollIntoView({ behavior: behavior || 'smooth', block: 'nearest', inline: 'start' });
+        // Scroll ONLY the carousel track. Element.scrollIntoView() also scrolls
+        // every scrollable ancestor (the window included), which made autoplay
+        // ticks yank the page back to the carousel (#548).
+        const child = children[index];
+        const er = el.getBoundingClientRect();
+        const cr = child.getBoundingClientRect();
+        const cs = getComputedStyle(el);
+        const vertical = cs.flexDirection === 'column';
+        const rtl = cs.direction === 'rtl';
+        const opts = { behavior: behavior || 'smooth' };
+        if (vertical) opts.top = el.scrollTop + (cr.top - er.top);
+        else opts.left = el.scrollLeft + (rtl ? cr.right - er.right : cr.left - er.left);
+        el.scrollTo(opts);
     }
 }
 
@@ -6959,6 +6971,55 @@ export function setInputCaret(elementId, position) {
 
 // Force the live DOM value of a masked <input> when Blazor's diff won't patch it
 // (the re-masked display equals the previous render after a rejected char, #41).
+// --- Range Slider: synchronous clamp + live bar (the two native thumbs must never cross,
+// even while a Blazor Server round-trip is in flight). The server-side clamp stays
+// authoritative; this only removes the visible latency window. ---
+const rangeSliders = new Map();
+
+export function registerRangeSlider(startId, endId, barId) {
+    unregisterRangeSlider(startId);
+    const a = document.getElementById(startId);
+    const b = document.getElementById(endId);
+    const bar = document.getElementById(barId);
+    if (!a || !b) return;
+    const pct = (inp, v) => {
+        const min = parseFloat(inp.min), max = parseFloat(inp.max);
+        return max > min ? (v - min) / (max - min) : 0;
+    };
+    const paintBar = () => {
+        if (!bar) return;
+        const p1 = pct(a, parseFloat(a.value)), p2 = pct(b, parseFloat(b.value));
+        const lo = Math.min(p1, p2), hi = Math.max(p1, p2);
+        bar.style.marginLeft = `calc(8px + (100% - 16px) * ${lo})`;
+        bar.style.width = `calc((100% - 16px) * ${hi - lo})`;
+    };
+    const onStart = () => {
+        const gap = parseFloat(a.dataset.minGap) || 0;
+        const ceiling = parseFloat(b.value) - gap;
+        const min = parseFloat(a.min);
+        if (parseFloat(a.value) > ceiling) a.value = String(Math.max(min, ceiling));
+        paintBar();
+    };
+    const onEnd = () => {
+        const gap = parseFloat(b.dataset.minGap) || 0;
+        const floor = parseFloat(a.value) + gap;
+        const max = parseFloat(b.max);
+        if (parseFloat(b.value) < floor) b.value = String(Math.min(max, floor));
+        paintBar();
+    };
+    a.addEventListener('input', onStart);
+    b.addEventListener('input', onEnd);
+    rangeSliders.set(startId, { a, b, onStart, onEnd });
+}
+
+export function unregisterRangeSlider(startId) {
+    const r = rangeSliders.get(startId);
+    if (!r) return;
+    r.a.removeEventListener('input', r.onStart);
+    r.b.removeEventListener('input', r.onEnd);
+    rangeSliders.delete(startId);
+}
+
 export function setInputValue(elementId, value) {
     const el = document.getElementById(elementId);
     if (!el) return;
@@ -7199,6 +7260,8 @@ export function registerSortableTouch(containerId, dotnetRef) {
     let lastTargetIndex = -1;
     let draggingEl = null;
     let lastHighlightEl = null;
+    // Cross-list: a sibling list sharing data-sortable-group, and the (insert-before) index in it.
+    let targetContainerId = null;
 
     const findItem = (target) => {
         if (!target || typeof target.closest !== 'function') return null;
@@ -7226,6 +7289,7 @@ export function registerSortableTouch(containerId, dotnetRef) {
         if (idx < 0) return;
         sourceIndex = idx;
         lastTargetIndex = idx;
+        targetContainerId = null;
         draggingEl = item;
         item.setAttribute('data-sortable-dragging', '');
     };
@@ -7238,6 +7302,28 @@ export function registerSortableTouch(containerId, dotnetRef) {
         if (e.cancelable) e.preventDefault();
         const under = document.elementFromPoint(t.clientX, t.clientY);
         const item = findItem(under);
+
+        // Over a sibling list of the same (non-empty) group: target it. Over one of its rows
+        // -> insert before that row; over its empty space -> append.
+        const otherList = under && typeof under.closest === 'function'
+            ? under.closest('[data-slot="sortable-list"]') : null;
+        const group = container.getAttribute('data-sortable-group');
+        if (otherList && otherList !== container && group
+            && otherList.getAttribute('data-sortable-group') === group) {
+            const rows = otherList.querySelectorAll(':scope > [data-sortable-item]');
+            const overItem = item && otherList.contains(item) ? item : null;
+            const idx = overItem ? indexOf(overItem) : rows.length;
+            clearHighlight();
+            if (overItem) {
+                overItem.setAttribute('data-sortable-over', '');
+                lastHighlightEl = overItem;
+            }
+            targetContainerId = otherList.id;
+            lastTargetIndex = idx;
+            return;
+        }
+        if (otherList === container) targetContainerId = null;
+
         if (!item || !container.contains(item)) return;
         const idx = indexOf(item);
         if (idx < 0 || idx === lastTargetIndex) return;
@@ -7250,13 +7336,18 @@ export function registerSortableTouch(containerId, dotnetRef) {
     const onTouchEnd = () => {
         const src = sourceIndex;
         const tgt = lastTargetIndex;
+        const tgtContainer = targetContainerId;
         // Reset state before the round-trip so a re-render finds a clean DOM.
         if (draggingEl) draggingEl.removeAttribute('data-sortable-dragging');
         clearHighlight();
         sourceIndex = -1;
         lastTargetIndex = -1;
         draggingEl = null;
-        if (src >= 0 && tgt >= 0 && src !== tgt) {
+        targetContainerId = null;
+        if (src >= 0 && tgt >= 0 && tgtContainer) {
+            dotnetRef.invokeMethodAsync('OnSortableTouchTransfer', containerId, src, tgtContainer, tgt)
+                .catch(() => {});
+        } else if (src >= 0 && tgt >= 0 && src !== tgt) {
             dotnetRef.invokeMethodAsync('OnSortableTouchDrop', containerId, src, tgt)
                 .catch(() => {});
         }

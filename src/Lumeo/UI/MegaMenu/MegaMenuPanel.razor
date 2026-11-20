@@ -22,9 +22,20 @@
     /// <summary>Unmatched attributes are splatted onto the root panel element.</summary>
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
-    private string WidthCssClass => FullWidth ? "start-0 end-0" : "w-auto min-w-[600px]";
+    [CascadingParameter] private MegaMenu.MegaMenuContext? Context { get; set; }
 
-    private string CssClass => Cx.Merge("absolute top-full z-50", WidthCssClass, "bg-popover border border-border/40 rounded-lg shadow-lg p-6", Class);
+    private bool IsVertical => Context?.Orientation == Lumeo.Orientation.Vertical;
+
+    // Horizontal: the panel drops below the whole menubar (anchored to the <nav>).
+    // Vertical: the menubar is a column, so a panel below the nav would cover the
+    // sibling items and sit far from its trigger. Anchor it to the trigger's <li>
+    // (made `relative` by MegaMenuItem) at its inline-end edge, top-aligned with the
+    // trigger. It cannot span the nav width there, so FullWidth does not apply (#550).
+    private string PlacementCssClass => IsVertical
+        ? "top-0 start-full ms-2 w-max min-w-[600px]"
+        : Cx.Join("top-full", FullWidth ? "start-0 end-0" : "w-auto min-w-[600px]");
+
+    private string CssClass => Cx.Merge("absolute z-50", PlacementCssClass, "bg-popover border border-border/40 rounded-lg shadow-lg p-6", Class);
 
     private string GridCssClass => Columns switch {
         1 => "grid grid-cols-1 gap-6",

@@ -105,6 +105,8 @@
                            TreeHeaderMenu="@TreeHeaderMenu"
                            RowTemplate="@RowTemplate"
                            ShowTaskMeta="@ShowTaskMeta"
+                           CalendarSystem="@CalendarSystem"
+                           Culture="@Culture"
                            TreePaneWidth="@EffectiveTreePaneWidth"
                            OnResize="HandleTreePaneResizeAsync"
                            Tasks="@_state.Tasks"
@@ -126,6 +128,8 @@
                            ColumnWidth="@ColumnWidth"
                            TodayHighlight="@TodayHighlight"
                            FirstDayOfWeek="@FirstDayOfWeek"
+                           CalendarSystem="@CalendarSystem"
+                           Culture="@Culture"
                            OffDays="@OffDays"
                            MarkOffDays="@MarkOffDays"
                            NowIndicator="@NowIndicator"
@@ -222,8 +226,29 @@
     /// </summary>
     [Parameter] public bool TodayHighlight { get; set; } = true;
 
-    /// <summary>Explicit first-day-of-week override for the Day-mode ISO week-band upper header (design spec Phase 3, T2). Null derives it from <see cref="CultureInfo.CurrentCulture"/>.</summary>
+    /// <summary>Explicit first-day-of-week override for the Day-mode ISO week-band upper header (design spec Phase 3, T2). Null derives it from <see cref="CultureInfo.CurrentCulture"/> (Saturday under <see cref="CalendarSystem.Jalali"/>).</summary>
     [Parameter] public DayOfWeek? FirstDayOfWeek { get; set; }
+
+    /// <summary>
+    /// The calendar system the time scale is laid out in. <see cref="Lumeo.CalendarSystem.Jalali"/>
+    /// starts month / quarter / year columns on Solar Hijri boundaries (1st of the Jalali month;
+    /// quarters = Jalali months 1/4/7/10; year = 1 Farvardin), sizes bar positions by the real
+    /// 29/30/31-day month lengths, starts Week-mode columns on Saturday unless
+    /// <see cref="FirstDayOfWeek"/> is set explicitly, numbers weeks by Jalali week-of-year (week 1 is
+    /// the week containing 1 Farvardin), and renders header labels, the period label, tooltips and
+    /// the tree's date text with Jalali month names and, under a <c>fa</c> culture, Persian digits.
+    /// Task <c>Start</c>/<c>End</c> values stay Gregorian <see cref="DateTime"/>s and dragging /
+    /// resizing still snaps in whole days. Default <see cref="Lumeo.CalendarSystem.Gregorian"/>.
+    /// </summary>
+    [Parameter] public CalendarSystem CalendarSystem { get; set; } = CalendarSystem.Gregorian;
+
+    /// <summary>Culture used for month / weekday names, digits and date text. Null uses <see cref="CultureInfo.CurrentCulture"/>.</summary>
+    [Parameter] public CultureInfo? Culture { get; set; }
+
+    private CultureInfo EffectiveCulture => Culture ?? CultureInfo.CurrentCulture;
+
+    /// <summary>The first weekday week bands / Week-mode columns start on: <see cref="FirstDayOfWeek"/>, else the calendar system's default for the culture.</summary>
+    private DayOfWeek EffectiveFirstDayOfWeek => FirstDayOfWeek ?? CalendarSystemMath.DefaultFirstDayOfWeek(CalendarSystem, EffectiveCulture);
 
     /// <summary>The week days treated as "off" for <see cref="MarkOffDays"/> (design spec Phase 3, T2). Null derives a region-appropriate set from <see cref="CultureInfo.CurrentCulture"/> — see <see cref="GanttScale.DefaultOffDays"/>.</summary>
     [Parameter] public IReadOnlySet<DayOfWeek>? OffDays { get; set; }
@@ -983,7 +1008,7 @@
                 // boundary for the range's min/max (Codex round 11, P2 #2 — a
                 // live-scroll center carries arbitrary minutes in sub-day
                 // modes), but keep the RAW center as the recenter target below.
-                var aligned = GanttScale.AlignToUnitStart(_state.ViewMode, capturedCenter!.Value);
+                var aligned = GanttScale.AlignToUnitStart(_state.ViewMode, capturedCenter!.Value, CalendarSystem, EffectiveFirstDayOfWeek);
                 _state.SetVisibleRange(ApplyPadding(_state.ViewMode, aligned, aligned));
                 break;
             // GanttRangeSource.Keep: VisibleRange untouched (only the target moves).
@@ -2175,7 +2200,7 @@
     //    End<Start task (dropped from Rows entirely by GanttRowModel) could
     //    still stretch the computed range even though it renders no row —
     //    the exact skew the round-8 report flagged as out of scope then.
-    private static GanttDateRange ComputeInitialRange(GanttViewMode mode, IReadOnlyList<GanttTask> tasks, DateTime today)
+    private GanttDateRange ComputeInitialRange(GanttViewMode mode, IReadOnlyList<GanttTask> tasks, DateTime today)
     {
         var validTasks = GanttRowModel.FilterValidDurationTasks(tasks);
         DateTime minDate, maxDate;
@@ -2203,20 +2228,24 @@
     // task min/max — a second, independently-written copy of this switch was
     // exactly the kind of divergence risk this codebase avoids elsewhere
     // (see e.g. GanttScale.BarTop's own remarks on the same principle).
-    private static GanttDateRange ApplyPadding(GanttViewMode mode, DateTime minDate, DateTime maxDate)
+    private GanttDateRange ApplyPadding(GanttViewMode mode, DateTime minDate, DateTime maxDate)
     {
         var cfg = GanttScale.GetConfig(mode);
         return cfg.Unit switch
         {
+            // Jalali Week mode: columns begin on the week's first day (Saturday by default).
+            GanttScaleUnit.Day when CalendarSystem == CalendarSystem.Jalali && cfg.Step == 7 => new GanttDateRange(
+                GanttCalendar.WeekStart(minDate, EffectiveFirstDayOfWeek).AddDays(-cfg.PadBefore * cfg.Step),
+                maxDate.AddDays(cfg.PadAfter * cfg.Step)),
             GanttScaleUnit.Day => new GanttDateRange(
                 minDate.AddDays(-cfg.PadBefore * cfg.Step),
                 maxDate.AddDays(cfg.PadAfter * cfg.Step)),
             GanttScaleUnit.Month => new GanttDateRange(
-                new DateTime(minDate.Year, minDate.Month, 1, 0, 0, 0, minDate.Kind).AddMonths(-cfg.PadBefore),
-                new DateTime(maxDate.Year, maxDate.Month, 1, 0, 0, 0, maxDate.Kind).AddMonths(cfg.PadAfter)),
+                GanttCalendar.AddMonths(CalendarSystem, GanttCalendar.MonthStart(CalendarSystem, minDate), -cfg.PadBefore),
+                GanttCalendar.AddMonths(CalendarSystem, GanttCalendar.MonthStart(CalendarSystem, maxDate), cfg.PadAfter)),
             GanttScaleUnit.Year => new GanttDateRange(
-                new DateTime(minDate.Year - cfg.PadBefore, 1, 1, 0, 0, 0, minDate.Kind),
-                new DateTime(maxDate.Year + cfg.PadAfter, 1, 1, 0, 0, 0, maxDate.Kind)),
+                GanttCalendar.YearStartOf(CalendarSystem, GanttCalendar.Year(CalendarSystem, minDate) - cfg.PadBefore, minDate.Kind),
+                GanttCalendar.YearStartOf(CalendarSystem, GanttCalendar.Year(CalendarSystem, maxDate) + cfg.PadAfter, maxDate.Kind)),
             GanttScaleUnit.Hour => new GanttDateRange(
                 minDate.AddDays(-Math.Ceiling(cfg.PadBefore * cfg.Step / 24.0)),
                 maxDate.AddDays(Math.Ceiling(cfg.PadAfter * cfg.Step / 24.0))),
@@ -2226,8 +2255,8 @@
             // pattern the Month/Year branches above use, then pads by
             // cfg.PadBefore/PadAfter QUARTERS (*3 months each).
             GanttScaleUnit.Quarter => new GanttDateRange(
-                GanttScale.AlignToUnitStart(mode, minDate).AddMonths(-cfg.PadBefore * 3),
-                GanttScale.AlignToUnitStart(mode, maxDate).AddMonths(cfg.PadAfter * 3)),
+                GanttCalendar.AddMonths(CalendarSystem, GanttScale.AlignToUnitStart(mode, minDate, CalendarSystem, EffectiveFirstDayOfWeek), -cfg.PadBefore * 3),
+                GanttCalendar.AddMonths(CalendarSystem, GanttScale.AlignToUnitStart(mode, maxDate, CalendarSystem, EffectiveFirstDayOfWeek), cfg.PadAfter * 3)),
             _ => new GanttDateRange(minDate, maxDate),
         };
     }
@@ -2253,32 +2282,32 @@
     // method eight-plus Codex rounds already hardened, for a net decrease in
     // clarity — a considered trade-off, not an oversight (flagged for the
     // reviewer).
-    private static DateTime PadBoundaryBefore(GanttViewMode mode, DateTime date)
+    private DateTime PadBoundaryBefore(GanttViewMode mode, DateTime date)
     {
         var cfg = GanttScale.GetConfig(mode);
         return cfg.Unit switch
         {
             GanttScaleUnit.Day => date.AddDays(-cfg.PadBefore * cfg.Step),
-            GanttScaleUnit.Month => date.AddMonths(-cfg.PadBefore),
-            GanttScaleUnit.Year => date.AddYears(-cfg.PadBefore),
+            GanttScaleUnit.Month => GanttCalendar.AddMonths(CalendarSystem, date, -cfg.PadBefore),
+            GanttScaleUnit.Year => GanttCalendar.AddYears(CalendarSystem, date, -cfg.PadBefore),
             GanttScaleUnit.Hour => date.AddDays(-Math.Ceiling(cfg.PadBefore * cfg.Step / 24.0)),
-            GanttScaleUnit.Quarter => date.AddMonths(-cfg.PadBefore * 3),
+            GanttScaleUnit.Quarter => GanttCalendar.AddMonths(CalendarSystem, date, -cfg.PadBefore * 3),
             _ => date,
         };
     }
 
     // See PadBoundaryBefore's own remarks — the mirror-image TRAILING (later)
     // extension, using cfg.PadAfter instead of cfg.PadBefore.
-    private static DateTime PadBoundaryAfter(GanttViewMode mode, DateTime date)
+    private DateTime PadBoundaryAfter(GanttViewMode mode, DateTime date)
     {
         var cfg = GanttScale.GetConfig(mode);
         return cfg.Unit switch
         {
             GanttScaleUnit.Day => date.AddDays(cfg.PadAfter * cfg.Step),
-            GanttScaleUnit.Month => date.AddMonths(cfg.PadAfter),
-            GanttScaleUnit.Year => date.AddYears(cfg.PadAfter),
+            GanttScaleUnit.Month => GanttCalendar.AddMonths(CalendarSystem, date, cfg.PadAfter),
+            GanttScaleUnit.Year => GanttCalendar.AddYears(CalendarSystem, date, cfg.PadAfter),
             GanttScaleUnit.Hour => date.AddDays(Math.Ceiling(cfg.PadAfter * cfg.Step / 24.0)),
-            GanttScaleUnit.Quarter => date.AddMonths(cfg.PadAfter * 3),
+            GanttScaleUnit.Quarter => GanttCalendar.AddMonths(CalendarSystem, date, cfg.PadAfter * 3),
             _ => date,
         };
     }
@@ -2421,13 +2450,13 @@
             // recenter, nothing to commit, the next qualifying scroll report
             // re-asks and gets the same answer (level-triggered, like every
             // other no-op branch in this method).
-            if (GanttScale.BuildDateUnits(_state.ViewMode, newStart, _state.VisibleRange.End).Count > GanttScale.MaxInfiniteScrollRangeUnits) return;
+            if (GanttScale.BuildDateUnits(_state.ViewMode, newStart, _state.VisibleRange.End, CalendarSystem).Count > GanttScale.MaxInfiniteScrollRangeUnits) return;
 
             // The EXACT pixel distance the origin just moved by — pure
             // GanttScale.DateToPixel origin-linearity (see
             // ScrollTargetXOverride's own remarks), no DateTime round trip.
             var columnWidth = EffectiveColumnWidthFor(_state.ViewMode);
-            var addedPixels = GanttScale.DateToPixel(_state.ViewMode, newStart, _state.VisibleRange.Start, columnWidth);
+            var addedPixels = GanttScale.DateToPixel(_state.ViewMode, newStart, _state.VisibleRange.Start, columnWidth, CalendarSystem);
             // Captured BEFORE SetVisibleRange below — VisibleCenterDate is a
             // LIVE computed property reading _state.VisibleRange directly, so
             // reading it AFTER the mutation would silently return the NEW
@@ -2462,7 +2491,7 @@
             var newEnd = PadBoundaryAfter(_state.ViewMode, _state.VisibleRange.End);
             if (newEnd <= _state.VisibleRange.End) return; // defensive no-op guard — see the leading branch's own remarks
             // Decision 4 — see the leading branch's own remarks + GanttScale.MaxInfiniteScrollRangeUnits.
-            if (GanttScale.BuildDateUnits(_state.ViewMode, _state.VisibleRange.Start, newEnd).Count > GanttScale.MaxInfiniteScrollRangeUnits) return;
+            if (GanttScale.BuildDateUnits(_state.ViewMode, _state.VisibleRange.Start, newEnd, CalendarSystem).Count > GanttScale.MaxInfiniteScrollRangeUnits) return;
             _state.SetVisibleRange(_state.VisibleRange.Start, newEnd);
             // No scroll intent — see this method's own class remarks: a
             // trailing extension never shifts the origin, so the DOM's
@@ -2475,8 +2504,8 @@
     // between two ALREADY unit-aligned dates (both are day-1 of their own
     // month, per this codebase's aligned-origin invariant), independent of
     // day-of-month.
-    private static int MonthsBetween(DateTime start, DateTime end) =>
-        (end.Year - start.Year) * 12 + (end.Month - start.Month);
+    private int MonthsBetween(DateTime start, DateTime end) =>
+        GanttCalendar.MonthsBetween(CalendarSystem, start, end);
 
     private string PeriodLabel
     {
@@ -2485,14 +2514,19 @@
             var range = _state.VisibleRange;
             return _state.ViewMode switch
             {
+                GanttViewMode.Year when CalendarSystem == CalendarSystem.Jalali =>
+                    $"{GanttCalendar.Num(CalendarSystem, GanttCalendar.Year(CalendarSystem, range.Start), Culture)}–{GanttCalendar.Num(CalendarSystem, GanttCalendar.Year(CalendarSystem, range.End), Culture)}",
                 GanttViewMode.Year => $"{range.Start.Year}–{range.End.Year}",
-                GanttViewMode.Month => range.Start.ToString("MMMM yyyy", CultureInfo.CurrentCulture),
+                GanttViewMode.Month when CalendarSystem == CalendarSystem.Jalali => GanttCalendar.Format(CalendarSystem, range.Start, "MMMM yyyy", Culture),
+                GanttViewMode.Month => range.Start.ToString("MMMM yyyy", EffectiveCulture),
+                GanttViewMode.Quarter when CalendarSystem == CalendarSystem.Jalali =>
+                    $"Q{GanttCalendar.Num(CalendarSystem, GanttCalendar.QuarterOf(CalendarSystem, range.Start), Culture)} {GanttCalendar.Num(CalendarSystem, GanttCalendar.Year(CalendarSystem, range.Start), Culture)} – Q{GanttCalendar.Num(CalendarSystem, GanttCalendar.QuarterOf(CalendarSystem, range.End), Culture)} {GanttCalendar.Num(CalendarSystem, GanttCalendar.Year(CalendarSystem, range.End), Culture)}",
                 // Design spec Phase 3, T2 — Quarter mode. No v2 counterpart to
                 // match; "Q{n} {year} – Q{n} {year}" mirrors the Year branch's
                 // own "{start}–{end}" range shape at the coarser Quarter grain.
                 GanttViewMode.Quarter =>
                     $"Q{(range.Start.Month - 1) / 3 + 1} {range.Start.Year} – Q{(range.End.Month - 1) / 3 + 1} {range.End.Year}",
-                _ => $"{range.Start.ToString("MMM d, yyyy", CultureInfo.CurrentCulture)} – {range.End.ToString("MMM d, yyyy", CultureInfo.CurrentCulture)}",
+                _ => $"{GanttCalendar.Format(CalendarSystem, range.Start, "MMM d, yyyy", Culture)} – {GanttCalendar.Format(CalendarSystem, range.End, "MMM d, yyyy", Culture)}",
             };
         }
     }
@@ -2634,9 +2668,9 @@
         if (logicalCenterX is { } x)
         {
             var timelineRelativeX = x - leadingOffset;
-            var units = GanttScale.BuildDateUnits(_state.ViewMode, _state.VisibleRange.Start, _state.VisibleRange.End);
+            var units = GanttScale.BuildDateUnits(_state.ViewMode, _state.VisibleRange.Start, _state.VisibleRange.End, CalendarSystem);
             var origin = units.Count > 0 ? units[0] : _state.VisibleRange.Start;
-            return GanttScale.PixelToDateContinuous(_state.ViewMode, origin, timelineRelativeX, columnWidth);
+            return GanttScale.PixelToDateContinuous(_state.ViewMode, origin, timelineRelativeX, columnWidth, CalendarSystem);
         }
         return VisibleCenterDate;
     }
@@ -2660,7 +2694,7 @@
     // the SAME math a second time against a freshly task-derived range — a
     // second, independently-written copy is exactly the kind of divergence
     // risk this codebase avoids elsewhere (see e.g. ApplyPadding's own remarks).
-    private static (DateTime Start, DateTime End) ComputeShiftedRange(GanttViewMode mode, GanttDateRange range, int direction) =>
+    private (DateTime Start, DateTime End) ComputeShiftedRange(GanttViewMode mode, GanttDateRange range, int direction) =>
         (ShiftDate(mode, range.Start, direction), ShiftDate(mode, range.End, direction));
 
     // One page step applied to a single date, in the mode's own unit. Extracted
@@ -2668,20 +2702,20 @@
     // pending SCROLL TARGET by exactly the same amount it moves the range — a
     // second, independently-written copy of this switch is the divergence risk
     // this codebase avoids elsewhere (see ApplyPadding's own remarks).
-    private static DateTime ShiftDate(GanttViewMode mode, DateTime date, int direction)
+    private DateTime ShiftDate(GanttViewMode mode, DateTime date, int direction)
     {
         var cfg = GanttScale.GetConfig(mode);
         var amount = direction * cfg.Step;
         return cfg.Unit switch
         {
             GanttScaleUnit.Day => date.AddDays(amount),
-            GanttScaleUnit.Month => date.AddMonths(amount),
-            GanttScaleUnit.Year => date.AddYears(amount),
+            GanttScaleUnit.Month => GanttCalendar.AddMonths(CalendarSystem, date, amount),
+            GanttScaleUnit.Year => GanttCalendar.AddYears(CalendarSystem, date, amount),
             GanttScaleUnit.Hour => date.AddHours(amount),
             // Design spec Phase 3, T2 — one Quarter step = 3 months (cfg.Step is
             // always 1 "quarter" for GanttViewMode.Quarter — see its VIEW_MODES
             // entry's remarks).
-            GanttScaleUnit.Quarter => date.AddMonths(amount * 3),
+            GanttScaleUnit.Quarter => GanttCalendar.AddMonths(CalendarSystem, date, amount * 3),
             _ => date,
         };
     }
@@ -2787,7 +2821,7 @@
         // pixel position would then be off by a fraction of a column. Snap the
         // start to the mode's own unit boundary (reusing GanttScale's helper,
         // not a second copy of the same snapping logic).
-        var start = GanttScale.AlignToUnitStart(_state.ViewMode, today - half);
+        var start = GanttScale.AlignToUnitStart(_state.ViewMode, today - half, CalendarSystem, EffectiveFirstDayOfWeek);
         // Bug fix (Codex round 10 review, P2 #4): re-deriving the end as
         // `start + width` (the ORIGINAL TimeSpan) is only correct for Day/
         // Week/Hour modes, where a "day"/"hour" is a fixed duration. Month
@@ -2814,8 +2848,8 @@
             // already a multiple of 3 and AddMonths(that) reproduces the exact
             // same number of quarter-columns Month's own branch reproduces
             // month-columns — no separate "QuartersBetween" helper needed.
-            GanttScaleUnit.Month or GanttScaleUnit.Quarter => start.AddMonths(MonthsBetween(range.Start, range.End)),
-            GanttScaleUnit.Year => start.AddYears(range.End.Year - range.Start.Year),
+            GanttScaleUnit.Month or GanttScaleUnit.Quarter => GanttCalendar.AddMonths(CalendarSystem, start, MonthsBetween(range.Start, range.End)),
+            GanttScaleUnit.Year => GanttCalendar.AddYears(CalendarSystem, start, GanttCalendar.Year(CalendarSystem, range.End) - GanttCalendar.Year(CalendarSystem, range.Start)),
             _ => start + width,
         };
         _state.SetVisibleRange(start, end);

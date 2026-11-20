@@ -569,6 +569,22 @@ public sealed class ComponentInteropService : IComponentInteropService
     public async Task OnSortableTouchDrop(string containerId, int source, int target)
         => await _sortable.OnSortableTouchDrop(containerId, source, target);
 
+    /// <summary>Touch drag between two lists sharing a <c>Group</c>: JS reports source container + index and target container + index.</summary>
+    [JSInvokable]
+    public async Task OnSortableTouchTransfer(string sourceContainerId, int sourceIndex, string targetContainerId, int targetIndex)
+    {
+        var hook = SortableTouchTransfer;
+        if (hook is not null)
+            await hook(sourceContainerId, sourceIndex, targetContainerId, targetIndex);
+    }
+
+    /// <summary>
+    /// Component-agnostic hook for cross-list touch drops: whichever component owns the group
+    /// bookkeeping (SortableList) installs a handler here, so this runtime service has no
+    /// compile-time dependency on any component (the CLI vendors it without them).
+    /// </summary>
+    internal Func<string, int, string, int, Task>? SortableTouchTransfer { get; set; }
+
     // --- Carousel Swipe ---
 
     public async ValueTask RegisterCarouselSwipe(string elementId, string orientation, Func<string, Task> swipeHandler, Func<double, double, int, Task> scrollHandler)
@@ -1158,6 +1174,26 @@ public sealed class ComponentInteropService : IComponentInteropService
         {
             var module = await GetModuleAsync();
             await module.InvokeVoidAsync("setInputCaret", elementId, position);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
+    public async ValueTask RegisterRangeSlider(string startId, string endId, string barId)
+    {
+        try
+        {
+            var module = await GetModuleAsync();
+            await module.InvokeVoidAsync("registerRangeSlider", startId, endId, barId);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
+    public async ValueTask UnregisterRangeSlider(string startId)
+    {
+        try
+        {
+            var module = await GetModuleAsync();
+            await module.InvokeVoidAsync("unregisterRangeSlider", startId);
         }
         catch (JSDisconnectedException) { }
     }

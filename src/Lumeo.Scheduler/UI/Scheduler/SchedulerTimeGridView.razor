@@ -51,7 +51,7 @@
                    a data- attribute, so a screen reader read today as the same weekday and
                    number as every other column (Codex review of PR #427). *@
                 <div class="border-l border-border/40 px-2 py-1.5 text-center min-w-0"
-                         data-dayheader="@headerDay.ToString("yyyy-MM-dd")"
+                         data-dayheader="@headerDay.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)"
                          data-today="@(isToday ? "true" : null)"
                          aria-current="@(isToday ? "date" : null)">
                         <div class="truncate text-[11px] font-medium @(isToday ? "text-primary" : "text-muted-foreground")">
@@ -224,7 +224,7 @@
                 {
                     var dayIndex = d;
                     var day = _dayColumns[dayIndex];
-                    <div class="relative border-l border-border/40" role="row" data-daycol="@day.ToString("yyyy-MM-dd")" @ref="_dayColumnRefs[dayIndex]">
+                    <div class="relative border-l border-border/40" role="row" data-daycol="@day.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)" @ref="_dayColumnRefs[dayIndex]">
                         @for (var h = 0; h < _slotStarts.Length; h++)
                         {
                             var slotIndex = h;
@@ -272,7 +272,7 @@
                                                 @onclick="() => OnEventClickAsync(block.Source)"
                                                 @onkeydown="e => OnPillKeyDownAsync(e, block.Source, dayIndex, blockHourIndex)">
                                             <span class="block font-semibold truncate">@block.Source.Title</span>
-                                            <span class="block text-[10px] opacity-80">@block.Instance.Start.ToString("t", CultureInfo.CurrentUICulture)</span>
+                                            <span class="block text-[10px] opacity-80">@TimeLabel(block.Instance.Start, CultureInfo.CurrentUICulture)</span>
                                         </button>
                                     </ChildContentSlot>
                                 </TooltipTrigger>
@@ -297,6 +297,13 @@
     [Parameter] public int Days { get; set; } = 7;
 
     [Parameter] public DayOfWeek FirstDayOfWeek { get; set; } = DayOfWeek.Monday;
+
+    /// <summary>
+    /// The calendar system the column headers (day number and month) and spelled-out dates use.
+    /// Columns themselves are always consecutive days, so week/day layout is calendar-independent;
+    /// event data stays Gregorian. Default Gregorian.
+    /// </summary>
+    [Parameter] public CalendarSystem CalendarSystem { get; set; } = CalendarSystem.Gregorian;
 
     /// <summary>Earliest visible slot. Default 00:00. Never changes the underlying wall-clock grid math (spec §2.3) — purely a visible-range clamp.</summary>
     [Parameter] public TimeOnly? SlotMinTime { get; set; }
@@ -621,7 +628,7 @@
     private async Task SyncNowIndicatorAsync()
     {
         var hash = HashCode.Combine(NowIndicator, _minMinute, NowTimeZoneId,
-                                    string.Join(",", _dayColumns.Select(d => d.ToString("yyyyMMdd"))));
+                                    string.Join(",", _dayColumns.Select(d => d.ToString("yyyyMMdd", CultureInfo.InvariantCulture))));
         if (hash == _lastNowIndicatorHash) return;
         _lastNowIndicatorHash = hash;
 
@@ -648,7 +655,7 @@
         {
             ["pixelsPerMinute"] = PxPerMinute,
             ["slotMinMinute"] = _minMinute,
-            ["days"] = _dayColumns.Select(d => d.ToString("yyyy-MM-dd")).ToArray(),
+            ["days"] = _dayColumns.Select(d => d.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)).ToArray(),
             ["timeZone"] = NowTimeZoneId,
         };
         try
@@ -838,7 +845,7 @@
     /// </summary>
     internal string TooltipLabel(SchedulerEvent ev, SchedulerEventInstance inst)
     {
-        var time = ev.AllDay ? null : $"{inst.Start:t}–{inst.End:t}";
+        var time = ev.AllDay ? null : $"{TimeLabel(inst.Start)}–{TimeLabel(inst.End)}";
         var parts = new List<string> { ev.Title };
         if (time is not null) parts.Add(time);
         if (!string.IsNullOrEmpty(ev.ResourceId))
@@ -865,7 +872,16 @@
 
     private static string InstanceKey(SchedulerEventInstance i) => $"{i.EventId}|{i.Start:O}";
 
-    private static string FormatHour(int hour) => $"{hour % 24:D2}:00";
+    private string FormatHour(int hour) =>
+        SchedulerCalendarMath.Digits(CalendarSystem, $"{hour % 24:D2}:00", CultureInfo.CurrentUICulture);
+
+    /// <summary>
+    /// A time of day in the culture's own pattern and AM/PM designators — never a hardcoded
+    /// "AM"/"PM". The gutter and slot labels are 24-hour on purpose (they were before), so the
+    /// designators only ever come from <c>"t"</c> here.
+    /// </summary>
+    private string TimeLabel(DateTime value, CultureInfo? culture = null) =>
+        SchedulerCalendarMath.Time(CalendarSystem, value, culture ?? SchedulerCalendarMath.TimeCulture(CalendarSystem));
 
     /// <summary>
     /// The column header's weekday, abbreviated in the current UI culture — the same source
@@ -976,7 +992,7 @@
     /// </summary>
     private string PillId(string instanceKey) => $"scheduler-pill-{_instanceId}-{instanceKey}";
 
-    private static string WeekdayLabel(DateTime day) =>
+    private string WeekdayLabel(DateTime day) =>
         CultureInfo.CurrentUICulture.DateTimeFormat.AbbreviatedDayNames[(int)day.DayOfWeek];
 
     /// <summary>
@@ -985,12 +1001,16 @@
     /// printed a number that disagreed with the culture-formatted title above it (Codex review
     /// of PR #427).
     /// </summary>
-    private static string DayNumberLabel(DateTime day) =>
-        day.ToString("%d", CultureInfo.CurrentUICulture);
+    private string DayNumberLabel(DateTime day) =>
+        CalendarSystem == CalendarSystem.Gregorian
+            ? day.ToString("%d", CultureInfo.CurrentUICulture)
+            // Jalali: day AND month ("12 Mehr" / "۱۲ مهر"), since the Gregorian title above no longer says which month it is.
+            : SchedulerCalendarMath.Format(CalendarSystem, day, "d MMM", CultureInfo.CurrentUICulture);
 
     private static TimeOnly MinuteToTimeOnly(int minute) => new((minute / 60) % 24, minute % 60);
 
-    private static string FormatMinute(int minute) => $"{(minute / 60) % 24:D2}:{minute % 60:D2}";
+    private string FormatMinute(int minute) =>
+        SchedulerCalendarMath.Digits(CalendarSystem, $"{(minute / 60) % 24:D2}:{minute % 60:D2}", CultureInfo.CurrentUICulture);
 
     /// <summary>
     /// Row height in pixels. The 0.8px-per-minute scale is the same constant the drag and
@@ -1050,10 +1070,10 @@
     private string GridAriaLabel() => Days == 1 ? L["Scheduler.Day"] : L["Scheduler.Week"];
 
     private string SlotAriaLabel(DateTime day, int startMinute) =>
-        $"{day.ToString("D", CultureInfo.CurrentUICulture)}, {FormatMinute(startMinute)}";
+        $"{SchedulerCalendarMath.LongDate(CalendarSystem, day, CultureInfo.CurrentUICulture)}, {FormatMinute(startMinute)}";
 
-    private static string PillAriaLabel(SchedulerEvent ev, SchedulerEventInstance inst) =>
-        $"{ev.Title}, {inst.Start:t}–{inst.End:t}";
+    private string PillAriaLabel(SchedulerEvent ev, SchedulerEventInstance inst) =>
+        $"{ev.Title}, {TimeLabel(inst.Start)}–{TimeLabel(inst.End)}";
 
     private string AllDayPillClasses(AllDaySlot slot)
     {
@@ -1346,8 +1366,10 @@
     }
 
     /// <summary>Date + time of day, spelled out — an announcement is heard without the grid for context.</summary>
-    private static string FormatAnnounceMoment(DateTime value) =>
-        value.ToString("f", CultureInfo.CurrentUICulture);
+    private string FormatAnnounceMoment(DateTime value) =>
+        CalendarSystem == CalendarSystem.Gregorian
+            ? value.ToString("f", CultureInfo.CurrentUICulture)
+            : $"{SchedulerCalendarMath.LongDate(CalendarSystem, value, CultureInfo.CurrentUICulture)} {TimeLabel(value, CultureInfo.CurrentUICulture)}";
 
     [JSInvokable]
     public async Task CommitCreate(string dayIso, int startMinute, int endMinute)
