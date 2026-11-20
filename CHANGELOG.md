@@ -34,6 +34,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   centres. A synchronous client-side clamp (through `ComponentInteropService`) keeps the thumbs
   from crossing and the bar glued to them even while a Blazor Server round-trip is in flight; the
   server-side clamp stays authoritative. Range tick marks use the same half-thumb inset. (#555)
+### Added
+- **`SortableList` cross-list transfer.** Lists that share a non-empty `Group` now actually
+  exchange rows (#551): drag a row into any position of a sibling list (including an empty one,
+  which gets a drop zone), or on touch, or with ArrowLeft / ArrowRight on a drag handle. The source
+  list raises `ItemsChanged` without the row, the target list with the row inserted at the drop
+  index, and the new `OnTransfer` callback (`SortableList<TItem>.SortableTransfer`: item, group,
+  source/target list id, old/new index) fires on both. Lists with a different or empty `Group`
+  still reject each other's rows. Previously `Group` only emitted `data-sortable-group` and the
+  "Shared Group" demo could not move anything between lists.
 
 ## [5.13.0] - 2026-11-08
 

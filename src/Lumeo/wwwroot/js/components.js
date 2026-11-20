@@ -7260,6 +7260,8 @@ export function registerSortableTouch(containerId, dotnetRef) {
     let lastTargetIndex = -1;
     let draggingEl = null;
     let lastHighlightEl = null;
+    // Cross-list: a sibling list sharing data-sortable-group, and the (insert-before) index in it.
+    let targetContainerId = null;
 
     const findItem = (target) => {
         if (!target || typeof target.closest !== 'function') return null;
@@ -7287,6 +7289,7 @@ export function registerSortableTouch(containerId, dotnetRef) {
         if (idx < 0) return;
         sourceIndex = idx;
         lastTargetIndex = idx;
+        targetContainerId = null;
         draggingEl = item;
         item.setAttribute('data-sortable-dragging', '');
     };
@@ -7299,6 +7302,28 @@ export function registerSortableTouch(containerId, dotnetRef) {
         if (e.cancelable) e.preventDefault();
         const under = document.elementFromPoint(t.clientX, t.clientY);
         const item = findItem(under);
+
+        // Over a sibling list of the same (non-empty) group: target it. Over one of its rows
+        // -> insert before that row; over its empty space -> append.
+        const otherList = under && typeof under.closest === 'function'
+            ? under.closest('[data-slot="sortable-list"]') : null;
+        const group = container.getAttribute('data-sortable-group');
+        if (otherList && otherList !== container && group
+            && otherList.getAttribute('data-sortable-group') === group) {
+            const rows = otherList.querySelectorAll(':scope > [data-sortable-item]');
+            const overItem = item && otherList.contains(item) ? item : null;
+            const idx = overItem ? indexOf(overItem) : rows.length;
+            clearHighlight();
+            if (overItem) {
+                overItem.setAttribute('data-sortable-over', '');
+                lastHighlightEl = overItem;
+            }
+            targetContainerId = otherList.id;
+            lastTargetIndex = idx;
+            return;
+        }
+        if (otherList === container) targetContainerId = null;
+
         if (!item || !container.contains(item)) return;
         const idx = indexOf(item);
         if (idx < 0 || idx === lastTargetIndex) return;
@@ -7311,13 +7336,18 @@ export function registerSortableTouch(containerId, dotnetRef) {
     const onTouchEnd = () => {
         const src = sourceIndex;
         const tgt = lastTargetIndex;
+        const tgtContainer = targetContainerId;
         // Reset state before the round-trip so a re-render finds a clean DOM.
         if (draggingEl) draggingEl.removeAttribute('data-sortable-dragging');
         clearHighlight();
         sourceIndex = -1;
         lastTargetIndex = -1;
         draggingEl = null;
-        if (src >= 0 && tgt >= 0 && src !== tgt) {
+        targetContainerId = null;
+        if (src >= 0 && tgt >= 0 && tgtContainer) {
+            dotnetRef.invokeMethodAsync('OnSortableTouchTransfer', containerId, src, tgtContainer, tgt)
+                .catch(() => {});
+        } else if (src >= 0 && tgt >= 0 && src !== tgt) {
             dotnetRef.invokeMethodAsync('OnSortableTouchDrop', containerId, src, tgt)
                 .catch(() => {});
         }
