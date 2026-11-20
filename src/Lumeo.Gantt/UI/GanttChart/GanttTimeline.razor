@@ -374,6 +374,7 @@
                                       BarHeight="EffectiveBarHeight" Color="@row.Color" BarTemplate="BarTemplate"
                                       DragGhostTemplate="DragGhostTemplate"
                                       Readonly="@Readonly" OnTaskClick="OnTaskClick"
+                                      CalendarSystem="@CalendarSystem" Culture="@Culture"
                                       SuppressPointerClick="@_dragConfirmed"
                                       Selected="@(!row.IsParent && SelectedIds.Contains(row.Task.Id))" Now="@EffectiveNow"
                                       FocusedTaskId="@EffectiveFocusedTaskId" OnKeyNavigation="HandleBarKeyNavigationAsync" />
@@ -514,7 +515,7 @@
                inputs rather than reaching into this component's RowItems. *@
             <GanttArrowLayer Rows="@EffectiveRows" ViewMode="@ViewMode" Origin="@Origin"
                              ColumnWidth="@EffectiveColumnWidth" BarHeight="@EffectiveBarHeight"
-                             Width="@TotalWidth" Height="@CanvasHeight" VisibleRowRange="@_visibleRowRange" />
+                             Width="@TotalWidth" Height="@CanvasHeight" VisibleRowRange="@_visibleRowRange" CalendarSystem="@CalendarSystem" />
 
             @* Floating zoom control (design spec Phase 3, T7 — "+/- overlay in
                the canvas corner"). The OUTER div is a plain position:absolute
@@ -648,6 +649,12 @@
     /// Ignored by every OTHER view mode.
     /// </summary>
     [Parameter] public DayOfWeek? FirstDayOfWeek { get; set; }
+
+    /// <summary>Calendar system the scale is laid out in (see <see cref="GanttChart.CalendarSystem"/>).</summary>
+    [Parameter] public CalendarSystem CalendarSystem { get; set; } = CalendarSystem.Gregorian;
+
+    /// <summary>Culture for month / weekday names and digits; null uses <see cref="CultureInfo.CurrentCulture"/>.</summary>
+    [Parameter] public CultureInfo? Culture { get; set; }
 
     /// <summary>
     /// The week days treated as "off" for <see cref="MarkOffDays"/>'s column
@@ -1444,7 +1451,7 @@
     private int EffectiveColumnWidth => ColumnWidth > 0 ? ColumnWidth!.Value : Cfg.ColumnWidth;
     private int EffectiveBarHeight => BarHeight > 0 ? BarHeight!.Value : GanttScale.DefaultBarHeight;
 
-    private IReadOnlyList<DateTime> Units => GanttScale.BuildDateUnits(ViewMode, RangeStart, RangeEnd);
+    private IReadOnlyList<DateTime> Units => GanttScale.BuildDateUnits(ViewMode, RangeStart, RangeEnd, CalendarSystem);
     private DateTime Origin => Units.Count > 0 ? Units[0] : RangeStart;
     private double TotalWidth => Units.Count * (double)EffectiveColumnWidth;
 
@@ -1479,10 +1486,10 @@
 
     // Design spec Phase 3, T2 — see GanttScale.UpperRuns' own firstDayOfWeek
     // remarks; ignored by every HeaderUpper kind except Week (GanttViewMode.Day).
-    private IReadOnlyList<GanttHeaderRun> UpperRuns => GanttScale.UpperRuns(ViewMode, Units, EffectiveFirstDayOfWeek);
-    private IReadOnlyList<string> LowerLabels => GanttScale.LowerLabels(ViewMode, Units);
+    private IReadOnlyList<GanttHeaderRun> UpperRuns => GanttScale.UpperRuns(ViewMode, Units, EffectiveFirstDayOfWeek, CalendarSystem, Culture);
+    private IReadOnlyList<string> LowerLabels => GanttScale.LowerLabels(ViewMode, Units, CalendarSystem, Culture);
 
-    private DayOfWeek EffectiveFirstDayOfWeek => FirstDayOfWeek ?? CultureInfo.CurrentCulture.DateTimeFormat.FirstDayOfWeek;
+    private DayOfWeek EffectiveFirstDayOfWeek => FirstDayOfWeek ?? CalendarSystemMath.DefaultFirstDayOfWeek(CalendarSystem, Culture ?? CultureInfo.CurrentCulture);
     private IReadOnlySet<DayOfWeek> EffectiveOffDays => OffDays ?? GanttScale.DefaultOffDays(CultureInfo.CurrentCulture);
     // Bug fix (Codex review of the styling-hooks PR, P2): the fallback used to
     // be a bare DateTime.Now, i.e. the SERVER clock on a Blazor Server circuit.
@@ -1569,7 +1576,7 @@
     // given, which silently ignored a caller's ColumnWidth override here (the
     // header/grid, which compute column positions via EffectiveColumnWidth
     // directly rather than through DateToPixel, were already correct).
-    private double TodayX => GanttScale.DateToPixel(ViewMode, Origin, Today, EffectiveColumnWidth);
+    private double TodayX => GanttScale.DateToPixel(ViewMode, Origin, Today, EffectiveColumnWidth, CalendarSystem);
     private bool TodayInRange => TodayHighlight && Units.Count > 0 && TodayX >= 0 && TodayX <= TotalWidth;
 
     // Design spec Phase 3, T2 — Today column upgrade. DateToPixel's output is a
@@ -1642,7 +1649,7 @@
     // only granularity where "the exact current minute" is a meaningfully
     // distinct position from "today's column" above.
     private bool SupportsNowIndicator => Cfg.Unit == GanttScaleUnit.Hour;
-    private double NowX => GanttScale.DateToPixel(ViewMode, Origin, EffectiveNow, EffectiveColumnWidth);
+    private double NowX => GanttScale.DateToPixel(ViewMode, Origin, EffectiveNow, EffectiveColumnWidth, CalendarSystem);
     private bool NowInRange => NowIndicator && SupportsNowIndicator && Units.Count > 0 && NowX >= 0 && NowX <= TotalWidth;
 
     // Codex round 4, P2 #8: the pixel the scroll-to-center mechanism targets —
@@ -1667,7 +1674,7 @@
     private double ResolveScrollTargetX(bool intentPending) =>
         intentPending && ScrollTargetXOverride is { } pixelOverride
             ? pixelOverride
-            : GanttScale.DateToPixel(ViewMode, Origin, (intentPending ? ScrollTargetDate : null) ?? Today, EffectiveColumnWidth);
+            : GanttScale.DateToPixel(ViewMode, Origin, (intentPending ? ScrollTargetDate : null) ?? Today, EffectiveColumnWidth, CalendarSystem);
 
     // Companion to ResolveScrollTargetX — see ScrollTargetOffsetOverride's own
     // remarks. Null (every existing caller) preserves centerOn's usual
@@ -1988,7 +1995,7 @@
                 // always wins, exactly like the null-coalescing already did
                 // before this feature existed.
                 var color = BarColor?.Invoke(task) ?? (ColorByGroup ? GanttColorModel.ResolveGroupColorVar(usesHierarchy, task) : null);
-                var (x, width) = GanttScale.BarGeometry(task, ViewMode, Origin, EffectiveColumnWidth, EffectiveBarHeight);
+                var (x, width) = GanttScale.BarGeometry(task, ViewMode, Origin, EffectiveColumnWidth, EffectiveBarHeight, CalendarSystem);
                 var offscreen = visibleWindow is { } w ? ResolveOffscreenDirection(x, width, w) : GanttOffscreenDirection.None;
                 rows.Add(new GanttTimelineRow(task, x, width, i, color, null, null, rollup, summaryX, summaryWidth, offscreen, row.HasChildren || parentIds.Contains(task.Id)));
             }
@@ -2050,8 +2057,8 @@
     // arrows to/from a synthetic summary strip.
     private (double X, double Width) SummaryGeometry(GanttRollup rollup)
     {
-        var x1 = GanttScale.DateToPixel(ViewMode, Origin, rollup.Start.Date, EffectiveColumnWidth);
-        var x2 = GanttScale.DateToPixel(ViewMode, Origin, rollup.End.Date.AddDays(1), EffectiveColumnWidth);
+        var x1 = GanttScale.DateToPixel(ViewMode, Origin, rollup.Start.Date, EffectiveColumnWidth, CalendarSystem);
+        var x2 = GanttScale.DateToPixel(ViewMode, Origin, rollup.End.Date.AddDays(1), EffectiveColumnWidth, CalendarSystem);
         return (x1, Math.Max(8, x2 - x1));
     }
 
@@ -3196,6 +3203,12 @@
         // (Month -> AddMonths, Year -> add to the calendar year, else ->
         // addDays as before — see gantt-v3.js's resolveCreateDate).
         ["scaleUnit"] = GanttScale.GetConfig(ViewMode).Unit.ToString(),
+        // Jalali Month/Quarter/Year columns are not Gregorian calendar months, so gantt-v3.js
+        // cannot derive the column's date with its own Gregorian arithmetic: hand it the exact
+        // unit start dates (BuildDateUnits) and it indexes into them. Null under Gregorian.
+        ["unitStarts"] = CalendarSystem == CalendarSystem.Jalali && GanttScale.GetConfig(ViewMode).Unit is GanttScaleUnit.Month or GanttScaleUnit.Quarter or GanttScaleUnit.Year
+            ? Units.Select(u => u.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)).ToArray()
+            : null,
     };
 
     /// <summary>
@@ -3539,7 +3552,7 @@
         if (!WheelZoom) return Task.CompletedTask; // JSInvokable is a public surface — don't trust a stray call blindly, same reasoning as CommitDrag's own Readonly guard
         if (!Enum.TryParse<GanttViewMode>(modeStr, out var newMode) || newMode == ViewMode) return Task.CompletedTask;
 
-        var anchorDate = GanttScale.PixelToDateContinuous(ViewMode, Origin, contentX - ScrollHostLeadingOffset, EffectiveColumnWidth);
+        var anchorDate = GanttScale.PixelToDateContinuous(ViewMode, Origin, contentX - ScrollHostLeadingOffset, EffectiveColumnWidth, CalendarSystem);
 
         // See OnWheelZoomRequested's own remarks: exactly one of the two
         // fires, never both — a richer host (GanttChart) gets the anchor, a
@@ -3728,10 +3741,10 @@
         if (!OnTaskUpdate.HasDelegate) return; // no gate wired — nothing to commit, nothing to announce (mirrors CommitDrag's own no-delegate no-op)
 
         _keyboardAnnouncement = isResize
-            ? L["Gantt.KeyboardTaskResized", original.Name, newEnd.ToString("MMM d, yyyy", CultureInfo.CurrentCulture)]
+            ? L["Gantt.KeyboardTaskResized", original.Name, GanttCalendar.Format(CalendarSystem, newEnd, "MMM d, yyyy", Culture)]
             : L["Gantt.KeyboardTaskMoved", original.Name,
-                newStart.ToString("MMM d, yyyy", CultureInfo.CurrentCulture),
-                newEnd.ToString("MMM d, yyyy", CultureInfo.CurrentCulture)];
+                GanttCalendar.Format(CalendarSystem, newStart, "MMM d, yyyy", Culture),
+                GanttCalendar.Format(CalendarSystem, newEnd, "MMM d, yyyy", Culture)];
         StateHasChanged();
 
         await OnTaskUpdate.InvokeAsync(new GanttTaskUpdate(updated, GanttTaskUpdateSource.Keyboard));

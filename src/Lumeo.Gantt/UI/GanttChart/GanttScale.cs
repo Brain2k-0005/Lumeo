@@ -345,7 +345,7 @@ internal static class GanttScale
     /// <c>startDate</c>/<c>endDate</c> locals (padding itself is the windowing caller's
     /// concern — GanttState/GanttTimeline in later tasks — not this pure helper's).
     /// </summary>
-    internal static IReadOnlyList<DateTime> BuildDateUnits(GanttViewMode mode, DateTime rangeStart, DateTime rangeEnd)
+    internal static IReadOnlyList<DateTime> BuildDateUnits(GanttViewMode mode, DateTime rangeStart, DateTime rangeEnd, CalendarSystem system = CalendarSystem.Gregorian)
     {
         var cfg = GetConfig(mode);
         var units = new List<DateTime>();
@@ -370,7 +370,7 @@ internal static class GanttScale
                 // instead of a hardcoded 1 is a deliberate generalization (keeps this
                 // branch correct if a future step-2+ month mode is ever added) that
                 // stays byte-identical to v2 for every currently-shipped view mode.
-                for (var d = rangeStart; d <= rangeEnd; d = d.AddMonths(cfg.Step))
+                for (var d = rangeStart; d <= rangeEnd; d = GanttCalendar.AddMonths(system, d, cfg.Step))
                     units.Add(d);
                 break;
             }
@@ -379,8 +379,8 @@ internal static class GanttScale
                 // for (let y = startYear; y <= endYear; y++) dateUnits.push(new Date(y, 0, 1));
                 // v2 hardcodes +1 here too (gantt-v2.js:180) — same note as the Month
                 // branch above: Year's VIEW_MODES step is 1, so cfg.Step === 1 today.
-                for (var y = rangeStart.Year; y <= rangeEnd.Year; y += cfg.Step)
-                    units.Add(new DateTime(y, 1, 1, 0, 0, 0, rangeStart.Kind));
+                for (var y = GanttCalendar.Year(system, rangeStart); y <= GanttCalendar.Year(system, rangeEnd); y += cfg.Step)
+                    units.Add(GanttCalendar.YearStartOf(system, y, rangeStart.Kind));
                 break;
             }
             case GanttScaleUnit.Hour:
@@ -401,7 +401,7 @@ internal static class GanttScale
                 // aligned-origin invariant every other unit-column mode relies on
                 // (see AlignToUnitStart's own remarks) — callers construct
                 // GanttDateRange accordingly (GanttChart.ApplyPadding's Quarter branch).
-                for (var d = rangeStart; d <= rangeEnd; d = d.AddMonths(3 * cfg.Step))
+                for (var d = rangeStart; d <= rangeEnd; d = GanttCalendar.AddMonths(system, d, 3 * cfg.Step))
                     units.Add(d);
                 break;
             }
@@ -425,10 +425,12 @@ internal static class GanttScale
     /// correctly-rescaled header/grid. Callers now pass their EFFECTIVE column width
     /// (override ?? mode default) here explicitly.
     /// </summary>
-    internal static double DateToPixel(GanttViewMode mode, DateTime origin, DateTime date, int? columnWidthOverride = null)
+    internal static double DateToPixel(GanttViewMode mode, DateTime origin, DateTime date, int? columnWidthOverride = null, CalendarSystem system = CalendarSystem.Gregorian)
     {
         var cfg = GetConfig(mode);
         var colW = columnWidthOverride ?? cfg.ColumnWidth;
+        if (system == CalendarSystem.Jalali)
+            return DateToPixelJalali(cfg, origin, date, colW);
         return cfg.Unit switch
         {
             // if (cfg.unit === 'day') { const days = dayDiff(dateUnits[0], d); return (days / cfg.step) * colW; }
@@ -462,10 +464,12 @@ internal static class GanttScale
     /// implementation. Ties matter here whenever a drag lands on an exact half-column
     /// pixel offset (e.g. Day mode, -19px = half of a 38px column).
     /// </summary>
-    internal static DateTime PixelToDate(GanttViewMode mode, DateTime origin, double pixel, int? columnWidthOverride = null)
+    internal static DateTime PixelToDate(GanttViewMode mode, DateTime origin, double pixel, int? columnWidthOverride = null, CalendarSystem system = CalendarSystem.Gregorian)
     {
         var cfg = GetConfig(mode);
         var colW = columnWidthOverride ?? cfg.ColumnWidth;
+        if (system == CalendarSystem.Jalali)
+            return PixelToDateJalali(cfg, origin, pixel, colW);
         return cfg.Unit switch
         {
             // if (cfg.unit === 'day') { days = Math.round((x/colW)*step); return addDays(dateUnits[0], days); }
@@ -503,10 +507,12 @@ internal static class GanttScale
     /// <see cref="PixelToDate"/> itself is UNCHANGED and still backs every
     /// drag/resize computation.
     /// </summary>
-    internal static DateTime PixelToDateContinuous(GanttViewMode mode, DateTime origin, double pixel, int? columnWidthOverride = null)
+    internal static DateTime PixelToDateContinuous(GanttViewMode mode, DateTime origin, double pixel, int? columnWidthOverride = null, CalendarSystem system = CalendarSystem.Gregorian)
     {
         var cfg = GetConfig(mode);
         var colW = columnWidthOverride ?? cfg.ColumnWidth;
+        if (system == CalendarSystem.Jalali)
+            return PixelToDateContinuousJalali(cfg, origin, pixel, colW);
         return cfg.Unit switch
         {
             // Day/Hour's own DateToPixel formulas are already linear in whole
@@ -611,6 +617,72 @@ internal static class GanttScale
     /// windowed-range design) are nowhere near where +0.5 could lose precision, so
     /// there is no large-magnitude edge case to worry about here.
     /// </summary>
+    // ---- Jalali (Solar Hijri) scale math --------------------------------------------------
+    // Month / Quarter / Year columns are one column wide each, exactly like the Gregorian path
+    // (a month column is ColumnWidth regardless of its length). Inside a column the position of a
+    // date is proportional to the REAL day count of that Jalali month (29/30/31) / year (365/366)
+    // instead of the Gregorian path's fixed /30 and /365 approximation, so a bar ending on the last
+    // day of Esfand never overshoots (or undershoots) its column.
+    private static double DateToPixelJalali(GanttScaleConfig cfg, DateTime origin, DateTime date, int colW)
+    {
+        const CalendarSystem J = CalendarSystem.Jalali;
+        double MonthFraction() =>
+            (GanttCalendar.MonthsBetween(J, origin, date)) + (GanttCalendar.Day(J, date) - 1) / (double)GanttCalendar.DaysInMonth(J, date);
+        return cfg.Unit switch
+        {
+            GanttScaleUnit.Day => ((date.Date - origin.Date).TotalDays / cfg.Step) * colW,
+            GanttScaleUnit.Month => MonthFraction() * colW,
+            GanttScaleUnit.Quarter => (MonthFraction() / 3.0) * colW,
+            GanttScaleUnit.Year => ((GanttCalendar.Year(J, date) - GanttCalendar.Year(J, origin))
+                + (date.Date - GanttCalendar.YearStart(J, date).Date).Days / (double)GanttCalendar.DaysInYear(J, date)) * colW,
+            GanttScaleUnit.Hour => ((date - origin).TotalHours / cfg.Step) * colW,
+            _ => 0,
+        };
+    }
+
+    private static DateTime PixelToDateJalali(GanttScaleConfig cfg, DateTime origin, double pixel, int colW)
+    {
+        const CalendarSystem J = CalendarSystem.Jalali;
+        return cfg.Unit switch
+        {
+            GanttScaleUnit.Day => origin.AddDays(RoundToInt((pixel / colW) * cfg.Step)),
+            GanttScaleUnit.Month => GanttCalendar.AddMonths(J, origin, RoundToInt(pixel / colW)),
+            GanttScaleUnit.Year => GanttCalendar.YearStartOf(J, GanttCalendar.Year(J, origin) + RoundToInt(pixel / colW), origin.Kind),
+            GanttScaleUnit.Hour => origin.AddHours(RoundToInt((pixel / colW) * cfg.Step)),
+            GanttScaleUnit.Quarter => GanttCalendar.AddMonths(J, origin, RoundToInt(pixel / colW) * 3),
+            _ => origin,
+        };
+    }
+
+    private static DateTime PixelToDateContinuousJalali(GanttScaleConfig cfg, DateTime origin, double pixel, int colW)
+    {
+        return cfg.Unit switch
+        {
+            GanttScaleUnit.Day => origin.Date.AddDays((pixel / colW) * cfg.Step),
+            GanttScaleUnit.Month => AddContinuousJalaliMonths(origin, pixel / colW),
+            GanttScaleUnit.Quarter => AddContinuousJalaliMonths(origin, (pixel / colW) * 3.0),
+            GanttScaleUnit.Year => AddContinuousJalaliYears(origin, pixel / colW),
+            GanttScaleUnit.Hour => origin.AddHours((pixel / colW) * cfg.Step),
+            _ => origin,
+        };
+    }
+
+    private static DateTime AddContinuousJalaliMonths(DateTime origin, double totalMonths)
+    {
+        const CalendarSystem J = CalendarSystem.Jalali;
+        var whole = Math.Floor(totalMonths);
+        var monthStart = GanttCalendar.AddMonths(J, origin, (int)whole);
+        return monthStart.AddDays((totalMonths - whole) * GanttCalendar.DaysInMonth(J, monthStart));
+    }
+
+    private static DateTime AddContinuousJalaliYears(DateTime origin, double totalYears)
+    {
+        const CalendarSystem J = CalendarSystem.Jalali;
+        var whole = Math.Floor(totalYears);
+        var yearStart = GanttCalendar.YearStartOf(J, GanttCalendar.Year(J, origin) + (int)whole, origin.Kind);
+        return yearStart.AddDays((totalYears - whole) * GanttCalendar.DaysInYear(J, yearStart));
+    }
+
     private static int RoundToInt(double value) => (int)Math.Floor(value + 0.5);
 
     /// <summary>
@@ -633,9 +705,22 @@ internal static class GanttScale
     /// than computing a fresh one from task min/max) can reuse it instead of
     /// re-deriving a second, potentially-diverging copy.
     /// </remarks>
-    internal static DateTime AlignToUnitStart(GanttViewMode mode, DateTime date)
+    internal static DateTime AlignToUnitStart(GanttViewMode mode, DateTime date, CalendarSystem system = CalendarSystem.Gregorian, DayOfWeek? firstDayOfWeek = null)
     {
         var cfg = GetConfig(mode);
+        if (system == CalendarSystem.Jalali)
+        {
+            return cfg.Unit switch
+            {
+                GanttScaleUnit.Month => GanttCalendar.MonthStart(system, date),
+                GanttScaleUnit.Year => GanttCalendar.YearStart(system, date),
+                GanttScaleUnit.Quarter => GanttCalendar.QuarterStart(system, date),
+                GanttScaleUnit.Hour => new DateTime(date.Year, date.Month, date.Day, (date.Hour / cfg.Step) * cfg.Step, 0, 0, date.Kind),
+                // Week mode (Day unit, Step 7): columns begin on the week's first day.
+                GanttScaleUnit.Day when cfg.Step == 7 => GanttCalendar.WeekStart(date, firstDayOfWeek ?? DayOfWeek.Saturday),
+                _ => date,
+            };
+        }
         return cfg.Unit switch
         {
             GanttScaleUnit.Month => new DateTime(date.Year, date.Month, 1, 0, 0, 0, date.Kind),
@@ -728,7 +813,7 @@ internal static class GanttScale
     /// keeps arrows and bars equally affected by the override, never just one of
     /// them.
     /// </summary>
-    internal static (double X, double Width) BarGeometry(GanttTask task, GanttViewMode mode, DateTime origin, int columnWidth, int barHeight)
+    internal static (double X, double Width) BarGeometry(GanttTask task, GanttViewMode mode, DateTime origin, int columnWidth, int barHeight, CalendarSystem system = CalendarSystem.Gregorian)
     {
         // Bug fix (Codex round 8 review, P2 #4): v2's normalizeTasks/parseDate
         // (gantt-v2.js) truncate every task's Start/End to a plain calendar
@@ -754,13 +839,13 @@ internal static class GanttScale
 
         if (task.IsMilestone)
         {
-            var center = DateToPixel(mode, origin, start, columnWidth) + columnWidth / 2.0;
+            var center = DateToPixel(mode, origin, start, columnWidth, system) + columnWidth / 2.0;
             var half = barHeight / 2.0;
             return (center - half, barHeight);
         }
 
-        var x1 = DateToPixel(mode, origin, start, columnWidth);
-        var x2 = DateToPixel(mode, origin, end.AddDays(1), columnWidth);
+        var x1 = DateToPixel(mode, origin, start, columnWidth, system);
+        var x2 = DateToPixel(mode, origin, end.AddDays(1), columnWidth, system);
         return (x1, Math.Max(8, x2 - x1));
     }
 
@@ -769,16 +854,38 @@ internal static class GanttScale
     /// Faithful port of the <c>switch (cfg.headerFmt.lower)</c> block in v2's
     /// <c>render()</c> (gantt-v2.js lines 366-375).
     /// </summary>
-    internal static IReadOnlyList<string> LowerLabels(GanttViewMode mode, IReadOnlyList<DateTime> units)
+    internal static IReadOnlyList<string> LowerLabels(GanttViewMode mode, IReadOnlyList<DateTime> units, CalendarSystem system = CalendarSystem.Gregorian, CultureInfo? culture = null)
     {
         var cfg = GetConfig(mode);
         var labels = new string[units.Count];
         for (var i = 0; i < units.Count; i++)
-            labels[i] = LowerLabel(cfg.HeaderLower, units[i]);
+            labels[i] = system == CalendarSystem.Jalali
+                ? LowerLabelJalali(cfg.HeaderLower, units[i], culture)
+                : LowerLabel(cfg.HeaderLower, units[i], culture);
         return labels;
     }
 
-    private static string LowerLabel(GanttHeaderLowerKind kind, DateTime d) => kind switch
+    private static readonly string[] JalaliSeasonNamesFa = ["بهار", "تابستان", "پاییز", "زمستان"];
+
+    private static string LowerLabelJalali(GanttHeaderLowerKind kind, DateTime d, CultureInfo? culture)
+    {
+        const CalendarSystem J = CalendarSystem.Jalali;
+        return kind switch
+        {
+            GanttHeaderLowerKind.DayNum => GanttCalendar.Num(J, GanttCalendar.Day(J, d), culture, 2),
+            GanttHeaderLowerKind.WeekRange => $"{GanttCalendar.Num(J, GanttCalendar.Day(J, d), culture)}/{GanttCalendar.Num(J, GanttCalendar.Month(J, d), culture)}",
+            GanttHeaderLowerKind.MonthName => GanttCalendar.MonthName(J, d, culture, abbreviated: true),
+            GanttHeaderLowerKind.YearNum => GanttCalendar.Num(J, GanttCalendar.Year(J, d), culture),
+            // The four Jalali quarters are the four seasons (Farvardin-Khordad = spring, ...).
+            GanttHeaderLowerKind.QuarterNum => GanttCalendar.IsPersian(culture)
+                ? JalaliSeasonNamesFa[GanttCalendar.QuarterOf(J, d) - 1]
+                : $"Q{GanttCalendar.QuarterOf(J, d)}",
+            GanttHeaderLowerKind.Time6h or GanttHeaderLowerKind.Time12h => $"{GanttCalendar.Num(J, d.Hour, culture)}:00",
+            _ => string.Empty,
+        };
+    }
+
+    private static string LowerLabel(GanttHeaderLowerKind kind, DateTime d, CultureInfo? culture = null) => kind switch
     {
         // case 'dayNum': lowerText = fmtDayNum(d); -> String(d.getDate()).padStart(2, '0')
         // Locale-independent (plain digits, no month/day NAME involved) — matches
@@ -799,7 +906,7 @@ internal static class GanttScale
         // ASP.NET Core request culture (typically derived from Accept-Language,
         // the server-side equivalent of "the browser's locale"), matching
         // GanttChart.PeriodLabel's own existing CurrentCulture usage.
-        GanttHeaderLowerKind.MonthName => d.ToString("MMM", CultureInfo.CurrentCulture),
+        GanttHeaderLowerKind.MonthName => d.ToString("MMM", culture ?? CultureInfo.CurrentCulture),
         // case 'yearNum': lowerText = fmtYear(d); — plain digits, locale-independent.
         GanttHeaderLowerKind.YearNum => d.Year.ToString(CultureInfo.InvariantCulture),
         // case 'time6h': case 'time12h': lowerText = `${d.getHours()}:00`; — plain digits.
@@ -829,18 +936,20 @@ internal static class GanttScale
     /// by every OTHER <see cref="GanttHeaderUpperKind"/> — it only ever reaches
     /// <see cref="WeekBandLabel"/>.
     /// </param>
-    internal static IReadOnlyList<GanttHeaderRun> UpperRuns(GanttViewMode mode, IReadOnlyList<DateTime> units, DayOfWeek? firstDayOfWeek = null)
+    internal static IReadOnlyList<GanttHeaderRun> UpperRuns(GanttViewMode mode, IReadOnlyList<DateTime> units, DayOfWeek? firstDayOfWeek = null, CalendarSystem system = CalendarSystem.Gregorian, CultureInfo? culture = null)
     {
         var cfg = GetConfig(mode);
         var runs = new List<GanttHeaderRun>();
         if (cfg.HeaderUpper == GanttHeaderUpperKind.None) return runs;
 
-        var effectiveFirstDayOfWeek = firstDayOfWeek ?? CultureInfo.CurrentCulture.DateTimeFormat.FirstDayOfWeek;
+        var effectiveFirstDayOfWeek = firstDayOfWeek ?? CalendarSystemMath.DefaultFirstDayOfWeek(system, culture ?? CultureInfo.CurrentCulture);
         var runStart = -1;
         string? runLabel = null;
         for (var i = 0; i < units.Count; i++)
         {
-            var label = UpperLabel(cfg.HeaderUpper, units[i], effectiveFirstDayOfWeek);
+            var label = system == CalendarSystem.Jalali
+                ? UpperLabelJalali(cfg.HeaderUpper, units[i], effectiveFirstDayOfWeek, culture)
+                : UpperLabel(cfg.HeaderUpper, units[i], effectiveFirstDayOfWeek, culture);
             if (label != runLabel)
             {
                 if (runStart >= 0) runs.Add(new GanttHeaderRun(runStart, i - runStart, runLabel!));
@@ -852,22 +961,56 @@ internal static class GanttScale
         return runs;
     }
 
-    private static string UpperLabel(GanttHeaderUpperKind kind, DateTime d, DayOfWeek firstDayOfWeek) => kind switch
+    private static string UpperLabel(GanttHeaderUpperKind kind, DateTime d, DayOfWeek firstDayOfWeek, CultureInfo? culture = null) => kind switch
     {
         // case 'month': upperText = fmtMonth(d); -> d.toLocaleString(undefined, { month: 'long' })
         // Bug fix (Codex round 2, P2 #4) — same v2-parity fix as LowerLabel's
         // MonthName case above: v2's `undefined` locale argument follows the
         // BROWSER's locale, so InvariantCulture's hardcoded English diverged
         // from v2 for any non-English locale.
-        GanttHeaderUpperKind.Month => d.ToString("MMMM", CultureInfo.CurrentCulture),
+        GanttHeaderUpperKind.Month => d.ToString("MMMM", culture ?? CultureInfo.CurrentCulture),
         // case 'year': upperText = fmtYear(d); — plain digits, locale-independent.
         GanttHeaderUpperKind.Year => d.Year.ToString(CultureInfo.InvariantCulture),
         // case 'day': upperText = `${fmtMonth(d)} ${d.getDate()}`;
-        GanttHeaderUpperKind.Day => $"{d.ToString("MMMM", CultureInfo.CurrentCulture)} {d.Day}",
+        GanttHeaderUpperKind.Day => $"{d.ToString("MMMM", culture ?? CultureInfo.CurrentCulture)} {d.Day}",
         // No v2 counterpart — see WeekBandLabel's own remarks.
-        GanttHeaderUpperKind.Week => WeekBandLabel(d, firstDayOfWeek),
+        GanttHeaderUpperKind.Week => WeekBandLabel(d, firstDayOfWeek, culture),
         _ => string.Empty,
     };
+
+    private static string UpperLabelJalali(GanttHeaderUpperKind kind, DateTime d, DayOfWeek firstDayOfWeek, CultureInfo? culture)
+    {
+        const CalendarSystem J = CalendarSystem.Jalali;
+        return kind switch
+        {
+            GanttHeaderUpperKind.Month => GanttCalendar.MonthName(J, d, culture, abbreviated: false),
+            GanttHeaderUpperKind.Year => GanttCalendar.Num(J, GanttCalendar.Year(J, d), culture),
+            GanttHeaderUpperKind.Day => $"{GanttCalendar.MonthName(J, d, culture, abbreviated: false)} {GanttCalendar.Num(J, GanttCalendar.Day(J, d), culture)}",
+            GanttHeaderUpperKind.Week => WeekBandLabelJalali(d, firstDayOfWeek, culture),
+            _ => string.Empty,
+        };
+    }
+
+    /// <summary>
+    /// Jalali week-band label, e.g. "W29 Mor 12 – 18" ("هفته ۲۹ مرداد ۱۲ – ۱۸" under fa). Band
+    /// boundaries follow <paramref name="firstDayOfWeek"/> (Saturday by default under Jalali). The
+    /// week number is the Jalali week-of-year: week 1 is the band containing 1 Farvardin, and a band
+    /// belongs to the Jalali year its last day falls in (see <see cref="GanttCalendar.JalaliWeekOfYear"/>).
+    /// </summary>
+    private static string WeekBandLabelJalali(DateTime d, DayOfWeek firstDayOfWeek, CultureInfo? culture)
+    {
+        const CalendarSystem J = CalendarSystem.Jalali;
+        var bandStart = GanttCalendar.WeekStart(d, firstDayOfWeek);
+        var bandEnd = bandStart.AddDays(6);
+        var week = GanttCalendar.Num(J, GanttCalendar.JalaliWeekOfYear(bandStart, firstDayOfWeek), culture);
+        var startMonth = GanttCalendar.MonthName(J, bandStart, culture, abbreviated: true);
+        var startDay = GanttCalendar.Num(J, GanttCalendar.Day(J, bandStart), culture);
+        var endDay = GanttCalendar.Num(J, GanttCalendar.Day(J, bandEnd), culture);
+        var range = GanttCalendar.Month(J, bandStart) == GanttCalendar.Month(J, bandEnd)
+            ? $"{startMonth} {startDay} – {endDay}"
+            : $"{startMonth} {startDay} – {GanttCalendar.MonthName(J, bandEnd, culture, abbreviated: true)} {endDay}";
+        return $"{(GanttCalendar.IsPersian(culture) ? "هفته " : "W")}{week} {range}";
+    }
 
     /// <summary>
     /// Builds one ISO-8601-numbered week-band label, e.g. "W29 Jul 12 – 18" (or
@@ -892,7 +1035,7 @@ internal static class GanttScale
     /// overrides it, and make FirstDayOfWeek actually shift the band
     /// boundaries" — two independent knobs). See <see cref="GetWeekNumber"/>.
     /// </summary>
-    private static string WeekBandLabel(DateTime d, DayOfWeek firstDayOfWeek)
+    private static string WeekBandLabel(DateTime d, DayOfWeek firstDayOfWeek, CultureInfo? culture = null)
     {
         var diff = ((int)d.DayOfWeek - (int)firstDayOfWeek + 7) % 7;
         var bandStart = d.Date.AddDays(-diff);
@@ -906,17 +1049,17 @@ internal static class GanttScale
         // fixed offset from bandStart (rather than d itself) keeps the
         // computed number IDENTICAL for every date inside the same band, per
         // this method's own "one label per band" contract above.
-        var week = GetWeekNumber(bandStart.AddDays(3));
+        var week = GetWeekNumber(bandStart.AddDays(3), culture);
 
         var range = bandStart.Month == bandEnd.Month
             // Band stays within one month: "Jul 12 – 18" (no need to repeat the
             // month name — this is the common case for a 7-day band).
-            ? $"{bandStart.ToString("MMM", CultureInfo.CurrentCulture)} {bandStart.Day} – {bandEnd.Day}"
+            ? $"{bandStart.ToString("MMM", culture ?? CultureInfo.CurrentCulture)} {bandStart.Day} – {bandEnd.Day}"
             // Band crosses a month (or year) boundary: show both endpoints'
             // own month, e.g. "Dec 29 – Jan 4" — omitting the second month
             // here would silently read as "Dec 29 – 4", implying Dec 4 (before
             // Dec 29), which is wrong.
-            : $"{bandStart.ToString("MMM d", CultureInfo.CurrentCulture)} – {bandEnd.ToString("MMM d", CultureInfo.CurrentCulture)}";
+            : $"{bandStart.ToString("MMM d", culture ?? CultureInfo.CurrentCulture)} – {bandEnd.ToString("MMM d", culture ?? CultureInfo.CurrentCulture)}";
 
         return $"W{week} {range}";
     }
@@ -949,9 +1092,9 @@ internal static class GanttScale
     /// <c>Calendar.GetWeekOfYear</c> using THAT culture's own rule/first-day,
     /// matching how a browser rendering that locale would number weeks.
     /// </summary>
-    private static int GetWeekNumber(DateTime date)
+    private static int GetWeekNumber(DateTime date, CultureInfo? culture = null)
     {
-        var dtfi = CultureInfo.CurrentCulture.DateTimeFormat;
+        var dtfi = (culture ?? CultureInfo.CurrentCulture).DateTimeFormat;
         if (dtfi.CalendarWeekRule == CalendarWeekRule.FirstFourDayWeek && dtfi.FirstDayOfWeek == DayOfWeek.Monday)
             return System.Globalization.ISOWeek.GetWeekOfYear(date);
         return dtfi.Calendar.GetWeekOfYear(date, dtfi.CalendarWeekRule, dtfi.FirstDayOfWeek);

@@ -5,6 +5,17 @@ All notable changes to Lumeo will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **`GanttChart` supports the Jalali (Persian) calendar** via the new `CalendarSystem` parameter
+  (plus a `Culture` parameter for names and digits). Month, quarter and year columns start on
+  Solar Hijri boundaries, bars are positioned by the real 29/30/31-day month lengths, Week zoom
+  starts on Saturday unless `FirstDayOfWeek` is set, week bands are numbered by Jalali
+  week-of-year (week 1 contains 1 Farvardin), and header labels, the period label, tooltips and
+  the tree's date text use Jalali month names (Persian digits under a `fa` culture). Task dates
+  and drag snapping stay Gregorian days. The legacy `Gantt` component is unchanged. (#547)
+
 ## [5.13.0] - 2026-11-08
 
 ### Added

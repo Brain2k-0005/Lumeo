@@ -138,7 +138,7 @@
     }
     <TooltipContent>
         <div class="font-medium">@Task.Name</div>
-        <div class="mt-0.5 opacity-75">@Task.Start.ToString("MMM d, yyyy", CultureInfo.CurrentCulture) &#8594; @TooltipEndDate.ToString("MMM d, yyyy", CultureInfo.CurrentCulture)</div>
+        <div class="mt-0.5 opacity-75">@GanttCalendar.Format(CalendarSystem, Task.Start, "MMM d, yyyy", Culture) &#8594; @GanttCalendar.Format(CalendarSystem, TooltipEndDate, "MMM d, yyyy", Culture)</div>
         @* Bug fix (Codex round 5, P2 #6): this used to be a hardcoded English
            literal ("N% complete") regardless of the active culture — every
            OTHER string in this component (and the rest of GanttV3) already
@@ -227,6 +227,12 @@
     /// prior "no onkeydown at all" behavior.
     /// </summary>
     [Parameter] public EventCallback<GanttBarKeyNavigation> OnKeyNavigation { get; set; }
+
+    /// <summary>Calendar system the tooltip / aria dates are formatted in.</summary>
+    [Parameter] public CalendarSystem CalendarSystem { get; set; } = CalendarSystem.Gregorian;
+
+    /// <summary>Culture for month names and digits; null uses <see cref="CultureInfo.CurrentCulture"/>.</summary>
+    [Parameter] public CultureInfo? Culture { get; set; }
 
     /// <summary>
     /// Marks this bar as the selected occurrence (styling-hooks audit — ReUI
@@ -644,8 +650,8 @@
     // geometrically irrelevant (GanttScale.BarGeometry positions it from
     // Start alone), so the announced date range shouldn't imply a span.
     private string TaskAriaLabel => L["Gantt.TaskAriaLabel", Task.Name,
-        Task.Start.ToString("MMM d, yyyy", CultureInfo.CurrentCulture),
-        TooltipEndDate.ToString("MMM d, yyyy", CultureInfo.CurrentCulture)];
+        GanttCalendar.Format(CalendarSystem, Task.Start, "MMM d, yyyy", Culture),
+        GanttCalendar.Format(CalendarSystem, TooltipEndDate, "MMM d, yyyy", Culture)];
 
     // Bug fix (Codex round 4, P2 #5; corrected Codex round 5, P1 #1 / P2 #2/#3):
     // the round-4 version put tabindex/role/onkeydown on WrapperAttributes,
