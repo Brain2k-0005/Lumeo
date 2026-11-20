@@ -1,12 +1,12 @@
 {
   "$schema": "https://lumeo.nativ.sh/components-api-schema.json",
   "version": "5.13.0",
-  "generated": "2026-11-08T21:39:00.2581272Z",
+  "generated": "2026-11-20T21:48:51.0423000Z",
   "stats": {
     "componentCount": 169,
-    "totalParameters": 5026,
+    "totalParameters": 5027,
     "totalEnums": 114,
-    "totalRecords": 66,
+    "totalRecords": 67,
     "serviceCount": 33,
     "thinFallbacks": []
   },
@@ -947,6 +947,12 @@
           "returnType": "Task",
           "signature": "OnSortableTouchDrop(string containerId, int source, int target)",
           "summary": null
+        },
+        {
+          "name": "OnSortableTouchTransfer",
+          "returnType": "Task",
+          "signature": "OnSortableTouchTransfer(string sourceContainerId, int sourceIndex, string targetContainerId, int targetIndex)",
+          "summary": "Touch drag between two lists sharing a Group: JS reports source container + index and target container + index."
         },
         {
           "name": "RegisterCarouselSwipe",
@@ -60947,12 +60953,14 @@
       "description": "Drag-and-drop reorderable list.",
       "nugetPackage": "Lumeo",
       "files": [
+        "UI/Sortable/SortableGroupRegistry.cs",
         "UI/Sortable/SortableList.razor"
       ],
       "namespace": "Lumeo",
       "inheritsFrom": null,
       "implements": [
-        "IAsyncDisposable"
+        "IAsyncDisposable",
+        "ISortableGroupMember"
       ],
       "parameters": [
         {
@@ -61004,7 +61012,16 @@
           "name": "Group",
           "type": "string?",
           "default": null,
-          "description": "Optional shared-group name. When set, it is emitted on the container as a data-sortable-group attribute so groups are observable in the DOM. NOTE: cross-list transfer between lists that share a group is NOT yet implemented — the attribute is reserved for that future capability and current behaviour is intra-list reordering only.",
+          "description": "Optional shared-group name. Lists that use the same non-empty Group (within one user session) let rows be dragged from one list into any position of another, via mouse, touch, or the keyboard (focus a drag handle and press ArrowLeft / ArrowRight to send the row to the previous / next list of the group). The source list raises ItemsChanged without the item, the target list raises it with the item inserted at the drop index, and OnTransfer fires on both. Lists with a different or empty group never exchange rows, and a list only accepts items that are assignable to its TItem. The group name is also emitted on the container as data-sortable-group.",
+          "isCascading": false,
+          "captureUnmatched": false,
+          "isEditorRequired": false
+        },
+        {
+          "name": "OnTransfer",
+          "type": "EventCallback<SortableTransfer>",
+          "default": null,
+          "description": "Raised on BOTH the source and the target list after a row has moved between lists that share a Group (via drag, touch, or keyboard), in addition to the two ItemsChanged notifications. Does not fire for in-list reorders (see OnReorder).",
           "isCascading": false,
           "captureUnmatched": false,
           "isEditorRequired": false
@@ -61053,6 +61070,11 @@
           "description": "Raised with the freshly-reordered list whenever an item is moved, via drag, touch, or keyboard."
         },
         {
+          "name": "OnTransfer",
+          "type": "EventCallback<SortableTransfer>",
+          "description": "Raised on BOTH the source and the target list after a row has moved between lists that share a Group (via drag, touch, or keyboard), in addition to the two ItemsChanged notifications. Does not fire for in-list reorders (see OnReorder)."
+        },
+        {
           "name": "OnReorder",
           "type": "EventCallback<SortableMoved>",
           "description": "Raised in addition to ItemsChanged whenever an item is reordered (via drag, touch, or keyboard), carrying the moved item along with its old and new indices. Does not change the ItemsChanged contract."
@@ -61064,6 +61086,11 @@
           "name": "SortableMoved",
           "signature": "SortableMoved(TItem Item, int OldIndex, int NewIndex)",
           "description": "Payload describing a single reorder: the moved Item and its OldIndex / NewIndex within the list. Supplied to OnReorder."
+        },
+        {
+          "name": "SortableTransfer",
+          "signature": "SortableTransfer(TItem Item, string Group, string SourceListId, int OldIndex, string TargetListId, int NewIndex)",
+          "description": "Payload describing a row that moved between two lists of the same Group: the moved Item, the shared Group, the DOM ids of the SourceListId / TargetListId containers (data-slot=\"sortable-list\" elements), and the index it left (OldIndex, in the source list) and now occupies (NewIndex, in the target list). Supplied to OnTransfer."
         }
       ],
       "gotchas": [],
@@ -61091,8 +61118,8 @@
           "code": "<SortableList TItem=\"TaskItem\" Items=\"@_tasks\" ItemsChanged=\"@(v => _tasks = v)\">\n    <ItemTemplate Context=\"task\">\n        <Flex Class=\"items-center gap-3 w-full\">\n            <DynamicIcon Name=\"@task.Icon\" Class=\"h-4 w-4 text-primary\" />\n            <Stack Gap=\"0\" Class=\"flex-1\">\n                <Lumeo.Text Class=\"text-sm font-medium\">@task.Title</Lumeo.Text>\n                <Lumeo.Text Class=\"text-xs text-muted-foreground\">@task.Assignee</Lumeo.Text>\n            </Stack>\n            <Badge Variant=\"Badge.BadgeVariant.Secondary\">@task.Priority</Badge>\n        </Flex>\n    </ItemTemplate>\n</SortableList>"
         },
         {
-          "title": "Disabled",
-          "code": "<SortableList TItem=\"string\" Items=\"@_tasks\" Disabled=\"true\">\n    <ItemTemplate Context=\"item\">\n        <Lumeo.Text Class=\"text-sm\">@item</Lumeo.Text>\n    </ItemTemplate>\n</SortableList>"
+          "title": "Shared Group (drag between lists)",
+          "code": "<SortableList TItem=\"string\" Items=\"@_todo\" ItemsChanged=\"@(v => _todo = v)\" Group=\"tasks\"\n              OnTransfer=\"@(t => Log(t.Item, t.OldIndex, t.NewIndex))\">\n    <ItemTemplate Context=\"item\">@item</ItemTemplate>\n</SortableList>\n<SortableList TItem=\"string\" Items=\"@_done\" ItemsChanged=\"@(v => _done = v)\" Group=\"tasks\">\n    <ItemTemplate Context=\"item\">@item</ItemTemplate>\n</SortableList>"
         }
       ],
       "subComponents": {},
@@ -61104,12 +61131,15 @@
         ],
         "ariaAttributes": [
           "aria-atomic",
+          "aria-hidden",
           "aria-keyshortcuts",
           "aria-label",
           "aria-live"
         ],
         "keys": [
           "ArrowDown",
+          "ArrowLeft",
+          "ArrowRight",
           "ArrowUp",
           "End",
           "Home"
