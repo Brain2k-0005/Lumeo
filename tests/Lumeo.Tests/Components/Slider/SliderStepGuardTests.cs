@@ -80,8 +80,8 @@ public class SliderStepGuardTests : IAsyncLifetime
             .Add(s => s.Step, double.NaN));
 
         var inputs = cut.FindAll("input[type=range]");
-        var startMax = Attr(inputs[0], "max"); // StartThumbMax = ValueEnd - MinGap
-        var endMin = Attr(inputs[1], "min");   // EndThumbMin   = Value + MinGap
+        var startMax = Attr(inputs[0], "aria-valuemax"); // StartThumbMax = ValueEnd - MinGap
+        var endMin = Attr(inputs[1], "aria-valuemin");   // EndThumbMin   = Value + MinGap
 
         Assert.False(double.IsNaN(startMax));
         Assert.False(double.IsNaN(endMin));

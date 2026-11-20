@@ -5,6 +5,23 @@ All notable changes to Lumeo will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+- **`TreeSelect`: the children of a disabled item are disabled too.** Only the item's own
+  `Disabled` flag was consulted, so everything under a disabled header stayed selectable. A node
+  is now disabled when it or any ancestor is, in single and multiple mode alike: it is not
+  selectable, renders dimmed, and carries `aria-disabled="true"`. A disabled parent can still be
+  expanded to look at its children. (#556)
+- **`Slider` range mode: the thumbs no longer cross and the filled bar ends at the thumbs.** The
+  two native inputs had been given different `min`/`max` (each thumb's reachable bound), so a
+  native range drew them on different scales: the thumbs sat in the wrong place, overlapped, and
+  the bar (computed on the full scale) spanned neither. Both inputs now share the full `Min..Max`
+  scale, the reachable bound is enforced in the input handlers (and still announced through
+  `aria-valuemin`/`aria-valuemax`), a clamped drag is written back onto the element even when the
+  model value did not change, and the bar is inset by half a thumb so it spans exactly the thumb
+  centres. (#555)
+
 ## [5.13.0] - 2026-11-08
 
 ### Added
