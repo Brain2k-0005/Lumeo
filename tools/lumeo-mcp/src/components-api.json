@@ -1,11 +1,11 @@
 {
   "$schema": "https://lumeo.nativ.sh/components-api-schema.json",
   "version": "5.13.0",
-  "generated": "2026-11-08T21:39:00.2581272Z",
+  "generated": "2026-11-20T22:09:37.8006025Z",
   "stats": {
     "componentCount": 169,
-    "totalParameters": 5026,
-    "totalEnums": 114,
+    "totalParameters": 5035,
+    "totalEnums": 115,
     "totalRecords": 66,
     "serviceCount": 33,
     "thinFallbacks": []
@@ -38935,6 +38935,7 @@
         "UI/GanttChart/GanttArrowLayer.razor",
         "UI/GanttChart/GanttArrowRouting.cs",
         "UI/GanttChart/GanttBar.razor",
+        "UI/GanttChart/GanttCalendar.cs",
         "UI/GanttChart/GanttChart.razor",
         "UI/GanttChart/GanttColorModel.cs",
         "UI/GanttChart/GanttNav.razor",
@@ -39027,7 +39028,25 @@
           "name": "FirstDayOfWeek",
           "type": "DayOfWeek?",
           "default": null,
-          "description": "Explicit first-day-of-week override for the Day-mode ISO week-band upper header (design spec Phase 3, T2). Null derives it from CurrentCulture.",
+          "description": "Explicit first-day-of-week override for the Day-mode ISO week-band upper header (design spec Phase 3, T2). Null derives it from CurrentCulture (Saturday under Jalali).",
+          "isCascading": false,
+          "captureUnmatched": false,
+          "isEditorRequired": false
+        },
+        {
+          "name": "CalendarSystem",
+          "type": "CalendarSystem",
+          "default": "CalendarSystem.Gregorian",
+          "description": "The calendar system the time scale is laid out in. Jalali starts month / quarter / year columns on Solar Hijri boundaries (1st of the Jalali month; quarters = Jalali months 1/4/7/10; year = 1 Farvardin), sizes bar positions by the real 29/30/31-day month lengths, starts Week-mode columns on Saturday unless FirstDayOfWeek is set explicitly, numbers weeks by Jalali week-of-year (week 1 is the week containing 1 Farvardin), and renders header labels, the period label, tooltips and the tree's date text with Jalali month names and, under a fa culture, Persian digits. Task Start/End values stay Gregorian DateTimes and dragging / resizing still snaps in whole days. Default Gregorian.",
+          "isCascading": false,
+          "captureUnmatched": false,
+          "isEditorRequired": false
+        },
+        {
+          "name": "Culture",
+          "type": "CultureInfo?",
+          "default": null,
+          "description": "Culture used for month / weekday names, digits and date text. Null uses CurrentCulture.",
           "isCascading": false,
           "captureUnmatched": false,
           "isEditorRequired": false
@@ -39478,6 +39497,14 @@
       ],
       "enums": [
         {
+          "name": "CalendarSystem",
+          "values": [
+            "Gregorian",
+            "Jalali"
+          ],
+          "description": "The calendar system a Calendar / DatePicker lays its months out in. The bound values are always plain DateOnly (Gregorian) dates — only the month grid, headers, navigation and display text follow the selected system."
+        },
+        {
           "name": "GanttViewMode",
           "values": [
             "QuarterDay",
@@ -39563,6 +39590,15 @@
               "type": "int",
               "default": "0",
               "description": "The effective column width in pixels — same value GanttTimeline passes as its own EffectiveColumnWidth.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "CalendarSystem",
+              "type": "CalendarSystem",
+              "default": "CalendarSystem.Gregorian",
+              "description": "Calendar system the scale uses (bar geometry depends on it).",
               "isCascading": false,
               "captureUnmatched": false,
               "isEditorRequired": false
@@ -39733,6 +39769,24 @@
               "type": "EventCallback<GanttBarKeyNavigation>",
               "default": null,
               "description": "Raised on ArrowUp/ArrowDown/ArrowLeft/ArrowRight (never Enter/Space — those stay OnTaskClick's own). Always wired by GanttTimeline (not a consumer-facing opt-in — arrow navigation works out of the box on every chart), so a bar rendered through it always has onkeydown attached even when OnTaskClick itself has no delegate. A standalone GanttBar with neither delegate set keeps its exact prior \"no onkeydown at all\" behavior.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "CalendarSystem",
+              "type": "CalendarSystem",
+              "default": "CalendarSystem.Gregorian",
+              "description": "Calendar system the tooltip / aria dates are formatted in.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "Culture",
+              "type": "CultureInfo?",
+              "default": null,
+              "description": "Culture for month names and digits; null uses CurrentCulture.",
               "isCascading": false,
               "captureUnmatched": false,
               "isEditorRequired": false
@@ -40465,6 +40519,24 @@
               "isEditorRequired": false
             },
             {
+              "name": "CalendarSystem",
+              "type": "CalendarSystem",
+              "default": "CalendarSystem.Gregorian",
+              "description": "Calendar system the scale is laid out in (see CalendarSystem).",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "Culture",
+              "type": "CultureInfo?",
+              "default": null,
+              "description": "Culture for month / weekday names and digits; null uses CurrentCulture.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
               "name": "OffDays",
               "type": "IReadOnlySet<DayOfWeek>?",
               "default": null,
@@ -40845,6 +40917,24 @@
               "type": "IReadOnlyList<GanttTreeColumn>?",
               "default": null,
               "description": "Extra columns rendered after the pinned name column (design spec Phase 3, T5). Null/empty renders exactly the single name column.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "CalendarSystem",
+              "type": "CalendarSystem",
+              "default": "CalendarSystem.Gregorian",
+              "description": "Calendar system the date text is formatted in.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "Culture",
+              "type": "CultureInfo?",
+              "default": null,
+              "description": "Culture for month names and digits; null uses CurrentCulture.",
               "isCascading": false,
               "captureUnmatched": false,
               "isEditorRequired": false
