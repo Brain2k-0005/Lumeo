@@ -262,6 +262,12 @@
     /// <summary>Extra columns rendered after the pinned name column (design spec Phase 3, T5). Null/empty renders exactly the single name column.</summary>
     [Parameter] public IReadOnlyList<GanttTreeColumn>? TreeColumns { get; set; }
 
+    /// <summary>Calendar system the date text is formatted in.</summary>
+    [Parameter] public CalendarSystem CalendarSystem { get; set; } = CalendarSystem.Gregorian;
+
+    /// <summary>Culture for month names and digits; null uses <see cref="CultureInfo.CurrentCulture"/>.</summary>
+    [Parameter] public CultureInfo? Culture { get; set; }
+
     /// <summary>Slot rendered in the header row, after any column titles (design spec Phase 3, T5 — REUI "columns menu in header slot").</summary>
     [Parameter] public RenderFragment? TreeHeaderMenu { get; set; }
 
@@ -497,8 +503,8 @@
     // ("MMM d") keeps the line short enough to fit the pinned 36px row
     // alongside the name line above it; CurrentCulture matches every other
     // date string this component family already renders (GanttBar's tooltip).
-    private static string TaskMetaText(GanttTask task) =>
-        $"{task.Start.ToString("MMM d", CultureInfo.CurrentCulture)}–{task.End.ToString("MMM d", CultureInfo.CurrentCulture)} · {Math.Clamp(task.Progress, 0, 100).ToString(CultureInfo.CurrentCulture)}%";
+    private string TaskMetaText(GanttTask task) =>
+        $"{GanttCalendar.Format(CalendarSystem, task.Start, "MMM d", Culture)}–{GanttCalendar.Format(CalendarSystem, task.End, "MMM d", Culture)} · {Math.Clamp(task.Progress, 0, 100).ToString(CultureInfo.CurrentCulture)}%";
 
     private Task HandleToggleAsync(string? key) =>
         key is not null && OnToggleCollapse.HasDelegate ? OnToggleCollapse.InvokeAsync(key) : Task.CompletedTask;

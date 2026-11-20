@@ -253,6 +253,24 @@
         </Stack>
     </ComponentDemo>
 
+    <ComponentDemo Title="Jalali (Persian) calendar" Code="@_jalaliCode">
+        <Stack Gap="3" Class="w-full">
+            <Lumeo.Text Size="sm" Color="muted">
+                <code>CalendarSystem="CalendarSystem.Jalali"</code> lays the time scale out in Solar Hijri units:
+                month / quarter / year columns start on the 1st of the Jalali month (quarters = Jalali months
+                1/4/7/10, year = 1 Farvardin), bars are positioned by the real 29/30/31-day month lengths, and
+                Week zoom starts on Saturday unless <code>FirstDayOfWeek</code> is set. Header labels, tooltips and
+                the tree's date text use Jalali month names and, with a <code>fa</code> culture, Persian names and digits (this docs site runs without ICU culture data, so the demo falls back to Latin transliteration here).
+                Task <code>Start</code>/<code>End</code> stay Gregorian <code>DateTime</code>s and dragging still
+                snaps in whole days — switch zoom with the toolbar to compare Month and Week.
+            </Lumeo.Text>
+            <LazyRender Height="320px">
+                <GanttChart Tasks="_jalaliTasks" ViewMode="GanttViewMode.Month" ShowZoomControl="true" Height="320px"
+                            CalendarSystem="CalendarSystem.Jalali" Culture="_faCulture" />
+            </LazyRender>
+        </Stack>
+    </ComponentDemo>
+
     <ComponentDemo Title="Row selection — leaf checkboxes" Code="@_selectionCode">
         <Stack Gap="3" Class="w-full">
             <Lumeo.Text Size="sm" Color="muted">
@@ -731,6 +749,29 @@
 
     // ── Today marker / off-day demo — a short window so both are visible
     // without scrolling ──────────────────────────────────────────────────
+    // The docs site is a WebAssembly app built with InvariantGlobalization, where "fa-IR" does not exist;
+    // fall back to the current culture there (Latin transliteration). A server / ICU-enabled app gets Persian names and digits.
+    private readonly System.Globalization.CultureInfo _faCulture = ResolveFaCulture();
+
+    private static System.Globalization.CultureInfo ResolveFaCulture()
+    {
+        try { return System.Globalization.CultureInfo.GetCultureInfo("fa-IR"); }
+        catch (System.Globalization.CultureNotFoundException) { return System.Globalization.CultureInfo.CurrentCulture; }
+    }
+
+    // Spans Nowruz 1403 (2024-03-20) so the chart opens on Farvardin..Tir 1403 regardless of today.
+    private readonly List<GanttTask> _jalaliTasks = new()
+    {
+        new("plan",   "Plan",    new DateTime(2024, 3, 20), new DateTime(2024, 4, 14), Progress: 100),
+        new("build",  "Build",   new DateTime(2024, 4, 15), new DateTime(2024, 6, 20), Progress: 60),
+        new("review", "Review",  new DateTime(2024, 6, 21), new DateTime(2024, 7, 21), Progress: 0),
+    };
+
+    private string _jalaliCode = @"<GanttChart Tasks=""_tasks"" ViewMode=""GanttViewMode.Month"" Height=""320px""
+            ShowZoomControl=""true""
+            CalendarSystem=""CalendarSystem.Jalali""
+            Culture=""@(CultureInfo.GetCultureInfo(""fa-IR""))"" />";
+
     private readonly List<GanttTask> _todayTasks = BuildTodayTasks();
 
     private static List<GanttTask> BuildTodayTasks()
