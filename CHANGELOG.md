@@ -5,6 +5,18 @@ All notable changes to Lumeo will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **`Scheduler` supports the Jalali calendar** via the new `CalendarSystem` parameter (#547): the month grid,
+  toolbar title, week/day column headers and timeline month columns follow Solar Hijri months, the week
+  starts on Saturday unless `FirstDayOfWeek` is set, and month navigation steps by Jalali month. Event data
+  and recurrence rules stay Gregorian. Weekday names, digits and AM/PM designators come from the UI culture.
+
+### Fixed
+- `Scheduler` day/column `data-*` date keys are now formatted with the invariant culture; under a `fa-IR`
+  culture they were emitted in the Persian calendar and broke drag/drop and selection (#547).
+
 ## [5.13.0] - 2026-11-08
 
 ### Added
