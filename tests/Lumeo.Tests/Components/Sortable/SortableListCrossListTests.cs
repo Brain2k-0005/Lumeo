@@ -208,3 +208,18 @@ public class SortableListCrossListTests : IAsyncLifetime
         Assert.Null(registry.Find(id));
     }
 }
+
+public class SortableTouchTransferHookTests
+{
+    [Fact]
+    public async Task Runtime_Service_Routes_Touch_Transfer_Through_The_Registry_Hook()
+    {
+        using var ctx = new BunitContext();
+        var service = new Lumeo.Services.ComponentInteropService(ctx.JSInterop.JSRuntime);
+        Assert.Null(service.SortableTouchTransfer);
+        _ = SortableGroupRegistry.For(service);
+        Assert.NotNull(service.SortableTouchTransfer);
+        // Unknown containers are a harmless no-op, not an exception.
+        await service.OnSortableTouchTransfer("nope", 0, "nada", 0);
+    }
+}

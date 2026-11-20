@@ -44,7 +44,14 @@ internal sealed class SortableGroupRegistry
     private int _dragIndex = -1;
 
     public static SortableGroupRegistry For(IComponentInteropService interop)
-        => Registries.GetValue(interop, _ => new SortableGroupRegistry());
+        => Registries.GetValue(interop, i =>
+        {
+            var registry = new SortableGroupRegistry();
+            // Route JS touch drops (reported to the runtime service) into this registry.
+            if (i is ComponentInteropService service)
+                service.SortableTouchTransfer = registry.TouchTransferAsync;
+            return registry;
+        });
 
     public void Register(ISortableGroupMember member)
     {
