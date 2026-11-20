@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - **`Carousel` autoplay no longer scrolls the page.** Slide advances used `Element.scrollIntoView()`, which also scrolls every scrollable ancestor, so each autoplay tick snapped the window back to the carousel while the user was reading elsewhere. The slide track is now scrolled directly (`scrollTo` on the track only), in horizontal, vertical, loop and RTL modes (#548).
+- **`NavigationMenuMobile` reopened by itself after being closed.** Dismissing the sheet from
+  inside (X button, Escape, backdrop) updated only the component's own `Open` and never raised
+  `OpenChanged`, so an owner bound with `@bind-Open` kept `true`; the next owner re-render (for
+  example clicking another navigation trigger) pushed `true` back and the hamburger menu opened
+  instead of the clicked trigger's menu. Every close now flows back to the owner. (#549)
+- **`MegaMenu` panel position in vertical orientation.** In a vertical menubar the panel was still
+  anchored below the whole menu, covering the other items and spanning the full width. It now opens
+  at the inline-end edge of its own trigger, top-aligned with it, and re-places itself when the
+  orientation changes while open. `MegaMenuPanel.FullWidth` has no effect in vertical orientation.
+  Horizontal placement is unchanged. (#550)
 
 ## [5.13.0] - 2026-11-08
 

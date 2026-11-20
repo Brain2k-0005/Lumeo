@@ -778,8 +778,8 @@
   },
   "testCoverage": {
     "tier": 3,
-    "files": 13,
-    "tests": 47,
+    "files": 15,
+    "tests": 50,
     "relatedFiles": 0,
     "render": true,
     "behavior": true,
@@ -866,7 +866,7 @@
     },
     {
       "path": "UI/NavigationMenu/NavigationMenuMobile.razor",
-      "content": "@namespace Lumeo\n\n<Sheet @bind-Open=\"Open\">\n    <SheetContent Side=\"Lumeo.Side.Left\" Class=\"@(Cx.Merge(\"w-72 p-0\", Class))\">\n        <div data-slot=\"navigation-menu-mobile\" class=\"flex flex-col gap-2 p-4\" @attributes=\"AdditionalAttributes\">\n            @ChildContent\n        </div>\n    </SheetContent>\n</Sheet>\n\n@code {\n    /// <summary>The menu content rendered inside the slide-out sheet.</summary>\n    [Parameter] public RenderFragment? ChildContent { get; set; }\n\n    /// <summary>Whether the mobile menu sheet is open. Pair with <see cref=\"OpenChanged\"/> for two-way binding.</summary>\n    [Parameter] public bool Open { get; set; }\n\n    /// <summary>Raised when the sheet's open state changes (e.g. dismissed by outside click or Escape).</summary>\n    [Parameter] public EventCallback<bool> OpenChanged { get; set; }\n\n    /// <summary>Obsolete alias for <see cref=\"Open\"/>.</summary>\n    [Obsolete(\"Use Open instead. IsOpen will be removed in a future release.\")]\n    [Parameter] public bool IsOpen { get => Open; set => Open = value; }\n\n    /// <summary>Obsolete alias for <see cref=\"OpenChanged\"/>.</summary>\n    [Obsolete(\"Use OpenChanged instead. IsOpenChanged will be removed in a future release.\")]\n    [Parameter] public EventCallback<bool> IsOpenChanged { get => OpenChanged; set => OpenChanged = value; }\n\n    /// <summary>Additional CSS classes merged onto the sheet content panel.</summary>\n    [Parameter] public string? Class { get; set; }\n\n    /// <summary>Unmatched attributes are splatted onto the inner content wrapper.</summary>\n    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }\n}\n"
+      "content": "@namespace Lumeo\n\n<Sheet Open=\"Open\" OpenChanged=\"HandleOpenChanged\">\n    <SheetContent Side=\"Lumeo.Side.Left\" Class=\"@(Cx.Merge(\"w-72 p-0\", Class))\">\n        <div data-slot=\"navigation-menu-mobile\" class=\"flex flex-col gap-2 p-4\" @attributes=\"AdditionalAttributes\">\n            @ChildContent\n        </div>\n    </SheetContent>\n</Sheet>\n\n@code {\n    /// <summary>The menu content rendered inside the slide-out sheet.</summary>\n    [Parameter] public RenderFragment? ChildContent { get; set; }\n\n    /// <summary>Whether the mobile menu sheet is open. Pair with <see cref=\"OpenChanged\"/> for two-way binding.</summary>\n    [Parameter] public bool Open { get; set; }\n\n    /// <summary>Raised when the sheet's open state changes (e.g. dismissed by outside click or Escape).</summary>\n    [Parameter] public EventCallback<bool> OpenChanged { get; set; }\n\n    /// <summary>Obsolete alias for <see cref=\"Open\"/>.</summary>\n    [Obsolete(\"Use Open instead. IsOpen will be removed in a future release.\")]\n    [Parameter] public bool IsOpen { get => Open; set => Open = value; }\n\n    /// <summary>Obsolete alias for <see cref=\"OpenChanged\"/>.</summary>\n    [Obsolete(\"Use OpenChanged instead. IsOpenChanged will be removed in a future release.\")]\n    [Parameter] public EventCallback<bool> IsOpenChanged { get => OpenChanged; set => OpenChanged = value; }\n\n    /// <summary>Additional CSS classes merged onto the sheet content panel.</summary>\n    [Parameter] public string? Class { get; set; }\n\n    /// <summary>Unmatched attributes are splatted onto the inner content wrapper.</summary>\n    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }\n\n    // Not `@bind-Open=\"Open\"` on the Sheet: that generates a callback which only\n    // assigns this component's own Open and never raises OpenChanged. A close from\n    // inside the Sheet (X, Escape, backdrop) then left the parent's bound flag\n    // true, and the next parent re-render pushed Open=true back, reopening the\n    // menu out of nowhere (#549). Forward every change to the owner.\n    private async Task HandleOpenChanged(bool value)\n    {\n        Open = value;\n        await OpenChanged.InvokeAsync(value);\n    }\n}\n"
     },
     {
       "path": "UI/NavigationMenu/NavigationMenuTrigger.razor",
@@ -1031,6 +1031,8 @@
     "tests/Lumeo.Tests/Components/NavigationMenu/NavigationMenuDisposalRaceTests.cs",
     "tests/Lumeo.Tests/Components/NavigationMenu/NavigationMenuExitAnimationTests.cs",
     "tests/Lumeo.Tests/Components/NavigationMenu/NavigationMenuKeyboardTests.cs",
+    "tests/Lumeo.Tests/Components/NavigationMenu/NavigationMenuMobileHost.razor",
+    "tests/Lumeo.Tests/Components/NavigationMenu/NavigationMenuMobileReopenTests.cs",
     "tests/Lumeo.Tests/Components/NavigationMenu/NavigationMenuRemovalHost.razor",
     "tests/Lumeo.Tests/Components/NavigationMenu/NavigationMenuRemovalReconcileTests.cs",
     "tests/Lumeo.Tests/Components/NavigationMenu/NavigationMenuStaleFocusIntentTests.cs",
