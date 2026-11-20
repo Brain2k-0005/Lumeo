@@ -1,11 +1,11 @@
 {
   "$schema": "https://lumeo.nativ.sh/components-api-schema.json",
   "version": "5.13.0",
-  "generated": "2026-11-08T21:39:00.2581272Z",
+  "generated": "2026-11-20T22:04:59.4475208Z",
   "stats": {
     "componentCount": 169,
-    "totalParameters": 5026,
-    "totalEnums": 114,
+    "totalParameters": 5032,
+    "totalEnums": 115,
     "totalRecords": 66,
     "serviceCount": 33,
     "thinFallbacks": []
@@ -54891,6 +54891,7 @@
       "files": [
         "UI/Scheduler/Scheduler.razor",
         "UI/Scheduler/SchedulerAgendaView.razor",
+        "UI/Scheduler/SchedulerCalendarMath.cs",
         "UI/Scheduler/SchedulerDateMath.cs",
         "UI/Scheduler/SchedulerInteractionTypes.cs",
         "UI/Scheduler/SchedulerMonthLayout.cs",
@@ -55015,7 +55016,16 @@
           "name": "FirstDayOfWeek",
           "type": "int",
           "default": "1",
-          "description": "The first day of the week, 0 (Sunday) through 6 (Saturday). Default: 1 (Monday).",
+          "description": "The first day of the week, 0 (Sunday) through 6 (Saturday). Default: 1 (Monday). With CalendarSystem set to Jalali the default is Saturday (6) instead, unless this parameter is set explicitly.",
+          "isCascading": false,
+          "captureUnmatched": false,
+          "isEditorRequired": false
+        },
+        {
+          "name": "CalendarSystem",
+          "type": "CalendarSystem",
+          "default": "CalendarSystem.Gregorian",
+          "description": "The calendar system the Scheduler lays out and labels periods in. Jalali renders Solar Hijri (Persian) months in the month view, the toolbar title and the timeline's month columns, labels days with Jalali day/month names (Persian digits under a fa UI culture), and starts the week on Saturday unless FirstDayOfWeek is set. Month navigation steps by Jalali months; week/day navigation is calendar-independent. Event data (Start/End) stays Gregorian DateTime and so do recurrence rules: a monthly rule repeats on the same Gregorian day of month and a yearly rule on the same Gregorian date, because the rule is part of the event data, not of how it is displayed. Month names, weekday names and AM/PM designators come from the UI culture. Default Gregorian.",
           "isCascading": false,
           "captureUnmatched": false,
           "isEditorRequired": false
@@ -55230,6 +55240,14 @@
       ],
       "enums": [
         {
+          "name": "CalendarSystem",
+          "values": [
+            "Gregorian",
+            "Jalali"
+          ],
+          "description": "The calendar system a Calendar / DatePicker lays its months out in. The bound values are always plain DateOnly (Gregorian) dates — only the month grid, headers, navigation and display text follow the selected system."
+        },
+        {
           "name": "SchedulerPaneMode",
           "values": [
             "Overlay",
@@ -55330,6 +55348,15 @@
               "isEditorRequired": false
             },
             {
+              "name": "CalendarSystem",
+              "type": "CalendarSystem",
+              "default": "CalendarSystem.Gregorian",
+              "description": "Calendar system for the day headings and time labels. Event data stays Gregorian. Default Gregorian.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
               "name": "OnEventClick",
               "type": "EventCallback<SchedulerEvent>",
               "default": null,
@@ -55420,6 +55447,15 @@
               "type": "DayOfWeek",
               "default": "DayOfWeek.Monday",
               "description": "First day of the week for grid layout. Default Monday.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "CalendarSystem",
+              "type": "CalendarSystem",
+              "default": "CalendarSystem.Gregorian",
+              "description": "The calendar system the grid is laid out in. Jalali covers the Jalali month (leading/trailing days come from the adjacent Jalali months) and numbers the day cells in that calendar; event data stays Gregorian. Default Gregorian.",
               "isCascading": false,
               "captureUnmatched": false,
               "isEditorRequired": false
@@ -55687,6 +55723,15 @@
               "isEditorRequired": false
             },
             {
+              "name": "CalendarSystem",
+              "type": "CalendarSystem",
+              "default": "CalendarSystem.Gregorian",
+              "description": "Calendar system for the spelled-out date and Persian-digit time labels. Event data stays Gregorian. Default Gregorian.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
               "name": "SlotMinTime",
               "type": "TimeOnly?",
               "default": null,
@@ -55804,6 +55849,15 @@
               "type": "DayOfWeek",
               "default": "DayOfWeek.Monday",
               "description": null,
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "CalendarSystem",
+              "type": "CalendarSystem",
+              "default": "CalendarSystem.Gregorian",
+              "description": "The calendar system the column headers (day number and month) and spelled-out dates use. Columns themselves are always consecutive days, so week/day layout is calendar-independent; event data stays Gregorian. Default Gregorian.",
               "isCascading": false,
               "captureUnmatched": false,
               "isEditorRequired": false
@@ -56169,6 +56223,15 @@
               "type": "DayOfWeek",
               "default": "DayOfWeek.Monday",
               "description": "Which day a week column starts on. Only read when Unit is Week.",
+              "isCascading": false,
+              "captureUnmatched": false,
+              "isEditorRequired": false
+            },
+            {
+              "name": "CalendarSystem",
+              "type": "CalendarSystem",
+              "default": "CalendarSystem.Gregorian",
+              "description": "Calendar system of the month columns, their labels and boundaries. Event data stays Gregorian. Default Gregorian.",
               "isCascading": false,
               "captureUnmatched": false,
               "isEditorRequired": false
