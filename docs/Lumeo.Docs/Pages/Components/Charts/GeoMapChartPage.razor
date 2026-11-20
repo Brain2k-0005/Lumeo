@@ -32,7 +32,7 @@
         </Container>
     </ComponentDemo>
 
-    <ComponentDemo Title="Custom gradient · value labels · toolbox" Description="The same world data with a custom Colors gradient driving the visual map, country value labels shown, and the ECharts Toolbox enabled.">
+    <ComponentDemo Title="Custom gradient · value labels · toolbox" Description="The same world data with a custom Colors gradient driving the visual map, country value labels shown, and the ECharts Toolbox enabled." Code="@_customGradientValueLabelsToolboxCode">
         <Container>
             @if (_mapJson is not null)
             {
@@ -50,7 +50,7 @@
         </Container>
     </ComponentDemo>
 
-    <ComponentDemo Title="Loading state" Description="Shape-aware skeleton with reserved space for legend and axes — no layout shift when real data arrives.">
+    <ComponentDemo Title="Loading state" Description="Shape-aware skeleton with reserved space for legend and axes — no layout shift when real data arrives." Code="@_loadingStateCode">
         <Container>
             <Stack Gap="4">
                 <Stack Direction="Lumeo.Orientation.Horizontal" Gap="4" Align="center" Wrap="true">
@@ -255,6 +255,43 @@
 </Stack>
 
 @code {
+    private string _customGradientValueLabelsToolboxCode = @"<Container>
+    @if (_mapJson is not null)
+    {
+        <GeoMapChart MapName=""world"" MapJson=""@_mapJson"" Data=""_mapData""
+                     VisualMapMin=""0"" VisualMapMax=""500"" Height=""450px""
+                     Colors=""@(new List<string> { ""#ecfeff"", ""#22d3ee"", ""#0e7490"" })""
+                     ShowTooltip=""true"" Roam=""true"" ShowDataLabels=""true"" Toolbox=""true"" />
+    }
+    else
+    {
+        <Flex Align=""center"" Justify=""center"" Class=""rounded-lg border border-border/40 p-8 bg-muted/20"">
+            <Lumeo.Text Size=""sm"" Color=""muted"">Provide GeoJSON via the MapJson parameter.</Lumeo.Text>
+        </Flex>
+    }
+</Container>";
+
+    private string _loadingStateCode = @"<Container>
+    <Stack Gap=""4"">
+        <Stack Direction=""Lumeo.Orientation.Horizontal"" Gap=""4"" Align=""center"" Wrap=""true"">
+            <Button OnClick=""SimulateLoadingAsync"" Disabled=""@_simLoading"">Simulate loading</Button>
+            <Stack Direction=""Lumeo.Orientation.Horizontal"" Gap=""2"" Align=""center"">
+                <Switch @bind-Checked=""_keepLoading"" Id=""keep-loading"" />
+                <label for=""keep-loading"" class=""text-sm text-muted-foreground cursor-pointer"">Hold skeleton open</label>
+            </Stack>
+            <Stack Direction=""Lumeo.Orientation.Horizontal"" Gap=""2"" Align=""center"">
+                <label class=""text-sm text-muted-foreground"">Duration: @(_simulateDurationMs / 1000.0)s</label>
+                <input type=""range"" min=""500"" max=""10000"" step=""500"" @bind-value=""_simulateDurationMs"" @bind-value:event=""oninput"" class=""w-32 accent-primary"" />
+            </Stack>
+            <Stack Direction=""Lumeo.Orientation.Horizontal"" Gap=""2"" Align=""center"">
+                <label class=""text-sm text-muted-foreground"">Cycle: @_phantomCycleMs ms</label>
+                <input type=""range"" min=""300"" max=""3000"" step=""100"" @bind-value=""_phantomCycleMs"" @bind-value:event=""oninput"" class=""w-32 accent-primary"" />
+            </Stack>
+        </Stack>
+        <GeoMapChart MapName=""world"" MapJson=""@_mapJson"" Data=""_mapData"" VisualMapMin=""0"" VisualMapMax=""500"" PhantomCycleMs=""@_phantomCycleMs"" IsLoading=""@LoadingComputed"" Height=""320px"" />
+    </Stack>
+</Container>";
+
     private string? _mapJson;
     private bool _loading = true;
 

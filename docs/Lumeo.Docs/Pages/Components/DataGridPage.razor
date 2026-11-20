@@ -443,7 +443,7 @@
     </ComponentDemo>
 
     <ComponentDemo Title="Batch / Buffered Editing"
-                   Description="Edit cells inline as in Cell mode, but commits land in a per-row pending-changes buffer. A pending strip and Save all / Discard buttons appear above the grid. Optional + Add row trigger pushes new rows into the Added buffer. OnBatchSave receives Modified + Added when the user clicks Save all.">
+                   Description="Edit cells inline as in Cell mode, but commits land in a per-row pending-changes buffer. A pending strip and Save all / Discard buttons appear above the grid. Optional + Add row trigger pushes new rows into the Added buffer. OnBatchSave receives Modified + Added when the user clicks Save all." Code="@_batchBufferedEditingCode">
         <DataGrid TItem="Employee" Items="@_batchEmployees" PageSize="5" ShowPagination="true"
                   EditMode="DataGridEditMode.Batch"
                   ShowAddRow="true"
@@ -1425,6 +1425,20 @@
 </div>
 
 @code {
+    private string _batchBufferedEditingCode = @"<DataGrid TItem=""Employee"" Items=""@_batchEmployees"" PageSize=""5"" ShowPagination=""true""
+          EditMode=""DataGridEditMode.Batch""
+          ShowAddRow=""true""
+          NewItemFactory=""@(() => new Employee(""(new)"", ""Engineering"", 0, ""Active"", DateTime.Today))""
+          OnBatchSave=""@HandleBatchSave"">
+    <DataGridColumnDef TItem=""Employee"" Title=""Name"" Field=""Name"" />
+    <DataGridColumnDef TItem=""Employee"" Title=""Department"" Field=""Department"" />
+    <DataGridColumnDef TItem=""Employee"" Title=""Status"" Field=""Status"" />
+</DataGrid>
+@if (_lastBatchSummary is not null)
+{
+    <Alert Class=""mt-4"" Title=""Batch Saved"" Description=""@_lastBatchSummary"" />
+}";
+
     private const string _columnMenuCode = @"<DataGrid TItem=""Employee"" Items=""@_employees"" ColumnMenu=""true"" Reorderable=""true"">
     <DataGridColumnDef TItem=""Employee"" Title=""Name"" Field=""Name"" Sortable=""true"" Pinnable=""true"" Resizable=""true"" />
     <DataGridColumnDef TItem=""Employee"" Title=""Department"" Field=""Department"" Sortable=""true"" Pinnable=""true"" Resizable=""true"" />
@@ -1738,252 +1752,341 @@
         string Name, string Department, string Status, double Salary, DateTime StartDate,
         string Manager, string Region, string Grade, double Bonus, DateTime ReviewDate);
 
-    private string _basicCode = @"<DataGrid TItem=""Employee"" Items=""@employees"" PageSize=""5"" ShowPagination=""true"">
+    private string _basicCode = @"<DataGrid TItem=""Employee"" Items=""@_employees"" PageSize=""5"" ShowPagination=""true"">
     <DataGridColumnDef TItem=""Employee"" Title=""Name"" Field=""Name"" Sortable=""true"" />
     <DataGridColumnDef TItem=""Employee"" Title=""Department"" Field=""Department"" Sortable=""true"" />
-    <DataGridColumnDef TItem=""Employee"" Title=""Salary"" Field=""Salary"" Sortable=""true"" Format=""C0"" />
-    <DataGridColumnDef TItem=""Employee"" Title=""Start Date"" Field=""StartDate"" Format=""yyyy-MM-dd"" />
+    <DataGridColumnDef TItem=""Employee"" Title=""Salary"" Field=""Salary"" Sortable=""true"" Format=""$#,##0"" />
+    <DataGridColumnDef TItem=""Employee"" Title=""Start Date"" Field=""StartDate"" Sortable=""true"" Format=""yyyy-MM-dd"" />
 </DataGrid>";
 
-    private string _columnGroupCode = @"@* DataGridColumnGroup wraps a contiguous run of column defs under a labelled parent
-   <th colspan>. Set Aggregate on a column to surface a sticky footer total; FooterFormat
-   formats just the total (cells in C0, totals in N0). *@
-<DataGrid TItem=""Employee"" Items=""@employees"">
+    private string _columnGroupCode = @"<DataGrid TItem=""Employee"" Items=""@_employees"" PageSize=""5"" ShowPagination=""true"">
     <DataGridColumnGroup TItem=""Employee"" Label=""Identity"">
         <DataGridColumnDef TItem=""Employee"" Title=""Name"" Field=""Name"" Sortable=""true"" />
         <DataGridColumnDef TItem=""Employee"" Title=""Department"" Field=""Department"" Sortable=""true"" />
     </DataGridColumnGroup>
     <DataGridColumnGroup TItem=""Employee"" Label=""Compensation"">
         <DataGridColumnDef TItem=""Employee"" Title=""Salary"" Field=""Salary""
-                           Sortable=""true"" Format=""C0""
+                           Sortable=""true"" Format=""$#,##0""
                            Aggregate=""AggregateType.Sum"" FooterFormat=""N0"" />
         <DataGridColumnDef TItem=""Employee"" Title=""Tenure"" Field=""StartDate""
                            Sortable=""true"" Format=""yyyy-MM-dd"" />
     </DataGridColumnGroup>
 </DataGrid>";
 
-    private string _toolbarCode = @"<DataGrid TItem=""Employee"" Items=""@employees"" PageSize=""5""
-          ShowToolbar=""true"" ShowPagination=""true"">
-    <DataGridColumnDef TItem=""Employee"" Title=""Name"" Field=""Name""
-                       Sortable=""true"" Filterable=""true"" />
-    <DataGridColumnDef TItem=""Employee"" Title=""Salary"" Field=""Salary""
-                       Filterable=""true"" FilterType=""DataGridFilterType.Number"" Format=""C0"" />
-    <DataGridColumnDef TItem=""Employee"" Title=""Status"" Field=""Status""
-                       Filterable=""true"" />
+    private string _toolbarCode = @"<DataGrid TItem=""Employee"" Items=""@_employees"" PageSize=""5"" ShowPagination=""true"" ShowToolbar=""true"">
+    <DataGridColumnDef TItem=""Employee"" Title=""Name"" Field=""Name"" Sortable=""true"" Filterable=""true"" />
+    <DataGridColumnDef TItem=""Employee"" Title=""Department"" Field=""Department"" Sortable=""true"" Filterable=""true"" />
+    <DataGridColumnDef TItem=""Employee"" Title=""Salary"" Field=""Salary"" Sortable=""true"" Format=""$#,##0"" Filterable=""true"" FilterType=""DataGridFilterType.Number"" />
+    <DataGridColumnDef TItem=""Employee"" Title=""Status"" Field=""Status"" Filterable=""true"" />
+    <DataGridColumnDef TItem=""Employee"" Title=""Start Date"" Field=""StartDate"" Sortable=""true"" Format=""yyyy-MM-dd"" Filterable=""true"" FilterType=""DataGridFilterType.Date"" />
 </DataGrid>";
 
-    private string _toolbarScrollCode = @"<DataGrid TItem=""Employee"" Items=""@employees"" ShowToolbar=""true"" Height=""240px"">
+    private string _toolbarScrollCode = @"<DataGrid TItem=""Employee"" Items=""@_employees"" ShowToolbar=""true"" Height=""240px"">
     <DataGridColumnDef TItem=""Employee"" Title=""Name"" Field=""Name"" Width=""180"" />
     <DataGridColumnDef TItem=""Employee"" Title=""Department"" Field=""Department"" Width=""180"" />
+    <DataGridColumnDef TItem=""Employee"" Title=""Salary"" Field=""Salary"" Format=""$#,##0"" Width=""180"" />
+    <DataGridColumnDef TItem=""Employee"" Title=""Status"" Field=""Status"" Width=""180"" />
 </DataGrid>";
 
-    private string _toolbarMinimalCode = @"<DataGrid TItem=""Employee"" Items=""@employees"" PageSize=""5""
+    private string _toolbarMinimalCode = @"<DataGrid TItem=""Employee"" Items=""@_employees"" PageSize=""5"" ShowPagination=""true""
           ShowToolbar=""true""
           ShowColumnChooser=""false""
           ShowExport=""false"">
     <DataGridColumnDef TItem=""Employee"" Title=""Name"" Field=""Name"" Sortable=""true"" Filterable=""true"" />
     <DataGridColumnDef TItem=""Employee"" Title=""Department"" Field=""Department"" Sortable=""true"" Filterable=""true"" />
-    <DataGridColumnDef TItem=""Employee"" Title=""Salary"" Field=""Salary"" Sortable=""true"" Format=""C0"" />
+    <DataGridColumnDef TItem=""Employee"" Title=""Salary"" Field=""Salary"" Sortable=""true"" Format=""$#,##0"" />
 </DataGrid>";
 
-    private string _toolbarExportOnlyCode = @"<DataGrid TItem=""Employee"" Items=""@employees"" PageSize=""5""
+    private string _toolbarExportOnlyCode = @"<DataGrid TItem=""Employee"" Items=""@_employees"" PageSize=""5"" ShowPagination=""true""
           ShowToolbar=""true""
           ShowSearch=""false""
           ShowColumnChooser=""false"">
     <DataGridColumnDef TItem=""Employee"" Title=""Name"" Field=""Name"" Sortable=""true"" />
     <DataGridColumnDef TItem=""Employee"" Title=""Department"" Field=""Department"" Sortable=""true"" />
-    <DataGridColumnDef TItem=""Employee"" Title=""Salary"" Field=""Salary"" Sortable=""true"" Format=""C0"" />
+    <DataGridColumnDef TItem=""Employee"" Title=""Salary"" Field=""Salary"" Sortable=""true"" Format=""$#,##0"" />
 </DataGrid>";
 
-    private string _toolbarCsvOnlyCode = @"<DataGrid TItem=""Employee"" Items=""@employees"" PageSize=""5""
+    private string _toolbarCsvOnlyCode = @"<DataGrid TItem=""Employee"" Items=""@_employees"" PageSize=""5"" ShowPagination=""true""
           ShowToolbar=""true""
           ExportFormats=""DataGridExportFormat.Csv"">
     <DataGridColumnDef TItem=""Employee"" Title=""Name"" Field=""Name"" Sortable=""true"" Filterable=""true"" />
     <DataGridColumnDef TItem=""Employee"" Title=""Department"" Field=""Department"" Sortable=""true"" Filterable=""true"" />
-    <DataGridColumnDef TItem=""Employee"" Title=""Salary"" Field=""Salary"" Sortable=""true"" Format=""C0"" />
+    <DataGridColumnDef TItem=""Employee"" Title=""Salary"" Field=""Salary"" Sortable=""true"" Format=""$#,##0"" />
 </DataGrid>";
 
-    private string _multiSelectCode = @"<DataGrid TItem=""Employee"" Items=""@employees"" PageSize=""5""
+    private string _multiSelectCode = @"<DataGrid TItem=""Employee"" Items=""@_employees"" PageSize=""5"" ShowPagination=""true""
           SelectionMode=""DataGridSelectionMode.Multiple""
-          SelectedItemsChanged=""@OnSelectionChanged"">
-    <DataGridColumnDef TItem=""Employee"" Title=""Name"" Field=""Name"" />
+          SelectedItemsChanged=""@OnMultiSelectionChanged"">
+    <DataGridColumnDef TItem=""Employee"" Title=""Name"" Field=""Name"" Sortable=""true"" />
     <DataGridColumnDef TItem=""Employee"" Title=""Department"" Field=""Department"" />
-    <DataGridColumnDef TItem=""Employee"" Title=""Salary"" Field=""Salary"" Format=""C0"" />
-</DataGrid>";
+    <DataGridColumnDef TItem=""Employee"" Title=""Salary"" Field=""Salary"" Format=""$#,##0"" />
+    <DataGridColumnDef TItem=""Employee"" Title=""Status"" Field=""Status"" />
+</DataGrid>
+@if (_multiSelectedCount > 0)
+{
+    <Alert Class=""mt-4"" Title=""Selection"" Description=""@($""{_multiSelectedCount} row(s) selected."")"">
+    </Alert>
+}";
 
-    private string _singleSelectCode = @"<DataGrid TItem=""Employee"" Items=""@employees""
+    private string _singleSelectCode = @"<DataGrid TItem=""Employee"" Items=""@_employees"" PageSize=""5"" ShowPagination=""true""
           SelectionMode=""DataGridSelectionMode.Single""
           SelectedItemsChanged=""@OnSelectionChanged"">
-    <DataGridColumnDef TItem=""Employee"" Title=""Name"" Field=""Name"" />
-    <DataGridColumnDef TItem=""Employee"" Title=""Department"" Field=""Department"" />
-    <DataGridColumnDef TItem=""Employee"" Title=""Salary"" Field=""Salary"" Format=""C0"" />
-</DataGrid>";
-
-    private string _styledCode = @"<DataGrid TItem=""Employee"" Items=""@employees""
-          Striped=""true"" Bordered=""true"" Compact=""true"" PageSize=""5"">
-    <DataGridColumnDef TItem=""Employee"" Title=""Name"" Field=""Name"" />
-    <DataGridColumnDef TItem=""Employee"" Title=""Department"" Field=""Department"" />
-    <DataGridColumnDef TItem=""Employee"" Title=""Salary"" Field=""Salary"" Format=""C0"" />
-    <DataGridColumnDef TItem=""Employee"" Title=""Status"" Field=""Status"" />
-</DataGrid>";
-
-    private string _groupingCode = @"<DataGrid TItem=""Employee"" Items=""@employees""
-          GroupBy=""Department""
-          GroupsExpandedByDefault=""true"">
     <DataGridColumnDef TItem=""Employee"" Title=""Name"" Field=""Name"" Sortable=""true"" />
     <DataGridColumnDef TItem=""Employee"" Title=""Department"" Field=""Department"" />
-    <DataGridColumnDef TItem=""Employee"" Title=""Status"" Field=""Status"" />
-    <DataGridColumnDef TItem=""Employee"" Title=""Salary"" Field=""Salary""
-                       Format=""C0"" Aggregate=""AggregateType.Average"" />
-</DataGrid>";
+    <DataGridColumnDef TItem=""Employee"" Title=""Salary"" Field=""Salary"" Format=""$#,##0"" />
+</DataGrid>
+@if (_selectedEmployee is not null)
+{
+    <Alert Class=""mt-4"" Title=""Selected"" Description=""@($""{_selectedEmployee.Name} — {_selectedEmployee.Department} — {_selectedEmployee.Salary.ToString(""$#,##0"")}"")"">
+    </Alert>
+}";
 
-    private string _groupPanelCode = @"@*  ShowGroupPanel renders a chip bar above the grid; users drag
-    chips to reorder grouping levels and click × to remove them.
-    Columns flagged Groupable=""true"" appear in the ""add level"" dropdown.
-    GroupByFields is an ordered list — index 0 is the outermost level. *@
-<DataGrid TItem=""Employee"" Items=""@employees""
-          ShowGroupPanel=""true""
-          GroupByFields=""@(new[] { ""Department"", ""Status"" })"">
+    private string _styledCode = @"<DataGrid TItem=""Employee"" Items=""@_employees"" Striped=""true"" Bordered=""true"" Compact=""true"" PageSize=""5"" ShowPagination=""true"">
     <DataGridColumnDef TItem=""Employee"" Title=""Name"" Field=""Name"" Sortable=""true"" />
-    <DataGridColumnDef TItem=""Employee"" Title=""Department"" Field=""Department""
-                       Sortable=""true"" Groupable=""true"" />
-    <DataGridColumnDef TItem=""Employee"" Title=""Status"" Field=""Status"" Groupable=""true"" />
-    <DataGridColumnDef TItem=""Employee"" Title=""Salary"" Field=""Salary""
-                       Format=""C0"" Sortable=""true""
-                       Aggregate=""AggregateType.Average"" />
+    <DataGridColumnDef TItem=""Employee"" Title=""Department"" Field=""Department"" />
+    <DataGridColumnDef TItem=""Employee"" Title=""Salary"" Field=""Salary"" Format=""$#,##0"" />
+    <DataGridColumnDef TItem=""Employee"" Title=""Status"" Field=""Status"" />
+    <DataGridColumnDef TItem=""Employee"" Title=""Start Date"" Field=""StartDate"" Format=""yyyy-MM-dd"" />
 </DataGrid>";
 
-    private string _templateCode = @"<DataGridColumnDef TItem=""Employee"" Title=""Employee"" Field=""Name"">
-    <CellTemplate>
+    private string _groupingCode = @"<Stack Gap=""2"">
+    <Flex Align=""center"" Gap=""2"">
+        <Lumeo.Text Size=""sm"">Group by:</Lumeo.Text>
+        <Select Value=""@_groupBy"" ValueChanged=""@((string v) => { _groupBy = v; StateHasChanged(); })"">
+            <SelectTrigger Class=""h-8 w-[160px]"">
+                <span class=""text-sm"">@(_groupBy == """" ? ""None"" : _groupBy)</span>
+            </SelectTrigger>
+            <SelectContent>
+                <SelectItem Value="""">None</SelectItem>
+                <SelectItem Value=""Department"">Department</SelectItem>
+                <SelectItem Value=""Status"">Status</SelectItem>
+            </SelectContent>
+        </Select>
+        <Switch Checked=""@_groupsExpandedByDefault"" CheckedChanged=""@((bool v) => { _groupsExpandedByDefault = v; StateHasChanged(); })"" />
+        <Lumeo.Text Size=""sm"" Color=""muted"">Expanded by default</Lumeo.Text>
+    </Flex>
+    <DataGrid TItem=""Employee"" Items=""@_employees""
+              GroupBy=""@(string.IsNullOrEmpty(_groupBy) ? null : _groupBy)""
+              GroupsExpandedByDefault=""@_groupsExpandedByDefault""
+              Striped=""true"">
+        <DataGridColumnDef TItem=""Employee"" Title=""Name"" Field=""Name"" Sortable=""true"" />
+        <DataGridColumnDef TItem=""Employee"" Title=""Department"" Field=""Department"" Sortable=""true"" />
+        <DataGridColumnDef TItem=""Employee"" Title=""Status"" Field=""Status"" />
+        <DataGridColumnDef TItem=""Employee"" Title=""Salary"" Field=""Salary"" Format=""$#,##0"" Sortable=""true"" Aggregate=""AggregateType.Average"" />
+        <DataGridColumnDef TItem=""Employee"" Title=""Start Date"" Field=""StartDate"" Format=""yyyy-MM-dd"" />
+    </DataGrid>
+</Stack>";
+
+    private string _groupPanelCode = @"<Stack Gap=""3"">
+    <Flex Align=""center"" Gap=""4"" Wrap=""true"">
         <Flex Align=""center"" Gap=""2"">
-            <Avatar Size=""Lumeo.Size.Sm"">
-                <AvatarFallback>@context.Name[..2]</AvatarFallback>
-            </Avatar>
-            <Stack Gap=""0"">
-                <Lumeo.Text As=""span"" Weight=""medium"">@context.Name</Lumeo.Text>
-                <Lumeo.Text As=""div"" Size=""xs"" Color=""muted"">@context.Department</Lumeo.Text>
-            </Stack>
+            <Lumeo.Text Size=""sm"" Weight=""medium"">Group panel:</Lumeo.Text>
+            <Segmented @bind-Value=""_groupPanelMode"">
+                <SegmentedItem Value=""off"">Off</SegmentedItem>
+                <SegmentedItem Value=""on"">On</SegmentedItem>
+            </Segmented>
         </Flex>
-    </CellTemplate>
-</DataGridColumnDef>";
+        <Flex Align=""center"" Gap=""2"">
+            <Lumeo.Text Size=""sm"" Weight=""medium"">Levels:</Lumeo.Text>
+            <Segmented @bind-Value=""_groupPanelLevels"">
+                <SegmentedItem Value=""single"">Single (Department)</SegmentedItem>
+                <SegmentedItem Value=""multi"">Multi (Department → Status)</SegmentedItem>
+            </Segmented>
+        </Flex>
+    </Flex>
+    <DataGrid TItem=""Employee"" Items=""@_employees""
+              ShowGroupPanel=""@(_groupPanelMode == ""on"")""
+              GroupByFields=""@(_groupPanelLevels == ""multi""
+                                ? new[] { ""Department"", ""Status"" }
+                                : new[] { ""Department"" })""
+              Striped=""true"">
+        <DataGridColumnDef TItem=""Employee"" Title=""Name"" Field=""Name"" Sortable=""true"" />
+        <DataGridColumnDef TItem=""Employee"" Title=""Department"" Field=""Department"" Sortable=""true"" Groupable=""true"" />
+        <DataGridColumnDef TItem=""Employee"" Title=""Status"" Field=""Status"" Groupable=""true"" />
+        <DataGridColumnDef TItem=""Employee"" Title=""Salary"" Field=""Salary"" Format=""$#,##0"" Sortable=""true"" Aggregate=""AggregateType.Average"" />
+        <DataGridColumnDef TItem=""Employee"" Title=""Start Date"" Field=""StartDate"" Format=""yyyy-MM-dd"" />
+    </DataGrid>
+</Stack>";
 
-    private string _detailCode = @"<DataGrid TItem=""Employee"" Items=""@employees"" PageSize=""5"">
+    private string _templateCode = @"<DataGrid TItem=""Employee"" Items=""@_employees"" PageSize=""5"" ShowPagination=""true"">
+    <DataGridColumnDef TItem=""Employee"" Title=""Employee"" Field=""Name"" Sortable=""true"">
+        <CellTemplate>
+            <Flex Align=""center"" Gap=""2"">
+                <Avatar Size=""Lumeo.Size.Sm"">
+                    <AvatarFallback>@context.Name[..2].ToUpper()</AvatarFallback>
+                </Avatar>
+                <Stack Gap=""0"">
+                    <Lumeo.Text As=""span"" Weight=""medium"">@context.Name</Lumeo.Text>
+                    <Lumeo.Text As=""div"" Size=""xs"" Color=""muted"">@context.Department</Lumeo.Text>
+                </Stack>
+            </Flex>
+        </CellTemplate>
+    </DataGridColumnDef>
+    <DataGridColumnDef TItem=""Employee"" Title=""Salary"" Field=""Salary"" Sortable=""true"" Format=""$#,##0"" />
+    <DataGridColumnDef TItem=""Employee"" Title=""Status"" Field=""Status"">
+        <CellTemplate>
+            <Badge Variant=""@(context.Status == ""Active"" ? Badge.BadgeVariant.Default : Badge.BadgeVariant.Secondary)"">
+                @context.Status
+            </Badge>
+        </CellTemplate>
+    </DataGridColumnDef>
+    <DataGridColumnDef TItem=""Employee"" Title=""Actions"" Field=""Name"">
+        <CellTemplate>
+            <Flex Align=""center"" Gap=""1"">
+                <Button Variant=""Button.ButtonVariant.Ghost"" Size=""Button.ButtonSize.Sm"">
+                    <DynamicIcon Name=""Pencil"" Class=""h-3.5 w-3.5"" />
+                </Button>
+                <Button Variant=""Button.ButtonVariant.Ghost"" Size=""Button.ButtonSize.Sm"">
+                    <DynamicIcon Name=""Trash2"" Class=""h-3.5 w-3.5 text-destructive"" />
+                </Button>
+            </Flex>
+        </CellTemplate>
+    </DataGridColumnDef>
+</DataGrid>";
+
+    private string _detailCode = @"<DataGrid TItem=""Employee"" Items=""@_employees"" PageSize=""5"" ShowPagination=""true"">
     <DetailTemplate>
         <Stack Gap=""2"" Class=""p-4"">
             <Lumeo.Text Size=""sm""><Lumeo.Text As=""span"" Weight=""medium"">Full Name:</Lumeo.Text> @context.Name</Lumeo.Text>
             <Lumeo.Text Size=""sm""><Lumeo.Text As=""span"" Weight=""medium"">Department:</Lumeo.Text> @context.Department</Lumeo.Text>
+            <Lumeo.Text Size=""sm""><Lumeo.Text As=""span"" Weight=""medium"">Annual Salary:</Lumeo.Text> @context.Salary.ToString(""$#,##0"")</Lumeo.Text>
+            <Lumeo.Text Size=""sm""><Lumeo.Text As=""span"" Weight=""medium"">Start Date:</Lumeo.Text> @context.StartDate.ToString(""MMMM dd, yyyy"")</Lumeo.Text>
+            <Lumeo.Text Size=""sm""><Lumeo.Text As=""span"" Weight=""medium"">Status:</Lumeo.Text> @context.Status</Lumeo.Text>
         </Stack>
     </DetailTemplate>
     <ChildContent>
-        <DataGridColumnDef TItem=""Employee"" Title=""Name"" Field=""Name"" />
+        <DataGridColumnDef TItem=""Employee"" Title=""Name"" Field=""Name"" Sortable=""true"" />
         <DataGridColumnDef TItem=""Employee"" Title=""Department"" Field=""Department"" />
+        <DataGridColumnDef TItem=""Employee"" Title=""Status"" Field=""Status"" />
     </ChildContent>
 </DataGrid>";
 
-    private string _stickyDetailCode = @"<DataGrid TItem=""WideEmployee"" Items=""@wideEmployees"" PageSize=""5"" ColumnMenu=""true"">
+    private string _stickyDetailCode = @"<DataGrid TItem=""WideEmployee"" Items=""@_wideEmployees"" PageSize=""5"" ShowPagination=""true"" ColumnMenu=""true"">
     <DetailTemplate>
         <Stack Gap=""2"" Class=""p-4"">
             <Lumeo.Text Size=""sm"" Weight=""medium"">@context.Name — @context.Department</Lumeo.Text>
-            <Lumeo.Text Size=""sm"" Color=""muted"">A long paragraph goes here…</Lumeo.Text>
+            <Lumeo.Text Size=""sm"" Color=""muted"">
+                @context.Name joined the @context.Department team on @context.StartDate.ToString(""MMMM dd, yyyy"")
+                and currently holds @context.Status status at an annual salary of @context.Salary.ToString(""$#,##0"").
+                This paragraph is intentionally long so it visibly wraps within the detail panel's own width
+                instead of spilling past the visible edge of the grid — the panel stays pinned to the
+                viewport you're looking at even after scrolling the grid horizontally past its first few
+                columns, rather than stretching out across the table's full scrolled width, where the tail
+                end of this text would otherwise sit off-screen until you scrolled further right to read it.
+            </Lumeo.Text>
         </Stack>
     </DetailTemplate>
     <ChildContent>
-        @* 10 distinct-field columns, wider than the viewport — the grid scrolls
-           horizontally. Filterable columns' popovers and the column menu still
-           position correctly against their trigger, however far right the grid
-           is scrolled. *@
         <DataGridColumnDef TItem=""WideEmployee"" Title=""Name"" Field=""Name"" Width=""160"" />
         <DataGridColumnDef TItem=""WideEmployee"" Title=""Department"" Field=""Department"" Width=""160"" />
         <DataGridColumnDef TItem=""WideEmployee"" Title=""Status"" Field=""Status"" Width=""140"" Filterable=""true"" />
-        <DataGridColumnDef TItem=""WideEmployee"" Title=""Salary"" Field=""Salary"" Format=""C0"" Width=""140"" />
-        <DataGridColumnDef TItem=""WideEmployee"" Title=""Start Date"" Field=""StartDate"" Width=""150"" />
-        @* ... five more columns, including a second Filterable one further right ... *@
+        <DataGridColumnDef TItem=""WideEmployee"" Title=""Salary"" Field=""Salary"" Format=""$#,##0"" Width=""140"" />
+        <DataGridColumnDef TItem=""WideEmployee"" Title=""Start Date"" Field=""StartDate"" Format=""yyyy-MM-dd"" Width=""150"" />
+        <DataGridColumnDef TItem=""WideEmployee"" Title=""Manager"" Field=""Manager"" Width=""160"" />
+        <DataGridColumnDef TItem=""WideEmployee"" Title=""Region"" Field=""Region"" Width=""150"" Filterable=""true"" />
+        <DataGridColumnDef TItem=""WideEmployee"" Title=""Grade"" Field=""Grade"" Width=""130"" />
+        <DataGridColumnDef TItem=""WideEmployee"" Title=""Bonus"" Field=""Bonus"" Format=""$#,##0"" Width=""140"" />
+        <DataGridColumnDef TItem=""WideEmployee"" Title=""Review Date"" Field=""ReviewDate"" Format=""yyyy-MM-dd"" Width=""150"" />
     </ChildContent>
-</DataGrid>
-@* DetailStickyToViewport defaults to true — the expanded panel above stays
-   pinned to the visible viewport. Pass DetailStickyToViewport=""false"" on
-   <DataGrid> to restore the pre-5.10.3 full-table-width behavior. *@";
+</DataGrid>";
 
-    private string _pinCode = @"<DataGrid TItem=""Employee"" Items=""@employees"" PageSize=""5"">
-    <DataGridColumnDef TItem=""Employee"" Title=""Name"" Field=""Name""
-                       Pin=""PinDirection.Left"" Width=""180"" />
+    private string _pinCode = @"<DataGrid TItem=""Employee"" Items=""@_employees"" PageSize=""5"" ShowPagination=""true"">
+    <DataGridColumnDef TItem=""Employee"" Title=""Name"" Field=""Name"" Sortable=""true"" Pin=""PinDirection.Left"" Width=""180"" />
     <DataGridColumnDef TItem=""Employee"" Title=""Department"" Field=""Department"" Width=""150"" />
-    <DataGridColumnDef TItem=""Employee"" Title=""Salary"" Field=""Salary"" Format=""C0"" Width=""120"" />
-    <DataGridColumnDef TItem=""Employee"" Title=""Actions"" Field=""Name""
-                       Pin=""PinDirection.Right"" Width=""100"">
-        <CellTemplate>...</CellTemplate>
+    <DataGridColumnDef TItem=""Employee"" Title=""Salary"" Field=""Salary"" Format=""$#,##0"" Width=""120"" />
+    <DataGridColumnDef TItem=""Employee"" Title=""Status"" Field=""Status"" Width=""120"" />
+    <DataGridColumnDef TItem=""Employee"" Title=""Start Date"" Field=""StartDate"" Format=""yyyy-MM-dd"" Width=""150"" />
+    <DataGridColumnDef TItem=""Employee"" Title=""Actions"" Field=""Name"" Pin=""PinDirection.Right"" Width=""100"">
+        <CellTemplate>
+            <Button Variant=""Button.ButtonVariant.Ghost"" Size=""Button.ButtonSize.Sm"">
+                <DynamicIcon Name=""Ellipsis"" Class=""h-4 w-4"" />
+            </Button>
+        </CellTemplate>
     </DataGridColumnDef>
 </DataGrid>";
 
-    private string _resizeCode = @"<DataGrid TItem=""Employee"" Items=""@employees"" PageSize=""5"">
-    <DataGridColumnDef TItem=""Employee"" Title=""Name"" Field=""Name""
-                       Width=""200"" MinWidth=""100"" MaxWidth=""400"" />
-    <DataGridColumnDef TItem=""Employee"" Title=""Department"" Field=""Department""
-                       Width=""150"" MinWidth=""80"" />
-    <DataGridColumnDef TItem=""Employee"" Title=""Salary"" Field=""Salary""
-                       Format=""C0"" Width=""120"" MinWidth=""80"" MaxWidth=""200"" />
+    private string _resizeCode = @"<DataGrid TItem=""Employee"" Items=""@_employees"" PageSize=""5"" ShowPagination=""true"">
+    <DataGridColumnDef TItem=""Employee"" Title=""Name"" Field=""Name"" Sortable=""true"" Width=""200"" MinWidth=""100"" MaxWidth=""400"" />
+    <DataGridColumnDef TItem=""Employee"" Title=""Department"" Field=""Department"" Width=""150"" MinWidth=""80"" />
+    <DataGridColumnDef TItem=""Employee"" Title=""Salary"" Field=""Salary"" Format=""$#,##0"" Width=""120"" MinWidth=""80"" MaxWidth=""200"" />
+    <DataGridColumnDef TItem=""Employee"" Title=""Status"" Field=""Status"" Width=""100"" FillWidth=""true"" />
 </DataGrid>";
 
-    private string _columnSizingCode = @"<DataGrid TItem=""Employee"" Items=""@employees"" PageSize=""5""
-          ColumnSizing=""DataGridColumnSizing.FitWithMinimum"">
-    <DataGridColumnDef TItem=""Employee"" Title=""Name"" Field=""Name""
-                       Width=""200"" MinWidth=""140"" />
-    <DataGridColumnDef TItem=""Employee"" Title=""Department"" Field=""Department""
-                       Width=""150"" MinWidth=""120"" />
-    <DataGridColumnDef TItem=""Employee"" Title=""Salary"" Field=""Salary""
-                       Format=""C0"" Width=""120"" MinWidth=""100"" />
-    <DataGridColumnDef TItem=""Employee"" Title=""Status"" Field=""Status""
-                       Width=""100"" MinWidth=""90"" FillWidth=""true"" />
+    private string _columnSizingCode = @"<DataGrid TItem=""Employee"" Items=""@_employees"" PageSize=""5"" ShowPagination=""true"" ColumnSizing=""DataGridColumnSizing.FitWithMinimum"">
+    <DataGridColumnDef TItem=""Employee"" Title=""Name"" Field=""Name"" Sortable=""true"" Width=""200"" MinWidth=""140"" />
+    <DataGridColumnDef TItem=""Employee"" Title=""Department"" Field=""Department"" Width=""150"" MinWidth=""120"" />
+    <DataGridColumnDef TItem=""Employee"" Title=""Salary"" Field=""Salary"" Format=""$#,##0"" Width=""120"" MinWidth=""100"" />
+    <DataGridColumnDef TItem=""Employee"" Title=""Status"" Field=""Status"" Width=""100"" MinWidth=""90"" FillWidth=""true"" />
 </DataGrid>";
 
-    private string _autoSizeCode = @"<Button OnClick=""@(() => grid.AutoSizeAllColumnsAsync())"">Autosize all columns</Button>
-<Button OnClick=""@(() => grid.ResetColumnWidthsAsync())"">Reset widths</Button>
-
-<DataGrid @ref=""grid"" TItem=""Employee"" Items=""@employees"" PageSize=""5"">
-    <DataGridColumnDef TItem=""Employee"" Title=""Name"" Field=""Name"" Width=""80"" MinWidth=""60"" />
-    <DataGridColumnDef TItem=""Employee"" Title=""Department"" Field=""Department"" Width=""80"" MinWidth=""60"" />
-</DataGrid>
+    private string _autoSizeCode = @"<Stack Direction=""Orientation.Vertical"" Gap=""3"" Class=""w-full"">
+    <Stack Direction=""Orientation.Horizontal"" Gap=""2"">
+        <Button Size=""Button.ButtonSize.Sm"" OnClick=""@(() => _autoSizeGrid!.AutoSizeAllColumnsAsync())"">Autosize all columns</Button>
+        <Button Size=""Button.ButtonSize.Sm"" Variant=""Button.ButtonVariant.Outline"" OnClick=""@(() => _autoSizeGrid!.ResetColumnWidthsAsync())"">Reset widths</Button>
+    </Stack>
+    <DataGrid @ref=""_autoSizeGrid"" TItem=""Employee"" Items=""@_employees"" PageSize=""5"" ShowPagination=""true"">
+        <DataGridColumnDef TItem=""Employee"" Title=""Name"" Field=""Name"" Width=""80"" MinWidth=""60"" />
+        <DataGridColumnDef TItem=""Employee"" Title=""Department"" Field=""Department"" Width=""80"" MinWidth=""60"" />
+        <DataGridColumnDef TItem=""Employee"" Title=""Salary"" Field=""Salary"" Format=""$#,##0"" Width=""80"" MinWidth=""60"" />
+        <DataGridColumnDef TItem=""Employee"" Title=""Status"" Field=""Status"" Width=""80"" MinWidth=""60"" />
+    </DataGrid>
+</Stack>
 
 @code {
-    private DataGrid<Employee>? grid;
+    private DataGrid<Employee>? _autoSizeGrid;
 
     // Programmatic, by field — the public-API counterpart to the column
     // menu's per-column ""Fit to content"" entry.
-    private async Task AutoSizeName() => await grid!.AutoSizeColumnAsync(""Name"");
+    private async Task AutoSizeName() => await _autoSizeGrid!.AutoSizeColumnAsync(""Name"");
 }";
 
-    private string _overlayScrollbarCode = @"<DataGrid TItem=""Employee"" Items=""@employees"" Height=""260px"" OverlayScrollbar=""true"">
+    private string _overlayScrollbarCode = @"<DataGrid TItem=""Employee"" Items=""@_employees"" Height=""260px"" OverlayScrollbar=""true"">
     <DataGridColumnDef TItem=""Employee"" Title=""Name"" Field=""Name"" Width=""180"" />
     <DataGridColumnDef TItem=""Employee"" Title=""Department"" Field=""Department"" Width=""180"" />
+    <DataGridColumnDef TItem=""Employee"" Title=""Salary"" Field=""Salary"" Format=""$#,##0"" Width=""180"" />
+    <DataGridColumnDef TItem=""Employee"" Title=""Status"" Field=""Status"" Width=""180"" />
+    <DataGridColumnDef TItem=""Employee"" Title=""Email"" Field=""Name"" Width=""260"" />
 </DataGrid>";
 
-    private string _scrollbarBelowHeaderCode = @"<DataGrid TItem=""Employee"" Items=""@employees"" Height=""260px"" ScrollbarBelowHeader=""true"">
+    private string _scrollbarBelowHeaderCode = @"<DataGrid TItem=""Employee"" Items=""@_employees"" Height=""260px"" ScrollbarBelowHeader=""true"">
     <DataGridColumnDef TItem=""Employee"" Title=""Name"" Field=""Name"" Width=""180"" />
     <DataGridColumnDef TItem=""Employee"" Title=""Department"" Field=""Department"" Width=""180"" />
+    <DataGridColumnDef TItem=""Employee"" Title=""Salary"" Field=""Salary"" Format=""$#,##0"" Width=""180"" />
+    <DataGridColumnDef TItem=""Employee"" Title=""Status"" Field=""Status"" Width=""180"" />
+    <DataGridColumnDef TItem=""Employee"" Title=""Email"" Field=""Name"" Width=""260"" />
 </DataGrid>";
 
-    private string _editCode = @"<DataGrid TItem=""Employee"" Items=""@employees"" PageSize=""5""
+    private string _editCode = @"<DataGrid TItem=""Employee"" Items=""@_editableEmployees"" PageSize=""5"" ShowPagination=""true""
           EditMode=""DataGridEditMode.Cell"" OnCellEdit=""@HandleCellEdit"">
     <DataGridColumnDef TItem=""Employee"" Title=""Name"" Field=""Name"" />
     <DataGridColumnDef TItem=""Employee"" Title=""Department"" Field=""Department"" />
     <DataGridColumnDef TItem=""Employee"" Title=""Status"" Field=""Status"" />
-</DataGrid>";
+</DataGrid>
+@if (_lastEditInfo is not null)
+{
+    <Alert Class=""mt-4"" Title=""Cell Edited"" Description=""@_lastEditInfo"">
+    </Alert>
+}";
 
-    private string _customEditCode = @"<DataGrid TItem=""Employee"" Items=""@employees"" PageSize=""5""
+    private string _customEditCode = @"<DataGrid TItem=""Employee"" Items=""@_customEditEmployees"" PageSize=""5"" ShowPagination=""true""
           EditMode=""DataGridEditMode.Cell"" OnCellEdit=""@HandleCellEdit"">
     <DataGridColumnDef TItem=""Employee"" Title=""Name"" Field=""Name"" />
     <DataGridColumnDef TItem=""Employee"" Title=""Department"" Field=""Department"" Editable=""false"" />
     <DataGridColumnDef TItem=""Employee"" Title=""Status"" Field=""Status"">
         <EditTemplate>
-            <div class=""contents"" @onkeydown=""@(async (KeyboardEventArgs e) => {
-                    if (e.Key == ""Escape"") await context.Cancel();
-                })"">
+            @* EditMode.Cell has no fixed row height: the built-in text editor
+               (DataGridCell.razor's default, no border/padding/fixed height of its
+               own) sizes to its text-sm line-height (20px) and lets the <td>'s own
+               py-2/px-3 cell padding (16px vertical) supply the rest, landing on the
+               SAME ~36px total as a non-editing row. SelectTrigger's smallest density
+               rung (h-7, 28px) would add 8px on TOP of that unchanged cell padding —
+               the row visibly grows while editing and snaps back on commit/cancel.
+               h-5 (20px) + py-0 here matches that line-height exactly instead, so the
+               cell padding is the only thing supplying height, same as the default
+               editor. *@
+            <div class=""contents"" @onkeydown=""@(async (KeyboardEventArgs e) => { if (e.Key == ""Escape"") await context.Cancel(); })"">
                 <Select Value=""@(context.Value?.ToString())""
-                        ValueChanged=""@(async (string? v) => {
-                            context.Value = v;
-                            context.ValueChanged();
-                            await context.Commit();
-                        })"">
+                        ValueChanged=""@(async (string? v) => { context.Value = v; context.ValueChanged(); await context.Commit(); })"">
                     <SelectTrigger Class=""h-5 px-2 py-0"">
                         <span class=""truncate"">@context.Value</span>
                     </SelectTrigger>
@@ -1995,15 +2098,25 @@
             </div>
         </EditTemplate>
     </DataGridColumnDef>
-</DataGrid>";
+</DataGrid>
+@if (_lastEditInfo is not null)
+{
+    <Alert Class=""mt-4"" Title=""Cell Edited"" Description=""@_lastEditInfo"">
+    </Alert>
+}";
 
-    private string _rowEditCode = @"<DataGrid TItem=""Employee"" Items=""@employees"" PageSize=""5""
+    private string _rowEditCode = @"<DataGrid TItem=""Employee"" Items=""@_rowEditEmployees"" PageSize=""5"" ShowPagination=""true""
           EditMode=""DataGridEditMode.Row"" OnRowEdit=""@HandleRowEdit"">
     <DataGridColumnDef TItem=""Employee"" Title=""Name"" Field=""Name"" />
     <DataGridColumnDef TItem=""Employee"" Title=""Department"" Field=""Department"" />
-    <DataGridColumnDef TItem=""Employee"" Title=""Salary"" Field=""Salary"" Format=""C0"" />
+    <DataGridColumnDef TItem=""Employee"" Title=""Salary"" Field=""Salary"" Format=""$#,##0"" />
     <DataGridColumnDef TItem=""Employee"" Title=""Status"" Field=""Status"" />
 </DataGrid>
+@if (_lastRowEditInfo is not null)
+{
+    <Alert Class=""mt-4"" Title=""Row Edited"" Description=""@_lastRowEditInfo"">
+    </Alert>
+}
 
 @code {
     private Task HandleRowEdit(RowEditEventArgs<Employee> args)
@@ -2014,145 +2127,108 @@
     }
 }";
 
-    private string _aggregateCode = @"<DataGrid TItem=""Employee"" Items=""@employees"" PageSize=""20"">
-    <DataGridColumnDef TItem=""Employee"" Title=""Name"" Field=""Name""
-                       Aggregate=""AggregateType.Count"" />
-    <DataGridColumnDef TItem=""Employee"" Title=""Salary"" Field=""Salary""
-                       Format=""C0"" Aggregate=""AggregateType.Average"" />
+    private string _aggregateCode = @"<DataGrid TItem=""Employee"" Items=""@_employees"" PageSize=""20"">
+    <DataGridColumnDef TItem=""Employee"" Title=""Name"" Field=""Name"" Aggregate=""AggregateType.Count"" />
+    <DataGridColumnDef TItem=""Employee"" Title=""Department"" Field=""Department"" />
+    <DataGridColumnDef TItem=""Employee"" Title=""Salary"" Field=""Salary"" Format=""$#,##0"" Sortable=""true"" Aggregate=""AggregateType.Average"" />
+    <DataGridColumnDef TItem=""Employee"" Title=""Start Date"" Field=""StartDate"" Format=""yyyy-MM-dd"" />
 </DataGrid>";
 
-    private string _reorderCode = @"<DataGrid TItem=""Employee"" Items=""@employees"" PageSize=""5""
-          Reorderable=""true"">
+    private string _reorderCode = @"<DataGrid TItem=""Employee"" Items=""@_employees"" PageSize=""5"" ShowPagination=""true"" Reorderable=""true"">
     <DataGridColumnDef TItem=""Employee"" Title=""Name"" Field=""Name"" Sortable=""true"" />
-    <DataGridColumnDef TItem=""Employee"" Title=""Department"" Field=""Department"" />
-    <DataGridColumnDef TItem=""Employee"" Title=""Salary"" Field=""Salary"" Format=""C0"" />
+    <DataGridColumnDef TItem=""Employee"" Title=""Department"" Field=""Department"" Sortable=""true"" />
+    <DataGridColumnDef TItem=""Employee"" Title=""Salary"" Field=""Salary"" Format=""$#,##0"" Sortable=""true"" />
     <DataGridColumnDef TItem=""Employee"" Title=""Status"" Field=""Status"" />
 </DataGrid>";
 
-    private string _rowStyleCode = @"<DataGrid TItem=""Employee"" Items=""@employees"" PageSize=""5""
+    private string _rowStyleCode = @"<DataGrid TItem=""Employee"" Items=""@_employees"" PageSize=""5"" ShowPagination=""true""
           RowClass=""@(e => e.Status == ""Inactive"" ? ""opacity-50"" : """")""
           RowStyle=""@(e => e.Salary > 100000 ? ""font-weight: 600;"" : """")"">
-    <DataGridColumnDef TItem=""Employee"" Title=""Name"" Field=""Name"" />
-    <DataGridColumnDef TItem=""Employee"" Title=""Salary"" Field=""Salary"" Format=""C0"" />
+    <DataGridColumnDef TItem=""Employee"" Title=""Name"" Field=""Name"" Sortable=""true"" />
+    <DataGridColumnDef TItem=""Employee"" Title=""Department"" Field=""Department"" />
+    <DataGridColumnDef TItem=""Employee"" Title=""Salary"" Field=""Salary"" Format=""$#,##0"" Sortable=""true"" />
     <DataGridColumnDef TItem=""Employee"" Title=""Status"" Field=""Status"">
         <CellTemplate>
-            <Badge Variant=""@(context.Status == ""Active""
-                ? Badge.BadgeVariant.Default : Badge.BadgeVariant.Secondary)"">
+            <Badge Variant=""@(context.Status == ""Active"" ? Badge.BadgeVariant.Default : Badge.BadgeVariant.Secondary)"">
                 @context.Status
             </Badge>
         </CellTemplate>
     </DataGridColumnDef>
 </DataGrid>";
 
-    private string _contextMenuCode = @"<DataGrid TItem=""Employee"" Items=""@employees"" PageSize=""5"">
+    private string _contextMenuCode = @"<DataGrid TItem=""Employee"" Items=""@_employees"" PageSize=""5"" ShowPagination=""true"">
     <RowContextMenu>
         <Stack Gap=""0"">
-            <Button Variant=""Button.ButtonVariant.Ghost"" Size=""Button.ButtonSize.Sm""
-                    Class=""w-full justify-start gap-2 px-2"">
-                <DynamicIcon Name=""Pencil"" Class=""h-3.5 w-3.5"" /> Edit
+            <Button Variant=""Button.ButtonVariant.Ghost"" Size=""Button.ButtonSize.Sm"" Class=""w-full justify-start gap-2 px-2"">
+                <DynamicIcon Name=""Pencil"" Class=""h-3.5 w-3.5"" />
+                Edit
             </Button>
-            <Button Variant=""Button.ButtonVariant.Ghost"" Size=""Button.ButtonSize.Sm""
-                    Class=""w-full justify-start gap-2 px-2"">
-                <DynamicIcon Name=""Copy"" Class=""h-3.5 w-3.5"" /> Duplicate
+            <Button Variant=""Button.ButtonVariant.Ghost"" Size=""Button.ButtonSize.Sm"" Class=""w-full justify-start gap-2 px-2"">
+                <DynamicIcon Name=""Copy"" Class=""h-3.5 w-3.5"" />
+                Duplicate
             </Button>
             <Separator Class=""my-1"" />
-            <Button Variant=""Button.ButtonVariant.Ghost"" Size=""Button.ButtonSize.Sm""
-                    Class=""w-full justify-start gap-2 px-2 text-destructive"">
-                <DynamicIcon Name=""Trash2"" Class=""h-3.5 w-3.5"" /> Delete
+            <Button Variant=""Button.ButtonVariant.Ghost"" Size=""Button.ButtonSize.Sm"" Class=""w-full justify-start gap-2 px-2 text-destructive"">
+                <DynamicIcon Name=""Trash2"" Class=""h-3.5 w-3.5"" />
+                Delete
             </Button>
         </Stack>
     </RowContextMenu>
     <ChildContent>
-        <DataGridColumnDef TItem=""Employee"" Title=""Name"" Field=""Name"" />
+        <DataGridColumnDef TItem=""Employee"" Title=""Name"" Field=""Name"" Sortable=""true"" />
         <DataGridColumnDef TItem=""Employee"" Title=""Department"" Field=""Department"" />
-        <DataGridColumnDef TItem=""Employee"" Title=""Salary"" Field=""Salary"" Format=""C0"" />
+        <DataGridColumnDef TItem=""Employee"" Title=""Salary"" Field=""Salary"" Format=""$#,##0"" />
+        <DataGridColumnDef TItem=""Employee"" Title=""Status"" Field=""Status"" />
     </ChildContent>
 </DataGrid>";
 
-    private string _layoutPersistenceCode = @"<DataGrid TItem=""Employee"" Items=""@employees"" PageSize=""5""
+    private string _layoutPersistenceCode = @"<DataGrid TItem=""Employee"" Items=""@_employees"" PageSize=""5"" ShowPagination=""true""
           ShowToolbar=""true"" Reorderable=""true""
-          EnableLayoutPersistence=""true""
-          LayoutStorageKey=""my-grid-layout"">
-    <DataGridColumnDef TItem=""Employee"" Title=""Name"" Field=""Name""
-                       Sortable=""true"" Filterable=""true"" Width=""200"" />
-    <DataGridColumnDef TItem=""Employee"" Title=""Department"" Field=""Department""
-                       Sortable=""true"" Width=""150"" />
-    <DataGridColumnDef TItem=""Employee"" Title=""Salary"" Field=""Salary""
-                       Format=""C0"" Width=""120"" />
-    <DataGridColumnDef TItem=""Employee"" Title=""Status"" Field=""Status"" Width=""100"" />
-</DataGrid>
-
-@* The toolbar Layouts dropdown lets users save named layouts (Personal scope)
-   and reset to the System Default. Layouts are auto-saved to localStorage. *@";
-
-    private string _namedLayoutCode = @"@code {
-    private List<DataGridNamedLayout> _globalLayouts = new()
-    {
-        new DataGridNamedLayout(""global-1"", ""Engineering View"", ""Global"", new DataGridLayout
-        {
-            Columns = new()
-            {
-                new ColumnLayout { Field = ""Name"", Visible = true, Order = 0 },
-                new ColumnLayout { Field = ""Department"", Visible = true, Order = 1 },
-                new ColumnLayout { Field = ""Salary"", Visible = true, Order = 2 },
-                new ColumnLayout { Field = ""Status"", Visible = false, Order = 3 },
-            }
-        }),
-        new DataGridNamedLayout(""global-2"", ""HR Overview"", ""Global"", new DataGridLayout
-        {
-            Columns = new()
-            {
-                new ColumnLayout { Field = ""Name"", Visible = true, Order = 0 },
-                new ColumnLayout { Field = ""Status"", Visible = true, Order = 1 },
-                new ColumnLayout { Field = ""Department"", Visible = true, Order = 2 },
-                new ColumnLayout { Field = ""Salary"", Visible = false, Order = 3 },
-            }
-        }),
-    };
-}
-
-<DataGrid TItem=""Employee"" Items=""@employees"" PageSize=""5""
-          ShowToolbar=""true"" Reorderable=""true""
-          EnableLayoutPersistence=""true""
-          LayoutStorageKey=""my-named-layout-grid""
-          GlobalLayouts=""@_globalLayouts""
-          OnSaveNamedLayout=""@(nl => Console.WriteLine($""Saved: {nl.Name}""))""
-          OnDeleteNamedLayout=""@(id => Console.WriteLine($""Deleted: {id})""))"">
-    <DataGridColumnDef TItem=""Employee"" Title=""Name"" Field=""Name""
-                       Sortable=""true"" Filterable=""true"" Width=""200"" />
-    <DataGridColumnDef TItem=""Employee"" Title=""Department"" Field=""Department""
-                       Sortable=""true"" Width=""150"" />
-    <DataGridColumnDef TItem=""Employee"" Title=""Salary"" Field=""Salary""
-                       Format=""C0"" Width=""120"" />
-    <DataGridColumnDef TItem=""Employee"" Title=""Status"" Field=""Status"" Width=""100"" />
+          EnableLayoutPersistence=""true"" LayoutStorageKey=""demo-datagrid-layout"">
+    <DataGridColumnDef TItem=""Employee"" Title=""Name"" Field=""Name"" Sortable=""true"" Filterable=""true"" Width=""200"" />
+    <DataGridColumnDef TItem=""Employee"" Title=""Department"" Field=""Department"" Sortable=""true"" Filterable=""true"" Width=""150"" />
+    <DataGridColumnDef TItem=""Employee"" Title=""Salary"" Field=""Salary"" Format=""$#,##0"" Sortable=""true"" Width=""120"" />
+    <DataGridColumnDef TItem=""Employee"" Title=""Status"" Field=""Status"" Filterable=""true"" Width=""100"" />
 </DataGrid>";
 
-    private string _toolbarContentCode = @"<DataGrid TItem=""Employee"" Items=""@employees"" PageSize=""5""
-          ShowToolbar=""true"">
+    private string _namedLayoutCode = @"<Stack Gap=""3"">
+    @if (_savedLayoutNotice is not null)
+    {
+        <Alert Title=""Layout Event"" Description=""@_savedLayoutNotice"">
+        </Alert>
+    }
+    <DataGrid TItem=""Employee"" Items=""@_employees"" PageSize=""5"" ShowPagination=""true""
+              ShowToolbar=""true"" Reorderable=""true""
+              EnableLayoutPersistence=""true"" LayoutStorageKey=""demo-named-layout""
+              GlobalLayouts=""@_globalLayouts""
+              OnSaveNamedLayout=""@(nl => { _savedLayoutNotice = $""Saved named layout: \""{nl.Name}\"" (scope: {nl.Scope})""; StateHasChanged(); })""
+              OnDeleteNamedLayout=""@(id => { _savedLayoutNotice = $""Deleted layout: {id}""; StateHasChanged(); })"">
+        <DataGridColumnDef TItem=""Employee"" Title=""Name"" Field=""Name"" Sortable=""true"" Filterable=""true"" Width=""200"" />
+        <DataGridColumnDef TItem=""Employee"" Title=""Department"" Field=""Department"" Sortable=""true"" Filterable=""true"" Width=""150"" />
+        <DataGridColumnDef TItem=""Employee"" Title=""Salary"" Field=""Salary"" Format=""$#,##0"" Sortable=""true"" Width=""120"" />
+        <DataGridColumnDef TItem=""Employee"" Title=""Status"" Field=""Status"" Filterable=""true"" Width=""100"" />
+    </DataGrid>
+</Stack>";
+
+    private string _toolbarContentCode = @"<DataGrid TItem=""Employee"" Items=""@_employees"" PageSize=""5"" ShowPagination=""true"" ShowToolbar=""true"">
     <ChildContent>
         <ToolbarContent TItem=""Employee"" Class=""gap-3"">
-            <Button Variant=""Button.ButtonVariant.Outline"" Size=""Button.ButtonSize.Sm""
-                    Class=""gap-1.5"">
+            <Button Variant=""Button.ButtonVariant.Outline"" Size=""Button.ButtonSize.Sm"" Class=""gap-1.5"">
                 <DynamicIcon Name=""Plus"" Class=""h-3.5 w-3.5"" />
                 Add Employee
             </Button>
         </ToolbarContent>
-        <DataGridColumnDef TItem=""Employee"" Title=""Name"" Field=""Name""
-                           Sortable=""true"" Filterable=""true"" />
-        <DataGridColumnDef TItem=""Employee"" Title=""Department"" Field=""Department"" />
-        <DataGridColumnDef TItem=""Employee"" Title=""Salary"" Field=""Salary"" Format=""C0"" />
+        <DataGridColumnDef TItem=""Employee"" Title=""Name"" Field=""Name"" Sortable=""true"" Filterable=""true"" />
+        <DataGridColumnDef TItem=""Employee"" Title=""Department"" Field=""Department"" Sortable=""true"" />
+        <DataGridColumnDef TItem=""Employee"" Title=""Salary"" Field=""Salary"" Format=""$#,##0"" Sortable=""true"" />
+        <DataGridColumnDef TItem=""Employee"" Title=""Status"" Field=""Status"" />
     </ChildContent>
 </DataGrid>";
 
-    private string _toolbarComposedCode = @"<DataGrid TItem=""Employee"" Items=""@employees"" PageSize=""5""
-          ShowToolbar=""true"">
+    private string _toolbarComposedCode = @"<DataGrid TItem=""Employee"" Items=""@_employees"" PageSize=""5"" ShowPagination=""true"" ShowToolbar=""true"">
     <ChildContent>
-        @* Placing ToolbarContent suppresses the default right-hand tool stack — you
-           pick exactly which tools to include and where. No need for Expandable /
-           ShowExport / ShowColumnChooser flags; tools render wherever you place them. *@
         <ToolbarContent TItem=""Employee"" Class=""gap-2 flex-wrap"">
-            <Button Variant=""Button.ButtonVariant.Outline"" Size=""Button.ButtonSize.Sm""
-                    Class=""gap-1.5"">
+            <Button Variant=""Button.ButtonVariant.Outline"" Size=""Button.ButtonSize.Sm"" Class=""gap-1.5"">
                 <DynamicIcon Name=""RefreshCw"" Class=""h-3.5 w-3.5"" />
                 Refresh
             </Button>
@@ -2160,31 +2236,31 @@
             <DataGridToolbarExport TItem=""Employee"" />
             <DataGridToolbarFullscreen TItem=""Employee"" />
         </ToolbarContent>
-        <DataGridColumnDef TItem=""Employee"" Title=""Name"" Field=""Name"" Sortable=""true"" />
-        <DataGridColumnDef TItem=""Employee"" Title=""Department"" Field=""Department"" />
+        <DataGridColumnDef TItem=""Employee"" Title=""Name"" Field=""Name"" Sortable=""true"" Filterable=""true"" />
+        <DataGridColumnDef TItem=""Employee"" Title=""Department"" Field=""Department"" Sortable=""true"" />
+        <DataGridColumnDef TItem=""Employee"" Title=""Salary"" Field=""Salary"" Format=""$#,##0"" Sortable=""true"" />
+        <DataGridColumnDef TItem=""Employee"" Title=""Status"" Field=""Status"" />
     </ChildContent>
 </DataGrid>";
 
     private string _serverModeCode = @"<DataGrid TItem=""Employee"" Items=""@_serverItems""
           ServerMode=""true""
-          TotalCount=""@_totalCount""
-          PageSize=""10""
+          TotalCount=""@_serverTotalCount""
+          PageSize=""5""
           ShowPagination=""true""
           ShowToolbar=""true""
-          OnServerRequest=""@LoadData"">
-    <DataGridColumnDef TItem=""Employee"" Title=""Name"" Field=""Name""
-                       Sortable=""true"" Filterable=""true"" />
-    <DataGridColumnDef TItem=""Employee"" Title=""Department"" Field=""Department""
-                       Sortable=""true"" Filterable=""true"" />
-    <DataGridColumnDef TItem=""Employee"" Title=""Salary"" Field=""Salary""
-                       Format=""C0"" Sortable=""true"" />
+          OnServerRequest=""@LoadServerData"">
+    <DataGridColumnDef TItem=""Employee"" Title=""Name"" Field=""Name"" Sortable=""true"" Filterable=""true"" />
+    <DataGridColumnDef TItem=""Employee"" Title=""Department"" Field=""Department"" Sortable=""true"" Filterable=""true"" />
+    <DataGridColumnDef TItem=""Employee"" Title=""Salary"" Field=""Salary"" Format=""$#,##0"" Sortable=""true"" />
+    <DataGridColumnDef TItem=""Employee"" Title=""Status"" Field=""Status"" />
 </DataGrid>
 
 @code {
     private List<Employee> _serverItems = new();
-    private int _totalCount;
+    private int _serverTotalCount;
 
-    private async Task LoadData(DataGridServerRequest request)
+    private async Task LoadServerData(DataGridServerRequest request)
     {
         try
         {
@@ -2199,117 +2275,125 @@
                 ct: request.CancellationToken);
 
             _serverItems = result.Items.ToList();
-            _totalCount = result.TotalCount;
+            _serverTotalCount = result.TotalCount;
             // IsLoading is managed internally — do not set it manually.
         }
         catch (OperationCanceledException) { /* superseded request — ignore */ }
     }
 }";
 
-    private string _errorHandlingCode = @"<DataGrid TItem=""Employee"" Items=""@_items"" TotalCount=""@_total""
-          ServerMode=""true"" OnServerRequest=""@LoadData""
-          OnError=""@(ex => _errorMsg = ex.Message)"">
-    <DataGridColumnDef TItem=""Employee"" Title=""Name"" Field=""Name"" Sortable=""true"" />
-    <DataGridColumnDef TItem=""Employee"" Title=""Department"" Field=""Department"" />
-    <DataGridColumnDef TItem=""Employee"" Title=""Salary"" Field=""Salary"" Format=""C0"" />
-</DataGrid>
-
-@if (!string.IsNullOrEmpty(_errorMsg))
-{
-    <Alert>
-        <AlertTitle>Server Error</AlertTitle>
-        <AlertDescription>@_errorMsg</AlertDescription>
-    </Alert>
-}
+    private string _errorHandlingCode = @"<Stack Gap=""3"">
+    <Flex Gap=""2"" Align=""center"">
+        <Button Variant=""@(_simulateError ? Button.ButtonVariant.Destructive : Button.ButtonVariant.Outline)""
+                Size=""Button.ButtonSize.Sm""
+                OnClick=""@(() => { _simulateError = !_simulateError; _serverErrorDisplay = null; })"">
+            @(_simulateError ? ""Simulating failure — click to recover"" : ""Simulate server error"")
+        </Button>
+    </Flex>
+    <DataGrid TItem=""Employee"" Items=""@_errorItems""
+              ServerMode=""true""
+              TotalCount=""@_errorTotalCount""
+              PageSize=""5""
+              ShowPagination=""true""
+              OnServerRequest=""@LoadErrorData""
+              OnError=""@(ex => _serverErrorDisplay = ex.Message)"">
+        <DataGridColumnDef TItem=""Employee"" Title=""Name"" Field=""Name"" Sortable=""true"" />
+        <DataGridColumnDef TItem=""Employee"" Title=""Department"" Field=""Department"" />
+        <DataGridColumnDef TItem=""Employee"" Title=""Salary"" Field=""Salary"" Format=""$#,##0"" />
+        <DataGridColumnDef TItem=""Employee"" Title=""Status"" Field=""Status"" />
+    </DataGrid>
+    @if (!string.IsNullOrEmpty(_serverErrorDisplay))
+    {
+        <Alert Title=""Server Error"" Description=""@_serverErrorDisplay"">
+        </Alert>
+    }
+</Stack>
 
 @code {
-    private string? _errorMsg;
+    private bool _simulateError;
+    private string? _serverErrorDisplay;
+    private List<Employee> _errorItems = new();
+    private int _errorTotalCount;
 
-    private async Task LoadData(DataGridServerRequest request)
+    private async Task LoadErrorData(DataGridServerRequest request)
     {
         // Exceptions thrown here are forwarded to OnError
         // instead of crashing the grid.
         var result = await _api.GetEmployees(request);
-        _items = result.Items.ToList();
-        _total = result.TotalCount;
+        _errorItems = result.Items.ToList();
+        _errorTotalCount = result.TotalCount;
     }
 }";
 
-    private string _multiSortCode = @"@* Click column headers to sort. Click again to cycle:
-   Ascending -> Descending -> None.
-   Sort indicators show the current direction. *@
-
-<DataGrid TItem=""Employee"" Items=""@employees"" PageSize=""5"">
-    <DataGridColumnDef TItem=""Employee"" Title=""Department"" Field=""Department""
-                       Sortable=""true"" />
-    <DataGridColumnDef TItem=""Employee"" Title=""Name"" Field=""Name""
-                       Sortable=""true"" />
-    <DataGridColumnDef TItem=""Employee"" Title=""Salary"" Field=""Salary""
-                       Sortable=""true"" Format=""C0"" />
-    <DataGridColumnDef TItem=""Employee"" Title=""Start Date"" Field=""StartDate""
-                       Sortable=""true"" Format=""yyyy-MM-dd"" />
+    private string _multiSortCode = @"<DataGrid TItem=""Employee"" Items=""@_employees"" PageSize=""5"" ShowPagination=""true"">
+    <DataGridColumnDef TItem=""Employee"" Title=""Department"" Field=""Department"" Sortable=""true"" />
+    <DataGridColumnDef TItem=""Employee"" Title=""Name"" Field=""Name"" Sortable=""true"" />
+    <DataGridColumnDef TItem=""Employee"" Title=""Salary"" Field=""Salary"" Sortable=""true"" Format=""$#,##0"" />
+    <DataGridColumnDef TItem=""Employee"" Title=""Start Date"" Field=""StartDate"" Sortable=""true"" Format=""yyyy-MM-dd"" />
 </DataGrid>";
 
-    private string _fixedHeightCode = @"<DataGrid TItem=""Employee"" Items=""@employees""
-          Height=""250px"" ShowPagination=""false"">
-    <DataGridColumnDef TItem=""Employee"" Title=""Name"" Field=""Name"" />
+    private string _fixedHeightCode = @"<DataGrid TItem=""Employee"" Items=""@_employees"" Height=""250px"" ShowPagination=""false"">
+    <DataGridColumnDef TItem=""Employee"" Title=""Name"" Field=""Name"" Sortable=""true"" />
     <DataGridColumnDef TItem=""Employee"" Title=""Department"" Field=""Department"" />
-    <DataGridColumnDef TItem=""Employee"" Title=""Salary"" Field=""Salary"" Format=""C0"" />
+    <DataGridColumnDef TItem=""Employee"" Title=""Salary"" Field=""Salary"" Format=""$#,##0"" />
+    <DataGridColumnDef TItem=""Employee"" Title=""Status"" Field=""Status"" />
+    <DataGridColumnDef TItem=""Employee"" Title=""Start Date"" Field=""StartDate"" Format=""yyyy-MM-dd"" />
+</DataGrid>";
+
+    private string _clientVirtualizedCode = @"<DataGrid TItem=""Employee""
+          Items=""@VirtualBackend""
+          ShowPagination=""false""
+          Height=""320px""
+          data-testid=""datagrid-virtualized"">
+    <DataGridColumnDef TItem=""Employee"" Title=""Name"" Field=""Name"" Sortable=""true"" Filterable=""true"" />
+    <DataGridColumnDef TItem=""Employee"" Title=""Department"" Field=""Department"" Sortable=""true"" />
+    <DataGridColumnDef TItem=""Employee"" Title=""Salary"" Field=""Salary"" Format=""$#,##0"" Sortable=""true"" />
     <DataGridColumnDef TItem=""Employee"" Title=""Status"" Field=""Status"" />
 </DataGrid>";
 
-    private string _clientVirtualizedCode = @"<DataGrid TItem=""Employee"" Items=""@bigList"" ShowPagination=""false"" Height=""320px"">
+    private string _virtualizedServerCode = @"<DataGrid TItem=""Employee""
+          Items=""@(Array.Empty<Employee>())""
+          Virtualized=""true""
+          Height=""320px""
+          OnRangeRequest=""@FakeRangeRequest""
+          ShowToolbar=""true"">
     <DataGridColumnDef TItem=""Employee"" Title=""Name"" Field=""Name"" Sortable=""true"" Filterable=""true"" />
     <DataGridColumnDef TItem=""Employee"" Title=""Department"" Field=""Department"" Sortable=""true"" />
-    <DataGridColumnDef TItem=""Employee"" Title=""Salary"" Field=""Salary"" Format=""C0"" Sortable=""true"" />
+    <DataGridColumnDef TItem=""Employee"" Title=""Salary"" Field=""Salary"" Format=""$#,##0"" Sortable=""true"" />
     <DataGridColumnDef TItem=""Employee"" Title=""Status"" Field=""Status"" />
 </DataGrid>
 
-@* bigList is a plain List<Employee> with 50,000 items. ShowPagination=false +
-   a fixed Height makes the grid virtualise: only the viewport window is rendered. *@";
+@code {
+    // Replace with your real backend call: fetch the requested window
+    // (StartIndex / Count) with the active sort, filters and search applied.
+    private async ValueTask<DataGridRangeResponse<Employee>> FakeRangeRequest(DataGridRangeRequest req)
+    {
+        var resp = await Http.GetFromJsonAsync<EmployeeRangeResponse>(
+            $""api/employees?skip={req.StartIndex}&take={req.Count}&q={req.GlobalSearch}"",
+            req.CancellationToken);
+        return new DataGridRangeResponse<Employee>(resp!.Items, resp.TotalCount);
+    }
+}";
 
-    private string _virtualizedServerCode = @"// Backend interface — replace with your real API call
-async ValueTask<DataGridRangeResponse<Employee>> LoadRange(DataGridRangeRequest req) {
-    var resp = await Http.GetFromJsonAsync<EmployeeRangeResponse>(
-        $""api/employees?skip={req.StartIndex}&take={req.Count}""
-        + $""&sort={Encode(req.Sorts)}&filter={Encode(req.Filters)}""
-        + $""&q={req.GlobalSearch}"",
-        req.CancellationToken);
-    return new DataGridRangeResponse<Employee>(resp!.Items, resp.TotalCount);
-}
-
-<DataGrid TItem=""Employee""
-          Virtualized=""true""
-          Height=""400px""
-          OnRangeRequest=""@LoadRange""
-          ShowToolbar=""true"">
-    <DataGridColumnDef TItem=""Employee"" Title=""Name"" Field=""Name""
-                       Sortable=""true"" Filterable=""true"" />
-    <DataGridColumnDef TItem=""Employee"" Title=""Department"" Field=""Department"" Sortable=""true"" />
-    <DataGridColumnDef TItem=""Employee"" Title=""Salary"" Field=""Salary"" Format=""C0"" Sortable=""true"" />
-</DataGrid>";
-
-    private string _pageSizeOptionsCode = @"<DataGrid TItem=""Employee"" Items=""@employees""
-          PageSize=""10""
-          PageSizeOptions=""new[] { 10, 50, 100, 200, 300 }""
-          ShowPagination=""true"">
+    private string _pageSizeOptionsCode = @"<DataGrid TItem=""Employee"" Items=""@_employees"" PageSize=""10"" PageSizeOptions=""new[] { 10, 50, 100, 200, 300 }"" ShowPagination=""true"">
     <DataGridColumnDef TItem=""Employee"" Title=""Name"" Field=""Name"" Sortable=""true"" />
     <DataGridColumnDef TItem=""Employee"" Title=""Department"" Field=""Department"" />
-    <DataGridColumnDef TItem=""Employee"" Title=""Salary"" Field=""Salary"" Format=""C0"" />
+    <DataGridColumnDef TItem=""Employee"" Title=""Salary"" Field=""Salary"" Format=""$#,##0"" />
     <DataGridColumnDef TItem=""Employee"" Title=""Status"" Field=""Status"" />
 </DataGrid>";
 
-    private string _loadingCode = @"<DataGrid TItem=""Employee"" Items=""@employees"" PageSize=""5"" IsLoading=""true"">
+    private string _loadingCode = @"<DataGrid TItem=""Employee"" Items=""@_employees"" PageSize=""5"" IsLoading=""true"">
     <DataGridColumnDef TItem=""Employee"" Title=""Name"" Field=""Name"" />
     <DataGridColumnDef TItem=""Employee"" Title=""Department"" Field=""Department"" />
-    <DataGridColumnDef TItem=""Employee"" Title=""Salary"" Field=""Salary"" Format=""C0"" />
+    <DataGridColumnDef TItem=""Employee"" Title=""Salary"" Field=""Salary"" Format=""$#,##0"" />
+    <DataGridColumnDef TItem=""Employee"" Title=""Status"" Field=""Status"" />
 </DataGrid>";
 
     private string _emptyCode = @"<DataGrid TItem=""Employee"" Items=""@(new List<Employee>())"" PageSize=""5"">
     <EmptyContent>
         <Stack Gap=""3"" Align=""center"" Class=""py-4"">
             <DynamicIcon Name=""SearchX"" Class=""h-10 w-10 text-muted-foreground/40"" />
-            <Lumeo.Text Size=""sm"" Color=""muted"">No employees found.</Lumeo.Text>
+            <Lumeo.Text Size=""sm"" Color=""muted"">No employees found. Try adjusting your filters.</Lumeo.Text>
         </Stack>
     </EmptyContent>
     <ChildContent>
@@ -2318,17 +2402,14 @@ async ValueTask<DataGridRangeResponse<Employee>> LoadRange(DataGridRangeRequest 
     </ChildContent>
 </DataGrid>";
 
-    private string _emptyTemplateCode = @"<DataGrid TItem=""Employee"" Items=""@employees"" PageSize=""5"" ShowToolbar=""true"">
+    private string _emptyTemplateCode = @"<DataGrid TItem=""Employee"" Items=""@_employees"" PageSize=""5"" ShowToolbar=""true"" ShowSearch=""false"" ShowColumnChooser=""false"" ShowExport=""false"" ShowLayouts=""false"">
     <EmptyTemplate>
         @if (context.HasActiveFilters)
         {
             <Stack Gap=""3"" Align=""center"" Class=""py-4"">
                 <DynamicIcon Name=""SearchX"" Class=""h-10 w-10 text-muted-foreground/40"" />
                 <Lumeo.Text Size=""sm"" Color=""muted"">No rows match the current filters.</Lumeo.Text>
-                <Button Size=""Button.ButtonSize.Sm"" Variant=""Button.ButtonVariant.Outline""
-                        OnClick=""@(async () => await context.ClearFilters())"">
-                    Clear filters
-                </Button>
+                <Button Size=""Button.ButtonSize.Sm"" Variant=""Button.ButtonVariant.Outline"" OnClick=""@(async () => await context.ClearFilters())"">Clear filters</Button>
             </Stack>
         }
         else
@@ -2346,9 +2427,9 @@ async ValueTask<DataGridRangeResponse<Employee>> LoadRange(DataGridRangeRequest 
 </DataGrid>";
 
     private string _rowCountCode = @"<Stack Gap=""2"">
-    <Lumeo.Text Size=""sm"" Color=""muted"">Showing @filtered of @total employees</Lumeo.Text>
-    <DataGrid TItem=""Employee"" Items=""@employees"" PageSize=""5"" ShowToolbar=""true""
-              OnRowCountChanged=""@((DataGridRowCountChanged e) => { filtered = e.Filtered; total = e.Total; })"">
+    <Lumeo.Text Size=""sm"" Color=""muted"">Showing @_rowCountFiltered of @_rowCountTotal employees</Lumeo.Text>
+    <DataGrid TItem=""Employee"" Items=""@_employees"" PageSize=""5"" ShowToolbar=""true"" ShowColumnChooser=""false"" ShowExport=""false"" ShowLayouts=""false""
+              OnRowCountChanged=""@((DataGridRowCountChanged e) => { _rowCountFiltered = e.Filtered; _rowCountTotal = e.Total; })"">
         <DataGridColumnDef TItem=""Employee"" Title=""Name"" Field=""Name"" Filterable=""true"" />
         <DataGridColumnDef TItem=""Employee"" Title=""Department"" Field=""Department"" />
     </DataGrid>
@@ -2359,49 +2440,40 @@ async ValueTask<DataGridRangeResponse<Employee>> LoadRange(DataGridRangeRequest 
     private int total;
 }";
 
-    private string _expandableCode = @"<DataGrid TItem=""Employee"" Items=""@employees"" PageSize=""5""
-          ShowPagination=""true"" ShowToolbar=""true""
+    private string _expandableCode = @"<DataGrid TItem=""Employee"" Items=""@_employees"" PageSize=""5"" ShowPagination=""true"" ShowToolbar=""true""
           Expandable=""true"" FullscreenTitle=""Employees""
           SelectionMode=""DataGridSelectionMode.Multiple"">
     <DataGridColumnDef TItem=""Employee"" Title=""Name"" Field=""Name"" Sortable=""true"" Filterable=""true"" />
     <DataGridColumnDef TItem=""Employee"" Title=""Department"" Field=""Department"" Sortable=""true"" Filterable=""true"" />
-    <DataGridColumnDef TItem=""Employee"" Title=""Salary"" Field=""Salary"" Sortable=""true"" Format=""C0""
-                       Filterable=""true"" FilterType=""DataGridFilterType.Number"" />
+    <DataGridColumnDef TItem=""Employee"" Title=""Salary"" Field=""Salary"" Sortable=""true"" Format=""$#,##0"" Filterable=""true"" FilterType=""DataGridFilterType.Number"" />
     <DataGridColumnDef TItem=""Employee"" Title=""Status"" Field=""Status"" Filterable=""true"" />
-    <DataGridColumnDef TItem=""Employee"" Title=""Start Date"" Field=""StartDate""
-                       Sortable=""true"" Format=""yyyy-MM-dd"" />
+    <DataGridColumnDef TItem=""Employee"" Title=""Start Date"" Field=""StartDate"" Sortable=""true"" Format=""yyyy-MM-dd"" />
 </DataGrid>";
 
-    private string _fullCode = @"<DataGrid TItem=""Employee"" Items=""@employees"" PageSize=""5""
+    private string _fullCode = @"<DataGrid TItem=""Employee"" Items=""@_employees"" PageSize=""5"" ShowPagination=""true""
           ShowToolbar=""true"" SelectionMode=""DataGridSelectionMode.Multiple""
           Striped=""true"" Hoverable=""true"" Reorderable=""true""
           RowClass=""@(e => e.Status == ""Inactive"" ? ""opacity-50"" : """")"">
-    <DataGridColumnDef TItem=""Employee"" Title=""Employee"" Field=""Name""
-                       Sortable=""true"" Filterable=""true""
-                       Pin=""PinDirection.Left"" Width=""200"">
+    <DataGridColumnDef TItem=""Employee"" Title=""Employee"" Field=""Name"" Sortable=""true"" Filterable=""true"" Pin=""PinDirection.Left"" Width=""200"">
         <CellTemplate>
             <Flex Align=""center"" Gap=""2"">
                 <Avatar Size=""Lumeo.Size.Sm"">
-                    <AvatarFallback>@context.Name[..2]</AvatarFallback>
+                    <AvatarFallback>@context.Name[..2].ToUpper()</AvatarFallback>
                 </Avatar>
                 <Lumeo.Text As=""span"" Weight=""medium"">@context.Name</Lumeo.Text>
             </Flex>
         </CellTemplate>
     </DataGridColumnDef>
-    <DataGridColumnDef TItem=""Employee"" Title=""Department"" Field=""Department""
-                       Sortable=""true"" Filterable=""true"" />
-    <DataGridColumnDef TItem=""Employee"" Title=""Salary"" Field=""Salary""
-                       Sortable=""true"" Filterable=""true""
-                       FilterType=""DataGridFilterType.Number""
-                       Format=""C0"" Aggregate=""AggregateType.Average"" />
-    <DataGridColumnDef TItem=""Employee"" Title=""Status"" Field=""Status""
-                       Filterable=""true"">
+    <DataGridColumnDef TItem=""Employee"" Title=""Department"" Field=""Department"" Sortable=""true"" Filterable=""true"" Width=""140"" />
+    <DataGridColumnDef TItem=""Employee"" Title=""Salary"" Field=""Salary"" Sortable=""true"" Filterable=""true"" FilterType=""DataGridFilterType.Number"" Format=""$#,##0"" Width=""120"" Aggregate=""AggregateType.Average"" />
+    <DataGridColumnDef TItem=""Employee"" Title=""Status"" Field=""Status"" Filterable=""true"" Width=""100"">
         <CellTemplate>
             <Badge Variant=""@(context.Status == ""Active"" ? Badge.BadgeVariant.Default : Badge.BadgeVariant.Secondary)"">
                 @context.Status
             </Badge>
         </CellTemplate>
     </DataGridColumnDef>
+    <DataGridColumnDef TItem=""Employee"" Title=""Start Date"" Field=""StartDate"" Sortable=""true"" Format=""yyyy-MM-dd"" Width=""130"" />
 </DataGrid>";
 
 }
