@@ -69,10 +69,10 @@ public class DateTimePickerJalaliTests : IAsyncLifetime
     }
 
     [Fact]
-    public void Embedded_Calendar_Is_Jalali_With_Persian_Header_Under_Fa()
+    public void Embedded_Calendar_Is_Jalali_With_Persian_Header_Under_Fa_Culture_Parameter()
     {
         var saved = CultureInfo.CurrentCulture;
-        CultureInfo.CurrentCulture = new CultureInfo("fa-IR");
+        CultureInfo.CurrentCulture = new CultureInfo("en-US");
         try
         {
             var cut = Render(L.CalendarSystem.Jalali, "fa-IR", new DateTime(2024, 10, 3, 14, 5, 0));

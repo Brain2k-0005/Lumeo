@@ -13,6 +13,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `yyyy/MM/dd` plus the time (a custom `DateFormat` resolves its `y`/`M`/`d` tokens against the
   Persian calendar), and under a `fa` culture digits and the AM/PM labels render in Persian.
   `Value` stays a Gregorian `DateTime`. (#547)
+- **`Calendar` and `DateRangePicker` get a `Culture` parameter**, and `DatePicker`, `DateRangePicker`
+  and `DateTimePicker` now pass their culture to the inner calendar. Month and weekday names,
+  digits and the default first day of the week previously always followed
+  `CultureInfo.CurrentCulture`, so `Culture="fa-IR"` on a picker translated the trigger text but not
+  the grid. Unset, behaviour is unchanged. (#547)
 
 ## [5.13.0] - 2026-11-08
 
