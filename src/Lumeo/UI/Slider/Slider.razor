@@ -2,6 +2,7 @@
 @using System.Globalization
 @inject Lumeo.Services.Localization.ILumeoLocalizer L
 @inject Lumeo.Services.IComponentInteropService Interop
+@implements IAsyncDisposable
 
 @* Render the label, control and helper/error as ONE self-contained vertical block so the
    field never splays into a row when dropped in a flex / centered container. Standalone
@@ -66,7 +67,7 @@ else if (IsRange)
                 <div class="h-1.5 w-full rounded-full @(EffectiveInvalid ? "bg-destructive/20" : "bg-muted")" data-orientation="@OrientationData" data-disabled="@DisabledData"></div>
             </div>
             <div class="absolute inset-0 flex items-center" style="pointer-events: none;">
-                <div class="h-1.5 rounded-full @(EffectiveInvalid ? "bg-destructive" : "bg-primary")" style="@RangeBarStyle" data-orientation="@OrientationData" data-disabled="@DisabledData"></div>
+                <div id="@_barId" class="h-1.5 rounded-full @(EffectiveInvalid ? "bg-destructive" : "bg-primary")" style="@RangeBarStyle" data-orientation="@OrientationData" data-disabled="@DisabledData"></div>
             </div>
             <div class="relative flex items-center" style="pointer-events: none;">
                 @* Both inputs overlay the full track, so hit-testing must live on
@@ -81,6 +82,7 @@ else if (IsRange)
                        id="@StartInputId" aria-describedby="@FormFieldDescribedBy"
                        data-orientation="@OrientationData" data-disabled="@DisabledData"
                        class="@RangeInputClasses"
+                       data-min-gap="@MinGapAttr"
                        @oninput="OnStartInput" />
                 <input data-slot="slider-control" type="range" min="@Min" max="@Max" step="@Step" value="@ValueEnd" disabled="@Disabled"
                        aria-label="@EndAriaLabel" aria-valuemin="@EndThumbMin" aria-valuemax="@Max" aria-valuenow="@ValueEnd" aria-valuetext="@ValueText(ValueEnd)"
@@ -90,6 +92,7 @@ else if (IsRange)
                        id="@_endId"
                        data-orientation="@OrientationData" data-disabled="@DisabledData"
                        class="@RangeInputClasses"
+                       data-min-gap="@MinGapAttr"
                        style="position: absolute; left: 0; width: 100%;"
                        @oninput="OnEndInput" />
             </div>
@@ -99,7 +102,7 @@ else if (IsRange)
                     @foreach (var mark in GetTickValues())
                     {
                         var pos = GetPercent(mark);
-                        <div class="absolute flex flex-col items-center" style="left: @(pos)%; transform: translateX(-50%);">
+                        <div class="absolute flex flex-col items-center" style="left: @ThumbOffset(pos); transform: translateX(-50%);">
                             @if (ShowTicks)
                             {
                                 <div class="h-1 w-px bg-muted-foreground/50"></div>
@@ -288,6 +291,10 @@ else
     private bool _showTooltipThumb;
     private readonly string _startId = LumeoIds.New("slider-start");
     private readonly string _endId = LumeoIds.New("slider-end");
+    private readonly string _barId = LumeoIds.New("slider-range");
+    private string MinGapAttr => Inv(MinGap);
+    private bool _rangeRegistered;
+    private bool _disposed;
     private string StartInputId => FormFieldControlId ?? _startId;
 
     // A zero / negative / NaN / Infinite Step is meaningless for a slider: the
@@ -371,6 +378,29 @@ else
     // keeping native min/max in agreement with ARIA). WAI-ARIA multi-thumb slider.
     private double StartThumbMax => Math.Max(Min, ValueEnd - MinGap);
     private double EndThumbMin => Math.Min(Max, Value + MinGap);
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        // The elements persist across renders while in range mode, so (re)register only when the
+        // mode flips (switching branches creates fresh elements under the same ids).
+        var wantRange = IsRange && !string.Equals(Orientation, "Vertical", StringComparison.Ordinal);
+        if (wantRange == _rangeRegistered || _disposed) return;
+        _rangeRegistered = wantRange;
+        try
+        {
+            if (wantRange) await Interop.RegisterRangeSlider(StartInputId, _endId, _barId);
+            else await Interop.UnregisterRangeSlider(StartInputId);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        _disposed = true;
+        if (!_rangeRegistered) return;
+        try { await Interop.UnregisterRangeSlider(StartInputId); }
+        catch (JSDisconnectedException) { }
+    }
 
     private static string Inv(double v) => v.ToString("R", CultureInfo.InvariantCulture);
 

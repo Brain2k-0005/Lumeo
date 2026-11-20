@@ -145,4 +145,38 @@ public class SliderRangeNativeBoundsTests : IAsyncLifetime
         Assert.Contains("margin-left: calc(8px + (100% - 16px) * 0.25)", style);
         Assert.Contains("width: calc((100% - 16px) * 0.5)", style);
     }
+
+    [Fact]
+    public void Range_inputs_carry_the_min_gap_for_the_client_side_clamp_and_register_it()
+    {
+        var cut = Range(20, 60, minSteps: 2, step: 5);
+        var inputs = cut.FindAll("input[type=range]");
+
+        Assert.Equal("10", inputs[0].GetAttribute("data-min-gap"));
+        Assert.Equal("10", inputs[1].GetAttribute("data-min-gap"));
+        var call = _module.VerifyInvoke("registerRangeSlider");
+        Assert.Equal(inputs[0].Id, call.Arguments[0]);
+        Assert.Equal(inputs[1].Id, call.Arguments[1]);
+        Assert.Equal(cut.Find("div[id^='slider-range'][style*='margin-left']").Id, call.Arguments[2]);
+    }
+
+    [Fact]
+    public async Task Disposing_unregisters_the_client_side_clamp()
+    {
+        var cut = Range(20, 60);
+        await cut.Instance.DisposeAsync();
+        _module.VerifyInvoke("unregisterRangeSlider");
+    }
+
+    [Fact]
+    public void Range_ticks_use_the_same_half_thumb_inset_as_the_bar()
+    {
+        var cut = _ctx.Render<L.Slider>(p => p
+            .Add(s => s.IsRange, true).Add(s => s.Value, 20d).Add(s => s.ValueEnd, 60d)
+            .Add(s => s.ShowTicks, true).Add(s => s.Marks, new List<double> { 0, 50, 100 }));
+
+        var styles = cut.FindAll("div.absolute.flex-col").Select(d => d.GetAttribute("style")!).ToList();
+        Assert.Contains(styles, st => st.Contains("left: calc(8px + (100% - 16px) * 0.5)"));
+        Assert.Contains(styles, st => st.Contains("left: calc(8px + (100% - 16px) * 0)"));
+    }
 }

@@ -1162,6 +1162,26 @@ public sealed class ComponentInteropService : IComponentInteropService
         catch (JSDisconnectedException) { }
     }
 
+    public async ValueTask RegisterRangeSlider(string startId, string endId, string barId)
+    {
+        try
+        {
+            var module = await GetModuleAsync();
+            await module.InvokeVoidAsync("registerRangeSlider", startId, endId, barId);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
+    public async ValueTask UnregisterRangeSlider(string startId)
+    {
+        try
+        {
+            var module = await GetModuleAsync();
+            await module.InvokeVoidAsync("unregisterRangeSlider", startId);
+        }
+        catch (JSDisconnectedException) { }
+    }
+
     public async ValueTask SetInputValue(string elementId, string value)
     {
         try

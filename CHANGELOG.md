@@ -20,7 +20,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   scale, the reachable bound is enforced in the input handlers (and still announced through
   `aria-valuemin`/`aria-valuemax`), a clamped drag is written back onto the element even when the
   model value did not change, and the bar is inset by half a thumb so it spans exactly the thumb
-  centres. (#555)
+  centres. A synchronous client-side clamp (through `ComponentInteropService`) keeps the thumbs
+  from crossing and the bar glued to them even while a Blazor Server round-trip is in flight; the
+  server-side clamp stays authoritative. Range tick marks use the same half-thumb inset. (#555)
 
 ## [5.13.0] - 2026-11-08
 

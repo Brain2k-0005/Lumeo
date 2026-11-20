@@ -6959,6 +6959,55 @@ export function setInputCaret(elementId, position) {
 
 // Force the live DOM value of a masked <input> when Blazor's diff won't patch it
 // (the re-masked display equals the previous render after a rejected char, #41).
+// --- Range Slider: synchronous clamp + live bar (the two native thumbs must never cross,
+// even while a Blazor Server round-trip is in flight). The server-side clamp stays
+// authoritative; this only removes the visible latency window. ---
+const rangeSliders = new Map();
+
+export function registerRangeSlider(startId, endId, barId) {
+    unregisterRangeSlider(startId);
+    const a = document.getElementById(startId);
+    const b = document.getElementById(endId);
+    const bar = document.getElementById(barId);
+    if (!a || !b) return;
+    const pct = (inp, v) => {
+        const min = parseFloat(inp.min), max = parseFloat(inp.max);
+        return max > min ? (v - min) / (max - min) : 0;
+    };
+    const paintBar = () => {
+        if (!bar) return;
+        const p1 = pct(a, parseFloat(a.value)), p2 = pct(b, parseFloat(b.value));
+        const lo = Math.min(p1, p2), hi = Math.max(p1, p2);
+        bar.style.marginLeft = `calc(8px + (100% - 16px) * ${lo})`;
+        bar.style.width = `calc((100% - 16px) * ${hi - lo})`;
+    };
+    const onStart = () => {
+        const gap = parseFloat(a.dataset.minGap) || 0;
+        const ceiling = parseFloat(b.value) - gap;
+        const min = parseFloat(a.min);
+        if (parseFloat(a.value) > ceiling) a.value = String(Math.max(min, ceiling));
+        paintBar();
+    };
+    const onEnd = () => {
+        const gap = parseFloat(b.dataset.minGap) || 0;
+        const floor = parseFloat(a.value) + gap;
+        const max = parseFloat(b.max);
+        if (parseFloat(b.value) < floor) b.value = String(Math.min(max, floor));
+        paintBar();
+    };
+    a.addEventListener('input', onStart);
+    b.addEventListener('input', onEnd);
+    rangeSliders.set(startId, { a, b, onStart, onEnd });
+}
+
+export function unregisterRangeSlider(startId) {
+    const r = rangeSliders.get(startId);
+    if (!r) return;
+    r.a.removeEventListener('input', r.onStart);
+    r.b.removeEventListener('input', r.onEnd);
+    rangeSliders.delete(startId);
+}
+
 export function setInputValue(elementId, value) {
     const el = document.getElementById(elementId);
     if (!el) return;
