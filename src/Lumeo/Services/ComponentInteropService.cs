@@ -569,6 +569,11 @@ public sealed class ComponentInteropService : IComponentInteropService
     public async Task OnSortableTouchDrop(string containerId, int source, int target)
         => await _sortable.OnSortableTouchDrop(containerId, source, target);
 
+    /// <summary>Touch drag between two lists sharing a <c>Group</c>: JS reports source container + index and target container + index.</summary>
+    [JSInvokable]
+    public async Task OnSortableTouchTransfer(string sourceContainerId, int sourceIndex, string targetContainerId, int targetIndex)
+        => await SortableGroupRegistry.For(this).TouchTransferAsync(sourceContainerId, sourceIndex, targetContainerId, targetIndex);
+
     // --- Carousel Swipe ---
 
     public async ValueTask RegisterCarouselSwipe(string elementId, string orientation, Func<string, Task> swipeHandler, Func<double, double, int, Task> scrollHandler)

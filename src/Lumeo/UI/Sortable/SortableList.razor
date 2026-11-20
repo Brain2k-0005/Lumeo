@@ -1,10 +1,13 @@
 @namespace Lumeo
 @typeparam TItem
 @implements IAsyncDisposable
+@implements ISortableGroupMember
 @inject Lumeo.Services.IComponentInteropService Interop
 @inject Lumeo.Services.Localization.ILumeoLocalizer L
 
-<div data-slot="sortable-list" id="@_containerId" role="list" class="@CssClass" data-sortable-group="@Group" @attributes="AdditionalAttributes">
+<div data-slot="sortable-list" id="@_containerId" role="list" class="@CssClass" data-sortable-group="@Group" @attributes="AdditionalAttributes"
+     @ondragover:preventDefault="@Grouped"
+     @ondrop="OnContainerDrop">
     @foreach (var (item, index) in _items.Select((x, i) => (x, i)))
     {
         <div @key="@KeyFor(item, index)" role="listitem" class="@GetItemClass(index)"
@@ -16,13 +19,14 @@
              @ondragover="() => OnDragOver(index)"
              @ondragleave="OnDragLeave"
              @ondrop="() => OnDrop(index)"
+             @ondrop:stopPropagation="true"
              @ondragend="OnDragEnd">
             @if (Handle && !Disabled)
             {
                 <div id="@HandleId(index)"
                      class="flex-shrink-0 cursor-grab active:cursor-grabbing text-muted-foreground hover:text-foreground me-2 flex items-center justify-center h-11 w-11 -my-2 sm:h-6 sm:w-6 sm:my-0 rounded focus-visible:outline-none focus-visible:ring-[1.5px] focus-visible:ring-ring focus-visible:ring-offset-1"
                      role="button" aria-label="@L["Sortable.DragHandleItem", index + 1, _items.Count]"
-                     aria-keyshortcuts="ArrowUp ArrowDown Home End" tabindex="0"
+                     aria-keyshortcuts="@(Grouped ? "ArrowUp ArrowDown ArrowLeft ArrowRight Home End" : "ArrowUp ArrowDown Home End")" tabindex="0"
                      @onkeydown="e => OnHandleKeyDown(e, index)">
                     <SvgGlyph Svg="@(LumeoIcons.GripVertical)" class="h-4 w-4" />
                 </div>
@@ -34,6 +38,12 @@
                 }
             </div>
         </div>
+    }
+    @if (Grouped)
+    {
+        @* Drop zone below the last row (and the whole body of an empty list): dropping a
+           row from a sibling list here appends it. Bubbles to the container's @ondrop. *@
+        <div aria-hidden="true" data-slot="sortable-drop-zone" class="min-h-6 flex-1"></div>
     }
 </div>
 
@@ -55,13 +65,25 @@
     [Parameter] public bool Disabled { get; set; }
 
     /// <summary>
-    /// Optional shared-group name. When set, it is emitted on the container as a
-    /// <c>data-sortable-group</c> attribute so groups are observable in the DOM.
-    /// NOTE: cross-list transfer between lists that share a group is NOT yet
-    /// implemented — the attribute is reserved for that future capability and
-    /// current behaviour is intra-list reordering only.
+    /// Optional shared-group name. Lists that use the same non-empty <c>Group</c> (within one
+    /// user session) let rows be dragged from one list into any position of another, via
+    /// mouse, touch, or the keyboard (focus a drag handle and press ArrowLeft / ArrowRight
+    /// to send the row to the previous / next list of the group). The source list raises
+    /// <see cref="ItemsChanged"/> without the item, the target list raises it with the item
+    /// inserted at the drop index, and <see cref="OnTransfer"/> fires on both. Lists with a
+    /// different or empty group never exchange rows, and a list only accepts items that
+    /// are assignable to its <c>TItem</c>. The group name is also emitted on the container as
+    /// <c>data-sortable-group</c>.
     /// </summary>
     [Parameter] public string? Group { get; set; }
+
+    /// <summary>
+    /// Raised on BOTH the source and the target list after a row has moved between lists
+    /// that share a <see cref="Group"/> (via drag, touch, or keyboard), in addition to the
+    /// two <see cref="ItemsChanged"/> notifications. Does not fire for in-list reorders
+    /// (see <see cref="OnReorder"/>).
+    /// </summary>
+    [Parameter] public EventCallback<SortableTransfer> OnTransfer { get; set; }
 
     /// <summary>
     /// Raised in addition to <see cref="ItemsChanged"/> whenever an item is
@@ -109,6 +131,14 @@
     private int _focusHandleIndex = -1;
     // #40 (a11y): last reorder message surfaced through the aria-live region.
     private string _reorderAnnouncement = string.Empty;
+
+    private SortableGroupRegistry _registry = default!;
+
+    protected override void OnInitialized()
+    {
+        _registry = SortableGroupRegistry.For(Interop);
+        _registry.Register(this);
+    }
 
     protected override void OnParametersSet()
     {
@@ -232,7 +262,9 @@
             {
                 await Interop.RegisterPreventDefaultKeys(
                     _containerId,
-                    new[] { "ArrowDown", "ArrowUp", "Home", "End" }
+                    (Grouped
+                        ? new[] { "ArrowDown", "ArrowUp", "ArrowLeft", "ArrowRight", "Home", "End" }
+                        : new[] { "ArrowDown", "ArrowUp", "Home", "End" })
                         .Select(k => new Lumeo.Services.PreventDefaultKeyRule(k, SkipEditable: true)).ToArray());
                 _pdRegistered = true;
             }
@@ -280,6 +312,8 @@
 
     public async ValueTask DisposeAsync()
     {
+        _registry?.Unregister(this);
+
         if (_touchRegistered)
         {
             try
@@ -301,7 +335,9 @@
         }
     }
 
-    private string CssClass => Cx.Merge("flex flex-col gap-1", Class);
+    private bool Grouped => !string.IsNullOrEmpty(Group);
+
+    private string CssClass => Cx.Merge("flex flex-col gap-1", Cx.When(Grouped, "min-h-16"), Class);
 
     private string HandleId(int index) => $"{_containerId}-handle-{index}";
 
@@ -345,6 +381,8 @@
     private void OnDragStart(int index)
     {
         _dragFromIndex = index;
+        if (Grouped)
+            _registry.BeginDrag(this, index);
     }
 
     private void OnDragOver(int index)
@@ -357,8 +395,26 @@
         _dragOverIndex = -1;
     }
 
+    // Dropping a row from a SIBLING list (same Group) onto one of this list's rows inserts it
+    // before that row; dropping on the empty space of the list appends it.
+    private async Task OnContainerDrop()
+    {
+        if (_dragFromIndex >= 0 || !Grouped)
+            return;
+        _dragOverIndex = -1;
+        await _registry.DropOnAsync(this, _items.Count);
+    }
+
     private async Task OnDrop(int toIndex)
     {
+        if (_dragFromIndex < 0)
+        {
+            _dragOverIndex = -1;
+            if (Grouped)
+                await _registry.DropOnAsync(this, toIndex);
+            return;
+        }
+
         // #21: bound-check both endpoints against the CURRENT list (it may have
         // shrunk mid-drag) before indexing, mirroring HandleTouchDrop's guard.
         if (_dragFromIndex < 0 || _dragFromIndex >= _items.Count
@@ -383,6 +439,7 @@
 
     private void OnDragEnd()
     {
+        _registry.EndDrag(this);
         _dragFromIndex = -1;
         _dragOverIndex = -1;
     }
@@ -410,6 +467,10 @@
             case "End":
                 target = _items.Count - 1;
                 break;
+            case "ArrowLeft":
+            case "ArrowRight":
+                await TransferToNeighbourAsync(index, e.Key == "ArrowRight" ? 1 : -1);
+                return;
             default:
                 return;
         }
@@ -423,6 +484,54 @@
 
         _focusHandleIndex = target;
         await NotifyReordered(item, index, target);
+    }
+
+    // Keyboard cross-list move: send the focused row to the previous/next list of the group
+    // (registration = render order), keeping its position (clamped) and moving focus with it.
+    private async Task TransferToNeighbourAsync(int index, int direction)
+    {
+        if (!Grouped || index < 0 || index >= _items.Count)
+            return;
+        var peers = _registry.Peers(this);
+        var peerIndex = -1;
+        for (var i = 0; i < peers.Count; i++)
+            if (ReferenceEquals(peers[i], this)) { peerIndex = i; break; }
+        var targetIndex = peerIndex + direction;
+        if (peerIndex < 0 || targetIndex < 0 || targetIndex >= peers.Count)
+            return;
+        var peer = peers[targetIndex];
+        var at = Math.Min(index, peer.Count);
+        if (await _registry.TransferAsync(this, index, peer, at))
+            peer.RequestHandleFocus(at);
+    }
+
+    // ISortableGroupMember — explicit so none of this becomes public API.
+    string ISortableGroupMember.ContainerId => _containerId;
+    string? ISortableGroupMember.Group => Group;
+    bool ISortableGroupMember.Disabled => Disabled;
+    int ISortableGroupMember.Count => _items.Count;
+    object? ISortableGroupMember.ItemAt(int index) => _items[index];
+    bool ISortableGroupMember.CanAccept(object? item) => item is TItem || (item is null && default(TItem) is null);
+    Task ISortableGroupMember.RunAsync(Func<Task> work) => InvokeAsync(work);
+    void ISortableGroupMember.RemoveForTransfer(int index) => _items.RemoveAt(index);
+    void ISortableGroupMember.InsertForTransfer(object? item, int index) => _items.Insert(index, (TItem)item!);
+    void ISortableGroupMember.ResetDragState() { _dragFromIndex = -1; _dragOverIndex = -1; }
+    void ISortableGroupMember.RequestHandleFocus(int index) { _focusHandleIndex = index; StateHasChanged(); }
+
+    async Task ISortableGroupMember.NotifyTransferAsync(object? item, string group, string sourceId, int oldIndex, string targetId, int newIndex)
+    {
+        var typed = (TItem)item!;
+        if (targetId == _containerId)
+            _reorderAnnouncement = L["Sortable.Moved", typed?.ToString() ?? string.Empty, newIndex + 1, _items.Count];
+
+        // Same controlled-rollback bookkeeping as NotifyReordered: record the pushed
+        // snapshot BEFORE invoking ItemsChanged so a @bind-Items echo is recognised.
+        var pushed = _items.ToList();
+        _lastPushedItems = pushed;
+        StateHasChanged();
+        await ItemsChanged.InvokeAsync(pushed);
+        if (OnTransfer.HasDelegate)
+            await OnTransfer.InvokeAsync(new SortableTransfer(typed, group, sourceId, oldIndex, targetId, newIndex));
     }
 
     private async Task NotifyReordered(TItem item, int oldIndex, int newIndex)
@@ -458,4 +567,14 @@
     /// the list. Supplied to <see cref="OnReorder"/>.
     /// </summary>
     public record SortableMoved(TItem Item, int OldIndex, int NewIndex);
+
+    /// <summary>
+    /// Payload describing a row that moved between two lists of the same <see cref="Group"/>:
+    /// the moved <paramref name="Item"/>, the shared <paramref name="Group"/>, the DOM ids of
+    /// the <paramref name="SourceListId"/> / <paramref name="TargetListId"/> containers
+    /// (<c>data-slot="sortable-list"</c> elements), and the index it left
+    /// (<paramref name="OldIndex"/>, in the source list) and now occupies
+    /// (<paramref name="NewIndex"/>, in the target list). Supplied to <see cref="OnTransfer"/>.
+    /// </summary>
+    public record SortableTransfer(TItem Item, string Group, string SourceListId, int OldIndex, string TargetListId, int NewIndex);
 }
