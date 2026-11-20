@@ -344,7 +344,9 @@ public class SchedulerJalaliTests : IAsyncLifetime
             .Add(c => c.AnchorDate, new DateTime(2024, 3, 20))
             .Add(c => c.DaysToShow, 1));
 
-        Assert.Contains("2:30 PM", cut.Find("[role='listitem']").TextContent);
+        // ICU (Linux CI) separates the time and the designator with U+202F, Windows NLS with a space.
+        var text = cut.Find("[role='listitem']").TextContent.Replace(' ', ' ').Replace(' ', ' ');
+        Assert.Contains("2:30 PM", text);
     }
 
     [Fact]
