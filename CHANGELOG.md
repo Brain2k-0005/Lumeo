@@ -5,6 +5,11 @@ All notable changes to Lumeo will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+- `Rating`: hover preview is now pure CSS and the star DOM is stable. The previous `@onmouseover`/`@onmouseout` handlers re-rendered the component on every pointer move and replaced the star nodes under the pointer, so the preview lagged behind the cursor and a click on a different star than the first one was often swallowed (mousedown and mouseup hit different nodes). Clicks now always commit the clicked star; keyboard, `AllowHalf` and `ReadOnly` behave as before (#592).
+
 ## [5.15.0] - 2026-11-22
 
 ### Added

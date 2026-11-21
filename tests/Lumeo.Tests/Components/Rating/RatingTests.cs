@@ -250,4 +250,77 @@ public class RatingTests : IAsyncLifetime
         Assert.Single(after, b => b.GetAttribute("tabindex") == "0");
         Assert.Equal("0", after[2].GetAttribute("tabindex"));
     }
+
+    // --- #592: hover preview must be CSS-only; clicks must commit the clicked star ---
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(3)]
+    [InlineData(5)]
+    public async Task Click_Commits_The_Clicked_Star_Regardless_Of_Prior_Hover(int star)
+    {
+        double? changed = null;
+        var cut = _ctx.Render<Lumeo.Rating>(p => p
+            .Add(r => r.Value, 2)
+            .Add(r => r.ValueChanged, v => changed = v));
+        var buttons = cut.FindAll("button");
+
+        // Pointer enters a DIFFERENT star first (pre-fix code kept hover as component state).
+        await buttons[(star % 5)].TriggerEventAsync("onpointerenter", new PointerEventArgs { PointerType = "mouse" });
+        await cut.FindAll("button")[star - 1].ClickAsync();
+
+        Assert.Equal(star, changed);
+    }
+
+    [Fact]
+    public void AllowHalf_Click_On_Selected_Star_Toggles_To_Half()
+    {
+        double? changed = null;
+        var cut = _ctx.Render<Lumeo.Rating>(p => p
+            .Add(r => r.Value, 3)
+            .Add(r => r.AllowHalf, true)
+            .Add(r => r.ValueChanged, v => changed = v));
+
+        cut.FindAll("button")[2].Click();
+        Assert.Equal(2.5, changed);
+
+        cut.FindAll("button")[4].Click();
+        Assert.Equal(5, changed);
+    }
+
+    [Fact]
+    public void Hover_Has_No_Server_Event_Handlers()
+    {
+        var cut = _ctx.Render<Lumeo.Rating>(p => p.Add(r => r.Value, 2));
+
+        // The hover preview is CSS; there must be no mouseover/mouseout round-trip to throw it off.
+        foreach (var b in cut.FindAll("button"))
+        {
+            Assert.Throws<Bunit.MissingEventHandlerException>(() => b.MouseOver());
+            Assert.Throws<Bunit.MissingEventHandlerException>(() => b.MouseOut());
+        }
+    }
+
+    [Fact]
+    public void Fill_Layer_Is_Always_Rendered_And_Only_Attribute_Differs()
+    {
+        var cut = _ctx.Render<Lumeo.Rating>(p => p
+            .Add(r => r.Value, 2.5)
+            .Add(r => r.AllowHalf, true));
+
+        var fills = cut.FindAll("[data-slot='rating-fill']");
+        Assert.Equal(5, fills.Count);
+        Assert.Equal(new[] { "full", "full", "half", "none", "none" },
+            fills.Select(f => f.GetAttribute("data-fill")).ToArray());
+    }
+
+    [Fact]
+    public void ReadOnly_Marks_Group_So_Hover_Preview_Is_Off()
+    {
+        var ro = _ctx.Render<Lumeo.Rating>(p => p.Add(r => r.ReadOnly, true));
+        Assert.Equal("true", ro.Find("[data-slot='rating-group']").GetAttribute("data-readonly"));
+
+        var live = _ctx.Render<Lumeo.Rating>();
+        Assert.False(live.Find("[data-slot='rating-group']").HasAttribute("data-readonly"));
+    }
 }

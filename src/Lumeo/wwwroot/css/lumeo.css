@@ -2523,3 +2523,18 @@ input[type="range"]:focus-visible::-moz-range-thumb {
 /* An editor's Input fills its row. Input's root is a flex column sized to the field's intrinsic
    width, which in a fused row left the buttons clipped and the field short; here it stretches. */
 [data-slot="filter-editor"] [data-slot="input"] { flex: 1 1 0%; min-width: 0; width: 100%; align-items: stretch; }
+
+/* Rating: hover preview is pure CSS so it needs no server/WASM round-trip and never mutates the
+   DOM under the pointer (a re-render there swallowed clicks and made the highlight lag, #592).
+   Fill layer is always present; data-fill picks how much of it shows. Hovering star N lights
+   stars 1..N via the sibling combinator. Inner nodes ignore the pointer so every pointer event
+   targets the star button itself. */
+[data-slot="rating-star"] > span { pointer-events: none; }
+[data-slot="rating-fill"] { opacity: 0; }
+[data-slot="rating-fill"][data-fill="full"] { opacity: 1; }
+[data-slot="rating-fill"][data-fill="half"] { opacity: 1; clip-path: inset(0 50% 0 0); }
+[data-slot="rating-group"]:not([data-readonly]) [data-slot="rating-star"]:hover [data-slot="rating-fill"],
+[data-slot="rating-group"]:not([data-readonly]) [data-slot="rating-star"]:has(~ [data-slot="rating-star"]:hover) [data-slot="rating-fill"] {
+  opacity: 1;
+  clip-path: none;
+}
