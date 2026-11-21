@@ -156,6 +156,8 @@ public sealed class RegistryComponent
     [JsonPropertyName("deprecated")] public bool Deprecated { get; set; }
     [JsonPropertyName("testCoverage")] public TestCoverageInfo? TestCoverage { get; set; }
     [JsonIgnore] public string Slug { get; set; } = "";
+    /// <summary>Docs route for this entry. A deprecated component's slug is taken over by its replacement's page (e.g. /components/gantt is GanttChart), so its own page lives at <c>{slug}-legacy</c>. Registry slugs (CLI/MCP) are unaffected.</summary>
+    [JsonIgnore] public string DocsHref => Deprecated ? $"components/{Slug}-legacy" : $"components/{Slug}";
 }
 
 /// <summary>

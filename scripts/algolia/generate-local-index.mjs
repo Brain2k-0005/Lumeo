@@ -39,10 +39,10 @@ const componentItems = Object.entries(registry.components)
     .map(([slug, c]) => ({
         id: `component:${slug}`,
         type: 'component',
-        title: c.name,
+        title: c.deprecated ? `${c.name} (Deprecated)` : c.name,
         summary: c.description,
         category: c.category,
-        url: `/components/${slug}`,
+        url: c.deprecated ? `/components/${slug}-legacy` : `/components/${slug}`,
     }));
 
 // --- App-page blocks (the full-page blocks routed under /blocks/*) ---
