@@ -101,31 +101,10 @@ var componentToPackage = new Dictionary<string, string>(StringComparer.OrdinalIg
     ["ShimmerButton"] = "Lumeo.Motion",
     ["Sparkles"] = "Lumeo.Motion",
     ["TextReveal"] = "Lumeo.Motion",
-    // Motion satellite — Phase 2 (10 Tier-1 components)
+    // Motion satellite — Phase 2
     ["AnimatedBeam"] = "Lumeo.Motion",
-    ["AnimatedGradientText"] = "Lumeo.Motion",
     ["Confetti"] = "Lumeo.Motion",
     ["Dock"] = "Lumeo.Motion",
-    ["Globe"] = "Lumeo.Motion",
-    ["MagneticButton"] = "Lumeo.Motion",
-    ["Meteors"] = "Lumeo.Motion",
-    ["Ripple"] = "Lumeo.Motion",
-    ["Spotlight"] = "Lumeo.Motion",
-    ["TypingAnimation"] = "Lumeo.Motion",
-    // Motion satellite — Phase 3 (13 Tier-2 components)
-    ["OrbitingCircles"] = "Lumeo.Motion",
-    ["AnimatedCircularProgressBar"] = "Lumeo.Motion",
-    ["WordRotate"] = "Lumeo.Motion",
-    ["RetroGrid"] = "Lumeo.Motion",
-    ["AuroraBackground"] = "Lumeo.Motion",
-    ["BackgroundBeams"] = "Lumeo.Motion",
-    ["MorphingText"] = "Lumeo.Motion",
-    ["AnimatedGridPattern"] = "Lumeo.Motion",
-    ["ShineBorder"] = "Lumeo.Motion",
-    ["MagicCard"] = "Lumeo.Motion",
-    ["AnimatedSubscribeButton"] = "Lumeo.Motion",
-    ["NumberCountUp"] = "Lumeo.Motion",
-    ["HoverBorderGradient"] = "Lumeo.Motion",
 };
 
 // Category map derived from README.md structure.
@@ -281,29 +260,8 @@ var categoryMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCas
     ["ShimmerButton"] = "Motion",
     ["Sparkles"] = "Motion",
     ["AnimatedBeam"] = "Motion",
-    ["AnimatedGradientText"] = "Motion",
     ["Confetti"] = "Motion",
     ["Dock"] = "Motion",
-    ["Globe"] = "Motion",
-    ["MagneticButton"] = "Motion",
-    ["Meteors"] = "Motion",
-    ["Ripple"] = "Motion",
-    ["Spotlight"] = "Motion",
-    ["TypingAnimation"] = "Motion",
-    // Phase 3 Tier-2
-    ["OrbitingCircles"] = "Motion",
-    ["AnimatedCircularProgressBar"] = "Motion",
-    ["WordRotate"] = "Motion",
-    ["RetroGrid"] = "Motion",
-    ["AuroraBackground"] = "Motion",
-    ["BackgroundBeams"] = "Motion",
-    ["MorphingText"] = "Motion",
-    ["AnimatedGridPattern"] = "Motion",
-    ["ShineBorder"] = "Motion",
-    ["MagicCard"] = "Motion",
-    ["AnimatedSubscribeButton"] = "Motion",
-    ["NumberCountUp"] = "Motion",
-    ["HoverBorderGradient"] = "Motion",
     // Dashboard
     ["Bento"] = "Dashboard",
     ["KpiCard"] = "Dashboard",
@@ -366,7 +324,6 @@ var descriptions = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCa
     ["Badge"] = "Small label for counts, statuses, or category tags.",
     ["Bento"] = "Masonry grid for dashboard tiles and marketing feature layouts.",
     ["AnimatedBeam"] = "SVG beam that traces an animated gradient path between two DOM elements.",
-    ["AnimatedGradientText"] = "Text with a multi-stop gradient that shifts hue over time.",
     ["BlurFade"] = "Motion primitive: blur + fade-in on mount or when in view.",
     ["BorderBeam"] = "Animated gradient border beam effect for hero elements.",
     ["BottomNav"] = "Mobile-first bottom navigation bar with icon items.",
@@ -430,11 +387,8 @@ var descriptions = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCa
     ["MapPolyline"] = "Polyline layer on Map connecting an ordered list of coordinate points.",
     ["Confetti"] = "Burst of colored particles on demand via imperative Fire() method.",
     ["Dock"] = "macOS-style icon dock with cursor-proximity magnification.",
-    ["Globe"] = "Stylized rotating 3D globe rendered on canvas with dotted lat/long lines.",
-    ["MagneticButton"] = "Container that translates toward the cursor within a configurable radius.",
     ["Marquee"] = "Infinitely scrolling horizontal band of children.",
     ["MegaMenu"] = "Full-width dropdown for site-wide navigation with columns.",
-    ["Meteors"] = "Falling angled meteor streaks for dramatic decorative backgrounds.",
     ["Mention"] = "Textarea with @-trigger dropdown for mentioning users.",
     ["Menubar"] = "Horizontal menubar with File/Edit-style dropdowns.",
     ["NavigationMenu"] = "Top-level site nav with animated dropdown panels.",
@@ -472,9 +426,7 @@ var descriptions = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCa
     ["Spacer"] = "Flex-grow spacer that pushes siblings apart.",
     ["SparkCard"] = "Small dashboard card with an inline sparkline chart.",
     ["Sparkline"] = "Inline SVG trend chart primitive — line, area, or bars for tables and KPI strips.",
-    ["Ripple"] = "Concentric expanding circles emanating from a container center.",
     ["Sparkles"] = "Decorative sparkle particle animation.",
-    ["Spotlight"] = "Container with a radial gradient spotlight that follows the cursor.",
     ["SpeedDial"] = "Floating action button that fans out sub-actions.",
     ["Spinner"] = "Indeterminate loading spinner with size variants.",
     ["Splitter"] = "Resizable split pane for horizontal/vertical layouts.",
@@ -489,7 +441,6 @@ var descriptions = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCa
     ["TagInput"] = "Input that turns entries into removable tag chips.",
     ["Text"] = "Paragraph text with size, color, weight props.",
     ["TextReveal"] = "Word-by-word reveal animation on scroll.",
-    ["TypingAnimation"] = "Renders text one character at a time with optional blinking cursor.",
     ["Textarea"] = "Multiline text input with auto-resize option.",
     ["ThemeSwitcher"] = "Color-scheme picker that writes to ThemeService.",
     ["ThemeToggle"] = "Dark/light mode toggle button.",
@@ -505,20 +456,6 @@ var descriptions = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCa
     ["TreeSelect"] = "Select input with a hierarchical tree dropdown.",
     ["TreeView"] = "Hierarchical tree with expand/collapse and selection.",
     ["Watermark"] = "Repeating diagonal watermark overlay.",
-    // Phase 3 Tier-2 Motion
-    ["OrbitingCircles"] = "Children orbit a center point on circular paths with configurable radius and duration.",
-    ["AnimatedCircularProgressBar"] = "SVG ring that animates stroke-dashoffset to a target percentage with a centered label.",
-    ["WordRotate"] = "Cycles through a list of words with a slide-fade transition on a configurable interval.",
-    ["RetroGrid"] = "Perspective-projected grid floor with a subtle scroll animation — the synthwave staple.",
-    ["AuroraBackground"] = "Northern-lights multi-layered radial gradient that slowly shifts hue and position via CSS keyframes.",
-    ["BackgroundBeams"] = "Network of animated SVG line segments that fade in and out with staggered delays.",
-    ["MorphingText"] = "Text morphs between two strings via an SVG blur+contrast filter trick.",
-    ["AnimatedGridPattern"] = "SVG grid where individual cells fade in and out at random with stagger.",
-    ["ShineBorder"] = "Border with a subtle linear shine that travels around the perimeter.",
-    ["MagicCard"] = "Card with a cursor-following radial gradient spotlight and subtle 3D tilt.",
-    ["AnimatedSubscribeButton"] = "Multi-state button: idle → loading → success with slide-fade transitions.",
-    ["NumberCountUp"] = "Animated count-up to a target number with thousands separators, prefix, and suffix.",
-    ["HoverBorderGradient"] = "Border whose conic gradient rotates following cursor position around the element perimeter.",
 };
 
 // Heuristic for additional CSS classes we care about in components.
@@ -599,19 +536,16 @@ var knownComponentNames = componentDirs.Select(Path.GetFileName).Where(n => !str
 // UI dirs hadn't been added to src/Lumeo.Motion/UI/ yet — those entries
 // looked like real components in code review but produced no registry rows.
 // Mapping a non-existent name is usually a typo or a stale aspirational
-// entry; warn (don't fail) so the developer can fix or remove it.
-var orphans = componentToPackage.Keys
-    .Concat(categoryMap.Keys)
-    .Concat(descriptions.Keys)
-    .Distinct(StringComparer.OrdinalIgnoreCase)
-    .Where(name => !knownComponentNames.Contains(name))
-    .OrderBy(n => n, StringComparer.OrdinalIgnoreCase)
-    .ToArray();
+// entry, so it fails the run with an actionable list (a component also exists when it
+// is a <Name>.razor sub-component file anywhere under a UI/ tree, e.g. MapMarker).
+var orphans = Lumeo.RegistryGen.StaleMapEntries.Find(
+    componentToPackage.Keys.Concat(categoryMap.Keys).Concat(descriptions.Keys),
+    Lumeo.RegistryGen.StaleMapEntries.DiscoverExistingNames(uiRoots));
 if (orphans.Length > 0)
 {
-    Console.Error.WriteLine($"[registry-gen] WARNING: {orphans.Length} hand-maintained map entries point at names with no UI directory:");
+    Console.Error.WriteLine($"[registry-gen] ERROR: {Lumeo.RegistryGen.StaleMapEntries.Format(orphans)}");
     foreach (var o in orphans) Console.Error.WriteLine($"  - {o}");
-    Console.Error.WriteLine("[registry-gen] Either add the component dir under the satellite's UI/ folder, or remove the stale entry from Program.cs.");
+    return 1;
 }
 
 var components = new SortedDictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
