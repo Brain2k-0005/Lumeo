@@ -1451,7 +1451,28 @@
     private int EffectiveColumnWidth => ColumnWidth > 0 ? ColumnWidth!.Value : Cfg.ColumnWidth;
     private int EffectiveBarHeight => BarHeight > 0 ? BarHeight!.Value : GanttScale.DefaultBarHeight;
 
-    private IReadOnlyList<DateTime> Units => GanttScale.BuildDateUnits(ViewMode, RangeStart, RangeEnd, CalendarSystem);
+    // Units / UpperRuns / LowerLabels are read dozens of times per render (every header cell,
+    // grid line, off-day column and Origin/TotalWidth read goes through them), and
+    // `LowerLabels[i]` inside a loop used to rebuild the whole label array per cell. Rebuilding
+    // is O(n) each (Jalali: a PersianCalendar conversion + string format per unit), so a render
+    // was O(n^2) and ~25x slower under Jalali than Gregorian. Memoize on the inputs.
+    private (GanttViewMode Mode, DateTime Start, DateTime End, CalendarSystem System) _unitsKey;
+    private IReadOnlyList<DateTime>? _units;
+    private IReadOnlyList<DateTime> Units
+    {
+        get
+        {
+            var key = (ViewMode, RangeStart, RangeEnd, CalendarSystem);
+            if (_units is null || _unitsKey != key)
+            {
+                _units = GanttScale.BuildDateUnits(ViewMode, RangeStart, RangeEnd, CalendarSystem);
+                _unitsKey = key;
+                _upperRuns = null;
+                _lowerLabels = null;
+            }
+            return _units;
+        }
+    }
     private DateTime Origin => Units.Count > 0 ? Units[0] : RangeStart;
     private double TotalWidth => Units.Count * (double)EffectiveColumnWidth;
 
@@ -1486,8 +1507,39 @@
 
     // Design spec Phase 3, T2 — see GanttScale.UpperRuns' own firstDayOfWeek
     // remarks; ignored by every HeaderUpper kind except Week (GanttViewMode.Day).
-    private IReadOnlyList<GanttHeaderRun> UpperRuns => GanttScale.UpperRuns(ViewMode, Units, EffectiveFirstDayOfWeek, CalendarSystem, Culture);
-    private IReadOnlyList<string> LowerLabels => GanttScale.LowerLabels(ViewMode, Units, CalendarSystem, Culture);
+    private IReadOnlyList<GanttHeaderRun>? _upperRuns;
+    private (DayOfWeek First, CultureInfo Culture) _upperKey;
+    private IReadOnlyList<GanttHeaderRun> UpperRuns
+    {
+        get
+        {
+            var units = Units; // may invalidate _upperRuns
+            var key = (EffectiveFirstDayOfWeek, Culture ?? CultureInfo.CurrentCulture); // unset Culture follows CurrentCulture
+            if (_upperRuns is null || _upperKey != key)
+            {
+                _upperRuns = GanttScale.UpperRuns(ViewMode, units, key.Item1, CalendarSystem, Culture);
+                _upperKey = key;
+            }
+            return _upperRuns;
+        }
+    }
+
+    private IReadOnlyList<string>? _lowerLabels;
+    private CultureInfo? _lowerCulture;
+    private IReadOnlyList<string> LowerLabels
+    {
+        get
+        {
+            var units = Units; // may invalidate _lowerLabels
+            var culture = Culture ?? CultureInfo.CurrentCulture; // unset Culture follows CurrentCulture
+            if (_lowerLabels is null || !ReferenceEquals(_lowerCulture, culture))
+            {
+                _lowerLabels = GanttScale.LowerLabels(ViewMode, units, CalendarSystem, Culture);
+                _lowerCulture = culture;
+            }
+            return _lowerLabels;
+        }
+    }
 
     private DayOfWeek EffectiveFirstDayOfWeek => FirstDayOfWeek ?? CalendarSystemMath.DefaultFirstDayOfWeek(CalendarSystem, Culture ?? CultureInfo.CurrentCulture);
     private IReadOnlySet<DayOfWeek> EffectiveOffDays => OffDays ?? GanttScale.DefaultOffDays(CultureInfo.CurrentCulture);
@@ -1576,7 +1628,23 @@
     // given, which silently ignored a caller's ColumnWidth override here (the
     // header/grid, which compute column positions via EffectiveColumnWidth
     // directly rather than through DateToPixel, were already correct).
-    private double TodayX => GanttScale.DateToPixel(ViewMode, Origin, Today, EffectiveColumnWidth, CalendarSystem);
+    // TodayX is read once per header cell (IsTodayColumn per column) plus range/marker checks, so a
+    // render evaluated DateToPixel ~5x per column. Memoized on its inputs (Jalali conversions are costly).
+    private (GanttViewMode Mode, DateTime Origin, DateTime Today, int ColW, CalendarSystem System)? _todayXKey;
+    private double _todayX;
+    private double TodayX
+    {
+        get
+        {
+            var key = (ViewMode, Origin, Today, EffectiveColumnWidth, CalendarSystem);
+            if (_todayXKey != key)
+            {
+                _todayX = GanttScale.DateToPixel(ViewMode, key.Origin, key.Today, key.Item4, CalendarSystem);
+                _todayXKey = key;
+            }
+            return _todayX;
+        }
+    }
     private bool TodayInRange => TodayHighlight && Units.Count > 0 && TodayX >= 0 && TodayX <= TotalWidth;
 
     // Design spec Phase 3, T2 — Today column upgrade. DateToPixel's output is a

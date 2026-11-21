@@ -239,6 +239,20 @@ public class GanttJalaliTests : IAsyncLifetime
     }
 
     [Fact]
+    public void DaysInMonth_Matches_MonthEnd_Minus_MonthStart_For_Every_Day_Of_Several_Years()
+    {
+        // GanttCalendar.DaysInMonth feeds DateToPixelJalali for every bar/marker; it was reduced from ~10
+        // PersianCalendar conversions to one (mount-time regression). It must stay identical to the
+        // MonthStart/MonthEnd definition.
+        for (var d = D(2023, 1, 1); d < D(2027, 1, 1); d = d.AddDays(1))
+        {
+            var date = DateOnly.FromDateTime(d);
+            var expected = CalendarSystemMath.MonthEnd(J, date).DayNumber - CalendarSystemMath.MonthStart(J, date).DayNumber + 1;
+            Assert.Equal(expected, GanttCalendar.DaysInMonth(J, d));
+        }
+    }
+
+    [Fact]
     public void GanttChart_Default_Gregorian_Month_View_Is_Unchanged()
     {
         var tasks = new[] { new L.GanttTask("t1", "Plan", D(2024, 4, 5), D(2024, 5, 30)) };
