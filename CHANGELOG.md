@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - `CodeEditor` showed no syntax highlighting in light mode: only dark mode got token colours (as a side effect of the One Dark theme). Tokens are now coloured in light and dark for every supported language, using a Lumeo highlight style built from theme CSS variables (`--color-chart-*`, `--color-muted-foreground`), so it follows the active theme (#552).
+- **`RichTextEditor` font-family dropdown.** The `Full` toolbar preset now has a font picker, driven by the new `Fonts` parameter (`IReadOnlyList<EditorFont>`, a label plus a CSS `font-family` value). `EditorFonts.Default` lists Default, Sans, Serif, Monospace, Arial, Verdana, Tahoma, Georgia, Times New Roman and Courier New (all system fonts); pass your own list for custom fonts, which the app must load itself (`@font-face` / Google Fonts). The choice is stored as `<span style="font-family: …">` in the HTML value and round-trips when `Value` is set from outside; "Default" clears it. `RichTextActiveState` gains a `FontFamily` property. The bundled TipTap file grows by about 1.4 kB (TextStyle + FontFamily extensions). (#554)
 
 ### Deprecated
 

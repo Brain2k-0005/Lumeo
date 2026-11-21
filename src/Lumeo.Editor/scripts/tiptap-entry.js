@@ -17,6 +17,8 @@ export * as link from "@tiptap/extension-link";
 export * as underline from "@tiptap/extension-underline";
 export * as placeholder from "@tiptap/extension-placeholder";
 export * as typography from "@tiptap/extension-typography";
+export * as textStyle from "@tiptap/extension-text-style";
+export * as fontFamily from "@tiptap/extension-font-family";
 
 export * as mention from "@tiptap/extension-mention";
 export * as suggestion from "@tiptap/suggestion";

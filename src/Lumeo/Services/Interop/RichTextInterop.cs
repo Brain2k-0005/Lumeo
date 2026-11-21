@@ -170,4 +170,8 @@ public sealed record RichTextActiveState(
     // crashes the component under a trimmed publish). With this parameterless ctor STJ
     // uses property-based (de)serialization instead. Do not remove.
     public RichTextActiveState() : this(false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false) { }
+
+    /// <summary>The <c>font-family</c> CSS value applied at the cursor/selection (as the
+    /// editor stores it), or null when no font family is set (the editor's inherited font).</summary>
+    public string? FontFamily { get; init; }
 }

@@ -122,6 +122,20 @@
         </Stack>
     </ComponentDemo>
 
+    <!-- 7b. Font family -->
+    <ComponentDemo Title="Font family" Code="@_fontsCode">
+        <Stack Gap="2">
+            <Alert Variant="Alert.AlertVariant.Info" ShowIcon="true">
+                <ChildContent>The <code>Full</code> toolbar has a font dropdown. Pass your own <code>Fonts</code> list; the choice is stored in the HTML as <code>&lt;span style="font-family: …"&gt;</code>. Web fonts must be loaded by your app (<code>@@font-face</code> / Google Fonts) — the editor never downloads fonts.</ChildContent>
+            </Alert>
+            <RichTextEditor @bind-Value="_fontsHtml"
+                            Toolbar="EditorToolbarPreset.Full"
+                            Fonts="_demoFonts"
+                            MinHeight="120" />
+            <pre data-testid="fonts-html" class="text-xs text-muted-foreground whitespace-pre-wrap break-all rounded-md border border-border/40 bg-muted/30 p-2">@_fontsHtml</pre>
+        </Stack>
+    </ComponentDemo>
+
     <!-- 8. AI actions -->
     <ComponentDemo Title="AI actions" Code="@_aiCode">
         <Stack Gap="2">
@@ -294,6 +308,28 @@
             </Stack>
         </Stack>
 
+        <!-- EditorFont -->
+        <Stack Gap="3">
+            <Heading Level="3">EditorFont</Heading>
+            <p class="text-sm text-muted-foreground">One entry of <code class="font-mono text-xs">RichTextEditor.Fonts</code>. <code class="font-mono text-xs">EditorFonts.Default</code> lists Default, Sans, Serif, Monospace, Arial, Verdana, Tahoma, Georgia, Times New Roman and Courier New — all system fonts. Custom web fonts must be loaded by your app.</p>
+            <Stack Class="rounded-lg border border-border/40 overflow-x-auto">
+                <table class="w-full min-w-[700px] text-sm">
+                    <thead>
+                        <tr class="border-b border-border/40 bg-muted/40">
+                            <th class="text-left p-3 font-medium text-foreground w-[140px]">Property</th>
+                            <th class="text-left p-3 font-medium text-foreground w-[160px]">Type</th>
+                            <th class="text-left p-3 font-medium text-foreground w-[100px]">Default</th>
+                            <th class="text-left p-3 font-medium text-foreground">Description</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-border/40">
+                        <tr><td class="p-3 font-mono text-xs text-primary">Label</td><td class="p-3 font-mono text-xs text-muted-foreground">string</td><td class="p-3 font-mono text-xs text-muted-foreground">—</td><td class="p-3 text-muted-foreground">Text shown in the dropdown, rendered in the font itself.</td></tr>
+                        <tr><td class="p-3 font-mono text-xs text-primary">Value</td><td class="p-3 font-mono text-xs text-muted-foreground">string?</td><td class="p-3 font-mono text-xs text-muted-foreground">null</td><td class="p-3 text-muted-foreground">CSS <code class="font-mono text-xs">font-family</code> value written to the content. Null or empty clears the font (the "Default" entry).</td></tr>
+                    </tbody>
+                </table>
+            </Stack>
+        </Stack>
+
         <!-- TriggerDropdown -->
         <Stack Gap="3">
             <Heading Level="3">TriggerDropdown</Heading>
@@ -417,6 +453,15 @@
     private string? _minimalHtml;
     private string? _standardHtml;
     private string? _fullHtml;
+    private string? _fontsHtml = "<p>Select some text and pick a font from the toolbar. <span style=\"font-family: Georgia, serif\">This part is already Georgia.</span></p>";
+    private static readonly IReadOnlyList<EditorFont> _demoFonts = new[]
+    {
+        new EditorFont("Default"),
+        new EditorFont("Georgia", "Georgia, serif"),
+        new EditorFont("Trebuchet MS", "\"Trebuchet MS\", sans-serif"),
+        new EditorFont("Impact", "Impact, Charcoal, sans-serif"),
+        new EditorFont("Courier New", "\"Courier New\", Courier, monospace"),
+    };
     private string? _noneHtml;
     private string? _mentionsHtml;
     private string? _multiHtml;
@@ -634,6 +679,26 @@
         var url = await MyStorageService.UploadAsync(req.FileName);
         return url;
     }
+}";
+
+    private const string _fontsCode =
+@"<RichTextEditor @bind-Value=""_html""
+                Toolbar=""EditorToolbarPreset.Full""
+                Fonts=""_fonts"" />
+
+@code {
+    private string? _html;
+
+    // Label + CSS font-family value. A null/empty Value (""Default"") clears the font.
+    // Fonts that need a download (e.g. Inter) must be loaded by your app via
+    // @font-face or a Google Fonts <link>; the editor only applies the family name.
+    private static readonly IReadOnlyList<EditorFont> _fonts = new[]
+    {
+        new EditorFont(""Default""),
+        new EditorFont(""Georgia"", ""Georgia, serif""),
+        new EditorFont(""Inter"", ""\""Inter\"", sans-serif""),
+        new EditorFont(""Courier New"", ""\""Courier New\"", Courier, monospace""),
+    };
 }";
 
     private const string _aiCode =
