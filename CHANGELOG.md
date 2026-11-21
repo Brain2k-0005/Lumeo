@@ -8,21 +8,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-
 - `CodeEditor` gains a `SyntaxHighlighting` parameter (default `true`) to turn token colouring off, and a docs demo showing highlighted JSON, C# and JavaScript (#552).
-
-### Fixed
-
-- `CodeEditor` showed no syntax highlighting in light mode: only dark mode got token colours (as a side effect of the One Dark theme). Tokens are now coloured in light and dark for every supported language, using a Lumeo highlight style built from theme CSS variables (`--color-chart-*`, `--color-muted-foreground`), so it follows the active theme (#552).
 - **`RichTextEditor` font-family dropdown.** The `Full` toolbar preset now has a font picker, driven by the new `Fonts` parameter (`IReadOnlyList<EditorFont>`, a label plus a CSS `font-family` value). `EditorFonts.Default` lists Default, Sans, Serif, Monospace, Arial, Verdana, Tahoma, Georgia, Times New Roman and Courier New (all system fonts); pass your own list for custom fonts, which the app must load itself (`@font-face` / Google Fonts). The choice is stored as `<span style="font-family: …">` in the HTML value and round-trips when `Value` is set from outside; "Default" clears it. `RichTextActiveState` gains a `FontFamily` property. The bundled TipTap file grows by about 1.4 kB (TextStyle + FontFamily extensions). (#554)
 - `FlowEdge.Color` colours an edge and its arrowhead the same in Chromium, Firefox and Safari (#529). The flow canvas emits one arrow marker per distinct colour (stable per-canvas id, none when unused), so no engine needs `context-stroke`. A literal `stroke:` in `FlowEdge.Style` is honoured by the marker as well. A colour set only through `FlowEdge.Class` still reaches the arrowhead in Chromium only; use `Color` for cross-engine edges.
 
 ### Fixed
-
+- `CodeEditor` showed no syntax highlighting in light mode: only dark mode got token colours (as a side effect of the One Dark theme). Tokens are now coloured in light and dark for every supported language, using a Lumeo highlight style built from theme CSS variables (`--color-chart-*`, `--color-muted-foreground`), so it follows the active theme (#552).
 - Flow edges with a custom colour no longer show a default-coloured arrowhead in Firefox and Safari when the colour is set through `FlowEdge.Color` or `FlowEdge.Style` (#529).
 
 ### Deprecated
-
 - `Gantt` (the legacy gantt-v2 component) is deprecated in favour of `GanttChart` and will be removed in 6.0; using it now produces an obsolete warning (CS0618).
 
 ## [5.14.0] - 2026-11-21
