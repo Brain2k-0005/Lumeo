@@ -27,9 +27,7 @@ internal static class GanttCalendar
     internal static int DaysInMonth(CalendarSystem s, DateTime d)
     {
         if (s != CalendarSystem.Jalali) return DateTime.DaysInMonth(d.Year, d.Month);
-        var start = CalendarSystemMath.MonthStart(s, D(d));
-        var end = CalendarSystemMath.MonthEnd(s, D(d));
-        return end.DayNumber - start.DayNumber + 1;
+        return CalendarSystemMath.DaysInMonth(s, D(d));
     }
 
     /// <summary>First day (00:00) of <paramref name="year"/> in the calendar system.</summary>

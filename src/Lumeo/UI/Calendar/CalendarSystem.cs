@@ -33,6 +33,12 @@ internal static class CalendarSystemMath
     private static readonly DateOnly PersianMin = DateOnly.FromDateTime(Persian.MinSupportedDateTime);
     private static readonly DateOnly PersianMax = DateOnly.FromDateTime(Persian.MaxSupportedDateTime);
 
+    // Constants of the calendar; MonthStart/MinYear/MaxYear run once per column on a Gantt/Scheduler
+    // render, so re-converting the supported bounds on every call was pure overhead.
+    private static readonly int PersianMinYear = Persian.GetYear(Persian.MinSupportedDateTime);
+    private static readonly int PersianMaxYear = Persian.GetYear(Persian.MaxSupportedDateTime);
+    private static readonly int PersianMaxYearLastMonth = Persian.GetMonth(Persian.MaxSupportedDateTime);
+
     private static readonly string[] JalaliMonthNamesFa =
     [
         "فروردین", "اردیبهشت", "خرداد", "تیر", "مرداد", "شهریور",
@@ -75,10 +81,10 @@ internal static class CalendarSystemMath
         system == CalendarSystem.Jalali ? Persian.GetDayOfMonth(ToPersianDateTime(date)) : date.Day;
 
     public static int MinYear(CalendarSystem system) =>
-        system == CalendarSystem.Jalali ? GetYear(system, PersianMin) : 1;
+        system == CalendarSystem.Jalali ? PersianMinYear : 1;
 
     public static int MaxYear(CalendarSystem system) =>
-        system == CalendarSystem.Jalali ? GetYear(system, PersianMax) : 9999;
+        system == CalendarSystem.Jalali ? PersianMaxYear : 9999;
 
     /// <summary>Builds the first day of <paramref name="month"/>/<paramref name="year"/>,
     /// clamped into the range the calendar system supports.</summary>
@@ -90,7 +96,7 @@ internal static class CalendarSystemMath
         year = Math.Clamp(year, MinYear(system), MaxYear(system));
         month = Math.Clamp(month, 1, 12);
         if (year == MaxYear(system))
-            month = Math.Min(month, GetMonth(system, PersianMax));
+            month = Math.Min(month, PersianMaxYearLastMonth);
         return DateOnly.FromDateTime(Persian.ToDateTime(year, month, 1, 0, 0, 0, 0));
     }
 
@@ -110,6 +116,22 @@ internal static class CalendarSystemMath
         var days = Persian.GetDaysInMonth(GetYear(system, start), GetMonth(system, start));
         var end = start.AddDays(days - 1);
         return end > PersianMax ? PersianMax : end;
+    }
+
+    /// <summary>Number of days in the month <paramref name="date"/> falls in (same result as
+    /// <c>MonthEnd - MonthStart + 1</c>, but with one calendar conversion instead of ten).</summary>
+    public static int DaysInMonth(CalendarSystem system, DateOnly date)
+    {
+        if (system != CalendarSystem.Jalali)
+            return DateTime.DaysInMonth(date.Year, date.Month);
+
+        var dt = ToPersianDateTime(date);
+        var year = Persian.GetYear(dt);
+        var month = Persian.GetMonth(dt);
+        var days = Persian.GetDaysInMonth(year, month);
+        var start = date.AddDays(-(Persian.GetDayOfMonth(dt) - 1));
+        var end = start.AddDays(days - 1);
+        return end > PersianMax ? PersianMax.DayNumber - start.DayNumber + 1 : days;
     }
 
     /// <summary>Adds whole months in the calendar system, clamping the day of month
