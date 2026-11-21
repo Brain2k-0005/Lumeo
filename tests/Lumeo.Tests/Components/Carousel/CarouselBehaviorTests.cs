@@ -39,10 +39,12 @@ public class CarouselBehaviorTests : IAsyncLifetime
     private IRenderedComponent<L.Carousel> RenderDeck(
         int slideCount = 3,
         bool showIndicators = true,
-        L.Orientation orientation = L.Orientation.Horizontal)
+        L.Orientation orientation = L.Orientation.Horizontal,
+        bool loop = false)
     {
         return _ctx.Render<L.Carousel>(p =>
         {
+            p.Add(c => c.Loop, loop);
             p.Add(c => c.Orientation, orientation);
             p.Add(c => c.ShowIndicators, showIndicators);
             p.Add(c => c.ChildContent, (RenderFragment)(b =>
@@ -228,5 +230,91 @@ public class CarouselBehaviorTests : IAsyncLifetime
         var lastScrollTo = _ctx.JSInterop.Invocations
             .Last(i => i.Identifier == "carouselScrollTo");
         Assert.Equal(2, (int)lastScrollTo.Arguments[1]!);
+    }
+
+    // --- #571: Loop wraps at the ends ---
+
+    private int LastScrollToIndex() => (int)_ctx.JSInterop.Invocations
+        .Last(i => i.Identifier == "carouselScrollTo").Arguments[1]!;
+
+    [Fact]
+    public async Task Loop_Next_On_Last_Slide_Is_Enabled_And_Wraps_To_First()
+    {
+        var cut = RenderDeck(slideCount: 3, loop: true);
+        await PushScrollPosition(cut, scrollPos: 300, maxScroll: 300, nearestIndex: 2);
+
+        // Browser says we're at the end, yet Loop keeps Next operable.
+        Assert.False(NextButton(cut).HasAttribute("disabled"));
+        NextButton(cut).Click();
+
+        Assert.Equal(0, CurrentDotIndex(cut));
+        Assert.Equal("Slide 1 of 3", LiveRegionText(cut));
+        Assert.Equal(0, LastScrollToIndex());
+    }
+
+    [Fact]
+    public void Loop_Previous_On_First_Slide_Is_Enabled_And_Wraps_To_Last()
+    {
+        var cut = RenderDeck(slideCount: 3, loop: true);
+
+        Assert.False(PrevButton(cut).HasAttribute("disabled"));
+        PrevButton(cut).Click();
+
+        Assert.Equal(2, CurrentDotIndex(cut));
+        Assert.Equal("Slide 3 of 3", LiveRegionText(cut));
+        Assert.Equal(2, LastScrollToIndex());
+    }
+
+    [Fact]
+    public async Task Without_Loop_Next_On_Last_And_Previous_On_First_Stay_Disabled()
+    {
+        var cut = RenderDeck(slideCount: 3, loop: false);
+        Assert.True(PrevButton(cut).HasAttribute("disabled"));
+
+        await PushScrollPosition(cut, scrollPos: 300, maxScroll: 300, nearestIndex: 2);
+        Assert.True(NextButton(cut).HasAttribute("disabled"));
+        Assert.Equal(2, CurrentDotIndex(cut));
+    }
+
+    [Fact]
+    public async Task Loop_Keyboard_Wraps_At_Both_Ends()
+    {
+        var cut = RenderDeck(slideCount: 3, loop: true);
+        var region = cut.Find("[role='region']");
+
+        region.KeyDown(new KeyboardEventArgs { Key = "ArrowLeft" });
+        Assert.Equal(2, CurrentDotIndex(cut));
+
+        await PushScrollPosition(cut, scrollPos: 300, maxScroll: 300, nearestIndex: 2);
+        region.KeyDown(new KeyboardEventArgs { Key = "ArrowRight" });
+        Assert.Equal(0, CurrentDotIndex(cut));
+    }
+
+    [Fact]
+    public void Loop_With_Single_Slide_Keeps_Buttons_Disabled()
+    {
+        var cut = RenderDeck(slideCount: 1, loop: true);
+        Assert.True(PrevButton(cut).HasAttribute("disabled"));
+        Assert.True(NextButton(cut).HasAttribute("disabled"));
+    }
+
+    // --- #571: vertical track must be height-constrained so it is the scroll container ---
+
+    [Fact]
+    public void Vertical_Track_Fills_Its_Wrapper_So_It_Can_Scroll()
+    {
+        var cut = RenderDeck(slideCount: 3, orientation: L.Orientation.Vertical);
+        var track = cut.Find("[style*='scroll-snap-type']");
+        Assert.Contains("h-full", track.ClassList);
+        Assert.Contains("overflow-y: auto", track.GetAttribute("style"));
+    }
+
+    [Fact]
+    public void Vertical_Next_Issues_ScrollTo()
+    {
+        var cut = RenderDeck(slideCount: 3, orientation: L.Orientation.Vertical);
+        NextButton(cut).Click();
+        Assert.Equal(1, LastScrollToIndex());
+        Assert.Equal(1, CurrentDotIndex(cut));
     }
 }
