@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `MegaMenu` hover highlight now covers its link content (#577). A full-width panel inside a shrink-wrapped nav (a centred or flex-item menu) was squeezed to the nav width, so the 1fr grid columns ended up narrower than the link text and the title and description overflowed the highlighted area. Panel grid columns now have a 10rem minimum track and the full-width panel a min-content floor; the link text column can shrink and wrap inside the highlight.
 - `CodeEditor` showed no syntax highlighting in light mode: only dark mode got token colours (as a side effect of the One Dark theme). Tokens are now coloured in light and dark for every supported language, using a Lumeo highlight style built from theme CSS variables (`--color-chart-*`, `--color-muted-foreground`), so it follows the active theme (#552).
 - Flow edges with a custom colour no longer show a default-coloured arrowhead in Firefox and Safari when the colour is set through `FlowEdge.Color` or `FlowEdge.Style` (#529).
+- `Stepper` in vertical orientation lays out correctly: each indicator now sits in one row with its own title, description and connector line, and the step panel and Back/Next footer stack below the steps instead of appearing in extra columns beside them (#583).
 
 ### Deprecated
 - `Gantt` (the legacy gantt-v2 component) is deprecated in favour of `GanttChart` and will be removed in 6.0; using it now produces an obsolete warning (CS0618).

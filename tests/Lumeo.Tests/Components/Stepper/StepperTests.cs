@@ -201,6 +201,47 @@ public class StepperTests : IAsyncLifetime
         Assert.DoesNotContain("overflow-x-auto", cls);
     }
 
+    private IRenderedComponent<Lumeo.Stepper> RenderVertical() => _ctx.Render<Lumeo.Stepper>(p => p
+        .Add(s => s.Orientation, Lumeo.Orientation.Vertical)
+        .Add(s => s.ActiveStep, 0)
+        .AddChildContent<Lumeo.StepperStep>(s => s.Add(x => x.Title, "One").Add(x => x.Description, "First"))
+        .AddChildContent<Lumeo.StepperStep>(s => s.Add(x => x.Title, "Two"))
+        .AddChildContent<Lumeo.StepperStep>(s => s.Add(x => x.Title, "Three")));
+
+    [Fact]
+    public void Vertical_Root_Stacks_Panel_Below_Steps_Instead_Of_Beside_Them()
+    {
+        // #583: the root used to be flex-row in vertical mode, putting the panel and
+        // footer in extra columns beside the step list.
+        var cut = RenderVertical();
+        var cls = cut.Find("div[data-slot='stepper']").GetAttribute("class") ?? "";
+        Assert.Contains("flex-col", cls);
+        Assert.DoesNotContain("flex-row", cls);
+    }
+
+    [Fact]
+    public void Vertical_Each_Indicator_Shares_A_Row_With_Its_Own_Label_And_Connector()
+    {
+        // #583: indicators lived in one column and labels in another, so they only lined
+        // up by accident. Each step is now one row inside the tablist.
+        var cut = RenderVertical();
+        var tablist = cut.Find("[role='tablist']");
+        var rows = tablist.QuerySelectorAll(":scope > [role='presentation']");
+        Assert.Equal(3, rows.Length);
+        foreach (var row in rows)
+        {
+            Assert.Single(row.QuerySelectorAll("[role='tab']"));
+            Assert.NotNull(row.QuerySelector("p"));
+        }
+        Assert.Equal("One", rows[0].QuerySelector("p")!.TextContent);
+        // Connectors only between steps (n - 1), each in the row of the step it follows.
+        Assert.Equal(2, tablist.QuerySelectorAll(".w-px").Length);
+        Assert.NotNull(rows[0].QuerySelector(".w-px"));
+        Assert.Null(rows[2].QuerySelector(".w-px"));
+        Assert.Contains("pb-6", rows[0].QuerySelector("p")!.ParentElement!.GetAttribute("class"));
+        Assert.DoesNotContain("pb-6", rows[2].QuerySelector("p")!.ParentElement!.GetAttribute("class"));
+    }
+
     [Fact]
     public void Removed_Step_Does_Not_Leave_Ghost_Indicator()
     {
