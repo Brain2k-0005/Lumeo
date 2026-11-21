@@ -37,7 +37,7 @@ async function loadTiptap() {
         const m = await import(/* @vite-ignore */ url);
         const {
             core, pmState, pmView,
-            starterKit, link, underline, placeholder, typography,
+            starterKit, link, underline, placeholder, typography, textStyle, fontFamily,
             mention, suggestion,
             table, tableRow, tableCell, tableHeader,
             image, taskList, taskItem,
@@ -78,6 +78,8 @@ async function loadTiptap() {
             StarterKit: pick(starterKit, 'StarterKit'),
             Link: pick(link, 'Link'),
             Underline: pick(underline, 'Underline'),
+            TextStyle: pick(textStyle, 'TextStyle'),
+            FontFamily: pick(fontFamily, 'FontFamily'),
             Placeholder: pick(placeholder, 'Placeholder'),
             Typography: pick(typography, 'Typography'),
             Mention: pick(mention, 'Mention'),
@@ -991,6 +993,10 @@ export const rte = {
             codeBlock: false,
         }));
         ext.push(libs.Underline);
+        // TextStyle is the <span style> mark FontFamily hangs its attribute on; the
+        // value round-trips as <span style="font-family: ..."> in the HTML.
+        ext.push(libs.TextStyle);
+        ext.push(libs.FontFamily);
         ext.push(libs.Link.configure({
             openOnClick: false,
             autolink: true,
@@ -1221,6 +1227,12 @@ export const rte = {
             case 'strike': chain.toggleStrike().run(); break;
             case 'code': chain.toggleCode().run(); break;
             case 'setHeading': chain.toggleHeading({ level: args[0] || 1 }).run(); break;
+            case 'setFontFamily': {
+                const f = args[0];
+                if (typeof f === 'string' && f.trim()) chain.setFontFamily(f).run();
+                else chain.unsetFontFamily().run();
+                break;
+            }
             case 'setParagraph': chain.setParagraph().run(); break;
             case 'bulletList': chain.toggleBulletList().run(); break;
             case 'orderedList': chain.toggleOrderedList().run(); break;
@@ -1345,6 +1357,7 @@ export const rte = {
             blockquote: ed.isActive('blockquote'),
             codeBlock: ed.isActive('codeBlock'),
             link: ed.isActive('link'),
+            fontFamily: ed.getAttributes('textStyle').fontFamily || null,
             canUndo: ed.can().undo(),
             canRedo: ed.can().redo(),
         };

@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`RichTextEditor` font-family dropdown.** The `Full` toolbar preset now has a font picker, driven by the new `Fonts` parameter (`IReadOnlyList<EditorFont>`, a label plus a CSS `font-family` value). `EditorFonts.Default` lists Default, Sans, Serif, Monospace, Arial, Verdana, Tahoma, Georgia, Times New Roman and Courier New (all system fonts); pass your own list for custom fonts, which the app must load itself (`@font-face` / Google Fonts). The choice is stored as `<span style="font-family: …">` in the HTML value and round-trips when `Value` is set from outside; "Default" clears it. `RichTextActiveState` gains a `FontFamily` property. The bundled TipTap file grows by about 1.4 kB (TextStyle + FontFamily extensions). (#554)
+
 ### Deprecated
 
 - `Gantt` (the legacy gantt-v2 component) is deprecated in favour of `GanttChart` and will be removed in 6.0; using it now produces an obsolete warning (CS0618).
