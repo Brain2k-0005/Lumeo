@@ -147,8 +147,7 @@
                         <div class="flex flex-col py-1">
                             @{
                                 var isAm = !_timeValue.HasValue || _timeValue.Value.Hours < 12;
-                                var amLabel = string.IsNullOrEmpty(EffectiveCulture.DateTimeFormat.AMDesignator) ? "AM" : EffectiveCulture.DateTimeFormat.AMDesignator;
-                                var pmLabel = string.IsNullOrEmpty(EffectiveCulture.DateTimeFormat.PMDesignator) ? "PM" : EffectiveCulture.DateTimeFormat.PMDesignator;
+                                var (amLabel, pmLabel) = CalendarSystemMath.TimeDesignators(EffectiveCulture);
                             }
                             <button type="button"
                                     aria-pressed="@(isAm ? "true" : "false")"
@@ -512,16 +511,22 @@
     {
         var timeFormat = Use24Hour
             ? (ShowSeconds ? "HH:mm:ss" : "HH:mm")
-            : (ShowSeconds ? "hh:mm:ss tt" : "hh:mm tt");
+            : (ShowSeconds ? "hh:mm:ss" : "hh:mm");
+        string DesignatorSuffix()
+        {
+            if (Use24Hour) return "";
+            var (am, pm) = CalendarSystemMath.TimeDesignators(EffectiveCulture);
+            return " " + (dt.Hour < 12 ? am : pm);
+        }
         if (CalendarSystem == CalendarSystem.Jalali)
         {
             var date = CalendarSystemMath.Format(CalendarSystem, DateOnly.FromDateTime(dt), EffectiveDateFormat, EffectiveCulture);
-            var time = dt.ToString(timeFormat, EffectiveCulture);
+            var time = dt.ToString(timeFormat, EffectiveCulture) + DesignatorSuffix();
             if (CalendarSystemMath.FormatNumber(CalendarSystem, 0, EffectiveCulture) != "0")
                 time = new string(time.Select(c => c is >= '0' and <= '9' ? (char)('۰' + (c - '0')) : c).ToArray());
             return $"{date} {time}";
         }
-        return $"{dt.ToString(EffectiveDateFormat, EffectiveCulture)} {dt.ToString(timeFormat, EffectiveCulture)}";
+        return $"{dt.ToString(EffectiveDateFormat, EffectiveCulture)} {dt.ToString(timeFormat, EffectiveCulture)}{DesignatorSuffix()}";
     }
 
     private List<int> GetHours()
