@@ -1679,12 +1679,16 @@ public sealed class ComponentInteropService : IComponentInteropService
         return _ganttModule;
     }
 
+    /// <inheritdoc />
+    /// <remarks>Used only by the deprecated Gantt component; removed in 6.0.</remarks>
     public async Task<string> GanttInitAsync(Microsoft.AspNetCore.Components.ElementReference el, object dotNetRef, object options)
     {
         var module = await GetGanttModuleAsync();
         return await module.InvokeAsync<string>("gantt.init", el, dotNetRef, options);
     }
 
+    /// <inheritdoc />
+    /// <remarks>Used only by the deprecated Gantt component; removed in 6.0.</remarks>
     public async Task GanttSetTasksAsync(string id, IEnumerable<object> tasks)
     {
         try
@@ -1695,6 +1699,8 @@ public sealed class ComponentInteropService : IComponentInteropService
         catch (JSDisconnectedException) { }
     }
 
+    /// <inheritdoc />
+    /// <remarks>Used only by the deprecated Gantt component; removed in 6.0.</remarks>
     public async Task GanttRefreshAsync(string id, object options)
     {
         try
@@ -1705,6 +1711,8 @@ public sealed class ComponentInteropService : IComponentInteropService
         catch (JSDisconnectedException) { }
     }
 
+    /// <inheritdoc />
+    /// <remarks>Used only by the deprecated Gantt component; removed in 6.0.</remarks>
     public async Task GanttChangeViewModeAsync(string id, string mode)
     {
         try
@@ -1715,6 +1723,8 @@ public sealed class ComponentInteropService : IComponentInteropService
         catch (JSDisconnectedException) { }
     }
 
+    /// <inheritdoc />
+    /// <remarks>Used only by the deprecated Gantt component; removed in 6.0.</remarks>
     public async Task GanttDestroyAsync(string id)
     {
         try

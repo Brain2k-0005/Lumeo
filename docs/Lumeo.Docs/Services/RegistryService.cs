@@ -152,6 +152,8 @@ public sealed class RegistryComponent
     [JsonPropertyName("thumbnail")] public string? Thumbnail { get; set; }
     [JsonPropertyName("nugetPackage")] public string NugetPackage { get; set; } = "";
     [JsonPropertyName("hasDocsPage")] public bool HasDocsPage { get; set; }
+    /// <summary>True for components marked [Obsolete] and slated for removal; the docs label them "Deprecated".</summary>
+    [JsonPropertyName("deprecated")] public bool Deprecated { get; set; }
     [JsonPropertyName("testCoverage")] public TestCoverageInfo? TestCoverage { get; set; }
     [JsonIgnore] public string Slug { get; set; } = "";
 }

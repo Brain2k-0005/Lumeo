@@ -692,9 +692,17 @@ public interface IComponentInteropService : IAsyncDisposable, IDisposable
     ValueTask AiDisposeScrollButton(string elementId) => ValueTask.CompletedTask;
 
     // Gantt (Frappe Gantt wrapper)
+    /// <summary>Legacy gantt-v2 interop.</summary>
+    /// <remarks>Used only by the deprecated Gantt component; removed in 6.0.</remarks>
     Task<string> GanttInitAsync(Microsoft.AspNetCore.Components.ElementReference el, object dotNetRef, object options);
+    /// <summary>Legacy gantt-v2 interop.</summary>
+    /// <remarks>Used only by the deprecated Gantt component; removed in 6.0.</remarks>
     Task GanttSetTasksAsync(string id, IEnumerable<object> tasks);
+    /// <summary>Legacy gantt-v2 interop.</summary>
+    /// <remarks>Used only by the deprecated Gantt component; removed in 6.0.</remarks>
     Task GanttChangeViewModeAsync(string id, string mode);
+    /// <summary>Legacy gantt-v2 interop.</summary>
+    /// <remarks>Used only by the deprecated Gantt component; removed in 6.0.</remarks>
     Task GanttDestroyAsync(string id);
 
     /// <summary>
@@ -706,6 +714,7 @@ public interface IComponentInteropService : IAsyncDisposable, IDisposable
     /// implementation is a no-op so existing implementers / test doubles keep
     /// compiling and the non-Gantt paths are unaffected.
     /// </summary>
+    /// <remarks>Used only by the deprecated Gantt component; removed in 6.0.</remarks>
     Task GanttRefreshAsync(string id, object options) => Task.CompletedTask;
 
     /// <summary>

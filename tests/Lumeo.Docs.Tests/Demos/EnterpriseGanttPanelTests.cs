@@ -1,3 +1,5 @@
+// These tests exercise the deprecated Gantt component on purpose (removed in 6.0).
+#pragma warning disable CS0618
 using Bunit;
 using Lumeo;
 using Lumeo.Docs.Pages.Demos;

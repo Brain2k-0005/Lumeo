@@ -343,6 +343,7 @@ var descriptions = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCa
     ["Stepper"] = "Stateful multi-step wizard with navigation, validation gating, and header indicators.",
     ["Window"] = "Non-modal draggable and resizable floating panel with minimize and maximize support.",
     ["Gauge"] = "Single-value gauge with radial, arc, and linear variants and threshold colour bands.",
+    ["Gantt"] = "DEPRECATED, removed in 6.0 — use GanttChart. The legacy SVG timeline (gantt-v2).",
     ["GanttChart"] = "Project timeline with dependency arrows, milestones, hierarchy tree pane, summary rollups, and a reject/accept/adjust drag commit gate.",
     ["FlowCanvas"] = "Node/flow editor canvas — templated nodes, SVG edges, pan, pointer-anchored wheel zoom, node drag with snapping, background grid and zoom controls.",
     ["Barcode"] = "Inline SVG Code 128B barcode renderer (scannable).",
@@ -994,6 +995,9 @@ foreach (var dir in componentDirs)
         ["registryUrl"] = $"https://lumeo.nativ.sh/registry/{componentKey}.json",
         ["testCoverage"] = ComputeTestCoverage(name),
     };
+    // Components slated for removal (CS0618 [Obsolete] in source). Emitted only when true so
+    // every other registry entry stays byte-identical.
+    if (name == "Gantt") entry["deprecated"] = true;
     components[componentKey] = entry;
 }
 
