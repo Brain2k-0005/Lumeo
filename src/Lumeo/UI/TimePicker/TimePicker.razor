@@ -132,8 +132,7 @@ else
                 <div class="flex flex-col py-1">
                     @{
                         var isAm = !Value.HasValue || Value.Value.Hours < 12;
-                        var amLabel = string.IsNullOrEmpty(EffectiveCulture.DateTimeFormat.AMDesignator) ? "AM" : EffectiveCulture.DateTimeFormat.AMDesignator;
-                        var pmLabel = string.IsNullOrEmpty(EffectiveCulture.DateTimeFormat.PMDesignator) ? "PM" : EffectiveCulture.DateTimeFormat.PMDesignator;
+                        var (amLabel, pmLabel) = CalendarSystemMath.TimeDesignators(EffectiveCulture);
                     }
                     <button type="button"
                             aria-pressed="@(isAm ? "true" : "false")"
@@ -582,10 +581,8 @@ else
         {
             var hour12 = time.Hours % 12;
             if (hour12 == 0) hour12 = 12;
-            var dtf = EffectiveCulture.DateTimeFormat;
-            var ampm = time.Hours < 12
-                ? (string.IsNullOrEmpty(dtf.AMDesignator) ? "AM" : dtf.AMDesignator)
-                : (string.IsNullOrEmpty(dtf.PMDesignator) ? "PM" : dtf.PMDesignator);
+            var (amText, pmText) = CalendarSystemMath.TimeDesignators(EffectiveCulture);
+            var ampm = time.Hours < 12 ? amText : pmText;
             return ShowSeconds
                 ? $"{hour12:D2}:{time.Minutes:D2}:{time.Seconds:D2} {ampm}"
                 : $"{hour12:D2}:{time.Minutes:D2} {ampm}";

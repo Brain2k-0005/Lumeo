@@ -162,10 +162,23 @@ internal static class CalendarSystemMath
 
     // Under InvariantGlobalization (+ PredefinedCulturesOnly=false) a "fa-IR" culture carries no ICU
     // data, so TwoLetterISOLanguageName is not "fa"; the culture name still is.
-    private static bool IsPersianCulture(CultureInfo culture) =>
+    internal static bool IsPersianCulture(CultureInfo culture) =>
         culture.TwoLetterISOLanguageName is "fa"
         || culture.Name.Equals("fa", StringComparison.OrdinalIgnoreCase)
         || culture.Name.StartsWith("fa-", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>AM/PM labels for a culture. Uses the culture's own designators; a Persian culture
+    /// with no ICU data (empty or invariant "AM"/"PM") gets "ق.ظ"/"ب.ظ"; otherwise "AM"/"PM".</summary>
+    internal static (string Am, string Pm) TimeDesignators(CultureInfo culture)
+    {
+        var dtf = culture.DateTimeFormat;
+        var inv = CultureInfo.InvariantCulture.DateTimeFormat;
+        var persian = IsPersianCulture(culture);
+        string Pick(string own, string invariant, string persianText) =>
+            persian && (string.IsNullOrEmpty(own) || own == invariant) ? persianText
+            : string.IsNullOrEmpty(own) ? invariant : own;
+        return (Pick(dtf.AMDesignator, inv.AMDesignator, "ق.ظ"), Pick(dtf.PMDesignator, inv.PMDesignator, "ب.ظ"));
+    }
 
     public static string MonthName(CalendarSystem system, int month, CultureInfo culture, bool abbreviated = false)
     {
