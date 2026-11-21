@@ -11,13 +11,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `CodeEditor` gains a `SyntaxHighlighting` parameter (default `true`) to turn token colouring off, and a docs demo showing highlighted JSON, C# and JavaScript (#552).
 - **`RichTextEditor` font-family dropdown.** The `Full` toolbar preset now has a font picker, driven by the new `Fonts` parameter (`IReadOnlyList<EditorFont>`, a label plus a CSS `font-family` value). `EditorFonts.Default` lists Default, Sans, Serif, Monospace, Arial, Verdana, Tahoma, Georgia, Times New Roman and Courier New (all system fonts); pass your own list for custom fonts, which the app must load itself (`@font-face` / Google Fonts). The choice is stored as `<span style="font-family: …">` in the HTML value and round-trips when `Value` is set from outside; "Default" clears it. `RichTextActiveState` gains a `FontFamily` property. The bundled TipTap file grows by about 1.4 kB (TextStyle + FontFamily extensions). (#554)
 - `FlowEdge.Color` colours an edge and its arrowhead the same in Chromium, Firefox and Safari (#529). The flow canvas emits one arrow marker per distinct colour (stable per-canvas id, none when unused), so no engine needs `context-stroke`. A literal `stroke:` in `FlowEdge.Style` is honoured by the marker as well. A colour set only through `FlowEdge.Class` still reaches the arrowhead in Chromium only; use `Color` for cross-engine edges.
-### Fixed
 
+### Fixed
 - `Affix` with a `Target` container now pins to the container's visible area (its top/bottom plus the offset) instead of the browser viewport, stays glued to it on every scroll step (including page scrolls), and is positioned entirely in JS with no Blazor round-trip; the "Interactive: Anchor & Offset" docs demo now passes `Target` so it pins inside its scroll box (#569).
-
-### Deprecated
-
-### Fixed
 - `Carousel` with `Loop` could not wrap: Previous/Next were disabled on the first/last slide, so the deck never went from the last slide back to the first (or the first to the last). They now stay enabled at the ends when `Loop` is set and the deck has more than one slide. (#571)
 - `Carousel` with `Orientation="Vertical"`: Previous/Next did nothing since 5.14.0, because the vertical track was not height-constrained and so was not the scroll container. The track now fills the clipped wrapper and scrolls. (#571)
 - `MegaMenu` hover highlight now covers its link content (#577). A full-width panel inside a shrink-wrapped nav (a centred or flex-item menu) was squeezed to the nav width, so the 1fr grid columns ended up narrower than the link text and the title and description overflowed the highlighted area. Panel grid columns now have a 10rem minimum track and the full-width panel a min-content floor; the link text column can shrink and wrap inside the highlight.
