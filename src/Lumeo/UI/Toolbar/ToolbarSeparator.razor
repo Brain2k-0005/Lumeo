@@ -1,10 +1,29 @@
 @namespace Lumeo
 
-<div data-slot="toolbar-separator" class="@CssClass" role="separator" aria-orientation="vertical" @attributes="AdditionalAttributes"></div>
+<div data-slot="toolbar-separator" class="@CssClass" role="separator" aria-orientation="@OrientationStr" @attributes="AdditionalAttributes"></div>
 
 @code {
     [Parameter] public string? Class { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
-    private string CssClass => Cx.Merge("w-px h-6 bg-border/40 mx-1 shrink-0", Class);
+    /// <summary>
+    /// The orientation of the separator line itself. When unset it is perpendicular to the
+    /// parent <see cref="Toolbar"/> (a vertical rule in a horizontal toolbar, a horizontal rule
+    /// in a vertical one), matching Radix Toolbar.Separator. An explicit value wins.
+    /// </summary>
+    [Parameter] public Toolbar.ToolbarOrientation? Orientation { get; set; }
+
+    [CascadingParameter] private Toolbar.ToolbarOrientation ToolbarOrientation { get; set; }
+
+    private bool IsVertical => (Orientation
+        ?? (ToolbarOrientation == Toolbar.ToolbarOrientation.Vertical
+            ? Toolbar.ToolbarOrientation.Horizontal
+            : Toolbar.ToolbarOrientation.Vertical))
+        == Toolbar.ToolbarOrientation.Vertical;
+
+    private string OrientationStr => IsVertical ? "vertical" : "horizontal";
+
+    private string CssClass => Cx.Merge(
+        IsVertical ? "w-px h-6 bg-border/40 mx-1 shrink-0" : "h-px w-full bg-border/40 my-1 shrink-0",
+        Class);
 }
