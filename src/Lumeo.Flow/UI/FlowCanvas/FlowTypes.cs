@@ -199,6 +199,16 @@ public sealed record FlowEdge(
     string? Class = null, string? Style = null)
 {
     /// <summary>
+    /// Edge colour (any CSS colour, or a theme token such as <c>var(--color-destructive)</c>). The edge
+    /// stroke uses it and the arrowhead is drawn in the same colour in every engine (Chromium, Firefox,
+    /// WebKit): one marker is emitted per distinct colour. A selected edge keeps the selection colour.
+    /// A colour supplied only through <see cref="Class"/> reaches the arrowhead in Chromium only
+    /// (<c>context-stroke</c>); prefer <c>Color</c> for cross-engine edge colouring. A literal
+    /// <c>stroke:</c> in <see cref="Style"/> is also honoured by the marker.
+    /// </summary>
+    public string? Color { get; init; }
+
+    /// <summary>
     /// The pre-LU-02 positional deconstruction (every member up to <see cref="Data"/>), kept so
     /// existing <c>var (id, source, target, ...) = edge;</c> code with twelve variables still
     /// compiles after <see cref="Class"/>/<see cref="Style"/> were appended.
