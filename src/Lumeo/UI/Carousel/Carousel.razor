@@ -6,8 +6,8 @@
     var context = new CarouselContext(
         _contentId,
         Orientation,
-        _canScrollPrev && !Disabled,
-        _canScrollNext && !Disabled,
+        CanGoPrev,
+        CanGoNext,
         EventCallback.Factory.Create(this, ScrollPrev),
         EventCallback.Factory.Create(this, ScrollNext),
         RegisterItem,
@@ -116,6 +116,12 @@
     private readonly List<object> _items = new();
 
     private string CssClass => Cx.Merge("relative", Class);
+
+    // With Loop the prev/next affordances stay enabled at the ends (they wrap),
+    // as long as there is more than one slide to wrap between (#571).
+    private bool CanWrap => Loop && _items.Count > 1;
+    private bool CanGoPrev => (_canScrollPrev || CanWrap) && !Disabled;
+    private bool CanGoNext => (_canScrollNext || CanWrap) && !Disabled;
 
     // Indicator dots sit centered on the cross-axis edge: bottom for a
     // horizontal deck, right for a vertical one.
@@ -251,34 +257,26 @@
     private async Task ScrollPrev()
     {
         if (Disabled) return;
-        if (!_canScrollPrev && !Loop) return;
+        if (!_canScrollPrev && !CanWrap) return;
 
         if (_canScrollPrev)
-        {
-            _currentIndex--;
-        }
-        else if (Loop)
-        {
-            _currentIndex = -1;
-        }
+            _currentIndex = Math.Max(0, _currentIndex - 1);
+        else
+            _currentIndex = _items.Count - 1; // wrap to the last slide
 
-        await Interop.CarouselScrollTo(_contentId, _currentIndex < 0 ? int.MaxValue : _currentIndex);
+        await Interop.CarouselScrollTo(_contentId, _currentIndex);
         StateHasChanged();
     }
 
     private async Task ScrollNext()
     {
         if (Disabled) return;
-        if (!_canScrollNext && !Loop) return;
+        if (!_canScrollNext && !CanWrap) return;
 
         if (_canScrollNext)
-        {
             _currentIndex++;
-        }
-        else if (Loop)
-        {
-            _currentIndex = 0;
-        }
+        else
+            _currentIndex = 0; // wrap to the first slide
 
         await Interop.CarouselScrollTo(_contentId, _currentIndex);
         StateHasChanged();

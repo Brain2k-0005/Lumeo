@@ -18,6 +18,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Deprecated
 
 ### Fixed
+- `Carousel` with `Loop` could not wrap: Previous/Next were disabled on the first/last slide, so the deck never went from the last slide back to the first (or the first to the last). They now stay enabled at the ends when `Loop` is set and the deck has more than one slide. (#571)
+- `Carousel` with `Orientation="Vertical"`: Previous/Next did nothing since 5.14.0, because the vertical track was not height-constrained and so was not the scroll container. The track now fills the clipped wrapper and scrolls. (#571)
 - `CodeEditor` showed no syntax highlighting in light mode: only dark mode got token colours (as a side effect of the One Dark theme). Tokens are now coloured in light and dark for every supported language, using a Lumeo highlight style built from theme CSS variables (`--color-chart-*`, `--color-muted-foreground`), so it follows the active theme (#552).
 - Flow edges with a custom colour no longer show a default-coloured arrowhead in Firefox and Safari when the colour is set through `FlowEdge.Color` or `FlowEdge.Style` (#529).
 
