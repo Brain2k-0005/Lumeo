@@ -73,6 +73,15 @@
     /// </summary>
     [Parameter] public string? EsmBase { get; set; }
 
+    /// <summary>
+    /// Colours tokens (keywords, strings, numbers, comments, types, ...) for the chosen
+    /// <see cref="Language"/>. Default <c>true</c>. The palette is built from the active
+    /// Lumeo theme's CSS variables, so it follows every theme and both light and dark
+    /// mode. Set to <c>false</c> for a plain monochrome editor. Toggling at runtime
+    /// reconfigures the editor in place without losing selection or scroll position.
+    /// </summary>
+    [Parameter] public bool SyntaxHighlighting { get; set; } = true;
+
     /// <summary>Number of columns a tab/indent level occupies. Default <c>4</c>.</summary>
     [Parameter] public int TabSize { get; set; } = 4;
     /// <summary>Inserts literal tab characters on Tab instead of spaces sized to
@@ -122,6 +131,7 @@
     private string? _lastTheme;
     private bool? _lastReadOnly;
     private bool? _lastShowMinimap;
+    private bool? _lastSyntaxHighlighting;
 
     private string RootClass
         => $"rounded-lg border border-border/40 overflow-hidden bg-card {Class}".Trim();
@@ -191,6 +201,7 @@
                 ["wordWrap"] = WordWrap,
                 ["placeholder"] = Placeholder,
                 ["minimap"] = ShowMinimap,
+                ["syntaxHighlighting"] = SyntaxHighlighting,
                 ["esmBase"] = EsmBase,
             };
 
@@ -210,6 +221,7 @@
                 _lastTheme = Theme;
                 _lastReadOnly = ReadOnly;
                 _lastShowMinimap = ShowMinimap;
+                _lastSyntaxHighlighting = SyntaxHighlighting;
             }
             catch (JSDisconnectedException)
             {
@@ -270,6 +282,12 @@
             {
                 _lastShowMinimap = ShowMinimap;
                 await _module.InvokeVoidAsync("setMinimap", _editorId, ShowMinimap);
+            }
+
+            if (_lastSyntaxHighlighting != SyntaxHighlighting)
+            {
+                _lastSyntaxHighlighting = SyntaxHighlighting;
+                await _module.InvokeVoidAsync("setSyntaxHighlighting", _editorId, SyntaxHighlighting);
             }
         }
         catch (JSDisconnectedException) { }
