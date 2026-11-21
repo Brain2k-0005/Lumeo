@@ -1,0 +1,335 @@
+@page "/docs/theme-playground"
+@namespace Lumeo.Docs.Pages.Docs
+@using Lumeo.Docs.Services
+@inject Lumeo.Services.IComponentInteropService Interop
+
+<PageTitle>Theme Playground — Lumeo</PageTitle>
+
+<Container MaxWidth="6xl" Padding="0" Center="false">
+<Stack Gap="8">
+
+    <Stack Gap="4">
+        <Heading Level="1" Size="3xl">Theme Playground</Heading>
+        <Lumeo.Text Size="base" Color="muted" Leading="relaxed">
+            Paste a <a class="text-primary hover:underline" href="https://tweakcn.com/editor/theme" target="_blank" rel="noopener">tweakcn</a>
+            or shadcn export (<code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">:root</code> and
+            <code class="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">.dark</code>) and watch Lumeo's components re-skin live.
+            The variables are applied to the preview panel only, the rest of this site keeps its own theme. Everything runs in your browser.
+            See <a class="text-primary hover:underline" href="docs/tweakcn">Theming with tweakcn</a> for how to ship the result.
+        </Lumeo.Text>
+    </Stack>
+
+    <Grid Columns="1" Gap="6" Class="lg:grid-cols-2">
+
+        <Stack Gap="4">
+            <Flex Gap="2" Wrap="true" Align="center">
+                @foreach (var p in _presets)
+                {
+                    var preset = p;
+                    <Button Size="Button.ButtonSize.Sm" Variant="Button.ButtonVariant.Outline" OnClick="@(() => LoadPreset(preset.Css))" data-testid="@($"preset-{preset.Id}")">@preset.Name</Button>
+                }
+                <Button Size="Button.ButtonSize.Sm" Variant="Button.ButtonVariant.Ghost" OnClick="Reset" data-testid="reset">Reset</Button>
+            </Flex>
+
+            <Textarea Value="@_css" OnInput="@OnCssInput" rows="16" Class="font-mono text-xs" aria-label="tweakcn export" data-testid="theme-input"
+                      placeholder=":root { --primary: oklch(...); ... }  .dark { ... }" />
+
+            @if (_result.Warnings.Count > 0)
+            {
+                <Alert data-testid="theme-warnings">
+                    <Heading Level="5" Size="sm" Weight="medium" Class="mb-1 leading-none tracking-tight">Not read by Lumeo (@_result.Warnings.Count)</Heading>
+                    <ul class="list-disc list-inside space-y-1 text-xs">
+                        @foreach (var w in _result.Warnings)
+                        {
+                            <li>@w</li>
+                        }
+                    </ul>
+                </Alert>
+            }
+
+            <Flex Gap="2" Align="center" Wrap="true">
+                <Button Size="Button.ButtonSize.Sm" OnClick="CopyOverride" Disabled="@_result.IsEmpty" data-testid="copy-override">@(_copied ? "Copied" : "Copy as Lumeo override CSS")</Button>
+                <Lumeo.Text Size="xs" Color="muted">
+                    @_result.Light.Count light and @_result.Dark.Count dark variables parsed.
+                </Lumeo.Text>
+            </Flex>
+            <Lumeo.Text Size="xs" Color="muted" Leading="relaxed">
+                Paste the copied block into your global stylesheet <strong class="text-foreground">after</strong> the Lumeo import and keep it
+                <strong class="text-foreground">unlayered</strong>, exactly as described in
+                <a class="text-primary hover:underline" href="docs/tweakcn">Theming with tweakcn</a>.
+            </Lumeo.Text>
+        </Stack>
+
+        <Stack Gap="3">
+            <Flex Justify="between" Align="center">
+                <Heading Level="2" Size="lg">Preview</Heading>
+                <ToggleGroup Type="ToggleGroup.ToggleGroupType.Single" Value="@(_dark ? "dark" : "light")" ValueChanged="@OnModeChanged" Variant="ToggleGroup.ToggleGroupVariant.Outline">
+                    <ToggleGroupItem Value="light" data-testid="mode-light">Light</ToggleGroupItem>
+                    <ToggleGroupItem Value="dark" data-testid="mode-dark">Dark</ToggleGroupItem>
+                </ToggleGroup>
+            </Flex>
+
+            <div data-testid="theme-preview" class="@PreviewClass" style="@PreviewStyle">
+                <Stack Gap="5">
+                    <Flex Gap="2" Wrap="true">
+                        <Button data-testid="preview-primary">Primary</Button>
+                        <Button Variant="Button.ButtonVariant.Secondary">Secondary</Button>
+                        <Button Variant="Button.ButtonVariant.Outline">Outline</Button>
+                        <Button Variant="Button.ButtonVariant.Destructive">Destructive</Button>
+                        <Button Variant="Button.ButtonVariant.Ghost">Ghost</Button>
+                    </Flex>
+
+                    <Card>
+                        <Stack Gap="3" Class="p-4">
+                            <Heading Level="3" Size="lg">Card title</Heading>
+                            <Lumeo.Text Size="sm" Color="muted">A card with an input, a select and a few controls.</Lumeo.Text>
+                            <Input placeholder="Email address" />
+                            <Select @bind-Value="_fruit">
+                                <SelectTrigger>
+                                    <Lumeo.Text As="span" Class="@(_fruit == null ? "text-muted-foreground" : "")">@(_fruit ?? "Pick a fruit")</Lumeo.Text>
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem Value="apple">Apple</SelectItem>
+                                    <SelectItem Value="banana">Banana</SelectItem>
+                                </SelectContent>
+                            </Select>
+                            <Flex Gap="4" Align="center" Wrap="true">
+                                <Flex Gap="2" Align="center"><Switch @bind-Checked="_switch" /><Lumeo.Text Size="sm">Notifications</Lumeo.Text></Flex>
+                                <Flex Gap="2" Align="center"><Checkbox @bind-Checked="_check" /><Lumeo.Text Size="sm">Accept terms</Lumeo.Text></Flex>
+                            </Flex>
+                            <Flex Gap="2" Wrap="true">
+                                <Badge>Default</Badge>
+                                <Badge Variant="Badge.BadgeVariant.Secondary">Secondary</Badge>
+                                <Badge Variant="Badge.BadgeVariant.Destructive">Destructive</Badge>
+                                <Badge Variant="Badge.BadgeVariant.Outline">Outline</Badge>
+                            </Flex>
+                        </Stack>
+                    </Card>
+
+                    <Tabs DefaultValue="a">
+                        <TabsList>
+                            <TabsTrigger Value="a">Account</TabsTrigger>
+                            <TabsTrigger Value="b">Billing</TabsTrigger>
+                        </TabsList>
+                        <TabsContent Value="a"><Lumeo.Text Size="sm" Color="muted" Class="p-3">Account settings.</Lumeo.Text></TabsContent>
+                        <TabsContent Value="b"><Lumeo.Text Size="sm" Color="muted" Class="p-3">Billing details.</Lumeo.Text></TabsContent>
+                    </Tabs>
+
+                    <Alert>
+                        <Heading Level="5" Size="sm" Weight="medium" Class="mb-1 leading-none tracking-tight">Heads up</Heading>
+                        <Lumeo.Text Size="sm" Leading="relaxed">Every colour here comes from the pasted variables.</Lumeo.Text>
+                    </Alert>
+
+                    <div class="overflow-x-auto rounded-lg border border-border">
+                        <Table>
+                            <TableHeader>
+                                <TableRow>
+                                    <TableHead>Name</TableHead>
+                                    <TableHead>Status</TableHead>
+                                    <TableHead>Plan</TableHead>
+                                </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                                <TableRow><TableCell>Ada</TableCell><TableCell><Badge>Active</Badge></TableCell><TableCell>Pro</TableCell></TableRow>
+                                <TableRow><TableCell>Linus</TableCell><TableCell><Badge Variant="Badge.BadgeVariant.Secondary">Invited</Badge></TableCell><TableCell>Free</TableCell></TableRow>
+                            </TableBody>
+                        </Table>
+                    </div>
+
+                    <Calendar @bind-Value="_date" />
+                </Stack>
+            </div>
+        </Stack>
+    </Grid>
+</Stack>
+</Container>
+
+@code {
+    private record Preset(string Id, string Name, string Css);
+
+    private static readonly Preset[] _presets =
+    {
+        new("ocean", "Ocean", @":root {
+  --background: oklch(0.985 0.005 230);
+  --foreground: oklch(0.25 0.04 240);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.25 0.04 240);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.25 0.04 240);
+  --primary: oklch(0.55 0.17 235);
+  --primary-foreground: oklch(0.985 0 0);
+  --secondary: oklch(0.94 0.02 230);
+  --secondary-foreground: oklch(0.3 0.05 240);
+  --muted: oklch(0.95 0.01 230);
+  --muted-foreground: oklch(0.5 0.04 240);
+  --accent: oklch(0.92 0.04 215);
+  --accent-foreground: oklch(0.3 0.06 240);
+  --destructive: oklch(0.6 0.22 25);
+  --border: oklch(0.9 0.02 230);
+  --input: oklch(0.9 0.02 230);
+  --ring: oklch(0.55 0.17 235);
+  --radius: 0.75rem;
+  --tracking-normal: 0em;
+}
+
+.dark {
+  --background: oklch(0.2 0.03 245);
+  --foreground: oklch(0.96 0.01 230);
+  --card: oklch(0.25 0.035 245);
+  --card-foreground: oklch(0.96 0.01 230);
+  --popover: oklch(0.25 0.035 245);
+  --popover-foreground: oklch(0.96 0.01 230);
+  --primary: oklch(0.72 0.14 225);
+  --primary-foreground: oklch(0.2 0.03 245);
+  --secondary: oklch(0.32 0.04 245);
+  --secondary-foreground: oklch(0.96 0.01 230);
+  --muted: oklch(0.3 0.03 245);
+  --muted-foreground: oklch(0.72 0.03 235);
+  --accent: oklch(0.36 0.06 230);
+  --accent-foreground: oklch(0.96 0.01 230);
+  --destructive: oklch(0.68 0.2 25);
+  --border: oklch(0.34 0.03 245);
+  --input: oklch(0.34 0.03 245);
+  --ring: oklch(0.72 0.14 225);
+}"),
+        new("sunset", "Sunset", @"/* warm, squarish */
+:root {
+  --background: oklch(0.98 0.01 80);
+  --foreground: oklch(0.28 0.04 40);
+  --card: oklch(0.995 0.005 80);
+  --card-foreground: oklch(0.28 0.04 40);
+  --popover: oklch(0.995 0.005 80);
+  --popover-foreground: oklch(0.28 0.04 40);
+  --primary: oklch(0.66 0.19 45);
+  --primary-foreground: oklch(0.99 0.005 80);
+  --secondary: oklch(0.95 0.03 80);
+  --secondary-foreground: oklch(0.32 0.05 40);
+  --muted: oklch(0.95 0.015 80);
+  --muted-foreground: oklch(0.52 0.05 50);
+  --accent: oklch(0.93 0.06 70);
+  --accent-foreground: oklch(0.32 0.06 40);
+  --destructive: oklch(0.58 0.23 27);
+  --border: oklch(0.9 0.03 75);
+  --input: oklch(0.9 0.03 75);
+  --ring: oklch(0.66 0.19 45);
+  --radius: 0.25rem;
+}
+
+.dark {
+  --background: oklch(0.22 0.025 40);
+  --foreground: oklch(0.95 0.015 80);
+  --card: oklch(0.27 0.03 40);
+  --card-foreground: oklch(0.95 0.015 80);
+  --popover: oklch(0.27 0.03 40);
+  --popover-foreground: oklch(0.95 0.015 80);
+  --primary: oklch(0.74 0.16 55);
+  --primary-foreground: oklch(0.22 0.025 40);
+  --secondary: oklch(0.34 0.035 40);
+  --secondary-foreground: oklch(0.95 0.015 80);
+  --muted: oklch(0.32 0.03 40);
+  --muted-foreground: oklch(0.74 0.04 70);
+  --accent: oklch(0.4 0.06 50);
+  --accent-foreground: oklch(0.95 0.015 80);
+  --destructive: oklch(0.68 0.2 27);
+  --border: oklch(0.36 0.03 40);
+  --input: oklch(0.36 0.03 40);
+  --ring: oklch(0.74 0.16 55);
+}"),
+        new("forest", "Forest (@theme wrapper)", @"@import ""tailwindcss"";
+
+:root {
+  --background: oklch(0.97 0.012 150);
+  --foreground: oklch(0.26 0.04 155);
+  --card: oklch(0.99 0.006 150);
+  --card-foreground: oklch(0.26 0.04 155);
+  --popover: oklch(0.99 0.006 150);
+  --popover-foreground: oklch(0.26 0.04 155);
+  --primary: oklch(0.5 0.13 155);
+  --primary-foreground: oklch(0.98 0.01 150);
+  --secondary: oklch(0.93 0.025 150);
+  --secondary-foreground: oklch(0.3 0.05 155);
+  --muted: oklch(0.94 0.015 150);
+  --muted-foreground: oklch(0.5 0.04 155);
+  --accent: oklch(0.9 0.05 140);
+  --accent-foreground: oklch(0.3 0.06 155);
+  --destructive: oklch(0.58 0.22 28);
+  --border: oklch(0.89 0.025 150);
+  --input: oklch(0.89 0.025 150);
+  --ring: oklch(0.5 0.13 155);
+  --radius: 1rem;
+  --shadow-md: 0 6px 14px -4px oklch(0.4 0.1 155 / 0.25);
+}
+
+.dark {
+  --background: oklch(0.2 0.025 155);
+  --foreground: oklch(0.95 0.015 150);
+  --card: oklch(0.25 0.03 155);
+  --card-foreground: oklch(0.95 0.015 150);
+  --popover: oklch(0.25 0.03 155);
+  --popover-foreground: oklch(0.95 0.015 150);
+  --primary: oklch(0.7 0.15 150);
+  --primary-foreground: oklch(0.2 0.025 155);
+  --secondary: oklch(0.32 0.035 155);
+  --secondary-foreground: oklch(0.95 0.015 150);
+  --muted: oklch(0.3 0.03 155);
+  --muted-foreground: oklch(0.72 0.04 150);
+  --accent: oklch(0.38 0.07 150);
+  --accent-foreground: oklch(0.95 0.015 150);
+  --destructive: oklch(0.68 0.2 28);
+  --border: oklch(0.35 0.03 155);
+  --input: oklch(0.35 0.03 155);
+  --ring: oklch(0.7 0.15 150);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-primary: var(--primary);
+  --radius-lg: var(--radius);
+}"),
+    };
+
+    private string _css = _presets[0].Css;
+    private ThemeParseResult _result = ThemePlaygroundParser.Parse(_presets[0].Css);
+    private bool _dark;
+    private bool _copied;
+    private string? _fruit;
+    private bool _switch = true;
+    private bool _check = true;
+    private DateOnly? _date = DateOnly.FromDateTime(DateTime.Today);
+
+    private string PreviewClass =>
+        "rounded-xl border border-border bg-background text-foreground p-5" + (_dark ? " dark" : "");
+
+    private string PreviewStyle
+    {
+        get
+        {
+            if (!_dark) return ThemePlaygroundParser.ToScopedStyle(_result.Light);
+            // Dark = the :root values (radius, fonts, ...) overlaid with the .dark values.
+            var merged = new Dictionary<string, string>(_result.Light);
+            foreach (var (k, v) in _result.Dark) merged[k] = v;
+            return ThemePlaygroundParser.ToScopedStyle(merged);
+        }
+    }
+
+    private void OnCssInput(ChangeEventArgs e) => SetCss(e.Value?.ToString() ?? "");
+
+    private void LoadPreset(string css) => SetCss(css);
+
+    private void Reset() => SetCss(_presets[0].Css);
+
+    private void SetCss(string css)
+    {
+        _css = css;
+        _result = ThemePlaygroundParser.Parse(css);
+        _copied = false;
+    }
+
+    private void OnModeChanged(string? v) { if (v != null) _dark = v == "dark"; }
+
+    private async Task CopyOverride()
+    {
+        await Interop.CopyToClipboard(ThemePlaygroundParser.ToOverrideCss(_result));
+        _copied = true;
+    }
+}
