@@ -56,6 +56,46 @@ public class ToolbarTests : IAsyncLifetime
     }
 
     [Fact]
+    public void Separator_Standalone_Is_Vertical()
+    {
+        var cut = _ctx.Render<Lumeo.ToolbarSeparator>();
+        var el = cut.Find("[role='separator']");
+        Assert.Equal("vertical", el.GetAttribute("aria-orientation"));
+        Assert.Contains("w-px", el.ClassName);
+    }
+
+    [Fact]
+    public void Separator_In_Horizontal_Toolbar_Is_Vertical()
+    {
+        var cut = _ctx.Render<Lumeo.Toolbar>(p => p.AddChildContent<Lumeo.ToolbarSeparator>());
+        var el = cut.Find("[role='separator']");
+        Assert.Equal("vertical", el.GetAttribute("aria-orientation"));
+        Assert.Contains("w-px", el.ClassName);
+    }
+
+    [Fact]
+    public void Separator_In_Vertical_Toolbar_Is_Horizontal()
+    {
+        var cut = _ctx.Render<Lumeo.Toolbar>(p => p
+            .Add(x => x.Orientation, Lumeo.Toolbar.ToolbarOrientation.Vertical)
+            .AddChildContent<Lumeo.ToolbarSeparator>());
+        var el = cut.Find("[role='separator']");
+        Assert.Equal("horizontal", el.GetAttribute("aria-orientation"));
+        Assert.Contains("h-px", el.ClassName);
+        Assert.Contains("w-full", el.ClassName);
+        Assert.DoesNotContain("w-px", el.ClassName);
+    }
+
+    [Fact]
+    public void Separator_Explicit_Orientation_Wins()
+    {
+        var cut = _ctx.Render<Lumeo.Toolbar>(p => p
+            .Add(x => x.Orientation, Lumeo.Toolbar.ToolbarOrientation.Vertical)
+            .AddChildContent<Lumeo.ToolbarSeparator>(s => s.Add(x => x.Orientation, Lumeo.Toolbar.ToolbarOrientation.Vertical)));
+        Assert.Equal("vertical", cut.Find("[role='separator']").GetAttribute("aria-orientation"));
+    }
+
+    [Fact]
     public void Spacer_Has_Flex1_Class()
     {
         var cut = _ctx.Render<Lumeo.ToolbarSpacer>();
