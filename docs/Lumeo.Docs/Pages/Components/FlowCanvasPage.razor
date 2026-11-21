@@ -115,6 +115,28 @@
         </Stack>
     </ComponentDemo>
 
+    <ComponentDemo Title="Edge colours with matching arrowheads" Code="@_edgeColourCode">
+        <Stack Gap="3" Class="w-full">
+            <Lumeo.Text Size="sm" Color="muted">
+                <code>FlowEdge.Color</code> takes any CSS colour or a theme token. The stroke and its arrowhead use
+                it in every engine (Chromium, Firefox and Safari): one marker is emitted per distinct colour, and
+                edges that share a colour share the marker. A selected edge keeps the selection colour. A colour set
+                only through <code>Class</code> reaches the arrowhead in Chromium only, so prefer <code>Color</code>.
+            </Lumeo.Text>
+            <LazyRender Height="240px">
+                <FlowCanvas Nodes="_colourNodes" Edges="_colourEdges" Height="240px" MaxZoom="1" Readonly="true">
+                    <NodeTemplate Context="ctx">
+                        <div class="rounded-md border border-border bg-card px-3 py-2 text-sm font-medium text-card-foreground shadow-sm">
+                            <FlowHandle Type="FlowHandleType.Target" Position="FlowPosition.Left" />
+                            @ctx.Node.Data
+                            <FlowHandle Type="FlowHandleType.Source" Position="FlowPosition.Right" />
+                        </div>
+                    </NodeTemplate>
+                </FlowCanvas>
+            </LazyRender>
+        </Stack>
+    </ComponentDemo>
+
     <ComponentDemo Title="Connect handles — pointer and keyboard, with validation" Code="@_connectCode">
         <Stack Gap="3" Class="w-full">
             <Lumeo.Text Size="sm" Color="muted">
@@ -843,6 +865,29 @@
         // Persist the committed positions (one entry per moved node).
     }
 }";
+
+    // ── Edge colours (#529) ───────────────────────────────────────────────
+    private readonly IReadOnlyList<FlowNode> _colourNodes = new List<FlowNode>
+    {
+        new("src", 0, 80, Data: "Source"),
+        new("ok", 260, 0, Data: "Healthy"),
+        new("warn", 260, 80, Data: "Degraded"),
+        new("bad", 260, 160, Data: "Failing"),
+    };
+
+    private readonly IReadOnlyList<FlowEdge> _colourEdges = new List<FlowEdge>
+    {
+        new("e1", "src", "ok") { Color = "var(--color-success)" },
+        new("e2", "src", "warn") { Color = "var(--color-warning)" },
+        new("e3", "src", "bad") { Color = "var(--color-destructive)" },
+    };
+
+    private const string _edgeColourCode = @"var edges = new List<FlowEdge>
+{
+    new(""e1"", ""src"", ""ok"")   { Color = ""var(--color-success)"" },
+    new(""e2"", ""src"", ""warn"") { Color = ""var(--color-warning)"" },
+    new(""e3"", ""src"", ""bad"")  { Color = ""var(--color-destructive)"" },
+};";
 
     // ── Demo 2 — readonly, background variants, controls ─────────────────
     private IReadOnlyList<FlowNode> _variantNodes = new List<FlowNode>

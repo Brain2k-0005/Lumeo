@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `FlowEdge.Color` colours an edge and its arrowhead the same in Chromium, Firefox and Safari (#529). The flow canvas emits one arrow marker per distinct colour (stable per-canvas id, none when unused), so no engine needs `context-stroke`. A literal `stroke:` in `FlowEdge.Style` is honoured by the marker as well. A colour set only through `FlowEdge.Class` still reaches the arrowhead in Chromium only; use `Color` for cross-engine edges.
+
+### Fixed
+
+- Flow edges with a custom colour no longer show a default-coloured arrowhead in Firefox and Safari when the colour is set through `FlowEdge.Color` or `FlowEdge.Style` (#529).
+
 ### Deprecated
 
 - `Gantt` (the legacy gantt-v2 component) is deprecated in favour of `GanttChart` and will be removed in 6.0; using it now produces an obsolete warning (CS0618).

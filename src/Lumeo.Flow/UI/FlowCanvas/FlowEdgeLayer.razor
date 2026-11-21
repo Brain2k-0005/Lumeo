@@ -49,6 +49,15 @@
         <marker id="@_selectedMarkerId" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto-start-reverse" markerUnits="userSpaceOnUse">
             <path d="M0,0 L8,4 L0,8 Z" fill="var(--color-primary)" />
         </marker>
+        @* #529: one marker per distinct custom edge colour (FlowEdge.Color, or a literal `stroke:` in
+           FlowEdge.Style) so the arrowhead needs no `context-stroke` (Chromium-only). Nothing is
+           emitted for edges that use the default colour. *@
+        @foreach (var colour in _colours)
+        {
+            <marker @key="@("m-" + colour)" id="@ColourMarkerId(colour)" data-flow-marker-colour markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto-start-reverse" markerUnits="userSpaceOnUse">
+                <path d="M0,0 L8,4 L0,8 Z" fill="@colour" />
+            </marker>
+        }
     </defs>
     @if (Context is not null)
     {
@@ -131,8 +140,54 @@
     private List<(FlowEdge Edge, FlowEdgePath Path, FlowPoint Source, FlowPoint Target)> _edges = new();
     private List<(FlowEdge Edge, FlowEdgePath Path, FlowPoint Source, FlowPoint Target)> Edges => _edges;
 
+    // Distinct custom colours in use (insertion order), one <marker> each.
+    private List<string> _colours = new();
+
     protected override void OnParametersSet()
-        => _edges = Context is null ? new() : Context.Canvas.RenderableEdges().ToList();
+    {
+        _edges = Context is null ? new() : Context.Canvas.RenderableEdges().ToList();
+        _colours = _edges
+            .Where(e => !string.IsNullOrEmpty(e.Edge.MarkerEnd))
+            .Select(e => EffectiveColour(e.Edge))
+            .Where(c => c is not null)
+            .Select(c => c!)
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+    }
+
+    // #529: the colour a cross-engine marker can be built from — FlowEdge.Color, else a literal
+    // `stroke: <colour>` declaration in FlowEdge.Style (the last one wins, like the cascade). A colour
+    // that only comes from FlowEdge.Class is not visible to C# and stays Chromium-only (context-stroke).
+    private static string? EffectiveColour(FlowEdge edge)
+    {
+        if (!string.IsNullOrWhiteSpace(edge.Color)) return edge.Color!.Trim();
+        if (string.IsNullOrEmpty(edge.Style)) return null;
+        string? found = null;
+        foreach (var decl in edge.Style.Split(';'))
+        {
+            var i = decl.IndexOf(':');
+            if (i <= 0 || !decl.AsSpan(0, i).Trim().Equals("stroke", StringComparison.OrdinalIgnoreCase)) continue;
+            var v = decl[(i + 1)..].Trim();
+            found = v.Length == 0 || v.StartsWith("var(--lumeo-flow-edge-stroke", StringComparison.Ordinal) ? null : v;
+        }
+        return found;
+    }
+
+    // Stable id from a FNV-1a hash of the value, scoped by the per-instance prefix so two canvases
+    // on one page never share (or collide on) a marker id.
+    private string ColourMarkerId(string colour)
+    {
+        uint h = 2166136261;
+        foreach (var ch in colour) { h ^= ch; h *= 16777619; }
+        return _markerId + "-c" + h.ToString("x8", CultureInfo.InvariantCulture);
+    }
+
+    private string MarkerIdFor(FlowEdge edge, bool selected)
+    {
+        if (selected) return _selectedMarkerId; // selection highlight always wins, as for the stroke
+        var c = EffectiveColour(edge);
+        return c is null ? _markerId : ColourMarkerId(c);
+    }
 
     private void RenderEdges(RenderTreeBuilder __builder, int level)
     {
@@ -185,7 +240,7 @@
                   fill="none"
                   class="@Cx.Merge(edge.Class)"
                   stroke-dasharray="@(edge.Dashed ? "5 4" : null)"
-                  marker-end="@(string.IsNullOrEmpty(edge.MarkerEnd) ? null : "url(#" + (selected ? _selectedMarkerId : _markerId) + ")")"
+                  marker-end="@(string.IsNullOrEmpty(edge.MarkerEnd) ? null : "url(#" + MarkerIdFor(edge, selected) + ")")"
                   style="@EdgeStyle(selectable, selected, edge)"
                   @onclick="e => canvas.HandleEdgeClickAsync(edge, e.ShiftKey, e.CtrlKey || e.MetaKey)" />
             @* LU-04: Animated no longer forces a dash on the edge itself — a decorative, aria-hidden
@@ -252,8 +307,11 @@
     // markup); the SELECTED branch stays a literal var(--color-primary) — the selection highlight is
     // deliberately not overridable per edge, it must always read as "selected". edge.Style is
     // appended last so it always wins over both (the documented one-off escape hatch).
+    private static string DefaultOr(FlowEdge edge)
+        => string.IsNullOrWhiteSpace(edge.Color) ? "var(--lumeo-flow-edge-stroke, var(--color-muted-foreground))" : edge.Color!.Trim();
+
     private static string EdgeStyle(bool selectable, bool selected, FlowEdge edge)
-        => "stroke:" + (selected ? "var(--color-primary)" : "var(--lumeo-flow-edge-stroke, var(--color-muted-foreground))")
+        => "stroke:" + (selected ? "var(--color-primary)" : DefaultOr(edge))
            + ";opacity:" + (selected ? "1" : "0.6")
            + ";stroke-width:1.5;pointer-events:" + (selectable ? "stroke" : "none") + ";"
            + (selectable ? "cursor:pointer;" : "")
@@ -268,7 +326,7 @@
     // recolours this overlay path — previously the travelling marker stayed default-coloured
     // because neither edge.Class nor edge.Style ever reached it.
     private static string FlowStyle(bool selected, FlowEdge edge)
-        => "stroke:" + (selected ? "var(--color-primary)" : "var(--lumeo-flow-edge-stroke, var(--color-muted-foreground))")
+        => "stroke:" + (selected ? "var(--color-primary)" : DefaultOr(edge))
            + ";opacity:" + (selected ? "1" : "0.6")
            + ";stroke-width:1.5;stroke-dasharray:2 10;pointer-events:none;"
            + edge.Style;
