@@ -15,6 +15,22 @@
         @Btn(L["Editor.Heading2"], "Heading2", "setHeading", Active?.Heading2 == true, 2)
         @Btn(L["Editor.Heading3"], "Heading3", "setHeading", Active?.Heading3 == true, 3)
         @Sep()
+        @if (EffectiveFonts.Count > 0)
+        {
+            <Select Value="@SelectedFontKey" ValueChanged="OnFontSelected" Disabled="Disabled">
+                <SelectTrigger aria-label="@L["Editor.FontFamily"]" Placeholder="@L["Editor.FontFamily"]" Class="h-7 w-36 px-2 text-xs" />
+                <SelectContent Class="w-48">
+                    @for (var i = 0; i < EffectiveFonts.Count; i++)
+                    {
+                        var font = EffectiveFonts[i];
+                        <SelectItem Value="@FontKey(i)">
+                            <span style="@(font.IsDefault ? null : $"font-family: {font.Value}")">@FontLabel(font)</span>
+                        </SelectItem>
+                    }
+                </SelectContent>
+            </Select>
+            @Sep()
+        }
     }
     else if (Preset == EditorToolbarPreset.Standard)
     {
@@ -109,6 +125,10 @@
     /// <summary>Shows the AI-actions button on the <see cref="EditorToolbarPreset.Full"/>
     /// preset.</summary>
     [Parameter] public bool EnableAiActions { get; set; }
+    /// <summary>Fonts offered by the font-family dropdown (<see cref="EditorToolbarPreset.Full"/>
+    /// only). Null falls back to <see cref="EditorFonts.Default"/>; an empty list hides the
+    /// dropdown.</summary>
+    [Parameter] public IReadOnlyList<EditorFont>? Fonts { get; set; }
     /// <summary>Raised with the editor command name and its optional argument (e.g.
     /// <c>("setHeading", 1)</c>) when a toolbar button is clicked.</summary>
     [Parameter] public EventCallback<(string command, object? arg)> OnCommand { get; set; }
@@ -119,6 +139,42 @@
 
     private string RootClass =>
         $"flex flex-wrap items-center gap-0.5 border-b border-border/40 bg-muted/30 px-2 py-1.5 {Class}".Trim();
+
+    private IReadOnlyList<EditorFont> EffectiveFonts => Fonts ?? EditorFonts.Default;
+
+    private static string FontKey(int index) => "font-" + index;
+
+    private string FontLabel(EditorFont font)
+        => font.IsDefault && font.Label == "Default" ? L["Editor.FontDefault"] : font.Label;
+
+    // Normalise so the stored value (browser-normalised quotes/spacing) compares equal
+    // to the configured one.
+    private static string NormFont(string? v)
+        => string.IsNullOrWhiteSpace(v)
+            ? string.Empty
+            : new string(v.Where(c => c != '"' && c != '\'' && !char.IsWhiteSpace(c)).ToArray()).ToLowerInvariant();
+
+    // The dropdown key for the font active at the cursor; null (placeholder) when the
+    // cursor sits in a font that is not in the configured list.
+    private string? SelectedFontKey
+    {
+        get
+        {
+            var active = NormFont(Active?.FontFamily);
+            var fonts = EffectiveFonts;
+            for (var i = 0; i < fonts.Count; i++)
+                if (NormFont(fonts[i].Value) == active) return FontKey(i);
+            return null;
+        }
+    }
+
+    private async Task OnFontSelected(string? key)
+    {
+        if (key is null || !key.StartsWith("font-") || !int.TryParse(key.AsSpan(5), out var i)) return;
+        var fonts = EffectiveFonts;
+        if (i < 0 || i >= fonts.Count) return;
+        await OnCommand.InvokeAsync(("setFontFamily", fonts[i].Value ?? string.Empty));
+    }
 
     private RenderFragment Sep() => builder =>
     {
