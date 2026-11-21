@@ -15,8 +15,13 @@
 //     `_corePromiseByBase`.
 //   - Language packs are lazy-loaded per `language` arg, cached per base in
 //     `_langCacheByBase` so switching back to a language is instant.
-//   - Themes: the One Dark theme is dynamic-imported when needed; the light
-//     theme is CodeMirror's built-in default.
+//   - Themes: in dark mode the One Dark editor chrome (`oneDarkTheme`) is
+//     dynamic-imported; light mode uses CodeMirror's built-in chrome.
+//   - Syntax colours come from ONE Lumeo highlight style (`loadLumeoHighlight`)
+//     built from the theme's CSS variables (`--color-chart-*`, foreground,
+//     muted-foreground), applied in light AND dark, so tokens follow every
+//     Lumeo theme. It lives in its own Compartment so `SyntaxHighlighting`
+//     can be toggled at runtime without rebuilding the editor.
 //   - All imports go through `https://esm.sh/` — CDN already serves these
 //     packages as ES modules with proper HTTP caching headers.
 //
@@ -56,6 +61,7 @@ const _corePromiseByBase = new Map();      // base -> Promise<core>
 const _langCacheByBase = new Map();        // base -> Map<langKey, Promise<ext>>
 const _oneDarkPromiseByBase = new Map();   // base -> Promise<ext>
 const _minimapPromiseByBase = new Map();   // base -> Promise<ext|null>
+const _highlightPromiseByBase = new Map(); // base -> Promise<ext>
 
 async function loadCore(base = _esmBase) {
     if (_corePromiseByBase.has(base)) return _corePromiseByBase.get(base);
@@ -133,10 +139,66 @@ async function loadOneDark(base = _esmBase) {
     if (_oneDarkPromiseByBase.has(base)) return _oneDarkPromiseByBase.get(base);
     const promise = (async () => {
         const mod = await import(`${base}/@codemirror/theme-one-dark@${CM_VERSION}`);
-        return mod.oneDark || mod.default?.oneDark || mod.default;
+        // Editor chrome only (background, gutters, cursor, selection). `oneDark`
+        // would also bundle One Dark's own token colours, which would make
+        // SyntaxHighlighting="false" a no-op in dark mode and ignore the Lumeo
+        // palette; the token colours come from the Lumeo highlight style instead.
+        return mod.oneDarkTheme || mod.default?.oneDarkTheme || mod.oneDark || mod.default?.oneDark || mod.default;
     })();
     _oneDarkPromiseByBase.set(base, promise);
     return promise;
+}
+
+// Lumeo highlight style — token colours as `var(--...)` strings so they follow
+// whichever Lumeo theme (and light/dark mode) is active, with no hardcoded hex.
+// `@lezer/highlight` is resolved from the same ESM base as the language packs
+// (esm.sh / a self-hosted mirror dedupes it to the copy @codemirror/language
+// uses, which is required for the tags to match).
+async function loadLumeoHighlight(base = _esmBase) {
+    if (_highlightPromiseByBase.has(base)) return _highlightPromiseByBase.get(base);
+    const promise = (async () => {
+        const [core, lezer] = await Promise.all([
+            loadCore(base),
+            import(`${base}/@lezer/highlight@1`),
+        ]);
+        const t = lezer.tags;
+        const kw = 'var(--color-chart-5)';       // keywords, control flow
+        const str = 'var(--color-chart-3)';      // strings, regexps
+        const num = 'var(--color-chart-4)';      // numbers, booleans, null, escapes
+        const fn = 'var(--color-chart-1)';       // functions, properties, attributes
+        const typ = 'var(--color-chart-2)';      // types, classes, tags
+        const dim = 'var(--color-muted-foreground)';
+        const style = core.language.HighlightStyle.define([
+            { tag: [t.keyword, t.controlKeyword, t.moduleKeyword, t.operatorKeyword, t.definitionKeyword], color: kw },
+            { tag: [t.string, t.special(t.string), t.regexp, t.character, t.attributeValue, t.docString], color: str },
+            { tag: [t.number, t.bool, t.null, t.atom, t.escape, t.integer, t.float, t.self], color: num },
+            { tag: [t.function(t.variableName), t.function(t.propertyName), t.propertyName, t.attributeName, t.labelName], color: fn },
+            { tag: [t.typeName, t.className, t.namespace, t.tagName, t.standard(t.tagName), t.annotation, t.macroName, t.constant(t.name)], color: typ },
+            { tag: [t.definition(t.variableName), t.definition(t.propertyName)], color: fn },
+            { tag: [t.comment, t.lineComment, t.blockComment, t.docComment, t.meta, t.processingInstruction], color: dim, fontStyle: 'italic' },
+            { tag: [t.operator, t.punctuation, t.separator, t.bracket, t.angleBracket, t.squareBracket, t.paren, t.brace, t.derefOperator], color: 'var(--color-foreground)' },
+            { tag: t.heading, color: kw, fontWeight: 'bold' },
+            { tag: t.strong, fontWeight: 'bold' },
+            { tag: t.emphasis, fontStyle: 'italic' },
+            { tag: [t.link, t.url], color: fn, textDecoration: 'underline' },
+            { tag: t.strikethrough, textDecoration: 'line-through' },
+            { tag: t.invalid, color: 'var(--color-destructive)' },
+        ]);
+        return core.language.syntaxHighlighting(style);
+    })();
+    _highlightPromiseByBase.set(base, promise);
+    // A failed import must not poison the cache for later retries.
+    promise.catch(() => _highlightPromiseByBase.delete(base));
+    return promise;
+}
+
+async function highlightExtension(enabled, base) {
+    if (!enabled) return [];
+    try { return await loadLumeoHighlight(base); }
+    catch (e) {
+        console.warn('[Lumeo.CodeEditor] syntax highlight style failed to load', e);
+        return [];
+    }
 }
 
 // Minimap — CodeMirror 6 has no built-in minimap, so we lazily pull the
@@ -211,7 +273,7 @@ function makeChangeListener(core, dotNetRef) {
     return { listener, cancel };
 }
 
-async function buildExtensions(opts, core, base = _esmBase) {
+async function buildExtensions(opts, core, base = _esmBase, highlightCompartment = null) {
     const { state, view, language, commands, search, autocomplete } = core;
     const exts = [];
 
@@ -263,6 +325,11 @@ async function buildExtensions(opts, core, base = _esmBase) {
     const langExt = await loadLanguage(opts.language, base);
     if (langExt) exts.push(langExt);
 
+    // Syntax highlighting (Lumeo palette, light + dark). Own compartment so it
+    // can be reconfigured in place. Default on unless explicitly disabled.
+    const hl = await highlightExtension(opts.syntaxHighlighting !== false, base);
+    exts.push(highlightCompartment ? highlightCompartment.of(hl) : hl);
+
     // Theme.
     if (resolveDark(opts.theme)) {
         const oneDark = await loadOneDark(base);
@@ -305,7 +372,8 @@ export async function init(elementId, options, dotNetRef) {
     const core = await loadCore(base);
     const { state, view } = core;
 
-    const exts = await buildExtensions(options, core, base);
+    const highlightCompartment = new state.Compartment();
+    const exts = await buildExtensions(options, core, base, highlightCompartment);
 
     // Change listener — fire dotNetRef.OnEditorChange with the latest doc on every edit.
     // CodeMirror's `EditorView.updateListener` fires synchronously per transaction;
@@ -346,6 +414,7 @@ export async function init(elementId, options, dotNetRef) {
         dotNetRef,
         options: { ...options },
         base,
+        highlightCompartment,
         themeObserver,
         // Cancels the active listener's pending debounced round-trip. Replaced
         // by rebuild() so destroy() always cancels the CURRENT listener's timer,
@@ -358,7 +427,7 @@ async function rebuild(elementId) {
     const inst = _instances.get(elementId);
     if (!inst) return;
     const core = await loadCore(inst.base);
-    const exts = await buildExtensions(inst.options, core, inst.base);
+    const exts = await buildExtensions(inst.options, core, inst.base, inst.highlightCompartment);
     // Re-attach the change listener through the SAME factory init uses, so the
     // 60ms input debounce survives the rebuild. Cancel the outgoing listener's
     // pending timer first and swap inst.cancelNotify to the new closure so a
@@ -453,6 +522,16 @@ export async function setTheme(elementId, theme) {
         });
         inst.themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
     }
+}
+
+export async function setSyntaxHighlighting(elementId, enabled) {
+    const inst = _instances.get(elementId);
+    if (!inst) return;
+    inst.options.syntaxHighlighting = enabled;
+    const ext = await highlightExtension(enabled, inst.base);
+    // Re-check: the editor may have been destroyed while the style loaded.
+    if (_instances.get(elementId) !== inst) return;
+    inst.view.dispatch({ effects: inst.highlightCompartment.reconfigure(ext) });
 }
 
 export async function setReadOnly(elementId, readOnly) {

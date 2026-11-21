@@ -103,6 +103,38 @@ public class CodeEditorTests : IAsyncLifetime
     }
 
     [Fact]
+    public void Init_Receives_SyntaxHighlighting_On_By_Default()
+    {
+        _ctx.Render<L.CodeEditor>();
+
+        var init = _ctx.JSInterop.Invocations.Single(i => i.Identifier == "init");
+        var options = (Dictionary<string, object?>)init.Arguments[1]!;
+        Assert.Equal(true, options["syntaxHighlighting"]);
+    }
+
+    [Fact]
+    public void Init_Receives_SyntaxHighlighting_Opt_Out()
+    {
+        _ctx.Render<L.CodeEditor>(p => p.Add(c => c.SyntaxHighlighting, false));
+
+        var init = _ctx.JSInterop.Invocations.Single(i => i.Identifier == "init");
+        var options = (Dictionary<string, object?>)init.Arguments[1]!;
+        Assert.Equal(false, options["syntaxHighlighting"]);
+    }
+
+    [Fact]
+    public void Toggling_SyntaxHighlighting_Invokes_SetSyntaxHighlighting()
+    {
+        var cut = _ctx.Render<L.CodeEditor>();
+        Assert.DoesNotContain(_ctx.JSInterop.Invocations, i => i.Identifier == "setSyntaxHighlighting");
+
+        cut.Render(p => p.Add(c => c.SyntaxHighlighting, false));
+
+        var call = _ctx.JSInterop.Invocations.Single(i => i.Identifier == "setSyntaxHighlighting");
+        Assert.Equal(false, call.Arguments[1]);
+    }
+
+    [Fact]
     public async Task Init_Failure_Does_Not_Crash_And_Cleans_Up()
     {
         // A fresh context where init throws, to exercise the failed-init guard.
