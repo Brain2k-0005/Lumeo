@@ -39,7 +39,7 @@
             var isActive = idx == ActiveStep;
             var isCompleted = step.Completed || idx < ActiveStep;
             var isError = !step.IsStepValid() && idx < ActiveStep;
-            <button type="button"
+            RenderFragment stepButton = @<button type="button"
                     id="@StepTabId(idx)"
                     role="tab"
                     aria-selected="@isActive.ToString().ToLower()"
@@ -67,9 +67,37 @@
                 {
                     <span class="text-sm font-semibold">@(idx + 1)</span>
                 }
-            </button>
-            @if (Orientation == Lumeo.Orientation.Horizontal)
+            </button>;
+            @if (Orientation == Lumeo.Orientation.Vertical)
             {
+                @* #583: one row per step — indicator + connector on the left, label beside it —
+                   inside the tablist itself (role=presentation wrappers are transparent to AT),
+                   so each connector spans exactly its own row and label rows can never drift
+                   away from their indicators. *@
+                <div role="presentation" class="flex flex-row items-stretch gap-3">
+                    <div class="flex flex-col items-center">
+                        @stepButton
+                        @if (idx < _steps.Count - 1)
+                        {
+                            <div class="@GetVerticalConnectorClass(isCompleted)"></div>
+                        }
+                    </div>
+                    <div class="@GetVerticalLabelClass(idx < _steps.Count - 1)">
+                        <p class="@GetVerticalTitleClass(idx, isActive, isCompleted)">@step.Title</p>
+                        @if (!string.IsNullOrEmpty(step.Description))
+                        {
+                            <p class="text-xs text-muted-foreground">@step.Description</p>
+                        }
+                        @if (step.Optional)
+                        {
+                            <p class="text-xs text-muted-foreground italic">@L["Stepper.Optional"]</p>
+                        }
+                    </div>
+                </div>
+            }
+            else
+            {
+                @stepButton
                 <div class="@GetStepLabelClass(idx, isActive, isCompleted)">
                     @* max-w-32 caps a single label so a run of long titles can't blow out the
                        header on its own; truncate (needs a block context + a width to bite
@@ -93,40 +121,6 @@
             }
         }
     </div>
-
-    @* Vertical: labels beside indicators *@
-    @if (Orientation == Lumeo.Orientation.Vertical)
-    {
-        <div class="flex flex-col gap-0">
-            @for (int i = 0; i < _steps.Count; i++)
-            {
-                var idx = i;
-                var step = _steps[idx];
-                var isActive = idx == ActiveStep;
-                var isCompleted = step.Completed || idx < ActiveStep;
-                <div class="flex flex-row items-start gap-3 @(idx < _steps.Count - 1 ? "pb-6" : "")">
-                    <div class="flex flex-col items-center">
-                        <div class="h-8 w-8 shrink-0"></div>
-                        @if (idx < _steps.Count - 1)
-                        {
-                            <div class="w-px flex-1 min-h-[24px] @(isCompleted ? "bg-primary" : "bg-border")"></div>
-                        }
-                    </div>
-                    <div class="pt-1 pb-2">
-                        <p class="@GetVerticalTitleClass(idx, isActive, isCompleted)">@step.Title</p>
-                        @if (!string.IsNullOrEmpty(step.Description))
-                        {
-                            <p class="text-xs text-muted-foreground">@step.Description</p>
-                        }
-                        @if (step.Optional)
-                        {
-                            <p class="text-xs text-muted-foreground italic">@L["Stepper.Optional"]</p>
-                        }
-                    </div>
-                </div>
-            }
-        </div>
-    }
 
     @* Step body panel *@
     @* aria-labelledby points at the active step's tab id so AT announces
@@ -571,9 +565,9 @@
         await ActiveStepChanged.InvokeAsync(value);
     }
 
-    private string CssClass => Orientation == Lumeo.Orientation.Vertical
-        ? Cx.Merge("flex flex-row gap-4", Class)
-        : Cx.Merge("flex flex-col gap-0", Class);
+    // #583: both orientations stack header / panel / footer in a column. Vertical used to be
+    // flex-row, which put the panel and footer in extra columns beside the step list.
+    private string CssClass => Cx.Merge("flex flex-col gap-0", Class);
 
     // #464 finding 1: a horizontal header with several long-labeled steps could force the
     // whole page wider — the role=tablist row had no width constraint of its own, so its
@@ -581,11 +575,11 @@
     // container (a block-level box with overflow set never lets its content enlarge it),
     // so a narrow viewport scrolls the header horizontally instead of the page. Paired
     // with min-w-0 on each label (GetStepLabelClass) and a truncated title, in the
-    // shadcn/Origin-UI stepper spirit. Vertical orientation is untouched — it already
-    // stacks and never grows horizontally.
+    // shadcn/Origin-UI stepper spirit. The vertical rail stacks and never grows
+    // horizontally.
     private string HeaderCssClass => Orientation == Lumeo.Orientation.Horizontal
         ? "flex flex-row items-center overflow-x-auto"
-        : "flex flex-col items-center gap-0";
+        : "flex flex-col items-stretch gap-0";
 
     private string FooterCssClass => "flex flex-row items-center gap-2 mt-6 pt-4 border-t border-border/40";
 
@@ -617,6 +611,15 @@
             : isCompleted
                 ? "text-sm font-medium text-foreground"
                 : "text-sm text-muted-foreground";
+
+    // #583: the rail is a column of fixed-size indicator + a flex-1 connector; the label's
+    // bottom padding (pb-6 on all but the last step) is what gives each row its height,
+    // so the connector grows to meet the next indicator.
+    private string GetVerticalConnectorClass(bool isCompleted) =>
+        $"w-px flex-1 min-h-6 {(isCompleted ? "bg-primary" : "bg-border")}";
+
+    private string GetVerticalLabelClass(bool hasNext) =>
+        Cx.Merge("min-w-0 pt-1", Cx.When(hasNext, "pb-6"));
 
     private string GetConnectorClass(int idx, bool isCompleted) =>
         $"flex-1 h-px mx-2 {(isCompleted ? "bg-primary" : "bg-border/40")}";
