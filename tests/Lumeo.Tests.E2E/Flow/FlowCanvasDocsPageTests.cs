@@ -48,9 +48,9 @@ public class FlowCanvasDocsPageTests : PlaywrightTestBase
         await Goto("/components/flow-canvas");
         await Assertions.Expect(Page.Locator("h1", new() { HasTextString = "Flow Canvas" })).ToBeVisibleAsync(new() { Timeout = LongTimeoutMs });
 
-        // Fifteen ComponentDemo cards on the page each hold one FlowCanvas, plus the minimap overlay
+        // Sixteen ComponentDemo cards on the page each hold one FlowCanvas, plus the minimap overlay
         // and virtualization demos also render FlowMiniMap.
-        await Assertions.Expect(Page.Locator("[data-slot='flow-canvas']")).ToHaveCountAsync(15, new() { Timeout = LongTimeoutMs });
+        await Assertions.Expect(Page.Locator("[data-slot='flow-canvas']")).ToHaveCountAsync(16, new() { Timeout = LongTimeoutMs });
         await Assertions.Expect(Page.Locator("[data-slot='flow-minimap']").First).ToBeVisibleAsync(new() { Timeout = LongTimeoutMs });
     }
 }
