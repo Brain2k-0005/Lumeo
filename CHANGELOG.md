@@ -5,12 +5,6 @@ All notable changes to Lumeo will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
-
-### Fixed
-
-- GanttChart with `CalendarSystem.Jalali` mounted ~3x slower than Gregorian (about 15 s vs 5 s of WebAssembly main-thread time on the docs demo), slowing neighbouring demos too. The timeline rebuilt its date units, header labels and today position on every read (once per header cell, grid line and column) and each Jalali date-to-pixel call paid ~16 PersianCalendar conversions. These are now memoized per render and the conversion count per call is cut to ~6; Jalali output is unchanged.
-
 ## [5.14.0] - 2026-11-21
 
 ### Added
@@ -73,6 +67,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   server-side clamp stays authoritative. Range tick marks use the same half-thumb inset. (#555)
 - `Scheduler` day/column `data-*` date keys are now formatted with the invariant culture; under a `fa-IR`
   culture they were emitted in the Persian calendar and broke drag/drop and selection (#547).
+- GanttChart with `CalendarSystem.Jalali` mounted ~3x slower than Gregorian (about 15 s vs 5 s of WebAssembly main-thread time on the docs demo), slowing neighbouring demos too. The timeline rebuilt its date units, header labels and today position on every read (once per header cell, grid line and column) and each Jalali date-to-pixel call paid ~16 PersianCalendar conversions. These are now memoized per render and the conversion count per call is cut to ~6; Jalali output is unchanged.
 
 ## [5.13.0] - 2026-11-08
 

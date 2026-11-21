@@ -1508,13 +1508,13 @@
     // Design spec Phase 3, T2 — see GanttScale.UpperRuns' own firstDayOfWeek
     // remarks; ignored by every HeaderUpper kind except Week (GanttViewMode.Day).
     private IReadOnlyList<GanttHeaderRun>? _upperRuns;
-    private (DayOfWeek First, CultureInfo? Culture) _upperKey;
+    private (DayOfWeek First, CultureInfo Culture) _upperKey;
     private IReadOnlyList<GanttHeaderRun> UpperRuns
     {
         get
         {
             var units = Units; // may invalidate _upperRuns
-            var key = (EffectiveFirstDayOfWeek, Culture);
+            var key = (EffectiveFirstDayOfWeek, Culture ?? CultureInfo.CurrentCulture); // unset Culture follows CurrentCulture
             if (_upperRuns is null || _upperKey != key)
             {
                 _upperRuns = GanttScale.UpperRuns(ViewMode, units, key.Item1, CalendarSystem, Culture);
@@ -1531,10 +1531,11 @@
         get
         {
             var units = Units; // may invalidate _lowerLabels
-            if (_lowerLabels is null || !ReferenceEquals(_lowerCulture, Culture))
+            var culture = Culture ?? CultureInfo.CurrentCulture; // unset Culture follows CurrentCulture
+            if (_lowerLabels is null || !ReferenceEquals(_lowerCulture, culture))
             {
                 _lowerLabels = GanttScale.LowerLabels(ViewMode, units, CalendarSystem, Culture);
-                _lowerCulture = Culture;
+                _lowerCulture = culture;
             }
             return _lowerLabels;
         }
