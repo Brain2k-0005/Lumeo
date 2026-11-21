@@ -6800,58 +6800,70 @@ export function registerAffix(elementId, offsetTop, offsetBottom, targetSelector
         }
     };
 
+    // The visible area the element pins against. With a Target container this is the
+    // container's padding box (below its border, minus the scrollbar) in VIEWPORT
+    // coordinates, so the pinned element never leaves the container; without a
+    // Target it is the window viewport.
+    const bounds = () => {
+        if (scrollTarget === window) return { top: 0, bottom: window.innerHeight };
+        const r = scrollTarget.getBoundingClientRect();
+        return { top: r.top + scrollTarget.clientTop, bottom: r.top + scrollTarget.clientTop + scrollTarget.clientHeight };
+    };
+
+    // position:fixed is viewport-relative, so with a Target the coordinates are
+    // re-derived from the container's live rect on every scroll/resize (JS only,
+    // no Blazor round-trip) instead of being frozen at the moment of sticking.
+    const place = () => {
+        const b = bounds();
+        const ph = placeholder.getBoundingClientRect();
+        if (offsetBottom != null) {
+            el.style.top = (b.bottom - offsetBottom - el.offsetHeight) + 'px';
+        } else {
+            el.style.top = (b.top + offsetTop) + 'px';
+        }
+        el.style.left = ph.left + 'px';
+    };
+
+    const stick = () => {
+        isFixed = true;
+        const elRect = el.getBoundingClientRect();
+        el.parentNode.insertBefore(placeholder, el);
+        placeholder.style.display = 'block';
+        placeholder.style.height = elRect.height + 'px';
+        placeholder.style.width = elRect.width + 'px';
+        el.style.position = 'fixed';
+        el.style.width = elRect.width + 'px';
+        el.style.zIndex = '40';
+        place();
+        dotnetRef.invokeMethodAsync('OnAffixChanged', elementId, true);
+    };
+
+    const unstick = () => {
+        isFixed = false;
+        el.style.position = '';
+        el.style.top = '';
+        el.style.left = '';
+        el.style.bottom = '';
+        el.style.width = '';
+        el.style.zIndex = '';
+        placeholder.style.display = 'none';
+        dotnetRef.invokeMethodAsync('OnAffixChanged', elementId, false);
+    };
+
     const onScroll = () => {
+        const b = bounds();
         const rect = (isFixed ? placeholder : el).getBoundingClientRect();
 
         if (offsetBottom != null) {
-            const viewportHeight = window.innerHeight;
-            if (!isFixed && rect.bottom >= viewportHeight - offsetBottom) {
-                isFixed = true;
-                const elRect = el.getBoundingClientRect();
-                el.parentNode.insertBefore(placeholder, el);
-                placeholder.style.display = 'block';
-                placeholder.style.height = elRect.height + 'px';
-                placeholder.style.width = elRect.width + 'px';
-                el.style.position = 'fixed';
-                el.style.bottom = offsetBottom + 'px';
-                el.style.width = elRect.width + 'px';
-                el.style.zIndex = '40';
-                dotnetRef.invokeMethodAsync('OnAffixChanged', elementId, true);
-            } else if (isFixed) {
-                const placeholderRect = placeholder.getBoundingClientRect();
-                if (placeholderRect.bottom < viewportHeight - offsetBottom) {
-                    isFixed = false;
-                    el.style.position = '';
-                    el.style.bottom = '';
-                    el.style.width = '';
-                    el.style.zIndex = '';
-                    placeholder.style.display = 'none';
-                    dotnetRef.invokeMethodAsync('OnAffixChanged', elementId, false);
-                }
-            }
+            if (!isFixed && rect.bottom >= b.bottom - offsetBottom) stick();
+            else if (isFixed && rect.bottom < b.bottom - offsetBottom) unstick();
         } else {
-            if (!isFixed && rect.top <= offsetTop) {
-                isFixed = true;
-                const elRect = el.getBoundingClientRect();
-                el.parentNode.insertBefore(placeholder, el);
-                placeholder.style.display = 'block';
-                placeholder.style.height = elRect.height + 'px';
-                placeholder.style.width = elRect.width + 'px';
-                el.style.position = 'fixed';
-                el.style.top = offsetTop + 'px';
-                el.style.width = elRect.width + 'px';
-                el.style.zIndex = '40';
-                dotnetRef.invokeMethodAsync('OnAffixChanged', elementId, true);
-            } else if (isFixed && placeholder.getBoundingClientRect().top > offsetTop) {
-                isFixed = false;
-                el.style.position = '';
-                el.style.top = '';
-                el.style.width = '';
-                el.style.zIndex = '';
-                placeholder.style.display = 'none';
-                dotnetRef.invokeMethodAsync('OnAffixChanged', elementId, false);
-            }
+            if (!isFixed && rect.top <= b.top + offsetTop) stick();
+            else if (isFixed && rect.top > b.top + offsetTop) unstick();
         }
+        // Keep the fixed element glued to the container even when the PAGE scrolls
+        // or the container moves, not only when the container itself scrolls.
+        if (isFixed) place();
     };
 
     // On resize/rotate, first re-measure the affixed width from the reflowed
@@ -6865,7 +6877,11 @@ export function registerAffix(elementId, offsetTop, offsetBottom, targetSelector
     const eventTarget = scrollTarget === window ? window : scrollTarget;
     eventTarget.addEventListener('scroll', onScroll, { passive: true });
     window.addEventListener('resize', onResize, { passive: true });
-    affixHandlers.set(elementId, { onScroll, onResize, placeholder, eventTarget });
+    // A container can also move relative to the viewport when an ancestor / the page
+    // scrolls; capture catches scrolls of any nested scroller, not just window.
+    const pageScroll = scrollTarget === window ? null : onScroll;
+    if (pageScroll) document.addEventListener('scroll', pageScroll, { passive: true, capture: true });
+    affixHandlers.set(elementId, { onScroll, onResize, placeholder, eventTarget, pageScroll });
 
     // Initial check
     requestAnimationFrame(onScroll);
@@ -6876,11 +6892,13 @@ export function unregisterAffix(elementId) {
     if (handler) {
         handler.eventTarget.removeEventListener('scroll', handler.onScroll);
         window.removeEventListener('resize', handler.onResize);
+        if (handler.pageScroll) document.removeEventListener('scroll', handler.pageScroll, { capture: true });
         if (handler.placeholder.parentNode) handler.placeholder.remove();
         const el = document.getElementById(elementId);
         if (el) {
             el.style.position = '';
             el.style.top = '';
+            el.style.left = '';
             el.style.bottom = '';
             el.style.width = '';
             el.style.zIndex = '';

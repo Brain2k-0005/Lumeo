@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- `Affix` with a `Target` container now pins to the container's visible area (its top/bottom plus the offset) instead of the browser viewport, stays glued to it on every scroll step (including page scrolls), and is positioned entirely in JS with no Blazor round-trip; the "Interactive: Anchor & Offset" docs demo now passes `Target` so it pins inside its scroll box (#569).
+
 ### Deprecated
 
 - `Gantt` (the legacy gantt-v2 component) is deprecated in favour of `GanttChart` and will be removed in 6.0; using it now produces an obsolete warning (CS0618).
