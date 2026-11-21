@@ -18,7 +18,7 @@
     </label>
 }
 
-<div id="@EffectiveId" class="@CssClass" role="radiogroup" aria-label="@L["Rating.Rate"]" aria-orientation="horizontal" aria-describedby="@FormFieldDescribedBy" @onkeydown="HandleKeyDown" @onpointerup="HandlePointerUp" @onpointerleave="HandlePointerLeaveContainer" @onpointercancel="HandlePointerUp" @attributes="EffectiveAttributes">
+<div id="@EffectiveId" data-slot="rating-group" data-readonly="@(ReadOnly ? "true" : null)" class="@CssClass" role="radiogroup" aria-label="@L["Rating.Rate"]" aria-orientation="horizontal" aria-describedby="@FormFieldDescribedBy" @onkeydown="HandleKeyDown" @onpointerup="HandlePointerUp" @onpointerleave="HandlePointerLeaveContainer" @onpointercancel="HandlePointerUp" @attributes="EffectiveAttributes">
     @for (int i = 1; i <= Max; i++)
     {
         var starIndex = i;
@@ -28,6 +28,7 @@
         @if (IconContent is not null)
         {
             <button type="button"
+                    data-slot="rating-star"
                     role="radio"
                     aria-checked="@(IsStarChecked(starIndex).ToString().ToLowerInvariant())"
                     class="inline-flex items-center justify-center @GetStarClasses(isFull || isHalf) @SizeClasses @StarInteractClasses"
@@ -36,15 +37,14 @@
                     aria-label="@(string.Format(L["Rating.RateOf"], starIndex, Max))"
                     @onclick="() => HandleClick(starIndex)"
                     @onpointerdown="(e) => HandlePointerDown(starIndex, e)"
-                    @onpointerenter="() => HandlePointerEnter(starIndex)"
-                    @onmouseover="() => HandleHover(starIndex)"
-                    @onmouseout="HandleMouseLeave">
+                    @onpointerenter="() => HandlePointerEnter(starIndex)">
                 @IconContent
             </button>
         }
         else
         {
             <button type="button"
+                    data-slot="rating-star"
                     role="radio"
                     aria-checked="@(IsStarChecked(starIndex).ToString().ToLowerInvariant())"
                     class="inline-flex items-center justify-center @SizeClasses @StarInteractClasses relative"
@@ -53,9 +53,7 @@
                     aria-label="@(string.Format(L["Rating.RateOf"], starIndex, Max))"
                     @onclick="() => HandleClick(starIndex)"
                     @onpointerdown="(e) => HandlePointerDown(starIndex, e)"
-                    @onpointerenter="() => HandlePointerEnter(starIndex)"
-                    @onmouseover="() => HandleHover(starIndex)"
-                    @onmouseout="HandleMouseLeave">
+                    @onpointerenter="() => HandlePointerEnter(starIndex)">
                 @* Always render the stars inside the same inline-grid wrapper — using the wrapper for half-stars
                    only put them on a different baseline than the plain full/empty star glyphs and made
                    half-stars sit slightly lower in the row. Now every star shares the same line-box geometry. *@
@@ -63,18 +61,14 @@
                     <span style="grid-area: stack;">
                         <SvgGlyph Svg="@(LumeoIcons.Star)" class="text-muted-foreground/30 fill-muted-foreground/10" />
                     </span>
-                    @if (isFull || (_hoverValue > 0 && starIndex <= _hoverValue))
-                    {
-                        <span style="grid-area: stack;">
-                            <SvgGlyph Svg="@(LumeoIcons.Star)" class="text-[var(--color-rating)] fill-[var(--color-rating)]" />
-                        </span>
-                    }
-                    else if (isHalf)
-                    {
-                        <span style="grid-area: stack; clip-path: inset(0 50% 0 0);">
-                            <SvgGlyph Svg="@(LumeoIcons.Star)" class="text-[var(--color-rating)] fill-[var(--color-rating)]" />
-                        </span>
-                    }
+                    @* The fill layer is ALWAYS rendered and only its data-fill attribute changes, so a hover
+                       or a value change never adds/removes DOM nodes under the pointer. The hover preview is
+                       pure CSS (lumeo.css, [data-slot="rating-star"]:hover and its preceding siblings): no
+                       server round-trip, no re-render, and mousedown/mouseup always land on the same node,
+                       so a click is never swallowed (#592). *@
+                    <span data-slot="rating-fill" data-fill="@(isFull ? "full" : isHalf ? "half" : "none")" style="grid-area: stack;">
+                        <SvgGlyph Svg="@(LumeoIcons.Star)" class="text-[var(--color-rating)] fill-[var(--color-rating)]" />
+                    </span>
                 </span>
             </button>
         }
@@ -161,8 +155,6 @@
             : AdditionalAttributes;
 
     private readonly string _id = LumeoIds.New("rating");
-
-    private int _hoverValue;
 
     // Touch/pointer drag state. Lets users tap-and-drag across stars (iOS-style)
     // to scrub the value continuously. _suppressNextClick avoids double-handling
@@ -321,19 +313,6 @@
             _isDragging = false;
             _dragMovedAcrossStars = false;
         }
-    }
-
-    private void HandleHover(int index)
-    {
-        if (!ReadOnly)
-        {
-            _hoverValue = index;
-        }
-    }
-
-    private void HandleMouseLeave()
-    {
-        _hoverValue = 0;
     }
 
     private async Task HandleKeyDown(KeyboardEventArgs e)
