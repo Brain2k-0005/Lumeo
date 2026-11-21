@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `FlowEdge.Color` colours an edge and its arrowhead the same in Chromium, Firefox and Safari (#529). The flow canvas emits one arrow marker per distinct colour (stable per-canvas id, none when unused), so no engine needs `context-stroke`. A literal `stroke:` in `FlowEdge.Style` is honoured by the marker as well. A colour set only through `FlowEdge.Class` still reaches the arrowhead in Chromium only; use `Color` for cross-engine edges.
 
 ### Fixed
+- `MegaMenu` hover highlight now covers its link content (#577). A full-width panel inside a shrink-wrapped nav (a centred or flex-item menu) was squeezed to the nav width, so the 1fr grid columns ended up narrower than the link text and the title and description overflowed the highlighted area. Panel grid columns now have a 10rem minimum track and the full-width panel a min-content floor; the link text column can shrink and wrap inside the highlight.
 - `CodeEditor` showed no syntax highlighting in light mode: only dark mode got token colours (as a side effect of the One Dark theme). Tokens are now coloured in light and dark for every supported language, using a Lumeo highlight style built from theme CSS variables (`--color-chart-*`, `--color-muted-foreground`), so it follows the active theme (#552).
 - Flow edges with a custom colour no longer show a default-coloured arrowhead in Firefox and Safari when the colour is set through `FlowEdge.Color` or `FlowEdge.Style` (#529).
 
