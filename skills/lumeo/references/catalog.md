@@ -39,7 +39,7 @@ Satellite packages: a component tagged **[Charts]** needs `Lumeo.Charts`, **[Dat
 - **Filter** **[DataGrid]** — Composable faceted filter builder with chips. _(sub-components: FilterPill)_
 - **Filters** **[DataGrid]** — Filter builder: attribute, condition and value edited inside the chip, an editor per value kind, a query tree an API can consume. _(sub-components: FilterAdvancedGroup, FilterAdvancedNode, FilterAdvancedRow, FilterBooleanEditor, FilterChip, FilterCombinatorCell, FilterDateEditor, FilterEditorButtons, FilterFieldPicker, FilterMenu, FilterMoveToMenuItems, FilterMultiSelectEditor, FilterNumberEditor, FilterRangeEditor, FilterRowHandle, FilterRuleMenuItems, FilterSelectEditor, FilterTextEditor, FiltersAdvanced, FiltersAdvancedPanel, FiltersBuilder)_
 - **FlowCanvas** **[Flow]** — Node/flow editor canvas — templated nodes, SVG edges, pan, pointer-anchored wheel zoom, node drag with snapping, background grid and zoom controls. _(sub-components: FlowBackground, FlowControls, FlowEdgeLayer, FlowGroupNode, FlowHandle, FlowMiniMap, FlowNodeHost, FlowNodeResizer, FlowNodeToolbar, FlowPanel)_
-- **Gantt** **[Gantt]** — Gantt component.
+- **Gantt** **[Gantt]** — DEPRECATED, removed in 6.0 — use GanttChart. The legacy SVG timeline (gantt-v2).
 - **GanttChart** **[Gantt]** — Project timeline with dependency arrows, milestones, hierarchy tree pane, summary rollups, and a reject/accept/adjust drag commit gate. _(sub-components: GanttArrowLayer, GanttBar, GanttNav, GanttSettingsMenu, GanttSummaryBar, GanttTimeline, GanttTree, GanttZoomControl)_
 - **Gauge** — Single-value gauge with radial, arc, and linear variants and threshold colour bands.
 - **Image** — Image with lazy-loading, loading skeleton, and error fallback. _(sub-components: ImageGallery)_
