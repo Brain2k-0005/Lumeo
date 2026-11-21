@@ -91,4 +91,35 @@
             System.Text.RegularExpressions.Regex.Matches(before, "text-end").Count,
             System.Text.RegularExpressions.Regex.Matches(cut.Markup, "text-end").Count);
     }
+
+    // #588 — the axis must not depend on column content/padding: fixed 3-col grid,
+    // no flex-1 + padding columns (those made even/odd rows 16px apart).
+    [Fact]
+    public void Alternate_Item_Uses_Fixed_Three_Column_Grid_With_Equal_Side_Columns()
+    {
+        var cut = Render(@<Timeline Layout="Timeline.TimelineLayout.Alternate">
+            <TimelineItem Title="Even">Short</TimelineItem>
+            <TimelineItem Title="Odd">A much longer body of text that would widen its column</TimelineItem>
+        </Timeline>);
+
+        foreach (var item in cut.FindAll("[data-slot='timeline-item']"))
+        {
+            var cls = item.GetAttribute("class")!;
+            Assert.Contains("grid", cls.Split(' '));
+            Assert.Contains("grid-cols-[1fr_auto_1fr]", cls);
+            Assert.DoesNotContain("flex-row", cls);
+            foreach (var col in item.Children.Where(c => c.ClassList.Contains("min-w-0") || c.ClassList.Contains("flex-col")))
+                Assert.DoesNotContain("flex-1", col.ClassList);
+        }
+        Assert.Equal(4, cut.FindAll("[data-slot='timeline-item'] > .min-w-0").Count);
+    }
+
+    [Fact]
+    public void Default_Layout_Is_Unchanged_By_Alternate_Grid()
+    {
+        var cut = Render(@<Timeline><TimelineItem Title="A" /></Timeline>);
+        var cls = cut.Find("[data-slot='timeline-item']").GetAttribute("class")!;
+        Assert.Contains("flex-row", cls);
+        Assert.DoesNotContain("grid-cols", cls);
+    }
 }
