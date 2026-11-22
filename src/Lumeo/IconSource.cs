@@ -1,3 +1,6 @@
+using System.Globalization;
+using System.Text.RegularExpressions;
+
 namespace Lumeo;
 
 /// <summary>
@@ -73,6 +76,125 @@ public sealed record IconSource
     /// <param name="viewBox">The <c>viewBox</c> value (see <see cref="ViewBox"/>).</param>
     public static IconSource Fill(string content, string viewBox = "0 0 24 24")
         => new() { Content = content, ViewBox = viewBox, RenderStyle = IconRenderStyle.Fill };
+
+    /// <summary>
+    /// Creates an <see cref="IconSource"/> from a complete <c>&lt;svg&gt;…&lt;/svg&gt;</c> string
+    /// (for example one copied from Iconify, Lucide or Heroicons).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Only the root start tag is inspected: <c>viewBox</c> (falling back to a numeric
+    /// <c>width</c>/<c>height</c> in px or unitless, then <c>0 0 24 24</c>), and the paint style —
+    /// <see cref="IconRenderStyle.Stroke"/> when the root has <c>fill="none"</c> and a
+    /// <c>stroke</c> other than <c>none</c> (with <c>stroke-width</c>, default 2), otherwise
+    /// <see cref="IconRenderStyle.Fill"/>. The root <c>width</c>, <c>height</c>, <c>class</c> and
+    /// <c>style</c> are ignored; sizing comes from the renderer's <c>Size</c>/<c>Class</c>. The
+    /// inner markup is sliced from the original string, not re-serialized. A leading XML
+    /// declaration, doctype or comments are tolerated.
+    /// </para>
+    /// <para>
+    /// <b>Warning:</b> the content is rendered as-is, without sanitization. Only pass trusted,
+    /// static SVG you control — never user-supplied strings.
+    /// </para>
+    /// </remarks>
+    /// <param name="svg">A complete SVG document element.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="svg"/> is <c>null</c>.</exception>
+    /// <exception cref="ArgumentException"><paramref name="svg"/> is empty or has no root <c>&lt;svg&gt;</c> element.</exception>
+    public static IconSource FromSvg(string svg)
+    {
+        ArgumentNullException.ThrowIfNull(svg);
+        if (string.IsNullOrWhiteSpace(svg))
+            throw new ArgumentException("The SVG string is empty.", nameof(svg));
+
+        // Skip the prolog (whitespace, <?xml ?>, <!DOCTYPE>, comments) to the root <svg start tag.
+        int pos = 0;
+        while (true)
+        {
+            while (pos < svg.Length && char.IsWhiteSpace(svg[pos])) pos++;
+            if (string.CompareOrdinal(svg, pos, "<?", 0, 2) == 0)
+            {
+                int end = svg.IndexOf("?>", pos + 2, StringComparison.Ordinal);
+                if (end < 0) break;
+                pos = end + 2;
+            }
+            else if (string.CompareOrdinal(svg, pos, "<!--", 0, 4) == 0)
+            {
+                int end = svg.IndexOf("-->", pos + 4, StringComparison.Ordinal);
+                if (end < 0) break;
+                pos = end + 3;
+            }
+            else if (string.CompareOrdinal(svg, pos, "<!", 0, 2) == 0)
+            {
+                int end = svg.IndexOf('>', pos + 2);
+                if (end < 0) break;
+                pos = end + 1;
+            }
+            else break;
+        }
+
+        const string tagName = "<svg";
+        if (pos >= svg.Length
+            || string.Compare(svg, pos, tagName, 0, tagName.Length, StringComparison.OrdinalIgnoreCase) != 0
+            || pos + tagName.Length >= svg.Length
+            || !(char.IsWhiteSpace(svg[pos + tagName.Length]) || svg[pos + tagName.Length] is '>' or '/'))
+            throw new ArgumentException("The string does not start with a root <svg> element.", nameof(svg));
+
+        // Find the end of the start tag, ignoring '>' inside quoted attribute values.
+        char quote = '\0';
+        int tagEnd = -1;
+        for (int i = pos + tagName.Length; i < svg.Length; i++)
+        {
+            char c = svg[i];
+            if (quote != '\0') { if (c == quote) quote = '\0'; }
+            else if (c == '"' || c == '\'') quote = c;
+            else if (c == '>') { tagEnd = i; break; }
+        }
+        if (tagEnd < 0)
+            throw new ArgumentException("The root <svg> start tag is not closed.", nameof(svg));
+
+        bool selfClosing = svg[tagEnd - 1] == '/';
+        var attrs = new Dictionary<string, string>(StringComparer.Ordinal);
+        string startTag = svg.Substring(pos + tagName.Length, tagEnd - (pos + tagName.Length));
+        foreach (Match m in AttributeRegex.Matches(startTag))
+            attrs[m.Groups[1].Value] = m.Groups[2].Success ? m.Groups[2].Value : m.Groups[3].Value;
+
+        string content = "";
+        if (!selfClosing)
+        {
+            int close = svg.LastIndexOf("</svg", StringComparison.OrdinalIgnoreCase);
+            if (close < tagEnd)
+                throw new ArgumentException("The root <svg> element has no closing </svg> tag.", nameof(svg));
+            content = svg.Substring(tagEnd + 1, close - tagEnd - 1).Trim();
+        }
+
+        string viewBox = "0 0 24 24";
+        if (attrs.TryGetValue("viewBox", out var vb) && !string.IsNullOrWhiteSpace(vb))
+            viewBox = vb.Trim();
+        else if (attrs.TryGetValue("width", out var w) && attrs.TryGetValue("height", out var h)
+                 && TryParseLength(w, out var wn) && TryParseLength(h, out var hn))
+            viewBox = $"0 0 {wn.ToString(CultureInfo.InvariantCulture)} {hn.ToString(CultureInfo.InvariantCulture)}";
+
+        bool stroke = attrs.TryGetValue("fill", out var fill) && fill.Trim() == "none"
+                      && attrs.TryGetValue("stroke", out var st) && !string.IsNullOrWhiteSpace(st) && st.Trim() != "none";
+        if (!stroke)
+            return Fill(content, viewBox);
+
+        double strokeWidth = 2;
+        if (attrs.TryGetValue("stroke-width", out var sw)
+            && double.TryParse(sw.Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out var swn) && swn > 0)
+            strokeWidth = swn;
+        return Stroke(content, viewBox, strokeWidth);
+    }
+
+    private static readonly Regex AttributeRegex =
+        new("([^\\s=/>\"']+)\\s*=\\s*(?:\"([^\"]*)\"|'([^']*)')", RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
+    private static bool TryParseLength(string value, out double result)
+    {
+        value = value.Trim();
+        if (value.EndsWith("px", StringComparison.OrdinalIgnoreCase)) value = value[..^2].TrimEnd();
+        return double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out result) && result > 0;
+    }
 }
 
 /// <summary>
