@@ -45,24 +45,28 @@ public class ThemePlaygroundParserTests
     [Fact]
     public void Flags_unread_variables()
     {
-        var r = ThemePlaygroundParser.Parse(":root { --primary: red; --tracking-normal: 0em; --shadow-opacity: 0.1; --radius-md: 4px; --foo: 1; }");
+        var r = ThemePlaygroundParser.Parse(":root { --primary: red; --tracking-normal: 0em; --tracking-tight: -0.1em; --shadow-opacity: 0.1; --radius-md: 4px; --foo: 1; }");
         Assert.Equal(4, r.Warnings.Count);
-        Assert.Contains(r.Warnings, w => w.StartsWith("--tracking-normal"));
+        Assert.DoesNotContain(r.Warnings, w => w.StartsWith("--tracking-normal"));
+        Assert.Contains(r.Warnings, w => w.StartsWith("--tracking-tight"));
         Assert.DoesNotContain(r.Warnings, w => w.StartsWith("--primary"));
     }
 
     [Fact]
     public void Scoped_style_also_sets_color_tokens_and_override_css_drops_unread()
     {
-        var r = ThemePlaygroundParser.Parse(":root { --primary: red; --radius: 1rem; --tracking-normal: 0em; } .dark { --primary: blue; }");
+        var r = ThemePlaygroundParser.Parse(":root { --primary: red; --radius: 1rem; --tracking-normal: 0.05em; } .dark { --primary: blue; }");
         var style = ThemePlaygroundParser.ToScopedStyle(r.Light);
         Assert.Contains("--color-primary:red;", style);
         Assert.Contains("--radius-md:", style);
-        Assert.DoesNotContain("tracking", style);
+        Assert.Contains("--tracking-normal:0.05em;", style);
+        Assert.Contains("--tracking-tight:calc(var(--tracking-normal) - 0.025em);", style);
+        Assert.Contains("--tracking-widest:calc(var(--tracking-normal) + 0.1em);", style);
+        Assert.Contains("letter-spacing:var(--tracking-normal);", style);
         var css = ThemePlaygroundParser.ToOverrideCss(r);
         Assert.Contains(":root {", css);
         Assert.Contains(".dark {", css);
-        Assert.DoesNotContain("tracking", css);
+        Assert.Contains("--tracking-normal: 0.05em;", css);
     }
 
     [Fact]
