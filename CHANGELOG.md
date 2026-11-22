@@ -5,7 +5,7 @@ All notable changes to Lumeo will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [5.17.0] - 2026-11-22
 
 ### Added
 - `IconSource.FromSvg(string svg)` builds an icon from a complete `<svg>…</svg>` string (e.g. copied from Iconify), picking up `viewBox` and the stroke/fill style from the root element; usable with `<Icon Svg>` and `<SvgGlyph Svg>`. Content is rendered unsanitized, trusted SVG only (#600).
