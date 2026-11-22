@@ -155,7 +155,7 @@ public sealed record IconSource
         bool selfClosing = svg[tagEnd - 1] == '/';
         var attrs = new Dictionary<string, string>(StringComparer.Ordinal);
         string startTag = svg.Substring(pos + tagName.Length, tagEnd - (pos + tagName.Length));
-        foreach (Match m in AttributeRegex.Matches(startTag))
+        foreach (Match m in SvgAttributes.Regex.Matches(startTag))
             attrs[m.Groups[1].Value] = m.Groups[2].Success ? m.Groups[2].Value : m.Groups[3].Value;
 
         string content = "";
@@ -186,8 +186,14 @@ public sealed record IconSource
         return Stroke(content, viewBox, strokeWidth);
     }
 
-    private static readonly Regex AttributeRegex =
-        new("([^\\s=/>\"']+)\\s*=\\s*(?:\"([^\"]*)\"|'([^']*)')", RegexOptions.Compiled | RegexOptions.CultureInvariant);
+    // Held in a nested class so the regex is built on the first FromSvg call, not when IconSource
+    // itself is first touched (every icon render). Interpreted rather than Compiled: it parses one
+    // start tag per custom icon, and Compiled only adds startup cost under WASM.
+    private static class SvgAttributes
+    {
+        internal static readonly Regex Regex =
+            new("([^\\s=/>\"']+)\\s*=\\s*(?:\"([^\"]*)\"|'([^']*)')", RegexOptions.CultureInvariant);
+    }
 
     private static bool TryParseLength(string value, out double result)
     {
