@@ -92,4 +92,17 @@ public class GeometryTokenGuardTests
             .ToList();
         Assert.True(missing.Count == 0, "components without a data-slot on their root: " + string.Join(", ", missing));
     }
+
+    [Fact]
+    public void Tracking_Scale_Is_Derived_From_Tracking_Normal_And_Applied_To_Body()
+    {
+        var css = Regex.Replace(File.ReadAllText(Path.Combine(RepoRoot(), "src/Lumeo/wwwroot/css/lumeo.css")), @"\s+", "");
+        Assert.Contains("--tracking-normal:0em;", css);
+        Assert.Contains("--tracking-tighter:calc(var(--tracking-normal)-0.05em);", css);
+        Assert.Contains("--tracking-tight:calc(var(--tracking-normal)-0.025em);", css);
+        Assert.Contains("--tracking-wide:calc(var(--tracking-normal)+0.025em);", css);
+        Assert.Contains("--tracking-wider:calc(var(--tracking-normal)+0.05em);", css);
+        Assert.Contains("--tracking-widest:calc(var(--tracking-normal)+0.1em);", css);
+        Assert.Contains("body{letter-spacing:var(--tracking-normal);}", css);
+    }
 }

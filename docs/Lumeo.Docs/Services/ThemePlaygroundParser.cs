@@ -33,7 +33,7 @@ public static class ThemePlaygroundParser
 
     private static readonly HashSet<string> OtherReadTokens = new(StringComparer.Ordinal)
     {
-        "radius", "spacing", "font-sans", "font-mono", "font-serif",
+        "radius", "tracking-normal", "spacing", "font-sans", "font-mono", "font-serif",
         "shadow-2xs", "shadow-xs", "shadow-sm", "shadow", "shadow-md", "shadow-lg", "shadow-xl", "shadow-2xl",
     };
 
@@ -62,8 +62,10 @@ public static class ThemePlaygroundParser
 
     private static string Explain(string name)
     {
-        if (name.StartsWith("tracking", StringComparison.Ordinal) || name == "letter-spacing")
-            return $"--{name}: Lumeo reads --tracking-tight / -wide / ... by name, not tweakcn's --tracking-normal, so tracking is not applied.";
+        if (name is "tracking-tighter" or "tracking-tight" or "tracking-wide" or "tracking-wider" or "tracking-widest")
+            return $"--{name}: ignored, Lumeo derives it from --tracking-normal. Set only --tracking-normal.";
+        if (name == "letter-spacing")
+            return $"--{name}: not read by Lumeo, use --tracking-normal.";
         if (name is "radius-sm" or "radius-md" or "radius-lg" or "radius-xl")
             return $"--{name}: ignored, Lumeo derives it from --radius. Set only --radius.";
         if (name.StartsWith("shadow-", StringComparison.Ordinal))
@@ -160,6 +162,8 @@ public static class ThemePlaygroundParser
         }
         if (vars.ContainsKey("radius"))
             sb.Append("--radius-sm:calc(var(--radius) - 4px);--radius-md:calc(var(--radius) - 2px);--radius-lg:var(--radius);--radius-xl:calc(var(--radius) + 4px);--lumeo-button-radius:var(--radius-md);");
+        if (vars.ContainsKey("tracking-normal"))
+            sb.Append("--tracking-tighter:calc(var(--tracking-normal) - 0.05em);--tracking-tight:calc(var(--tracking-normal) - 0.025em);--tracking-wide:calc(var(--tracking-normal) + 0.025em);--tracking-wider:calc(var(--tracking-normal) + 0.05em);--tracking-widest:calc(var(--tracking-normal) + 0.1em);letter-spacing:var(--tracking-normal);");
         if (vars.TryGetValue("font-sans", out var f))
             sb.Append("font-family:").Append(Sanitize(f)).Append(';');
         return sb.ToString();
